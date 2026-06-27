@@ -1640,3 +1640,49 @@ exact, paper-ready change-set and preserves attribution automatically. Build
 artifacts (`build/`, `.dart_tool/`, `.gradle/`) are already git-ignored; model
 assets total ~50 MB with an 11 MB max single file, so **no Git LFS is needed**.
 The owner will run the git/GitHub steps manually.
+
+### 10b. Git restructure actually executed (2026-06-27) — supersedes the 10a plan
+
+Section 10a proposed a *fork-style single repo* that kept the upstream layout
+(plugin at root, app in `example/`) and preserved Ultralytics git history. We
+**changed approach** to an **app-centric repository** so the app — not the plugin
+— is the main thing, which is clearer for ecologists and future maintainers.
+
+**New repository: `pollinator-monitor`** (private; built at
+`/home/vs66tavy/InsectDetectApp/pollinator-monitor/`, non-destructively copied from
+`yolo-flutter-app/`, which is left intact as a fallback).
+
+Layout (app at root, plugin vendored):
+
+```
+pollinator-monitor/
+├── lib/ android/ ios/ assets/ test/ …   # the app (was example/)
+├── pubspec.yaml        # name: pollinator_monitor; ultralytics_yolo: path: packages/ultralytics_yolo
+├── README.md           # app-first, with a "Built on" attribution section
+├── POLLINATOR_MONITOR.md  # this dev log, moved to the repo root
+├── LICENSE             # AGPL-3.0 (copied; plugin keeps its own copy too)
+└── packages/ultralytics_yolo/   # the modified plugin (was the repo root), minus example/
+```
+
+Decisions and what was done:
+
+- **Fresh git history** (`git init -b main`), not preserved upstream history.
+  Provenance is documented instead: README credits
+  `ultralytics/yolo-flutter-app @22b2e5d`, AGPL-3.0 is retained, and the modified
+  plugin keeps its own `LICENSE`. AGPL change-statement obligations are still met
+  via this document + the README.
+- **Dart package renamed** `ultralytics_yolo_example` → `pollinator_monitor`;
+  self-imports updated across `lib/`, `test/`, `integration_test/`, `test_driver/`.
+- **Path dependency rewired** `../` → `packages/ultralytics_yolo`.
+- **Models:** stock demo models (`yolo26n*`, generic `yolo11n*`, incl. the ones that
+  sat inside `custom/`) are gitignored; only custom detectors
+  (`arthropod_yolov11_float16/int8`, `flower_yolo11n_416_epochs200_float16`) are
+  tracked. The model catalog is built dynamically, so a fresh clone just lists
+  fewer models — nothing breaks.
+- **Verified:** `flutter pub get` resolves the path dep; `flutter analyze` →
+  "No issues found"; first commit created on `main` with a clean working tree.
+
+**Remaining step (owner-run, needs GitHub credentials):** create the private
+GitHub repo and push. `gh` is not installed, so either install it
+(`gh repo create pollinator-monitor --private --source . --push`) or create the
+repo in the browser and `git remote add origin <url> && git push -u origin main`.
