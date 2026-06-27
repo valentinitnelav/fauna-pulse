@@ -90,8 +90,8 @@ Two design rules were followed throughout:
 
 ## 4. Changes relative to upstream
 
-### 4a. New application code (all under `example/lib/pollinator/`)
-A self-contained module added to the example app:
+### 4a. New application code (all under `/lib/pollinator/`)
+A self-contained module added to the app:
 
 | Area | Files | Purpose |
 |------|-------|---------|
@@ -103,7 +103,7 @@ A self-contained module added to the example app:
 | Screens | `screens/home_screen.dart`, `screens/camera_session_screen.dart`, `screens/settings_sheet.dart`, `screens/session_summary_screen.dart` | Entry/permissions, live orchestration, settings, dashboard |
 | Tests | `test/pollinator/*` | Unit tests for ROI math, the tracker, and the logger |
 
-`example/lib/main.dart` was repointed to the new home screen.
+`/lib/main.dart` was repointed to the new home screen.
 
 ### 4b. Plugin (native + Dart) modifications — the ROI-crop inference
 To make detection **truly operate only on the ROI** (and to give small insects
@@ -132,7 +132,7 @@ The Dart side maps the ROI-relative detections back onto the full frame for the
 tracker and overlay, and logs box coordinates relative to the ROI.
 
 ### 4c. Native temperature method channel
-- `example/.../MainActivity.kt` — a `pollinator/thermal` method channel reading
+- `.../MainActivity.kt` — a `pollinator/thermal` method channel reading
   battery temperature (°C) and the OS thermal-throttling status, so heat build-up
   during long real-time sessions can be displayed and logged.
 
@@ -146,12 +146,12 @@ tracker and overlay, and logs box coordinates relative to the ROI.
   see §7.
 
 ### 4e. Build, dependencies, branding
-- `example/pubspec.yaml` — added `image`, `fl_chart` (later replaced by a custom
+- `pubspec.yaml` — added `image`, `fl_chart` (later replaced by a custom
   painter), `battery_plus`, `device_info_plus`, `screen_brightness`,
   `permission_handler`, `shared_preferences`, `wakelock_plus`.
-- `example/android/app/build.gradle` — pinned Kotlin `jvmTarget = 17` to match
+- `/android/app/build.gradle` — pinned Kotlin `jvmTarget = 17` to match
   Java (the build runs under JDK 21), fixing an "Inconsistent JVM-target" error.
-- `example/android/app/src/main/AndroidManifest.xml` — app label
+- `/android/app/src/main/AndroidManifest.xml` — app label
   "Pollinator Monitor".
 - Custom **flower-and-bee launcher icon** (all densities + adaptive icon),
   replacing the Ultralytics logo. Generated with a small PIL script.
@@ -230,7 +230,7 @@ Each round below was prompted by hands-on testing on the phone.
     until the chosen size's `.tflite` is added the frame rate will not change.
 13. **Custom insect detectors + a GPU-cache crash fix.** The scientist's own
     YOLO11 detectors (fp16 and fp32 `.tflite` files) were bundled under
-    `example/assets/models/custom/` and added to the model dropdown (custom models
+    `/assets/models/custom/` and added to the model dropdown (custom models
     listed first, labelled by precision), so they can be selected without rebuilding
     the selection logic. While deploying this, the app started **hard-crashing at
     launch** inside the native LiteRT GPU library. Root cause: LiteRT serializes the
@@ -662,7 +662,7 @@ Each round below was prompted by hands-on testing on the phone.
     page-swipe — the whole tab slid to the neighbour instead of the value
     moving. Rather than fight the gesture arbitration, **every numeric control is
     now a typed number box** — the new `NumericSettingField`
-    (`example/lib/pollinator/widgets/numeric_setting_field.dart`), a small
+    (`/lib/pollinator/widgets/numeric_setting_field.dart`), a small
     labelled `TextField` with a unit suffix and a help line. It has no horizontal
     drag (so it can't conflict with the tab swipe), lets the user enter an exact
     value, and **clamps** the typed number into each setting's documented range.
@@ -1570,7 +1570,6 @@ this app targets.
 
 ```bash
 # From the repository root:
-cd example
 flutter pub get
 flutter test test/pollinator      # unit tests
 flutter run                        # build, install and launch on a connected Android device
@@ -1609,7 +1608,7 @@ with USB debugging enabled.
 
 Built on the Ultralytics YOLO Flutter plugin (AGPL-3.0). This project inherits
 that licence. The Pollinator Monitor additions were implemented with Claude Code.
-See `example/lib/pollinator/README.md` for the module-level developer notes and
+See `/lib/pollinator/README.md` for the module-level developer notes and
 the `session.jsonl` schema used by downstream R/Python analysis.
 
 ### 10a. Licensing & repository decision (2026-06-26)
@@ -1620,7 +1619,7 @@ licence and the goal of a **free, openly distributed** app for scientists and
 citizen scientists.
 
 **How the app is wired.** Pollinator Monitor lives in
-`example/lib/pollinator/` and consumes the plugin as a local **path dependency**
+`/lib/pollinator/` and consumes the plugin as a local **path dependency**
 (`ultralytics_yolo: path: ../`). It also **modifies the plugin's own native
 Kotlin source** (section 4b: ROI-crop inference). Because of those native edits,
 this project is genuinely a **fork** of the plugin, not a mere consumer of it —
@@ -1664,7 +1663,7 @@ Section 10a proposed a *fork-style single repo* that kept the upstream layout
 `/home/vs66tavy/InsectDetectApp/pollinator-monitor/`, non-destructively copied from
 `yolo-flutter-app/`, which is left intact as a fallback).
 
-Layout (app at root, plugin vendored):
+Layout (app at root, plugin):
 
 ```
 pollinator-monitor/

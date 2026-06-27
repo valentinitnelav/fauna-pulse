@@ -13,23 +13,22 @@ cropped JPEGs, and writes an append-only JSON log of the session. See
 [`POLLINATOR_MONITOR.md`](POLLINATOR_MONITOR.md) for the full development log and the
 current pipeline configuration.
 
-> Status: Android-first. iOS compatibility is planned for a later phase and will live in
-> a separate repository.
+Android-first. iOS compatibility is planned for a later phase and will live in a separate repository.
 
 ## Repository layout
 
-This repository **is** the app — it sits at the root, not in a subfolder.
+This repository is the app — it sits at the root, not in a subfolder (previosly `yolo-flutter-app/example/`).
 
 ```
 pollinator-monitor/
 ├── lib/                     # the Pollinator Monitor app (Dart)
-├── android/  ios/           # app platform code
+├── android/                 # app platform code
 ├── assets/                  # app assets, including assets/models/custom/ detectors
-├── pubspec.yaml             # depends on the vendored plugin via a local path
+├── pubspec.yaml             # depends on the ultralytics plugin via a local path
 ├── POLLINATOR_MONITOR.md    # development log / change history
 ├── LICENSE                  # AGPL-3.0
 └── packages/
-    └── ultralytics_yolo/    # the vendored, MODIFIED YOLO Flutter plugin (see below)
+    └── ultralytics_yolo/    # MODIFIED YOLO Flutter plugin (see below)
 ```
 
 The app depends on the plugin locally:
@@ -66,9 +65,8 @@ Pollinator Monitor is built on Ultralytics'
 [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app) (the
 `ultralytics_yolo` Flutter plugin), forked from upstream commit `22b2e5d`. That plugin —
 with project-specific modifications to its Dart and native Android (Kotlin) code (e.g. a
-GPU-crash guard, tracker-fragmentation fix, and an on-device recording service) — is
-**vendored** in [`packages/ultralytics_yolo/`](packages/ultralytics_yolo/) and retains
-its own `LICENSE`.
+GPU-crash guard, tracker-fragmentation fix, and an on-device recording service) — is 
+in [`packages/ultralytics_yolo/`](packages/ultralytics_yolo/) and retains its own `LICENSE`.
 
 ## License
 
