@@ -1,0 +1,56 @@
+# Files to exclude from publishing
+example/test/widget_test.dart
+
+# Development files
+.idea/
+.vscode/
+PLAN.md
+Screenshot*.png
+example/lib/widget_previews.dart
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+**/ios/Pods/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/gradle/wrapper/
+**/android/.gradle
+**/android/captures/
+# Tracked symlink for local plugin development; pub follows it and duplicates the plugin under example/android.
+example/android/ultralytics_yolo_plugin
+
+# Generated files
+coverage/
+exports/
+**/__pycache__/
+**/*.pyc
+**/doc/api/
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# Example and test applications
+hello_yolo/
+
+# Model files (exclude all TFLite, MLPackage, and MLModel files)
+**/*.tflite
+**/*.mlpackage
+**/*.mlmodel
+**/*.mlpackage.zip
+**/*.zip
+
+# Development documents and notes
+docs/
+play-store-assets/
+AGENTS.md
+CLAUDE.md
+DOCS_CORRECTNESS_AUDIT_PROMPT.md
+DOCS_RAG_AUDIT_PROMPT.md
+fix_summary.md
+MISSING_FEATURES.md
+PUBLISH_CHECKLIST.md
+
+# OS or editor specific files (additional)
+.DS_Store
+*.swp
+PUBLISHING_GUIDE_0.0.9.md

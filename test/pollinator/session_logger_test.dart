@@ -1,0 +1,99 @@
+// Tests for the append-only JSONL session logger, including the crash case
+// where the end_of_session line never gets written.
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pollinator_monitor/pollinator/logging/session_logger.dart';
+
+void main() {
+  late Directory tmp;
+
+  setUp(() => tmp = Directory.systemTemp.createTempSync('pollinator_log'));
+  tearDown(() => tmp.deleteSync(recursive: true));
+
+  test('writes valid JSONL with type and timestamps', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc', 'battery_percent': 88});
+    logger.logDetection({'track_id': 1, 'confidence': 0.9});
+    logger.logEnd({'ended_normally': true});
+    logger.close();
+
+    final lines = file.readAsLinesSync();
+    expect(lines, hasLength(3));
+
+    final records = lines.map((l) => jsonDecode(l) as Map<String, dynamic>).toList();
+    expect(records[0]['type'], 'start_of_session');
+    expect(records[1]['type'], 'detection');
+    expect(records[2]['type'], 'end_of_session');
+    expect(records[2]['ended_normally'], true);
+
+    for (final r in records) {
+      expect(r['time_ms'], isA<int>());
+      expect(r['time_iso'], isA<String>());
+    }
+  });
+
+  test('a crash (no end record) is detectable', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc'});
+    logger.logDetection({'track_id': 1});
+    // Simulate a crash: close the handle without writing end_of_session.
+    logger.close();
+
+    final records = file
+        .readAsLinesSync()
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
+    expect(records.any((r) => r['type'] == 'end_of_session'), isFalse);
+    // The already-written lines are intact and parseable.
+    expect(records, hasLength(2));
+  });
+
+  test('logCapture writes a capture record with its timing fields', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc'});
+    logger.logCapture({
+      'file': 'roi_1_2.jpg',
+      'track_ids': [1, 2],
+      'total_ms': 12.5,
+      'bytes': 34567,
+      'full_res': true,
+    });
+    logger.logEnd({'ended_normally': true});
+    logger.close();
+
+    final records = file
+        .readAsLinesSync()
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
+    final cap = records.firstWhere((r) => r['type'] == 'capture');
+    expect(cap['file'], 'roi_1_2.jpg');
+    expect(cap['track_ids'], [1, 2]);
+    expect(cap['total_ms'], 12.5);
+    expect(cap['full_res'], true);
+  });
+
+  test('enriched fps record round-trips the diagnostic fields', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logFps({'fps': 9.6, 'inf_ms': 64.8, 'engine': 'CPU'});
+    logger.close();
+
+    final rec = jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    expect(rec['type'], 'fps');
+    expect(rec['fps'], 9.6);
+    expect(rec['inf_ms'], 64.8);
+    expect(rec['engine'], 'CPU');
+  });
+
+  test('isoWithOffset has millisecond precision and an offset', () {
+    final s = isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123));
+    expect(s, contains('2026-06-13T19:03:12.123'));
+    expect(RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s), isTrue);
+  });
+}

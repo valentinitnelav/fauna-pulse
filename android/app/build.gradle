@@ -1,0 +1,105 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+def hasReleaseSigning = keystoreProperties["storeFile"] &&
+    (keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")) &&
+    (keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")) &&
+    (keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD"))
+
+android {
+    namespace = "com.ultralytics.yolo"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // Pin Kotlin's bytecode target to match Java's (above). Without this, Kotlin
+    // defaults to the JDK running the build (21 here), and Gradle refuses to mix
+    // Java-17 and Kotlin-21 outputs in the same module ("Inconsistent JVM-target").
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        // Our own application id (distinct from Ultralytics' com.ultralytics.yolo)
+        // so this app installs alongside the official Ultralytics app instead of
+        // replacing it, and so saved data lives under
+        // Android/data/com.pollinatormonitor.app/ rather than a yolo path.
+        // (The internal Kotlin namespace stays com.ultralytics.yolo — it's not
+        // user-visible and renaming it would mean moving all native sources.)
+        applicationId = "com.pollinatormonitor.app"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        release {
+            keyAlias = keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")
+            keyPassword = keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")
+            storeFile = keystoreProperties["storeFile"] ? rootProject.file(keystoreProperties["storeFile"]) : null
+            storePassword = keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            // Use a real release keystore when configured; otherwise fall back to
+            // the auto-generated debug key so `--release` still produces an
+            // installable, *non-debuggable* APK (ART then optimises the native
+            // code, unlike debug/profile which run "verify"/interpreted). This
+            // fallback is for testing only — ship with a real key.
+            signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+
+    // The Hexagon DSP loads QNN Skel libraries via filesystem paths (ADSP_LIBRARY_PATH), so they must exist as
+    // real files in nativeLibraryDir rather than being mmapped out of the APK.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    // Snapdragon NPU support for QNN context-binary ONNX models (*_qnn.onnx). The plugin declares this compileOnly;
+    // apps opt in to the ~70MB arm64 runtime by adding it here.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.26.0")
+    // Override the AAR's transitive QAIRT 2.42 with 2.46: 2.42's device table predates the
+    // Snapdragon 8 Elite Gen 5 (SM8850), failing QnnDevice_create with INVALID_CONFIG.
+    implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
+}
+
+// Bundle the nano YOLO models into the app at build time. They are NOT committed to git (large binaries, gitignored);
+// this fetches them into example/assets/models/ before assets are merged so the app ships with them by default. The
+// resolver checks assets/models/ before downloading, so a bundled model means no first-run network fetch. Best-effort:
+// the script always exits 0, so an offline build still succeeds and simply falls back to the runtime download.
+tasks.register("fetchBundledModels", Exec) {
+    workingDir = rootProject.projectDir
+    commandLine "bash", "${rootProject.projectDir}/../../scripts/fetch_bundled_models.sh", "android"
+    ignoreExitValue = true
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("fetchBundledModels") }

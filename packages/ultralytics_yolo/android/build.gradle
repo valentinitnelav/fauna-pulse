@@ -1,0 +1,125 @@
+group 'com.ultralytics.yolo'
+version '1.0'
+
+buildscript {
+    ext.kotlin_version = "2.2.20"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.11.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+// Built-in Kotlin migration (https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors):
+// AGP 9+ ships Kotlin support itself; on older AGP (Flutter < 3.44) the plugin still has to apply KGP.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0] as int
+def builtInKotlinEnabled = !"false".equalsIgnoreCase(providers.gradleProperty("android.builtInKotlin").orNull)
+if (agpMajor < 9 || !builtInKotlinEnabled) {
+    apply plugin: "kotlin-android"
+
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
+}
+
+android {
+    namespace = "com.ultralytics.yolo"
+    compileSdk = 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.kotlin.srcDirs += "src/main/kotlin"
+        test.kotlin.srcDirs += "src/test/kotlin"
+    }
+
+    // NDK version: Use project property if set by host app, otherwise use a compatible default
+    // Host apps can override by setting: ext.ndkVersion = flutter.ndkVersion in their build.gradle
+    // NDK 27.2+ is required for 16KB page size support
+    ndkVersion = project.hasProperty('ndkVersion') ? project.ndkVersion : "28.2.13676358"
+
+    defaultConfig {
+        // LiteRT 2.x declares minSdkVersion 23, so the plugin must advertise the same floor to consumers.
+        minSdk = 23
+
+        // Ship ProGuard/R8 keep rules to consuming apps so their release builds don't strip LiteRT/JNI classes.
+        consumerProguardFiles 'consumer-rules.pro'
+
+        // Native library build configuration
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -fexceptions -frtti"
+                arguments "-DANDROID_STL=c++_shared", "-DANDROID_CPP_FEATURES=rtti exceptions"
+            }
+        }
+
+        // Supported ABIs
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+    
+    // CMake build configuration
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    dependencies {
+        // LiteRT 2.x ("LiteRT Next") — CompiledModel API with the CL/GL GPU accelerator bundled. Profiled on a Galaxy
+        // S26: a non-end2end fp16 YOLO26 model runs at ~4.7ms/inf on GPU vs ~29ms CPU. litert-gpu/-support have no 2.x
+        // release and are dropped (GPU is in core). litert-metadata stays (self-contained: only flatbuffers-java) so we
+        // can read standard embedded TFLite metadata as a fallback to Ultralytics' appended-ZIP metadata.
+        implementation("com.google.ai.edge.litert:litert:2.1.5")
+        implementation("com.google.ai.edge.litert:litert-metadata:1.4.2")
+        // Optional Snapdragon NPU support: runs Ultralytics QNN context-binary ONNX exports (*_qnn.onnx) via the
+        // ONNX Runtime QNN Execution Provider. compileOnly so consumers don't pay the ~70MB arm64 runtime by
+        // default — apps opt in by adding the same artifact as `implementation` (see OrtQnnModel).
+        compileOnly("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.26.0")
+        testImplementation("junit:junit:4.13.2")
+        androidTestImplementation("androidx.test.ext:junit:1.3.0")
+        androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+        implementation("org.yaml:snakeyaml:2.6")
+        implementation("androidx.camera:camera-core:1.6.0")
+        implementation("androidx.camera:camera-camera2:1.6.0")
+        implementation("androidx.camera:camera-lifecycle:1.6.0")
+        implementation("androidx.camera:camera-view:1.6.0")
+        implementation("androidx.core:core-ktx:1.18.0")
+        implementation("androidx.appcompat:appcompat:1.7.1")
+        implementation("com.google.guava:guava:33.6.0-android")
+        
+        testImplementation("org.jetbrains.kotlin:kotlin-test")
+        testImplementation("org.mockito:mockito-core:5.23.0")
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}

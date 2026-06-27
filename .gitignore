@@ -1,0 +1,65 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Build artifacts anywhere in the tree (root app + vendored packages/ plugin)
+**/build/
+**/.dart_tool/
+**/.gradle/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/Pods/
+
+# --- Pollinator Monitor: model weights ---
+# Stock Ultralytics demo models are NOT tracked (large, re-exportable from Ultralytics).
+# Only the custom pollinator detectors (arthropod_*, flower_*) in
+# assets/models/custom/ are committed. The model catalog is built dynamically at
+# runtime from whatever .tflite files exist, so a fresh clone simply lists fewer
+# models — nothing breaks.
+/assets/models/*.tflite
+/assets/models/*.mlpackage
+# Stock YOLO baselines that happen to sit inside custom/ are also excluded:
+/assets/models/custom/yolo11n*.tflite
+/assets/models/custom/yolo26n*.tflite

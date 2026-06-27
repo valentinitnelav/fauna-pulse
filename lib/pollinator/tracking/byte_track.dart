@@ -1,0 +1,382 @@
+// Pollinator Monitor — a lightweight ByteTrack-style multi-object tracker.
+//
+// Goal: given the detector's per-frame boxes, follow each insect across frames
+// and hand it a stable "track id". This is what turns a stream of detections
+// into countable, timeable *visits*.
+//
+// ByteTrack idea (simplified here, pure Dart, motion only — no appearance/Kalman):
+//   1. Predict where each existing track will be (shift its box by its velocity).
+//   2. First pass: match existing tracks to HIGH-confidence detections using
+//      box overlap (IoU = Intersection-over-Union; 1.0 = identical boxes,
+//      0.0 = no overlap).
+//   3. Second pass: match still-unmatched tracks to LOW-confidence detections.
+//      Keeping low-score boxes is ByteTrack's key trick — a partly occluded
+//      bee often drops in confidence but should not lose its id.
+//   4. Unmatched tracks are kept alive ("lost") for up to [trackBuffer] frames
+//      (occlusion tolerance) before being discarded.
+//   5. Unmatched HIGH-confidence detections start brand-new tracks.
+//
+// Matching uses a simple greedy strategy (take the highest-IoU pair first),
+// which is more than enough for the handful of insects on a single flower.
+
+import 'dart:ui';
+
+import '../models/track.dart';
+
+/// Tunable tracker parameters, surfaced to the user in the Advanced tab.
+class ByteTrackParams {
+  /// Detections at or above this confidence are "high score" and may both
+  /// match tracks and create new tracks. (ByteTrack's high/low split.)
+  final double highThresh;
+
+  /// Minimum box overlap (IoU) to accept a match in the first (high) pass.
+  /// Larger = stricter matching ("movement tolerance": smaller allows faster
+  /// frame-to-frame motion).
+  final double matchThresh;
+
+  /// Minimum box overlap (IoU) to accept a match in the second (low) pass.
+  final double lowMatchThresh;
+
+  /// How many consecutive un-matched frames a track survives before it is
+  /// dropped ("occlusion tolerance" / track buffer).
+  final int trackBuffer;
+
+  /// How many matched frames before a tentative track becomes confirmed.
+  final int minHitsToConfirm;
+
+  /// Smoothing factor for the velocity estimate (0..1). The tracker predicts
+  /// where a hidden insect will be by shifting its last box along its measured
+  /// velocity; this controls how much weight the newest frame-to-frame motion
+  /// gets. Higher = snappier but noisier prediction (good for fast movers);
+  /// lower = steadier, effectively "assume it barely moved" (good for slow,
+  /// landed insects).
+  final double velocitySmoothing;
+
+  const ByteTrackParams({
+    this.highThresh = 0.5,
+    this.matchThresh = 0.1,
+    this.lowMatchThresh = 0.1,
+    this.trackBuffer = 30,
+    this.minHitsToConfirm = 3,
+    this.velocitySmoothing = 0.5,
+  });
+
+  ByteTrackParams copyWith({
+    double? highThresh,
+    double? matchThresh,
+    double? lowMatchThresh,
+    int? trackBuffer,
+    int? minHitsToConfirm,
+    double? velocitySmoothing,
+  }) => ByteTrackParams(
+    highThresh: highThresh ?? this.highThresh,
+    matchThresh: matchThresh ?? this.matchThresh,
+    lowMatchThresh: lowMatchThresh ?? this.lowMatchThresh,
+    trackBuffer: trackBuffer ?? this.trackBuffer,
+    minHitsToConfirm: minHitsToConfirm ?? this.minHitsToConfirm,
+    velocitySmoothing: velocitySmoothing ?? this.velocitySmoothing,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'highThresh': highThresh,
+    'matchThresh': matchThresh,
+    'lowMatchThresh': lowMatchThresh,
+    'trackBuffer': trackBuffer,
+    'minHitsToConfirm': minHitsToConfirm,
+    'velocitySmoothing': velocitySmoothing,
+  };
+
+  factory ByteTrackParams.fromJson(Map<String, dynamic> j) => ByteTrackParams(
+    highThresh: (j['highThresh'] as num?)?.toDouble() ?? 0.5,
+    matchThresh: (j['matchThresh'] as num?)?.toDouble() ?? 0.1,
+    lowMatchThresh: (j['lowMatchThresh'] as num?)?.toDouble() ?? 0.1,
+    trackBuffer: (j['trackBuffer'] as num?)?.toInt() ?? 30,
+    minHitsToConfirm: (j['minHitsToConfirm'] as num?)?.toInt() ?? 3,
+    velocitySmoothing: (j['velocitySmoothing'] as num?)?.toDouble() ?? 0.5,
+  );
+}
+
+/// Intersection-over-Union of two rectangles. 0 when they do not overlap.
+double iou(Rect a, Rect b) {
+  final interLeft = a.left > b.left ? a.left : b.left;
+  final interTop = a.top > b.top ? a.top : b.top;
+  final interRight = a.right < b.right ? a.right : b.right;
+  final interBottom = a.bottom < b.bottom ? a.bottom : b.bottom;
+  final interW = interRight - interLeft;
+  final interH = interBottom - interTop;
+  if (interW <= 0 || interH <= 0) return 0;
+  final interArea = interW * interH;
+  final union = a.width * a.height + b.width * b.height - interArea;
+  if (union <= 0) return 0;
+  return interArea / union;
+}
+
+/// Diagonal length of a rectangle (normalized units), used to scale the
+/// distance-association gate to the detection's own size.
+double _diagonal(Rect r) => Offset(r.width, r.height).distance;
+
+/// The ByteTrack-style tracker. Call [update] once per processed frame.
+class ByteTracker {
+  ByteTrackParams params;
+
+  /// Distance-association gate, as a multiple of the detection box's diagonal.
+  /// After the IoU passes fail (e.g. the velocity-predicted box overshot a
+  /// near-stationary insect at low frame rate), an existing track is re-linked to
+  /// a detection whose centre is within `distanceGateFactor × box-diagonal` of the
+  /// track's last observed centre. This is what stops one insect being split into
+  /// many ids. Not user-exposed (auto-derived from box size).
+  final double distanceGateFactor;
+
+  /// Absolute clamp on the distance gate (normalized frame units), so a very
+  /// large or tiny box can't make the gate absurd.
+  static const double _minDistGate = 0.05;
+  static const double _maxDistGate = 0.20;
+
+  final List<Track> _tracks = [];
+  int _nextId = 1;
+
+  /// Total number of tracks that have ever reached the "confirmed" state this
+  /// session — i.e. the count of distinct insects actually counted as visits.
+  /// (Each id is counted once; a track returning from "lost" is not recounted.)
+  int totalConfirmed = 0;
+
+  ByteTracker({
+    this.params = const ByteTrackParams(),
+    this.distanceGateFactor = 1.5,
+  });
+
+  /// All currently confirmed tracks (the ones worth showing/logging as visits).
+  List<Track> get confirmedTracks =>
+      _tracks.where((t) => t.state == TrackState.confirmed).toList();
+
+  /// Resets the tracker for a new session (ids start again at 1).
+  void reset() {
+    _tracks.clear();
+    _nextId = 1;
+    totalConfirmed = 0;
+  }
+
+  /// Advance the tracker by one frame.
+  ///
+  /// [detections] are this frame's ROI-filtered boxes; [timestampMs] is the
+  /// frame's wall-clock time. Returns the list of confirmed tracks after the
+  /// update (stable ids, latest boxes).
+  List<Track> update(List<Detection> detections, int timestampMs) {
+    // Association compares detections against each track's *predicted* box
+    // (its last box shifted by its velocity); the last actual box is kept until
+    // a match updates it, so velocity stays a true frame-to-frame measurement.
+
+    // Split detections into high- and low-confidence pools.
+    final high = <Detection>[];
+    final low = <Detection>[];
+    for (final d in detections) {
+      (d.confidence >= params.highThresh ? high : low).add(d);
+    }
+
+    final unmatchedTracks = List<Track>.from(_tracks);
+
+    // Step 2: first association — all tracks vs high-confidence detections.
+    final remainingHigh = _associate(
+      unmatchedTracks,
+      high,
+      params.matchThresh,
+      timestampMs,
+    );
+
+    // Step 3: second association — leftover tracks vs low-confidence dets.
+    final remainingLow = _associate(
+      unmatchedTracks,
+      low,
+      params.lowMatchThresh,
+      timestampMs,
+    );
+
+    // Step 3b: distance-association fallback. The IoU passes compare against the
+    // velocity-*predicted* box, which overshoots for a near-stationary insect at
+    // low frame rate and drops the overlap below threshold — splitting one insect
+    // into many ids. Here we re-link an already-real (confirmed/lost) track to a
+    // nearby detection by CENTRE DISTANCE from its last *observed* position, so the
+    // overshoot no longer matters. High-confidence leftovers that get consumed here
+    // must not also spawn a new track, so we feed `remainingHigh` through it.
+    final spawnable = _associateByDistance(
+      unmatchedTracks,
+      remainingHigh,
+      timestampMs,
+    );
+    // Low-confidence leftovers can also revive a track, but never spawn one.
+    _associateByDistance(unmatchedTracks, remainingLow, timestampMs);
+
+    // Step 4: age out unmatched tracks; drop those past the buffer.
+    final survivors = <Track>[];
+    for (final t in _tracks) {
+      if (unmatchedTracks.contains(t)) {
+        t.timeSinceUpdate += 1;
+        // Keep coasting the box along the last known velocity so prediction
+        // continues to track the insect through a multi-frame occlusion.
+        t.box = t.predictedBox;
+        if (t.state == TrackState.confirmed) {
+          t.state = TrackState.lost;
+        }
+        if (t.timeSinceUpdate <= params.trackBuffer &&
+            t.state != TrackState.tentative) {
+          survivors.add(t);
+        }
+        // Tentative tracks that miss a frame are discarded immediately
+        // (they were never confirmed as a real insect).
+      } else {
+        survivors.add(t);
+      }
+    }
+    _tracks
+      ..clear()
+      ..addAll(survivors);
+
+    // Step 5: spawn new tracks from high-confidence detections that matched no
+    // existing track (after IoU *and* distance association).
+    for (final d in spawnable) {
+      _tracks.add(
+        Track(
+          id: _nextId++,
+          box: d.box,
+          confidence: d.confidence,
+          classIndex: d.classIndex,
+          className: d.className,
+          firstSeenMs: timestampMs,
+          lastSeenMs: timestampMs,
+        ),
+      );
+    }
+
+    return confirmedTracks;
+  }
+
+  /// Greedily matches [tracks] (the ones still unmatched, mutated in place by
+  /// removal) to [dets] when IoU >= [minIou]. Returns the detections that found
+  /// no track.
+  List<Detection> _associate(
+    List<Track> tracks,
+    List<Detection> dets,
+    double minIou,
+    int timestampMs,
+  ) {
+    if (tracks.isEmpty || dets.isEmpty) return List<Detection>.from(dets);
+
+    // Build every viable (track, detection) pair with its IoU, then take them
+    // in descending IoU order, skipping any whose track or detection is already
+    // claimed. Simple and correct for small counts.
+    final pairs = <_Pair>[];
+    for (var ti = 0; ti < tracks.length; ti++) {
+      for (var di = 0; di < dets.length; di++) {
+        final score = iou(tracks[ti].predictedBox, dets[di].box);
+        if (score >= minIou) pairs.add(_Pair(ti, di, score));
+      }
+    }
+    pairs.sort((a, b) => b.score.compareTo(a.score));
+
+    final claimedTracks = <int>{};
+    final claimedDets = <int>{};
+    for (final p in pairs) {
+      if (claimedTracks.contains(p.ti) || claimedDets.contains(p.di)) continue;
+      claimedTracks.add(p.ti);
+      claimedDets.add(p.di);
+      _applyMatch(tracks[p.ti], dets[p.di], timestampMs);
+    }
+
+    // Remove matched tracks from the unmatched list (highest index first so the
+    // earlier indices stay valid during removal).
+    final matchedTrackIndices = claimedTracks.toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (final idx in matchedTrackIndices) {
+      tracks.removeAt(idx);
+    }
+
+    final leftover = <Detection>[];
+    for (var di = 0; di < dets.length; di++) {
+      if (!claimedDets.contains(di)) leftover.add(dets[di]);
+    }
+    return leftover;
+  }
+
+  /// Distance-association fallback: re-link still-unmatched **real** tracks
+  /// (confirmed or lost — never tentative) to a leftover detection whose centre
+  /// is within the auto-derived gate of the track's last observed centre. Greedy
+  /// by smallest distance. Mutates [tracks] (removes matched) and returns the
+  /// detections that found no track (candidates to spawn new tracks).
+  List<Detection> _associateByDistance(
+    List<Track> tracks,
+    List<Detection> dets,
+    int timestampMs,
+  ) {
+    if (tracks.isEmpty || dets.isEmpty) return List<Detection>.from(dets);
+
+    final pairs = <_Pair>[];
+    for (var ti = 0; ti < tracks.length; ti++) {
+      final t = tracks[ti];
+      if (t.state == TrackState.tentative) continue; // only revive real tracks
+      for (var di = 0; di < dets.length; di++) {
+        final c = dets[di].box.center;
+        final dist = (c - t.lastObservedCenter).distance;
+        final diag = _diagonal(dets[di].box);
+        final gate = (distanceGateFactor * diag).clamp(_minDistGate, _maxDistGate);
+        // Lower "score" = closer; only keep pairs inside the gate.
+        if (dist <= gate) pairs.add(_Pair(ti, di, -dist));
+      }
+    }
+    // Highest score first = smallest distance first (scores are negative).
+    pairs.sort((a, b) => b.score.compareTo(a.score));
+
+    final claimedTracks = <int>{};
+    final claimedDets = <int>{};
+    for (final p in pairs) {
+      if (claimedTracks.contains(p.ti) || claimedDets.contains(p.di)) continue;
+      claimedTracks.add(p.ti);
+      claimedDets.add(p.di);
+      _applyMatch(tracks[p.ti], dets[p.di], timestampMs);
+    }
+
+    final matchedTrackIndices = claimedTracks.toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (final idx in matchedTrackIndices) {
+      tracks.removeAt(idx);
+    }
+
+    final leftover = <Detection>[];
+    for (var di = 0; di < dets.length; di++) {
+      if (!claimedDets.contains(di)) leftover.add(dets[di]);
+    }
+    return leftover;
+  }
+
+  void _applyMatch(Track t, Detection d, int timestampMs) {
+    // Update velocity from the centre shift before overwriting the box.
+    final oldCenter = t.box.center;
+    final newCenter = d.box.center;
+    final instVx = newCenter.dx - oldCenter.dx;
+    final instVy = newCenter.dy - oldCenter.dy;
+    final s = params.velocitySmoothing;
+    t.vx = s * instVx + (1 - s) * t.vx;
+    t.vy = s * instVy + (1 - s) * t.vy;
+
+    t.box = d.box;
+    t.lastObservedCenter = newCenter; // true last position (not coasted)
+    t.confidence = d.confidence;
+    t.classIndex = d.classIndex;
+    t.className = d.className;
+    t.lastSeenMs = timestampMs;
+    t.hits += 1;
+    t.timeSinceUpdate = 0;
+    if (t.state == TrackState.tentative && t.hits >= params.minHitsToConfirm) {
+      t.state = TrackState.confirmed;
+      totalConfirmed += 1; // first time this id is confirmed
+    } else if (t.state == TrackState.lost) {
+      t.state = TrackState.confirmed; // re-activation; already counted
+    }
+  }
+}
+
+class _Pair {
+  final int ti;
+  final int di;
+  final double score;
+  const _Pair(this.ti, this.di, this.score);
+}

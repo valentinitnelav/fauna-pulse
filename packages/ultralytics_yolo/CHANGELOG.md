@@ -1,0 +1,586 @@
+## 0.6.4
+
+- **Feature**: Opt-in camera analysis resolution on Android — `YOLOStreamingConfig.analysisResolution` requests a
+  higher CameraX analysis size (with closest-size fallback) so models with large inputs keep small-object detail;
+  the default ~640x480 behavior is unchanged (#529).
+- **Feature**: iOS results now carry the same `preMs`/`inferenceMs`/`postMs` per-stage timing as Android, in both
+  single-image predictions and camera streams (requires the UltralyticsYOLO 8.9.5 pod).
+- **Bug Fix**: iOS single-image `speed` is now reported in milliseconds — it was seconds, a 1000x discrepancy
+  against Android.
+- **Enhancement**: Replace deprecated window system-bar color setters with `SystemBarStyle`, resolving the Play
+  Console Android 15 edge-to-edge warning.
+
+## 0.6.3
+
+- **Feature**: Qualcomm NPU support on Android — official `*_qnn.onnx` context-binary models (now published per HTP
+  arch as `_v73`/`_v81` release assets) run on the Hexagon NPU through the ONNX Runtime QNN Execution Provider, with
+  the runtime dependency kept out of pub.dev consumers' builds (`compileOnly`; opt in from the app).
+- **Feature**: Per-stage timing in results and the showcase HUD: `preMs`, `inferenceMs` and `postMs` accompany
+  `speed` on both platforms, shown as a breakdown line under the FPS readout.
+- **Performance**: Detect/pose/OBB postprocessing decodes the flat model output directly (no reshape copies or JNI
+  nested-array marshaling) and semantic segmentation consumes in-graph-ArgMax class maps — single-image semantic on
+  the NPU drops from erratic 123-1065 ms to a stable ~44 ms.
+- **Performance**: LiteRT GPU programs are cached on disk (`GpuOptions.serializationDir`), removing OpenCL
+  recompilation from model re-opens.
+- **Bug Fix**: LiteRT and ONNX Runtime outputs are read by their declared element type; probing integer tensors with
+  float reads could crash the process.
+- **Enhancement**: The model size row no longer stretches edge to edge in landscape; it fills width up to a
+  portrait-phone cap and stays centered.
+
+## 0.6.2
+
+- **Bug Fix**: Compile the Android example app's Kotlin `MainActivity` into release bundles so Play Store installs can
+  launch successfully.
+- **Enhancement**: Add release AAB entrypoint verification to CI and the Play asset builder so missing launcher
+  activity regressions fail before Play Console submission.
+- **Enhancement**: Hide the torch control while the showcase is using the front camera.
+
+## 0.6.1
+
+- **Bug Fix**: Fix Android builds on AGP 9 by letting built-in Kotlin inherit the Java 17 target from
+  `compileOptions` and registering Kotlin sources through the Kotlin source set (#520).
+
+## 0.6.0
+
+- **Breaking**: Remove the unused `getPlatformVersion` API from the platform interface and method channel — a plugin
+  template leftover with no inference purpose.
+- **Breaking**: Retire YOLO11 from the official auto-download registry; the official set is now the YOLO26 task×size
+  matrix. YOLO11 (and any other) models still load via custom paths or URLs.
+- **Bug Fix**: `YOLOViewController.setShowOverlays` called before the platform view attached was silently dropped;
+  the controller now remembers the requested visibility and applies it on initialization (#506).
+- **Feature**: Streamed OBB detections now always carry top-level `polygon` (pixel) and `polygonNormalized` (0-1)
+  corner points plus `angle` (radians) on both platforms — previously normalized corners required `includeOBB` on
+  Android and iOS live streams carried no parseable polygon at all. `YOLOResult` exposes the normalized corners via
+  the new `obbPointsNormalized` field (#506).
+- **Feature**: Per-frame streaming data now includes `imageWidth`/`imageHeight`, the dimensions of the upright frame
+  that normalized detection coordinates refer to, enabling accurate custom overlay transforms (#506).
+- **Enhancement**: Require UltralyticsYOLO pod `>= 8.9.4`, which adds the matching `YOLOView.showOverlays` toggle
+  and a camera torch chip upstream.
+- **Enhancement**: Migrate Android builds to Flutter's built-in Kotlin support, readying the plugin for AGP 9.
+- **Enhancement**: Stamp the app version on the example screens, and align GPU fallback wording with whole-model
+  compilation semantics across the docs.
+
+## 0.5.1
+
+- **Feature**: Expose camera torch control on `YOLOViewController` with `toggleTorch()` and an `isTorchEnabled`
+  getter, and surface a torch toggle next to the zoom controls in `YOLOShowcase`.
+- **Enhancement**: Default the `YOLOShowcase` model size to nano on launch and when switching tasks, matching the
+  native iOS app's behavior.
+
+## 0.5.0
+
+- **Enhancement**: Build the iOS plugin on the shared Ultralytics `YOLO` Swift package so the Flutter plugin and the
+  native iOS app share a single inference core (predictors, results, NMS, and plotting), removing the duplicated iOS
+  Swift fork.
+
+## 0.4.3
+
+- **Bug Fix**: Unify Android preprocessing and postprocessing geometry so OBB, detect, segment, pose, and semantic
+  overlays stay aligned across portrait and landscape rotation.
+- **Bug Fix**: Crop segment masks to detection boxes on Android and iOS, matching Ultralytics mask postprocessing.
+- **Bug Fix**: Make realtime profiling use one shared timing path so FPS and milliseconds are comparable across tasks.
+- **Bug Fix**: Keep the Android showcase bottom bar full-width in landscape mode.
+
+## 0.4.2
+
+- **Bug Fix**: Improve Android physical camera selection so telephoto lenses remain selectable on logical multi-camera
+  devices.
+- **Enhancement**: Add the expanded YOLOShowcase info screen with Ultralytics resources, licensing, and package details.
+- **Enhancement**: Make YOLOShowcase model downloads cancellable and restore the running model cleanly after cancellation
+  or orientation changes.
+- **Enhancement**: Refine YOLOShowcase landscape spacing and slider-label alignment while preserving portrait layout.
+- **Documentation**: Normalize Ultralytics docs, license, and project links.
+
+## 0.4.1
+
+- **Enhancement**: Enable Android edge-to-edge handling in the example app for Android 15+ Play Store compatibility.
+- **Enhancement**: Bump the Play Store example build to `0.4.1+2`.
+- **Bug Fix**: Refresh camera lens chips after switching front/back cameras and include logical multi-camera physical
+  lenses on Android so hidden telephoto cameras appear when the device exposes them.
+
+## 0.4.0
+
+- **Feature**: Add `YOLOShowcase` — a Material 3 one-import camera screen that mirrors the layout of the native Ultralytics YOLO iOS app (top model name + FPS, task and model-size segmented controls, threshold sliders, multi-lens picker, zoom indicator, share/flip/play-pause toolbar, plugin-bundled logo, animated tap-to-focus reticle).
+- **Feature**: Ship 9 individual Material 3 widgets that `YOLOShowcase` composes, all exported from `package:ultralytics_yolo/ultralytics_yolo.dart`: `TaskSegmentedControl`, `ModelSizeSegmentedControl`, `ThresholdSliderRow`, `LensPicker`, `ZoomIndicator`, `CameraToolbar`, `FocusReticle`, `LogoOverlay`, `PerformanceLabel`. Build your own layout by composing them directly.
+- **Feature**: New `YOLOViewController` methods on iOS + Android: `getAvailableLenses()` returns the device's ultra-wide / wide / telephoto lens info, `setLens(zoomFactor)` switches to the nearest lens, `tapToFocus(x, y)` focuses at view-relative coordinates, `capturePhoto({withOverlays})` returns a composited JPEG. New broadcast streams `zoomEvents`, `lensEvents`, `focusEvents` reflect native state changes.
+- **Feature**: `YOLOModelManager.downloadProgress` exposes a `Stream<DownloadProgress>` of model-download fractions; `ModelSizeSegmentedControl` renders a `LinearProgressIndicator` overlay on the actively-downloading chip.
+- **Enhancement**: Native iOS camera-flip plays a `UIVisualEffectView` blur transition matching the iOS showcase app. Pinch-driven zoom on both platforms auto-snaps to the nearest physical lens and emits the new `lens` event for the Dart layer.
+- **Enhancement**: Plugin now bundles `assets/ultralytics_yolo_logotype.png` and `assets/focus_reticle.png` so consumers no longer need to copy them.
+- **Enhancement**: Replace the third-party ZIP package used for iOS `.mlpackage.zip` extraction with a hardened internal extractor that validates central-directory metadata, CRC-32 checksums, unsafe paths, unsupported ZIP features, and implausible decompression sizes.
+- **Feature**: Migrate Android inference to LiteRT 2.x (`com.google.ai.edge.litert:litert:2.1.5`, Google's rebrand of TensorFlow Lite) via the `CompiledModel` API, with an automatic GPU → CPU accelerator ladder: compatible graphs compile for the GPU, while unsupported graphs or ops may fall back to XNNPACK on CPU. NNAPI is no longer used (Google deprecated it and it was slower on modern devices). iOS continues to use Core ML.
+- **Feature**: Add a fp16, non-end-to-end TFLite path for Android GPU benchmarking — export with `half=True, nms=False` to get fp16 weights and a raw detection head the GPU accelerator can compile (the plugin runs NMS on CPU in well under a millisecond). Official int8 assets remain the canonical downloads; int8 GPU coverage is device and graph dependent, so verify delegate placement on the target device.
+- **Breaking**: Android now requires `minSdkVersion 23` because LiteRT 2.x declares API 23 as its minimum supported Android level.
+- **Feature**: Auto-detect `task` and class labels for custom models from embedded model metadata — Ultralytics' appended-ZIP, with a standard TFLite (FlatBuffers) metadata fallback — so drag-and-drop custom models resolve their task and labels without explicit configuration.
+- **Enhancement**: Ship consumer ProGuard/R8 keep rules so release builds don't strip LiteRT classes; consumers get this automatically.
+- **Enhancement**: Convert camera frames to RGBA per frame instead of round-tripping through JPEG, removing a per-frame encode/decode cost on Android.
+- **Enhancement**: Keep startup on the platform's automatic native launch screen and let `YOLOShowcase` own only the in-app loading state.
+- **Enhancement**: Add an adaptive Android launcher icon.
+- **Bug Fix**: Clip off-screen detection boxes to the view bounds on Android instead of shifting them back on-screen.
+- **Breaking**: Removed `YOLOOverlay`, `YOLOOverlayTheme`, and `YOLOControls`. Bounding-box rendering is now native-only — drop any Dart-side `YOLOOverlay()` widgets you held.
+- **Breaking**: Removed `YOLOView.showOverlays`, `YOLOView.overlayTheme`, and `YOLOView.showNativeUI` constructor parameters. Use `YOLOShowcase` for the full UI, or compose individual widgets over a bare `YOLOView`.
+- **Breaking**: Removed `YOLOViewController.setShowUIControls` and `setShowOverlays`. They were companions to the removed `YOLOView` parameters above.
+
+## 0.3.5
+
+- **Feature**: Add YOLO26 semantic segmentation support on Android and iOS with official `yolo26*-sem` model IDs.
+- **Bug Fix**: Return single-image pose keypoints in pixel coordinates to match `YOLOView` streaming and Python `Results.keypoints.xy`.
+- **Enhancement**: Pin official model downloads to canonical release assets: Android TFLite from Flutter `v0.2.0` and iOS Core ML from YOLO iOS `v8.3.0`.
+- **Documentation**: Update task lists, model guidance, and examples for the official Detect, Segment, Semantic, Classify, Pose, OBB order.
+
+## 0.3.4
+
+- **Bug Fix**: Preserve YOLO input aspect ratio on Android and iOS with letterbox preprocessing for detection-style tasks, center-crop classification preprocessing, and rotation-aware result remapping.
+- **Documentation**: Clarify square export shapes for mixed portrait/landscape inference and refresh the README feature tables and app preview.
+
+## 0.3.3
+
+- **Bug Fix**: Improve Android overlay alignment and bitmap cleanup, harden iOS image inference crash paths, and remove unused platform code (#484).
+
+## 0.3.2
+
+- **Bug Fix**: Fix Android NDK C++ runtime linkage for release builds that failed with unresolved `std::__throw_length_error` symbols (#480, #481).
+
+## 0.3.1
+
+- **Feature**: Add `LensFacing.backWide` on Android to prefer the shortest-focal-length rear camera and fall back to the default back camera when unavailable (#478).
+- **Bug Fix**: Fix iOS Core ML `useGpu: false` handling in the camera model-loading path (#475).
+- **Bug Fix**: Fix iOS camera FPS reporting so live view metrics no longer stay at `0.0` (#477).
+- **Bug Fix**: Fix Android preview padding with 3-button navigation mode across orientations (#476).
+- **Bug Fix**: Fix Swift compilation for the iOS `loadModel` call (#474).
+
+## 0.3.0
+
+- **Feature**: Add package-level model resolution for official IDs, remote URLs, local files, and Flutter assets.
+- **Enhancement**: Resolve `task` from exported metadata when available across `YOLO`, `YOLOView`, and `YOLOViewController.switchModel()`.
+- **Enhancement**: Replace hardcoded release URL assumptions with an official model catalog and latest-release resolution.
+- **Enhancement**: Add `YOLO.defaultOfficialModel()` to make the default official model path explicit for new users.
+- **Bug Fix**: Enforce official Ultralytics defaults everywhere with `confidenceThreshold = 0.25` and `iouThreshold = 0.7`.
+- **Compatibility**: Preserve deprecated API shims and widget wrapper exports to avoid regressions for existing integrations.
+- **Cleanup**: Remove example-only model management duplication and update docs around the metadata-first flow.
+
+## 0.2.0
+
+- **Feature**: YOLO26 model release — `yolo26*` CoreML (`.mlpackage`) and TFLite (`.tflite`) artifacts published alongside YOLOv11 (#431, #432).
+- **Enhancement**: YOLO property and method surface updates (#428).
+- Documentation update for model downloads:
+  - Official models are hosted as GitHub release assets rather than bundled in the package.
+  - Added YOLO26 references alongside YOLOv11 for both CoreML (`.mlpackage`) and TFLite (`.tflite`) artifacts.
+  - Clarified that models are pulled from release assets rather than packaged in the app.
+
+## 0.1.46
+
+- **Critical Bug Fix**: Fix SIGSEGV crash when YOLOView is disposed while TensorFlow Lite inference is running
+  - **Root Cause**: Race condition where `onFrame` callback continued executing after `stop()` cleared resources and closed the TensorFlow Lite interpreter
+  - **Fix**: Added `@Volatile` `isStopped` flag that is checked at multiple points in `onFrame` to prevent accessing closed resources
+
+## 0.1.45
+
+- **Critical Bug Fix**: Fix fatal crash when camera permission is denied or not granted on iOS
+  - **iOS Fix**:
+    - Added camera authorization status check (`AVCaptureDevice.authorizationStatus`) before attempting to access camera
+    - Replaced `try!` with proper `do-catch` error handling for `AVCaptureDeviceInput` initialization
+
+## 0.1.43
+
+- **Enhancement**: Unify classification output format across all platforms to use official Results.summary() format
+  - **Android**: Changed classification output to follow official Ultralytics Results.summary() format with `name`, `class`, `confidence` fields
+  - **iOS**: Unified classification output to use `name`, `class`, `confidence` instead of `topClass`, `topConfidence`
+  - **Format**: Classification results now follow the official format: `{name: String, class: Int, confidence: Double, top5: List}`
+- **Bug Fix**: Fix Android CLASSIFY FloatArray compatibility issue by adding `.toList()` conversion for `top5Confs` to ensure Iterable compatibility when handling FloatArray and fix array bounds issues in Android classification top5 list iteration
+
+## 0.1.42
+
+- **Feature**: Add `lensFacing` parameter to `YOLOView` for default camera selection
+  - Added `LensFacing` enum with `back` (default) and `front` values
+  - Added `lensFacing` parameter to `YOLOView` widget (defaults to `LensFacing.back`)
+  - **Android**: Added `setLensFacing()` method to `YOLOView` class
+  - **Android**: Reads `lensFacing` from creation params and sets camera facing before initialization
+  - **iOS**: Modified `YOLOView` init to accept `cameraPosition` parameter
+  - **iOS**: Reads `lensFacing` from creation params and passes correct camera position to init
+  - **Usage**: `YOLOView(lensFacing: LensFacing.front)` now starts with front camera by default
+  - **Backward Compatible**: Defaults to back camera if not specified, maintaining existing behavior
+  - **Example**: Updated example app controller to support `lensFacing` parameter
+
+## 0.1.41
+
+- **Bug Fix**: Fix `MissingPluginException` for default YOLO instances
+  - Fixed critical issue where creating YOLO instances without `useMultiInstance: true` resulted in `MissingPluginException: No implementation found for method predictSingleImage on channel yolo_single_image_channel_default`
+  - Modified `ChannelConfig.createChannel()` to treat `'default'` instance ID as null for backward compatibility
+  - The native side registers the default channel as `yolo_single_image_channel` without any suffix
+  - Now properly handles default instances by not appending `_default` suffix to channel name
+  - **Upgrade Note**: If you experienced `MissingPluginException` errors with v0.1.38+, this version resolves the issue
+
+## 0.1.40
+
+- **Bug Fix**: Fix double overlay rendering when using `onResult` callback with native overlays enabled
+  - **Root Cause**: When `showOverlays: true` and `onResult` callback was set, both native and Flutter overlays were rendering simultaneously, causing duplicate bounding boxes
+  - **Flutter**: Added safeguard to clear existing `_currentDetections` when double-overlay scenario is detected
+  - **Behavior**: Preserves original `showOverlays` contract (controls Flutter overlay) while preventing double rendering when native overlays are also enabled
+  - **Impact**: Eliminates duplicate bounding boxes, improves performance by reducing unnecessary setState calls, and maintains full callback functionality without breaking existing API contract
+
+## 0.1.39
+
+- **Bug Fix**: Fix `showOverlays` parameter not hiding native platform bounding boxes
+  - **Flutter**: Added `showOverlays` parameter to creation parameters passed to native code
+  - **Flutter**: Added `setShowOverlays()` method to `YOLOViewController` for dynamic overlay control
+  - **iOS**: Added `showOverlays` property to `YOLOView` class with getter/setter
+  - **iOS**: Modified bounding box rendering logic to respect `showOverlays` parameter
+  - **iOS**: Added `setShowOverlays` method channel handler in `SwiftYOLOPlatformView`
+  - **Android**: Added `showOverlays` property and `setShowOverlays()` method to `YOLOView` class
+  - **Android**: Modified `onDraw()` method to check `showOverlays` before drawing overlays
+  - **Android**: Added `setShowOverlays` method channel handler in `YOLOPlatformView`
+  - **Usage**: `YOLOView(showOverlays: false)` now properly hides both Flutter and native overlays
+  - **Dynamic Control**: Use `yoloController.setShowOverlays(false)` to toggle overlays at runtime
+
+## 0.1.38
+
+- **Bug Fix**: iOS performance metrics not updating in `YOLOView`
+  - Moved EventChannel subscription from `initState` to `_onPlatformViewCreated` to ensure native channel readiness on iOS
+  - Aligned streaming config key with iOS by renaming `throttleInterval` to `throttleIntervalMs` when sending params
+  - iOS now sources performance metrics from the latest inference result: `processingTimeMs = result.speed * 1000`, `fps = result.fps`
+  - Added fallback to `YOLOStreamConfig.DEFAULT` when stream config is nil on iOS
+  - Minor cleanup in `SwiftYOLOPlatformView.swift` for streamlined event dispatch
+
+- **Example App**
+  - Camera Inference Screen fixes for Detection and FPS
+
+## 0.1.37
+
+- **Critical Update**: Add Android 16KB page size support for Android 15+ compatibility
+  - Upgraded to NDK r28 for automatic 16KB page size alignment
+  - Updated Google AI Edge LiteRT (TensorFlow Lite) from 1.2.0 to 1.4.2
+  - Ensured compatibility with Google Play's November 2025 requirement
+  - Native libraries now support both 4KB (current) and 16KB (future) page sizes
+  - Updated Android Gradle Plugin to 8.11.1 and Gradle to 8.14
+
+## 0.1.36
+
+- **New Feature**: implement UI controls on Android platform
+
+## 0.1.35
+
+- **Bug Fix**: Fix iOS numItemsThreshold inconsistency with Android
+
+## 0.1.34
+
+- **Bug Fix**: Fix originalImage being null in onStreamingData callback
+  - Fixed issue where `originalImage` was consistently null despite `includeOriginalImage: true` being set
+  - Capture original image data in BasePredictor before clearing currentBuffer
+
+## 0.1.33
+
+- **Bug Fix**: Fix setState callback issue in YOLOView
+  - Fixed issue where `onResult` and `onStreamingData` callbacks would stop working after `setState` calls
+  - Improved `didUpdateWidget` logic to prevent unnecessary subscription recreation when callbacks are functionally equivalent
+  - Added subscription existence check to avoid recreating working subscriptions
+  - Fixed Android compilation errors related to YOLOStreamConfig and method access
+
+## 0.1.32
+
+- **Bug Fix**: Fix Android crash in YOLOInstanceManager
+  - Added compatibility methods for better API consistency
+
+## 0.1.31
+
+- **New Feature**: Add `useGpu` parameter for GPU acceleration control
+  - Added `useGpu` parameter to `YOLO` constructor and `YOLOView` widget
+  - Allows disabling GPU acceleration on problematic devices to prevent crashes
+  - Supports fallback to CPU/NNAPI on Android and CPU-only mode on iOS
+  - Cross-platform consistency: parameter works on both Android and iOS
+  - Default value is `true` for backward compatibility
+  - Added comprehensive example demonstrating GPU control and error handling
+  - Updated documentation with usage examples and troubleshooting guide
+
+**API Changes:**
+
+- `YOLO` constructor now accepts optional `useGpu: bool = true` parameter
+- `YOLOView` widget now accepts optional `useGpu: bool = true` parameter
+- `YOLO.withClassifierOptions` constructor now accepts optional `useGpu: bool = true` parameter
+
+## 0.1.30
+
+- Remove pubspec models
+
+## 0.1.29
+
+- **Bug Fix**: Clarified model placement requirements for Android
+  - For Android, models **must** be placed in `android/app/src/main/assets/` due to TensorFlow Lite's asset loading limitations.
+  - For iOS, add models to the Xcode project as before.
+  - The code changes to YOLOFileUtils.kt for path prefix stripping are not used in the current loading flow.
+
+## 0.1.28
+
+- **Enhancement**: Smart label positioning for detection results
+  - Labels for detected objects are now always visible and never cut off at the edges of the screen
+  - Implemented boundary checks in all directions (top, bottom, left, right)
+  - By default, labels are placed above the box; if off-screen, they are placed inside the box
+  - Implemented as a reusable, high-performance function
+  - Consistent behavior on both iOS and Android platforms
+- **Bug Fix**: Accurate coordinate handling for all model sizes
+  - Fixed bounding box and keypoint placement for all YOLO tasks (detect, segment, pose, OBB) when using models with input sizes other than 640x640
+
+**Targeted tasks:**
+
+- ✅ Object Detection (DETECT)
+- ✅ Instance Segmentation (SEGMENT)
+- ✅ Pose Estimation (POSE)
+- ✅ Oriented Bounding Box (OBB)
+- ⚠️ Classification (CLASSIFY) - Not applicable for label placement
+
+**Upgrade note:**
+
+- Labels for all detection results are now always visible and neatly placed
+- Coordinate handling is robust for all model sizes and tasks
+- Example app is more flexible and user-friendly
+
+## 0.1.27
+
+- **Breaking**: None - fully backward compatible
+- **Bug Fix**: Fix iOS segmentation mask alignment issue
+  - Masks now correctly align with detected objects in both portrait and landscape modes
+  - Removed explicit `contentsGravity` settings that caused mask stretching
+  - Simplified mask positioning to match yolo-ios-app reference implementation
+- **Enhancement**: Add mask layer frame update during orientation changes
+- **Internal**: Remove unnecessary margin calculations for mask positioning
+
+## 0.1.26
+
+- **Breaking**: None - fully backward compatible
+- **New Feature**: Add frame capture functionality with detection overlays
+  - Capture camera frames with bounding boxes, masks, poses, and other overlays
+  - Save captured images to device gallery or share with other apps
+  - Support for all YOLO tasks (detect, segment, pose, classify, OBB)
+  - New `captureFrame()` method in YOLOViewController returns JPEG image data
+- **Enhancement**: iOS capture includes all overlay types (masks, poses, OBB)
+- **Enhancement**: Android capture with multiple fallback methods for reliability
+- **Documentation**: Added comprehensive frame capture API documentation
+
+## 0.1.25
+
+- **Breaking**: None - fully backward compatible
+- **New Feature**: Enable camera preview without valid model path
+  - YOLOView now starts with camera-only mode when model is unavailable
+  - Graceful error handling instead of crashes on both iOS and Android
+- **New Feature**: Add dynamic model switching via `switchModel()` method
+  - Switch between different models without restarting camera
+  - Enables progressive model loading and A/B testing scenarios
+- **Enhancement**: Improved error messages and logging for model loading failures
+- **Documentation**: Added comprehensive examples for new features
+
+## 0.1.24
+
+- Fix Android landscape orientation coordinate mapping issue
+- Add device orientation detection for proper image rotation
+- Implement separate image processors for portrait/landscape modes
+- Correct aspect ratio calculations for all YOLO tasks in landscape mode
+
+## 0.1.23
+
+- Add Support for Landscape Mode
+
+## 0.1.22
+
+- Fixed critical memory leaks in iOS YOLOView disposal and model switching
+- Added proper dispose implementation for YOLOView on both iOS and Android platforms
+- Fixed native rendering issues for detection visualization
+- Fixed Android model label loading issues
+- Enhanced single image inference result updates
+- Improved resource cleanup when switching between models or tasks
+
+## 0.1.21
+
+- Merge example READMEs
+- Rename `example/example.dart` to `example/main.dart`
+
+## 0.1.20
+
+- Added `example/example.dart` for usage demonstration.
+
+## 0.1.19
+
+- Added Dart publish dry run to CI
+- Renamed incorrect docs/ directory to /doc
+
+## 0.1.18
+
+- Added customizable result streaming with `YOLOStreamingConfig`
+  - Enable detailed control based on streaming mode
+  - Enable throttling and frame dropping for performance optimization
+  - Added optional support for mask and pose data in results
+- Added multi-instance YOLO model support
+  - Run multiple YOLO models simultaneously
+  - Independent configuration for each instance
+  - Efficient resource management across instances
+- Enhanced Swift backward compatibility
+  - Improved support for older iOS versions
+  - Better compatibility with legacy Swift code
+- Updated documentation
+  - Added comprehensive model integration guide
+  - Improved API documentation
+  - Enhanced troubleshooting section
+
+## 0.1.17
+
+- Improved publish workflow robustness.
+
+## 0.1.16
+
+- Fixed publishing workflows for non-sequential version numbers.
+
+## 0.1.15
+
+- Added `example/main.dart` for usage demonstration.
+
+## 0.1.13
+
+- Updated publishing workflows.
+
+## 0.1.12
+
+- Added `example/main.dart` for usage demonstration.
+- Created `shared_main.dart` to eliminate duplication between `example.dart` and `main.dart`.
+- Resolved pub.dev warning: “No example found.”
+- Improved `pubspec.yaml` to explicitly point to the example file.
+
+## 0.1.9
+
+- Simplified package publishing workflow
+- Removed Python-based version check in favor of direct pubspec.yaml version reading
+- Improved GitHub Actions workflow reliability
+- Fixed tag management and release process
+
+## 0.1.8
+
+- Add optional confidence and IoU thresholds for single image inference
+  - Thresholds can be passed to `predict()` method for temporary use
+  - Does not affect subsequent predictions or camera inference
+  - Useful for fine-tuning detection sensitivity per image
+
+## 0.1.7
+
+- Updated package topics to comply with pub.dev requirements
+- Improved package validation and documentation
+
+## 0.1.6
+
+- Fixed CI/CD pipeline issues for pub.dev publishing
+
+## 0.1.5
+
+- Updated package validation and documentation
+- Improved error handling and logging
+- Added support for multiple model types:
+  - Object Detection (YOLOv11)
+  - Pose Estimation
+  - Image Segmentation
+  - Oriented Bounding Box (OBB) Detection
+  - Image Classification
+- Enhanced camera functionality:
+  - Camera flipping between front and back cameras
+  - Camera zooming with pinch gestures
+  - Improved camera preview quality
+- Updated package validation and documentation
+- Improved error handling and logging
+- Added comprehensive example app showcasing all features
+- Enhanced documentation with detailed usage examples
+
+## 0.1.4
+
+- Fixed front camera orientation issue on Android where detection results were displayed upside down.
+- Fixed vertical flipping for bounding boxes, segmentation masks, pose keypoints, and OBB (oriented bounding boxes) when using front camera.
+- Added proper canvas transformations for segmentation mask rendering with front camera.
+- Improved overall detection accuracy and visual alignment for front-facing camera usage.
+
+## 0.1.3
+
+- Added camera switching functionality to toggle between front and back cameras.
+- Added `switchCamera()` method to YoloViewController for programmatic camera switching.
+- Added `switchCamera()` method to YoloViewState for GlobalKey-based camera switching.
+- Updated sample app with camera switching button in the app bar.
+- Updated README documentation with examples of camera switching functionality.
+- Improved code coverage with additional unit tests.
+- Updated codecov badge to show coverage percentage.
+
+## 0.1.2
+
+- Android: Fixed pose estimation keypoints not displaying correctly by properly implementing object pooling in PoseEstimator.kt.
+- Android: Improved segmentation to work with all model classes, not just early ones like "person" and "car".
+- Android: Enhanced model metadata loading to extract labels from model files with fallback to COCO dataset classes.
+- Android: Fixed lifecycle management in YoloView.kt with proper onLifecycleOwnerAvailable implementation.
+- Android: Made Box class fields mutable (var instead of val) to properly support object pooling.
+- Performance: Various optimizations for faster inference and more reliable detection.
+
+## 0.1.0
+
+- iOS: Implemented direct FPS (Frames Per Second) reporting to Flutter, similar to Android. Native-calculated FPS is now included in the data sent to Dart during real-time inference.
+- Android: Fixed an issue where the camera preview would remain black by improving native lifecycle management and camera initialization timing. (Previously part of 0.0.9 prep)
+- Android: Added detailed debug logs to `YoloPlatformView` initialization. (Previously part of 0.0.9 prep)
+- `lib/yolo_view.dart`: Added debug logs for communication channel creation and improved null checks. (Previously part of 0.0.9 prep)
+- `.pubignore`: Updated to optimize the content of the published package. (Previously part of 0.0.9 prep)
+- General: Incorporated various improvements from previous development versions (including enhanced model path resolution and logging). (Previously part of 0.0.9 prep)
+
+## 0.0.9
+
+- Android: Fixed an issue where the camera preview would remain black by improving native lifecycle management and camera initialization timing.
+- Android: Added detailed debug logs to `YoloPlatformView` initialization for easier troubleshooting.
+- `lib/yolo_view.dart`: Added debug logs for communication channel creation and improved null checks.
+- `.pubignore`: Updated to optimize the content of the published package.
+- General: Incorporated various improvements from previous development versions (including enhanced model path resolution and logging).
+
+## 0.0.7
+
+- Fix Android implementation for inference results not displaying or updating
+- Fix "Unresolved reference: setIoUThreshold" error by fixing method name casing
+- Add support for both "setIoUThreshold" and "setIouThreshold" method names for robustness
+- Enhance error handling and logging for event channel communication
+- Improve StreamHandler implementation for more reliable event dispatching
+- Add fallback mechanisms for when direct method calls fail
+- Fix reflection-based sink access for CustomStreamHandler
+- Add test message mechanism to verify event channel connection
+- Significantly increase logging for easier troubleshooting
+- Update documentation with clear guidance on model placement and path resolution
+- Recommend using model name only (without extension) for best cross-platform compatibility
+
+## 0.0.8
+
+- Fix iOS implementation for loading .mlmodel files from Flutter assets
+- Significantly improve model path resolution for different path formats
+- Add extensive logging to help debug model loading issues
+- Fix Flutter asset bundle path issues with nested directories
+
+## 0.0.7
+
+- Fix iOS implementation to properly load models from Flutter assets
+- Improve asset path resolution for paths like 'assets/models/yolo11n.mlmodel'
+- Fix syntax errors in YoloPlugin.swift
+
+## 0.0.6
+
+- Add iOS implementation for checkModelExists method
+- Add iOS implementation for getStoragePaths method
+- Fix cross-platform consistency for model path resolution
+
+## 0.0.5
+
+- Update README to match current implementation of YOLO class constructor
+- Fix documentation for threshold management in the API reference
+- Add optional controller-based approach for managing YoloView settings
+- Make onResult callback truly optional
+- Improve threshold controls with IoU threshold support
+- Update code documentation with detailed examples
+- Add support for direct YoloView state access via GlobalKey
+- Enhance error handling and debug logging
+- Translate Japanese comments to English
+
+## 0.0.4
+
+- Initial release
+- Object detection with YOLOv8 models
+- Segmentation support
+- Image classification support
+- Pose estimation support
+- Oriented Bounding Box (OBB) detection support
+- Android/iOS platform support
+- Real-time detection with camera feed
+- Customizable confidence threshold
+- YoloView Flutter widget implementation

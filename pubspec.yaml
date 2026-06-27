@@ -1,0 +1,55 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+name: pollinator_monitor
+description: "Pollinator Monitor: real-time field app that detects flower-visiting insects and logs visitation rates. Built on the ultralytics_yolo plugin (vendored in packages/)."
+publish_to: "none"
+version: 0.6.4+10
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.32.1"
+
+dependencies:
+  cupertino_icons: ^1.0.9
+  flutter:
+    sdk: flutter
+  image_picker: ^1.2.1
+  package_info_plus: ^9.0.0
+  path_provider: ^2.1.5
+  # Pollinator Monitor additions:
+  image: ^4.3.0 # pure-Dart JPEG decode/crop/encode for ROI photo cropping
+  fl_chart: ^0.69.0 # end-of-session activity graph
+  battery_plus: ^6.0.0 # battery level logged at session start/stop
+  device_info_plus: ^11.0.0 # phone model / device id for session metadata
+  screen_brightness: ^2.1.0 # dim-to-black power-saving mode
+  permission_handler: ^11.3.0 # request camera permission from Flutter
+  shared_preferences: ^2.3.0 # persist session settings across app restarts
+  wakelock_plus: ^1.2.0 # keep the screen awake while a session records
+  file_picker: ^8.1.0 # let the user import custom .tflite models from anywhere (e.g. Downloads)
+  # Renders the user's typed problem description as formatted text in a live
+  # preview. (The original `flutter_markdown` was discontinued by the Flutter
+  # team in 2025; `flutter_markdown_plus` is the maintained drop-in fork.)
+  # "Markdown" = a plain-text way to mark up formatting, e.g. **bold** or - lists.
+  flutter_markdown_plus: ^1.0.3
+  # Pinned to ^12.x: share_plus 13.x ships a Swift Package umbrella that fails framework module verification under
+  # Xcode 26.5 ("'Flutter/Flutter.h' file not found", "double-quoted include in framework header"). Revisit once the
+  # upstream package re-publishes with a compatible module map.
+  share_plus: ^12.0.0
+  ultralytics_yolo:
+    path: packages/ultralytics_yolo
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/models/
+    # Custom insect/flower detectors placed by the user. Flutter asset folder
+    # entries are NOT recursive, so this subfolder must be listed on its own.
+    - assets/models/custom/

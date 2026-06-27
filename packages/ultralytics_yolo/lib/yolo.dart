@@ -1,0 +1,376 @@
+// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+import 'package:flutter/services.dart';
+import 'package:ultralytics_yolo/config/channel_config.dart';
+import 'package:ultralytics_yolo/core/yolo_inference.dart';
+import 'package:ultralytics_yolo/core/yolo_model_manager.dart';
+import 'package:ultralytics_yolo/core/yolo_model_resolver.dart';
+import 'package:ultralytics_yolo/models/yolo_exceptions.dart';
+import 'package:ultralytics_yolo/models/yolo_task.dart';
+import 'package:ultralytics_yolo/yolo_instance_manager.dart';
+
+export 'models/yolo_exceptions.dart';
+export 'models/yolo_result.dart';
+export 'models/yolo_task.dart';
+export 'yolo_instance_manager.dart';
+
+/// YOLO (You Only Look Once) is a class that provides machine learning inference
+/// capabilities for object detection, segmentation, semantic segmentation, classification, pose estimation,
+/// and oriented bounding box detection.
+///
+/// This class handles the initialization of YOLO models and provides methods
+/// to perform inference on images.
+///
+/// Example usage:
+/// ```dart
+/// final yolo = YOLO(
+///   modelPath: 'yolo26n',
+///   useGpu: false, // Disable GPU for stability on some devices
+/// );
+///
+/// await yolo.loadModel();
+/// final results = await yolo.predict(imageBytes);
+/// ```
+class YOLO {
+  YOLOInference? _inference;
+  YOLOModelManager? _modelManager;
+  YOLOResolvedModel? _resolvedModel;
+  late final String _instanceId;
+  late final MethodChannel _channel;
+  bool _isInitialized = false;
+
+  /// The unique instance ID for this YOLO instance
+  String get instanceId => _instanceId;
+
+  /// Returns `true` if the model has been successfully loaded via [loadModel],
+  /// `false` otherwise. This can be used to check if the model is ready before
+  /// calling [predict] to avoid catching [ModelNotLoadedException].
+  bool get isInitialized => _isInitialized;
+
+  /// Path to the YOLO model file. This can be:
+  /// - An official model ID (e.g., 'yolo26n')
+  /// - An asset path (e.g., 'assets/models/custom.tflite')
+  /// - An absolute file path (e.g., '/data/user/0/com.example.app/files/custom.tflite')
+  /// - An internal storage reference (e.g., 'internal://models/custom.tflite')
+  ///
+  /// The 'internal://' prefix will be resolved to the app's internal storage directory.
+  final String modelPath;
+
+  /// The type of task this YOLO model will perform, if known ahead of time.
+  ///
+  /// When omitted, the plugin resolves it from model metadata during [loadModel].
+  final YOLOTask? task;
+
+  /// Whether to use hardware-accelerated inference.
+  ///
+  /// On Android, this requests the LiteRT GPU accelerator, with automatic
+  /// fallback to CPU when the model can't compile on the GPU.
+  /// On iOS, this enables hardware-accelerated Core ML inference
+  /// (Neural Engine + CPU on iOS 16+); when false, inference is pinned to CPU only.
+  ///
+  /// Default is true for better performance, but can be set to false
+  /// for stability on devices where accelerated inference causes crashes.
+  final bool useGpu;
+
+  late int numItemsThreshold;
+
+  /// Classifier options for customizing preprocessing
+  final Map<String, dynamic>? classifierOptions;
+
+  /// The view ID of the associated YoloView (used for model switching)
+  int? _viewId;
+
+  /// Creates a new YOLO instance with the specified model path and task.
+  ///
+  /// The [modelPath] can refer to an official model ID, asset, internal storage,
+  /// remote URL, or absolute file path.
+  /// The [task] is optional when the exported model metadata already includes it.
+  /// The [useGpu] parameter controls whether to use GPU acceleration (default: true).
+  ///
+  /// If [useMultiInstance] is true, each YOLO instance gets a unique ID and its own channel.
+  /// If false, uses the default channel for backward compatibility.
+  YOLO({
+    required this.modelPath,
+    this.task,
+    this.useGpu = true,
+    bool useMultiInstance = false,
+    this.classifierOptions,
+    int? numItemsThreshold,
+  }) {
+    if (useMultiInstance) {
+      _instanceId = 'yolo_${DateTime.now().millisecondsSinceEpoch}_$hashCode';
+
+      YOLOInstanceManager.registerInstance(_instanceId, this);
+    } else {
+      _instanceId = 'default';
+    }
+
+    this.numItemsThreshold = numItemsThreshold ?? 30;
+    _channel = ChannelConfig.createSingleImageChannel(instanceId: _instanceId);
+  }
+
+  /// Returns official model IDs that are downloadable on the current platform.
+  static List<String> officialModels({YOLOTask? task}) =>
+      YOLOModelResolver.officialModels(task: task);
+
+  /// Returns the default official model ID for [task] on the current platform.
+  static String? defaultOfficialModel({YOLOTask task = YOLOTask.detect}) =>
+      YOLOModelResolver.defaultOfficialModel(task: task);
+
+  YOLOTask? get resolvedTask => _resolvedModel?.task ?? task;
+
+  Future<YOLOResolvedModel> _ensureResolved() async {
+    final resolvedModel = _resolvedModel;
+    if (resolvedModel != null) return resolvedModel;
+
+    final nextResolvedModel = await YOLOModelResolver.resolve(
+      modelPath: modelPath,
+      task: task,
+    );
+    _resolvedModel = nextResolvedModel;
+    _modelManager = YOLOModelManager(
+      channel: _channel,
+      instanceId: _instanceId,
+      modelPath: nextResolvedModel.modelPath,
+      task: nextResolvedModel.task,
+      useGpu: useGpu,
+      classifierOptions: classifierOptions,
+      viewId: _viewId,
+      numItemsThreshold: numItemsThreshold,
+    );
+    _inference = YOLOInference(
+      channel: _channel,
+      instanceId: _instanceId,
+      task: nextResolvedModel.task,
+    );
+    return nextResolvedModel;
+  }
+
+  void setViewId(int viewId) {
+    _viewId = viewId;
+    _modelManager?.setViewId(viewId);
+  }
+
+  /// Switches the model on the associated YoloView.
+  ///
+  /// This method allows switching to a different model without recreating the view.
+  /// The view must be initialized (have a viewId) before calling this method.
+  ///
+  /// [newModelPath] The official model ID, local path, asset path, or URL for the new model
+  /// [newTask] The task type for the new model when metadata is missing
+  /// throws [StateError] if the view is not initialized
+  /// throws [ModelLoadingException] if the model switch fails
+  Future<void> switchModel(String newModelPath, [YOLOTask? newTask]) async {
+    await _ensureResolved();
+    final resolvedModel = await YOLOModelResolver.resolve(
+      modelPath: newModelPath,
+      task: newTask,
+    );
+    await _modelManager!.switchModel(
+      resolvedModel.modelPath,
+      resolvedModel.task,
+    );
+    _resolvedModel = resolvedModel;
+    _inference = YOLOInference(
+      channel: _channel,
+      instanceId: _instanceId,
+      task: resolvedModel.task,
+    );
+    _isInitialized = true;
+  }
+
+  /// Loads the YOLO model for inference.
+  ///
+  /// This method must be called before [predict] to initialize the model.
+  /// Returns `true` if the model was loaded successfully, `false` otherwise.
+  ///
+  /// Example:
+  /// ```dart
+  /// final ok = await yolo.loadModel();
+  /// ```
+  ///
+  /// throws [ModelLoadingException] if the model file cannot be found
+  Future<bool> loadModel() async {
+    await _ensureResolved();
+    final success = await _modelManager!.loadModel();
+    if (success) {
+      _isInitialized = true;
+    }
+    return success;
+  }
+
+  Future<void> predictorInstance() async {
+    if (!_isInitialized) {
+      final success = await loadModel();
+      if (!success) {
+        throw ModelNotLoadedException(
+          'Model failed to load. Cannot perform inference.',
+        );
+      }
+    }
+    await _modelManager!.predictorInstance();
+  }
+
+  /// Runs inference on a single image.
+  ///
+  /// Takes raw image bytes as input and returns a map containing the inference results.
+  /// The returned map contains:
+  /// - 'boxes': List of detected objects with bounding box coordinates
+  /// - 'detections': List of detections in YOLOResult-compatible format
+  /// - Task-specific data (keypoints for pose, mask for segmentation, etc.)
+  ///
+  /// The model must be loaded with [loadModel] before calling this method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final results = await yolo.predict(imageBytes);
+  /// final detections = (results['detections'] as List)
+  ///     .map((d) => YOLOResult.fromMap(d as Map));
+  /// ```
+  ///
+  /// [imageBytes] The raw image data as a Uint8List
+  /// [confidenceThreshold] Optional confidence threshold (0.0-1.0). Defaults to 0.25 if not specified.
+  /// [iouThreshold] Optional IoU threshold for NMS (0.0-1.0). Defaults to 0.7 if not specified.
+  /// returns A map containing:
+  ///   - 'boxes': List of bounding boxes
+  ///   - 'detections': List of YOLOResult-compatible detection maps
+  ///   - 'keypoints': (pose only) Raw keypoints data from platform
+  /// throws [ModelNotLoadedException] if the model has not been loaded
+  /// throws [InferenceException] if there's an error during inference
+  Future<Map<String, dynamic>> predict(
+    Uint8List imageBytes, {
+    double? confidenceThreshold,
+    double? iouThreshold,
+  }) async {
+    if (!_isInitialized) {
+      final success = await loadModel();
+      if (!success) {
+        throw ModelNotLoadedException(
+          'Model failed to load. Cannot perform inference.',
+        );
+      }
+    }
+    return await _inference!.predict(
+      imageBytes,
+      confidenceThreshold: confidenceThreshold,
+      iouThreshold: iouThreshold,
+    );
+  }
+
+  /// Reads exported metadata for a model without loading it for inference.
+  static Future<Map<String, dynamic>> inspectModel(String modelPath) async {
+    final resolvedPath = await YOLOModelResolver.preparePath(modelPath);
+    return YOLOModelResolver.inspect(resolvedPath);
+  }
+
+  /// Checks if a model exists at the specified path.
+  ///
+  /// This method can check for models in assets, internal storage, or at an absolute path.
+  ///
+  /// [modelPath] The path to check
+  /// returns A map containing information about the model existence and location
+  static Future<Map<String, dynamic>> checkModelExists(String modelPath) async {
+    try {
+      final channel = ChannelConfig.createSingleImageChannel();
+      final result = await channel.invokeMethod('checkModelExists', {
+        'modelPath': modelPath,
+      });
+
+      if (result is Map) {
+        return Map<String, dynamic>.fromEntries(
+          result.entries.map((e) => MapEntry(e.key.toString(), e.value)),
+        );
+      }
+
+      return {'exists': false, 'path': modelPath, 'location': 'unknown'};
+    } catch (e) {
+      String errorMessage = e.toString();
+      if (e is PlatformException && e.message != null) {
+        errorMessage = e.message!;
+      }
+      return {'exists': false, 'path': modelPath, 'error': errorMessage};
+    }
+  }
+
+  /// Gets the available storage paths for the app.
+  ///
+  /// Returns a map containing paths to different storage locations:
+  /// - 'internal': App's internal storage directory
+  /// - 'cache': App's cache directory
+  /// - 'external': App's external storage directory (may be null)
+  /// - 'externalCache': App's external cache directory (may be null)
+  ///
+  /// These paths can be used to save or load models.
+  static Future<Map<String, String?>> getStoragePaths() async {
+    try {
+      final channel = ChannelConfig.createSingleImageChannel();
+      final result = await channel.invokeMethod('getStoragePaths');
+
+      if (result is Map) {
+        return Map<String, String?>.fromEntries(
+          result.entries.map(
+            (e) => MapEntry(e.key.toString(), e.value as String?),
+          ),
+        );
+      }
+
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Creates a YOLO instance with classifier options for custom preprocessing
+  ///
+  /// This constructor is specifically designed for classification models that
+  /// need custom preprocessing, such as 1-channel grayscale models. 1-channel
+  /// support is detected automatically from the model's input tensor.
+  ///
+  /// Supported keys: `labels` (class names when the model has no embedded
+  /// metadata), `enableColorInversion`, `enableMaxNormalization`, `inputMean`,
+  /// and `inputStd`.
+  ///
+  /// Example:
+  /// ```dart
+  /// final yolo = YOLO.withClassifierOptions(
+  ///   modelPath: 'assets/handwriting_model.tflite',
+  ///   task: YOLOTask.classify,
+  ///   classifierOptions: {
+  ///     'enableColorInversion': true,
+  ///     'enableMaxNormalization': true,
+  ///   },
+  /// );
+  /// ```
+  ///
+  /// if need custom Normalization:
+  /// ```dart
+  /// final grayscaleOptions = {
+  ///   'enableMaxNormalization': false,
+  ///   'inputMean': 127.5,
+  ///   'inputStd': 127.5,
+  ///   // 'labels': [...] (if the model has no embedded labels)
+  /// };
+  /// ```
+
+  static YOLO withClassifierOptions({
+    required String modelPath,
+    YOLOTask? task,
+    required Map<String, dynamic> classifierOptions,
+    bool useGpu = true,
+    bool useMultiInstance = false,
+  }) {
+    return YOLO(
+      modelPath: modelPath,
+      task: task,
+      useGpu: useGpu,
+      useMultiInstance: useMultiInstance,
+      classifierOptions: classifierOptions,
+    );
+  }
+
+  Future<void> dispose() async {
+    await _modelManager?.dispose();
+    YOLOInstanceManager.unregisterInstance(_instanceId);
+    _isInitialized = false;
+  }
+}
