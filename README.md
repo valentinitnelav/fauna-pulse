@@ -49,15 +49,22 @@ flutter run            # with a device connected over USB (debug build)
 flutter build apk --debug
 ```
 
+> **Collaborators / non-developers:** see the step-by-step
+> **[Installation & Testing Guide](docs/INSTALL.md)** — it covers both installing a
+> ready-made app (no coding) and building from source on Windows / macOS / Linux.
+
 ## Models
 
-Custom pollinator detectors live in `assets/models/custom/` (e.g. an arthropod detector
-and a flower detector). The model picker in the app is built **dynamically** from
-whatever `.tflite` files are present, so you can drop in additional custom models.
+Model weights (`.tflite` files) are **not stored in this repository** — they are large
+and **some detectors belong to collaborators and must not be redistributed**. All model
+binaries are git-ignored.
 
-Large **stock** Ultralytics demo models (`yolo26n*`, generic `yolo11n*`) are **not**
-tracked in git to keep the repository small; re-export them from Ultralytics if you want
-the baseline options back. Only the project-specific custom detectors are committed.
+To add models, use the in-app **Settings → Import…** button (or drop `.tflite` files into
+the app's `…/Pollinator Monitor/models/` folder over USB). The model picker is built
+**dynamically** from whatever `.tflite` files it finds, so the app works with however
+many models you provide. For developers, models can instead be placed in
+`assets/models/` / `assets/models/custom/` before building (those folders stay
+git-ignored). See the [Installation & Testing Guide](docs/INSTALL.md) for details.
 
 ## Built on
 
