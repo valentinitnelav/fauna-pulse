@@ -56,14 +56,17 @@ app.*.map.json
 **/.flutter-plugins-dependencies
 **/Pods/
 
-# --- Pollinator Monitor: model weights ---
-# Stock Ultralytics demo models are NOT tracked (large, re-exportable from Ultralytics).
-# Only the custom pollinator detectors (arthropod_*, flower_*) in
-# assets/models/custom/ are committed. The model catalog is built dynamically at
-# runtime from whatever .tflite files exist, so a fresh clone simply lists fewer
-# models — nothing breaks.
-/assets/models/*.tflite
-/assets/models/*.mlpackage
-# Stock YOLO baselines that happen to sit inside custom/ are also excluded:
-/assets/models/custom/yolo11n*.tflite
-/assets/models/custom/yolo26n*.tflite
+# --- Pollinator Monitor: model weights are NEVER committed ---
+# Privacy: some detectors belong to collaborators and must not be redistributed via
+# this repo. ALL model binaries are git-ignored, everywhere in the tree. Distribute
+# models out-of-band (e.g. direct transfer / a shared drive). The in-app model picker
+# (lib/pollinator/models/model_catalog.dart) loads whatever .tflite files are present
+# locally, so the app still works — a fresh clone simply has no models until you add them.
+*.tflite
+*.mlpackage
+*.mlmodel
+*.pt
+*.onnx
+# Keep the asset folders themselves (so Flutter's declared asset dirs exist on clone):
+!assets/models/.gitkeep
+!assets/models/custom/.gitkeep
