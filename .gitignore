@@ -44,6 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# iOS is out of scope for this Android-only repository (a separate iOS repo is
+# planned). The ios/ folders may exist locally but are never committed here.
+**/ios/
+
 # Build artifacts anywhere in the tree (root app + vendored packages/ plugin)
 **/build/
 **/.dart_tool/

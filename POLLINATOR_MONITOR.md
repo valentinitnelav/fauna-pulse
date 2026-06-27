@@ -7,6 +7,18 @@ plugin, using **Claude Code** (Anthropic's agentic coding assistant) driven by a
 field ecologist with statistical/R/Python experience but no prior app-development
 background.
 
+> **Path note (read before older entries):** This log predates the move to the
+> standalone `pollinator-monitor` repository (see section 10b). Entries written before
+> that move refer to the **old layout**, where the app lived inside the plugin's
+> `example/` folder. In the current repository the app is at the **root**, so when an
+> older entry mentions a path like `example/lib/pollinator/…` or `example/android/…`,
+> it now maps to `lib/pollinator/…` / `android/…` at the repository root. The modified
+> plugin itself now lives under `packages/ultralytics_yolo/`.
+>
+> **Platform note:** This repository is **Android-only**. iOS support is intentionally
+> *not* committed here (a separate iOS repository is planned for a later phase), so the
+> `ios/` folders are git-ignored even though they may exist locally.
+
 Its purpose is twofold:
 
 1. **Scientific transparency** — so reviewers and readers of the accompanying
