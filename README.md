@@ -1,37 +1,38 @@
 # Pollinator Monitor
 
-An Android-first field application that detects flower-visiting insects in real time and
-logs every detection with its timestamp. The primary scientific deliverable is the
-**visitation rate** — how often insects visit a given flower and how long each visit
-lasts — so that researchers can compare plant types or experimental treatments.
+An Android field application that detects flower-visiting insects in real time and
+logs their visits. The primary scientific deliverable is the **visitation rate** 
+(how often insects visit a given flower and how long each visit lasts) so that 
+pollination researchers can compare plant species, experimental treatments, land use management, etc.
 
-Detection runs **fully on-device** (no network needed) using LiteRT, with real-time
-inference through a camera preview. A draggable square **region of interest (ROI)** is
-placed over the target flower; when an insect enters the ROI, a combined
-detection + tracking pipeline activates, assigns each insect a tracking ID, saves
-cropped JPEGs, and writes an append-only JSON log of the session. See
-[`POLLINATOR_MONITOR.md`](POLLINATOR_MONITOR.md) for the full development log and the
-current pipeline configuration.
+Detection runs **fully on-device** (no network needed) using [LiteRT](https://github.com/google-ai-edge/litert). 
+A draggable square **region of interest (ROI)** is
+placed over the target flower (or portion of inflorescence or path of flowers). 
+When an insect enters the ROI, a combined detection + tracking pipeline activates, 
+assigns each insect a tracking ID, saves ROI-cropped JPEGs, and writes an append-only JSON log of the session. 
 
-Android-first. iOS compatibility is planned for a later phase and will live in a separate repository.
+[Claude Code](https://claude.com/product/claude-code) was used for software development.
+See [`POLLINATOR_MONITOR.md`](POLLINATOR_MONITOR.md) for the full development log and pipeline configuration.
+
+Android-first. iOS compatibility is planned for a later phase and might live in a separate repository.
 
 ## Repository layout
 
-This repository is the app — it sits at the root, not in a subfolder (previosly `yolo-flutter-app/example/`).
-
+General layout:
 ```
 pollinator-monitor/
-├── lib/                     # the Pollinator Monitor app (Dart)
+├── lib/                     # the Pollinator Monitor app (Dart scripts)
 ├── android/                 # app platform code
-├── assets/                  # app assets, including assets/models/custom/ detectors
-├── pubspec.yaml             # depends on the ultralytics plugin via a local path
+├── assets/                  # app assets, including assets/models/ detectors
 ├── POLLINATOR_MONITOR.md    # development log / change history
 ├── LICENSE                  # AGPL-3.0
 └── packages/
-    └── ultralytics_yolo/    # MODIFIED YOLO Flutter plugin (see below)
+    └── ultralytics_yolo/    # MODIFIED YOLO Flutter plugin from ultralytics (see below)
 ```
 
-The app depends on the plugin locally:
+This repository is the app, it sits at the root, not in a subfolder (previously `/yolo-flutter-app/example/`).
+
+The app depends on the ultralytics plugin:
 
 ```yaml
 # pubspec.yaml
@@ -42,29 +43,17 @@ dependencies:
 
 ## Build & run (Android)
 
-```bash
-flutter pub get
-flutter run            # with a device connected over USB (debug build)
-# or build an installable debug APK:
-flutter build apk --debug
-```
+See the step-by-step [Installation & Testing Guide](docs/INSTALL.md). 
+It covers both installing a ready-made app (no coding) and building from source.
 
-> **Collaborators / non-developers:** see the step-by-step
-> **[Installation & Testing Guide](docs/INSTALL.md)** — it covers both installing a
-> ready-made app (no coding) and building from source on Windows / macOS / Linux.
 
 ## Models
 
-Model weights (`.tflite` files) are **not stored in this repository** — they are large
-and **some detectors belong to collaborators and must not be redistributed**. All model
-binaries are git-ignored.
+Model weights (`.tflite` files) are not stored in this repository. They are large
+and some detectors belong to collaborators and must not be redistributed. 
+All model binaries are and should stay git-ignored.
 
-To add models, use the in-app **Settings → Import…** button (or drop `.tflite` files into
-the app's `…/Pollinator Monitor/models/` folder over USB). The model picker is built
-**dynamically** from whatever `.tflite` files it finds, so the app works with however
-many models you provide. For developers, models can instead be placed in
-`assets/models/` / `assets/models/custom/` before building (those folders stay
-git-ignored). See the [Installation & Testing Guide](docs/INSTALL.md) for details.
+See the [Installation & Testing Guide](docs/INSTALL.md) for details.
 
 ## Built on
 
@@ -78,5 +67,4 @@ in [`packages/ultralytics_yolo/`](packages/ultralytics_yolo/) and retains its ow
 ## License
 
 This project is licensed under **AGPL-3.0** (see [`LICENSE`](LICENSE)), inherited from the
-Ultralytics `ultralytics_yolo` plugin it builds upon. This is the academic / research
-("AGPL") edition of the work.
+Ultralytics `ultralytics_yolo` plugin it builds upon.

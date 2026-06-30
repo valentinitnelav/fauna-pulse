@@ -1,82 +1,53 @@
-# Installing & Testing Pollinator Monitor
+# Installing & testing Pollinator Monitor app
 
-A step-by-step guide for collaborators. No mobile-development experience is assumed.
+A step-by-step guide for collaborators.
 
-**Pollinator Monitor** is an Android app that detects flower-visiting insects in real time
-and logs their visits. This guide shows two ways to get it running on an Android phone:
+For contributing to this repository, please first fork it and then work on that forked repository in parallel. When happy with your implementations, then ask for a pull request. See also the guidelines suggested by GitHub - [Contributing to a project](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project)
+
+This guide shows two ways to get the app running on an Android phone:
 
 | Track | Who it's for | What you need | Effort |
 |-------|--------------|---------------|--------|
-| **A. Install the ready-made app** (recommended) | You just want to **test** the app | An Android phone + the app file we send you | ~10 min, no coding |
-| **B. Build from source** | You want to **change the code** | Windows/macOS/Linux computer + developer tools | ~1 hour first time |
+| **A. Install the ready-made app** | You just want to **test** the app | An Android phone + the app `.apk` file | a few minutes, no coding |
+| **B. Build from source** | You want to **change the code** | Windows/MacOS/Linux computer + developer tools | ~1 hour first time (installing software) |
 
-> **Phone requirement:** a reasonably modern Android phone (Android 8 or newer
-> recommended). iPhones are not supported yet.
 
 ---
 
-## Track A — Install the ready-made app (no coding)
+## Track A: Install the ready-made app (no coding)
 
-### A1. Allow your phone to install the app
+### A1. Get the app file (`.apk`) on your phone
 
-Because the app is not on the Google Play Store, you tell Android to trust it:
+Save the `.apk` file to your phone: download it directly on the phone from a provided link, or copy it over USB from your computer (e.g. in the phones' `Download` folder).
 
-1. Open **Settings → About phone**, tap **Build number** 7 times to unlock
-   *Developer options* (only needed for some phones / for USB transfer).
-2. When you later tap the app file, Android will ask to **“Allow installs from this
-   source”** — say **Allow**. (Exact wording varies by phone brand.)
+### A2. Install it
 
-### A2. Get the app file (`.apk`)
+On the phone, open your **File Manager** app, tap the downloaded `.apk` file, and follow the Install prompts.
+Because this is an app outside the Play Store (for now), you will get security warnings that make the installation not a very smooth process. 
+Google Play intends it in this way, but the app is safe to install.
 
-We will send you the app as an `.apk` file in one of these ways:
+### A3. Add detection models
 
-- **GitHub Releases** (if you have access to the private repo): go to the repo →
-  **Releases** → download the latest `app-release.apk` (or `app-debug.apk`).
-- **A private download link** (e.g. shared drive) — just download the `.apk`.
-
-Save it to your phone (download it directly on the phone, or copy it over USB).
-
-### A3. Install it
-
-On the phone, open your **Files** app, tap the downloaded `.apk`, and follow the prompts
-(**Install**). If a “Play Protect” warning appears, choose **Install anyway** — this is
-expected for apps outside the Play Store. You should now see **Pollinator Monitor** in
-your app list.
-
-### A4. Add the detection models
-
-The app ships **without** model files (they are shared separately — see
+The app usually ships **without** model files (they are shared separately — see
 [Getting the models](#getting-the-models)). Once you have one or more `.tflite` model
-files on the phone, load them in **either** way:
+files to test, load them in **either** way:
 
 - **In-app (easiest):** open **Pollinator Monitor → Settings (gear icon) → Import…**,
   then pick the `.tflite` file(s) you downloaded (e.g. from your **Downloads** folder).
-  You'll see “Imported N model(s).”
-- **Over USB (drag-and-drop):** connect the phone to a computer; the app keeps a
-  `…/Pollinator Monitor/models/` folder you can drop `.tflite` files into directly.
+- **Over USB (drag-and-drop):** connect the phone to a computer; drop `.tflite` files into a folder of your choice.
 
 Imported models then appear in the app's **model dropdown** at the start of a session.
 
-### A5. Run a test session
-
-1. Open the app, grant **Camera** and **storage** permissions when asked.
-2. Pick a model from the dropdown, choose a save folder, drag the square **region of
-   interest (ROI)** over a flower, and press **Record**.
-3. Detections, tracks, and cropped images are saved on the phone; transfer them later
-   over USB.
-
-✅ That's it — no terminal, no coding.
 
 ---
 
-## Track B — Build from source (for developers)
+## Track B: Build from source (for developers)
 
-Use this only if you want to modify the app. The app is a **Flutter** project (Dart
-language) with the vendored YOLO plugin under `packages/ultralytics_yolo/`.
+The app is a **Flutter** project (Dart language) with the YOLO plugin under `packages/ultralytics_yolo/`.
 
 ### B0. Install the tools (one time)
 
-Install these for your operating system (follow the official links — they stay current):
+Install these for your operating system (follow the official links):
 
 1. **Git** — <https://git-scm.com/downloads>
 2. **Flutter SDK** — <https://docs.flutter.dev/get-started/install>
@@ -98,61 +69,138 @@ Fix anything it flags (especially “Android toolchain” and “Android license
 flutter doctor --android-licenses   # accept all
 ```
 
-> **Per-OS notes**
-> - **Windows:** if your phone isn't detected over USB, install your phone maker's
->   **USB driver** (or the “Google USB Driver” via Android Studio → SDK Manager → SDK
->   Tools). Use **PowerShell** for the commands below.
-> - **macOS:** USB usually works out of the box. If `adb` isn't found, ensure
->   Android *platform-tools* are on your `PATH`.
-> - **Linux:** you may need `udev` rules for your phone (see Flutter's Linux setup).
-
 ### B1. Get the code
 
 ```bash
 git clone git@github.com:valentinitnelav/pollinator-monitor.git
+# If you don't use SSH, clone the HTTPS URL shown on the GitHub repo page instead.
+
 cd pollinator-monitor
 flutter pub get
 ```
 
-(If you don't use SSH, clone the HTTPS URL shown on the GitHub repo page instead.)
-
 ### B2. Add the models
 
-Models are **not** in the repo (see [Getting the models](#getting-the-models)). Two
-options:
+Models are **not** in the repo (see [Getting the models](#getting-the-models)).
+Two options:
 
-- **Easiest:** build/run first, then use the in-app **Import…** button (Track A4).
-- **Bundle them into your build:** copy the files you were given into
+- build/run first, then use the in-app **Import…** button (Track A4).
+- **Bundle them into your build:** copy the model files you were given into
   `assets/models/` (general models) and `assets/models/custom/` (custom detectors)
   *before* building. These folders are git-ignored, so your models never get committed.
 
 ### B3. Run on a connected phone
 
-1. On the phone: **Settings → Developer options → enable USB debugging**, plug in USB,
-   and approve the “Allow USB debugging?” prompt.
+1. On the phone: **Settings → Developer options → enable USB debugging**.
 2. Check the phone is seen:
 
-   ```bash
-   flutter devices
-   ```
+    ```bash
+    flutter devices
+
+    # Example of possible output (2 smartphones were connected, 1st row points to a Xiaomi model, 2nd is a Samsung)
+
+    # Found 4 connected devices:
+    #   2107113SG (mobile) • 2b2dc560    • android-arm64  • Android 14 (API 34)
+    #   SM M127F (mobile)  • RF8T403A3AT • android-arm64  • Android 12 (API 31)
+    #   Linux (desktop)    • linux       • linux-x64      • Ubuntu 24.04.4 LTS 6.8.0-124-generic
+    #   Chrome (web)       • chrome      • web-javascript • Google Chrome 149.0.7827.196
+
+    # Run "flutter emulators" to list and start any available device emulators.
+
+    # If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit
+    # https://flutter.dev/setup/ for troubleshooting tips.
+    ```
 3. Launch the app (debug):
 
    ```bash
-   flutter run
+   cd pollinator-monitor    # navigate to the git repository
+   flutter pub get          # retrieve or upgrade dependencies
+   flutter run              # will run on the first detected smartphone
+   ```
+
+   If you have multiple smartphones connected, and need to run on a specific smartphone, use its ID listed in the output of `flutter devices`.
+   See above the device IDs: "2b2dc560" & "RF8T403A3AT"
+   
+   ```bash
+   cd pollinator-monitor # navigate to the git repository
+   flutter run -d 2b2dc560 
+   # -d stands for --device-id
+   ```
+
+   Or if you want to also store the terminal outputs into a txt file, can get inspired from this Linux command:
+
+   ```bash
+   cd pollinator-monitor # navigate to the git repository
+   stdbuf -oL -eL flutter run -d 2b2dc560 2>&1 | tee -a ~/InsectDetectApp/sessions/logcats/flutter_run_output_xiaomi_$(date +"%Y-%m-%d_%H:%M:%S").txt
    ```
 
 ### B4. Or build an installable `.apk` to share
 
 ```bash
-flutter build apk --release     # or: flutter build apk --debug
+cd pollinator-monitor           # navigate to the git repository
+flutter pub get                 # retrieve or upgrade dependencies
+flutter build apk --release     # or: flutter build apk --debug (but slower app run time)
+
+# Expected output if success:
+
+# Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 5276 bytes (99.7% reduction).
+# Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+# Running Gradle task 'assembleRelease'...                          329.4s
+# ✓ Built build/app/outputs/flutter-apk/app-release.apk (133.7MB)
 ```
 
-The file appears at `build/app/outputs/flutter-apk/app-release.apk` (or
-`app-debug.apk`). That's exactly the file used in **Track A**. Share it via a GitHub
-Release or a private link.
+The file appears at `.../build/app/outputs/flutter-apk/app-release.apk` (or
+`app-debug.apk`). Note that these files are overwritten. 
+That's exactly the file used in **Track A**. Share it via a GitHub Release or a private link.
 
-> Tip: a **debug** APK needs no signing setup and is fine for internal testing. A
-> release APK may require a signing key — not needed just to test among collaborators.
+To deploy the app (the `app-release.apk`) on a smartphone:
+
+```bash
+cd pollinator-monitor           # navigate to the git repository
+adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
+# Performing Streamed Install
+# Success
+```
+
+The `-r` flag stands for `reinstall`. It instructs the Android operating system to replace any existing version of the app on the device while preserving all local session data and databases you've already generated.
+
+If the installation fails with an error like `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, it means an active Debug version of the app is already sitting on your phone. Android security protocols strictly prohibit a Release build from overwriting a Debug build because their cryptographic signatures do not match.
+
+How to resolve it:
+
+You must purge the debug package from the phone before the release installation will succeed.
+Note that this will discard any sesssion setups and change them to their defaults values.
+
+Uninstall the existing package directly via ADB:
+
+```bash
+adb -s 2b2dc560 uninstall com.pollinatormonitor.app
+# Then re-run the release installation command
+# Note that this will discard any sesssion setups and change them to their defaults values.
+adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+NOTES:
+
+IMPORTANT: Evaluating performance using a **Debug build** will give highly distorted data. Never benchmark inference speeds, tracking accuracy, or frame-per-second (FPS) metrics on a debug binary. You must deploy a `--release` APK to measure the "true" hardware performance and processing latency of the application.
+
+To understand the difference between **debug** & **release**, imagine preparing a complex recipe:
+
+- **Debug Mode** is a cooking school class. The chef works with all measuring tools left out on the counter. It is highly instructional and easy to fix if a mistake happens, but it is slow and cluttered.
+
+- **Release Mode** is a sealed, pre-packaged meal shipped to the supermarket. It is optimized for rapid consumption. You cannot change the ingredients mid-bite.
+
+**Debug Mode** (`--debug`; JIT = Just-In-Time compilation)
+- Debug mode is architected for the developer's machine.
+- Instead of compiling your Dart code directly into native machine instructions, the compiler packages the source code along with the Dart Virtual Machine (VM) inside the APK (Android Package Kit). When the app runs, the VM reads and compiles code on the fly as it executes.
+  - **Advantage**: enables Flutter's Hot Reload. Because the code is interpreted by a live VM, you can inject updated source files directly into the running memory pool without rebuilding the binary.
+  - **Cost**: inflates the APK size and bottlenecks execution speed.
+
+**Release Mode** (`--release`; AOT = Ahead-Of-Time compilation):
+- Release mode is architected for the end-user.
+- The compiler strips away the Dart VM entirely.
+  - **Advantage**: Raw speed and smaller size. The smartphone's processor executes the native binaries directly.
+  - **Cost**: Compilation takes a bit longer, and you lose all interactive diagnostics, Hot Reload, and debugging hooks.
 
 ---
 
@@ -167,19 +215,8 @@ be redistributed**.
 - **Do not** re-share models you receive, commit them to git, or upload them anywhere
   public. Treat collaborator-owned models as confidential.
 - To use a model, load it with the in-app **Import…** button or USB drag-drop
-  (Track A4). The app lists any `.tflite` it finds; nothing else is required.
+  (Track A3). The app lists any `.tflite` it finds; nothing else is required.
 
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| **Phone not listed in `flutter devices`** | Enable **USB debugging**, approve the on-phone prompt, try a different USB cable/port. Windows: install the phone's USB driver. |
-| **“App not installed” / “Play Protect” blocks it** | Choose **Install anyway** / allow installs from this source (Track A1). |
-| **`flutter doctor` shows Android license errors** | Run `flutter doctor --android-licenses` and accept all. |
-| **App opens but the model dropdown is empty** | You haven't imported a model yet — do Track A4. |
-| **Camera is black / no detections** | Grant Camera + storage permissions in the phone's app settings; make sure a model is selected. |
-
-For anything else, send the maintainer the exact error text (and a screenshot of
-`flutter doctor` for Track B issues).
+The in-app model picker is built **dynamically** from whatever `.tflite` files it finds. 
+Models can also be placed in `assets/models/` / `assets/models/custom/` before building and running the app (those folders stay
+git-ignored).
