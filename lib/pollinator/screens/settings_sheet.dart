@@ -33,6 +33,13 @@ class SettingsSheet extends StatefulWidget {
   /// empty the sheet falls back to a standard preset list.
   final List<String> streamResolutions;
 
+  /// Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
+  /// phone (the [streamResolutions] above are still/preview sizes and over-promise
+  /// — see round 56). Keys: `hardwareLevel`, `recommendedMax` ("WxH"),
+  /// `previewBoundW`/`previewBoundH`, `displayW`/`displayH`. Used to flag sizes the
+  /// device will silently shrink. Empty when unavailable.
+  final Map<String, dynamic> analysisCeiling;
+
   /// Full-resolution still size the camera can deliver (from the probe), shown to
   /// explain what "Full-resolution ROI photos" captures. 0 when unknown.
   final int sensorWidth;
@@ -49,6 +56,7 @@ class SettingsSheet extends StatefulWidget {
     super.key,
     required this.config,
     this.streamResolutions = const [],
+    this.analysisCeiling = const {},
     this.sensorWidth = 0,
     this.sensorHeight = 0,
     this.cameraDiagnostics = const [],
@@ -750,6 +758,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         'higher may cost FPS.',
       ),
       _streamResolutionDropdown(),
+      _streamCeilingNote(),
       const SizedBox(height: 16),
 
       SwitchListTile(
@@ -923,6 +932,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         .length;
 
     return [
+      // Estimated analysis-stream ceiling for this phone (round 56): the largest
+      // size CameraX can actually feed the detector, usually below the still sizes
+      // the camera advertises.
+      _analysisCeilingInfo(),
       // Why the list may not match the lenses you can physically count.
       const Padding(
         padding: EdgeInsets.only(bottom: 8),
@@ -1223,16 +1236,33 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   /// Dropdown of the camera's actual HAL-supported analysis sizes (verbatim — no
   /// 32-rounding, which would force a non-native size). Labelled "short × long".
+  // Parses the estimated analysis ceiling ("WxH") into (area, short, long). Zero
+  // area means "unknown" (no native ceiling reported). See round 56.
+  (int area, int lo, int hi) get _ceiling {
+    final recMax = (widget.analysisCeiling['recommendedMax'] as String?) ?? '';
+    if (!recMax.contains('x')) return (0, 0, 0);
+    final p = recMax.split('x');
+    final w = int.tryParse(p[0]) ?? 0,
+        h = int.tryParse(p.length > 1 ? p[1] : '0') ?? 0;
+    return (w * h, w < h ? w : h, w < h ? h : w);
+  }
+
   Widget _streamResolutionDropdown() {
     final options = widget.streamResolutions.isNotEmpty
         ? widget.streamResolutions
         : const ['640x480', '1280x960', '1600x1200'];
     final current = '${_c.streamWidth}x${_c.streamHeight}';
+    final (ceilArea, ceilLo, ceilHi) = _ceiling;
     String label(String wh) {
       final p = wh.split('x');
       final w = int.tryParse(p[0]) ?? 0,
           h = int.tryParse(p.length > 1 ? p[1] : '0') ?? 0;
       final lo = w < h ? w : h, hi = w < h ? h : w;
+      // Flag sizes the analysis pipeline can't actually stream on this phone — it
+      // would silently shrink them to the ceiling (round 56). Still selectable.
+      if (ceilArea > 0 && w * h > ceilArea) {
+        return '$lo × $hi  (may cap to $ceilLo×$ceilHi)';
+      }
       return '$lo × $hi';
     }
 
@@ -1265,6 +1295,81 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         );
       },
+    );
+  }
+
+  // Plain-language note under the stream dropdown. Explains that the live analysis
+  // stream is capped by the phone (not a bug), that this does NOT affect detection
+  // accuracy, and that sharp photos come from full-resolution stills. See round 56.
+  Widget _streamCeilingNote() {
+    final (ceilArea, ceilLo, ceilHi) = _ceiling;
+    final hwLevel = (widget.analysisCeiling['hardwareLevel'] as String?) ?? '';
+    final parts = <String>[
+      'This is the live preview/analysis stream the AI reads. It does not change '
+          'detection accuracy — every frame is shrunk to the model’s own input '
+          'size anyway. It only affects the sharpness of fast (live-frame) ROI '
+          'photos; for the sharpest crops use “Full-resolution ROI photos” below.',
+    ];
+    if (ceilArea > 0) {
+      parts.add(
+        'Your phone can stream at most about $ceilLo×$ceilHi px to the analysis '
+        'pipeline${hwLevel.isNotEmpty && hwLevel != 'unknown' ? ' (camera level: $hwLevel)' : ''}. '
+        'Larger choices are offered because the camera supports them for stills, '
+        'but the live stream will be scaled down to this size.',
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        parts.join(' '),
+        style: const TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+    );
+  }
+
+  // Camera-info panel block: hardware level + estimated analysis-stream ceiling.
+  // See round 56. Hidden when the device didn't report a ceiling.
+  Widget _analysisCeilingInfo() {
+    final (ceilArea, ceilLo, ceilHi) = _ceiling;
+    if (ceilArea <= 0) return const SizedBox.shrink();
+    final hwLevel = (widget.analysisCeiling['hardwareLevel'] as String?) ?? '';
+    final dw = (widget.analysisCeiling['displayW'] as num?)?.toInt() ?? 0;
+    final dh = (widget.analysisCeiling['displayH'] as num?)?.toInt() ?? 0;
+    final lines = <String>[
+      'Estimated live-stream ceiling: ~$ceilLo×$ceilHi px',
+      if (hwLevel.isNotEmpty && hwLevel != 'unknown') 'Camera hardware level: $hwLevel',
+      if (dw > 0 && dh > 0) 'Screen: $dw×$dh px',
+    ];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final l in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: SelectableText(
+                l,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'The camera advertises larger sizes for stills, but when the live '
+              'preview, the AI stream and photo capture run together it can only '
+              'feed the detector up to about this size — so larger stream choices '
+              'are scaled down. This does not affect detection accuracy.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

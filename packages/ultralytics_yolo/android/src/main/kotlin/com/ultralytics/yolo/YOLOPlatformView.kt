@@ -553,6 +553,11 @@ class YOLOPlatformView(
                 "getStreamResolutions" -> {
                     result.success(yoloView.supportedStreamResolutions())
                 }
+                "getAnalysisStreamCeiling" -> {
+                    // Pollinator Monitor: estimated max size CameraX ImageAnalysis can actually
+                    // stream on this device (+ hardware level), so the UI stops over-promising.
+                    result.success(yoloView.analysisStreamCeiling())
+                }
                 "captureRoiFromFrame" -> {
                     // Pollinator Monitor: crop the ROI from the live analysis frame (no
                     // full-res still capture, so the camera pipeline isn't stalled).

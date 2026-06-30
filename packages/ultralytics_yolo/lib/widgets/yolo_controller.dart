@@ -233,6 +233,18 @@ class YOLOViewController {
     return r?.whereType<String>().toList(growable: false) ?? const <String>[];
   }
 
+  /// The realistic ceiling for the live analysis stream on the active camera —
+  /// what CameraX `ImageAnalysis` can actually deliver, which is usually smaller
+  /// than [getStreamResolutions] (those are still/preview sizes). Keys:
+  /// `hardwareLevel` (legacy/limited/full/level3/external/unknown), `recommendedMax`
+  /// ("WxH" or ""), `previewBoundW`/`previewBoundH`, `displayW`/`displayH`. It is an
+  /// estimate; the delivered size streamed each frame is the ground truth. Empty
+  /// where unavailable. Android only. (See `YOLOView.analysisStreamCeiling`.)
+  Future<Map<String, dynamic>> getAnalysisStreamCeiling() async {
+    final r = await _invoke<Map<dynamic, dynamic>>('getAnalysisStreamCeiling');
+    return r?.cast<String, dynamic>() ?? const <String, dynamic>{};
+  }
+
   /// Crops the given ROI directly from the live analysis frame and returns it as
   /// a JPEG (Pollinator Monitor). Unlike [capturePhoto] this does NOT trigger a
   /// full-resolution still capture, so it doesn't stall the camera pipeline —

@@ -76,6 +76,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   String _accelerator = '';
   // Camera-supported analysis stream resolutions ("WxH"), for the settings menu.
   List<String> _streamResolutions = const [];
+  // Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
+  // phone (the still/preview sizes above advertise more than the analysis pipeline
+  // can deliver). Keys: hardwareLevel, recommendedMax ("WxH"), previewBoundW/H,
+  // displayW/H. Probed once and handed to the settings sheet. See round 56.
+  Map<String, dynamic> _analysisCeiling = const {};
   // The model actually loaded (from onModelLoad). Lets the user see when a model
   // switch didn't take effect (e.g. a size that isn't bundled on the device).
   String _loadedModel = '';
@@ -572,6 +577,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _probeCaptureResolution();
       _probeFocusSupport();
       _fetchStreamResolutions();
+      _fetchAnalysisCeiling();
       _fetchAvailableLenses();
       _fetchCameraDiagnostics();
     }
@@ -587,6 +593,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     } catch (_) {
       // Leave empty; settings falls back to a standard preset list.
+    }
+  }
+
+  /// Asks the camera for the realistic analysis-stream ceiling (what CameraX can
+  /// actually deliver, usually smaller than the still/preview sizes above), so
+  /// the settings sheet can flag sizes the phone will silently shrink. See round 56.
+  Future<void> _fetchAnalysisCeiling() async {
+    try {
+      final c = await _controller.getAnalysisStreamCeiling();
+      if (mounted && c.isNotEmpty) {
+        setState(() => _analysisCeiling = c);
+      }
+    } catch (_) {
+      // Leave empty; the dropdown simply won't annotate a ceiling.
     }
   }
 
@@ -1246,6 +1266,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       builder: (_) => SettingsSheet(
         config: _config,
         streamResolutions: _streamResolutions,
+        analysisCeiling: _analysisCeiling,
         sensorWidth: _captureWidth,
         sensorHeight: _captureHeight,
         cameraDiagnostics: _cameraDiagnostics,
@@ -1453,10 +1474,27 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         : 'ROI: measuring…';
     // Live analysis-stream size (its short side caps the fast ROI crop). Shows a
     // "measuring…" placeholder until the first frame arrives (like ROI), so the
-    // line is always present rather than appearing late.
-    final String streamLabel = _imageWidth > 0
-        ? 'Stream: $_imageWidth×$_imageHeight px'
-        : 'Stream: measuring…';
+    // line is always present rather than appearing late. If the phone delivered a
+    // smaller frame than was requested (it can't stream the asked-for size — see
+    // round 56), show both so the cap is never silent.
+    final String streamLabel;
+    if (_imageWidth <= 0) {
+      streamLabel = 'Stream: measuring…';
+    } else {
+      final int reqArea = _config.streamWidth * _config.streamHeight;
+      final int gotArea = _imageWidth * _imageHeight;
+      // >~5% smaller by area = a genuine cap, not just a rotation swap.
+      final bool capped = reqArea > 0 && gotArea < reqArea * 0.95;
+      final int reqLo = _config.streamWidth < _config.streamHeight
+          ? _config.streamWidth
+          : _config.streamHeight;
+      final int reqHi = _config.streamWidth < _config.streamHeight
+          ? _config.streamHeight
+          : _config.streamWidth;
+      streamLabel = capped
+          ? 'Stream: $_imageWidth×$_imageHeight px (asked $reqLo×$reqHi — device max)'
+          : 'Stream: $_imageWidth×$_imageHeight px';
+    }
     // Calibration = the one-time full-res probe; recording waits for it.
     final bool haveCaptureDims = _captureWidth > 0;
     // (Full-sensor still size is shown in Settings, next to "Full-resolution ROI

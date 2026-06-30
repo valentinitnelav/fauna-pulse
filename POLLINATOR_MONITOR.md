@@ -1480,6 +1480,60 @@ Each round below was prompted by hands-on testing on the phone.
       test/pollinator` **37/37** pass. Real test: re-run the bee video on both phones — expect the
       unique-insect count to drop from dozens to a handful.
 
+56. **Stream resolution: the dropdown stopped over-promising; delivered size is now
+    truthful (`YOLOView.kt`, `YOLOPlatformView.kt`, `yolo_controller.dart`,
+    `camera_session_screen.dart`, `settings_sheet.dart`).** On the Samsung
+    (`RF8T403A3AT`, Galaxy M12-class) selecting **1080×1440** in the Camera tab gave a
+    live "Stream:" readout of only **720×960** (exactly ×2/3). Traced end-to-end (Dart
+    + native CameraX).
+    - **Root cause (not a data bug).** The stream dropdown is built natively from
+      `SCALER_STREAM_CONFIGURATION_MAP.getOutputSizes(YUV_420_888)`
+      (`YOLOView.supportedStreamResolutions()`), filtered only to ~4:3 and a loose
+      ≤2.1 MP cap. Those are sizes the **still/preview** path supports. But the app
+      binds **Preview + ImageAnalysis + ImageCapture together**, and CameraX
+      `ImageAnalysis` cannot stream 1440×1080 on this phone — it falls back (via
+      `FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER`) to the largest 4:3 analysis size it
+      truly supports, **960×720** (reported back oriented as 720×960). The dropdown
+      over-promised; the readout was already honest. (`PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE`
+      *is* applied here — 1.55 MP > the 0.92 MP threshold — so that was not the cause;
+      the cap is CameraX's PREVIEW-size bound for the 3-stream combination, ~the
+      smaller of 1080p and the screen size.)
+    - **Why it does not corrupt data (the implications).** Detection accuracy is
+      **unaffected** — every frame is downscaled to the model's own input tensor
+      (640/416/320) regardless of stream size. Stream resolution only changes
+      **fast-mode ROI crop sharpness** (capped at the *delivered* short side), and the
+      crop math + `analysis_w/h` logging already key off the **delivered** frame, so
+      saved crops and logs were already correct. The session log also already records
+      both the requested (`config.streamWidth/Height`) and delivered (`analysis_w/h`)
+      sizes, so past Samsung sessions remain fully interpretable. On this Samsung
+      (likely CameraX `legacy`/`limited`, 720-wide screen), 960×720 is probably the
+      genuine analysis-stream ceiling — higher is only reachable via the full-res still.
+    - **Fix — truthful UI + a native ceiling query** (chosen over chasing a higher
+      stream, which is likely impossible on this device; same "don't pretend" stance as
+      the rounds 48–50 lens diagnostics):
+      - **Native `YOLOView.analysisStreamCeiling()`** returns, for the bound camera, the
+        `hardwareLevel` (`INFO_SUPPORTED_HARDWARE_LEVEL`) and an **estimated
+        `recommendedMax`** = the largest 4:3 `getOutputSizes(YUV)` size whose area ≤
+        `min(1080p, displayArea)` (CameraX's PREVIEW bound), reusing the existing 4:3/≤2 MP
+        filter chain. Documented as an *estimate* — the live readout is the ground truth.
+        Exposed via a `getAnalysisStreamCeiling` method-channel case and
+        `YOLOViewController.getAnalysisStreamCeiling()`.
+      - **Truthful Stream readout** (`camera_session_screen.dart`): when the delivered
+        frame is >5% smaller by area than requested, the line now reads e.g.
+        `Stream: 720×960 px (asked 1080×1440 — device max)`.
+      - **Dropdown annotation + help note** (`settings_sheet.dart`): sizes above the
+        ceiling stay selectable but are labelled `(may cap to W×H)`, and a plain-language
+        note explains the stream is capped by the phone, that it does **not** affect
+        detection (only fast-crop sharpness), and to use "Full-resolution ROI photos" for
+        sharper crops. The **Camera & lens info (advanced)** panel gained a block showing
+        the hardware level + estimated ceiling + screen size.
+    - **No change** to detection, tracking, ROI math, capture, or the logging schema.
+    - `flutter analyze` clean (app module + plugin controller); `flutter test
+      test/pollinator` **37/37** pass; **`flutter build apk --debug` succeeds** (native
+      Kotlin compiles). On-device confirmation (Samsung readout shows the cap; Camera &
+      lens info shows level + ceiling; a size the Xiaomi can deliver shows no suffix)
+      left for the next field run.
+
 ## 6. Performance note: what actually decides GPU vs CPU
 
 The processor actually used is now logged and shown on screen, and observing it

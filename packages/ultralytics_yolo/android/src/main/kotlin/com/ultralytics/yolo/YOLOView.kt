@@ -1402,6 +1402,66 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
+     * The realistic ceiling for the **live analysis stream** on the currently bound camera (Pollinator Monitor).
+     *
+     * Why this exists: `supportedStreamResolutions()` lists sizes from `getOutputSizes(YUV)`, but those are the sizes
+     * the camera's *still/preview* path can produce — NOT necessarily what CameraX `ImageAnalysis` can actually stream.
+     * When Preview + ImageAnalysis + ImageCapture are bound together (as this app does), CameraX bounds the analysis
+     * stream to roughly the device's "PREVIEW" size: the smaller of 1080p and the screen resolution. So a phone whose
+     * screen is ~720 px wide typically caps the analysis stream near 960x720 even though `getOutputSizes` advertises
+     * 1440x1080 — which is exactly why a 1080x1440 request can come back as 720x960 on a budget device.
+     *
+     * This returns an *estimate* of that ceiling plus the camera's hardware level, so the UI can stop offering sizes
+     * the pipeline will silently shrink. It is an estimate: the *authoritative* delivered size is whatever the live
+     * "Stream: WxH" readout shows once the camera is bound — the two together are the honest picture.
+     *
+     * Keys: `hardwareLevel` (legacy/limited/full/level3/external/unknown), `recommendedMax` ("WxH" or ""),
+     * `previewBoundW`/`previewBoundH` (the chosen size, 0 if unknown), `displayW`/`displayH`. Android only.
+     */
+    fun analysisStreamCeiling(): Map<String, Any?> {
+        fun unknown(): Map<String, Any?> = mapOf(
+            "hardwareLevel" to "unknown", "recommendedMax" to "",
+            "previewBoundW" to 0, "previewBoundH" to 0, "displayW" to 0, "displayH" to 0
+        )
+        val cam = camera ?: return unknown()
+        return try {
+            val info = Camera2CameraInfo.from(cam.cameraInfo)
+            val hwLevel = when (info.getCameraCharacteristic(
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)) {
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY -> "legacy"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED -> "limited"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL -> "full"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3 -> "level3"
+                4 -> "external" // INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL (constant is API 28+)
+                else -> "unknown"
+            }
+            // CameraX bounds ImageAnalysis to ~the PREVIEW size = min(1080p area, display area).
+            val dm = context.resources.displayMetrics
+            val displayArea = dm.widthPixels.toLong() * dm.heightPixels
+            val previewBoundArea =
+                min(1920L * 1080L, if (displayArea > 0) displayArea else 1920L * 1080L)
+            val best = info.getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
+                ?.filter { it.width > 0 && it.height > 0 }
+                ?.filter { abs(it.width.toDouble() / it.height - 4.0 / 3.0) < 0.05 }
+                ?.filter { it.width.toLong() * it.height <= 2_100_000L }
+                ?.filter { it.width.toLong() * it.height <= previewBoundArea }
+                ?.maxByOrNull { it.width.toLong() * it.height }
+            mapOf(
+                "hardwareLevel" to hwLevel,
+                "recommendedMax" to (best?.let { "${it.width}x${it.height}" } ?: ""),
+                "previewBoundW" to (best?.width ?: 0),
+                "previewBoundH" to (best?.height ?: 0),
+                "displayW" to dm.widthPixels,
+                "displayH" to dm.heightPixels
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "analysisStreamCeiling failed", e)
+            unknown()
+        }
+    }
+
+    /**
      * Full per-camera diagnostics for the "which lenses can this app actually use?" dialog (Pollinator Monitor).
      *
      * Walks every camera the OS reports (`CameraManager.cameraIdList`) and, for logical multi-camera devices, every
