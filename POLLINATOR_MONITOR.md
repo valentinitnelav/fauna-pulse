@@ -1534,6 +1534,50 @@ Each round below was prompted by hands-on testing on the phone.
       lens info shows level + ceiling; a size the Xiaomi can deliver shows no suffix)
       left for the next field run.
 
+57. **ROI box now snaps to the saved-crop ÷32 grid (what you see = what you save)
+    (`lib/pollinator/models/roi.dart`, `camera_session_screen.dart`,
+    `test/pollinator/roi_test.dart`).** Field observation: on a 720×960 stream, maxing
+    the ROI showed `ROI: 704×704` in the readout (704 = largest multiple of 32 that fits
+    the 720 short side — the model-friendly rule), but a saved file the owner inspected
+    was **720×720**, and the box outline appeared to touch the preview edges.
+    - **Diagnosis (the 720 file was a stale-build artifact).** Traced all four crop/save
+      paths end-to-end. The current source **already** snaps every saved crop to a
+      multiple of 32 and caps it to the frame's short side, using `min(w,h)`:
+      `ImageUtils.cropRoiFromFrame` (fast live-frame crop, `:288-291`),
+      `MainActivity.cropRoiJpeg` (full-res still, `:215-217`), and the Dart fallback
+      `_cropJpeg` (`roi_capture.dart:270-272`). Because the cap uses `min(w,h)`, a
+      720 short edge **mathematically can only ever save 704** — in any orientation. So
+      the 720×720 file came from an APK built **before** this snap-and-cap fix (rounds
+      19/21/26); the fast-crop path the owner was using cannot emit 720 in current source.
+      **No crop/save code change was needed.**
+    - **The real, still-present defect was purely visual.** The draggable ROI *box*
+      (and the inference-ROI it pushes natively) used the raw continuous `sideFraction`,
+      so a maxed box could span the full 720 px width while only the 704-px centre was
+      saved/readout — "what you see" ≠ "what you save", the ~8 px-per-side (~2 %) margin
+      the owner noticed.
+    - **Fix — snap the box geometry too.** New `Roi.snapSideToGrid(sourceWidth,
+      maxSidePx, frameAspect)` quantises the side to `snapToMultipleOf32(side*sourceWidth)
+      .clamp(32, maxSidePx)` then re-clamps the centre (reuses the existing
+      `snapToMultipleOf32` and `copyClamped`). It is applied in `_onRoiChanged` — the
+      single funnel for drag, two-finger pinch, **and** the size slider — so all three
+      become WYSIWYG at once; the readout and `_pushInferenceRoi` already read
+      `_roi.sideFraction`, so the box, the readout, the saved crop, **and** the inference
+      ROI are now identical by construction. A one-time re-snap also runs when the crop
+      source size first becomes known (first analysis frame, or full-res still probe), so
+      a box loaded from a persisted session lands on the grid without the user touching it.
+    - **Deliberate edge margin.** When maxed, the box no longer touches the preview edge:
+      it leaves an exact, symmetric margin (8 px per side at a 720 short edge, ≈2 %). That
+      thin band is precisely the stream pixels that are **not** in the ÷32 saved crop —
+      the honest, correct behaviour. Snapping only shrinks the side, so it is idempotent
+      and pure *moves* don't fight it; only *resizes* step in 32-px increments, matching
+      the readout which already stepped.
+    - **No change** to the crop/save code, the logging schema, tracking, or detection.
+    - `flutter analyze` clean (changed files); `flutter test test/pollinator` **38/38**
+      pass (added a `snapSideToGrid` test: 720 short side → 704, idempotent, and source
+      size 0 → unchanged); **`flutter build apk --debug` succeeds**. On-device
+      confirmation (fresh build: readout 704, box leaves a thin even margin, a pulled
+      `roi_frames/roi_*.jpg` measures **704×704**) left for the next field run.
+
 ## 6. Performance note: what actually decides GPU vs CPU
 
 The processor actually used is now logged and shown on screen, and observing it

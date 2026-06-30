@@ -47,6 +47,39 @@ void main() {
     expect(r.bottom, lessThanOrEqualTo(1 + 1e-9));
   });
 
+  test('snapSideToGrid lands the side on the saved-crop ÷32 grid', () {
+    // A maxed box on a 720x960 portrait stream: the width (720) is the short
+    // side, so the readout/crop cap is 704 (largest multiple of 32 that fits
+    // 720). The box must shrink from the full 720 width to that 704 to match.
+    const sourceWidth = 720;
+    const maxSidePx = 704; // (720 ~/ 32) * 32
+    const portraitAspect = 720 / 960; // imageWidth / imageHeight = 0.75
+    const roi = Roi(centerX: 0.5, centerY: 0.5, sideFraction: 1.0);
+    final snapped = roi.snapSideToGrid(
+      sourceWidth: sourceWidth,
+      maxSidePx: maxSidePx,
+      frameAspect: portraitAspect,
+    );
+    // The snapped side, back in pixels, is exactly the saved 704.
+    expect(snapped.sideFraction * sourceWidth, closeTo(704, 1e-6));
+
+    // Idempotent: snapping an already-on-grid box does not move it.
+    final again = snapped.snapSideToGrid(
+      sourceWidth: sourceWidth,
+      maxSidePx: maxSidePx,
+      frameAspect: portraitAspect,
+    );
+    expect(again.sideFraction, closeTo(snapped.sideFraction, 1e-9));
+
+    // Unknown source size (0) leaves the box untouched.
+    final untouched = roi.snapSideToGrid(
+      sourceWidth: 0,
+      maxSidePx: maxSidePx,
+      frameAspect: portraitAspect,
+    );
+    expect(untouched.sideFraction, roi.sideFraction);
+  });
+
   test('toLogJson reports equal pixel width/height and normalized centre', () {
     const roi = Roi(centerX: 0.4, centerY: 0.6, sideFraction: 0.5);
     final j = roi.toLogJson(1280, 960);

@@ -158,6 +158,40 @@ class Roi {
     return Roi(centerX: cx, centerY: cy, sideFraction: side);
   }
 
+  /// Returns a copy whose side is snapped to the exact pixel square that will be
+  /// SAVED to disk — the nearest multiple of 32 that fits, never exceeding
+  /// [maxSidePx] (the crop source's short-side cap, already a multiple of 32).
+  ///
+  /// Why: the saved crop and the on-screen resolution readout always snap the
+  /// side to a multiple of 32 (model-friendly), but the draggable box itself was
+  /// continuous, so a maxed box could visually span e.g. 720 px while only 704 px
+  /// were saved. Snapping the geometry too makes the box the user sees equal the
+  /// saved crop pixel-for-pixel ("what you see is what you save").
+  ///
+  /// [sourceWidth] is the width (in pixels) the crop is taken from — the live
+  /// analysis frame, or the full-resolution still in full-res mode. Snapping only
+  /// ever shrinks the side, so the centre stays valid; it is re-clamped here for
+  /// safety. Returns [this] unchanged if [sourceWidth] is not yet known (<= 0) or
+  /// the snap would not change the side.
+  Roi snapSideToGrid({
+    required int sourceWidth,
+    required int maxSidePx,
+    required double frameAspect,
+  }) {
+    if (sourceWidth <= 0 || maxSidePx <= 0) return this;
+    // Pixel side the readout/crop would use, then back to a width fraction.
+    final snappedPx = snapToMultipleOf32(
+      sideFraction * sourceWidth,
+    ).clamp(32, maxSidePx);
+    final snappedFraction = snappedPx / sourceWidth;
+    // copyClamped re-clamps the centre so the (possibly smaller) square stays
+    // fully inside the frame.
+    return copyClamped(
+      sideFraction: snappedFraction,
+      frameAspect: frameAspect,
+    );
+  }
+
   /// Log representation per CLAUDE.md: pixel width/height plus the normalized
   /// centre relative to the full sensor frame.
   Map<String, dynamic> toLogJson(int imageWidth, int imageHeight) {

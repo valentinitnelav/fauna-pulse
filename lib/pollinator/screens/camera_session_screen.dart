@@ -565,6 +565,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _imageWidth = w;
         _imageHeight = h;
         _accelerator = accel;
+        // Fast-mode crop source is now known: align a loaded box to the ÷32 grid.
+        if (!_config.fullResPhotos) _snapRoiToSourceGrid();
       });
     }
 
@@ -632,6 +634,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             setState(() {
               _captureWidth = size.$1;
               _captureHeight = size.$2;
+              // Full-res crop source is now known: align a loaded box to the grid.
+              if (_config.fullResPhotos) _snapRoiToSourceGrid();
             });
             return;
           }
@@ -647,6 +651,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       setState(() {
         _captureWidth = _imageWidth;
         _captureHeight = _imageHeight;
+        if (_config.fullResPhotos) _snapRoiToSourceGrid();
       });
     }
   }
@@ -1299,7 +1304,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void _onRoiChanged(Roi roi) {
     // Keep the box inside the visible preview (covers the size-slider path; the
     // drag/pinch overlay also clamps with its exact constraints).
-    final clamped = roi.clampToVisible(_currentVisibleRect(), _frameAspect);
+    var clamped = roi.clampToVisible(_currentVisibleRect(), _frameAspect);
+    // Snap the box geometry to the same multiple-of-32 grid the readout and the
+    // saved crop use, so the box you see equals the square written to disk
+    // ("what you see is what you save"). Only possible once the crop source size
+    // is known; until then the box stays continuous and the readout shows
+    // "measuring…". Snapping only shrinks the side, so moves are unaffected.
+    if (_roiSourceWidth > 0) {
+      clamped = clamped.snapSideToGrid(
+        sourceWidth: _roiSourceWidth,
+        maxSidePx: _maxRoiPx,
+        frameAspect: _frameAspect,
+      );
+    }
     setState(() => _roi = clamped);
     _pushInferenceRoi();
     if (_recording) {
@@ -1307,6 +1324,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
       });
     }
+  }
+
+  /// Re-snaps the current ROI to the saved-crop multiple-of-32 grid once the crop
+  /// source size first becomes known (the first analysis frame, or the full-res
+  /// still probe). A box loaded from a persisted session is stored as a raw
+  /// fraction, so this lands it on the same grid the readout and crop use, making
+  /// it WYSIWYG without the user having to touch it. Call from inside a setState.
+  void _snapRoiToSourceGrid() {
+    if (_roiSourceWidth <= 0) return;
+    _roi = _roi.snapSideToGrid(
+      sourceWidth: _roiSourceWidth,
+      maxSidePx: _maxRoiPx,
+      frameAspect: _frameAspect,
+    );
   }
 
   /// The frame-normalized rectangle currently visible on the preview (the rest
