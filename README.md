@@ -12,7 +12,7 @@ When an insect enters the ROI, a combined detection + tracking pipeline activate
 assigns each insect a tracking ID, saves ROI-cropped JPEGs, and writes an append-only JSON log of the session. 
 
 [Claude Code](https://claude.com/product/claude-code) was used for software development.
-See [`POLLINATOR_MONITOR.md`](POLLINATOR_MONITOR.md) for the full development log and pipeline configuration.
+See [`./docs/POLLINATOR_OVERVIEW.md`](./docs/POLLINATOR_OVERVIEW.md) & the detailed [`./docs/POLLINATOR_MONITOR.md`](./docs/POLLINATOR_MONITOR.md) for the full development log and pipeline configuration.
 
 Android-first. iOS compatibility is planned for a later phase and might live in a separate repository.
 
@@ -24,7 +24,7 @@ pollinator-monitor/
 ├── lib/                     # the Pollinator Monitor app (Dart scripts)
 ├── android/                 # app platform code
 ├── assets/                  # app assets, including assets/models/ detectors
-├── POLLINATOR_MONITOR.md    # development log / change history
+├── docs/                    # app install doc, development logs / change history, etc.
 ├── LICENSE                  # AGPL-3.0
 └── packages/
     └── ultralytics_yolo/    # MODIFIED YOLO Flutter plugin from ultralytics (see below)
