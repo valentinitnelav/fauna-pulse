@@ -1,5 +1,10 @@
 # Pollinator Monitor — Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
 
+> **For the current state at a glance, read [`POLLINATOR_OVERVIEW.md`](POLLINATOR_OVERVIEW.md)
+> first** (a short living snapshot: current defaults, file map, key invariants, device
+> quirks). **This** file is the full append-only history — open it when you need the
+> round-by-round narrative or the rationale behind a past decision.
+
 This document records, transparently and in full, how the **Pollinator Monitor**
 Android application was built on top of the open-source
 [`ultralytics/yolo-flutter-app`](https://github.com/ultralytics/ultralytics-yolo-flutter)
