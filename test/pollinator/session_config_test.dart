@@ -43,6 +43,49 @@ void main() {
     expect(restored.throttleDutyTarget, 0.5);
   });
 
+  test('motion gate defaults (off) and round-trip', () {
+    const c = SessionConfig();
+    expect(c.motionGateEnabled, false); // opt-in until validated
+    expect(c.motionGatePixelDelta, 25);
+    expect(c.motionGateAreaFraction, 0.005);
+    expect(c.motionGateWakeSeconds, 3.0);
+    expect(c.motionGateGridSize, 48);
+    final restored = SessionConfig.fromJson(
+      c.copyWith(
+        motionGateEnabled: true,
+        motionGatePixelDelta: 40,
+        motionGateAreaFraction: 0.01,
+        motionGateWakeSeconds: 5.0,
+        motionGateGridSize: 96,
+      ).toJson(),
+    );
+    expect(restored.motionGateEnabled, true);
+    expect(restored.motionGatePixelDelta, 40);
+    expect(restored.motionGateAreaFraction, 0.01);
+    expect(restored.motionGateWakeSeconds, 5.0);
+    expect(restored.motionGateGridSize, 96);
+  });
+
+  test('older configs without motion-gate fields fall back to defaults', () {
+    final restored = SessionConfig.fromJson(const {'inferenceFps': 0});
+    expect(restored.motionGateEnabled, false);
+    expect(restored.motionGatePixelDelta, 25);
+    expect(restored.motionGateAreaFraction, 0.005);
+    expect(restored.motionGateWakeSeconds, 3.0);
+    expect(restored.motionGateGridSize, 48);
+  });
+
+  test('default inference cap is a deliberate 10/s (0 stays uncapped)', () {
+    expect(const SessionConfig().inferenceFps, 10);
+    // An explicitly saved 0 (uncapped) must survive the round-trip — only a
+    // MISSING key falls back to the new default.
+    expect(
+      SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps,
+      0,
+    );
+    expect(SessionConfig.fromJson(const {}).inferenceFps, 10);
+  });
+
   test('velocity smoothing round-trips through the config JSON', () {
     final original = const SessionConfig().copyWith(
       trackerParams: const ByteTrackParams(velocitySmoothing: 0.8),

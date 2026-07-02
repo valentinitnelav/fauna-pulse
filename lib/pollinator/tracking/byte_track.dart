@@ -156,6 +156,17 @@ class ByteTracker {
     totalConfirmed = 0;
   }
 
+  /// Drops every track currently in the "lost" state (keeps confirmed and
+  /// tentative ones). Needed by the motion gate: while the gate keeps the
+  /// detector asleep no frames reach [update], so lost tracks cannot age out
+  /// through [ByteTrackParams.trackBuffer]. The session screen calls this when
+  /// the gate wakes after sleeping longer than the occlusion tolerance, so a
+  /// newly arriving insect can never be re-linked to (and miscounted as) one
+  /// that left before the gate closed.
+  void expireLostTracks() {
+    _tracks.removeWhere((t) => t.state == TrackState.lost);
+  }
+
   /// Advance the tracker by one frame.
   ///
   /// [detections] are this frame's ROI-filtered boxes; [timestampMs] is the

@@ -550,6 +550,17 @@ class YOLOPlatformView(
                     yoloView.setInferenceRoi(cx, cy, side)
                     result.success(null)
                 }
+                "setMotionGate" -> {
+                    // Pollinator Monitor: skip inference while nothing moves in the ROI
+                    // (see MotionGate). Saves heat/battery during empty-flower periods.
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    val pixelDelta = call.argument<Int>("pixelDelta") ?: 25
+                    val areaFraction = call.argument<Double>("areaFraction") ?: 0.005
+                    val wakeSeconds = call.argument<Double>("wakeSeconds") ?: 3.0
+                    val gridSize = call.argument<Int>("gridSize") ?: MotionGate.DEFAULT_GRID
+                    yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize)
+                    result.success(null)
+                }
                 "getStreamResolutions" -> {
                     result.success(yoloView.supportedStreamResolutions())
                 }

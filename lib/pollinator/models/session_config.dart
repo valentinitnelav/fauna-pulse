@@ -68,11 +68,13 @@ class SessionConfig {
   final bool useGpu;
 
   /// Cap on how many times per second the detector runs ("inference").
-  /// **0 means uncapped** — run as fast as the device can (the default), which
-  /// gives the highest frame rate. A positive value throttles inference to that
-  /// rate to cut heat and battery (the model is the hot part); the camera preview
-  /// stays smooth regardless. For timing insect visits (which last seconds) even
-  /// ~10/s is plenty, so capping is a fine trade if the phone runs hot.
+  /// **0 means uncapped** — run as fast as the device can. A positive value
+  /// throttles inference to that rate to cut heat and battery (the model is the
+  /// hot part); the camera preview stays smooth regardless. For timing insect
+  /// visits (which last seconds) ~10/s is plenty, so the default is now 10:
+  /// under field sun the phone throttles itself within ~30 s when uncapped,
+  /// whereas a deliberate cap holds a steady rate far longer. Set 0 only for
+  /// benchmarking the device's raw speed.
   final int inferenceFps;
 
   /// When true (default), the app **automatically** adjusts the inference rate
@@ -90,6 +92,38 @@ class SessionConfig {
   /// Lower = cooler and steadier but fewer fps; higher = more fps but more heat.
   /// Only used when [autoThrottle] is true.
   final double throttleDutyTarget;
+
+  /// Motion gate (opt-in, experimental). When on, the detector only runs while
+  /// something is *moving* inside the ROI, or moved / was detected within the
+  /// last [motionGateWakeSeconds] — the rest of the time inference is skipped
+  /// entirely, so the phone stays cool during the (usually long) empty-flower
+  /// periods of a field session. A cheap per-frame brightness comparison
+  /// against a slowly-learned background does the watching (native side, <1 ms
+  /// per frame). Off by default until validated against always-on recall.
+  final bool motionGateEnabled;
+
+  /// How much a single pixel's brightness (0..255) must differ from the learned
+  /// background to count as "changed". Lower = more sensitive (better recall,
+  /// more false wake-ups from petal shadows); higher = stricter.
+  final int motionGatePixelDelta;
+
+  /// Fraction (0..1) of ROI pixels that must be "changed" in one frame to wake
+  /// the detector. Kept small on purpose — an insect covers little of the ROI.
+  /// 0.005 means half a percent of the ROI area.
+  final double motionGateAreaFraction;
+
+  /// How long (seconds) the detector keeps running after the last motion OR the
+  /// last detection. Longer is safer for recall (a still insect keeps being
+  /// re-detected, which itself extends the window) but saves less heat.
+  final double motionGateWakeSeconds;
+
+  /// Cells per side of the square thumbnail the ROI is shrunk to for the
+  /// motion check (a count, not pixels). Each cell watches 1/N of the ROI
+  /// width, so an insect narrower than roughly ROI-width/N may not register.
+  /// Raise it when the insects of interest are small *relative to the ROI box*
+  /// (e.g. 96–128), and consider lowering [motionGateAreaFraction] with it.
+  /// Costs slightly more CPU per frame (still ~1 ms at 160). Range 16–160.
+  final int motionGateGridSize;
 
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
@@ -172,13 +206,19 @@ class SessionConfig {
     this.flashOnCapture = true,
     this.useGpu = true,
     this.inferenceFps =
-        0, // 0 = uncapped (max FPS, matches the upstream example);
-    // raise it in settings only to cap heat/battery on long sessions.
+        10, // deliberate default cap: plenty for second-scale insect visits,
+    // and it delays the thermal collapse under field sun. 0 = uncapped
+    // (raw benchmark mode).
     // Low default stream (≈ model input) so inference runs at full speed like the
     // original; the stream-resolution setting can raise it for bigger fast crops.
     this.autoThrottle = true,
     this.minInferenceFps = 3,
     this.throttleDutyTarget = 0.5,
+    this.motionGateEnabled = false,
+    this.motionGatePixelDelta = 25,
+    this.motionGateAreaFraction = 0.005,
+    this.motionGateWakeSeconds = 3.0,
+    this.motionGateGridSize = 48,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.fullResPhotos = false, // false = fast crops from the live frame
@@ -240,6 +280,11 @@ class SessionConfig {
     bool? autoThrottle,
     int? minInferenceFps,
     double? throttleDutyTarget,
+    bool? motionGateEnabled,
+    int? motionGatePixelDelta,
+    double? motionGateAreaFraction,
+    double? motionGateWakeSeconds,
+    int? motionGateGridSize,
     int? streamWidth,
     int? streamHeight,
     bool? fullResPhotos,
@@ -269,6 +314,13 @@ class SessionConfig {
     autoThrottle: autoThrottle ?? this.autoThrottle,
     minInferenceFps: minInferenceFps ?? this.minInferenceFps,
     throttleDutyTarget: throttleDutyTarget ?? this.throttleDutyTarget,
+    motionGateEnabled: motionGateEnabled ?? this.motionGateEnabled,
+    motionGatePixelDelta: motionGatePixelDelta ?? this.motionGatePixelDelta,
+    motionGateAreaFraction:
+        motionGateAreaFraction ?? this.motionGateAreaFraction,
+    motionGateWakeSeconds:
+        motionGateWakeSeconds ?? this.motionGateWakeSeconds,
+    motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     fullResPhotos: fullResPhotos ?? this.fullResPhotos,
@@ -300,6 +352,11 @@ class SessionConfig {
     'autoThrottle': autoThrottle,
     'minInferenceFps': minInferenceFps,
     'throttleDutyTarget': throttleDutyTarget,
+    'motionGateEnabled': motionGateEnabled,
+    'motionGatePixelDelta': motionGatePixelDelta,
+    'motionGateAreaFraction': motionGateAreaFraction,
+    'motionGateWakeSeconds': motionGateWakeSeconds,
+    'motionGateGridSize': motionGateGridSize,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'fullResPhotos': fullResPhotos,
@@ -327,10 +384,17 @@ class SessionConfig {
     showOverlayInfo: j['showOverlayInfo'] as bool? ?? true,
     flashOnCapture: j['flashOnCapture'] as bool? ?? true,
     useGpu: j['useGpu'] as bool? ?? true,
-    inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? 0,
+    inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? 10,
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,
+    motionGateEnabled: j['motionGateEnabled'] as bool? ?? false,
+    motionGatePixelDelta: (j['motionGatePixelDelta'] as num?)?.toInt() ?? 25,
+    motionGateAreaFraction:
+        (j['motionGateAreaFraction'] as num?)?.toDouble() ?? 0.005,
+    motionGateWakeSeconds:
+        (j['motionGateWakeSeconds'] as num?)?.toDouble() ?? 3.0,
+    motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     fullResPhotos: j['fullResPhotos'] as bool? ?? false,

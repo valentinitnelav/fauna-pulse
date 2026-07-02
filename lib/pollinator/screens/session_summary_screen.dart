@@ -614,6 +614,24 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 : '${_numStr(infFps)} /s'),
     );
 
+    // --- Heat management ---
+    // Only for sessions that recorded these fields (config block, round 44+).
+    if (_setting('autoThrottle') != null || _setting('motionGateEnabled') != null) {
+      rows.add(_subhead('Heat management'));
+      add('Auto-throttle', _setting('autoThrottle'));
+      add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
+      add('Throttle duty target', _setting('throttleDutyTarget'));
+      // Motion gate (round 58+): detector sleeps while nothing moves in the ROI.
+      add('Motion gate', _setting('motionGateEnabled'));
+      if (_setting('motionGateEnabled') == true) {
+        add('Gate pixel sensitivity', _setting('motionGatePixelDelta'));
+        final area = _setting('motionGateAreaFraction');
+        add('Gate trigger area', area is num ? area * 100 : null, suffix: ' %');
+        add('Gate wake duration', _setting('motionGateWakeSeconds'), suffix: ' s');
+        add('Gate grid resolution', _setting('motionGateGridSize'), suffix: ' cells');
+      }
+    }
+
     // --- Photos & capture ---
     rows.add(_subhead('Photos & capture'));
     add(
@@ -720,95 +738,119 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Session summary')),
-      body: _loadingStats
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              children: [
-                _summaryList(),
-                // Floating show/hide for the (potentially very tall) visit
-                // timeline — only while that section is on screen.
-                if (_timelineInView)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 16,
-                    child: Center(
-                      child: FilledButton.tonalIcon(
-                        icon: Icon(
-                          _showTimeline
-                              ? Icons.unfold_less
-                              : Icons.unfold_more,
-                        ),
-                        label: Text(
-                          _showTimeline ? 'Hide timeline' : 'Show timeline',
-                        ),
-                        onPressed: () =>
-                            setState(() => _showTimeline = !_showTimeline),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+    // Four tabs keep the summary uncluttered: headline numbers, the full
+    // settings record, the saved-photo browser, and the graphs each get their
+    // own page instead of one very long scroll.
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Session summary'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Overview'),
+              Tab(text: 'Settings'),
+              Tab(text: 'Photos'),
+              Tab(text: 'Graphs'),
+            ],
+          ),
+        ),
+        body: _loadingStats
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                children: [
+                  _overviewTab(),
+                  _settingsTab(),
+                  _photosTab(),
+                  _graphsTab(),
+                ],
+              ),
+      ),
     );
   }
 
-  Widget _summaryList() {
+  static const _tabPadding = EdgeInsets.fromLTRB(16, 16, 16, 64);
+
+  /// Headline numbers: the quick "how did it go" read.
+  Widget _overviewTab() => ListView(
+    padding: _tabPadding,
+    children: [
+      _stat('Unique insects (track ids)', _uniqueTracks?.toString() ?? 'unknown'),
+      _stat('Session duration', _durationLabel),
+      _stat('Model', _model ?? 'unknown'),
+      if (_accelerator != null && _accelerator!.isNotEmpty)
+        _stat('Inference engine', _accelerator!),
+      _stat('Ended normally', _endedNormally ? 'Yes' : 'No (crash / forced stop)'),
+      _stat('Battery used', _batteryUsedLabel),
+      if (_chargingDuringSession)
+        const Padding(
+          padding: EdgeInsets.only(top: 2, bottom: 6),
+          child: Text(
+            '⚠ The phone was plugged in during this session, so the '
+            'energy estimate is not reliable (measure unplugged).',
+            style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+          ),
+        ),
+      _stat('Saved to', widget.logFile.parent.path),
+    ],
+  );
+
+  /// Every parameter the user chose at session start (from the log's config
+  /// block), grouped — its own tab so the overview stays scannable.
+  Widget _settingsTab() =>
+      ListView(padding: _tabPadding, children: _settingsSection());
+
+  Widget _photosTab() =>
+      ListView(padding: _tabPadding, children: _photoSection());
+
+  Widget _graphsTab() {
     // Recompute timeline visibility after this frame lays out, so the floating
     // button appears even before the first scroll if the timeline starts visible.
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateTimelineInView());
-    return ListView(
-      controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 64),
+    return Stack(
       children: [
-                _stat(
-                  'Unique insects (track ids)',
-                  _uniqueTracks?.toString() ?? 'unknown',
+        ListView(
+          controller: _scroll,
+          padding: _tabPadding,
+          children: [
+            if (!_graphsRequested)
+              Center(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.insights),
+                  label: const Text('Generate graphs'),
+                  onPressed: _loadGraphs,
                 ),
-                _stat('Session duration', _durationLabel),
-                _stat('Model', _model ?? 'unknown'),
-                if (_accelerator != null && _accelerator!.isNotEmpty)
-                  _stat('Inference engine', _accelerator!),
-                _stat(
-                  'Ended normally',
-                  _endedNormally ? 'Yes' : 'No (crash / forced stop)',
+              )
+            else if (_graphsLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
                 ),
-                _stat('Battery used', _batteryUsedLabel),
-                if (_chargingDuringSession)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2, bottom: 6),
-                    child: Text(
-                      '⚠ The phone was plugged in during this session, so the '
-                      'energy estimate is not reliable (measure unplugged).',
-                      style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
-                    ),
-                  ),
-                _stat('Saved to', widget.logFile.parent.path),
-                const SizedBox(height: 24),
-                ..._settingsSection(),
-                const SizedBox(height: 24),
-                ..._photoSection(),
-                const SizedBox(height: 24),
-                if (!_graphsRequested)
-                  Center(
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.insights),
-                      label: const Text('Generate graphs'),
-                      onPressed: _loadGraphs,
-                    ),
-                  )
-                else if (_graphsLoading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                else
-                  ..._graphs(),
-              ],
-            );
+              )
+            else
+              ..._graphs(),
+          ],
+        ),
+        // Floating show/hide for the (potentially very tall) visit
+        // timeline — only while that section is on screen.
+        if (_timelineInView)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 16,
+            child: Center(
+              child: FilledButton.tonalIcon(
+                icon: Icon(
+                  _showTimeline ? Icons.unfold_less : Icons.unfold_more,
+                ),
+                label: Text(_showTimeline ? 'Hide timeline' : 'Show timeline'),
+                onPressed: () => setState(() => _showTimeline = !_showTimeline),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   List<Widget> _graphs() => [

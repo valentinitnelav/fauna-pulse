@@ -325,6 +325,53 @@ class YOLOView @JvmOverloads constructor(
         } else {
             InferenceRoi(cx.toFloat(), cy.toFloat(), side.toFloat())
         }
+        // The gate's learned background belongs to the OLD ROI position; forget it
+        // and keep the detector awake briefly so a mid-session ROI drag never
+        // causes a false idle (or a false motion burst) while the background relearns.
+        if (motionGateEnabled) {
+            motionGate.reset()
+            gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+        }
+    }
+
+    // Pollinator Monitor: optional motion gate. When enabled, frames where nothing
+    // moved inside the ROI (and no detection happened recently) skip inference
+    // entirely — the detector "sleeps" while the flower is empty, saving heat and
+    // battery in the field. See MotionGate for the algorithm. All fields volatile:
+    // written from the platform-channel (main) thread, read on the analyzer thread.
+    @Volatile private var motionGateEnabled = false
+    @Volatile private var motionGateWakeNs = 3_000_000_000L
+    // Deadline (nanoTime) until which the detector stays awake. Extended by
+    // motion, by every non-empty detection result, and by ROI changes.
+    @Volatile private var gateAwakeUntilNs = 0L
+    private val motionGate = MotionGate()
+    private var lastGateHeartbeatNs = 0L // analyzer thread only
+
+    /**
+     * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
+     * per-pixel brightness change (0..255) that counts as "changed"; [areaFraction]
+     * the fraction of ROI pixels that must change to wake the detector;
+     * [wakeSeconds] how long the detector keeps running after the last motion or
+     * detection; [gridSize] the side of the comparison thumbnail (finer grids let
+     * smaller insects register — each cell covers ROI-side/gridSize of the scene).
+     * The gate always starts AWAKE so the user can see the detector working before
+     * it first goes to sleep.
+     */
+    fun setMotionGate(
+        enabled: Boolean,
+        pixelDelta: Int,
+        areaFraction: Double,
+        wakeSeconds: Double,
+        gridSize: Int = MotionGate.DEFAULT_GRID,
+    ) {
+        motionGate.pixelDelta = pixelDelta.coerceIn(1, 255)
+        motionGate.areaFraction = areaFraction.coerceIn(0.0001, 1.0)
+        motionGate.gridSize = gridSize
+        motionGateWakeNs = (wakeSeconds.coerceIn(0.5, 60.0) * 1e9).toLong()
+        motionGate.reset()
+        gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+        motionGateEnabled = enabled
+        Log.i(TAG, "MotionGate ${if (enabled) "ON" else "OFF"} pixelDelta=$pixelDelta areaFraction=$areaFraction wakeSeconds=$wakeSeconds gridSize=$gridSize")
     }
 
     // detection thresholds (can be changed externally via setters)
@@ -1939,6 +1986,49 @@ class YOLOView @JvmOverloads constructor(
                 return
             }
 
+            // Pollinator Monitor motion gate: on every frame (cheap, <1 ms) check
+            // whether anything moved inside the ROI. While there is neither motion
+            // nor a recent detection, skip inference entirely — the detector
+            // sleeps, the phone stays cool. Runs BEFORE the FPS-cap check so the
+            // background model keeps learning even on frames the cap would skip.
+            if (motionGateEnabled) {
+                val gateLandscape =
+                    context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val roi = inferenceRoi
+                val motion = motionGate.motionDetected(
+                    bitmap = bitmap,
+                    rotateForCamera = true,
+                    isLandscape = gateLandscape,
+                    isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
+                    rotationDegrees = imageProxy.imageInfo.rotationDegrees,
+                    // No ROI set -> watch the centered full-height square (side is
+                    // clamped to the frame's short side inside the crop helper).
+                    roiCx = roi?.cx ?: 0.5f,
+                    roiCy = roi?.cy ?: 0.5f,
+                    roiSide = roi?.side ?: 1f,
+                )
+                val nowGate = System.nanoTime()
+                if (motion) gateAwakeUntilNs = nowGate + motionGateWakeNs
+                if (nowGate > gateAwakeUntilNs) {
+                    // Idle: tell Flutter once a second that we are alive but gated,
+                    // so the UI can show "motion gate: idle" instead of tripping
+                    // the 0-FPS "detector not producing results" watchdog.
+                    if (nowGate - lastGateHeartbeatNs >= 1_000_000_000L) {
+                        lastGateHeartbeatNs = nowGate
+                        streamCallback?.invoke(
+                            mapOf(
+                                "gateIdle" to true,
+                                "motionScore" to motionGate.lastScore,
+                                "cameraFps" to lastDeliveredFps,
+                                "timestamp" to System.currentTimeMillis(),
+                            )
+                        )
+                    }
+                    imageProxy.close()
+                    return
+                }
+            }
+
             // Check if we should run inference on this frame
             if (!shouldRunInference()) {
                 imageProxy.close()
@@ -1983,7 +2073,14 @@ class YOLOView @JvmOverloads constructor(
                     result
                 }
                 
-                inferenceResult = resultWithOriginalImage
+                // Motion gate: every frame with at least one detection keeps the
+            // detector awake, so an insect that lands and sits perfectly still is
+            // never dropped just because it stopped producing motion.
+            if (motionGateEnabled && result.boxes.isNotEmpty()) {
+                gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+            }
+
+            inferenceResult = resultWithOriginalImage
 
                 // Log
                 
@@ -2007,6 +2104,13 @@ class YOLOView @JvmOverloads constructor(
                         enhancedStreamData["imageWidth"] = orientedWidth
                         enhancedStreamData["imageHeight"] = orientedHeight
                         enhancedStreamData["roiActive"] = (inferenceRoi != null)
+                    // Motion gate state for the UI: on frames that ran inference the
+                    // gate is by definition awake; include the live motion score so
+                    // the user can tune the trigger threshold against reality.
+                    if (motionGateEnabled) {
+                        enhancedStreamData["gateIdle"] = false
+                        enhancedStreamData["motionScore"] = motionGate.lastScore
+                    }
                         // Which processor is actually running inference ("GPU"/"CPU"/"NPU"). Note GPU
                         // can't compile int8 models and falls back to CPU (see LiteRtModel).
                         enhancedStreamData["accelerator"] = (p as? BasePredictor)?.accelerator ?: "unknown"

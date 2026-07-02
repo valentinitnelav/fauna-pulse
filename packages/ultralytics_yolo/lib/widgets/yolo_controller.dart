@@ -276,6 +276,32 @@ class YOLOViewController {
     required double side,
   }) => _invoke<void>('setInferenceRoi', {'cx': cx, 'cy': cy, 'side': side});
 
+  /// Enables/disables the native motion gate (Pollinator Monitor).
+  ///
+  /// While enabled, the detector runs only when something moves inside the ROI
+  /// (or moved/was detected within the last [wakeSeconds]); otherwise inference
+  /// is skipped so the phone stays cool during empty-flower periods. A pixel
+  /// counts as "changed" when its brightness (0..255) differs from the learned
+  /// background by more than [pixelDelta]; a frame counts as motion when at
+  /// least [areaFraction] (0..1) of the ROI pixels changed. The comparison runs
+  /// on a [gridSize]×[gridSize] thumbnail of the ROI — finer grids let smaller
+  /// insects register (each cell covers ROI-side/gridSize of the scene). While
+  /// idle the native side emits ~1 Hz heartbeat maps with `gateIdle: true`
+  /// through the streaming callback. Android only; a no-op where unimplemented.
+  Future<void> setMotionGate({
+    required bool enabled,
+    int pixelDelta = 25,
+    double areaFraction = 0.005,
+    double wakeSeconds = 3.0,
+    int gridSize = 48,
+  }) => _invoke<void>('setMotionGate', {
+    'enabled': enabled,
+    'pixelDelta': pixelDelta,
+    'areaFraction': areaFraction,
+    'wakeSeconds': wakeSeconds,
+    'gridSize': gridSize,
+  });
+
   Future<void> switchModel(String modelPath, [YOLOTask? task]) async {
     final channel = _methodChannel;
     if (channel == null || _viewId == null) return;

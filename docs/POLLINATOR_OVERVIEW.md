@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 57 (ROI ÷32 WYSIWYG).
+> Last synced with: round 60 (gate supersampling noise fix, grid 16–160, tabbed summary).
 
 ## What the app is about
 
@@ -52,8 +52,9 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Time-lapse step | `1.0 s` | first photo on detection, then every step |
 | Capture duration | `10.0 s` | per track id; must be > step |
 | Session length | `60 min` | user-editable |
-| Inference FPS cap | `0` (uncapped) | raise only to limit heat/battery |
-| Auto-throttle | on | min `3` FPS, duty target `0.5` |
+| Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload |
+| Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
+| Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm) |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
 | Full-res ROI photos | `false` | false = fast crops from the live analysis frame |
 | Occlusion tolerance | `3.0 s` | track buffer |
@@ -87,6 +88,24 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
+- **Motion gate (round 58, opt-in).** Native `MotionGate.kt` (48×48 EMA background diff on
+  the ROI) skips inference while nothing moves; motion, detections, and ROI drags all
+  extend a `wakeSeconds` window, and the gate always starts awake. While idle the native
+  side heartbeats `gateIdle: true` ~1 Hz — `_onStreamingData` short-circuits on it (no
+  watchdog, "Gate: idle" stat line). On wake after sleeping > `occlusionSeconds`,
+  `ByteTracker.expireLostTracks()` runs so a newcomer never inherits a stale id. Gate
+  transitions are logged as `motion_gate` JSONL entries. Don't gate in Dart — frames
+  never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
+  atop the status strip + ROI border turns grey while idle (priority: capture flash >
+  gate-idle grey > recording red > yellow). Handheld shake keeps the gate awake by
+  design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
+  and box-averaged (bilinear minification is point-sampling; without this, coarse grids
+  were NOISIER than fine ones — session_89 observation).
+- **Session summary is tabbed (round 60):** Overview | Settings | Photos | Graphs
+  (`DefaultTabController`, `session_summary_screen.dart`). The Settings tab reads the
+  `config` block from the start record, so every new `SessionConfig` field appears in
+  the JSON automatically — but add a display row in `_settingsSection()` when adding
+  a setting.
 
 ## Device quirks (test phones)
 

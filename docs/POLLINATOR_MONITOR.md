@@ -1800,3 +1800,189 @@ Decisions and what was done:
 GitHub repo and push. `gh` is not installed, so either install it
 (`gh repo create pollinator-monitor --private --source . --push`) or create the
 repo in the browser and `git remote add origin <url> && git push -u origin main`.
+
+---
+
+## Round 58 (2026-07-02): motion gate + deliberate default FPS cap
+
+Field-deployment heat is the binding constraint (see round-53 throttle
+diagnosis): mounted in direct sun the SoC throttles within ~30 s when the
+detector runs flat-out. Two changes attack the duty cycle directly.
+
+### 1. Motion gate (opt-in, experimental)
+
+The detector now can *sleep while the flower is empty*. A cheap per-frame
+check (native, <1 ms) watches the ROI; inference runs only while something
+moves — or moved / was detected recently.
+
+**Algorithm** (`packages/ultralytics_yolo/.../MotionGate.kt`): every analysis
+frame, the ROI is shrunk to a 48×48 grayscale thumbnail (reusing
+`prepareBitmapForModelRoi`, so the gate watches exactly what the model would
+see). A per-pixel exponential-moving-average background (alpha 0.05, ~20-frame
+memory) absorbs slow drift — sun, clouds, auto-exposure. A pixel "changed" when
+its brightness differs from background by > `pixelDelta` (default 25/255); a
+frame is "motion" when > `areaFraction` (default 0.5%) of pixels changed.
+
+**Recall protection** (the deliverable is visitation *rate*; missing a visit is
+worse than wasted inference):
+- Gate starts AWAKE (`setMotionGate` primes a full wake window) so the user
+  sees the detector working before it first sleeps.
+- Motion AND every non-empty detection result extend the wake window
+  (`wakeSeconds`, default 3 s) — a sitting insect keeps being re-detected,
+  which itself keeps the gate open.
+- ROI drag resets the learned background AND wakes the gate (old background is
+  invalid at the new position).
+- The gate check runs BEFORE the FPS-cap check in `onFrame`, so the background
+  keeps learning even on frames the cap would skip.
+
+**Pipeline honesty while idle:** the native side emits a ~1 Hz heartbeat map
+(`gateIdle: true`, `motionScore`, `cameraFps`) through the streaming callback.
+`_onStreamingData` short-circuits on it: updates the "Gate: idle (detector
+asleep)" stat line + live motion %, and never reaches the 0-FPS watchdog (an
+idle gate is intentional, not a model failure).
+
+**Tracker staleness fix:** while the gate sleeps no frames reach the tracker,
+so "lost" tracks cannot age out via `trackBuffer`. On the idle→awake
+transition, if the sleep exceeded `occlusionSeconds`, the session screen calls
+the new `ByteTracker.expireLostTracks()` — otherwise a newly arriving insect
+could inherit the stale id of one that left before the gate closed (silently
+merging two visits). Unit-tested (`byte_track_test.dart`).
+
+**Logging:** new `motion_gate` JSONL entries on every transition (state,
+motion score, idle duration on wake) make gated periods auditable when
+validating a gated session against an always-on one. Config fields ride along
+in the start metadata via `config.toJson()`.
+
+**Plumbing:** `SessionConfig.motionGate{Enabled,PixelDelta,AreaFraction,WakeSeconds}`
+(off by default) → settings sheet (switch + three numeric fields, shown only
+when enabled) → `_pushMotionGate()` → `YOLOViewController.setMotionGate` →
+platform channel → `YOLOView.setMotionGate`.
+
+### 2. Default inference FPS cap: 0 (uncapped) → 10/s
+
+Insect visits last seconds; ~10 inferences/s is plenty for stable tracking,
+and a deliberate cap delays the thermal collapse far better than running
+flat-out until the SoC throttles to ~3 fps. `fromJson` fallback for a
+*missing* key is now 10, but an explicitly saved 0 (uncapped) survives the
+round-trip — existing saved settings are respected, so the owner's device
+keeps its stored value until changed in settings. Auto-throttle still treats
+the cap as its ceiling.
+
+### Verification
+
+`flutter analyze` clean; `flutter test test/pollinator` 42/42 (4 new: config
+round-trip + defaults, missing-key fallbacks, cap semantics, expireLostTracks);
+`flutter build apk --debug` succeeds (same two pre-existing warnings: KGP
+deprecation, optional fetch_bundled_models.sh).
+
+**Field validation still pending (owner):** run one gated + one always-on
+session over the same flower and compare unique-track counts and `motion_gate`
+log entries before trusting the gate for real counts.
+
+---
+
+## Round 59 (2026-07-02): gate visibility + tunable motion grid (owner feedback on r58)
+
+Owner's first handheld test of the motion gate raised three points:
+
+**1. "The gate is always on."** Expected: hand shake is constant ROI motion, so
+handheld the gate never sleeps — it is designed for a mounted phone over a
+still flower. Documented in the settings switch subtitle ("Designed for a
+MOUNTED phone: handheld shake counts as motion… normal, not a fault") so it is
+never mistaken for a bug.
+
+**2. Detector on/off state was too subtle** (one small stat line). Added:
+- A prominent chip at the top of the status strip, shown only while the gate
+  is enabled: green dot + "DETECTOR ON" while inference runs, grey dot +
+  "SLEEPING" while gated (`_gateStateChip()` in `camera_session_screen.dart`).
+- The ROI border turns grey while the gate is idle. Border color priority is
+  now: capture flash (green) > gate-idle (grey) > recording (red) > default
+  yellow. `RoiOverlay` already exposed `borderColor`, so this is one
+  expression change at the construction site.
+
+**3. Is a 48×48 motion grid too coarse for tiny insects?** It can be. Each
+grid cell covers ROI-side/N of the scene: on a 15 cm ROI, 48 gives ~3 mm
+cells — a honeybee (~12 mm) spans ~16 cells (0.7% > the 0.5% trigger area ✓),
+but a ~4 mm hoverfly spans barely one cell (0.04% ✗ would NOT wake the
+detector). New setting **Motion grid resolution** (32–128, default 48,
+`motionGateGridSize`), with helper text giving exactly this math and the
+advice to also lower Trigger area for very small insects.
+
+Implementation: `MotionGate.GRID` const → `@Volatile var gridSize` (clamped
+16–160 natively); comparison buffers are lazily (re)allocated **on the
+analyzer thread** at the start of the next `motionDetected()` call when the
+size changed (no cross-thread buffer swap), and the background is relearned.
+Plumbed through `YOLOView.setMotionGate(gridSize=…)` → platform channel →
+`YOLOViewController.setMotionGate(gridSize:)` → `SessionConfig.motionGateGridSize`
+→ settings sheet → `_pushMotionGate()`.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+42/42 (grid size added to the motion-gate round-trip + fallback tests);
+`flutter build apk --debug` builds. On-device check (owner): mounted phone →
+chip flips to grey "SLEEPING" ~3 s after motion stops and ROI border greys;
+wave a finger over the flower → chip flips green "DETECTOR ON" within a frame
+or two. Raising grid to 96 should make the motion % readout react to smaller
+movements.
+
+---
+
+## Round 60 (2026-07-02): gate noise fix (supersampling), grid units/range, tabbed summary
+
+Owner's first tripod test (indoors, orchid, no insects/wind; session_89):
+grid 48 → detector never slept; grid 128 → slept correctly, woke on a hand
+wave and slept again ~3 s later. That inversion (coarser grid = MORE
+triggering) exposed a real sampling bug.
+
+### 1. Root cause + fix: bilinear minification is point-sampling
+
+Drawing the ROI into a 48×48 target shrinks ~8×, and Android's bilinear
+filter only blends the nearest 2×2 source pixels — each thumbnail cell was a
+near-point sample carrying full per-pixel sensor noise (large indoors at high
+ISO), not the average of the ~64+ pixels the cell nominally covers. Scattered
+noise flips > pixelDelta easily exceeded the 0.5% trigger area. At 128 the
+shrink factor is mild, so samples covered most of each cell → calm.
+
+Fix (`MotionGate.kt`): the ROI is now drawn **2× supersampled** (side =
+2×grid) and each cell takes the mean luma of its 2×2 block — 4× noise-variance
+reduction and, more importantly, consistent behaviour across grid sizes
+(coarser = calmer, as intended). Cost at grid 160: 320² = 102k pixels, still
+~1 ms.
+
+### 2. Grid setting: units clarified, range widened
+
+- The value is **cells per side of the comparison thumbnail** — a count, not
+  pixels (and never cm). Each cell watches 1/N of the ROI *width*; an insect
+  narrower than ~ROI-width/N may not register. Helper text and the
+  `SessionConfig` doc now say exactly this in relative terms (the old "15 cm
+  ROI" example was misleading — nobody knows their ROI in cm).
+- Settings range widened 32–128 → **16–160**, matching the native clamp.
+
+### 3. Session summary: four tabs
+
+`session_summary_screen.dart` restructured with a `DefaultTabController`:
+**Overview** (headline stats) | **Settings** | **Photos** | **Graphs**. The
+graphs tab keeps its own scroll controller, the timeline-visibility tracker,
+and the floating show/hide button (safe when unmounted: `_timelineKey.
+currentContext` is null on other tabs). Photos/graphs stay lazy-loaded.
+
+Settings tab additions: a **Heat management** group (auto-throttle, min
+inference rate, duty target) and the **motion gate** rows (enabled, pixel
+sensitivity, trigger area %, wake duration, grid resolution). The session
+JSON always had these — `logStart` logs the whole `config` block — only the
+display rows were missing.
+
+### Notes
+
+- Hand tremble waking the gate is *physics*, not over-sensitivity: trembling
+  shifts every textured edge in the ROI, which is genuine frame-to-frame
+  motion. The gate is a mounted-phone feature. If field wind-shake proves
+  problematic, a possible future option is global-motion rejection (ignore
+  frames where changes are spread uniformly across the ROI) — deliberately
+  NOT added yet to protect recall.
+- Claude cannot read `sessions/**` (owner's deny rule), so session_89 was
+  diagnosed from the reported symptom + code; the mechanism fully explains it.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+42/42; `flutter build apk --debug` builds. On-device (owner): with grid 48 on
+the tripod the gate should now sleep indoors like 128 did; the Settings tab
+of a new session's summary should list the gate + throttle rows.

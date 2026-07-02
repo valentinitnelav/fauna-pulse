@@ -80,6 +80,13 @@ class SessionLogger {
   void logRoiUpdate(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('roi_update', payload, at: at);
 
+  /// Motion-gate transition (state: "idle" when the detector went to sleep,
+  /// "awake" when it resumed, plus the idle duration on wake). Gated periods
+  /// carry no detection entries by design; these lines make that auditable
+  /// when validating gated sessions against always-on ones.
+  void logMotionGate(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('motion_gate', payload, at: at);
+
   /// One active detection (track id, class, box relative to the ROI, and any
   /// JPEG saved at this moment). Not flushed per line; [flushNow] flushes the
   /// whole frame's worth at once.

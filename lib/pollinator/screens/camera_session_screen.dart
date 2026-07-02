@@ -166,6 +166,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   bool _detectorEverRan = false;
   int _camDeliverStartMs = 0;
 
+  // Motion-gate state mirrored from the native side. While the gate is idle the
+  // detector is deliberately asleep (no results), so the UI must show "idle"
+  // instead of a scary 0-FPS state, and the watchdog must stay quiet.
+  bool _gateIdle = false;
+  int _gateIdleSinceMs = 0;
+  // Live changed-pixel fraction (0..1) from the gate, for tuning the trigger.
+  final ValueNotifier<double> _motionScoreVN = ValueNotifier(0);
+
   bool _recording = false;
   // True while the camera/detector is paused (e.g. on the session summary) so we
   // don't keep running inference and heating the phone when it isn't needed.
@@ -379,6 +387,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _fpsVN.dispose();
     _perfVN.dispose();
     _fpsTrioVN.dispose();
+    _motionScoreVN.dispose();
     _thermalVN.dispose();
     _recordElapsedVN.dispose();
     _flashTimer?.cancel();
@@ -399,6 +408,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // --- Per-frame pipeline -------------------------------------------------
 
   void _onStreamingData(Map<String, dynamic> data) {
+    // Motion-gate idle heartbeat: while the gate keeps the detector asleep the
+    // native side sends ~1 Hz maps with only gate state + camera FPS (no
+    // detections). Update the gate indicator and bail out — no tracking, no
+    // watchdog (0 detector FPS is *intentional* here).
+    if (data['gateIdle'] == true) {
+      final hbCamFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
+      _motionScoreVN.value = (data['motionScore'] as num?)?.toDouble() ?? 0;
+      _fpsTrioVN.value = [hbCamFps, 0, _pipelineFpsEma];
+      _setGateIdle(true);
+      return;
+    }
+    if (data.containsKey('gateIdle')) _setGateIdle(false);
+    if (data.containsKey('motionScore')) {
+      _motionScoreVN.value = (data['motionScore'] as num?)?.toDouble() ?? 0;
+    }
+
     final w = (data['imageWidth'] as num?)?.toInt() ?? _imageWidth;
     final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
     final fps = (data['fps'] as num?)?.toDouble() ?? _fpsVN.value;
@@ -576,12 +601,44 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (!_captureProbeStarted && w > 0 && h > 0) {
       _captureProbeStarted = true;
       _pushInferenceRoi();
+      _pushMotionGate();
       _probeCaptureResolution();
       _probeFocusSupport();
       _fetchStreamResolutions();
       _fetchAnalysisCeiling();
       _fetchAvailableLenses();
       _fetchCameraDiagnostics();
+    }
+  }
+
+  /// Applies a motion-gate state change reported by the native side: updates
+  /// the on-screen indicator, logs the transition to the session JSONL (so
+  /// gated periods are auditable when validating recall), and — crucially —
+  /// expires stale "lost" tracks after a long sleep. While the gate is idle no
+  /// frames reach the tracker, so lost tracks cannot age out; without this, an
+  /// insect arriving after a long empty period could wrongly inherit the track
+  /// id of one that left before the gate closed (inflating visit durations).
+  void _setGateIdle(bool idle) {
+    if (idle == _gateIdle) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    double idleS = 0;
+    if (idle) {
+      _gateIdleSinceMs = nowMs;
+    } else if (_gateIdleSinceMs > 0) {
+      idleS = (nowMs - _gateIdleSinceMs) / 1000.0;
+      if (idleS > _config.occlusionSeconds) {
+        // Asleep longer than the tracker's re-appearance buffer: whatever was
+        // "lost" back then must not be revivable now.
+        _tracker.expireLostTracks();
+      }
+    }
+    if (mounted) setState(() => _gateIdle = idle);
+    if (_recording) {
+      _logger?.logMotionGate({
+        'state': idle ? 'idle' : 'awake',
+        'motion_score': _motionScoreVN.value,
+        if (!idle && idleS > 0) 'idle_s': double.parse(idleS.toStringAsFixed(1)),
+      });
     }
   }
 
@@ -1299,6 +1356,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       confidenceThreshold: updated.confidenceThreshold,
       iouThreshold: updated.iouThreshold,
     );
+    _pushMotionGate();
   }
 
   void _onRoiChanged(Roi roi) {
@@ -1484,6 +1542,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     );
   }
 
+  /// Sends the motion-gate settings to the native pipeline. When enabled the
+  /// detector sleeps while nothing moves inside the ROI (heat/battery saver);
+  /// the native side always starts the gate awake so the user sees it working.
+  void _pushMotionGate() {
+    _controller.setMotionGate(
+      enabled: _config.motionGateEnabled,
+      pixelDelta: _config.motionGatePixelDelta,
+      areaFraction: _config.motionGateAreaFraction,
+      wakeSeconds: _config.motionGateWakeSeconds,
+      gridSize: _config.motionGateGridSize,
+    );
+    if (!_config.motionGateEnabled && _gateIdle) {
+      // Gate switched off while idle: clear the idle indicator immediately.
+      setState(() => _gateIdle = false);
+    }
+  }
+
   // --- UI -----------------------------------------------------------------
 
   @override
@@ -1641,6 +1716,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 onChanged: _onRoiChanged,
                 borderColor: flashing
                     ? const Color(0xFF00FF6A) // capture flash
+                    // Gate idle: detector deliberately asleep — grey the ROI so
+                    // the state reads at a glance from arm's length in the field.
+                    : (_config.motionGateEnabled && _gateIdle)
+                    ? const Color(0x99B0BEC5)
                     : (_recording ? Colors.red : const Color(0xFFFFEB3B)),
                 borderWidth: flashing ? 4.0 : 2.5,
               ),
@@ -1659,6 +1738,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Detector state at a glance (motion gate only): green =
+                      // detector running, grey = deliberately asleep because
+                      // nothing is moving in the ROI. Bigger and color-coded so
+                      // it reads from arm's length in the field.
+                      if (_config.motionGateEnabled) _gateStateChip(),
                       if (_config.showFps)
                         ValueListenableBuilder<List<double>>(
                           valueListenable: _fpsTrioVN,
@@ -1687,6 +1771,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             'pre ${p[0].toStringAsFixed(0)} · '
                             'inf ${p[1].toStringAsFixed(0)} · '
                             'post ${p[2].toStringAsFixed(0)} ms',
+                          ),
+                        ),
+                      // Motion gate status: "idle" means the detector is
+                      // deliberately asleep (nothing moving in the ROI) — the
+                      // 0-fps Detector line above is expected, not a fault. The
+                      // live motion % helps tune the trigger-area setting.
+                      if (_config.motionGateEnabled)
+                        ValueListenableBuilder<double>(
+                          valueListenable: _motionScoreVN,
+                          builder: (_, score, _) => _statLine(
+                            _gateIdle
+                                ? 'Gate: idle (detector asleep) · '
+                                      'motion ${(score * 100).toStringAsFixed(2)}%'
+                                : 'Gate: awake · '
+                                      'motion ${(score * 100).toStringAsFixed(2)}%',
                           ),
                         ),
                       // Engine first (just under the perf line), then the Model
@@ -1959,6 +2058,43 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// A status chip with a little gap beneath, for the vertical left-side stack.
   Widget _statLine(String text) =>
       Padding(padding: const EdgeInsets.only(bottom: 6), child: _chip(text));
+
+  /// Prominent detector on/off chip, shown only while the motion gate is
+  /// enabled: green "DETECTOR ON" while inference runs, grey "SLEEPING" while
+  /// the gate keeps it idle (nothing moving in the ROI — expected on a mounted
+  /// phone over an empty flower, and NOT a fault).
+  Widget _gateStateChip() {
+    const awakeColor = Color(0xFF00E676); // vivid green
+    const idleColor = Color(0xFFB0BEC5); // blue-grey
+    final color = _gateIdle ? idleColor : awakeColor;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color, width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.circle, size: 12, color: color),
+            const SizedBox(width: 8),
+            Text(
+              _gateIdle ? 'SLEEPING' : 'DETECTOR ON',
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _chip(String text) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

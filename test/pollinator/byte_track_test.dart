@@ -64,6 +64,33 @@ void main() {
     expect(tracks.single.id, id);
   });
 
+  test('expireLostTracks drops lost tracks so a newcomer gets a fresh id', () {
+    // Simulates the motion gate sleeping longer than the occlusion tolerance:
+    // no update() calls happen while asleep, so a lost track never ages out on
+    // its own — expireLostTracks() is what stops the next arriving insect from
+    // inheriting the stale id (which would silently merge two visits).
+    final tracker = ByteTracker(
+      params: const ByteTrackParams(minHitsToConfirm: 2, trackBuffer: 30),
+    );
+    const box = Rect.fromLTWH(0.45, 0.45, 0.10, 0.10);
+
+    // Confirm a track, then lose it (same setup as the occlusion test above,
+    // which proves that WITHOUT expiry this id would be re-linked).
+    tracker.update([det(box)], 0);
+    var tracks = tracker.update([det(box)], 100);
+    final id = tracks.single.id;
+    tracker.update(const [], 200); // goes "lost", stays buffered
+
+    // Gate slept past the occlusion tolerance -> expire the lost buffer.
+    tracker.expireLostTracks();
+
+    // A new insect lands on the same spot: it must get a NEW id.
+    tracker.update([det(box)], 10000);
+    tracks = tracker.update([det(box)], 10100);
+    expect(tracks, hasLength(1));
+    expect(tracks.single.id, isNot(id));
+  });
+
   test('iou is 1 for identical boxes and 0 when disjoint', () {
     const a = Rect.fromLTWH(0, 0, 1, 1);
     expect(iou(a, a), closeTo(1.0, 1e-9));

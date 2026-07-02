@@ -869,6 +869,92 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
       ),
       const Divider(color: Colors.white24),
+
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Motion gate (experimental): sleep while the flower is empty',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'Runs the detector only when something moves inside the ROI (a cheap '
+          'brightness check watches every frame). Big heat/battery saving during '
+          'long empty periods. Designed for a MOUNTED phone: handheld shake '
+          'counts as motion, so in the hand the gate stays awake — that is '
+          'normal, not a fault. Off by default — validate against an always-on '
+          'session before trusting it for real counts.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.motionGateEnabled,
+        onChanged: (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
+      ),
+      if (_c.motionGateEnabled) ...[
+        NumericSettingField(
+          label: 'Wake duration after motion',
+          value: _c.motionGateWakeSeconds,
+          min: 0.5,
+          max: 60,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'How long the detector keeps running after the last movement or '
+              'detection. Every new detection restarts this window, so a sitting '
+              'insect is not lost. Longer = safer recall, less heat saving. '
+              'Default 3 s.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
+        ),
+        NumericSettingField(
+          label: 'Pixel sensitivity',
+          value: _c.motionGatePixelDelta.toDouble(),
+          min: 5,
+          max: 100,
+          isInt: true,
+          helperText:
+              'How much a pixel\'s brightness (0–255) must change to count as '
+              'movement. Lower = more sensitive (wakes on small insects, but also '
+              'on petal shadows); higher = stricter. Default 25.',
+          onChanged: (v) => setState(
+            () => _c = _c.copyWith(motionGatePixelDelta: v.round().clamp(5, 100)),
+          ),
+        ),
+        NumericSettingField(
+          label: 'Trigger area',
+          value: _c.motionGateAreaFraction * 100,
+          min: 0.05,
+          max: 20,
+          decimals: 2,
+          unitSuffix: '%',
+          helperText:
+              'How much of the ROI must change in one frame to wake the detector. '
+              'Keep small — an insect covers little of the ROI. Default 0.5%.',
+          onChanged: (v) => setState(
+            () => _c = _c.copyWith(motionGateAreaFraction: v / 100),
+          ),
+        ),
+        NumericSettingField(
+          label: 'Motion grid resolution',
+          value: _c.motionGateGridSize.toDouble(),
+          min: 16,
+          max: 160,
+          isInt: true,
+          helperText:
+              'Number of cells per side of the motion-check thumbnail (a count, '
+              'not pixels): the ROI is compared as an N×N mosaic, so each cell '
+              'watches 1/N of the ROI width. An insect only registers if it '
+              'spans at least about one cell — e.g. at 48, an insect narrower '
+              'than ~1/48th (2%) of the ROI width may pass unseen; at 128 '
+              'anything wider than ~0.8% of the ROI registers. Raise it for '
+              'small insects relative to your ROI (and consider lowering '
+              'Trigger area too); higher costs slightly more CPU. Default 48.',
+          onChanged: (v) => setState(
+            () =>
+                _c = _c.copyWith(motionGateGridSize: v.round().clamp(16, 160)),
+          ),
+        ),
+      ],
+      const Divider(color: Colors.white24),
       _cameraInfoSection(),
     ],
   );
