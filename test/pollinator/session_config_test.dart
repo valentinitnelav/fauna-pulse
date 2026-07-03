@@ -131,4 +131,60 @@ void main() {
     final restored = SessionConfig.fromJson(const {'occlusionSeconds': 1.0});
     expect(restored.minHitsSeconds, 0.2);
   });
+
+  group('capture mode & saved-size target', () {
+    test('defaults: auto, target 1024', () {
+      const c = SessionConfig();
+      expect(c.captureMode, RoiCaptureMode.auto);
+      expect(c.targetRoiSavedPx, 1024);
+    });
+
+    test('round-trips through toJson/fromJson', () {
+      final restored = SessionConfig.fromJson(
+        const SessionConfig()
+            .copyWith(
+              captureMode: RoiCaptureMode.still,
+              targetRoiSavedPx: 512,
+            )
+            .toJson(),
+      );
+      expect(restored.captureMode, RoiCaptureMode.still);
+      expect(restored.targetRoiSavedPx, 512);
+    });
+
+    test('round-62 min/max configs migrate: the min becomes the target', () {
+      final restored = SessionConfig.fromJson(const {
+        'captureMode': 'auto',
+        'minRoiSavedPx': 640,
+        'maxRoiSavedPx': 1280,
+      });
+      expect(restored.targetRoiSavedPx, 640);
+    });
+
+    test('legacy fullResPhotos=true loads as still mode', () {
+      final restored = SessionConfig.fromJson(const {'fullResPhotos': true});
+      expect(restored.captureMode, RoiCaptureMode.still);
+    });
+
+    test('legacy fullResPhotos=false keeps its fast-only behaviour', () {
+      // An old setup must not silently switch to auto (which can take stills).
+      final restored = SessionConfig.fromJson(const {'fullResPhotos': false});
+      expect(restored.captureMode, RoiCaptureMode.fast);
+    });
+
+    test('configs without either key get the new auto default', () {
+      expect(
+        SessionConfig.fromJson(const {}).captureMode,
+        RoiCaptureMode.auto,
+      );
+    });
+  });
+
+  test('gate idle check rate: default 5, survives the JSON round-trip', () {
+    expect(const SessionConfig().motionGateIdleFps, 5);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(motionGateIdleFps: 12).toJson(),
+    );
+    expect(restored.motionGateIdleFps, 12);
+  });
 }

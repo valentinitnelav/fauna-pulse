@@ -210,14 +210,49 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       ? 4 / 3
       : _imageWidth / _imageHeight;
 
-  /// Width (px) the saved ROI crop is actually taken from: the full-resolution
-  /// still in full-res mode, otherwise the live analysis frame. The displayed ROI
-  /// resolution is derived from this so it always matches what's written to disk.
-  int get _roiSourceWidth =>
-      _config.fullResPhotos ? _captureWidth : _imageWidth;
+  /// The photo source the CURRENT ROI would use for its next saved photo. In
+  /// auto mode this flips as the user resizes the box (a small box needs the
+  /// full still to meet the minimum saved size; a big one is fine from the live
+  /// frame); fast/still modes are constant. All WYSIWYG readouts, grid snapping
+  /// and ROI logging derive from it so the box on screen always describes the
+  /// file that will actually be written.
+  CapturePath get _activePath => chooseCapturePath(
+    mode: _config.captureMode,
+    targetPx: _config.targetRoiSavedPx,
+    roiSideFraction: _roi.sideFraction,
+    streamW: _imageWidth,
+    streamH: _imageHeight,
+    stillW: _captureWidth,
+    stillH: _captureHeight,
+  );
 
-  int get _roiSourceHeight =>
-      _config.fullResPhotos ? _captureHeight : _imageHeight;
+  /// Width (px) of the grid the ROI BOX is measured and snapped in: ALWAYS the
+  /// live analysis frame. Round 62: the geometry used to switch to the still's
+  /// grid whenever the still path was active, so the same physical box jumped
+  /// scales mid-drag (e.g. "992 px" → "2464 px") and the resize slider ran to
+  /// the still's short side — field-tested as thoroughly confusing, and it led
+  /// the owner to shrink the box far below the intended size. The box now
+  /// lives in ONE scale (the stream the user is looking at, monotonic while
+  /// dragging); what the chosen source turns that box into is shown separately
+  /// as "saves N×N" ([_savedSideNow]).
+  int get _roiSourceWidth => _imageWidth;
+
+  int get _roiSourceHeight => _imageHeight;
+
+  /// Side (px) of the file the CURRENT box would save right now: the crop math
+  /// of the active path's source ([savedSidePx] mirrors the native snapping
+  /// exactly), then the user's max-side cap. On the still path this is usually
+  /// LARGER than the box's stream-pixel size — that is the whole point of
+  /// taking a still for a small box.
+  int get _savedSideNow {
+    final (w, h) = _activePath == CapturePath.still
+        ? (_captureWidth, _captureHeight)
+        : (_imageWidth, _imageHeight);
+    return capSavedSidePx(
+      savedSidePx(_roi.sideFraction, w, h),
+      _config.targetRoiSavedPx,
+    );
+  }
 
   /// Largest ROI side (px, multiple of 32) the crop source can actually provide:
   /// the biggest 32-multiple that fits the source's short side. Caps the readout
@@ -231,7 +266,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// Dimensions the ROI is logged against — kept consistent with the saved crop
   /// source so the logged pixel size matches the files.
-  (int, int) get _roiLogDims => _config.fullResPhotos
+  (int, int) get _roiLogDims => _activePath == CapturePath.still
       ? (_captureWidth, _captureHeight)
       : (_imageWidth, _imageHeight);
 
@@ -271,6 +306,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // frame) as a dismissible banner the user can turn into an error report.
     _errorSub = _controller.errorEvents.listen((message) {
       if (!mounted) return;
+      // Persist every surfaced error: banners can flash by faster than a
+      // field user can read them (round 65).
+      _logger?.logAppError({'source': 'detector', 'message': message});
       setState(() {
         _inferenceError = 'Detector error: $message';
         _errorBannerDismissed = false;
@@ -463,6 +501,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (!_detectorEverRan &&
           _inferenceError == null &&
           nowMs - _camDeliverStartMs > 8000) {
+        _logger?.logAppError({
+          'source': 'watchdog',
+          'message': 'Detector produced no results for 8 s while the camera '
+              'was delivering frames.',
+        });
         setState(() {
           _inferenceError =
               'The detector is not producing any results (0 FPS) although the '
@@ -590,8 +633,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _imageWidth = w;
         _imageHeight = h;
         _accelerator = accel;
-        // Fast-mode crop source is now known: align a loaded box to the ÷32 grid.
-        if (!_config.fullResPhotos) _snapRoiToSourceGrid();
+        // A crop source is now known: align a loaded box to the ÷32 grid
+        // (no-op if the active path's source size is still unknown).
+        _snapRoiToSourceGrid();
       });
     }
 
@@ -682,17 +726,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       attempt++
     ) {
       try {
-        final bytes = await _controller
-            .capturePhoto(withOverlays: false)
-            .timeout(const Duration(seconds: 4));
-        if (bytes != null) {
-          final size = await probeJpegSize(bytes);
+        final raw = await _controller.capturePhotoRaw().timeout(
+          const Duration(seconds: 4),
+        );
+        if (raw != null) {
+          final size = await probeJpegSize(raw.$1);
           if (size != null && mounted) {
+            // Store UPRIGHT dimensions so all downstream math keeps one frame
+            // of reference. uprightStillDims (round 64) handles the decoder
+            // having possibly applied the EXIF rotation already — a blind
+            // swap here double-rotated in session_97.
+            final up = uprightStillDims(raw.$2, size.$1, size.$2);
             setState(() {
-              _captureWidth = size.$1;
-              _captureHeight = size.$2;
-              // Full-res crop source is now known: align a loaded box to the grid.
-              if (_config.fullResPhotos) _snapRoiToSourceGrid();
+              _captureWidth = up.$1;
+              _captureHeight = up.$2;
+              // The box's grid is the stream (round 62), so no re-snap here —
+              // the still size only feeds the "saves N×N" readout and crops.
             });
             return;
           }
@@ -708,7 +757,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       setState(() {
         _captureWidth = _imageWidth;
         _captureHeight = _imageHeight;
-        if (_config.fullResPhotos) _snapRoiToSourceGrid();
       });
     }
   }
@@ -1024,6 +1072,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // actually saved (capture dims); the smaller analysis frame fed to the
       // detector is logged separately for context.
       'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
+      // Which source the ROI dims above refer to ('fast' = analysis frame,
+      // 'still' = full-res still) — in auto mode it depends on the box size.
+      'roi_source': _activePath.name,
+      // Exact side of the file this box would save (crop snap + max-side cap),
+      // so post-processing never has to re-derive it from the fraction.
+      'saves_px': _savedSideNow,
       'analysis_frame_width_px': _imageWidth,
       'analysis_frame_height_px': _imageHeight,
       'inference_fps': _config.inferenceFps,
@@ -1044,22 +1098,33 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       sessionId: _sessionId,
       stepMs: (_config.stepSeconds * 1000).round(),
       durationMs: (_config.durationSeconds * 1000).round(),
-      captureFn: () async {
-        if (_config.fullResPhotos) {
-          // High-quality path: full-resolution still (briefly stalls the camera).
-          final photo = await _controller.capturePhoto(withOverlays: false);
-          return photo ?? await _controller.captureFrame();
+      // The scheduler picks the source PER PHOTO (chooseCapturePath): the fast
+      // live-frame crop when it meets the minimum saved size, otherwise a
+      // full-resolution still (briefly stalls the camera).
+      mode: _config.captureMode,
+      targetPx: _config.targetRoiSavedPx,
+      streamDims: () => (_imageWidth, _imageHeight),
+      stillDims: () => (_captureWidth, _captureHeight),
+      fastCaptureFn: () => _controller.captureRoiFromFrame(
+        cx: _roi.centerX,
+        cy: _roi.centerY,
+        side: _roi.sideFraction,
+        maxPx: _config.targetRoiSavedPx,
+      ),
+      stillCaptureFn: () async {
+        // Raw (unrotated) still + rotation info — the round-63 lag fix: the
+        // full 12 MP frame is never rotated; only the ROI crop is.
+        final raw = await _controller.capturePhotoRaw();
+        if (raw != null) {
+          return RawStill(bytes: raw.$1, rotationDegrees: raw.$2, isFront: raw.$3);
         }
-        // Fast path: crop the ROI straight from the live analysis frame — no
-        // still capture, so the camera/pipeline keeps running smoothly.
-        return _controller.captureRoiFromFrame(
-          cx: _roi.centerX,
-          cy: _roi.centerY,
-          side: _roi.sideFraction,
-        );
+        // Degraded fallback: preview-snapshot bytes are already upright.
+        final frame = await _controller.captureFrame();
+        return frame == null
+            ? null
+            : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
       },
       roiProvider: () => _roi,
-      cropAfterCapture: _config.fullResPhotos,
       onStat: (s) {
         if (!_recording) return;
         _logger?.logCapture({
@@ -1068,6 +1133,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           'total_ms': s.totalMs,
           'bytes': s.bytes,
           'full_res': s.fullRes,
+          // Per-photo source + saved square side, so post-processing knows the
+          // real resolution of every file (in auto mode it varies with the ROI).
+          'path': s.path.name,
+          'saved_px': s.savedPx,
         });
       },
     );
@@ -1380,6 +1449,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (_recording) {
       _logger?.logRoiUpdate({
         'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
+      // Which source the ROI dims above refer to ('fast' = analysis frame,
+      // 'still' = full-res still) — in auto mode it depends on the box size.
+      'roi_source': _activePath.name,
+      // Exact side of the file this box would save (crop snap + max-side cap),
+      // so post-processing never has to re-derive it from the fraction.
+      'saves_px': _savedSideNow,
       });
     }
   }
@@ -1451,7 +1526,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           }
 
           return SafeArea(
-            child: Padding(
+            // Scrollable so the sheet can never overflow while the keyboard
+            // animates in for the px text field — in a debug build that
+            // overflow flashes the striped "BOTTOM OVERFLOWED" banner, which
+            // reads like an app error (round 65, owner report session_99).
+            child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
                 20,
                 20,
@@ -1552,6 +1631,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       areaFraction: _config.motionGateAreaFraction,
       wakeSeconds: _config.motionGateWakeSeconds,
       gridSize: _config.motionGateGridSize,
+      idleFps: _config.motionGateIdleFps,
     );
     if (!_config.motionGateEnabled && _gateIdle) {
       // Gate switched off while idle: clear the idle indicator immediately.
@@ -1567,17 +1647,29 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // multiple of 32 the crop actually uses. The full-resolution still size is
     // learned by a one-time probe right after the camera starts; until it
     // returns we show "measuring…" rather than flashing a placeholder number.
-    // ROI resolution = exactly what's saved: derived from the active crop source
-    // (analysis frame in fast mode, full-res still in full-res mode).
+    // Two separate numbers, deliberately (round 62): the BOX size in stream
+    // pixels (one scale, goes down monotonically as the user shrinks it) and
+    // the FILE size the active source would save from it ("saves N×N"). On the
+    // still path the file is usually larger than the box's stream-pixel size —
+    // that's the point of taking a still for a small box.
     final bool haveRoiDim = _roiSourceWidth > 0;
     final int roiSidePx = haveRoiDim
         ? snapToMultipleOf32(
             _roi.sideFraction * _roiSourceWidth,
           ).clamp(32, _maxRoiPx)
         : 0;
-    final String roiLabel = haveRoiDim
-        ? 'ROI: $roiSidePx×$roiSidePx px'
-        : 'ROI: measuring…';
+    final int savedPxNow = haveRoiDim ? _savedSideNow : 0;
+    // Warn when even the chosen source can't reach the minimum saved size —
+    // no software can add those pixels; the fixes are physical (move the
+    // phone closer, or switch to a telephoto lens).
+    final String warnTag = (haveRoiDim && savedPxNow < _config.targetRoiSavedPx)
+        ? '  ⚠ below ${_config.targetRoiSavedPx} px'
+        : '';
+    final String roiLabel = !haveRoiDim
+        ? 'ROI: measuring…'
+        : (savedPxNow != roiSidePx
+              ? 'ROI: $roiSidePx×$roiSidePx px → saves $savedPxNow×$savedPxNow (${_activePath.name})$warnTag'
+              : 'ROI: $roiSidePx×$roiSidePx px (${_activePath.name})$warnTag');
     // Live analysis-stream size (its short side caps the fast ROI crop). Shows a
     // "measuring…" placeholder until the first frame arrives (like ROI), so the
     // line is always present rather than appearing late. If the phone delivered a

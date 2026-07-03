@@ -10,27 +10,170 @@
 //    overloading the phone. The single filename is logged against every track
 //    that was due at that moment.
 //
-// Photos are full-resolution stills (CameraX ImageCapture via the plugin's
-// capturePhoto), cropped to the ROI square. Cropping decodes the JPEG, so it is
-// done on a background isolate (compute) to keep the camera preview smooth.
+// Each photo comes from one of two sources (see [RoiCaptureMode] in
+// session_config.dart): a cheap crop of the live analysis frame, or a
+// full-resolution still (CameraX ImageCapture via the plugin's capturePhoto)
+// cropped to the ROI square. In auto mode the choice is made per photo by
+// [chooseCapturePath]: pay for a still only when the ROI is too small in the
+// stream to meet the user's minimum saved size. Cropping a still decodes JPEG
+// data, so it is done natively off the platform thread (with a background-
+// isolate Dart fallback) to keep the camera preview smooth.
 
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/roi.dart';
+import '../models/session_config.dart';
 import '../models/track.dart';
+
+/// The source a given photo is taken from: [fast] = crop of the live analysis
+/// frame (no camera stall), [still] = full-resolution still, region-cropped.
+enum CapturePath { fast, still }
+
+/// A still photo exactly as the camera delivered it: JPEG bytes that are NOT
+/// yet rotated upright, plus the clockwise rotation (0/90/180/270) and the
+/// front-camera mirror flag needed to interpret them. Skipping the upfront
+/// full-frame rotation is the round-63 lag fix: rotating the whole 12 MP
+/// photo took ~1.5 s per photo ON THE MAIN THREAD (freezing preview and
+/// detector); now only the small cropped square is rotated.
+class RawStill {
+  final Uint8List bytes;
+  final int rotationDegrees;
+  final bool isFront;
+  const RawStill({
+    required this.bytes,
+    required this.rotationDegrees,
+    required this.isFront,
+  });
+}
+
+/// Where an upright-frame rectangle lands inside the RAW (not yet rotated)
+/// still. Android hands stills over "as the sensor sees them" plus the
+/// clockwise rotation that would make them upright; instead of rotating the
+/// full photo we map the crop rectangle into raw coordinates, cut there, and
+/// rotate only the small square afterwards. Edges are exclusive on the
+/// right/bottom. Mirrored by `rawRectForUprightRect` in MainActivity.kt —
+/// keep the two in sync.
+({int left, int top, int right, int bottom}) rawRectForUprightRect({
+  required int rotationDegrees,
+  required int rawW,
+  required int rawH,
+  required int left,
+  required int top,
+  required int right,
+  required int bottom,
+}) {
+  switch (rotationDegrees.remainder(360)) {
+    case 90: // upright = raw rotated 90° clockwise (portrait back camera)
+      return (
+        left: top,
+        top: rawH - right,
+        right: bottom,
+        bottom: rawH - left,
+      );
+    case 180:
+      return (
+        left: rawW - right,
+        top: rawH - bottom,
+        right: rawW - left,
+        bottom: rawH - top,
+      );
+    case 270:
+      return (
+        left: rawW - bottom,
+        top: left,
+        right: rawW - top,
+        bottom: right,
+      );
+    default:
+      return (left: left, top: top, right: right, bottom: bottom);
+  }
+}
+
+/// Side (pixels) an ROI crop of [sideFraction] has when cut from a `w`×`h`
+/// source: the nearest multiple of 32, capped at the largest multiple of 32
+/// that fits the source's short side. This is the SAME math every crop path
+/// (native fast crop, native still crop, Dart fallback) applies, so callers
+/// can predict the saved size without decoding anything. Returns 0 when the
+/// source size is not yet known.
+int savedSidePx(double sideFraction, int w, int h) {
+  if (w <= 0 || h <= 0) return 0;
+  final cap = (math.min(w, h) ~/ 32) * 32;
+  final px = snapToMultipleOf32(sideFraction * w);
+  return px.clamp(32, math.max(32, cap));
+}
+
+/// Applies the user's "max saved side" cap: sides larger than the cap are
+/// downscaled to the largest multiple of 32 that fits it. `maxPx <= 0` = no cap.
+int capSavedSidePx(int sidePx, int maxPx) {
+  if (maxPx <= 0) return sidePx;
+  final cap = math.max(32, (maxPx ~/ 32) * 32);
+  return math.min(sidePx, cap);
+}
+
+/// Decides, for one photo, which source to use. Pure function so the decision
+/// table is unit-testable without a camera:
+///
+///  * fast mode  → always the live-frame crop;
+///  * still mode → the full still, unless its size is unknown (the one-time
+///    probe failed), in which case degrade to fast rather than save nothing;
+///  * auto mode  → the live-frame crop when it already meets [targetPx],
+///    otherwise the full still (same probe-failure fallback).
+CapturePath chooseCapturePath({
+  required RoiCaptureMode mode,
+  required int targetPx,
+  required double roiSideFraction,
+  required int streamW,
+  required int streamH,
+  required int stillW,
+  required int stillH,
+}) {
+  final stillKnown = stillW > 0 && stillH > 0;
+  switch (mode) {
+    case RoiCaptureMode.fast:
+      return CapturePath.fast;
+    case RoiCaptureMode.still:
+      return stillKnown ? CapturePath.still : CapturePath.fast;
+    case RoiCaptureMode.auto:
+      if (savedSidePx(roiSideFraction, streamW, streamH) >= targetPx) {
+        return CapturePath.fast;
+      }
+      return stillKnown ? CapturePath.still : CapturePath.fast;
+  }
+}
 
 /// Native fast-crop channel: decodes only the ROI rectangle from the full-res
 /// JPEG (Android BitmapRegionDecoder), avoiding a whole-image decode in Dart.
 const MethodChannel _cropChannel = MethodChannel('pollinator/crop');
 
 /// Reads only a JPEG's pixel dimensions (width, height) on a background isolate.
+/// Upright (as-displayed) dimensions of a still that was delivered with
+/// [rotationDegrees], given the (w, h) a JPEG decoder reported for it.
+///
+/// Round 64 bug fix: some JPEG decoders honour the EXIF orientation tag and
+/// report the image already upright, while others report the raw sensor
+/// orientation — blindly swapping w/h for a 90°/270° rotation double-rotated
+/// the startup probe (session_97: the app predicted 1024 px photos and saved
+/// 992 px ones, because every prediction ran against a 4000-px-wide frame
+/// that is really 3000 px wide upright). The phone is held portrait in this
+/// app, so for a sideways rotation the upright frame must be portrait: swap
+/// only when the reported dims are still landscape.
+(int, int) uprightStillDims(int rotationDegrees, int w, int h) {
+  final rot = ((rotationDegrees.remainder(360)) + 360) % 360;
+  final sideways = rot == 90 || rot == 270;
+  if (sideways && w > h) return (h, w);
+  return (w, h);
+}
+
 /// Used once at startup to learn the full-resolution still size so the UI can
 /// show the true ROI resolution (the analysis frame fed to the model is much
 /// smaller than the saved photo). Returns null if the bytes can't be decoded.
+/// NOTE: the decode is EXIF-aware, so the reported size may already be
+/// upright — always interpret it through [uprightStillDims].
 Future<(int, int)?> probeJpegSize(Uint8List bytes) async {
   final wh = await compute(_jpegSize, bytes);
   if (wh == null) return null;
@@ -77,16 +220,24 @@ class CaptureStat {
   /// Size of the saved JPEG in bytes.
   final int bytes;
 
+  /// Which source this photo came from (per-photo in auto mode).
+  final CapturePath path;
+
+  /// Side (pixels) of the saved square, predicted with [savedSidePx] +
+  /// [capSavedSidePx] — the same math the crops apply, so no decode needed.
+  final int savedPx;
+
   /// True for the full-resolution still path (which briefly stalls the camera),
   /// false for the fast live-frame crop.
-  final bool fullRes;
+  bool get fullRes => path == CapturePath.still;
 
   const CaptureStat({
     required this.fileName,
     required this.trackIds,
     required this.totalMs,
     required this.bytes,
-    required this.fullRes,
+    required this.path,
+    required this.savedPx,
   });
 }
 
@@ -105,18 +256,31 @@ class RoiCaptureScheduler {
   /// Total milliseconds to keep photographing a track from first sight.
   final int durationMs;
 
-  /// Grabs the image to save. Returns null if unavailable. When
-  /// [cropAfterCapture] is true this returns a full-frame still that still needs
-  /// cropping to the ROI; when false it already returns the ROI crop.
-  final Future<Uint8List?> Function() captureFn;
+  /// Grabs an ROI crop straight from the live analysis frame (fast path),
+  /// already capped to [targetPx] natively. Returns null if unavailable.
+  final Future<Uint8List?> Function() fastCaptureFn;
 
-  /// Current ROI (may change if the user adjusts it mid-session). Only used when
-  /// [cropAfterCapture] is true.
+  /// Grabs a full-resolution still (still path) as the camera delivered it
+  /// (unrotated + rotation info; see [RawStill]). The bytes are a FULL frame
+  /// that this scheduler then crops to the ROI. Returns null if unavailable.
+  final Future<RawStill?> Function() stillCaptureFn;
+
+  /// Current ROI (may change if the user adjusts it mid-session).
   final Roi Function() roiProvider;
 
-  /// Whether [captureFn]'s bytes are a full frame that must still be cropped to
-  /// the ROI (full-res still path), vs already an ROI crop (fast live-frame path).
-  final bool cropAfterCapture;
+  /// Photo source policy (fast / still / auto) — see [RoiCaptureMode].
+  final RoiCaptureMode mode;
+
+  /// The single saved-side setting (px): auto-decision threshold AND downscale
+  /// cap, so photos save at exactly this size whenever the ROI can supply it.
+  final int targetPx;
+
+  /// Live analysis-frame size (w, h) — the fast path's crop source.
+  final (int, int) Function() streamDims;
+
+  /// Full-resolution still size (w, h) learned by the one-time probe; (0, 0)
+  /// when the probe hasn't succeeded (the still path then degrades to fast).
+  final (int, int) Function() stillDims;
 
   /// Optional sink for per-photo timing/size, called after each successful write.
   /// Used to log a `capture` diagnostics record; never affects capture itself.
@@ -127,9 +291,13 @@ class RoiCaptureScheduler {
     required this.sessionId,
     required this.stepMs,
     required this.durationMs,
-    required this.captureFn,
+    required this.fastCaptureFn,
+    required this.stillCaptureFn,
     required this.roiProvider,
-    this.cropAfterCapture = false,
+    required this.mode,
+    required this.targetPx,
+    required this.streamDims,
+    required this.stillDims,
     this.onStat,
   });
 
@@ -183,28 +351,52 @@ class RoiCaptureScheduler {
   }
 
   /// Grabs the image and writes [pending.fileName]. Safe to fire-and-forget;
-  /// overlapping calls are skipped via the busy flag. In the fast path the bytes
-  /// are already an ROI crop; in the full-res path they're a full still that is
-  /// cropped here (native region-decode, with a pure-Dart fallback).
+  /// overlapping calls are skipped via the busy flag. The photo source is
+  /// chosen HERE, per photo (see [chooseCapturePath]): fast-path bytes arrive
+  /// already cropped to the ROI; still-path bytes are a full still that is
+  /// cropped (and, above [maxPx], downscaled) here — native region-decode,
+  /// with a pure-Dart fallback.
   Future<void> capture(PendingCapture pending) async {
     if (_busy) return;
     _busy = true;
     final sw = Stopwatch()..start();
     try {
-      final bytes = await captureFn();
-      if (bytes == null) return;
+      final roi = roiProvider();
+      final (streamW, streamH) = streamDims();
+      final (stillW, stillH) = stillDims();
+      final path = chooseCapturePath(
+        mode: mode,
+        targetPx: targetPx,
+        roiSideFraction: roi.sideFraction,
+        streamW: streamW,
+        streamH: streamH,
+        stillW: stillW,
+        stillH: stillH,
+      );
 
-      Uint8List finalBytes = bytes;
-      if (cropAfterCapture) {
-        final roi = roiProvider();
+      Uint8List finalBytes;
+      int savedPx;
+      if (path == CapturePath.still) {
+        final raw = await stillCaptureFn();
+        if (raw == null) return;
+        savedPx = capSavedSidePx(
+          savedSidePx(roi.sideFraction, stillW, stillH),
+          targetPx,
+        );
         Uint8List? native;
         try {
           native = await _cropChannel.invokeMethod<Uint8List>('cropRoiJpeg', {
-            'bytes': bytes,
+            'bytes': raw.bytes,
             'cx': roi.centerX,
             'cy': roi.centerY,
             'side': roi.sideFraction,
             'quality': 90,
+            'maxPx': targetPx,
+            // The still is NOT rotated upright (round-63 lag fix); the native
+            // crop maps the ROI into raw coordinates and rotates only the
+            // small square.
+            'rotationDegrees': raw.rotationDegrees,
+            'isFront': raw.isFront,
           });
         } catch (_) {
           native = null;
@@ -213,8 +405,26 @@ class RoiCaptureScheduler {
             native ??
             await compute<_CropArgs, Uint8List>(
               _cropJpeg,
-              _CropArgs(bytes, roi.centerX, roi.centerY, roi.sideFraction),
+              _CropArgs(
+                raw.bytes,
+                roi.centerX,
+                roi.centerY,
+                roi.sideFraction,
+                targetPx,
+                raw.rotationDegrees,
+                raw.isFront,
+              ),
             );
+      } else {
+        final bytes = await fastCaptureFn();
+        if (bytes == null) return;
+        finalBytes = bytes;
+        // Fast-path bytes come already cropped AND capped to the target
+        // natively (ImageUtils.cropRoiFromFrame), so just predict the size.
+        savedPx = capSavedSidePx(
+          savedSidePx(roi.sideFraction, streamW, streamH),
+          targetPx,
+        );
       }
       final outFile = File('${framesDir.path}/${pending.fileName}');
       outFile.parent.createSync(recursive: true);
@@ -226,7 +436,8 @@ class RoiCaptureScheduler {
           trackIds: pending.trackIds,
           totalMs: sw.elapsedMicroseconds / 1000.0,
           bytes: finalBytes.length,
-          fullRes: cropAfterCapture,
+          path: path,
+          savedPx: savedPx,
         ),
       );
     } finally {
@@ -251,28 +462,83 @@ class _CropArgs {
   final double centerX;
   final double centerY;
   final double sideFraction;
-  const _CropArgs(this.bytes, this.centerX, this.centerY, this.sideFraction);
+  final int maxPx;
+  final int rotationDegrees;
+  final bool isFront;
+  const _CropArgs(
+    this.bytes,
+    this.centerX,
+    this.centerY,
+    this.sideFraction,
+    this.maxPx,
+    this.rotationDegrees,
+    this.isFront,
+  );
 }
 
-/// Runs on a background isolate: decode the JPEG, crop a SQUARE centred on the
-/// ROI, re-encode JPEG. The square's side is taken from the captured image's own
-/// width, so the saved crop is square in real pixels no matter how the still's
-/// shape compares to the smaller analysis frame. Falls back to the original
-/// bytes if decoding fails.
+/// Runs on a background isolate (fallback when the native crop fails): decode
+/// the JPEG, crop a SQUARE centred on the ROI, downscale if it exceeds the
+/// user's target side, rotate the small square upright, re-encode JPEG. The
+/// ROI is defined on the UPRIGHT frame; the bytes may be unrotated (see
+/// [RawStill]), so the crop rectangle is mapped into raw coordinates with
+/// [rawRectForUprightRect]. Falls back to the original bytes if decoding fails.
 Uint8List _cropJpeg(_CropArgs args) {
   final decoded = img.decodeJpg(args.bytes);
   if (decoded == null) return args.bytes;
-  final w = decoded.width;
-  final h = decoded.height;
-  // Side length in this image's pixels, snapped to a multiple of 32 (model
+  var rot = args.rotationDegrees.remainder(360);
+  // Some JPEG decoders honour the EXIF orientation tag and hand the image
+  // back already upright. Phones report 90/270 for portrait shots on a
+  // landscape sensor, so if the decoded image is already portrait the
+  // rotation has been applied for us — skip the mapping. (180° can't be told
+  // apart this way; back cameras report 90/270 in practice.)
+  if ((rot == 90 || rot == 270) && decoded.height > decoded.width) rot = 0;
+  final rawW = decoded.width;
+  final rawH = decoded.height;
+  // Upright dimensions — the frame the ROI fractions refer to.
+  final w = (rot == 90 || rot == 270) ? rawH : rawW;
+  final h = (rot == 90 || rot == 270) ? rawW : rawH;
+  // Side length in upright pixels, snapped to a multiple of 32 (model
   // friendly) and never larger than the shorter edge.
   final maxSide = (w < h ? w : h);
   var side = snapToMultipleOf32(args.sideFraction * w);
   if (side > maxSide) side = (maxSide ~/ 32) * 32;
   if (side < 32) side = maxSide < 32 ? maxSide : 32;
   // Top-left of the square, centred on the ROI and kept fully inside the image.
-  final x = (args.centerX * w - side / 2).round().clamp(0, w - side);
+  var x = (args.centerX * w - side / 2).round().clamp(0, w - side);
   final y = (args.centerY * h - side / 2).round().clamp(0, h - side);
-  final cropped = img.copyCrop(decoded, x: x, y: y, width: side, height: side);
+  // Front cameras are shown mirrored; the ROI was placed on the mirrored
+  // preview, so un-mirror its X before mapping into raw coordinates.
+  if (args.isFront) x = w - side - x;
+  final rr = rawRectForUprightRect(
+    rotationDegrees: rot,
+    rawW: rawW,
+    rawH: rawH,
+    left: x,
+    top: y,
+    right: x + side,
+    bottom: y + side,
+  );
+  var cropped = img.copyCrop(
+    decoded,
+    x: rr.left,
+    y: rr.top,
+    width: side,
+    height: side,
+  );
+  // Downscale (never upscale) to the target side BEFORE rotating — cheaper to
+  // rotate the smaller square. Cubic interpolation keeps edges/detail well
+  // when shrinking; the classifier loses far less to this than to JPEG
+  // storage bloat at native size.
+  final capped = capSavedSidePx(side, args.maxPx);
+  if (capped < side) {
+    cropped = img.copyResize(
+      cropped,
+      width: capped,
+      height: capped,
+      interpolation: img.Interpolation.cubic,
+    );
+  }
+  if (rot != 0) cropped = img.copyRotate(cropped, angle: rot);
+  if (args.isFront) cropped = img.flipHorizontal(cropped);
   return Uint8List.fromList(img.encodeJpg(cropped, quality: 90));
 }

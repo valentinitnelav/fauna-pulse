@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.net.Uri
 import android.os.BatteryManager
@@ -74,6 +75,14 @@ class MainActivity : FlutterFragmentActivity() {
                         val cy = (call.argument<Double>("cy") ?: 0.5)
                         val side = (call.argument<Double>("side") ?: 0.5)
                         val quality = (call.argument<Int>("quality") ?: 90)
+                        // Max saved side in pixels; crops larger than this are
+                        // downscaled before encoding. 0 (or absent) = no cap.
+                        val maxPx = (call.argument<Int>("maxPx") ?: 0)
+                        // Round 63: stills arrive UNROTATED (capturePhotoRaw) so the
+                        // 12 MP frame never pays a full rotate; these say how to map
+                        // the upright ROI into the raw pixels.
+                        val rotationDegrees = (call.argument<Int>("rotationDegrees") ?: 0)
+                        val isFront = (call.argument<Boolean>("isFront") ?: false)
                         if (bytes == null) {
                             result.error("bad_args", "bytes required", null)
                         } else {
@@ -81,7 +90,7 @@ class MainActivity : FlutterFragmentActivity() {
                             // return the result on the platform thread.
                             cropExecutor.execute {
                                 val cropped = try {
-                                    cropRoiJpeg(bytes, cx, cy, side, quality)
+                                    cropRoiJpeg(bytes, cx, cy, side, quality, maxPx, rotationDegrees, isFront)
                                 } catch (e: Exception) {
                                     null
                                 }
@@ -194,21 +203,39 @@ class MainActivity : FlutterFragmentActivity() {
     /// Crops a SQUARE region of interest out of a (full-resolution) JPEG by
     /// decoding ONLY that rectangle with [BitmapRegionDecoder] — so we never
     /// decode the whole multi-megapixel image. [cx],[cy],[side] are normalized
-    /// (0..1) in the upright image; the side is taken from the image width and
+    /// (0..1) in the UPRIGHT image; the side is taken from the upright width and
     /// snapped to a multiple of 32 (model-friendly), matching the live readout.
+    /// [maxPx] > 0 caps the SAVED side: a larger crop is downscaled (with
+    /// bilinear filtering) to the largest multiple of 32 that fits the cap —
+    /// never upscaled — to bound file size when the ROI is big.
+    ///
+    /// Round 63: the JPEG may be UNROTATED, exactly as the camera delivered it
+    /// ([rotationDegrees] = clockwise rotation that would make it upright,
+    /// [isFront] = mirrored preview). Instead of rotating the whole 12 MP frame
+    /// (~1.5 s), the upright ROI rectangle is mapped into raw coordinates,
+    /// decoded there, and only the small square is rotated/mirrored.
     private fun cropRoiJpeg(
         bytes: ByteArray,
         cx: Double,
         cy: Double,
         side: Double,
         quality: Int,
+        maxPx: Int = 0,
+        rotationDegrees: Int = 0,
+        isFront: Boolean = false,
     ): ByteArray? {
         @Suppress("DEPRECATION")
         val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false)
             ?: return null
         try {
-            val w = decoder.width
-            val h = decoder.height
+            val rawW = decoder.width
+            val rawH = decoder.height
+            // BitmapRegionDecoder ignores EXIF, so the pixels are raw; compute
+            // the upright frame the ROI fractions refer to.
+            val rot = ((rotationDegrees % 360) + 360) % 360
+            val sideways = rot == 90 || rot == 270
+            val w = if (sideways) rawH else rawW
+            val h = if (sideways) rawW else rawH
             // Square side in pixels, rounded to the nearest multiple of 32 (matches
             // the Dart snapToMultipleOf32 readout), capped to the largest 32-multiple
             // that fits the short side so saved size == displayed size.
@@ -217,7 +244,27 @@ class MainActivity : FlutterFragmentActivity() {
             px = px.coerceIn(32, maxOf(32, cap))
             var x = (cx * w - px / 2.0).roundToInt().coerceIn(0, w - px)
             var y = (cy * h - px / 2.0).roundToInt().coerceIn(0, h - px)
-            val region: Bitmap = decoder.decodeRegion(Rect(x, y, x + px, y + px), null)
+            // The ROI was placed on the mirrored preview for front cameras:
+            // un-mirror its X before mapping into raw coordinates.
+            if (isFront) x = w - px - x
+            val rr = rawRectForUprightRect(rot, rawW, rawH, x, y, x + px, y + px)
+            var region: Bitmap = decoder.decodeRegion(rr, null)
+            // Apply the user's target-side cap BEFORE rotating — cheaper to
+            // rotate the smaller square (mirrors Dart capSavedSidePx).
+            val savedCap = if (maxPx > 0) maxOf(32, (maxPx / 32) * 32) else 0
+            if (savedCap in 1 until px) {
+                val scaled = Bitmap.createScaledBitmap(region, savedCap, savedCap, true)
+                if (scaled !== region) region.recycle()
+                region = scaled
+            }
+            if (rot != 0 || isFront) {
+                val m = Matrix()
+                if (rot != 0) m.postRotate(rot.toFloat())
+                if (isFront) m.postScale(-1f, 1f)
+                val turned = Bitmap.createBitmap(region, 0, 0, region.width, region.height, m, true)
+                if (turned !== region) region.recycle()
+                region = turned
+            }
             val out = ByteArrayOutputStream()
             region.compress(Bitmap.CompressFormat.JPEG, quality, out)
             region.recycle()
@@ -225,6 +272,24 @@ class MainActivity : FlutterFragmentActivity() {
         } finally {
             decoder.recycle()
         }
+    }
+
+    /// Where an upright-frame rectangle lands inside the RAW (unrotated) still.
+    /// Mirror of `rawRectForUprightRect` in lib/pollinator/capture/roi_capture.dart
+    /// (which has the unit tests) — keep the two in sync.
+    private fun rawRectForUprightRect(
+        rot: Int,
+        rawW: Int,
+        rawH: Int,
+        l: Int,
+        t: Int,
+        r: Int,
+        b: Int,
+    ): Rect = when (rot) {
+        90 -> Rect(t, rawH - r, b, rawH - l)
+        180 -> Rect(rawW - r, rawH - b, rawW - l, rawH - t)
+        270 -> Rect(rawW - b, l, rawW - t, r)
+        else -> Rect(l, t, r, b)
     }
 
     /// Returns the battery temperature (a good proxy for how warm the phone is)

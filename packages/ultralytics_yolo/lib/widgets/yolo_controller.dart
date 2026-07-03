@@ -225,6 +225,24 @@ class YOLOViewController {
   Future<Uint8List?> capturePhoto({bool withOverlays = true}) =>
       _invoke<Uint8List>('capturePhoto', {'withOverlays': withOverlays});
 
+  /// Captures a still photo exactly as the camera delivers it (Pollinator
+  /// Monitor): the JPEG is NOT rotated upright. Returns (bytes, the clockwise
+  /// rotation 0/90/180/270 that would make it upright, isFrontCamera), or null
+  /// on failure. Rotating a whole multi-megapixel still costs ~1.5 s of CPU
+  /// per photo; callers that only need a small crop should map the crop into
+  /// raw coordinates and rotate just that square (see the app's cropRoiJpeg).
+  /// Android only.
+  Future<(Uint8List, int, bool)?> capturePhotoRaw() async {
+    final r = await _invoke<Map<dynamic, dynamic>>('capturePhotoRaw');
+    final bytes = r?['bytes'];
+    if (bytes is! Uint8List) return null;
+    return (
+      bytes,
+      (r?['rotationDegrees'] as num?)?.toInt() ?? 0,
+      r?['isFront'] as bool? ?? false,
+    );
+  }
+
   /// The analysis-stream resolutions the active camera actually supports, as
   /// "WxH" strings (largest first), from the camera HAL — so the UI can offer
   /// only realistic options. Empty where unavailable. Android only.
@@ -255,11 +273,15 @@ class YOLOViewController {
     required double cy,
     required double side,
     int quality = 90,
+    // Max saved side (px); larger crops are downscaled (never enlarged)
+    // before encoding. 0 = no cap.
+    int maxPx = 0,
   }) => _invoke<Uint8List>('captureRoiFromFrame', {
     'cx': cx,
     'cy': cy,
     'side': side,
     'quality': quality,
+    'maxPx': maxPx,
   });
 
   /// Restricts inference to a square region of interest (Pollinator Monitor).
@@ -294,12 +316,16 @@ class YOLOViewController {
     double areaFraction = 0.005,
     double wakeSeconds = 3.0,
     int gridSize = 48,
+    // Frames per second the motion check inspects while the gate is idle;
+    // all other idle frames are dropped before conversion (heat saver).
+    int idleFps = 5,
   }) => _invoke<void>('setMotionGate', {
     'enabled': enabled,
     'pixelDelta': pixelDelta,
     'areaFraction': areaFraction,
     'wakeSeconds': wakeSeconds,
     'gridSize': gridSize,
+    'idleFps': idleFps,
   });
 
   Future<void> switchModel(String modelPath, [YOLOTask? task]) async {

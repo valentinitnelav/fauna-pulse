@@ -262,7 +262,10 @@ object ImageUtils {
      * still capture, so the camera pipeline is never stalled. The ROI is rotated
      * into display orientation and drawn 1:1 (no downscale) into a
      * roiPx × roiPx output, where roiPx = roiSide * orientedWidth snapped to a
-     * multiple of 32. Returns null if the bitmap/ROI is unusable.
+     * multiple of 32. [maxPx] > 0 caps the SAVED side: a larger crop is
+     * downscaled (never enlarged) to the largest multiple of 32 that fits, so
+     * saved photos come out at one uniform size. Returns null if the
+     * bitmap/ROI is unusable.
      */
     @JvmStatic
     fun cropRoiFromFrame(
@@ -274,7 +277,8 @@ object ImageUtils {
         roiCx: Float,
         roiCy: Float,
         roiSide: Float,
-        quality: Int
+        quality: Int,
+        maxPx: Int = 0
     ): ByteArray? {
         val degrees = cameraRotationDegrees(rotateForCamera, isLandscape, isFrontCamera, rotationDegrees)
         val isRotated = degrees % 180 != 0
@@ -293,7 +297,7 @@ object ImageUtils {
         val roiCxPx = roiCx * orientedWidth
         val roiCyPx = roiCy * orientedHeight
 
-        val output = Bitmap.createBitmap(roiPx, roiPx, Bitmap.Config.ARGB_8888)
+        var output = Bitmap.createBitmap(roiPx, roiPx, Bitmap.Config.ARGB_8888)
         // gain = 1 (no scaling): draw the oriented frame so the ROI centre lands
         // at the centre of the output square.
         val tx = roiPx / 2f + (orientedWidth / 2f - roiCxPx)
@@ -305,6 +309,13 @@ object ImageUtils {
             rotate(degrees.toFloat())
             drawBitmap(bitmap, -bitmap.width / 2f, -bitmap.height / 2f, filterPaint)
             restore()
+        }
+        // Apply the saved-side cap (mirrors the Dart capSavedSidePx math).
+        val savedCap = if (maxPx > 0) max(32, (maxPx / 32) * 32) else 0
+        if (savedCap in 1 until roiPx) {
+            val scaled = Bitmap.createScaledBitmap(output, savedCap, savedCap, true)
+            if (scaled !== output) output.recycle()
+            output = scaled
         }
         val out = ByteArrayOutputStream()
         output.compress(Bitmap.CompressFormat.JPEG, quality, out)

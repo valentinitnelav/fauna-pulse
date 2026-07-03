@@ -118,6 +118,13 @@ class SessionLogger {
   void logCapture(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('capture', payload, at: at);
 
+  /// Any error surfaced to the user during a recording (the red banner, a
+  /// native detector error, …). Field sessions run unattended and banners can
+  /// be brief — writing them here means "I saw an error flash but couldn't
+  /// read it" can always be answered from the session file (round 65).
+  void logAppError(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('app_error', payload, at: at);
+
   /// Final record. `ended_normally: true` is written only on a clean stop;
   /// its absence (the line never got written) signals a crash.
   void logEnd(Map<String, dynamic> payload, {DateTime? at}) =>

@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 60 (gate supersampling noise fix, grid 16–160, tabbed summary).
+> Last synced with: round 65 (session_99 verified clean; surfaced errors now persisted as app_error records; pencil edit sheet made overflow-proof; HOW_PHOTO_RESOLUTION_WORKS.md added).
 
 ## What the app is about
 
@@ -54,14 +54,15 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Session length | `60 min` | user-editable |
 | Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
-| Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm) |
+| Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
-| Full-res ROI photos | `false` | false = fast crops from the live analysis frame |
+| Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
+| Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed |
 | GPU when faster | on | see GPU/CPU note below |
 
-## Key invariants — don't re-derive these
+## Key invariants
 
 - **ROI is ÷32 WYSIWYG (round 57).** The ROI box, the on-screen resolution readout, the
   saved JPEG crop, and the inference ROI are all the **same** square. The side snaps to a
@@ -74,7 +75,40 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 - **Crop/save paths all already ÷32-snap and cap to short side** — don't "fix" them again:
   fast `ImageUtils.cropRoiFromFrame` (plugin Kotlin), full-res `MainActivity.cropRoiJpeg`
   (app Kotlin), and the Dart fallback `_cropJpeg` (`capture/roi_capture.dart`). Fast path
-  (default) crops the live frame; full-res path takes a still then region-crops.
+  crops the live frame; the still path takes a full still then region-crops (and, above
+  `maxRoiSavedPx`, downscales — never upscales).
+- **The photo source is chosen PER PHOTO (round 61).** `chooseCapturePath` /
+  `savedSidePx` / `capSavedSidePx` in `capture/roi_capture.dart` are the single source of
+  the decision + size math; the single `targetRoiSavedPx` (r63) is both threshold and
+  cap. Capture records log `path` + `saved_px` per photo, ROI records log `roi_source`
+  + `saves_px`. Still-path caveat (logged, not solved): the still lands after the
+  detection that scheduled it, so `box_in_roi` may not align pixel-perfectly.
+- **Stills are processed off the main thread and NEVER full-frame-rotated (round 63).**
+  `capturePhotoRaw` returns the unrotated JPEG + rotation/mirror info; CameraX's
+  callback runs on `stillExecutor` (handing it the main executor froze UI/preview/
+  detector ~1.5 s per photo — session_96 PerfMonitor). The ROI is mapped into raw
+  coordinates by `rawRectForUprightRect` (Dart original with unit tests in
+  `roi_capture.dart`; Kotlin mirror in `MainActivity.kt` — KEEP IN SYNC) and only the
+  small square is rotated. Don't reintroduce `normalizeJpegOrientation` on this path.
+- **While the motion gate is idle, only `motionGateIdleFps` frames/s are inspected
+  (round 63; user-tunable since round 64, default 5).** The early skip in
+  `YOLOView.onFrame` closes the rest BEFORE bitmap conversion (idle heat fix).
+  Consequence: the delivered/camera FPS readout legitimately shows ~that number while
+  the gate sleeps — that is the fix working, not a camera fault.
+- **Still dims from the probe must go through `uprightStillDims` (round 64).** The
+  probe's JPEG decode is EXIF-aware and may return the still already upright; a blind
+  w/h swap for rotation 90/270 double-rotates (session_97: predicted 1024, saved 992,
+  summary showed un-snapped 1304). The summary photo browser shows each file's exact
+  `saved_px` from its capture record, not box geometry.
+- **Owner rule: every new tunable parameter ships user-adjustable** — Settings control
+  + SessionConfig JSON + summary row + round-trip test, in the same round it appears.
+- **ROI box geometry lives in ONE scale: the stream grid (round 62).** The box's px
+  readout, resize slider and ÷32 snapping always use the analysis frame
+  (`_roiSourceWidth` == `_imageWidth`); the still source only feeds the separate
+  "saves N×N (path)" part of the label (`_savedSideNow`) and the crops themselves.
+  Do NOT make the box grid follow `_activePath` again — field-tested (session_95):
+  the scale-flipping readout misled the owner into shrinking the box to ~17% of the
+  frame without realising it.
 - **GPU vs CPU is decided by whether the GPU backend can compile the model's op graph — not
   by int8 vs fp16** (log §6). A 2-strike GPU-crash blocklist demotes crashing models to
   CPU. The chosen engine is logged and shown on screen.
@@ -117,10 +151,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 ## Pointers
 
 - **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries).
+- **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
 - **Archived Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).
 - **General spec:** `/InsectDetectApp/CLAUDE.md`.
-- **Deny-listed:** `sessions/` and other sibling data folders (see `.claude/settings.local.json`).
+- **Deny-listed:** see `.claude/settings.local.json`.
 These are large txt files - avoid to parse unless owner points to them.
 
 ## Build / test quick reference

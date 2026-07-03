@@ -16,6 +16,39 @@ import '../tracking/byte_track.dart';
 /// "Show setup tips") makes the reminder appear again next time the screen opens.
 const String kHideSessionInfoPrefKey = 'pollinator_hide_session_info';
 
+/// Where each saved ROI photo comes from. Two sources exist, with opposite
+/// trade-offs:
+///
+///  * **fast** — crop the live analysis frame (the small video frame the
+///    detector already sees, e.g. 640×480). No camera stall, no extra heat,
+///    but a small ROI yields a small (low-detail) photo.
+///  * **still** — take a full-resolution photo (like pressing the shutter in
+///    the camera app, e.g. 4000×3000) and cut the ROI out of it. Far more
+///    pixels on the flower, but each still briefly stalls the camera stream
+///    (the detector misses frames), lands a fraction of a second after the
+///    detection that scheduled it, and costs more heat and storage.
+///  * **auto** — decide per photo: use the fast crop when it already meets the
+///    user's minimum saved size ([SessionConfig.minRoiSavedPx]); only when the
+///    ROI is too small in the stream does that photo pay for a full still.
+enum RoiCaptureMode { fast, still, auto }
+
+/// Reads the photo-source policy from a saved config, accepting both the new
+/// `captureMode` string and the legacy `fullResPhotos` boolean it replaced
+/// (old sessions saved `fullResPhotos: true` for the always-still behaviour).
+RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
+  final name = j['captureMode'] as String?;
+  if (name != null) {
+    for (final m in RoiCaptureMode.values) {
+      if (m.name == name) return m;
+    }
+  }
+  if (j['fullResPhotos'] as bool? ?? false) return RoiCaptureMode.still;
+  // A legacy config without the new key was fast-only; keep its behaviour
+  // rather than silently switching an old setup to auto.
+  if (j.containsKey('fullResPhotos')) return RoiCaptureMode.fast;
+  return RoiCaptureMode.auto;
+}
+
 class SessionConfig {
   /// Model identifier or path (e.g. a bundled "yolo26n" id, or a path to a
   /// user-placed .tflite file).
@@ -125,17 +158,44 @@ class SessionConfig {
   /// Costs slightly more CPU per frame (still ~1 ms at 160). Range 16–160.
   final int motionGateGridSize;
 
+  /// How many camera frames per second the motion check inspects while the
+  /// gate keeps the detector asleep (round 63/64). All other idle frames are
+  /// dropped BEFORE the costly image conversion — the main idle heat source.
+  /// Higher = faster wake-up but a warmer idle phone; an arriving insect is
+  /// noticed within ~1/rate seconds. Range 1–30; while the gate is awake every
+  /// frame flows regardless.
+  final int motionGateIdleFps;
+
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
   /// crop can be. Higher = bigger crops but can cost FPS on weaker phones.
   final int streamWidth;
   final int streamHeight;
 
-  /// ROI photo source. When false (default), photos are cropped from the live
-  /// analysis frame — fast, no camera stall, at analysis resolution. When true,
-  /// each photo is a full-resolution still (`capturePhoto`) — higher quality but
-  /// it briefly stalls the camera, dropping the frame rate during each save.
-  final bool fullResPhotos;
+  /// ROI photo source policy — see [RoiCaptureMode]. Default [RoiCaptureMode.auto]:
+  /// each photo uses the cheap fast crop when it already meets [minRoiSavedPx],
+  /// and pays for a full-resolution still only when the ROI is too small in the
+  /// live stream. (Replaces the old `fullResPhotos` boolean; an old saved config
+  /// with `fullResPhotos: true` loads as [RoiCaptureMode.still].)
+  final RoiCaptureMode captureMode;
+
+  /// The ONE side (pixels) the user wants saved ROI photos to have (round 63,
+  /// replacing the earlier min/max pair the owner found confusing). It is both
+  /// the decision threshold and the downscale cap, so every photo saves at
+  /// exactly this size whenever the ROI can physically supply it:
+  ///
+  ///  * in [RoiCaptureMode.auto], a photo takes the full still when the fast
+  ///    live-frame crop would come out below this;
+  ///  * crops larger than this are downscaled to it before saving (bounding
+  ///    storage — a big ROI cut from a full still can be 3000+ px, 1–2 MB);
+  ///  * photos are **never upscaled** to reach it — enlarging pixels invents
+  ///    no detail and would degrade later insect classification. When even a
+  ///    full still can't reach it, the photo saves smaller and the on-screen
+  ///    readout shows a ⚠ (the only fixes are physical: move the phone closer
+  ///    or switch to a telephoto lens).
+  ///
+  /// Multiple of 32. Uniform photo sizes also suit a downstream classifier.
+  final int targetRoiSavedPx;
 
   /// Occlusion tolerance, in **seconds** — how long a track survives while the
   /// insect is hidden (e.g. behind a petal) before its id is dropped. Exposed in
@@ -219,9 +279,11 @@ class SessionConfig {
     this.motionGateAreaFraction = 0.005,
     this.motionGateWakeSeconds = 3.0,
     this.motionGateGridSize = 48,
+    this.motionGateIdleFps = 5,
     this.streamWidth = 640,
     this.streamHeight = 480,
-    this.fullResPhotos = false, // false = fast crops from the live frame
+    this.captureMode = RoiCaptureMode.auto,
+    this.targetRoiSavedPx = 1024, // ÷32; photos save at exactly this when possible
     this.occlusionSeconds = 3.0,
     this.minHitsSeconds = 0.2,
     this.fpsSampleSeconds = 5,
@@ -285,9 +347,11 @@ class SessionConfig {
     double? motionGateAreaFraction,
     double? motionGateWakeSeconds,
     int? motionGateGridSize,
+    int? motionGateIdleFps,
     int? streamWidth,
     int? streamHeight,
-    bool? fullResPhotos,
+    RoiCaptureMode? captureMode,
+    int? targetRoiSavedPx,
     double? occlusionSeconds,
     double? minHitsSeconds,
     int? fpsSampleSeconds,
@@ -321,9 +385,11 @@ class SessionConfig {
     motionGateWakeSeconds:
         motionGateWakeSeconds ?? this.motionGateWakeSeconds,
     motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
+    motionGateIdleFps: motionGateIdleFps ?? this.motionGateIdleFps,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
-    fullResPhotos: fullResPhotos ?? this.fullResPhotos,
+    captureMode: captureMode ?? this.captureMode,
+    targetRoiSavedPx: targetRoiSavedPx ?? this.targetRoiSavedPx,
     occlusionSeconds: occlusionSeconds ?? this.occlusionSeconds,
     minHitsSeconds: minHitsSeconds ?? this.minHitsSeconds,
     fpsSampleSeconds: fpsSampleSeconds ?? this.fpsSampleSeconds,
@@ -357,9 +423,13 @@ class SessionConfig {
     'motionGateAreaFraction': motionGateAreaFraction,
     'motionGateWakeSeconds': motionGateWakeSeconds,
     'motionGateGridSize': motionGateGridSize,
+    'motionGateIdleFps': motionGateIdleFps,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
-    'fullResPhotos': fullResPhotos,
+    'captureMode': captureMode.name,
+    'targetRoiSavedPx': targetRoiSavedPx,
+    // Legacy key kept one round so an older build can still read this config.
+    'fullResPhotos': captureMode == RoiCaptureMode.still,
     'occlusionSeconds': occlusionSeconds,
     'minHitsSeconds': minHitsSeconds,
     'fpsSampleSeconds': fpsSampleSeconds,
@@ -395,9 +465,16 @@ class SessionConfig {
     motionGateWakeSeconds:
         (j['motionGateWakeSeconds'] as num?)?.toDouble() ?? 3.0,
     motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
+    motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
-    fullResPhotos: j['fullResPhotos'] as bool? ?? false,
+    captureMode: _captureModeFromJson(j),
+    // Round-62 configs stored a min/max pair; the min carries the intent
+    // ("photos must be at least this"), so it becomes the target.
+    targetRoiSavedPx:
+        (j['targetRoiSavedPx'] as num?)?.toInt() ??
+        (j['minRoiSavedPx'] as num?)?.toInt() ??
+        1024,
     occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 1.0,
     minHitsSeconds: (j['minHitsSeconds'] as num?)?.toDouble() ?? 0.2,
     fpsSampleSeconds: (j['fpsSampleSeconds'] as num?)?.toInt() ?? 5,

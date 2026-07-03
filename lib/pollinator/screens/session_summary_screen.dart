@@ -401,7 +401,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             line.contains('"start_of_session"') ||
             line.contains('"roi_update"');
         final isDetection = line.contains('"detection"');
-        if (!isRoiSource && !isDetection) continue;
+        final isCapture = line.contains('"type":"capture"');
+        if (!isRoiSource && !isDetection && !isCapture) continue;
         final rec = _tryDecode(line);
         if (rec == null) continue;
         if (isRoiSource) {
@@ -412,6 +413,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             if (w != null) curRoiW = w;
             if (h != null) curRoiH = h;
           }
+          continue;
+        }
+        if (isCapture) {
+          // The capture record carries the EXACT saved side (crop snapping +
+          // target cap applied) — it overrides the ROI-geometry estimate set
+          // when the photo was scheduled, so the browser shows the file's
+          // true resolution (round 64; older logs lack this and keep the
+          // estimate).
+          final file = rec['file'] as String?;
+          final px = (rec['saved_px'] as num?)?.toInt();
+          if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
           continue;
         }
         final jpeg = rec['jpeg'] as String?;
@@ -629,6 +641,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         add('Gate trigger area', area is num ? area * 100 : null, suffix: ' %');
         add('Gate wake duration', _setting('motionGateWakeSeconds'), suffix: ' s');
         add('Gate grid resolution', _setting('motionGateGridSize'), suffix: ' cells');
+    add('Gate idle check rate', _setting('motionGateIdleFps'), suffix: ' fps');
       }
     }
 
@@ -644,7 +657,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _setting('durationSeconds', 'duration_seconds'),
       suffix: ' s',
     );
-    add('Full-resolution photos', _setting('fullResPhotos'));
+    add('Photo source mode', _setting('captureMode'));
+    add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
+    // Rows below only appear for sessions recorded with older configs.
+    add('Min saved photo side', _setting('minRoiSavedPx'), suffix: ' px');
+    final maxSaved = _setting('maxRoiSavedPx');
+    add(
+      'Max saved photo side',
+      maxSaved is num && maxSaved == 0 ? 'no cap (native)' : maxSaved,
+      suffix: maxSaved is num && maxSaved == 0 ? '' : ' px',
+    );
+    if (_setting('captureMode') == null) {
+      add('Full-resolution photos', _setting('fullResPhotos'));
+    }
     add(
       'Camera resolution',
       _dims(_startRec?['camera_full_width_px'], _startRec?['camera_full_height_px']),

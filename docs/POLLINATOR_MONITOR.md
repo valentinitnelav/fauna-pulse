@@ -1986,3 +1986,219 @@ display rows were missing.
 42/42; `flutter build apk --debug` builds. On-device (owner): with grid 48 on
 the tripod the gate should now sleep indoors like 128 did; the Settings tab
 of a new session's summary should list the gate + throttle rows.
+
+## Round 61 (2026-07-02): per-photo capture path — min saved-size target + max-side cap
+
+**Why.** Saved ROI photos feed a future insect classifier, so pixels on the
+insect matter. The old `fullResPhotos` boolean was all-or-nothing: off, a
+small ROI (small flower) saved uselessly tiny crops from the 640×480 stream
+(e.g. 20% of frame width → 128 px); on, EVERY photo paid the still's costs —
+brief camera stall (tracker-gap risk), ~0.3–1 s shutter lag, heat, and 1–2 MB
+files when the ROI was big. Upscaling was rejected outright: enlarging pixels
+invents no detail and would poison the classifier.
+
+**What.** The source is now chosen per photo (owner picked "hybrid auto"):
+
+- `SessionConfig.captureMode` (`auto`|`fast`|`still`, default `auto`),
+  `minRoiSavedPx` (default 640, ÷32), `maxRoiSavedPx` (default 1280, ÷32,
+  `0` = no cap). Legacy migration: `fullResPhotos:true` → `still`,
+  `false` → `fast` (an old setup must not silently start taking stills);
+  missing both → `auto`. `toJson` still writes the legacy key one round.
+- `capture/roi_capture.dart`: pure `chooseCapturePath` + `savedSidePx` +
+  `capSavedSidePx` (same ÷32/short-side math as all crop paths, so the saved
+  size is predictable without decoding). Scheduler takes `fastCaptureFn` +
+  `stillCaptureFn` + dims getters and decides per capture; auto uses the fast
+  crop when it already meets the target, else a still; a failed still-size
+  probe degrades to fast (a small photo beats none). Dart fallback `_cropJpeg`
+  and native `MainActivity.cropRoiJpeg` (new `maxPx` arg,
+  `Bitmap.createScaledBitmap` filtered) downscale above the cap — never up.
+- Session screen: `_activePath` getter drives `_roiSourceWidth/Height`,
+  `_maxRoiPx`, `_roiLogDims` and grid snapping, so the WYSIWYG readout stays
+  truthful when the path flips mid-resize. Readout now shows the path and the
+  cap ("ROI: 1888 px → saves 1280×1280 (still)") and a "⚠ below N px" tag when
+  even a still can't reach the target — the honest fixes are physical (move
+  closer / telephoto). Capture records add `path` + `saved_px`; ROI records
+  add `roi_source`.
+- Settings sheet: mode dropdown + two ÷32-snapped px fields with plain-language
+  helper text; summary Settings tab shows the three rows (legacy row only for
+  pre-r61 sessions).
+
+**Known trade-offs (accepted).** On the default 640×480 stream, fast crops max
+out at 480 px, so `auto` + 640 target sends most in-visit photos through the
+still path — cost is bounded (photos only during visits, ≥ step apart, busy
+flag serialises) but heat/FPS impact should be watched on the Xiaomi. Shutter
+lag means still pixels lag `box_in_roi` slightly; mitigated by logging
+(`total_ms`, per-photo `saved_px`/`path`), not solved.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+59/59 (new: chooseCapturePath decision table, savedSidePx/capSavedSidePx math,
+config migration); `flutter build apk --debug` builds. On-device (owner):
+tiny ROI → readout "(still)" and stills saved at target size; large ROI in
+still mode → files capped at 1280; watch FPS/thermal during a burst of stills.
+
+## Round 62 (2026-07-03): ROI box geometry pinned to the stream grid
+
+**Field test (session_95, Xiaomi, stream 1200×1600, still 3000×4000, auto /
+min 1024 / max 1280) exposed a UX defect in round 61, not a crop bug.** The
+two saved photos (512² and 608²) matched the logged ROI exactly — but the
+owner never meant to set a box that small. Cause: the box's px readout,
+resize slider and ÷32 snap grid all followed `_activePath`, so when shrinking
+the box crossed the auto threshold the SAME box jumped scales mid-drag
+("992 px" → "2464 px"; slider max 1184 → 2976). Reading the still-grid number
+as if it were still the stream-grid number, the owner kept shrinking until
+the box was ~17% of the frame width.
+
+**Fix.** One scale for geometry, everywhere: `_roiSourceWidth/Height` are now
+ALWAYS the analysis frame, so the box readout falls monotonically while
+shrinking and the slider tops out at the stream's ÷32 short side (1184 here).
+What the chosen source turns the box into is a separate label part from the
+new `_savedSideNow` getter (still-crop snap math + max-side cap, mirrors the
+native crop exactly): `ROI: 992×992 px → saves 1280×1280 (still)`, with the
+"⚠ below N px" tag unchanged. The two post-probe `_snapRoiToSourceGrid()`
+calls were removed (the grid no longer depends on the still); ROI records now
+also log `saves_px` next to `roi_source` so post-processing never re-derives
+file sizes from fractions. Crops, `chooseCapturePath`, and per-photo
+`path`/`saved_px` logging are untouched.
+
+**Also learned from session_95:** a full still takes ~2.4–2.9 s end-to-end on
+the Xiaomi (`total_ms` in capture records), so still-path photos arrive ~3 s
+apart even with a 1 s step — visitation math is unaffected (detections, not
+photos, drive it) but expect fewer stills per visit.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+59/59. On-device (owner): shrink the box across the auto threshold — the
+first number must keep falling smoothly while "saves N×N (still)" appears and
+holds at the cap; the pencil slider must max out at 1184 on this stream.
+
+## Round 63 (2026-07-03): still-lag fix, cooler idle gate, single target side
+
+Driven by the owner's session_96 field test + questions. Round 62 verified
+good there (photos saved at 1280/1216/960 as displayed), but three problems
+remained; all three fixes were approved and implemented together.
+
+**1. Still-capture lag — root cause found and fixed.** Each still froze the
+pipeline ~1.5 s (camera fps 25 → 4 → once 0.7). Logcat PerfMonitor blamed
+`TakePictureRequest` running `wall=1570ms` ON THE MAIN THREAD: the plugin
+passed CameraX's takePicture the main executor, and the callback then ran
+`normalizeJpegOrientation` — a full 12 MP JPEG decode → rotate → re-encode —
+before Dart ever saw the bytes. (ZSL was already active; the capture itself
+was never the problem.) Fix, two parts:
+- `YOLOView.stillExecutor` (single background thread) now receives the
+  takePicture callback; results are marshalled back to the main thread for
+  the platform channel. `capturePhoto` keeps its old semantics (upright JPEG)
+  but does the heavy work off-main.
+- New `capturePhotoRaw` (channel + controller) returns the still EXACTLY as
+  delivered — unrotated + `rotationDegrees`/`isFront` — so the 12 MP frame is
+  never rotated at all. `cropRoiJpeg` (MainActivity) maps the upright ROI
+  into raw coordinates via `rawRectForUprightRect` (Kotlin mirror of the
+  Dart original in `roi_capture.dart`, which carries the unit tests — keep in
+  sync), region-decodes there, downscales to target, then rotates ONLY the
+  small square (~15 ms instead of ~1.4 s). The Dart fallback `_cropJpeg` does
+  the same, with an EXIF guard (skips mapping if the decoder already returned
+  a portrait image). The session-start size probe stores UPRIGHT dims (swaps
+  w/h for 90/270) so all downstream math keeps one frame of reference.
+
+**2. Cooler idle (gate).** Owner observed the phone warming while "sleeping"
+on a desk in preview. The detector truly slept, but every frame still paid
+the YUV→RGB bitmap conversion (7–16 ms × ~30 fps) BEFORE the gate check.
+`onFrame` now closes frames untouched while the gate is idle, sampling only
+one per 200 ms for the motion check (~6× less idle conversion work; wake
+latency ≤ ~0.2 s). Consequence: delivered/camera FPS legitimately reads ~5
+while idle. A camera-open, screen-on phone will never be cold — but this
+removes the main app-side heat source at idle.
+
+**3. Single saved-side setting.** Owner found min+max confusing ("should be
+just a single threshold"). `targetRoiSavedPx` (default 1024, ÷32) replaces
+`minRoiSavedPx`/`maxRoiSavedPx`: it is both the auto-decision threshold and
+the downscale cap, so photos save at EXACTLY the target whenever the ROI can
+supply it, smaller (with ⚠) only when physically impossible. Uniform sizes
+also suit the future classifier. The fast path now honours the cap too
+(`captureRoiFromFrame`/`ImageUtils.cropRoiFromFrame` gained `maxPx`, so a
+1184 px fast crop saves as 1024). Migration: old configs' `minRoiSavedPx`
+becomes the target; summary shows legacy min/max rows only for old sessions.
+
+**Also answered for the owner (session_96 review):** the low-res analysis
+stream is genuine Android architecture, not a hallucination — the stream menu
+comes from the HAL (`getOutputSizes(YUV_420_888)`), CameraX caps ImageAnalysis
+near PREVIEW size when Preview+Analysis+Capture are bound
+(`analysisStreamCeiling()`), and streaming 12 MP YUV for analysis would be
+~0.5 GB/s + ~100 ms/frame conversion on a phone that already throttles.
+
+**Verification:** `flutter analyze` clean (app + plugin Dart); `flutter test
+test/pollinator` 66/66 (new: rawRectForUprightRect mapping incl. per-rotation
+centring/bounds, target migration); `flutter build apk --debug` builds.
+On-device (owner): (a) during a visit burst the preview/FPS should no longer
+freeze per photo and stills should arrive faster than the old ~2.4–2.9 s;
+(b) photos must still be upright and centred on the flower — if a crop comes
+out sideways or shows the wrong region, the rotation mapping is the suspect
+(check `rotationDegrees` in logcat and compare with the Dart tests);
+(c) idle on the desk with gate on: delivered FPS ~5, phone noticeably cooler;
+(d) all photos exactly 1024×1024 while the ROI readout shows no ⚠.
+
+## Round 64 (2026-07-03): probe double-rotation fix, exact per-photo size in summary, gate idle rate exposed
+
+**Session_97 mismatch diagnosed — one bug, three symptoms, photos themselves
+fine.** Screen said "saves 1024", files were 992²; summary browser showed
+1304×1304 (not ÷32). Root cause: round 63's size probe swapped w/h for
+rotation 90/270 assuming raw (EXIF-blind) dims, but `probeJpegSize` decodes
+with `package:image`, which HONOURS the EXIF orientation tag and already
+returned the still upright (3000×4000) — the swap rotated it BACK to
+4000×3000. Every prediction (readout, `saved_px`, `_roiLogDims`) then ran
+against a 4000-px-wide frame while the native crop correctly used the
+3000-px upright width: predicted `capSaved(snap32(f×4000)) = 1024`, saved
+`snap32(f×3000) = 992` (crops upright + centred — the round-63 mapping
+worked). The 1304 was the un-snapped `f×4000` from the ROI geometry record.
+Fixes:
+- `uprightStillDims(rot, w, h)` in `capture/roi_capture.dart` (unit-tested):
+  swaps only when a sideways rotation reports landscape dims, so it is
+  correct for BOTH EXIF-aware and EXIF-blind decoders; the probe now uses it.
+  With correct dims the readout in session_97's situation would honestly say
+  "saves 992×992 ⚠ below 1024" — slightly enlarge the box to get 1024 files.
+- The summary photo browser now overrides its ROI-geometry estimate with each
+  capture record's exact `saved_px`, so per-photo resolution always equals
+  the file on disk (older logs without the field keep the estimate).
+
+**Gate idle rate exposed (owner rule established).** Round 63's hardcoded
+~5 fps idle sampling is now `motionGateIdleFps` (default 5, range 1–30):
+SessionConfig + Settings field (gate tab) + summary row + native
+`setMotionGate(idleFps)` → `gateIdleSampleNs`. Owner's standing rule, saved
+to memory: EVERY new tunable ships user-adjustable, persisted in the config
+JSON and shown in the summary, in the same round it is introduced.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+70/70 (new: uprightStillDims both decoder behaviours, idleFps round-trip);
+`flutter build apk --debug` builds. On-device (owner): readout, capture
+`saved_px`, summary per-photo resolution and the file on the computer must
+all show the SAME number; with no ⚠ visible that number is exactly 1024.
+
+## Round 65 (2026-07-03): session_99 verified clean; error persistence; edit-sheet hardening; explainer doc
+
+**Session_99 audit: rounds 63–64 confirmed working.** All 20 files match
+their capture records exactly (1024² while the box met the target, honest
+704² during a smaller-box phase that carried the ⚠), probe stored upright
+3000×4000, stills ~0.8–1.5 s (vs 2.2–2.9 s pre-r63).
+
+**Owner saw a brief unreadable error while opening the pencil ROI editor;
+nothing in either logcat window.** Two responses:
+- **Errors are now persisted**: new `SessionLogger.logAppError` →
+  `{"type":"app_error","source":"detector"|"watchdog","message":…}` written
+  whenever the red banner is raised (native detector errors auto-clear when
+  the next frame succeeds, so they can flash briefly by design). "I saw an
+  error but couldn't read it" is now answerable from session.jsonl.
+- **Likeliest culprit hardened**: in a DEBUG build (all field builds are),
+  the pencil sheet's Column could momentarily overflow while the keyboard
+  animates in for the px text field — Flutter then flashes the striped
+  "BOTTOM OVERFLOWED" banner, which reads like an app error. The sheet body
+  is now a `SingleChildScrollView`, which cannot overflow. If the message
+  reappears it will be in the log as `app_error`.
+
+**New doc for collaborators:** `docs/HOW_PHOTO_RESOLUTION_WORKS.md` —
+plain-language explanation of the two camera streams, why a 416 px on-screen
+box can yield a genuine 1024 px photo (same box fraction cut from the 12 MP
+still), the never-upscale rule, the label anatomy, and which JSON field to
+trust (`saved_px`). Linked from the overview.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+70/70; `flutter build apk --debug` builds. On-device (owner): open the pencil
+editor and tap the px field — no striped banner should flash; if any error
+appears again, `grep app_error session.jsonl` will contain its full text.

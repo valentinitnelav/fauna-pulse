@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../models/model_catalog.dart';
+import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -761,22 +762,65 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _streamCeilingNote(),
       const SizedBox(height: 16),
 
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Full-resolution ROI photos',
-          style: TextStyle(color: Colors.white),
+      _label(
+        'ROI photo source. Auto (recommended): each photo is a fast crop of '
+        'the live frame when that already meets the minimum size below, and a '
+        'full-resolution still'
+        '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
+        ' only when the ROI is too small in the stream. Stills put far more '
+        'pixels on a small flower, but each one briefly dips the frame rate '
+        'and lands a fraction of a second after the detection.',
+      ),
+      DropdownButton<RoiCaptureMode>(
+        value: _c.captureMode,
+        isExpanded: true,
+        dropdownColor: Colors.black87,
+        items: const [
+          DropdownMenuItem(
+            value: RoiCaptureMode.auto,
+            child: Text(
+              'Auto — still only when needed (recommended)',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          DropdownMenuItem(
+            value: RoiCaptureMode.fast,
+            child: Text(
+              'Fast crops only (live frame)',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          DropdownMenuItem(
+            value: RoiCaptureMode.still,
+            child: Text(
+              'Full-resolution stills always',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+        onChanged: (m) =>
+            setState(() => _c = _c.copyWith(captureMode: m)),
+      ),
+      NumericSettingField(
+        label: 'Saved photo side (px)',
+        value: _c.targetRoiSavedPx.toDouble(),
+        min: 128,
+        max: 2048,
+        isInt: true,
+        helperText:
+            'One number (round 63, replacing the earlier min/max pair): every '
+            'photo saves at exactly this size whenever the ROI can supply it — '
+            'larger crops are downscaled to it, and in Auto mode a photo takes '
+            'a full still when the fast crop would come out smaller. Photos '
+            'are NEVER enlarged to reach it: stretching pixels invents no '
+            'detail and would hurt later insect identification. When even a '
+            'still cannot reach it the photo saves smaller and the ROI readout '
+            'shows a ⚠ — move the phone closer or switch lens. Snapped to a '
+            'multiple of 32; default 1024 (uniform files, roomy for cropping '
+            'insects out for a classifier).',
+        onChanged: (v) => setState(
+          () => _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v)),
         ),
-        subtitle: Text(
-          'Off (default): fast crops from the live frame — no FPS drop, smaller '
-          'files. On: full-sensor stills'
-          '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
-          ' — sharper and larger on disk, but the frame rate dips during each save.',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.fullResPhotos,
-        onChanged: (v) => setState(() => _c = _c.copyWith(fullResPhotos: v)),
       ),
       const Divider(color: Colors.white24),
 
@@ -951,6 +995,24 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) => setState(
             () =>
                 _c = _c.copyWith(motionGateGridSize: v.round().clamp(16, 160)),
+          ),
+        ),
+        NumericSettingField(
+          label: 'Idle check rate (frames/s)',
+          value: _c.motionGateIdleFps.toDouble(),
+          min: 1,
+          max: 30,
+          isInt: true,
+          helperText:
+              'How many camera frames per second are inspected for motion '
+              'while the detector sleeps; the rest are dropped before the '
+              'costly image conversion — the main source of idle heat. Higher '
+              'wakes faster but runs warmer; an arriving insect is noticed '
+              'within ~1/rate s (default 5 → ~0.2 s). While awake, every '
+              'frame is processed regardless, so the camera FPS readout '
+              'showing ~this number just means the gate is asleep.',
+          onChanged: (v) => setState(
+            () => _c = _c.copyWith(motionGateIdleFps: v.round().clamp(1, 30)),
           ),
         ),
       ],

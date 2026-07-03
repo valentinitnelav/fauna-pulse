@@ -311,6 +311,16 @@ class YOLOView @JvmOverloads constructor(
     // Optional ImageCapture use-case (bound alongside Preview+Analysis when supported)
     private var imageCaptureUseCase: ImageCapture? = null
 
+    // Round 63: still photos are processed OFF the main thread. CameraX runs the
+    // takePicture callback on whatever executor it is given; handing it the main
+    // executor meant ~1.5 s of JPEG work per photo (12 MP copy/decode/rotate/
+    // re-encode) froze the UI, the preview AND the detector (measured as
+    // PerfMonitor "longMsg wall=1570ms" on the Xiaomi test phone). A dedicated
+    // single thread keeps captures serialized without touching the camera
+    // executor. Intentionally view-lifetime (one idle thread is negligible and
+    // must survive camera rebinds).
+    private val stillExecutor = Executors.newSingleThreadExecutor()
+
     // Pollinator Monitor: optional region of interest. When non-null, inference runs only on this
     // square crop of the frame (see BasePredictor.inferenceRoi). Volatile because it is written from
     // the Flutter platform-channel thread and read on the camera analyzer thread.
@@ -346,6 +356,12 @@ class YOLOView @JvmOverloads constructor(
     @Volatile private var gateAwakeUntilNs = 0L
     private val motionGate = MotionGate()
     private var lastGateHeartbeatNs = 0L // analyzer thread only
+    // Round 63 (cooler idle): while the gate keeps the detector asleep, only
+    // one frame per this interval is converted + motion-checked; the rest are
+    // dropped untouched. Converting EVERY frame to a bitmap just to look for
+    // motion (7–16 ms each, ~30 fps) was the main idle heat source.
+    private var lastGateSampleNs = 0L // analyzer thread only
+    @Volatile private var gateIdleSampleNs = 200_000_000L // set via setMotionGate(idleFps)
 
     /**
      * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
@@ -363,11 +379,14 @@ class YOLOView @JvmOverloads constructor(
         areaFraction: Double,
         wakeSeconds: Double,
         gridSize: Int = MotionGate.DEFAULT_GRID,
+        idleFps: Int = 5,
     ) {
         motionGate.pixelDelta = pixelDelta.coerceIn(1, 255)
         motionGate.areaFraction = areaFraction.coerceIn(0.0001, 1.0)
         motionGate.gridSize = gridSize
         motionGateWakeNs = (wakeSeconds.coerceIn(0.5, 60.0) * 1e9).toLong()
+        // Round 64: user-tunable idle sampling rate (was hardcoded ~5 fps).
+        gateIdleSampleNs = 1_000_000_000L / idleFps.coerceIn(1, 30)
         motionGate.reset()
         gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
         motionGateEnabled = enabled
@@ -1715,56 +1734,112 @@ class YOLOView @JvmOverloads constructor(
      * Capture a still photo. Preferred path uses the bound ImageCapture use-case so we get a full-resolution JPEG; if
      * [withOverlays] is true the current overlay bitmap is composited on top of the still before re-encoding. If
      * ImageCapture binding isn't available (e.g. three-use-case bind failed), falls back to [captureFrame] which
-     * snapshots the preview + overlay composite.
+     * snapshots the preview + overlay composite. The heavy JPEG processing runs on [stillExecutor] (round 63); the
+     * callback is always invoked on the main thread.
      */
     fun capturePhoto(withOverlays: Boolean = true, callback: (ByteArray?) -> Unit) {
+        val mainExec = ContextCompat.getMainExecutor(context)
+        takeRawStill(
+            onJpeg = { jpegBytes, rotationDegrees, isFront ->
+                // Runs on stillExecutor: the full-frame decode/rotate/re-encode
+                // stays off the main thread (round-63 lag fix). Rotation +
+                // front-camera mirroring are baked into the pixels so consumers
+                // (crop, gallery) see an upright image regardless of EXIF
+                // support — without this every portrait share ends up sideways.
+                val processed = try {
+                    if (!withOverlays) {
+                        normalizeJpegOrientation(jpegBytes, rotationDegrees, isFront) ?: jpegBytes
+                    } else {
+                        // Composite the current overlay bitmap on top of the still.
+                        compositeOverlayOnJpeg(jpegBytes, rotationDegrees, isFront) ?: jpegBytes
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "capturePhoto: error processing capture", e)
+                    null
+                }
+                if (processed != null) {
+                    mainExec.execute { callback(processed) }
+                } else {
+                    // captureFrame touches views — main thread only.
+                    mainExec.execute { callback(captureFrame(withOverlays)) }
+                }
+            },
+            onFail = { callback(captureFrame(withOverlays)) },
+        )
+    }
+
+    /**
+     * Round 63 (Pollinator Monitor): the still exactly as the camera delivered it — NOT rotated upright — plus the
+     * info needed to interpret it ("bytes", "rotationDegrees" = clockwise rotation that would make it upright,
+     * "isFront"). Skips normalizeJpegOrientation's full-frame decode/rotate/re-encode (~1.5 s per 12 MP photo);
+     * the app's ROI crop maps its rectangle into raw coordinates and rotates only the small square. The callback is
+     * always invoked on the main thread; null on failure (no captureFrame fallback — the caller decides).
+     */
+    fun capturePhotoRaw(callback: (Map<String, Any?>?) -> Unit) {
+        val mainExec = ContextCompat.getMainExecutor(context)
+        takeRawStill(
+            onJpeg = { bytes, rotationDegrees, isFront ->
+                mainExec.execute {
+                    callback(
+                        mapOf(
+                            "bytes" to bytes,
+                            "rotationDegrees" to rotationDegrees,
+                            "isFront" to isFront,
+                        )
+                    )
+                }
+            },
+            onFail = { callback(null) },
+        )
+    }
+
+    /**
+     * Shared still-capture plumbing: grabs a JPEG from the bound ImageCapture use-case and hands it to [onJpeg] ON
+     * [stillExecutor], together with the clockwise rotation that would make it upright and the front-camera flag.
+     * [onFail] runs on the MAIN thread when ImageCapture is unbound (three-use-case bind failed at startup) or the
+     * capture/extraction fails — so callers can fall back to view-touching snapshots directly.
+     */
+    private fun takeRawStill(
+        onJpeg: (bytes: ByteArray, rotationDegrees: Int, isFront: Boolean) -> Unit,
+        onFail: () -> Unit,
+    ) {
         val ic = imageCaptureUseCase
+        val mainExec = ContextCompat.getMainExecutor(context)
         if (ic == null) {
-            // Three-use-case bind failed at startup; honor withOverlays via captureFrame's matching flag so callers
-            // asking for a raw photo don't silently get an annotated one.
-            callback(captureFrame(withOverlays))
+            mainExec.execute(onFail)
             return
         }
         try {
             ic.takePicture(
-                ContextCompat.getMainExecutor(context),
+                stillExecutor,
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(image: ImageProxy) {
                         try {
-                            // Carry the capture rotation + mirroring forward; ImageCapture hands us a JPEG that is not
-                            // yet rotated for portrait sensors, and on the front camera we also need to flip
-                            // horizontally before re-encoding. Without this every portrait share ends up sideways.
                             val rotationDegrees = image.imageInfo.rotationDegrees
                             val isFront = lensFacing == CameraSelector.LENS_FACING_FRONT
                             val jpegBytes = imageProxyToJpegBytes(image)
                             if (jpegBytes == null) {
-                                callback(captureFrame(withOverlays))
-                                return
+                                mainExec.execute(onFail)
+                            } else {
+                                onJpeg(jpegBytes, rotationDegrees, isFront)
                             }
-                            if (!withOverlays) {
-                                callback(normalizeJpegOrientation(jpegBytes, rotationDegrees, isFront) ?: jpegBytes)
-                                return
-                            }
-                            // Composite the current overlay bitmap on top of the still.
-                            val composed = compositeOverlayOnJpeg(jpegBytes, rotationDegrees, isFront)
-                            callback(composed ?: jpegBytes)
                         } catch (e: Exception) {
-                            Log.e(TAG, "capturePhoto: error processing capture", e)
-                            callback(captureFrame(withOverlays))
+                            Log.e(TAG, "takeRawStill: error extracting still", e)
+                            mainExec.execute(onFail)
                         } finally {
                             image.close()
                         }
                     }
 
                     override fun onError(exception: ImageCaptureException) {
-                        Log.w(TAG, "capturePhoto: ImageCapture failed, falling back to captureFrame", exception)
-                        callback(captureFrame(withOverlays))
+                        Log.w(TAG, "takeRawStill: ImageCapture failed", exception)
+                        mainExec.execute(onFail)
                     }
                 }
             )
         } catch (e: Exception) {
-            Log.e(TAG, "capturePhoto: takePicture threw, falling back", e)
-            callback(captureFrame(withOverlays))
+            Log.e(TAG, "takeRawStill: takePicture threw", e)
+            mainExec.execute(onFail)
         }
     }
 
@@ -1907,9 +1982,16 @@ class YOLOView @JvmOverloads constructor(
     @Volatile private var lastFrameIsLandscape: Boolean = false
 
     /** Crops the given ROI from the most recent analysis frame and returns it as
-     *  a JPEG. Fast (no `takePicture`), at the analysis-frame resolution. Returns
-     *  null if no frame is available yet. */
-    fun captureRoiFromFrame(cx: Double, cy: Double, side: Double, quality: Int): ByteArray? {
+     *  a JPEG. Fast (no `takePicture`), at the analysis-frame resolution. A
+     *  [maxPx] > 0 downscales (never enlarges) larger crops to that side before
+     *  encoding. Returns null if no frame is available yet. */
+    fun captureRoiFromFrame(
+        cx: Double,
+        cy: Double,
+        side: Double,
+        quality: Int,
+        maxPx: Int = 0,
+    ): ByteArray? {
         val bmp = lastFrameBitmap ?: return null
         return ImageUtils.cropRoiFromFrame(
             bitmap = bmp,
@@ -1921,6 +2003,7 @@ class YOLOView @JvmOverloads constructor(
             roiCy = cy.toFloat(),
             roiSide = side.toFloat(),
             quality = quality,
+            maxPx = maxPx,
         )
     }
 
@@ -1929,6 +2012,21 @@ class YOLOView @JvmOverloads constructor(
         if (isStopped) {
             imageProxy.close()
             return
+        }
+
+        // Round 63 (cooler idle): while the motion gate keeps the detector
+        // asleep, sample only ~5 frames/s for the motion check and drop the
+        // rest BEFORE the (expensive) bitmap conversion. An arriving insect is
+        // still noticed within ~0.2 s; once motion wakes the gate, every frame
+        // flows again. Note: the delivered-FPS readout intentionally reflects
+        // this (~5 while idle) — it reports frames the pipeline actually uses.
+        if (motionGateEnabled && System.nanoTime() > gateAwakeUntilNs) {
+            val nowIdle = System.nanoTime()
+            if (nowIdle - lastGateSampleNs < gateIdleSampleNs) {
+                imageProxy.close()
+                return
+            }
+            lastGateSampleNs = nowIdle
         }
 
         perfFramesIn++

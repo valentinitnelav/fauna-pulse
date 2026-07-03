@@ -542,6 +542,18 @@ class YOLOPlatformView(
                         }
                     }
                 }
+                "capturePhotoRaw" -> {
+                    // Pollinator Monitor (round 63): the still exactly as delivered —
+                    // unrotated JPEG + rotation/mirror info — so the caller can crop
+                    // first and rotate only the small square (the still-lag fix).
+                    yoloView.capturePhotoRaw { map ->
+                        if (map != null) {
+                            result.success(map)
+                        } else {
+                            result.error("capture_failed", "Failed to capture raw photo", null)
+                        }
+                    }
+                }
                 "setInferenceRoi" -> {
                     // Pollinator Monitor: crop inference to a square ROI. Pass side <= 0 to clear.
                     val cx = call.argument<Double>("cx") ?: 0.5
@@ -558,7 +570,8 @@ class YOLOPlatformView(
                     val areaFraction = call.argument<Double>("areaFraction") ?: 0.005
                     val wakeSeconds = call.argument<Double>("wakeSeconds") ?: 3.0
                     val gridSize = call.argument<Int>("gridSize") ?: MotionGate.DEFAULT_GRID
-                    yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize)
+                    val idleFps = call.argument<Int>("idleFps") ?: 5
+                    yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize, idleFps)
                     result.success(null)
                 }
                 "getStreamResolutions" -> {
@@ -576,7 +589,8 @@ class YOLOPlatformView(
                     val cy = call.argument<Double>("cy") ?: 0.5
                     val side = call.argument<Double>("side") ?: 0.5
                     val quality = call.argument<Int>("quality") ?: 90
-                    val bytes = yoloView.captureRoiFromFrame(cx, cy, side, quality)
+                    val maxPx = call.argument<Int>("maxPx") ?: 0
+                    val bytes = yoloView.captureRoiFromFrame(cx, cy, side, quality, maxPx)
                     if (bytes != null) result.success(bytes)
                     else result.error("no_frame", "No analysis frame available yet", null)
                 }
