@@ -5,9 +5,13 @@
 // reference but are no longer the launch route.
 
 import 'package:flutter/material.dart';
+import 'package:pollinator_monitor/pollinator/logging/app_error_hooks.dart';
 import 'package:pollinator_monitor/pollinator/screens/home_screen.dart';
 
 void main() {
+  // Route uncaught errors into the active session's JSONL (and keep the app
+  // alive on uncaught async errors) — a field crash must always leave a trace.
+  installGlobalErrorHooks();
   runApp(const PollinatorApp());
 }
 

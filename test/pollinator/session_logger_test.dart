@@ -91,6 +91,58 @@ void main() {
     expect(rec['engine'], 'CPU');
   });
 
+  test('a failed write never throws, notifies once, and can recover', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc'});
+
+    // Simulate the disk filling up mid-session (B1): every append now fails.
+    final errors = <Object>[];
+    logger.onWriteError = errors.add;
+    logger.debugInjectWriteError = const FileSystemException('disk full');
+
+    // The per-frame path must survive this without throwing…
+    logger.logDetection({'track_id': 1});
+    logger.logDetection({'track_id': 2});
+    logger.flushNow();
+
+    // …notify exactly once, and count every dropped line.
+    expect(errors, hasLength(1));
+    expect(logger.hasWriteError, isTrue);
+    expect(logger.writeFailures, 2);
+
+    // Storage freed up again: logging simply resumes.
+    logger.debugInjectWriteError = null;
+    logger.logEnd({'ended_normally': true});
+    logger.close();
+
+    final records = file
+        .readAsLinesSync()
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
+    // The failed detection lines are lost, but the file stays valid JSONL and
+    // the end record still lands.
+    expect(records, hasLength(2));
+    expect(records.first['type'], 'start_of_session');
+    expect(records.last['type'], 'end_of_session');
+  });
+
+  test('onWriteError may itself log (banner path) without recursing', () {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.debugInjectWriteError = const FileSystemException('disk full');
+    var calls = 0;
+    logger.onWriteError = (_) {
+      calls++;
+      // The screen's handler writes an app_error line from inside the
+      // callback; with the disk still full this must not loop or throw.
+      logger.logAppError({'source': 'session_log', 'message': 'log broken'});
+    };
+    logger.logDetection({'track_id': 1});
+    expect(calls, 1);
+    logger.close();
+  });
+
   test('isoWithOffset has millisecond precision and an offset', () {
     final s = isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123));
     expect(s, contains('2026-06-13T19:03:12.123'));

@@ -129,9 +129,16 @@ the frame rate.
 
 ### `app_error` — an error surfaced during recording
 
-`source` (e.g. `detector`, `watchdog`) and `message`. Field sessions run
-unattended and banners are brief, so this is your record of "something flashed
-red at 14:20" (round 65).
+`source` (e.g. `detector`, `watchdog`, `session_log`, `roi_capture`,
+`set_inference_roi`, `set_motion_gate`, `flutter_framework`, `uncaught_async`)
+and `message`. Field sessions run unattended and banners are brief, so this is
+your record of "something flashed red at 14:20" (round 65). Since round 67,
+uncaught app errors also land here: those records may carry a truncated
+`stack` and, because they are rate-limited to one per 2 s, a
+`suppressed_since_last` count of identical-window errors that were dropped.
+If the storage filled up mid-session, log lines may be missing between a
+`session_log` app_error and the `end_of_session` line — the file stays valid
+JSONL throughout.
 
 ### `end_of_session` — one per session, last line (absent = crash)
 

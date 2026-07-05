@@ -286,6 +286,11 @@ class RoiCaptureScheduler {
   /// Used to log a `capture` diagnostics record; never affects capture itself.
   final void Function(CaptureStat stat)? onStat;
 
+  /// Optional sink for a failed capture (grab, crop or JPEG write threw).
+  /// [capture] is fired-and-forgotten from the frame callback, so without
+  /// this a failed photo save would be an unhandled async error nobody sees.
+  final void Function(String fileName, Object error)? onError;
+
   RoiCaptureScheduler({
     required this.framesDir,
     required this.sessionId,
@@ -299,6 +304,7 @@ class RoiCaptureScheduler {
     required this.streamDims,
     required this.stillDims,
     this.onStat,
+    this.onError,
   });
 
   final Map<int, _Window> _windows = {};
@@ -440,6 +446,11 @@ class RoiCaptureScheduler {
           savedPx: savedPx,
         ),
       );
+    } catch (e) {
+      // The Dart-fallback crop and the final file write were previously only
+      // wrapped in try/finally: a full disk here became an invisible unhandled
+      // async error. Report it so the session log gets an app_error line.
+      onError?.call(pending.fileName, e);
     } finally {
       _busy = false;
     }

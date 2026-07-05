@@ -20,6 +20,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
+import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../logging/diagnostics.dart';
 import '../logging/error_reporter.dart';
@@ -161,6 +162,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   String? _inferenceError;
   bool _errorBannerDismissed = false;
   StreamSubscription<String>? _errorSub;
+  // Set when the session log itself can no longer be written (storage full /
+  // permission revoked). Kept separate from _inferenceError because the
+  // watchdog clears that one as soon as the detector produces frames — this
+  // condition must stay visible until dismissed or a new session starts.
+  String? _logWriteError;
   // Watchdog state: have we ever seen the detector produce a frame, and since when
   // has the camera been delivering frames without it?
   bool _detectorEverRan = false;
@@ -1027,6 +1033,29 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     framesDir.createSync(recursive: true);
 
     final logger = SessionLogger(File('${dir.path}/session.jsonl'))..open();
+    // If the storage fills up (or access is revoked) mid-session, the logger
+    // now swallows the write failure instead of crashing the frame callback
+    // (see SessionLogger). Surface it once: red banner + best-effort
+    // app_error line (which lands if the failure turns out to be transient).
+    _logWriteError = null;
+    logger.onWriteError = (error) {
+      debugPrint('Session log write failed: $error');
+      logger.logAppError({
+        'source': 'session_log',
+        'message': 'Log write failed (storage full or inaccessible): $error',
+      });
+      if (!mounted) return;
+      setState(() {
+        _logWriteError =
+            'Cannot write to the session log (storage full or removed?). '
+            'The session keeps running, but detections may no longer be '
+            'saved. Free up storage or stop the session.';
+        _errorBannerDismissed = false;
+      });
+    };
+    // Route global uncaught errors (see app_error_hooks.dart) into this
+    // session's JSONL for the whole recording, including the stop sequence.
+    appErrorSink = (payload) => logger.logAppError(payload);
 
     final battery = await _safeBatteryLevel();
     final device = await _safeDeviceDescriptor();
@@ -1139,6 +1168,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           'saved_px': s.savedPx,
         });
       },
+      onError: (fileName, error) =>
+          _logAsyncError('roi_capture', 'Photo $fileName failed: $error'),
     );
 
     await WakelockPlus.enable();
@@ -1208,6 +1239,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // before closing the log, so an uncoupled run keeps a full record.
     await _saveLogcat('logcat_end.txt');
     _logger?.close();
+    // The log is closed: stop routing global uncaught errors to it.
+    appErrorSink = null;
     await WakelockPlus.disable();
     // Tear down the keep-alive foreground service + its notification.
     await RecordingKeepAlive.stop();
@@ -1611,28 +1644,40 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     controller.dispose();
   }
 
+  /// Records a failed fire-and-forget call: console line for `flutter run`
+  /// plus an `app_error` JSONL line when a session log is open, so "that
+  /// feature silently did nothing all day" stays diagnosable from the field.
+  void _logAsyncError(String source, Object error) {
+    debugPrint('[$source] $error');
+    _logger?.logAppError({'source': source, 'message': '$error'});
+  }
+
   /// Sends the current ROI to the native side so inference runs only on that
   /// square crop (better small-object recall; nothing outside the ROI detected).
   void _pushInferenceRoi() {
-    _controller.setInferenceRoi(
-      cx: _roi.centerX,
-      cy: _roi.centerY,
-      side: _roi.sideFraction,
-    );
+    _controller
+        .setInferenceRoi(
+          cx: _roi.centerX,
+          cy: _roi.centerY,
+          side: _roi.sideFraction,
+        )
+        .catchError((Object e) => _logAsyncError('set_inference_roi', e));
   }
 
   /// Sends the motion-gate settings to the native pipeline. When enabled the
   /// detector sleeps while nothing moves inside the ROI (heat/battery saver);
   /// the native side always starts the gate awake so the user sees it working.
   void _pushMotionGate() {
-    _controller.setMotionGate(
-      enabled: _config.motionGateEnabled,
-      pixelDelta: _config.motionGatePixelDelta,
-      areaFraction: _config.motionGateAreaFraction,
-      wakeSeconds: _config.motionGateWakeSeconds,
-      gridSize: _config.motionGateGridSize,
-      idleFps: _config.motionGateIdleFps,
-    );
+    _controller
+        .setMotionGate(
+          enabled: _config.motionGateEnabled,
+          pixelDelta: _config.motionGatePixelDelta,
+          areaFraction: _config.motionGateAreaFraction,
+          wakeSeconds: _config.motionGateWakeSeconds,
+          gridSize: _config.motionGateGridSize,
+          idleFps: _config.motionGateIdleFps,
+        )
+        .catchError((Object e) => _logAsyncError('set_motion_gate', e));
     if (!_config.motionGateEnabled && _gateIdle) {
       // Gate switched off while idle: clear the idle indicator immediately.
       setState(() => _gateIdle = false);
@@ -1977,12 +2022,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // Big "Calibrating…" banner until the ROI resolution is known.
           if (!haveRoiDim)
             const IgnorePointer(child: Center(child: _CalibratingBanner())),
-          // Inference-error banner (incompatible model / detector stalled).
-          if (_inferenceError != null && !_errorBannerDismissed)
+          // Error banner: a broken session log (storage full) outranks a
+          // detector error — the watchdog auto-clears _inferenceError once
+          // frames flow again, but a log-write failure must stay visible.
+          if ((_logWriteError ?? _inferenceError) != null &&
+              !_errorBannerDismissed)
             SafeArea(
               child: Align(
                 alignment: Alignment.topCenter,
-                child: _errorBanner(_inferenceError!),
+                child: _errorBanner((_logWriteError ?? _inferenceError)!),
               ),
             ),
           // Bottom controls.

@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 66 (review-and-document pass, no code changes: PERF_AND_ROBUSTNESS_REVIEW.md roadmap added; FIELD_GUIDE / SETTINGS_REFERENCE / DATA_GUIDE / ARCHITECTURE / CONTRIBUTING docs added; see Pointers).
+> Last synced with: round 67 (review items B1 guard + B2: SessionLogger never throws on write failure — one-shot `onWriteError` → persistent red banner + app_error line; global uncaught-error hooks in `logging/app_error_hooks.dart` route to the live session log; fire-and-forget captures/pushes now report failures).
 
 ## What the app is about
 
@@ -119,6 +119,13 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 - **Logging.** Append-only JSONL (crash/battery-loss safe): start metadata, per-detection
   entries with track id + ROI-relative `box_in_roi` (0..1) + saved filenames, ROI geometry
   updates, and stop metadata with `ended_normally`.
+- **A session never dies silently (round 67).** `SessionLogger` swallows + counts write
+  failures (storage full) instead of throwing in the frame callback; `onWriteError` fires
+  once → persistent red banner; writes keep being attempted so logging resumes if space
+  frees. Global traps in `logging/app_error_hooks.dart` (installed in `main()`) route
+  uncaught errors to the live session's `app_error` lines via `appErrorSink` (rate-limited
+  to 1 per 2 s) and mark uncaught async errors handled (app stays alive). Don't add naked
+  fire-and-forget futures — route failures to `_logAsyncError` / `RoiCaptureScheduler.onError`.
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.

@@ -34,6 +34,24 @@ class SessionLogger {
   final File file;
   RandomAccessFile? _raf;
 
+  /// Called (at most once per logger) the first time a write to disk fails —
+  /// e.g. the storage filled up mid-session or the OS revoked access. Writes
+  /// keep being *attempted* after that (if the user frees space the log simply
+  /// resumes), but each failed line is dropped instead of crashing the
+  /// per-frame detection callback that logging runs inside of.
+  void Function(Object error)? onWriteError;
+
+  /// How many individual log lines were lost to write failures.
+  int writeFailures = 0;
+
+  /// True once at least one write has failed (see [onWriteError]).
+  bool get hasWriteError => _writeErrorNotified;
+  bool _writeErrorNotified = false;
+
+  /// Test seam: when set, every append throws this instead of writing, which
+  /// lets tests simulate a full disk without needing one.
+  Exception? debugInjectWriteError;
+
   SessionLogger(this.file);
 
   /// Opens (or creates) the log file for appending. Safe to call once.
@@ -47,6 +65,11 @@ class SessionLogger {
   /// important start/roi/end records). High-frequency detection lines pass
   /// false and are flushed once per frame via [flushNow] to avoid an fsync on
   /// every detection at 30 fps.
+  ///
+  /// Never throws on I/O failure: this runs inside the per-frame detection
+  /// callback, where an uncaught "disk full" exception would kill exactly the
+  /// long unattended sessions most likely to fill the disk. Failures are
+  /// counted and surfaced once via [onWriteError] instead.
   void _append(
     String type,
     Map<String, dynamic> payload, {
@@ -64,13 +87,33 @@ class SessionLogger {
       'time_iso': isoWithOffset(now),
       ...payload,
     };
-    raf.writeStringSync('${jsonEncode(record)}\n');
-    if (flush) raf.flushSync();
+    try {
+      final inject = debugInjectWriteError;
+      if (inject != null) throw inject;
+      raf.writeStringSync('${jsonEncode(record)}\n');
+      if (flush) raf.flushSync();
+    } catch (e) {
+      _onWriteFailure(e);
+    }
   }
 
   /// Forces any buffered writes to disk. Call once per processed frame after
-  /// the frame's detection lines.
-  void flushNow() => _raf?.flushSync();
+  /// the frame's detection lines. Guarded like [_append]: a failed fsync must
+  /// not crash the frame callback.
+  void flushNow() {
+    try {
+      _raf?.flushSync();
+    } catch (e) {
+      _onWriteFailure(e);
+    }
+  }
+
+  void _onWriteFailure(Object error) {
+    writeFailures++;
+    if (_writeErrorNotified) return;
+    _writeErrorNotified = true;
+    onWriteError?.call(error);
+  }
 
   /// First record: session-wide metadata and the initial ROI.
   void logStart(Map<String, dynamic> payload, {DateTime? at}) =>
@@ -130,10 +173,19 @@ class SessionLogger {
   void logEnd(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('end_of_session', payload, at: at);
 
-  /// Closes the file handle.
+  /// Closes the file handle. Best-effort: a failing flush must not prevent
+  /// the handle from being released (or the stop sequence from finishing).
   void close() {
-    _raf?.flushSync();
-    _raf?.closeSync();
+    try {
+      _raf?.flushSync();
+    } catch (e) {
+      _onWriteFailure(e);
+    }
+    try {
+      _raf?.closeSync();
+    } catch (_) {
+      // Nothing useful left to do with a handle that won't close.
+    }
     _raf = null;
   }
 }

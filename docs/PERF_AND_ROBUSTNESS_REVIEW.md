@@ -3,10 +3,10 @@
 **Who this is for:** the project owner deciding what to improve next, and any
 collaborator implementing one of these items.
 
-This is a code review, not a change log — **nothing below has been implemented
-yet**. Each item is a checkbox so finished work can be ticked off in later
-rounds. Items are ordered by expected payoff within each section. File
-references were verified against the code on the review date; line numbers will
+This is a code review, not a change log. 
+Each item is a checkbox so finished work can be ticked off in later rounds.
+Items are ordered by expected payoff within each section. 
+File references were verified against the code on the review date; line numbers will
 drift as files change, so treat them as "near here".
 
 Plain-language glossary for terms used throughout:
@@ -139,7 +139,7 @@ documented behaviour.
 
 ### B1. The per-frame log write can crash a session (highest priority)
 
-- [ ] `camera_session_screen.dart` `_recordFrame` (~868–896) →
+- [x] `camera_session_screen.dart` `_recordFrame` (~868–896) →
   `session_logger.dart` `_append` → `raf.writeStringSync(...)` (~line 67),
   with **no try/catch anywhere on that path**.
 
@@ -156,29 +156,39 @@ cleanly so `end_of_session` gets written while the disk still has room).
 
 While in there, two related wins:
 
-- **Batch to one JSONL line per frame** instead of one per track — several
+- [ ] **Batch to one JSONL line per frame** instead of one per track — several
   concurrent tracks currently mean several `jsonEncode` + `writeStringSync`
   calls per frame on the UI thread.
-- Consider moving writes to a small queue drained off the UI thread.
+- [ ] Consider moving writes to a small queue drained off the UI thread.
 
 *Effort:* small for the guard; medium for batching/queueing.
+**Guard done (round 67):** `SessionLogger._append`/`flushNow`/`close` never
+throw on I/O failure; failed lines are counted, `onWriteError` fires once →
+persistent red banner + best-effort `app_error` line; writes keep being
+attempted so logging resumes if space is freed. Failure-path tests added.
+Batching/queueing deliberately deferred (the two unchecked boxes above).
 
 ### B2. No global error trap
 
-- [ ] `main.dart` is a bare `runApp` (lines 10–12) — add
+- [x] `main.dart` is a bare `runApp` (lines 10–12) — add
   `FlutterError.onError` + `PlatformDispatcher.instance.onError` (or
   `runZonedGuarded`) that route uncaught errors to `logAppError` when a
   session is active, so a field crash always leaves a trace in the JSONL.
-- [ ] `camera_session_screen.dart` — fire-and-forget futures with no error
+- [x] `camera_session_screen.dart` — fire-and-forget futures with no error
   handler: `_capture?.capture(pending)` (~893), `_pushInferenceRoi` (~1616),
   `_pushMotionGate` (~1627). A failed JPEG write currently becomes an
   unhandled async error nobody sees. Add `.catchError` → `logAppError`.
-- [ ] `roi_capture.dart` `capture()` (~359–446): the native-crop call is
+- [x] `roi_capture.dart` `capture()` (~359–446): the native-crop call is
   guarded, but the Dart-fallback `compute()` isolate and the final
   `outFile.writeAsBytes` are only inside `try { } finally { }` — add the
   `catch`.
 
-*Effort:* small.
+*Effort:* small. **Done (round 67):** new `logging/app_error_hooks.dart`
+installs both traps from `main()` (rate-limited to 1 record / 2 s; uncaught
+async errors are logged and *handled*, so they no longer kill a session);
+the camera screen points `appErrorSink` at the live logger for the duration
+of a recording. `RoiCaptureScheduler.capture()` gained a `catch` + `onError`
+sink; the ROI/motion-gate pushes got `.catchError` → `_logAsyncError`.
 
 ### B3. App lifecycle gaps
 
@@ -279,7 +289,8 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 ## Suggested sequencing
 
 1. **B5** (one line) + **B1 guard** + **B2** — a session should never die
-   silently. Small, high value, low risk.
+   silently. Small, high value, low risk. ✔ **Done** (B5 round 66; B1 guard
+   + B2 round 67 — B1's batching/queueing follow-ups remain open).
 2. **A1** + **A2** — the two big heat/latency wins in the native path.
 3. **B3 + B4** — lifecycle + camera watchdog.
 4. **A3**, then **B6(a)** + **B8** tests.

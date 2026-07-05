@@ -2261,3 +2261,53 @@ the short grounding snapshot it's meant to be.
 **Verification:** documentation-only round; no build/test needed and
 `flutter analyze` untouched (no code changed). Settings entries and JSONL field
 names were spot-checked against `session_config.dart` and `session_logger.dart`.
+
+## Round 67 (2026-07-05): crash-proof logging + global error trap (review items B1 guard + B2)
+
+Implements sequencing item 1 of `PERF_AND_ROBUSTNESS_REVIEW.md` — "a session
+should never die silently". B5 was already done in round 66; this round adds
+the **B1 guard** and all of **B2**. B1's batching/queueing follow-ups were
+deliberately deferred (their checkboxes remain open in the review).
+
+**B1 guard — the per-frame log write can no longer crash a session**
+(`logging/session_logger.dart`):
+
+- `_append`, `flushNow` and `close` are now wrapped: an I/O failure (storage
+  full mid-session, permission revoked) is swallowed instead of throwing
+  inside the per-frame detection callback. Failed lines are counted
+  (`writeFailures`); writes keep being *attempted*, so if the user frees
+  space the log simply resumes.
+- New `onWriteError` callback fires **once** per logger on the first failure.
+  The camera screen wires it to (a) a best-effort `app_error` line (lands if
+  the failure was transient) and (b) a new persistent red banner
+  (`_logWriteError`) telling the user storage is full — kept separate from
+  `_inferenceError` because the watchdog auto-clears that one as soon as
+  frames flow.
+- `close()` is also best-effort so the stop sequence can always finish and
+  `end_of_session` is never blocked by a failing flush.
+- Test seam `debugInjectWriteError` + two new tests: failure path (no throw,
+  notify once, counter, recovery after space is freed) and no-recursion when
+  the `onWriteError` handler itself logs.
+
+**B2 — global error trap** (new `logging/app_error_hooks.dart`, `main.dart`,
+`camera_session_screen.dart`, `capture/roi_capture.dart`):
+
+- `main()` now calls `installGlobalErrorHooks()` before `runApp`:
+  `FlutterError.onError` (framework errors; default console dump preserved)
+  and `PlatformDispatcher.instance.onError` (all uncaught async errors —
+  returns `true`, so a background hiccup no longer kills the app/session).
+  Both route into a module-level `appErrorSink`, rate-limited to one JSONL
+  record per 2 s with a `suppressed_since_last` count and a 12-line stack
+  head, so an error thrown per-frame cannot flood the log.
+- The camera screen points `appErrorSink` at the live logger's `logAppError`
+  when recording starts and clears it right after `_logger?.close()` in
+  `_stopRecording` — so even stop-sequence errors leave a trace.
+- `RoiCaptureScheduler.capture()` gained the missing `catch` (the
+  Dart-fallback `compute()` crop and `writeAsBytes` were only inside
+  `try/finally`) plus an `onError` sink; the screen wires it — and new
+  `.catchError` handlers on `setInferenceRoi`/`setMotionGate` — to a small
+  `_logAsyncError(source, error)` helper (debugPrint + `app_error` line).
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+73/73 pass (includes the 2 new logger failure-path tests). On-device smoke
+test pending (owner).
