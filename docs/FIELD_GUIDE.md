@@ -55,8 +55,14 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 
 - **Status strip (top-left)** — when enabled, shows: frames per second, the
   model in use, the engine (CPU or GPU), the camera stream resolution, the ROI
-  size, phone temperature, and the current number of tracked insects. Turning
-  it off (Settings) removes that per-frame UI work for the lightest preview.
+  size, phone temperature, free storage, and the current number of tracked
+  insects. Turning it off (Settings) removes that per-frame UI work for the
+  lightest preview.
+- **Storage free** — how much room is left on the phone for photos and logs
+  (refreshed every temperature sample). A ⚠ appears below 1 GB: clean up old
+  sessions before starting a long recording. If storage runs out mid-session
+  the session keeps running and shows a red banner, but new photos and log
+  lines can no longer be saved.
 - **Bounding boxes + track IDs** — colored boxes with a number label are drawn
   over each tracked insect. The **track ID** is what makes a visit measurable:
   the same insect keeps the same number across frames. (You can turn box

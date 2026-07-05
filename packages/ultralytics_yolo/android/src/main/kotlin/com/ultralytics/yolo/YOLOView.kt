@@ -1970,6 +1970,10 @@ class YOLOView @JvmOverloads constructor(
     private var perfFramesIn = 0
     private var perfInferred = 0
     private var perfToBitmapNs = 0L
+    // Frames that actually paid the RGBA->Bitmap conversion this window. Since
+    // the FPS-cap drop moved BEFORE the conversion (perf review A1) this is a
+    // subset of perfFramesIn, and the toBitmapMs average must divide by it.
+    private var perfConverted = 0
     // Latest camera analysis delivery rate (frames/sec the sensor feeds us),
     // surfaced to Flutter so the UI can show it next to the detector rate.
     private var lastDeliveredFps = 0.0
@@ -2034,6 +2038,50 @@ class YOLOView @JvmOverloads constructor(
         val w = imageProxy.width
         val h = imageProxy.height
 
+        // Emit a per-second summary of the camera->inference pipeline. Runs
+        // BEFORE any frame drop below so deliveredFps keeps meaning "frames
+        // CameraX handed the analyzer" (the Dart watchdog and the session FPS
+        // graphs rely on that meaning) even now that capped frames are dropped
+        // before conversion.
+        val nowNs = System.nanoTime()
+        if (perfWindowStartNs == 0L) perfWindowStartNs = nowNs
+        val elapsed = nowNs - perfWindowStartNs
+        if (elapsed >= 1_000_000_000L) {
+            val secs = elapsed / 1e9
+            val avgToBitmap = if (perfConverted > 0) perfToBitmapNs / perfConverted / 1e6 else 0.0
+            lastDeliveredFps = perfFramesIn / secs
+            Log.i(
+                TAG,
+                "FRAMEPERF deliveredFps=${"%.1f".format(lastDeliveredFps)} " +
+                    "convertedFps=${"%.1f".format(perfConverted / secs)} " +
+                    "inferredFps=${"%.1f".format(perfInferred / secs)} " +
+                    "toBitmapMs=${"%.1f".format(avgToBitmap)} format=${imageProxy.format} ${w}x$h"
+            )
+            perfWindowStartNs = nowNs
+            perfFramesIn = 0
+            perfConverted = 0
+            perfInferred = 0
+            perfToBitmapNs = 0L
+        }
+
+        // Perf review A1: when the motion gate is OFF, a frame the inference
+        // FPS cap will drop can do no useful work at all — so drop it BEFORE
+        // paying the RGBA->Bitmap conversion (a full image copy; with a 10/s
+        // cap on a 30 fps camera two thirds of conversions were pure heat).
+        // When the gate is ON every frame must still be converted, because the
+        // gate's background model has to keep seeing frames even while the cap
+        // skips inference; the cap then applies at its original spot below.
+        // shouldRunInference() is stateful (advances the cap clock), so
+        // remember its verdict instead of asking twice per frame.
+        var inferenceApproved = false
+        if (!motionGateEnabled) {
+            if (!shouldRunInference()) {
+                imageProxy.close()
+                return
+            }
+            inferenceApproved = true
+        }
+
         val tb0 = System.nanoTime()
         val bitmap = ImageUtils.toBitmap(imageProxy) ?: run {
             Log.e(TAG, "Failed to convert ImageProxy to Bitmap")
@@ -2041,35 +2089,18 @@ class YOLOView @JvmOverloads constructor(
             return
         }
         perfToBitmapNs += System.nanoTime() - tb0
+        perfConverted++
 
         // Cache the latest frame so ROI photos can be cropped from it WITHOUT a
         // separate full-res still capture (which stalls the camera). The bitmap
         // is read-only here and not recycled, so holding the reference is safe.
+        // (Since A1 this refreshes at the capped inference rate, not the camera
+        // rate — the photo crop is at most one cap interval older than before.)
         lastFrameBitmap = bitmap
         lastFrameRotationDegrees = imageProxy.imageInfo.rotationDegrees
         lastFrameIsFront = lensFacing == CameraSelector.LENS_FACING_FRONT
         lastFrameIsLandscape =
             context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-        // Emit a per-second summary of the camera->inference pipeline.
-        val nowNs = System.nanoTime()
-        if (perfWindowStartNs == 0L) perfWindowStartNs = nowNs
-        val elapsed = nowNs - perfWindowStartNs
-        if (elapsed >= 1_000_000_000L) {
-            val secs = elapsed / 1e9
-            val avgToBitmap = if (perfFramesIn > 0) perfToBitmapNs / perfFramesIn / 1e6 else 0.0
-            lastDeliveredFps = perfFramesIn / secs
-            Log.i(
-                TAG,
-                "FRAMEPERF deliveredFps=${"%.1f".format(lastDeliveredFps)} " +
-                    "inferredFps=${"%.1f".format(perfInferred / secs)} " +
-                    "toBitmapMs=${"%.1f".format(avgToBitmap)} format=${imageProxy.format} ${w}x$h"
-            )
-            perfWindowStartNs = nowNs
-            perfFramesIn = 0
-            perfInferred = 0
-            perfToBitmapNs = 0L
-        }
 
         // Check again after bitmap conversion (in case stop() was called during conversion)
         if (isStopped) {
@@ -2127,8 +2158,10 @@ class YOLOView @JvmOverloads constructor(
                 }
             }
 
-            // Check if we should run inference on this frame
-            if (!shouldRunInference()) {
+            // Check if we should run inference on this frame. Skipped when the
+            // pre-conversion check (A1, gate off) already approved it — asking
+            // twice would advance the cap clock and veto its own approval.
+            if (!inferenceApproved && !shouldRunInference()) {
                 imageProxy.close()
                 return
             }

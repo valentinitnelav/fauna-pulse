@@ -62,6 +62,8 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getThermal" -> result.success(readThermal())
+                    "getFreeStorage" ->
+                        result.success(readFreeStorage(call.argument<String>("path")))
                     else -> result.notImplemented()
                 }
             }
@@ -303,6 +305,25 @@ class MainActivity : FlutterFragmentActivity() {
     ///     "charge counter" (remaining capacity) dropped over the session.
     /// All of these come from the framework BatteryManager, which a normal
     /// (non-rooted) app is allowed to read.
+    // Free/total bytes of the storage volume holding [path] (defaults to the
+    // app's external-files dir — the volume session JPEGs and logs go to), so
+    // the app can show how much room is left before/while recording. StatFs
+    // ("filesystem statistics") needs an existing path, so climb to the
+    // nearest existing ancestor if the session folder isn't created yet.
+    private fun readFreeStorage(path: String?): Map<String, Any?> {
+        return try {
+            var f = if (!path.isNullOrEmpty()) java.io.File(path)
+                    else (getExternalFilesDir(null) ?: filesDir)
+            while (!f.exists()) {
+                f = f.parentFile ?: return mapOf("freeBytes" to null, "totalBytes" to null)
+            }
+            val stat = android.os.StatFs(f.absolutePath)
+            mapOf("freeBytes" to stat.availableBytes, "totalBytes" to stat.totalBytes)
+        } catch (e: Exception) {
+            mapOf("freeBytes" to null, "totalBytes" to null)
+        }
+    }
+
     private fun readThermal(): Map<String, Any?> {
         val out = HashMap<String, Any?>()
 

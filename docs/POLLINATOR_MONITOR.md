@@ -2311,3 +2311,68 @@ deliberately deferred (their checkboxes remain open in the review).
 **Verification:** `flutter analyze` clean; `flutter test test/pollinator`
 73/73 pass (includes the 2 new logger failure-path tests). On-device smoke
 test pending (owner).
+
+## Round 68 (2026-07-05): native heat/latency wins (review A1 + A2) + free-storage readout
+
+Implements sequencing item 2 of `PERF_AND_ROBUSTNESS_REVIEW.md`, plus an
+owner-requested field feature: show how much storage is left on the phone.
+
+**A1 — FPS-capped frames dropped before the bitmap conversion**
+(`packages/ultralytics_yolo/.../YOLOView.kt` `onFrame`):
+
+- When the motion gate is **off**, `shouldRunInference()` now runs *before*
+  `ImageUtils.toBitmap`, so a frame the inference cap will discard never pays
+  the RGBA→Bitmap copy (with a 10/s cap on a 30 fps camera, ~2/3 of all
+  conversions were pure heat). The check is stateful (advances the cap
+  clock), so its verdict is remembered in `inferenceApproved` and the old
+  post-gate check is skipped for that frame — asking twice would veto its
+  own approval.
+- When the gate is **on**, behaviour is unchanged: every frame is still
+  converted (the gate's background model must keep seeing frames; the review
+  caveat), and the cap applies at its original position after the gate check.
+- The per-second FRAMEPERF stats block moved above the new drop so
+  `deliveredFps` — which feeds `cameraFps` in the stream data, the Dart
+  camera watchdog, and the session FPS graphs — keeps meaning "frames CameraX
+  handed the analyzer" (UI-numbers-one-scale rule). A new `convertedFps`
+  value in the FRAMEPERF logcat line shows the savings, and `toBitmapMs` now
+  averages over converted frames only (`perfConverted` counter).
+- Accepted side effect: `lastFrameBitmap` (the fast ROI-photo crop source)
+  refreshes at the capped rate, so a photo can be up to one cap interval
+  (e.g. 100 ms at 10/s) older than before — same idea as the round 63 idle
+  sampler, and photos are triggered by detections that happen at that rate
+  anyway.
+
+**A2 — camera thread no longer blocks on every result send**
+(`packages/ultralytics_yolo/.../YOLOPlatformView.kt` `sendStreamData`):
+
+- The old path posted the result to the main thread and parked the camera
+  thread on `CountDownLatch.await(100 ms)` — and then *discarded* the latch
+  result, so the wait bought nothing while stalling frame delivery whenever
+  the UI was busy (photo saves, settings rebuilds).
+- Replaced with a latest-result slot: an `AtomicReference` the camera thread
+  overwrites plus a single posted drain runnable (guarded by an
+  `AtomicBoolean`, flag cleared *before* draining so a result arriving
+  mid-drain schedules a fresh drain). Dropping an overwritten stale detection
+  frame is harmless; dropping camera frames was not. If the sink is gone at
+  drain time, the existing `scheduleRetry`/`recreateEventChannel` path takes
+  over; `stopStreaming` clears the slot.
+
+**Free-storage readout (owner request):**
+
+- New `getFreeStorage` method on the existing `pollinator/thermal` channel
+  (`MainActivity.kt`, `StatFs` on the session volume, climbing to the nearest
+  existing ancestor path) + Dart `logging/device_storage.dart`
+  (`StorageReading`/`DeviceStorage`; never throws).
+- Camera screen shows "Storage free: N.N GB" in the status strip (always GB
+  with one decimal — one scale; ⚠ prefix under `StorageReading.lowGb` = 1 GB),
+  sampled together with the temperature on the thermal cadence — no new timer,
+  no new tunable.
+- Logged: `free_storage_bytes`/`total_storage_bytes` in `start_of_session`
+  and in every `thermal` record, so a session's disk fill rate is plottable.
+  Docs updated (DATA_GUIDE, FIELD_GUIDE, ARCHITECTURE channel table).
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+76/76 pass (3 new `StorageReading` tests); `:ultralytics_yolo:compileDebugKotlin`
+and `:app:compileDebugKotlin` both BUILD SUCCESSFUL. On-device check pending
+(owner): confirm detector FPS holds with gate off/on, and that the storage
+line appears and updates.

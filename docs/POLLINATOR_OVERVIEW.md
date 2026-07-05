@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 67 (review items B1 guard + B2: SessionLogger never throws on write failure — one-shot `onWriteError` → persistent red banner + app_error line; global uncaught-error hooks in `logging/app_error_hooks.dart` route to the live session log; fire-and-forget captures/pushes now report failures).
+> Last synced with: round 68 (review items A1 + A2 in the native path: FPS-capped frames dropped *before* the RGBA→Bitmap conversion when the motion gate is off — `deliveredFps`/`cameraFps` semantics preserved, new `convertedFps` in FRAMEPERF; camera→Flutter result send is now a fire-and-forget latest-result slot instead of a 100 ms latch wait. Plus: free-storage readout on the camera screen (⚠ under 1 GB), sampled on the thermal cadence and logged in `start_of_session` + `thermal` records via new `pollinator/thermal getFreeStorage`).
 
 ## What the app is about
 

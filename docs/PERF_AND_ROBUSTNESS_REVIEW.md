@@ -27,7 +27,7 @@ Plain-language glossary for terms used throughout:
 
 ### A1. Move the FPS-cap frame drop *before* the bitmap conversion
 
-- [ ] `YOLOView.kt` — `shouldRunInference()` (~line 2131) runs **after**
+- [x] `YOLOView.kt` — `shouldRunInference()` (~line 2131) runs **after**
   `ImageUtils.toBitmap` (~line 2038).
 
 Every frame the inference-FPS cap discards has already paid the full
@@ -47,10 +47,19 @@ gate is enabled — the win is largest when the gate is off or awake.
 
 *Expected gain:* large reduction in per-frame CPU/heat at capped rates.
 *Effort:* small–medium (one reordering + gate interaction test).
+**Done (round 68):** cap check hoisted before conversion when the gate is
+*off* (the verdict is remembered so the stateful check runs once per frame);
+with the gate *on* every frame is still converted for the background model
+and the cap applies at its original spot. The FRAMEPERF stats block moved
+above the drop so `deliveredFps`/`cameraFps` keeps meaning "frames CameraX
+delivered" (watchdog + FPS graphs unchanged); a new `convertedFps` shows the
+savings, and `toBitmapMs` now averages over converted frames only. Side
+effect, accepted: `lastFrameBitmap` (fast ROI-photo source) refreshes at the
+capped rate, so a photo crop can be up to one cap interval older.
 
 ### A2. Stop blocking the camera thread on every result send
 
-- [ ] `YOLOPlatformView.kt` — `sendStreamData` posts the result map to the main
+- [x] `YOLOPlatformView.kt` — `sendStreamData` posts the result map to the main
   thread and then **waits** on it: `latch.await(100, MILLISECONDS)`
   (~lines 245–260).
 
@@ -65,6 +74,12 @@ dropping a stale detection frame is harmless here).
 
 *Expected gain:* removes intermittent stalls; steadier detector FPS under UI load.
 *Effort:* small, but test the existing retry/`recreateEventChannel` error path.
+**Done (round 68):** replaced with a latest-result slot (`AtomicReference`)
+drained by a single posted runnable — the camera thread never waits, and a
+result arriving while the UI is busy overwrites the unsent one. (The old
+latch's result was in fact *discarded* — the 100 ms wait bought nothing.)
+If the sink is gone at drain time the existing `scheduleRetry`/
+`recreateEventChannel` path takes over; `stopStreaming` clears the slot.
 
 ### A3. Reuse per-frame buffers instead of allocating
 
@@ -292,6 +307,7 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
    silently. Small, high value, low risk. ✔ **Done** (B5 round 66; B1 guard
    + B2 round 67 — B1's batching/queueing follow-ups remain open).
 2. **A1** + **A2** — the two big heat/latency wins in the native path.
+   ✔ **Done** (round 68).
 3. **B3 + B4** — lifecycle + camera watchdog.
 4. **A3**, then **B6(a)** + **B8** tests.
 5. **A4** (benchmark) as its own round; **A5/A6/B7/B9** opportunistically.

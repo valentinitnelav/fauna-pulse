@@ -48,6 +48,17 @@ class YOLOPlatformView(
     // Retry handler for reconnection
     private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var retryRunnable: Runnable? = null
+
+    // Latest-result slot for camera->Flutter delivery (perf review A2). The
+    // camera thread drops each result here and returns immediately; a single
+    // posted drain sends whatever is newest once the main thread is free. If
+    // the UI is busy (photo save, settings rebuild) new results overwrite the
+    // unsent one — dropping a stale detection frame is harmless, whereas the
+    // old CountDownLatch.await(100 ms) stalled the camera thread and dropped
+    // *camera* frames instead.
+    private val pendingStreamData =
+        java.util.concurrent.atomic.AtomicReference<Map<String, Any>?>(null)
+    private val drainScheduled = AtomicBoolean(false)
     
     init {
         val dartViewIdParam = creationParams?.get("viewId")
@@ -242,22 +253,34 @@ class YOLOPlatformView(
                 if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
                     sink.success(streamData)
                 } else {
-                    var success = false
-                    val latch = java.util.concurrent.CountDownLatch(1)
-                    
-                    retryHandler.post {
-                        try {
-                            sink.success(streamData)
-                            success = true
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error sending on main thread", e)
-                        } finally {
-                            latch.countDown()
+                    // Camera thread (perf review A2): fire-and-forget via the
+                    // latest-result slot. The old code parked this thread on a
+                    // CountDownLatch for up to 100 ms per frame whenever the UI
+                    // was busy — and then ignored the latch result anyway.
+                    pendingStreamData.set(streamData)
+                    if (drainScheduled.compareAndSet(false, true)) {
+                        retryHandler.post {
+                            // Clear the flag BEFORE draining so a result that
+                            // arrives mid-drain schedules a fresh drain instead
+                            // of sitting in the slot until the next frame.
+                            drainScheduled.set(false)
+                            val data = pendingStreamData.getAndSet(null) ?: return@post
+                            val liveSink = streamHandler.sink
+                            if (liveSink == null) {
+                                // Sink vanished between queueing and draining
+                                // (channel teardown); the retry path resends
+                                // lastStreamData once the channel is back.
+                                Log.w(TAG, "Event sink is null at drain, will retry")
+                                if (isStreaming.get()) scheduleRetry()
+                                return@post
+                            }
+                            try {
+                                liveSink.success(data)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error sending stream data on main thread", e)
+                            }
                         }
                     }
-                    
-                    latch.await(100, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    success
                 }
                 true
             } else {
@@ -322,6 +345,9 @@ class YOLOPlatformView(
         if (isStreaming.compareAndSet(true, false)) {
             retryRunnable?.let { retryHandler.removeCallbacks(it) }
             retryRunnable = null
+            // Drop any result still parked in the latest-result slot so a
+            // queued drain after stop sends nothing.
+            pendingStreamData.set(null)
         }
     }
     

@@ -77,7 +77,7 @@ sent per frame by default.** Consumed by `_onStreamingData`.
 | Channel | Direction | Purpose |
 |---|---|---|
 | `pollinator/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution still and region-crop the ROI out of it. |
-| `pollinator/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. |
+| `pollinator/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
 | `pollinator/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive. |
 | `pollinator/diagnostics` | Dart → native | Capture logcat into the session folder. |
 

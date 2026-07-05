@@ -57,6 +57,7 @@ Session-wide metadata. Notable fields:
 | `session_id` | Unique id for this recording. |
 | `device` | Device descriptor (model/id). |
 | `battery_percent` | Battery level at start. |
+| `free_storage_bytes`, `total_storage_bytes` | Free/total bytes on the session's storage volume at start (round 68). |
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
 | `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models). |
 | `camera_full_width_px`, `camera_full_height_px` | Full-resolution still size. |
@@ -114,7 +115,9 @@ make that auditable, so an empty stretch is "confirmed asleep", not "missed".
 
 - `thermal`: `battery_temp_c`, `thermal_status`, `battery_current_ua`,
   `battery_voltage_mv`, `charge_counter_uah`, `is_charging`,
-  `thermal_headroom`, `power_w` (derived).
+  `thermal_headroom`, `power_w` (derived), and since round 68
+  `free_storage_bytes` / `total_storage_bytes` (so the session's disk fill
+  rate can be plotted against its photo cadence).
 - `fps`: `fps` (detector FPS) plus per-second camera/detector/pipeline rates,
   inference timing breakdown, and applied throttle cap.
 - `power`: `power_w`, `battery_current_ua`, `battery_voltage_mv`,

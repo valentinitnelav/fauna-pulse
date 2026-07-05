@@ -21,6 +21,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
 import '../logging/app_error_hooks.dart';
+import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../logging/diagnostics.dart';
 import '../logging/error_reporter.dart';
@@ -123,6 +124,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // real-time session). Shown on screen and logged while recording.
   final ValueNotifier<ThermalReading> _thermalVN = ValueNotifier(
     const ThermalReading(),
+  );
+  // Free storage on the session volume, sampled together with the temperature
+  // (hours of JPEGs can fill a phone). Shown on screen so the user knows when
+  // to clean up; logged with each thermal sample while recording.
+  final ValueNotifier<StorageReading> _storageVN = ValueNotifier(
+    const StorageReading(),
   );
   Timer? _thermalTimer;
   // Frame-rate is logged on its own timer (the value is already maintained every
@@ -352,10 +359,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   Future<void> _sampleThermal() async {
     final reading = await DeviceThermal.read();
+    // Free storage rides along on the thermal cadence: it changes on the same
+    // "slowly, over hours" timescale and needs no timer of its own.
+    final storage = await DeviceStorage.read();
     if (!mounted) return;
     _thermalVN.value = reading;
-    // While recording, log the temperature so heat can be reviewed afterwards.
-    if (_recording) _logger?.logThermal(reading.toJson());
+    _storageVN.value = storage;
+    // While recording, log the temperature so heat can be reviewed afterwards
+    // (plus free storage, so fill rate is visible in the session data).
+    if (_recording) {
+      _logger?.logThermal({...reading.toJson(), ...storage.toJson()});
+    }
   }
 
   /// Logs the current (already-computed) detector FPS. Runs on its own timer and
@@ -433,6 +447,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _fpsTrioVN.dispose();
     _motionScoreVN.dispose();
     _thermalVN.dispose();
+    _storageVN.dispose();
     _recordElapsedVN.dispose();
     _flashTimer?.cancel();
     _captureFlashVN.dispose();
@@ -1064,10 +1079,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // ground-truth for the session-total energy estimate).
     final startReading = await DeviceThermal.read();
     if (mounted) _thermalVN.value = startReading;
+    // Free storage on the session volume at start: with the periodic samples
+    // in the thermal records this gives the session's disk fill rate.
+    final startStorage = await DeviceStorage.read(path: dir.path);
+    if (mounted) _storageVN.value = startStorage;
     logger.logStart({
       'session_id': _sessionId,
       'device': device,
       'battery_percent': battery,
+      ...startStorage.toJson(),
       'model_path': _config.modelPath,
       'task': _config.task.name,
       'use_gpu': _config.useGpu,
@@ -1951,6 +1971,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                 ? 'Battery temp.: $label'
                                 : label,
                           );
+                        },
+                      ),
+                      // Free storage on the session volume — hours of JPEGs can
+                      // fill a phone, so the user sees when to clean up before
+                      // mounting it. Refreshed on the thermal cadence.
+                      ValueListenableBuilder<StorageReading>(
+                        valueListenable: _storageVN,
+                        builder: (_, storage, _) {
+                          final label = storage.label;
+                          if (label.isEmpty) return const SizedBox.shrink();
+                          return _statLine(label);
                         },
                       ),
                       // Live count of insects currently on the flower, plus the
