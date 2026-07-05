@@ -1,5 +1,7 @@
 // Tests for the append-only JSONL session logger, including the crash case
-// where the end_of_session line never gets written.
+// where the end_of_session line never gets written. The logger queues records
+// and writes them asynchronously (round 69), so tests await close()/flushNow()
+// before reading the file back.
 
 import 'dart:convert';
 import 'dart:io';
@@ -13,20 +15,24 @@ void main() {
   setUp(() => tmp = Directory.systemTemp.createTempSync('pollinator_log'));
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  test('writes valid JSONL with type and timestamps', () {
+  test('writes valid JSONL with type and timestamps', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.logStart({'session_id': 'abc', 'battery_percent': 88});
-    logger.logDetection({'track_id': 1, 'confidence': 0.9});
+    logger.logDetections([
+      {'track_id': 1, 'confidence': 0.9},
+    ]);
     logger.logEnd({'ended_normally': true});
-    logger.close();
+    await logger.close();
 
     final lines = file.readAsLinesSync();
     expect(lines, hasLength(3));
 
-    final records = lines.map((l) => jsonDecode(l) as Map<String, dynamic>).toList();
+    final records = lines
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
     expect(records[0]['type'], 'start_of_session');
-    expect(records[1]['type'], 'detection');
+    expect(records[1]['type'], 'detections');
     expect(records[2]['type'], 'end_of_session');
     expect(records[2]['ended_normally'], true);
 
@@ -36,13 +42,37 @@ void main() {
     }
   });
 
-  test('a crash (no end record) is detectable', () {
+  test('one detections record per frame carries all concurrent tracks', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    // Three insects tracked in the same frame: one line, three entries, and
+    // only the photo-covered tracks carry the jpeg filename.
+    logger.logDetections([
+      {'track_id': 1, 'confidence': 0.9, 'jpeg': 'roi_1.jpg'},
+      {'track_id': 2, 'confidence': 0.8, 'jpeg': 'roi_1.jpg'},
+      {'track_id': 5, 'confidence': 0.7},
+    ]);
+    await logger.close();
+
+    final rec =
+        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    expect(rec['type'], 'detections');
+    final tracks = rec['tracks'] as List;
+    expect(tracks, hasLength(3));
+    expect(tracks[0]['jpeg'], 'roi_1.jpg');
+    expect(tracks[2]['track_id'], 5);
+    expect((tracks[2] as Map).containsKey('jpeg'), isFalse);
+  });
+
+  test('a crash (no end record) is detectable', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.logStart({'session_id': 'abc'});
-    logger.logDetection({'track_id': 1});
+    logger.logDetections([
+      {'track_id': 1},
+    ]);
     // Simulate a crash: close the handle without writing end_of_session.
-    logger.close();
+    await logger.close();
 
     final records = file
         .readAsLinesSync()
@@ -53,7 +83,7 @@ void main() {
     expect(records, hasLength(2));
   });
 
-  test('logCapture writes a capture record with its timing fields', () {
+  test('logCapture writes a capture record with its timing fields', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.logStart({'session_id': 'abc'});
@@ -65,7 +95,7 @@ void main() {
       'full_res': true,
     });
     logger.logEnd({'ended_normally': true});
-    logger.close();
+    await logger.close();
 
     final records = file
         .readAsLinesSync()
@@ -78,33 +108,40 @@ void main() {
     expect(cap['full_res'], true);
   });
 
-  test('enriched fps record round-trips the diagnostic fields', () {
+  test('enriched fps record round-trips the diagnostic fields', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.logFps({'fps': 9.6, 'inf_ms': 64.8, 'engine': 'CPU'});
-    logger.close();
+    await logger.close();
 
-    final rec = jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    final rec =
+        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
     expect(rec['type'], 'fps');
     expect(rec['fps'], 9.6);
     expect(rec['inf_ms'], 64.8);
     expect(rec['engine'], 'CPU');
   });
 
-  test('a failed write never throws, notifies once, and can recover', () {
+  test('a failed write never throws, notifies once, and can recover', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.logStart({'session_id': 'abc'});
+    // Make sure the start line is on disk before the "disk fills up".
+    await logger.flushNow();
 
-    // Simulate the disk filling up mid-session (B1): every append now fails.
+    // Simulate the disk filling up mid-session (B1): every write now fails.
     final errors = <Object>[];
     logger.onWriteError = errors.add;
     logger.debugInjectWriteError = const FileSystemException('disk full');
 
     // The per-frame path must survive this without throwing…
-    logger.logDetection({'track_id': 1});
-    logger.logDetection({'track_id': 2});
-    logger.flushNow();
+    logger.logDetections([
+      {'track_id': 1},
+    ]);
+    logger.logDetections([
+      {'track_id': 2},
+    ]);
+    await logger.flushNow();
 
     // …notify exactly once, and count every dropped line.
     expect(errors, hasLength(1));
@@ -114,7 +151,7 @@ void main() {
     // Storage freed up again: logging simply resumes.
     logger.debugInjectWriteError = null;
     logger.logEnd({'ended_normally': true});
-    logger.close();
+    await logger.close();
 
     final records = file
         .readAsLinesSync()
@@ -127,7 +164,7 @@ void main() {
     expect(records.last['type'], 'end_of_session');
   });
 
-  test('onWriteError may itself log (banner path) without recursing', () {
+  test('onWriteError may itself log (banner path) without recursing', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();
     logger.debugInjectWriteError = const FileSystemException('disk full');
@@ -138,9 +175,11 @@ void main() {
       // callback; with the disk still full this must not loop or throw.
       logger.logAppError({'source': 'session_log', 'message': 'log broken'});
     };
-    logger.logDetection({'track_id': 1});
+    logger.logDetections([
+      {'track_id': 1},
+    ]);
+    await logger.close();
     expect(calls, 1);
-    logger.close();
   });
 
   test('isoWithOffset has millisecond precision and an offset', () {

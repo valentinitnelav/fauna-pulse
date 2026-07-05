@@ -80,21 +80,30 @@ The `roi` sub-object (also used in `roi_update`):
 | `width_px`, `height_px` | ROI side in pixels (square, so equal). |
 | `frame_width_px`, `frame_height_px` | The frame these are relative to. |
 
-### `detection` — the core record, one per tracked insect per processed frame
+### `detections` — the core record, one per processed frame with insects
 
-This is what you count. Fields:
+This is what you count. One line per frame; the frame's insects are entries in
+its `tracks` array (round 69 — earlier sessions wrote one `detection` line per
+insect instead, see the note below):
 
 | Field | Meaning |
 |---|---|
-| `track_id` | **Stable ID for one insect across frames — this defines a "visit".** |
-| `class_index`, `class_name` | Detected class. |
-| `confidence` | Detection score (0..1). |
-| `box_in_roi` | Bounding box **relative to the ROI**, all edges in 0..1 (`{left, top, right, bottom}`). 0 = ROI's left/top edge, 1 = right/bottom edge. |
-| `jpeg` | Filename of the ROI photo saved at this moment, or `null` if no photo was saved on this frame. |
+| `tracks` | Array with one entry per tracked insect this frame. Entry fields below. |
+| `tracks[].track_id` | **Stable ID for one insect across frames — this defines a "visit".** |
+| `tracks[].class_index`, `tracks[].class_name` | Detected class. |
+| `tracks[].confidence` | Detection score (0..1). |
+| `tracks[].box_in_roi` | Bounding box **relative to the ROI**, all edges in 0..1 (`{left, top, right, bottom}`). 0 = ROI's left/top edge, 1 = right/bottom edge. |
+| `tracks[].jpeg` | Filename of the ROI photo that covered this track at this moment; **absent** when no photo was saved for it on this frame. |
 
-> Note: detection lines are written for **every processed frame** an insect is
-> tracked, not once per visit. You reconstruct a visit by grouping consecutive
-> detections that share a `track_id` (see §4).
+> Note: a `detections` line is written for **every processed frame** with at
+> least one tracked insect, not once per visit. You reconstruct a visit by
+> grouping consecutive entries that share a `track_id` (see §4).
+
+> **Legacy format (sessions recorded ≤ round 68, 2026-07-05):** one
+> `"type": "detection"` line per insect per frame, with the entry fields at
+> the top level and `jpeg: null` when no photo was saved. Same information —
+> scripts should accept both (the snippets in §4 do). The in-app summary
+> screen reads both formats too.
 
 ### `roi_update` — when the ROI is moved/resized mid-session
 
@@ -176,7 +185,15 @@ end_ms   <- rows$time_ms[rows$type == "end_of_session"]
 end_ms   <- if (length(end_ms)) end_ms[1] else max(rows$time_ms)  # crashed?
 obs_hours <- (end_ms - start_ms) / 3.6e6
 
-det <- rows[rows$type == "detection", c("time_ms", "track_id")]
+# Flatten to one row per tracked insect per frame, accepting both formats:
+# "detections" (round 69+: tracks[] array) and legacy per-track "detection".
+new <- rows[rows$type == "detections", c("time_ms", "tracks")]
+det_new <- if (nrow(new)) do.call(rbind, lapply(seq_len(nrow(new)), function(i) {
+  data.frame(time_ms = new$time_ms[i], track_id = new$tracks[[i]]$track_id)
+})) else NULL
+det_old <- if ("track_id" %in% names(rows))
+  rows[rows$type == "detection", c("time_ms", "track_id")] else NULL
+det <- rbind(det_new, det_old)
 
 visits <- aggregate(time_ms ~ track_id, det,
                     FUN = function(t) c(start = min(t), end = max(t)))
@@ -203,7 +220,16 @@ end = rows.loc[rows.type == "end_of_session", "time_ms"]
 end_ms = end.iloc[0] if len(end) else rows.time_ms.max()   # crashed?
 obs_hours = (end_ms - start_ms) / 3.6e6
 
-det = rows[rows.type == "detection"]
+# Flatten to one row per tracked insect per frame, accepting both formats:
+# "detections" (round 69+: tracks[] array) and legacy per-track "detection".
+new = rows[rows.type == "detections"].explode("tracks")
+new = pd.concat(
+    [new[["time_ms"]].reset_index(drop=True),
+     pd.json_normalize(new.tracks)], axis=1)
+old_cols = [c for c in ("time_ms", "track_id") if c in rows.columns]
+old = rows.loc[rows.type == "detection", old_cols]
+det = pd.concat([new, old], ignore_index=True)
+
 visits = det.groupby("track_id")["time_ms"].agg(["min", "max"])
 visits["duration_s"] = (visits["max"] - visits["min"]) / 1000
 
@@ -220,8 +246,8 @@ session — a quick sanity check.
 
 ## 5. Joining photos to detections
 
-Each `detection` record's `jpeg` field (when not null) is the filename in
-`roi_frames/` for the photo saved on that frame. Join on it to attach images to
-specific tracks/moments. The exact pixel size of each saved photo is in the
+Each track entry's `jpeg` field (in `detections.tracks[]`; top-level in legacy
+`detection` records) is the filename in `roi_frames/` for the photo saved on
+that frame. Join on it to attach images to specific tracks/moments. The exact pixel size of each saved photo is in the
 matching `capture` record's `saved_px` (photo box geometry), which is the
 authoritative size — not the ROI box geometry.

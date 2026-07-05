@@ -61,6 +61,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _graphsRequested = false;
   bool _graphsLoading = false;
   final Map<int, (int first, int last)> _spans = {};
+
+  /// Widens track [id]'s first/last-seen span to include time [t].
+  void _extendSpan(int? t, int? id) {
+    if (id == null || t == null) return;
+    final cur = _spans[id];
+    _spans[id] = cur == null
+        ? (t, t)
+        : (cur.$1 < t ? cur.$1 : t, cur.$2 > t ? cur.$2 : t);
+  }
   final List<(int ms, double v)> _temps = [];
   // "Thermal headroom" 0..1+ (0 = cool, 1 = throttling threshold) — a direct
   // throttling signal, sampled alongside temperature.
@@ -221,13 +230,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         if (rec == null) continue;
         final t = (rec['time_ms'] as num?)?.toInt();
         switch (rec['type']) {
+          // 'detection': one line per track (sessions ≤ round 68).
+          // 'detections': one line per frame with a `tracks` array (round 69+).
           case 'detection':
-            final id = (rec['track_id'] as num?)?.toInt();
-            if (id == null || t == null) break;
-            final cur = _spans[id];
-            _spans[id] = cur == null
-                ? (t, t)
-                : (cur.$1 < t ? cur.$1 : t, cur.$2 > t ? cur.$2 : t);
+            _extendSpan(t, (rec['track_id'] as num?)?.toInt());
+            break;
+          case 'detections':
+            final tracks = rec['tracks'];
+            if (tracks is List) {
+              for (final entry in tracks) {
+                if (entry is Map) {
+                  _extendSpan(t, (entry['track_id'] as num?)?.toInt());
+                }
+              }
+            }
             break;
           case 'thermal':
             if (t == null) break;
@@ -400,7 +416,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final isRoiSource =
             line.contains('"start_of_session"') ||
             line.contains('"roi_update"');
-        final isDetection = line.contains('"detection"');
+        // Batched frame records ("detections", round 69+) and legacy
+        // per-track records ("detection", ≤ round 68).
+        final isDetection =
+            line.contains('"detections"') || line.contains('"detection"');
         final isCapture = line.contains('"type":"capture"');
         if (!isRoiSource && !isDetection && !isCapture) continue;
         final rec = _tryDecode(line);
@@ -426,38 +445,56 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
           continue;
         }
-        final jpeg = rec['jpeg'] as String?;
-        if (jpeg == null || jpeg.isEmpty) continue;
-        if (!byFile.containsKey(jpeg)) {
-          order.add(jpeg);
-          byFile[jpeg] = [];
-          byFileTracks[jpeg] = <int>{};
-          byFileTime[jpeg] = (rec['time_ms'] as num?)?.toInt() ?? 0;
-          if (curRoiW != null && curRoiH != null) {
-            byFileRes[jpeg] = (curRoiW, curRoiH);
+        // One tracked insect that carries a `jpeg` filename: joins the entry
+        // to its photo. Shared by both record shapes.
+        void addEntry(Map<String, dynamic> entry, int timeMs) {
+          final jpeg = entry['jpeg'] as String?;
+          if (jpeg == null || jpeg.isEmpty) return;
+          if (!byFile.containsKey(jpeg)) {
+            order.add(jpeg);
+            byFile[jpeg] = [];
+            byFileTracks[jpeg] = <int>{};
+            byFileTime[jpeg] = timeMs;
+            if (curRoiW != null && curRoiH != null) {
+              byFileRes[jpeg] = (curRoiW, curRoiH);
+            }
+          }
+          final tid = (entry['track_id'] as num?)?.toInt();
+          if (tid != null) byFileTracks[jpeg]!.add(tid);
+          // The detector confidence (0..1) for this track, logged with every
+          // detection — no extra cost, it's already in the record.
+          final conf = (entry['confidence'] as num?)?.toDouble();
+          if (tid != null && conf != null) {
+            (byFileConf[jpeg] ??= <int, double>{})[tid] = conf;
+          }
+          final box = entry['box_in_roi'];
+          if (box is Map) {
+            final confLabel = conf != null
+                ? '  ${conf.toStringAsFixed(2)}'
+                : '';
+            byFile[jpeg]!.add(
+              _DetBox(
+                left: (box['left'] as num?)?.toDouble() ?? 0,
+                top: (box['top'] as num?)?.toDouble() ?? 0,
+                right: (box['right'] as num?)?.toDouble() ?? 0,
+                bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
+                label: '#${tid ?? '?'} ${entry['class_name'] ?? ''}$confLabel'
+                    .trim(),
+              ),
+            );
           }
         }
-        final tid = (rec['track_id'] as num?)?.toInt();
-        if (tid != null) byFileTracks[jpeg]!.add(tid);
-        // The detector confidence (0..1) for this track, logged with every
-        // detection — no extra cost, it's already in the record.
-        final conf = (rec['confidence'] as num?)?.toDouble();
-        if (tid != null && conf != null) {
-          (byFileConf[jpeg] ??= <int, double>{})[tid] = conf;
-        }
-        final box = rec['box_in_roi'];
-        if (box is Map) {
-          final confLabel = conf != null ? '  ${conf.toStringAsFixed(2)}' : '';
-          byFile[jpeg]!.add(
-            _DetBox(
-              left: (box['left'] as num?)?.toDouble() ?? 0,
-              top: (box['top'] as num?)?.toDouble() ?? 0,
-              right: (box['right'] as num?)?.toDouble() ?? 0,
-              bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
-              label: '#${tid ?? '?'} ${rec['class_name'] ?? ''}$confLabel'
-                  .trim(),
-            ),
-          );
+
+        final timeMs = (rec['time_ms'] as num?)?.toInt() ?? 0;
+        if (rec['type'] == 'detections') {
+          final tracks = rec['tracks'];
+          if (tracks is List) {
+            for (final e in tracks) {
+              if (e is Map<String, dynamic>) addEntry(e, timeMs);
+            }
+          }
+        } else {
+          addEntry(rec, timeMs);
         }
       }
     } catch (_) {

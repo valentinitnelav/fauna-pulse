@@ -7,10 +7,18 @@
 // an abnormal stop. R reads it with `jsonlines`/`readr::read_lines`; Python with
 // the `jsonlines` package or `pandas.read_json(lines=True)`.
 //
-// Every line carries a `type` ("start_of_session" | "roi_update" | "detection" |
-// "end_of_session") plus machine (`time_ms`) and human-readable (`time_iso`)
-// timestamps. After each write we flush to disk for durability.
+// Every line carries a `type` ("start_of_session" | "roi_update" |
+// "detections" | "end_of_session" | …) plus machine (`time_ms`) and
+// human-readable (`time_iso`) timestamps.
+//
+// Writes never run on the UI thread (round 69). Records are encoded, put in a
+// small in-memory queue, and drained by ONE async writer loop: everything a
+// frame logged becomes a single `writeString` call, and Dart performs async
+// file I/O on the VM's background I/O thread pool — so a slow flash-storage
+// moment stalls the writer loop, never the frame callback. Records that ask
+// for durability (start/roi/end/error) trigger an fsync after their batch.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -33,6 +41,13 @@ String isoWithOffset(DateTime dt) {
 class SessionLogger {
   final File file;
   RandomAccessFile? _raf;
+
+  // Encoded lines waiting for the writer loop, plus the loop's future (null
+  // when no loop is running). Single-isolate, so no locking is needed: the
+  // queue is only touched between awaits.
+  final List<String> _queue = [];
+  Future<void>? _drainFuture;
+  bool _flushRequested = false;
 
   /// Called (at most once per logger) the first time a write to disk fails —
   /// e.g. the storage filled up mid-session or the OS revoked access. Writes
@@ -60,24 +75,23 @@ class SessionLogger {
     _raf = file.openSync(mode: FileMode.append);
   }
 
-  /// Appends one record: adds `type` and timestamps, encodes, writes a line.
-  /// When [flush] is true the line is forced to disk immediately (use for the
-  /// important start/roi/end records). High-frequency detection lines pass
-  /// false and are flushed once per frame via [flushNow] to avoid an fsync on
-  /// every detection at 30 fps.
+  /// Appends one record: adds `type` and timestamps, encodes, and queues the
+  /// line for the async writer loop (see the file header). When [flush] is
+  /// true an fsync is requested after the batch containing this line (use for
+  /// the important start/roi/end records); high-frequency detection lines
+  /// pass false and rely on the periodic [flushNow].
   ///
-  /// Never throws on I/O failure: this runs inside the per-frame detection
-  /// callback, where an uncaught "disk full" exception would kill exactly the
-  /// long unattended sessions most likely to fill the disk. Failures are
-  /// counted and surfaced once via [onWriteError] instead.
+  /// Never throws on I/O failure: logging is driven from the per-frame
+  /// detection callback, where an uncaught "disk full" exception would kill
+  /// exactly the long unattended sessions most likely to fill the disk.
+  /// Failures are counted and surfaced once via [onWriteError] instead.
   void _append(
     String type,
     Map<String, dynamic> payload, {
     DateTime? at,
     bool flush = true,
   }) {
-    final raf = _raf;
-    if (raf == null) {
+    if (_raf == null) {
       throw StateError('SessionLogger.open() must be called before logging');
     }
     final now = at ?? DateTime.now();
@@ -87,29 +101,50 @@ class SessionLogger {
       'time_iso': isoWithOffset(now),
       ...payload,
     };
-    try {
-      final inject = debugInjectWriteError;
-      if (inject != null) throw inject;
-      raf.writeStringSync('${jsonEncode(record)}\n');
-      if (flush) raf.flushSync();
-    } catch (e) {
-      _onWriteFailure(e);
-    }
+    _queue.add(jsonEncode(record));
+    if (flush) _flushRequested = true;
+    _drainFuture ??= _drain();
   }
 
-  /// Forces any buffered writes to disk. Call once per processed frame after
-  /// the frame's detection lines. Guarded like [_append]: a failed fsync must
-  /// not crash the frame callback.
-  void flushNow() {
-    try {
-      _raf?.flushSync();
-    } catch (e) {
-      _onWriteFailure(e);
-    }
+  /// Requests an fsync ("force what the OS has buffered onto the actual
+  /// flash storage") after the current queue is written. Called about twice
+  /// a second from the frame path; awaiting the returned future is only
+  /// needed in tests.
+  Future<void> flushNow() {
+    _flushRequested = true;
+    return _drainFuture ??= _drain();
   }
 
-  void _onWriteFailure(Object error) {
-    writeFailures++;
+  /// The single writer loop. Starts with a zero-delay yield so every record
+  /// the current frame logs joins the same batch (one write call per frame,
+  /// not one per record). A failed batch is dropped and counted — the loop
+  /// keeps going, so logging resumes by itself if storage frees up.
+  Future<void> _drain() async {
+    await Future<void>.delayed(Duration.zero);
+    while (true) {
+      final raf = _raf;
+      if (raf == null) break; // closed; close() drains before releasing.
+      if (_queue.isEmpty && !_flushRequested) break;
+      final lines = List<String>.of(_queue);
+      _queue.clear();
+      final doFlush = _flushRequested;
+      _flushRequested = false;
+      try {
+        final inject = debugInjectWriteError;
+        if (inject != null) throw inject;
+        if (lines.isNotEmpty) {
+          await raf.writeString('${lines.join('\n')}\n');
+        }
+        if (doFlush) await raf.flush();
+      } catch (e) {
+        _onWriteFailure(e, linesLost: lines.length);
+      }
+    }
+    _drainFuture = null;
+  }
+
+  void _onWriteFailure(Object error, {int linesLost = 1}) {
+    writeFailures += linesLost;
     if (_writeErrorNotified) return;
     _writeErrorNotified = true;
     onWriteError?.call(error);
@@ -130,11 +165,16 @@ class SessionLogger {
   void logMotionGate(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('motion_gate', payload, at: at);
 
-  /// One active detection (track id, class, box relative to the ROI, and any
-  /// JPEG saved at this moment). Not flushed per line; [flushNow] flushes the
-  /// whole frame's worth at once.
-  void logDetection(Map<String, dynamic> payload, {DateTime? at}) =>
-      _append('detection', payload, at: at, flush: false);
+  /// All active detections of one processed frame, as a single record with a
+  /// `tracks` array — one entry per tracked insect (track id, class, box
+  /// relative to the ROI, and any JPEG saved for it at this moment). One
+  /// record per frame instead of one per track (round 69): concurrent tracks
+  /// used to mean several encode+write calls per frame on the UI thread.
+  /// (Sessions from round 68 and earlier carry per-track `detection` records
+  /// instead — postprocessing should accept both.)
+  /// Not flushed per line; [flushNow] handles durability every ~0.5 s.
+  void logDetections(List<Map<String, dynamic>> tracks, {DateTime? at}) =>
+      _append('detections', {'tracks': tracks}, at: at, flush: false);
 
   /// A periodic phone-temperature sample taken during the session (battery °C
   /// and OS thermal status), so heat can be correlated with the recording.
@@ -173,16 +213,23 @@ class SessionLogger {
   void logEnd(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('end_of_session', payload, at: at);
 
-  /// Closes the file handle. Best-effort: a failing flush must not prevent
-  /// the handle from being released (or the stop sequence from finishing).
-  void close() {
-    try {
-      _raf?.flushSync();
-    } catch (e) {
-      _onWriteFailure(e);
+  /// Drains everything still queued (`end_of_session` included), then closes
+  /// the file handle. Best-effort: a failing flush must not prevent the
+  /// handle from being released (or the stop sequence from finishing).
+  Future<void> close() async {
+    _flushRequested = true;
+    // Re-check after each drain: an onWriteError handler may queue one last
+    // app_error record from inside the loop.
+    while (_drainFuture != null) {
+      await _drainFuture;
     }
     try {
-      _raf?.closeSync();
+      await _raf?.flush();
+    } catch (e) {
+      _onWriteFailure(e, linesLost: 0);
+    }
+    try {
+      await _raf?.close();
     } catch (_) {
       // Nothing useful left to do with a handle that won't close.
     }

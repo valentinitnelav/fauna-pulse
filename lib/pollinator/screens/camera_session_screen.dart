@@ -883,28 +883,30 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     setState(() => _focusManual = false);
   }
 
-  /// Logs every confirmed track this frame and triggers a shared ROI photo when
-  /// one is due. The photo filename is written into the same detection records
-  /// so post-processing can join them directly.
+  /// Logs every confirmed track this frame — as ONE `detections` record with a
+  /// `tracks` array (round 69) — and triggers a shared ROI photo when one is
+  /// due. The photo filename is written into the covered tracks' entries so
+  /// post-processing can join them directly.
   void _recordFrame(List<Track> tracks, Rect roiRect, int ts) {
     final pending = _capture?.evaluate(tracks, ts);
-    for (final t in tracks) {
-      final jpeg = (pending != null && pending.trackIds.contains(t.id))
-          ? pending.fileName
-          : null;
-      _logger?.logDetection({
-        'track_id': t.id,
-        'class_index': t.classIndex,
-        'class_name': t.className,
-        'confidence': t.confidence,
-        'box_in_roi': _boxInRoi(t.box, roiRect),
-        'jpeg': jpeg,
-      });
+    if (tracks.isNotEmpty) {
+      _logger?.logDetections([
+        for (final t in tracks)
+          {
+            'track_id': t.id,
+            'class_index': t.classIndex,
+            'class_name': t.className,
+            'confidence': t.confidence,
+            'box_in_roi': _boxInRoi(t.box, roiRect),
+            if (pending != null && pending.trackIds.contains(t.id))
+              'jpeg': pending.fileName,
+          },
+      ]);
     }
-    // Force buffered lines to disk at most ~twice a second rather than every
-    // frame. Each line is already written (so an app crash loses nothing); this
-    // periodic fsync bounds what a sudden power/battery loss could drop to ~0.5s
-    // while avoiding a costly disk sync on the main thread at 30fps.
+    // Ask for an fsync at most ~twice a second rather than every frame: the
+    // logger's writer loop drains queued lines within the same event-loop
+    // turn, so this bounds what a sudden power/battery loss could drop to
+    // ~0.5 s without paying a disk sync per frame.
     if (tracks.isNotEmpty && ts - _lastFlushMs >= 500) {
       _logger?.flushNow();
       _lastFlushMs = ts;
@@ -1258,7 +1260,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Capture the recent logcat (throttle-era native logs + persisted PERF lines)
     // before closing the log, so an uncoupled run keeps a full record.
     await _saveLogcat('logcat_end.txt');
-    _logger?.close();
+    // Waits for the writer queue to drain, so end_of_session is on disk.
+    await _logger?.close();
     // The log is closed: stop routing global uncaught errors to it.
     appErrorSink = null;
     await WakelockPlus.disable();

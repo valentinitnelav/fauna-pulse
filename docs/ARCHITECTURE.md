@@ -53,7 +53,7 @@ Android (Kotlin)**.
    │   ├─ keep only detections whose centre is in the ROI  (models/roi.dart)
    │   ├─ ByteTrack: assign/continue track IDs             (tracking/byte_track.dart)
    │   ├─ schedule ROI photos                              (capture/roi_capture.dart)
-   │   └─ append detection records                         (logging/session_logger.dart)
+   │   └─ append the frame's detections record (async queue) (logging/session_logger.dart)
    ▼
  session.jsonl  +  roi_frames/*.jpg
 ```

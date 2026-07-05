@@ -2376,3 +2376,60 @@ owner-requested field feature: show how much storage is left on the phone.
 and `:app:compileDebugKotlin` both BUILD SUCCESSFUL. On-device check pending
 (owner): confirm detector FPS holds with gate off/on, and that the storage
 line appears and updates.
+
+## Round 69 (2026-07-05): batched detection records + async writer queue (B1 fully closed)
+
+Implements the two B1 follow-ups deferred in round 67, closing B1 completely.
+Also answers the owner's question about detection temporal resolution (below).
+
+**One JSONL line per frame** (`session_logger.dart`, `camera_session_screen.dart`):
+
+- `logDetection` (one line per tracked insect per frame) is replaced by
+  `logDetections`: one `"type": "detections"` record per processed frame with
+  a `tracks` array — entry fields unchanged (`track_id`, `class_index`,
+  `class_name`, `confidence`, `box_in_roi`), except `jpeg` is now present
+  only on entries the saved photo actually covered (it was `null` elsewhere).
+- **Schema change** — consumers updated to accept both shapes: the summary
+  screen's visit-span parser and photo browser (`session_summary_screen.dart`)
+  and the R/Python snippets in `DATA_GUIDE.md` (flatten `tracks[]`, then
+  `rbind`/`concat` with legacy `detection` rows). Sessions recorded ≤ round 68
+  keep working everywhere.
+
+**Writes queued and drained off the UI thread** (`session_logger.dart`):
+
+- `_append` now encodes the record and pushes the line onto an in-memory
+  queue; a single async writer loop (started on demand, one at a time) joins
+  everything queued in the same event-loop turn into ONE
+  `RandomAccessFile.writeString` call. Dart executes async file I/O on the
+  VM's background I/O thread pool, so a slow-flash hiccup stalls the writer
+  loop, never the frame callback. (A dedicated isolate was considered and
+  rejected: it would only move ~µs of JSON encoding per frame at the cost of
+  real complexity — the I/O, which is the actual stall risk, is already
+  off-thread this way.)
+- Durability model preserved: records that asked for `flush` (start/roi/end/
+  error) trigger an fsync after their batch; the frame path still requests
+  one fsync per ~0.5 s via `flushNow()` (now returning a `Future` tests can
+  await). The B1 failure guard carries over: a failed batch is dropped and
+  counted (`writeFailures` += lines lost), `onWriteError` fires once, the
+  loop keeps attempting so logging resumes if storage frees up.
+- `close()` is now **async**: it drains the queue (including a last-gasp
+  `app_error` from an `onWriteError` handler), flushes, then releases the
+  handle — awaited in `_stopRecording` so `end_of_session` is on disk before
+  the summary opens. Tests updated/extended (77/77 pass; new test covers a
+  multi-track frame batching into one record with per-entry `jpeg`).
+
+**Temporal resolution decision (owner question):** keep logging detections at
+full processed-frame rate — no downsampling, no new tunable. Rationale: after
+this round the UI-thread cost of detection logging is one small map build +
+one `jsonEncode` per frame (~tens of µs), with disk I/O off-thread; data
+volume is ~250–500 B per frame *with insects present* (~5–15 MB/h worst case
+at 10 inference FPS with continuous occupancy — negligible next to the JPEGs),
+and the full-rate track history is exactly what workstation postprocessing of
+true visitation rates needs (visit durations, gap structure between track
+fragments, box trajectories for filtering false tracks). If measurements ever
+say otherwise, downsample in postprocessing, not at capture.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+77/77 pass. On-device check pending (owner): record a short session with >1
+insect, then confirm the summary's photo browser shows boxes/track ids and
+the session graphs populate (both parsers now walk the new `tracks[]` array).

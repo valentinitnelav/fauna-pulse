@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 68 (review items A1 + A2 in the native path: FPS-capped frames dropped *before* the RGBA→Bitmap conversion when the motion gate is off — `deliveredFps`/`cameraFps` semantics preserved, new `convertedFps` in FRAMEPERF; camera→Flutter result send is now a fire-and-forget latest-result slot instead of a 100 ms latch wait. Plus: free-storage readout on the camera screen (⚠ under 1 GB), sampled on the thermal cadence and logged in `start_of_session` + `thermal` records via new `pollinator/thermal getFreeStorage`).
+> Last synced with: round 69 (B1 fully closed: one `detections` JSONL record per frame with a `tracks[]` array — legacy per-track `detection` records still parsed everywhere — and the SessionLogger now queues records and writes them via async I/O off the UI thread; `close()` became async. Detection logging kept at full temporal resolution deliberately: after batching+queueing its per-frame cost is negligible, and the workstation postprocessing benefits from every processed frame).
 
 ## What the app is about
 
@@ -116,9 +116,14 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   live "Stream: W×H" readout is ground truth (CameraX may cap the analysis stream). Stream
   size only affects fast-crop sharpness, **not** detection (every frame is downscaled to the
   model's input tensor). Logs record both requested and delivered (`analysis_w/h`).
-- **Logging.** Append-only JSONL (crash/battery-loss safe): start metadata, per-detection
-  entries with track id + ROI-relative `box_in_roi` (0..1) + saved filenames, ROI geometry
-  updates, and stop metadata with `ended_normally`.
+- **Logging.** Append-only JSONL (crash/battery-loss safe): start metadata, one
+  `detections` record per frame (round 69) whose `tracks[]` entries carry track id +
+  ROI-relative `box_in_roi` (0..1) + saved filenames, ROI geometry updates, and stop
+  metadata with `ended_normally`. Sessions ≤ round 68 used per-track `detection`
+  records — parsers (summary screen, DATA_GUIDE snippets) must accept both. Writes go
+  through an in-logger queue drained by one async writer loop (I/O on the Dart VM's
+  background thread pool — never sync file I/O in the frame callback); fsync every
+  ~0.5 s; `close()` is async and must be awaited so `end_of_session` lands.
 - **A session never dies silently (round 67).** `SessionLogger` swallows + counts write
   failures (storage full) instead of throwing in the frame callback; `onWriteError` fires
   once → persistent red banner; writes keep being attempted so logging resumes if space

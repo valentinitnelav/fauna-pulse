@@ -171,17 +171,23 @@ cleanly so `end_of_session` gets written while the disk still has room).
 
 While in there, two related wins:
 
-- [ ] **Batch to one JSONL line per frame** instead of one per track — several
+- [x] **Batch to one JSONL line per frame** instead of one per track — several
   concurrent tracks currently mean several `jsonEncode` + `writeStringSync`
   calls per frame on the UI thread.
-- [ ] Consider moving writes to a small queue drained off the UI thread.
+- [x] Consider moving writes to a small queue drained off the UI thread.
 
 *Effort:* small for the guard; medium for batching/queueing.
 **Guard done (round 67):** `SessionLogger._append`/`flushNow`/`close` never
 throw on I/O failure; failed lines are counted, `onWriteError` fires once →
 persistent red banner + best-effort `app_error` line; writes keep being
 attempted so logging resumes if space is freed. Failure-path tests added.
-Batching/queueing deliberately deferred (the two unchecked boxes above).
+**Batching + queue done (round 69):** one `detections` record per frame with
+a `tracks` array (replaces per-track `detection` lines; summary screen and
+DATA_GUIDE snippets read both). Records are queued and drained by a single
+async writer loop — `RandomAccessFile.writeString`/`flush` run on the Dart
+VM's background I/O thread pool, so disk latency no longer touches the frame
+callback; fsync stays on the ~0.5 s cadence and `close()` drains the queue
+before releasing the handle.
 
 ### B2. No global error trap
 
@@ -285,10 +291,10 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
   track, shared photos across concurrent tracks, window cleanup that guards
   against id-reuse double-capture) decides *how many photos land on disk* and
   has zero tests. The pure helpers around it are tested; the scheduler is not.
-- [ ] `SessionLogger` failure path — what happens when the write throws
-  (pairs with B1).
-- [ ] `SessionConfig.fromJson` with the `occlusionSeconds` key absent
-  (pairs with B5).
+- [x] `SessionLogger` failure path — what happens when the write throws
+  (pairs with B1). *Done round 67 (extended round 69 for the async queue).*
+- [x] `SessionConfig.fromJson` with the `occlusionSeconds` key absent
+  (pairs with B5). *Done round 66.*
 - [ ] Motion-gate Dart side: `_setGateIdle`'s `expireLostTracks` trigger when
   idle exceeds `occlusionSeconds` (~665–687) — becomes testable after B6(a).
 
@@ -305,7 +311,7 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 
 1. **B5** (one line) + **B1 guard** + **B2** — a session should never die
    silently. Small, high value, low risk. ✔ **Done** (B5 round 66; B1 guard
-   + B2 round 67 — B1's batching/queueing follow-ups remain open).
+   + B2 round 67; B1 batching/queueing round 69 — B1 fully closed).
 2. **A1** + **A2** — the two big heat/latency wins in the native path.
    ✔ **Done** (round 68).
 3. **B3 + B4** — lifecycle + camera watchdog.
