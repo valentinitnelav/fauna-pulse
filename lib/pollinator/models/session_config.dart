@@ -475,7 +475,10 @@ class SessionConfig {
         (j['targetRoiSavedPx'] as num?)?.toInt() ??
         (j['minRoiSavedPx'] as num?)?.toInt() ??
         1024,
-    occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 1.0,
+    // Fallback must match the constructor default (3.0). A legacy config saved
+    // before this key existed should load the current bee-tuned buffer, not an
+    // old 1.0 that silently fragments tracks.
+    occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 3.0,
     minHitsSeconds: (j['minHitsSeconds'] as num?)?.toDouble() ?? 0.2,
     fpsSampleSeconds: (j['fpsSampleSeconds'] as num?)?.toInt() ?? 5,
     thermalSampleSeconds: (j['thermalSampleSeconds'] as num?)?.toInt() ?? 10,

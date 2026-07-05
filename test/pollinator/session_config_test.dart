@@ -14,6 +14,13 @@ void main() {
     test('occlusion tolerance defaults to 3 s', () {
       expect(const SessionConfig().occlusionSeconds, 3.0);
     });
+    test('legacy config missing occlusionSeconds falls back to 3 s, not 1 s', () {
+      // A config saved before this key existed must load the current bee-tuned
+      // buffer. The fromJson fallback used to be 1.0, silently fragmenting
+      // tracks for old configs even though the constructor default was 3.0.
+      final restored = SessionConfig.fromJson(const {'inferenceFps': 0});
+      expect(restored.occlusionSeconds, 3.0);
+    });
     test('match overlap defaults to 0.1', () {
       expect(const ByteTrackParams().matchThresh, 0.1);
     });

@@ -2202,3 +2202,62 @@ trust (`saved_px`). Linked from the overview.
 70/70; `flutter build apk --debug` builds. On-device (owner): open the pencil
 editor and tap the px field — no striped banner should flash; if any error
 appears again, `grep app_error session.jsonl` will contain its full text.
+
+## Round 66 (2026-07-04): perf/robustness review + collaborator/user documentation set
+
+**No code changes this round** — a review-and-document pass in response to the
+owner's request to (a) suggest inference-speed improvements, (b) surface
+robustness/refactoring opportunities for field deployment, and (c) add general
+user + collaborator documentation.
+
+**Performance & robustness review** written to
+`docs/PERF_AND_ROBUSTNESS_REVIEW.md` as a prioritized, checkbox roadmap (nothing
+implemented yet). Findings were gathered by reading the native hot path and the
+Dart session code with file:line anchors. Headline items:
+
+- *Speed (native):* the inference FPS-cap drop happens **after** the per-frame
+  RGBA→Bitmap conversion (`YOLOView.onFrame`), so capped frames pay full
+  conversion cost — hoist the drop like the motion-gate idle sampler already
+  does; the analyzer thread blocks up to 100 ms per emitted frame on a
+  main-thread `CountDownLatch` in `YOLOPlatformView.sendStreamData`; per-frame
+  `Bitmap` (`ImageUtils.toBitmap`) and LiteRT output `FloatArray`
+  (`LiteRtModel.readAsFloats`) allocations churn the heap; and the
+  CPU-vs-GPU **startup benchmark named in CLAUDE.md does not actually exist** —
+  `LiteRtModel` uses a static GPU-first try/fallback ladder, the "benchmark" is
+  only a doc comment.
+- *Robustness (Dart):* the per-frame log write (`SessionLogger._append` →
+  `writeStringSync`) is **unguarded synchronous I/O in the frame callback** —
+  storage-full or permission loss can crash a long session; `main.dart` has no
+  global error trap; several fire-and-forget futures lack `.catchError`;
+  lifecycle handling covers only `resumed` (no `paused`→flush); the watchdog
+  catches detector-stall but not camera-delivery-stall; and a **config bug** —
+  `occlusionSeconds` constructor default is `3.0` but the `fromJson` absent-key
+  fallback is `1.0`, so legacy configs load the wrong occlusion buffer.
+  `camera_session_screen.dart` (~2,590 lines) is a god-class with an extraction
+  plan noted.
+
+**New documentation** (all in `docs/`, filled first drafts sourced from the
+code, TODO markers only where owner field knowledge is needed):
+
+- `FIELD_GUIDE.md` — end-user session walkthrough (ROI placement, live UI
+  meaning, blackout, summary, file retrieval) + field troubleshooting.
+- `SETTINGS_REFERENCE.md` — plain-language entry per setting, cross-checked 1:1
+  against the `SessionConfig` constructor defaults.
+- `DATA_GUIDE.md` — full `session.jsonl` data dictionary (every record type,
+  cross-checked against `session_logger.dart`) + R/Python snippets computing
+  visitation rate and mean visit duration.
+- `ARCHITECTURE.md` — native↔Dart data flow, the `pollinator/*` method-channel
+  contract, the keep-in-sync pairs, and what the plugin fork changed vs upstream.
+- `CONTRIBUTING.md` — build/test/analyze commands, device quirks (re-homed from
+  the overview), the "every tunable ships user-adjustable + test" rule, doc
+  maintenance rules, git etiquette, AGPL note, and a docs index by audience.
+
+Rationale: much reference material (defaults, invariants, device quirks) had
+lived **only** in `POLLINATOR_OVERVIEW.md`, which is explicitly a rewrite-in-place
+AI-grounding file — not durable human documentation. This round gives both
+audiences (field researchers, collaborators) stable homes and leaves OVERVIEW as
+the short grounding snapshot it's meant to be.
+
+**Verification:** documentation-only round; no build/test needed and
+`flutter analyze` untouched (no code changed). Settings entries and JSONL field
+names were spot-checked against `session_config.dart` and `session_logger.dart`.

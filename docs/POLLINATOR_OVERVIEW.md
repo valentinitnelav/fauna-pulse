@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 65 (session_99 verified clean; surfaced errors now persisted as app_error records; pencil edit sheet made overflow-proof; HOW_PHOTO_RESOLUTION_WORKS.md added).
+> Last synced with: round 66 (review-and-document pass, no code changes: PERF_AND_ROBUSTNESS_REVIEW.md roadmap added; FIELD_GUIDE / SETTINGS_REFERENCE / DATA_GUIDE / ARCHITECTURE / CONTRIBUTING docs added; see Pointers).
 
 ## What the app is about
 
@@ -151,6 +151,8 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 ## Pointers
 
 - **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries).
+- **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot.
+- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; nothing implemented yet — includes the `occlusionSeconds` 3.0-vs-1.0 fromJson bug and the "no real CPU/GPU benchmark" finding).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
 - **Archived Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).

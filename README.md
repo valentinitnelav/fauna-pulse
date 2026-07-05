@@ -41,6 +41,20 @@ dependencies:
     path: packages/ultralytics_yolo
 ```
 
+## Documentation
+
+| Doc | Audience | Purpose |
+|---|---|---|
+| [INSTALL.md](docs/INSTALL.md) | tester / collaborator | Install a ready-made APK or build from source; import models. |
+| [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | field researcher | Run a session, read the live screen, troubleshoot. |
+| [SETTINGS_REFERENCE.md](docs/SETTINGS_REFERENCE.md) | field researcher | What every setting does. |
+| [DATA_GUIDE.md](docs/DATA_GUIDE.md) | researcher / analyst | `session.jsonl` data dictionary; compute visitation rates (R/Python). |
+| [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | advanced user | Why a small ROI still yields sharp photos. |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | developer | Build/test, conventions, docs index. |
+| [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
+| [POLLINATOR_OVERVIEW.md](docs/POLLINATOR_OVERVIEW.md) / [POLLINATOR_MONITOR.md](docs/POLLINATOR_MONITOR.md) | maintainer | Current-state snapshot / append-only development journal. |
+
 ## Build & run (Android)
 
 See the step-by-step [Installation & Testing Guide](docs/INSTALL.md). 
