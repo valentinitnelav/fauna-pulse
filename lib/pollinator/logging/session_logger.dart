@@ -48,6 +48,7 @@ class SessionLogger {
   final List<String> _queue = [];
   Future<void>? _drainFuture;
   bool _flushRequested = false;
+  bool _closed = false;
 
   /// Called (at most once per logger) the first time a write to disk fails —
   /// e.g. the storage filled up mid-session or the OS revoked access. Writes
@@ -91,6 +92,11 @@ class SessionLogger {
     DateTime? at,
     bool flush = true,
   }) {
+    if (_closed) {
+      // A straggler after the session ended (late platform event, watchdog
+      // tick racing the stop sequence): drop it quietly — the file is done.
+      return;
+    }
     if (_raf == null) {
       throw StateError('SessionLogger.open() must be called before logging');
     }
@@ -217,9 +223,10 @@ class SessionLogger {
   /// the file handle. Best-effort: a failing flush must not prevent the
   /// handle from being released (or the stop sequence from finishing).
   Future<void> close() async {
+    // From here on new appends are dropped (see _append); what's already
+    // queued still gets drained below.
+    _closed = true;
     _flushRequested = true;
-    // Re-check after each drain: an onWriteError handler may queue one last
-    // app_error record from inside the loop.
     while (_drainFuture != null) {
       await _drainFuture;
     }

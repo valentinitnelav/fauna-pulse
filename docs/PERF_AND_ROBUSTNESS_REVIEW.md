@@ -213,12 +213,12 @@ sink; the ROI/motion-gate pushes got `.catchError` → `_logAsyncError`.
 
 ### B3. App lifecycle gaps
 
-- [ ] `didChangeAppLifecycleState` (~437–444) handles only `resumed`
+- [x] `didChangeAppLifecycleState` (~437–444) handles only `resumed`
   (re-assert wakelock). Add `paused`/`detached` → `_logger?.flushNow()`, so
   if the OS kills the backgrounded app (aggressive OEM battery managers —
   the Xiaomi test device is one) the loss window shrinks from ≤0.5 s of
   detections to ~zero.
-- [ ] `dispose()` (~406–434) calls `_stopRecording(normal: false)` (~421)
+- [x] `dispose()` (~406–434) calls `_stopRecording(normal: false)` (~421)
   **unawaited**, then immediately `_controller.dispose()` (~423). The stop
   sequence does several `await`s (battery read, thermal read, logcat save)
   before closing the logger and stopping the keep-alive foreground service —
@@ -226,11 +226,18 @@ sink; the ROI/motion-gate pushes got `.catchError` → `_logAsyncError`.
   torn down mid-way (or reorder: close logger + stop service first,
   best-effort extras after).
 
-*Effort:* small–medium.
+*Effort:* small–medium. **Done (round 70):** background/detach (and `hidden`)
+now flush the log queue; `_stopRecording` reordered critical-path-first —
+`_recording` false immediately, battery/thermal reads time-bounded (2 s),
+`logEnd` + `close()` + error-sink teardown + keep-alive stop before the
+best-effort logcat/wakelock extras, every remaining step guarded. A
+`_stopping` flag keeps a second tap (or a re-entrant call) out of the stop
+sequence, and `SessionLogger` drops post-close appends silently instead of
+throwing on late platform events.
 
 ### B4. Camera-delivery watchdog
 
-- [ ] The existing watchdog (~490–516) catches "camera delivers but detector
+- [x] The existing watchdog (~490–516) catches "camera delivers but detector
   silent" (`fps == 0` while `cameraFps > 1`). The opposite failure —
   **the camera itself stops delivering** (`cameraFps` → 0: camera HAL crash,
   another app grabbing the camera, OS resource reclaim) — raises nothing.
@@ -238,7 +245,14 @@ sink; the ROI/motion-gate pushes got `.catchError` → `_logAsyncError`.
   symmetric check: recording + `cameraFps` ≈ 0 for N seconds → `logAppError`
   + banner (and optionally attempt a camera rebind).
 
-*Effort:* small.
+*Effort:* small. **Done (round 70):** the check rides the 1 s recording
+ticker (it *must* be timer-driven — a dead camera produces no stream
+callbacks to check from). Any stream event stamps `_lastStreamEventMs`,
+gate-idle heartbeats included, so a sleeping detector can't false-alarm;
+10 s of silence while recording → flushed `app_error` + red banner, both
+auto-clearing (with a "delivery resumed" log line) if frames return. The
+camera rebind was left out — no safe rebind API is exposed today; revisit
+if field sessions actually hit this.
 
 ### B5. Config bug: `occlusionSeconds` default mismatch — fix first, it's one line
 
@@ -314,6 +328,6 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
    + B2 round 67; B1 batching/queueing round 69 — B1 fully closed).
 2. **A1** + **A2** — the two big heat/latency wins in the native path.
    ✔ **Done** (round 68).
-3. **B3 + B4** — lifecycle + camera watchdog.
+3. **B3 + B4** — lifecycle + camera watchdog. ✔ **Done** (round 70).
 4. **A3**, then **B6(a)** + **B8** tests.
 5. **A4** (benchmark) as its own round; **A5/A6/B7/B9** opportunistically.

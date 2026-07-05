@@ -182,6 +182,19 @@ void main() {
     expect(calls, 1);
   });
 
+  test('logging after close is a silent no-op (late platform events)', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc'});
+    logger.logEnd({'ended_normally': true});
+    await logger.close();
+    // A straggler (late detector error, watchdog tick racing the stop
+    // sequence) must not throw or reopen anything.
+    logger.logAppError({'source': 'detector', 'message': 'late'});
+    await logger.flushNow();
+    expect(file.readAsLinesSync(), hasLength(2));
+  });
+
   test('isoWithOffset has millisecond precision and an offset', () {
     final s = isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123));
     expect(s, contains('2026-06-13T19:03:12.123'));

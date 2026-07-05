@@ -168,3 +168,9 @@ battery managers) still need the app manually whitelisted in system settings.
 **Where did my photos go / storage full.** See §6 for the path. If storage
 fills mid-session, saving fails — keep comfortable free space for the session
 length you're planning.
+
+**Red banner: "The camera stopped delivering frames."** The camera itself went
+silent for 10+ seconds — typically another app took it over, or the phone's
+camera service failed. The event is written to the session log with its
+timestamp, so the gap is visible in your data afterwards. Stop and restart the
+session (or reopen the app); the banner clears by itself if frames resume.

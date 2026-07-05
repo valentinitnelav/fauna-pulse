@@ -2433,3 +2433,96 @@ say otherwise, downsample in postprocessing, not at capture.
 77/77 pass. On-device check pending (owner): record a short session with >1
 insect, then confirm the summary's photo browser shows boxes/track ids and
 the session graphs populate (both parsers now walk the new `tracks[]` array).
+
+## Round 70 (2026-07-05): lifecycle hardening + camera-delivery watchdog (review B3 + B4)
+
+Implements sequencing item 3 of `PERF_AND_ROBUSTNESS_REVIEW.md`.
+
+**B3.1 — flush on backgrounding** (`camera_session_screen.dart`):
+`didChangeAppLifecycleState` now also handles `hidden`/`paused`/`detached`
+while recording → `_logger?.flushNow()`. If an aggressive OEM battery manager
+(the Xiaomi test device's is one) kills the backgrounded app, the detection
+loss window shrinks from ≤0.5 s to ~zero.
+
+**B3.2 — stop sequence reordered critical-path-first**
+(`camera_session_screen.dart` `_stopRecording`, `session_logger.dart`):
+
+- `_recording` flips false at the START (plain assignment — this runs
+  synchronously from `dispose()`, where `setState` is off-limits), so the
+  frame path stops logging instantly.
+- The end battery/thermal reads are time-bounded (2 s `timeout` each) and
+  guarded: a platform channel hung mid camera-teardown can no longer stall
+  the stop. Then, in order: `logEnd` → `await close()` (queue drained,
+  `end_of_session` on disk) → `appErrorSink = null` → keep-alive service
+  stop — and only after that the best-effort extras (`logcat_end.txt`,
+  wakelock release), each in its own try/catch so being torn down mid-way
+  can't abort later steps.
+- New `_stopping` flag: `_recording` dropping early would have let a quick
+  second tap fall into the "start recording" branch mid-teardown;
+  `_toggleRecording` and `_stopRecording` now bail while a stop is in
+  flight.
+- `SessionLogger` gained a `_closed` latch: appends after `close()` (late
+  detector events, a watchdog tick racing the stop) are silently dropped
+  instead of throwing `StateError`. New test covers it (78/78 pass).
+
+**B4 — camera-delivery watchdog** (`camera_session_screen.dart`):
+
+- The round-65 watchdog catches "camera delivers, detector silent". The
+  opposite — the camera itself dying (HAL crash, another app grabbing it,
+  OS reclaim) — produced *no signal at all*, because it also stops the
+  stream callbacks the old check lived in. The new check therefore rides
+  the existing 1 s recording ticker.
+- Every stream event stamps `_lastStreamEventMs` — including the ~1 Hz
+  motion-gate idle heartbeats, so a deliberately sleeping detector never
+  false-alarms. 10 s without any event while recording (constant
+  `_cameraSilentAfterMs`, deliberately not a tunable) → one flushed
+  `app_error` (source `watchdog`) + the red banner. If delivery resumes,
+  the banner clears itself and a "delivery resumed" line is logged, so the
+  outage is bracketed in the data.
+- The optional camera rebind from the review was left out: the plugin
+  exposes no safe rebind today; revisit if a field session actually hits
+  this.
+
+**Verification:** `flutter analyze` clean; `flutter test test/pollinator`
+78/78 pass. On-device check pending (owner): normal stop still lands
+`end_of_session` + summary; optionally background the app mid-session and
+pull it back (log should show no gap), and the camera-lost banner can be
+provoked by starting a recording and opening the system camera app on top.
+
+## Round 71 (2026-07-05): ROI-size sheet fixes (owner report, session_107)
+
+Field test of rounds 67–70 on the Xiaomi device (session_107, ~32 s, gate on,
+GPU): data all healthy — batched `detections` records correct (227 frames /
+297 track entries, all 13 photos referenced), `end_of_session` clean, storage
+fields present, no watchdog false alarms. `convertedFps == deliveredFps` in
+FRAMEPERF is *expected* here (motion gate enabled → A1 keeps converting every
+frame for the gate's background model). The round-67 global error trap proved
+itself: the owner's "split-second red screen" was captured as two `app_error`
+lines with stacks, pinpointing the bug without a repro.
+
+**Bug 1 — disposed-controller crash (the red flash):** `_editRoiSize` used an
+inline StatefulBuilder and disposed its `TextEditingController` as soon as
+`showModalBottomSheet`'s future completed — but the sheet still rebuilds
+during its closing animation (keyboard inset animating away), and the builder
+wrote `controller.text` to the disposed controller. Fix: the sheet is now a
+real widget, `_RoiSizeSheet`, whose State owns the controller (+ FocusNode)
+and disposes them when the widget is actually gone.
+
+**Bug 2 — typed ROI sizes neither applied nor snapped:** the old field only
+applied input via `onSubmitted` (the keyboard's submit action). Typing a
+value and tapping Done applied nothing, and the field kept showing an
+arbitrary, non-multiple-of-32 number that was never the real ROI. Fix, in
+`_RoiSizeSheet`: digits-only input filter; typed values apply on keyboard
+submit, on the field losing focus, AND on Done (applied before pop); every
+apply snaps to the multiple-of-32 grid + clamps to min/max and **writes the
+applied value back into the field**, so the number on screen always equals
+the actual ROI size.
+
+Observation, no action: session_107 carries 276 `roi_update` lines from
+slider dragging — one per change is by design (post-processing needs the
+exact ROI at every detection), and outside ROI adjustments they don't occur.
+
+**Verification:** `flutter analyze` clean; 78/78 tests pass. On-device check
+pending (owner): open the pencil sheet, drag the slider, type a non-multiple
+(e.g. 1000) and tap Done — the field should snap (→ 992), the ROI should
+resize, and no red flash should appear while the sheet closes.

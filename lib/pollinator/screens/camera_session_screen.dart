@@ -178,6 +178,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // has the camera been delivering frames without it?
   bool _detectorEverRan = false;
   int _camDeliverStartMs = 0;
+  // Camera-delivery watchdog (B4): when the camera *itself* stops delivering
+  // (HAL crash, another app grabbing it, OS reclaim) no stream events arrive
+  // at all — so this check runs on the 1 s recording ticker, not in the
+  // stream callback. Any stream event counts as alive, including the ~1 Hz
+  // gate-idle heartbeats (a sleeping detector is intentional; a silent
+  // camera is not).
+  int _lastStreamEventMs = 0;
+  bool _cameraSilent = false;
+  static const int _cameraSilentAfterMs = 10000;
+  static const String _cameraSilentError =
+      'The camera stopped delivering frames. Another app may have taken it '
+      'over, or the camera service failed. Stop and restart the session '
+      '(or reopen the app) to resume recording.';
 
   // Motion-gate state mirrored from the native side. While the gate is idle the
   // detector is deliberately asleep (no results), so the UI must show "idle"
@@ -188,6 +201,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   final ValueNotifier<double> _motionScoreVN = ValueNotifier(0);
 
   bool _recording = false;
+  // True while _stopRecording is mid-flight. _recording flips false at the
+  // START of the stop sequence (so the frame path stops logging instantly),
+  // which without this guard would let a quick second tap fall into the
+  // "start recording" branch while teardown is still running.
+  bool _stopping = false;
   // True while the camera/detector is paused (e.g. on the session summary) so we
   // don't keep running inference and heating the phone when it isn't needed.
   bool _paused = false;
@@ -462,11 +480,37 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (state == AppLifecycleState.resumed && _recording) {
       WakelockPlus.enable();
     }
+    // Going to the background (or the engine detaching): force the log queue
+    // to disk NOW. Aggressive OEM battery managers — the Xiaomi test device
+    // included — can kill a backgrounded app without warning; this shrinks
+    // the loss window from ≤0.5 s of detections to ~zero. `hidden` fires
+    // just before `paused` on Android; flushing on both is harmless.
+    if (_recording &&
+        (state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached)) {
+      _logger?.flushNow();
+    }
   }
 
   // --- Per-frame pipeline -------------------------------------------------
 
   void _onStreamingData(Map<String, dynamic> data) {
+    // Any event from the native side means the camera is alive: feed the
+    // camera-delivery watchdog and clear its banner if it had fired.
+    _lastStreamEventMs = DateTime.now().millisecondsSinceEpoch;
+    if (_cameraSilent) {
+      _cameraSilent = false;
+      if (_recording) {
+        _logger?.logAppError({
+          'source': 'watchdog',
+          'message': 'Camera frame delivery resumed.',
+        });
+      }
+      if (mounted && _inferenceError == _cameraSilentError) {
+        setState(() => _inferenceError = null);
+      }
+    }
     // Motion-gate idle heartbeat: while the gate keeps the detector asleep the
     // native side sends ~1 Hz maps with only gate state + camera FPS (no
     // detections). Update the gate indicator and bail out — no tracking, no
@@ -883,6 +927,34 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     setState(() => _focusManual = false);
   }
 
+  /// Camera-delivery watchdog (B4), run from the 1 s recording ticker: if no
+  /// stream event of any kind (detections, heartbeats) has arrived for
+  /// [_cameraSilentAfterMs], the camera itself has stopped — a HAL crash,
+  /// another app grabbing it, or OS resource reclaim. An unattended session
+  /// would otherwise sit recording nothing for hours. Fires once per outage:
+  /// app_error line (flushed, in case this precedes a bigger failure) + the
+  /// red banner; both clear automatically if delivery resumes.
+  void _checkCameraDelivery() {
+    if (!_recording || _cameraSilent || _lastStreamEventMs == 0) return;
+    final silentMs =
+        DateTime.now().millisecondsSinceEpoch - _lastStreamEventMs;
+    if (silentMs < _cameraSilentAfterMs) return;
+    _cameraSilent = true;
+    _logger?.logAppError({
+      'source': 'watchdog',
+      'message':
+          'Camera delivered no frames for ${(silentMs / 1000).round()} s '
+          '(camera lost: HAL crash, other app, or OS reclaim).',
+    });
+    _logger?.flushNow();
+    if (mounted) {
+      setState(() {
+        _inferenceError = _cameraSilentError;
+        _errorBannerDismissed = false;
+      });
+    }
+  }
+
   /// Logs every confirmed track this frame — as ONE `detections` record with a
   /// `tracks` array (round 69) — and triggers a shared ROI photo when one is
   /// due. The photo filename is written into the covered tracks' entries so
@@ -946,6 +1018,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // --- Recording lifecycle ------------------------------------------------
 
   Future<void> _toggleRecording() async {
+    // A tap while the previous stop sequence is still tearing down does
+    // nothing (it would otherwise start a new session mid-teardown).
+    if (_stopping) return;
     // Don't allow recording to start until calibration (the one-time full-res
     // probe that establishes the true ROI resolution) has finished. Before that
     // the ROI pixel size — logged at session start — isn't known yet.
@@ -1206,14 +1281,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       () => _toggleRecording(),
     );
 
-    // Start the elapsed-time clock for the REC banner.
+    // Start the elapsed-time clock for the REC banner. The same 1 s tick
+    // hosts the camera-delivery watchdog: it must run on a timer because a
+    // dead camera produces no stream callbacks at all.
     _recordStart = DateTime.now();
     _recordElapsedVN.value = 0;
+    _lastStreamEventMs = DateTime.now().millisecondsSinceEpoch;
+    _cameraSilent = false;
     _recordTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       final start = _recordStart;
       if (start != null) {
         _recordElapsedVN.value = DateTime.now().difference(start).inSeconds;
       }
+      _checkCameraDelivery();
     });
 
     setState(() {
@@ -1243,35 +1323,70 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
+  /// Ordered so the records that matter most land earliest (B3): when this
+  /// runs unawaited from dispose() — or the OS is in the middle of killing
+  /// the app — every step it manages to reach must have been more important
+  /// than the ones after it. Critical path first (end_of_session on disk,
+  /// error routing off, keep-alive service down), best-effort diagnostics
+  /// after, and each remaining step guarded so a mid-teardown failure can't
+  /// abort the rest.
   Future<void> _stopRecording({required bool normal}) async {
+    if (_stopping) return;
+    _stopping = true;
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
     _recordTicker = null;
-    final battery = await _safeBatteryLevel();
-    // Fresh closing reading so the end `thermal` block carries the final charge
-    // counter — the start↔end drop is the battery-drain energy estimate.
-    final endReading = await DeviceThermal.read();
+    // Stop the frame path from logging new records right away. Plain
+    // assignment, not setState: this runs synchronously from dispose() too.
+    _recording = false;
+    // End-of-session readings, time-bounded: a hung platform channel (mid
+    // camera teardown) must not stall the stop sequence and with it the
+    // end_of_session record.
+    int? battery;
+    var endReading = const ThermalReading();
+    try {
+      battery = await _safeBatteryLevel().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+      // Fresh closing reading so the end `thermal` block carries the final
+      // charge counter — the start↔end drop is the battery-drain estimate.
+      endReading = await DeviceThermal.read().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => const ThermalReading(),
+      );
+    } catch (_) {
+      // Best-effort: the end record is worth more than its extras.
+    }
     _logger?.logEnd({
       'ended_normally': normal,
       'battery_percent': battery,
       'unique_track_count': _tracker.totalConfirmed,
       'thermal': endReading.toJson(),
     });
-    // Capture the recent logcat (throttle-era native logs + persisted PERF lines)
-    // before closing the log, so an uncoupled run keeps a full record.
-    await _saveLogcat('logcat_end.txt');
     // Waits for the writer queue to drain, so end_of_session is on disk.
     await _logger?.close();
     // The log is closed: stop routing global uncaught errors to it.
     appErrorSink = null;
-    await WakelockPlus.disable();
     // Tear down the keep-alive foreground service + its notification.
-    await RecordingKeepAlive.stop();
-    if (mounted) {
-      setState(() => _recording = false);
-    } else {
-      _recording = false;
+    try {
+      await RecordingKeepAlive.stop();
+    } catch (e) {
+      debugPrint('Keep-alive stop failed: $e');
     }
+    // Best-effort extras, after the critical path. The logcat capture
+    // (throttle-era native logs + persisted PERF lines) writes its own file
+    // in the session folder, so it doesn't need the logger to be open.
+    try {
+      await _saveLogcat('logcat_end.txt');
+    } catch (e) {
+      debugPrint('logcat_end.txt failed: $e');
+    }
+    try {
+      await WakelockPlus.disable();
+    } catch (_) {}
+    _stopping = false;
+    if (mounted) setState(() {});
   }
 
   /// Creates `…/Android/data/<pkg>/files/sessions/<folder>/` (USB-visible).
@@ -1542,129 +1657,46 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// Lets the user set an exact ROI side in pixels (of the saved full-res crop)
   /// with a live slider OR by typing a number, so they don't have to pinch
   /// precisely. Values snap to the nearest multiple of 32 (what the crop uses).
+  ///
+  /// The sheet is a real widget (_RoiSizeSheet, round 71) rather than an
+  /// inline StatefulBuilder: the old version disposed its text controller as
+  /// soon as the sheet's future completed, but the builder could still run
+  /// once more during the closing animation (keyboard inset animating away)
+  /// and wrote to the disposed controller — a split-second red error flash
+  /// on screen (caught twice by the round-67 error trap in session_107).
   Future<void> _editRoiSize() async {
     // Use the width the ROI crop is actually saved from, so the px values here
     // match the saved files and the on-screen readout.
     final srcW = _roiSourceWidth;
     if (srcW <= 0) return;
     final visible = _currentVisibleRect();
-    // Cap by both the visible width and the source's short side (the real max).
-    final maxPx = snapToMultipleOf32(visible.width * srcW).clamp(96, _maxRoiPx);
     const minPx = 96;
-    final controller = TextEditingController();
+    // Cap by both the visible width and the source's short side (the real max).
+    final maxPx = snapToMultipleOf32(
+      visible.width * srcW,
+    ).clamp(minPx, _maxRoiPx).toInt();
+    final curPx = snapToMultipleOf32(
+      _roi.sideFraction * srcW,
+    ).clamp(minPx, maxPx).toInt();
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.black87,
       // Let the sheet grow with its content and sit above the keyboard so the
       // helper text below the slider is never clipped off the bottom.
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheet) {
-          final curPx = snapToMultipleOf32(
-            _roi.sideFraction * srcW,
-          ).clamp(minPx, maxPx);
-          // Keep the text field showing the current value unless it's focused.
-          if (controller.text != curPx.toString() &&
-              !FocusScope.of(context).hasFocus) {
-            controller.text = curPx.toString();
-          }
-
-          void applyPx(int px) {
-            final clamped = px.clamp(minPx, maxPx);
-            _onRoiChanged(
-              Roi(
-                centerX: _roi.centerX,
-                centerY: _roi.centerY,
-                sideFraction: clamped / srcW,
-              ),
-            );
-            setSheet(() {});
-          }
-
-          return SafeArea(
-            // Scrollable so the sheet can never overflow while the keyboard
-            // animates in for the px text field — in a debug build that
-            // overflow flashes the striped "BOTTOM OVERFLOWED" banner, which
-            // reads like an app error (round 65, owner report session_99).
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                20 + MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ROI size: $curPx × $curPx px  (max $maxPx)',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Slider(
-                          value: curPx.toDouble().clamp(
-                            minPx.toDouble(),
-                            maxPx.toDouble(),
-                          ),
-                          min: minPx.toDouble(),
-                          max: maxPx.toDouble(),
-                          divisions: ((maxPx - minPx) ~/ 32).clamp(1, 1000),
-                          label: '$curPx px',
-                          onChanged: (v) => applyPx(snapToMultipleOf32(v)),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 88,
-                        child: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            suffixText: 'px',
-                            suffixStyle: TextStyle(color: Colors.white54),
-                            isDense: true,
-                          ),
-                          onSubmitted: (s) {
-                            final v = int.tryParse(s.trim());
-                            if (v != null) {
-                              applyPx(snapToMultipleOf32(v.toDouble()));
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Slide or type the exact ROI resolution (it snaps to the '
-                    'nearest multiple of 32). Then drag or pinch on the preview '
-                    'to position it. The maximum equals the full sensor width.',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Done'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      builder: (_) => _RoiSizeSheet(
+        minPx: minPx,
+        maxPx: maxPx,
+        initialPx: curPx,
+        onApply: (px) => _onRoiChanged(
+          Roi(
+            centerX: _roi.centerX,
+            centerY: _roi.centerY,
+            sideFraction: px / srcW,
+          ),
+        ),
       ),
     );
-    controller.dispose();
   }
 
   /// Records a failed fire-and-forget call: console line for `flutter run`
@@ -2670,4 +2702,166 @@ class _SessionInfoDialogState extends State<_SessionInfoDialog> {
       Expanded(child: Text(text)),
     ],
   );
+}
+
+/// Bottom sheet for setting an exact ROI side in pixels: live slider plus a
+/// type-a-number field. A proper StatefulWidget so its TextEditingController
+/// is disposed by the framework when the sheet is truly gone (round 71 — the
+/// previous inline builder crashed writing to an already-disposed controller
+/// during the closing animation).
+///
+/// Every path into [_apply] snaps to the multiple-of-32 grid the crop uses
+/// and clamps to [minPx]..[maxPx], and the field is rewritten to the value
+/// actually applied — so the number on screen is always the real ROI size.
+/// Typed input applies on the keyboard's submit, on the field losing focus,
+/// and on Done, so "type a value, tap Done" can no longer leave an unapplied
+/// arbitrary number standing.
+class _RoiSizeSheet extends StatefulWidget {
+  final int minPx;
+  final int maxPx;
+  final int initialPx;
+  final ValueChanged<int> onApply;
+
+  const _RoiSizeSheet({
+    required this.minPx,
+    required this.maxPx,
+    required this.initialPx,
+    required this.onApply,
+  });
+
+  @override
+  State<_RoiSizeSheet> createState() => _RoiSizeSheetState();
+}
+
+class _RoiSizeSheetState extends State<_RoiSizeSheet> {
+  late int _curPx = widget.initialPx;
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialPx.toString(),
+  );
+  final FocusNode _fieldFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _fieldFocus.addListener(() {
+      if (!_fieldFocus.hasFocus) _applyTyped();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _fieldFocus.dispose();
+    super.dispose();
+  }
+
+  /// Snap, clamp, show what was applied, and hand the value to the screen.
+  void _apply(int px) {
+    if (!mounted) return;
+    final snapped = snapToMultipleOf32(
+      px.toDouble(),
+    ).clamp(widget.minPx, widget.maxPx).toInt();
+    setState(() => _curPx = snapped);
+    _controller.text = snapped.toString();
+    widget.onApply(snapped);
+  }
+
+  void _applyTyped() {
+    final v = int.tryParse(_controller.text.trim());
+    if (v != null) {
+      _apply(v);
+    } else if (mounted) {
+      // Unparseable leftovers (empty field): restore the current value.
+      _controller.text = _curPx.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      // Scrollable so the sheet can never overflow while the keyboard
+      // animates in for the px text field — in a debug build that overflow
+      // flashes the striped "BOTTOM OVERFLOWED" banner, which reads like an
+      // app error (round 65, owner report session_99).
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ROI size: $_curPx × $_curPx px  (max ${widget.maxPx})',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _curPx.toDouble().clamp(
+                      widget.minPx.toDouble(),
+                      widget.maxPx.toDouble(),
+                    ),
+                    min: widget.minPx.toDouble(),
+                    max: widget.maxPx.toDouble(),
+                    divisions: ((widget.maxPx - widget.minPx) ~/ 32).clamp(
+                      1,
+                      1000,
+                    ),
+                    label: '$_curPx px',
+                    onChanged: (v) => _apply(v.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 88,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _fieldFocus,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      suffixText: 'px',
+                      suffixStyle: TextStyle(color: Colors.white54),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _applyTyped(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Slide or type the exact ROI resolution (it snaps to the '
+              'nearest multiple of 32). Then drag or pinch on the preview '
+              'to position it. The maximum equals the full sensor width.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () {
+                  // Apply whatever is typed before closing, so Done never
+                  // discards a value the user can still see in the field.
+                  _applyTyped();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Done'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
