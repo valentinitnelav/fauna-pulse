@@ -289,18 +289,33 @@ fields and a ~480-line `build()`. It works, but every change risks touching
 unrelated behaviour, and none of its orchestration is unit-testable. Suggested
 extraction order (each step compiles, passes tests, and changes no behaviour):
 
-- [ ] (a) **Frame processing** — pull `_onStreamingData`'s mapping/tracking
+- [x] (a) **Frame processing** — pull `_onStreamingData`'s mapping/tracking
   (~448–656) into a plain class (`FrameProcessor`) that takes a stream event
   and returns tracks + stats. This makes the core per-frame logic unit-testable
   (see B8).
-- [ ] (b) **Session recording** — start/stop sequence, logger wiring, capture
+- [x] (b) **Session recording** — start/stop sequence, logger wiring, capture
   scheduler wiring (~1038–1219) into a `SessionRecorder`.
-- [ ] (c) **Camera diagnostics** — the `_fetch*` / `_probe*` cluster
+- [x] (c) **Camera diagnostics** — the `_fetch*` / `_probe*` cluster
   (~689–863) into a `CameraDiagnosticsController`.
-- [ ] (d) Move the embedded overlay/dialog widget classes (~2245–2591) into
+- [x] (d) Move the embedded overlay/dialog widget classes (~2245–2591) into
   `widgets/`.
 
 *Effort:* medium per step; do them in separate rounds.
+**Done (round 73), all four steps in one behaviour-preserving pass:** new
+`lib/pollinator/session/` holds `FrameProcessor` (detection mapping + tracker
+update + motion-gate idle/expire state, injectable clock), `SessionRecorder`
+(session folder, JSONL logger lifecycle + appErrorSink routing, capture
+scheduler wiring, wakelock/keep-alive, the ordered stop sequence, per-frame
+`recordFrame`), and `CameraDiagnosticsController` (the six one-time probes +
+lens cycling). The three embedded widgets moved to `widgets/`
+(`CalibratingBanner`, `SessionInfoDialog`, `RoiSizeSheet`). The screen keeps
+its original vocabulary via thin getters (`_recording`, `_logger`,
+`_captureWidth`, `_lenses`, `_gateIdle`, …), so `build()` and all read sites
+are textually unchanged; it shrank ~2,870 → ~2,180 lines. Known intentional
+micro-deviations: the session/REC timers now start right after
+`SessionRecorder.start()` returns (a few ms later than before), and the
+once-a-second PERF debug line still reports the previous frame's tracker cost
+(as before).
 
 ### B7. Silent `catch (_) {}` sites — make failures leave a trace
 
@@ -316,17 +331,25 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 
 ### B8. Test gaps (in priority order)
 
-- [ ] **`RoiCaptureScheduler.evaluate()`** (`roi_capture.dart` ~313–351) — the
+- [x] **`RoiCaptureScheduler.evaluate()`** (`roi_capture.dart` ~313–351) — the
   stateful photo cadence (first photo immediately, step/duration windows per
   track, shared photos across concurrent tracks, window cleanup that guards
   against id-reuse double-capture) decides *how many photos land on disk* and
   has zero tests. The pure helpers around it are tested; the scheduler is not.
+  *Done round 73:* `test/pollinator/roi_capture_scheduler_test.dart` covers
+  first-sight photo + deterministic filename, step interval, duration window,
+  shared photo across concurrent tracks, per-track windows for late arrivals,
+  blip-survival vs. cleanup boundary, and the in-flight busy skip.
 - [x] `SessionLogger` failure path — what happens when the write throws
   (pairs with B1). *Done round 67 (extended round 69 for the async queue).*
 - [x] `SessionConfig.fromJson` with the `occlusionSeconds` key absent
   (pairs with B5). *Done round 66.*
-- [ ] Motion-gate Dart side: `_setGateIdle`'s `expireLostTracks` trigger when
+- [x] Motion-gate Dart side: `_setGateIdle`'s `expireLostTracks` trigger when
   idle exceeds `occlusionSeconds` (~665–687) — becomes testable after B6(a).
+  *Done round 73:* `test/pollinator/frame_processor_test.dart` proves a wake
+  after a sleep longer than the tolerance expires lost tracks (returning
+  insect gets a fresh id) and a shorter sleep keeps the id revivable; plus
+  detection-mapping/clamping and pipeline-FPS tests for the extracted core.
 
 ### B9. Minor per-frame hygiene (low priority)
 
@@ -347,4 +370,5 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 3. **B3 + B4** — lifecycle + camera watchdog. ✔ **Done** (round 70).
 4. **A3**, then **B6(a)** + **B8** tests. ✔ **A3 done** (round 72; float
    model outputs excluded — LiteRT API limitation, see A3 note).
+   ✔ **B6 done in full (a–d) + both open B8 tests** (round 73).
 5. **A4** (benchmark) as its own round; **A5/A6/B7/B9** opportunistically.

@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 72 (perf review A3: per-frame Bitmap reuse via `ImageUtils.BitmapFrameBuffer` + reused integer-output widening targets in `LiteRtModel`; float outputs can't reuse — LiteRT 2.x `readFloat()` allocates internally, no read-into API. Writer and `cropRoiFromFrame` synchronize on the bitmap instance so fast-path photos can't tear).
+> Last synced with: round 73 (review B6 god-class split, all four steps, behaviour-preserving: `camera_session_screen.dart` ~2,870 → ~2,180 lines. New `lib/pollinator/session/` — `FrameProcessor` (detection mapping + tracking + motion-gate idle/expire, injectable clock), `SessionRecorder` (logger/photos/keep-alive lifecycle, ordered stop), `CameraDiagnosticsController` (one-time probes); embedded widgets moved to `widgets/`. Screen keeps old names via thin getters. Review B8 closed: new tests for `RoiCaptureScheduler.evaluate()` and the gate-wake `expireLostTracks` rule — 95/95 pass).
 
 ## What the app is about
 
@@ -36,9 +36,10 @@ on a clone of `ultralytics/yolo-flutter-app`.
 | Tracking | `tracking/byte_track.dart` | Lightweight pure-Dart ByteTrack-style multi-object tracker (stable track ids) |
 | Logging | `logging/session_logger.dart`, `logging/device_thermal.dart` | Append-only JSONL writer; phone-temperature reader |
 | Capture | `capture/roi_capture.dart` | Time-lapse scheduler + background-isolate JPEG crop of the ROI |
-| Widgets | `widgets/roi_overlay.dart`, `widgets/track_box_painter.dart`, `widgets/preview_transform.dart` | Draggable ROI, track-id boxes, camera "cover-fit" coordinate mapping |
-| Screens | `screens/home_screen.dart`, `screens/camera_session_screen.dart`, `screens/settings_sheet.dart`, `screens/session_summary_screen.dart` | Entry/permissions, live orchestration, settings, end-of-session dashboard |
-| Tests | `test/pollinator/*` | Unit tests for ROI math, tracker, logger, throttle |
+| Session (round 73) | `session/frame_processor.dart`, `session/session_recorder.dart`, `session/camera_diagnostics_controller.dart` | Per-frame mapping/tracking + gate-idle state (unit-testable), recording lifecycle (folder/logger/photos/keep-alive/stop order), one-time camera probes + lens cycling |
+| Widgets | `widgets/roi_overlay.dart`, `widgets/track_box_painter.dart`, `widgets/preview_transform.dart`, `widgets/calibrating_banner.dart`, `widgets/session_info_dialog.dart`, `widgets/roi_size_sheet.dart` | Draggable ROI, track-id boxes, camera "cover-fit" coordinate mapping, calibration banner, setup dialog, exact-ROI-size sheet |
+| Screens | `screens/home_screen.dart`, `screens/camera_session_screen.dart`, `screens/settings_sheet.dart`, `screens/session_summary_screen.dart` | Entry/permissions, live orchestration (UI only since round 73 — logic in `session/`), settings, end-of-session dashboard |
+| Tests | `test/pollinator/*` | Unit tests for ROI math, tracker, logger, throttle, capture scheduler, frame processor |
 
 ## Current defaults
 

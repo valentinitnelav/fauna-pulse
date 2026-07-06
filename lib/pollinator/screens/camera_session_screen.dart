@@ -6,24 +6,17 @@
 // results here and never touch raw camera pixels on the hot path.
 
 import 'dart:async';
-import 'dart:io';
 
-import 'package:battery_plus/battery_plus.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
-import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
-import '../logging/diagnostics.dart';
 import '../logging/error_reporter.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
@@ -32,10 +25,16 @@ import '../models/session_config.dart';
 import '../services/recording_keepalive.dart';
 import '../models/track.dart';
 import '../perf/adaptive_inference_throttle.dart';
+import '../session/camera_diagnostics_controller.dart';
+import '../session/frame_processor.dart';
+import '../session/session_recorder.dart';
 import '../tracking/byte_track.dart';
+import '../widgets/calibrating_banner.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
+import '../widgets/roi_size_sheet.dart';
+import '../widgets/session_info_dialog.dart';
 import '../widgets/track_box_painter.dart';
 import 'problem_description_screen.dart';
 import 'settings_sheet.dart';
@@ -57,6 +56,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   late SessionConfig _config;
   late ByteTracker _tracker;
 
+  // Round 73 (review B6): the screen's non-UI responsibilities live in three
+  // plain collaborators — [_frame] does the per-frame detection mapping +
+  // tracking (unit-testable, see frame_processor.dart), [_recorder] owns the
+  // recording session's disk/lifecycle work, and [_probes] runs the one-time
+  // camera probes. Thin getters below keep the screen's original field names
+  // working so the build method and read sites did not have to change.
+  late FrameProcessor _frame;
+  final SessionRecorder _recorder = SessionRecorder();
+  late final CameraDiagnosticsController _probes = CameraDiagnosticsController(
+    controller: _controller,
+    onChanged: () {
+      if (mounted) setState(() {});
+    },
+  );
+
   // Auto thermal-aware inference throttle. When active, it adjusts [_appliedCapFps]
   // each second from the measured inference time so the CPU keeps a cooling margin
   // (see AdaptiveInferenceThrottle). [_appliedCapFps] is the rate cap currently fed
@@ -67,22 +81,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Roi _roi = Roi.defaultRoi;
   int _imageWidth = 0;
   int _imageHeight = 0;
-  // Full-resolution still dimensions (the photo actually saved), learned once by
-  // probing capturePhoto(). The analysis frame above is much smaller, so the ROI
-  // resolution shown to the user is based on these capture dimensions.
-  int _captureWidth = 0;
-  int _captureHeight = 0;
+  // Full-resolution still dimensions (the photo actually saved), learned once
+  // by probing capturePhoto() — see [CameraDiagnosticsController]. The analysis
+  // frame above is much smaller, so the ROI resolution shown to the user is
+  // based on these capture dimensions.
+  int get _captureWidth => _probes.captureWidth;
+  int get _captureHeight => _probes.captureHeight;
   bool _captureProbeStarted = false;
   // Which processor actually runs inference ("GPU"/"CPU"/"NPU"), reported by the
   // native side. Note: GPU can't run int8-quantized models and falls back to CPU.
   String _accelerator = '';
   // Camera-supported analysis stream resolutions ("WxH"), for the settings menu.
-  List<String> _streamResolutions = const [];
+  List<String> get _streamResolutions => _probes.streamResolutions;
   // Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
   // phone (the still/preview sizes above advertise more than the analysis pipeline
   // can deliver). Keys: hardwareLevel, recommendedMax ("WxH"), previewBoundW/H,
   // displayW/H. Probed once and handed to the settings sheet. See round 56.
-  Map<String, dynamic> _analysisCeiling = const {};
+  Map<String, dynamic> get _analysisCeiling => _probes.analysisCeiling;
   // The model actually loaded (from onModelLoad). Lets the user see when a model
   // switch didn't take effect (e.g. a size that isn't bundled on the device).
   String _loadedModel = '';
@@ -111,8 +126,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   //  * pipeline  = frames/sec the app fully handles (tracking + overlay), Dart-
   //                side. Photo saving runs in the background and doesn't gate it.
   final ValueNotifier<List<double>> _fpsTrioVN = ValueNotifier(const [0, 0, 0]);
-  double _pipelineFpsEma = 0;
-  int _lastCallbackMs = 0;
   int _lastPerfLogMs = 0;
 
   // Most recent Dart-side tracker cost (ms) for the once-a-second PERF log, so
@@ -142,7 +155,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // Manual focus. The lens's largest focus distance (in dioptres, 1/metres) is
   // read once from the camera; > 0 means the lens supports manual focus, so we
   // show a focus slider. _focusValue is 0..1 (0 = far/infinity, 1 = near).
-  double _minFocusDistance = 0;
+  double get _minFocusDistance => _probes.minFocusDistance;
   bool _focusManual = false;
   double _focusValue = 0;
   bool _showFocusSlider = false;
@@ -153,15 +166,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // through them *before* recording; the chosen lens is fixed for the session
   // and logged in the start metadata. Empty / single-entry on phones that
   // expose only one usable lens — see the camera-diagnostics dialog for why.
-  List<LensInfo> _lenses = const [];
-  int _lensIndex = 0;
-  String _lensLabel = '';
+  List<LensInfo> get _lenses => _probes.lenses;
+  int get _lensIndex => _probes.lensIndex;
+  String get _lensLabel => _probes.lensLabel;
 
   // Per-camera diagnostics (id, facing, focal lengths, logical/physical, whether
   // usable for inference + why). Read once while the camera is live and passed to
   // the settings sheet for display under Settings → Camera; never shown on the
   // live recording screen.
-  List<Map<String, dynamic>> _cameraDiagnostics = const [];
+  List<Map<String, dynamic>> get _cameraDiagnostics =>
+      _probes.cameraDiagnostics;
 
   // Inference-error reporting. Set when the detector reports an error (e.g. an
   // incompatible model) or appears stalled (camera delivering, detector at 0 FPS).
@@ -192,20 +206,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       'over, or the camera service failed. Stop and restart the session '
       '(or reopen the app) to resume recording.';
 
-  // Motion-gate state mirrored from the native side. While the gate is idle the
-  // detector is deliberately asleep (no results), so the UI must show "idle"
-  // instead of a scary 0-FPS state, and the watchdog must stay quiet.
-  bool _gateIdle = false;
-  int _gateIdleSinceMs = 0;
+  // Motion-gate state mirrored from the native side (held by [_frame]). While
+  // the gate is idle the detector is deliberately asleep (no results), so the
+  // UI must show "idle" instead of a scary 0-FPS state, and the watchdog must
+  // stay quiet.
+  bool get _gateIdle => _frame.gateIdle;
   // Live changed-pixel fraction (0..1) from the gate, for tuning the trigger.
   final ValueNotifier<double> _motionScoreVN = ValueNotifier(0);
 
-  bool _recording = false;
-  // True while _stopRecording is mid-flight. _recording flips false at the
-  // START of the stop sequence (so the frame path stops logging instantly),
-  // which without this guard would let a quick second tap fall into the
-  // "start recording" branch while teardown is still running.
-  bool _stopping = false;
+  // Recording state lives in [_recorder] (round 73, review B6b): `recording`
+  // flips false at the START of the stop sequence (so the frame path stops
+  // logging instantly) and `stopping` guards against a quick second tap
+  // falling into the "start recording" branch while teardown is running.
+  bool get _recording => _recorder.recording;
   // True while the camera/detector is paused (e.g. on the session summary) so we
   // don't keep running inference and heating the phone when it isn't needed.
   bool _paused = false;
@@ -218,11 +231,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   bool _blackout = false;
   bool _blackoutHint = false;
   Timer? _blackoutHintTimer;
-  SessionLogger? _logger;
-  RoiCaptureScheduler? _capture;
-  String _sessionId = '';
+  SessionLogger? get _logger => _recorder.logger;
   Timer? _sessionTimer;
-  int _lastFlushMs = 0;
 
   // Recording elapsed-time clock (shown in the REC banner). Updated by a 1s
   // ticker so the rest of the screen doesn't rebuild.
@@ -314,6 +324,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // The occlusion tolerance is stored in seconds; convert it to the tracker's
     // frame-based buffer using a sensible starting FPS (refined live below).
     _tracker = ByteTracker(params: _trackerParamsForFps(_fpsVN.value));
+    _frame = FrameProcessor(tracker: _tracker);
     _rebuildThrottle();
     // Sample temperature now, then on its configured interval. While recording,
     // each sample is also written to the log so heat can be reviewed afterwards.
@@ -361,7 +372,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (!mounted) return;
     final dontShowAgain = await showDialog<bool>(
       context: context,
-      builder: (_) => const _SessionInfoDialog(),
+      builder: (_) => const SessionInfoDialog(),
     );
     if (dontShowAgain == true) {
       await prefs.setBool(kHideSessionInfoPrefKey, true);
@@ -450,6 +461,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _errorSub?.cancel();
     _blackoutHintTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    // Stop late camera-probe results from calling setState on a dead screen.
+    _probes.dispose();
     // Make sure we never leave the screen stuck dark or the system bars hidden if
     // disposed while blacked out.
     if (_blackout) {
@@ -518,7 +531,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (data['gateIdle'] == true) {
       final hbCamFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
       _motionScoreVN.value = (data['motionScore'] as num?)?.toDouble() ?? 0;
-      _fpsTrioVN.value = [hbCamFps, 0, _pipelineFpsEma];
+      _fpsTrioVN.value = [hbCamFps, 0, _frame.pipelineFpsEma];
       _setGateIdle(true);
       return;
     }
@@ -538,19 +551,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _perfVN.value = [preMs, inferMs, postMs];
 
     // Pipeline FPS: rate at which the app fully handles inferred frames (this
-    // callback runs the ROI mapping + tracking + overlay update). Smoothed.
+    // callback runs the ROI mapping + tracking + overlay update). Smoothed,
+    // maintained by the frame processor.
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (_lastCallbackMs > 0) {
-      final dt = nowMs - _lastCallbackMs;
-      if (dt > 0) {
-        final inst = 1000.0 / dt;
-        _pipelineFpsEma = _pipelineFpsEma == 0
-            ? inst
-            : 0.1 * inst + 0.9 * _pipelineFpsEma;
-      }
-    }
-    _lastCallbackMs = nowMs;
-    _fpsTrioVN.value = [cameraFps, fps, _pipelineFpsEma];
+    _fpsTrioVN.value = [cameraFps, fps, _frame.updatePipelineFps(nowMs)];
 
     // Inference watchdog: if the camera is delivering frames but the detector
     // never produces any (0 FPS) for a while, the model is likely failing
@@ -568,7 +572,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           nowMs - _camDeliverStartMs > 8000) {
         _logger?.logAppError({
           'source': 'watchdog',
-          'message': 'Detector produced no results for 8 s while the camera '
+          'message':
+              'Detector produced no results for 8 s while the camera '
               'was delivering frames.',
         });
         setState(() {
@@ -611,82 +616,39 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       debugPrint(
         'PERF camera=${cameraFps.toStringAsFixed(1)} '
         'detector=${fps.toStringAsFixed(1)} '
-        'pipeline=${_pipelineFpsEma.toStringAsFixed(1)} engine=$accel '
+        'pipeline=${_frame.pipelineFpsEma.toStringAsFixed(1)} engine=$accel '
         'pre=${preMs.toStringAsFixed(1)} inf=${inferMs.toStringAsFixed(1)} '
         'post=${postMs.toStringAsFixed(1)} '
         'track=${_lastTrackMs.toStringAsFixed(2)} '
         'cap=${_appliedCapFps ?? 0} analysis=${w}x$h',
       );
     }
-    final ts =
-        (data['timestamp'] as num?)?.toInt() ??
-        DateTime.now().millisecondsSinceEpoch;
-
-    // The native side now crops inference to the ROI, so detection boxes arrive
-    // normalized to the ROI (0..1 inside it). We map them back onto the full
-    // frame here so the tracker and overlay line up with the live preview. (If
-    // the ROI crop isn't active — e.g. older native — we fall back to filtering
-    // full-frame detections by ROI centre.)
-    final aspect = (w <= 0 || h <= 0) ? _frameAspect : w / h;
-    final roiRect = _roi.normalizedRect(aspect);
-    final roiActive = data['roiActive'] == true;
-    Rect roiToFrame(Rect b) => Rect.fromLTRB(
-      roiRect.left + b.left * roiRect.width,
-      roiRect.top + b.top * roiRect.height,
-      roiRect.left + b.right * roiRect.width,
-      roiRect.top + b.bottom * roiRect.height,
+    // Detection mapping + tracking live in [FrameProcessor] (round 73, review
+    // B6a) so the core per-frame logic is unit-testable: it maps the
+    // ROI-normalized boxes back onto the full frame (or filters full-frame
+    // boxes by ROI centre on the fallback path), confines them to the ROI,
+    // and advances the tracker.
+    final result = _frame.process(
+      data: data,
+      roi: _roi,
+      width: w,
+      height: h,
+      fallbackAspect: _frameAspect,
     );
-    // Strictly confine a frame-space box to the ROI rectangle. Detection runs on
-    // the ROI crop, so boxes should already be inside it, but native edge
-    // overruns (sub-percent over/under 0..1) — or a stray full-frame box in the
-    // fallback path — can poke past the boundary. Clamping guarantees nothing is
-    // tracked, drawn, or logged outside the ROI the user defined.
-    Rect clampToRoi(Rect b) => Rect.fromLTRB(
-      b.left.clamp(roiRect.left, roiRect.right),
-      b.top.clamp(roiRect.top, roiRect.bottom),
-      b.right.clamp(roiRect.left, roiRect.right),
-      b.bottom.clamp(roiRect.top, roiRect.bottom),
-    );
+    _lastTrackMs = result.trackMs;
 
-    final dets = <Detection>[];
-    final rawList = data['detections'];
-    if (rawList is List) {
-      for (final raw in rawList) {
-        if (raw is! Map) continue;
-        final result = YOLOResult.fromMap(raw);
-        Rect frameBox;
-        if (roiActive) {
-          frameBox = roiToFrame(result.normalizedBox);
-        } else {
-          if (!_roi.containsBoxCenter(result.normalizedBox, aspect)) continue;
-          frameBox = result.normalizedBox;
-        }
-        frameBox = clampToRoi(frameBox);
-        // Drop anything that clamped to a zero-area sliver (i.e. it was entirely
-        // outside the ROI), so a degenerate box never becomes a track.
-        if (frameBox.width <= 0 || frameBox.height <= 0) continue;
-        dets.add(
-          Detection(
-            box: frameBox,
-            confidence: result.confidence,
-            classIndex: result.classIndex,
-            className: result.className,
-          ),
-        );
-      }
-    }
-
-    final trackSw = Stopwatch()..start();
-    final tracks = _tracker.update(dets, ts);
-    trackSw.stop();
-    _lastTrackMs = trackSw.elapsedMicroseconds / 1000.0;
-
-    if (_recording) {
-      _recordFrame(tracks, roiRect, ts);
+    // While recording, log this frame's tracks and trigger a shared ROI photo
+    // when one is due; blink the border as the visual cue if it was.
+    if (_recorder.recordFrame(
+      result.tracks,
+      result.roiRect,
+      result.timestampMs,
+    )) {
+      _flashCaptureCue();
     }
 
     // High-frequency updates go through notifiers (no full rebuild).
-    _tracksVN.value = tracks;
+    _tracksVN.value = result.tracks;
     _fpsVN.value = fps;
 
     // The frame size and accelerator change only when the camera/model first
@@ -711,207 +673,47 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _captureProbeStarted = true;
       _pushInferenceRoi();
       _pushMotionGate();
-      _probeCaptureResolution();
-      _probeFocusSupport();
-      _fetchStreamResolutions();
-      _fetchAnalysisCeiling();
-      _fetchAvailableLenses();
-      _fetchCameraDiagnostics();
+      _probes.begin(
+        analysisDims: () => (_imageWidth, _imageHeight),
+        preferredLensZoom: _config.selectedLensZoom,
+      );
     }
   }
 
-  /// Applies a motion-gate state change reported by the native side: updates
-  /// the on-screen indicator, logs the transition to the session JSONL (so
-  /// gated periods are auditable when validating recall), and — crucially —
-  /// expires stale "lost" tracks after a long sleep. While the gate is idle no
-  /// frames reach the tracker, so lost tracks cannot age out; without this, an
-  /// insect arriving after a long empty period could wrongly inherit the track
-  /// id of one that left before the gate closed (inflating visit durations).
+  /// Applies a motion-gate state change reported by the native side: the
+  /// frame processor holds the state and — crucially — expires stale "lost"
+  /// tracks after a sleep longer than the occlusion tolerance (see
+  /// [FrameProcessor.setGateIdle]); this wrapper updates the on-screen
+  /// indicator and logs the transition to the session JSONL (so gated periods
+  /// are auditable when validating recall).
   void _setGateIdle(bool idle) {
-    if (idle == _gateIdle) return;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    double idleS = 0;
-    if (idle) {
-      _gateIdleSinceMs = nowMs;
-    } else if (_gateIdleSinceMs > 0) {
-      idleS = (nowMs - _gateIdleSinceMs) / 1000.0;
-      if (idleS > _config.occlusionSeconds) {
-        // Asleep longer than the tracker's re-appearance buffer: whatever was
-        // "lost" back then must not be revivable now.
-        _tracker.expireLostTracks();
-      }
-    }
-    if (mounted) setState(() => _gateIdle = idle);
+    final change = _frame.setGateIdle(
+      idle,
+      occlusionSeconds: _config.occlusionSeconds,
+    );
+    if (change == null) return;
+    if (mounted) setState(() {});
     if (_recording) {
       _logger?.logMotionGate({
-        'state': idle ? 'idle' : 'awake',
+        'state': change.idle ? 'idle' : 'awake',
         'motion_score': _motionScoreVN.value,
-        if (!idle && idleS > 0) 'idle_s': double.parse(idleS.toStringAsFixed(1)),
+        if (!change.idle && change.idleSeconds > 0)
+          'idle_s': double.parse(change.idleSeconds.toStringAsFixed(1)),
       });
     }
   }
 
-  /// Asks the camera which analysis-stream resolutions it supports, so the
-  /// settings dropdown can offer only realistic options for this phone.
-  Future<void> _fetchStreamResolutions() async {
-    try {
-      final list = await _controller.getStreamResolutions();
-      if (mounted && list.isNotEmpty) {
-        setState(() => _streamResolutions = list);
-      }
-    } catch (_) {
-      // Leave empty; settings falls back to a standard preset list.
-    }
-  }
-
-  /// Asks the camera for the realistic analysis-stream ceiling (what CameraX can
-  /// actually deliver, usually smaller than the still/preview sizes above), so
-  /// the settings sheet can flag sizes the phone will silently shrink. See round 56.
-  Future<void> _fetchAnalysisCeiling() async {
-    try {
-      final c = await _controller.getAnalysisStreamCeiling();
-      if (mounted && c.isNotEmpty) {
-        setState(() => _analysisCeiling = c);
-      }
-    } catch (_) {
-      // Leave empty; the dropdown simply won't annotate a ceiling.
-    }
-  }
-
-  /// Grabs one full-resolution still, reads its pixel size, and stores it so the
-  /// UI can show the true ROI resolution. Retries a few times because the very
-  /// first capture right after the camera starts often fails (the still-capture
-  /// use-case isn't bound yet). If it never succeeds (e.g. a model that stalls
-  /// the pipeline), it falls back to the analysis-frame size and marks the
-  /// reading approximate, so the "Calibrating…" banner never hangs forever.
-  Future<void> _probeCaptureResolution() async {
-    for (
-      var attempt = 0;
-      attempt < 6 && mounted && _captureWidth == 0;
-      attempt++
-    ) {
-      try {
-        final raw = await _controller.capturePhotoRaw().timeout(
-          const Duration(seconds: 4),
-        );
-        if (raw != null) {
-          final size = await probeJpegSize(raw.$1);
-          if (size != null && mounted) {
-            // Store UPRIGHT dimensions so all downstream math keeps one frame
-            // of reference. uprightStillDims (round 64) handles the decoder
-            // having possibly applied the EXIF rotation already — a blind
-            // swap here double-rotated in session_97.
-            final up = uprightStillDims(raw.$2, size.$1, size.$2);
-            setState(() {
-              _captureWidth = up.$1;
-              _captureHeight = up.$2;
-              // The box's grid is the stream (round 62), so no re-snap here —
-              // the still size only feeds the "saves N×N" readout and crops.
-            });
-            return;
-          }
-        }
-      } catch (_) {
-        // Try again after a short pause.
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 800));
-    }
-    // Gave up on a real still: fall back to the analysis frame so the UI stops
-    // showing "Calibrating…".
-    if (mounted && _captureWidth == 0 && _imageWidth > 0) {
-      setState(() {
-        _captureWidth = _imageWidth;
-        _captureHeight = _imageHeight;
-      });
-    }
-  }
-
-  /// Asks the camera whether it can focus manually. If so we expose a focus
-  /// slider; fixed-focus lenses report 0 and the focus control stays hidden.
-  Future<void> _probeFocusSupport() async {
-    try {
-      final d = await _controller.getMinFocusDistance();
-      if (mounted) setState(() => _minFocusDistance = d);
-    } catch (_) {
-      // Leave at 0 (manual focus unsupported / unavailable).
-    }
-  }
-
-  /// Reads the rear-camera lenses the device exposes and snaps to the one the
-  /// user picked last time (persisted in [SessionConfig.selectedLensZoom]). On a
-  /// single-lens phone this leaves the only lens active. Called once the camera
-  /// is delivering frames; failures leave the list empty so the switch button
-  /// stays disabled and the app keeps using the default lens.
-  Future<void> _fetchAvailableLenses() async {
-    try {
-      final lenses = await _controller.getAvailableLenses();
-      if (!mounted || lenses.isEmpty) return;
-      // Find the lens closest to the persisted choice.
-      var index = 0;
-      var best = double.infinity;
-      for (var i = 0; i < lenses.length; i++) {
-        final d = (lenses[i].zoomFactor - _config.selectedLensZoom).abs();
-        if (d < best) {
-          best = d;
-          index = i;
-        }
-      }
-      setState(() {
-        _lenses = lenses;
-        _lensIndex = index;
-        _lensLabel = _lensLabelFor(lenses[index]);
-      });
-      // Apply the persisted lens (no-op if it's already the active one).
-      if (lenses[index].zoomFactor != 1.0) {
-        await _controller.setLens(lenses[index].zoomFactor);
-      }
-    } catch (_) {
-      // Leave empty: the switch button stays disabled, default lens in use.
-    }
-  }
-
-  /// Short label for the lens button, e.g. "1×", "0.5×", "2×". Falls back to the
-  /// native label (Wide / Ultra wide / Telephoto camera) if the factor is odd.
-  String _lensLabelFor(LensInfo lens) {
-    final z = lens.zoomFactor;
-    if (z <= 0) return lens.label;
-    return z < 1
-        ? '${z.toStringAsFixed(1)}×'
-        : '${z.toStringAsFixed(z == z.roundToDouble() ? 0 : 1)}×';
-  }
-
-  /// Advances to the next available rear lens (cycles round). Only reachable
+  /// Advances to the next available rear lens (cycles round; the probe
+  /// controller updates the label and applies the lens). Only reachable
   /// before recording (the button is disabled while recording, because a lens
   /// change rebinds the camera and shifts the field of view). Persists the new
   /// choice so the next session reopens on the same lens.
   Future<void> _cycleLens() async {
-    if (_lenses.length < 2) return;
-    final next = (_lensIndex + 1) % _lenses.length;
-    final lens = _lenses[next];
-    setState(() {
-      _lensIndex = next;
-      _lensLabel = _lensLabelFor(lens);
-    });
-    await _controller.setLens(lens.zoomFactor);
+    final lens = await _probes.cycleLens();
+    if (lens == null) return;
     final updated = _config.copyWith(selectedLensZoom: lens.zoomFactor);
     setState(() => _config = updated);
     await updated.save();
-  }
-
-  /// Reads the per-camera diagnostics (every camera/lens the device reports, with
-  /// focal lengths, physical-vs-logical, and whether each is usable by the
-  /// inference pipeline). Fetched once while the camera is live and handed to the
-  /// settings sheet, which shows it under Settings → Camera ("Camera & lens
-  /// info") — it is intentionally *not* shown on the live recording screen.
-  Future<void> _fetchCameraDiagnostics() async {
-    try {
-      final cams = await _controller.getCameraDiagnostics();
-      if (mounted && cams.isNotEmpty) {
-        setState(() => _cameraDiagnostics = cams);
-      }
-    } catch (_) {
-      // Leave empty; the settings section shows a "not available" note.
-    }
   }
 
   void _setManualFocus(double v) {
@@ -936,8 +738,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// red banner; both clear automatically if delivery resumes.
   void _checkCameraDelivery() {
     if (!_recording || _cameraSilent || _lastStreamEventMs == 0) return;
-    final silentMs =
-        DateTime.now().millisecondsSinceEpoch - _lastStreamEventMs;
+    final silentMs = DateTime.now().millisecondsSinceEpoch - _lastStreamEventMs;
     if (silentMs < _cameraSilentAfterMs) return;
     _cameraSilent = true;
     _logger?.logAppError({
@@ -955,41 +756,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
-  /// Logs every confirmed track this frame — as ONE `detections` record with a
-  /// `tracks` array (round 69) — and triggers a shared ROI photo when one is
-  /// due. The photo filename is written into the covered tracks' entries so
-  /// post-processing can join them directly.
-  void _recordFrame(List<Track> tracks, Rect roiRect, int ts) {
-    final pending = _capture?.evaluate(tracks, ts);
-    if (tracks.isNotEmpty) {
-      _logger?.logDetections([
-        for (final t in tracks)
-          {
-            'track_id': t.id,
-            'class_index': t.classIndex,
-            'class_name': t.className,
-            'confidence': t.confidence,
-            'box_in_roi': _boxInRoi(t.box, roiRect),
-            if (pending != null && pending.trackIds.contains(t.id))
-              'jpeg': pending.fileName,
-          },
-      ]);
-    }
-    // Ask for an fsync at most ~twice a second rather than every frame: the
-    // logger's writer loop drains queued lines within the same event-loop
-    // turn, so this bounds what a sudden power/battery loss could drop to
-    // ~0.5 s without paying a disk sync per frame.
-    if (tracks.isNotEmpty && ts - _lastFlushMs >= 500) {
-      _logger?.flushNow();
-      _lastFlushMs = ts;
-    }
-    if (pending != null) {
-      // Fire-and-forget; the scheduler serializes its own work.
-      _capture?.capture(pending);
-      _flashCaptureCue();
-    }
-  }
-
   /// Blinks the ROI border (via [_captureFlashVN]) for a split second so the
   /// user can see when a photo is taken. Off when the user disables it. Only the
   /// ROI border rebuilds, at the photo cadence, so it never touches the FPS.
@@ -1002,25 +768,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     });
   }
 
-  /// Expresses a normalized frame box as coordinates inside the ROI (0..1),
-  /// per CLAUDE.md (boxes are stored relative to the ROI they were found in).
-  Map<String, double> _boxInRoi(Rect box, Rect roi) {
-    final rw = roi.width == 0 ? 1.0 : roi.width;
-    final rh = roi.height == 0 ? 1.0 : roi.height;
-    return {
-      'left': (box.left - roi.left) / rw,
-      'top': (box.top - roi.top) / rh,
-      'right': (box.right - roi.left) / rw,
-      'bottom': (box.bottom - roi.top) / rh,
-    };
-  }
-
   // --- Recording lifecycle ------------------------------------------------
 
   Future<void> _toggleRecording() async {
     // A tap while the previous stop sequence is still tearing down does
     // nothing (it would otherwise start a new session mid-teardown).
-    if (_stopping) return;
+    if (_recorder.stopping) return;
     // Don't allow recording to start until calibration (the one-time full-res
     // probe that establishes the true ROI resolution) has finished. Before that
     // the ROI pixel size — logged at session start — isn't known yet.
@@ -1118,164 +871,137 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   Future<void> _startRecording({required String focusMode}) async {
     _tracker.reset();
-    _sessionId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    final dir = await _resolveSessionDir(_config.folderName);
-    final framesDir = Directory('${dir.path}/roi_frames');
-    framesDir.createSync(recursive: true);
-
-    final logger = SessionLogger(File('${dir.path}/session.jsonl'))..open();
-    // If the storage fills up (or access is revoked) mid-session, the logger
-    // now swallows the write failure instead of crashing the frame callback
-    // (see SessionLogger). Surface it once: red banner + best-effort
-    // app_error line (which lands if the failure turns out to be transient).
+    // The session folder, logger, photo scheduler, wakelock and keep-alive
+    // service are all set up by [SessionRecorder.start] (round 73, review
+    // B6b); this method supplies the screen-state pieces: the start-record
+    // metadata, the capture wiring, and the log-write-failure banner.
     _logWriteError = null;
-    logger.onWriteError = (error) {
-      debugPrint('Session log write failed: $error');
-      logger.logAppError({
-        'source': 'session_log',
-        'message': 'Log write failed (storage full or inaccessible): $error',
-      });
-      if (!mounted) return;
-      setState(() {
-        _logWriteError =
-            'Cannot write to the session log (storage full or removed?). '
-            'The session keeps running, but detections may no longer be '
-            'saved. Free up storage or stop the session.';
-        _errorBannerDismissed = false;
-      });
-    };
-    // Route global uncaught errors (see app_error_hooks.dart) into this
-    // session's JSONL for the whole recording, including the stop sequence.
-    appErrorSink = (payload) => logger.logAppError(payload);
-
-    final battery = await _safeBatteryLevel();
-    final device = await _safeDeviceDescriptor();
-    // Fresh battery/power reading so the start `thermal` block carries an accurate
-    // baseline charge counter + voltage (the start↔end charge-counter drop is the
-    // ground-truth for the session-total energy estimate).
-    final startReading = await DeviceThermal.read();
-    if (mounted) _thermalVN.value = startReading;
-    // Free storage on the session volume at start: with the periodic samples
-    // in the thermal records this gives the session's disk fill rate.
-    final startStorage = await DeviceStorage.read(path: dir.path);
-    if (mounted) _storageVN.value = startStorage;
-    logger.logStart({
-      'session_id': _sessionId,
-      'device': device,
-      'battery_percent': battery,
-      ...startStorage.toJson(),
-      'model_path': _config.modelPath,
-      'task': _config.task.name,
-      'use_gpu': _config.useGpu,
-      // What was actually used (vs the request above). int8 models run on CPU.
-      'accelerator': _accelerator,
-      'camera_full_width_px': _captureWidth,
-      'camera_full_height_px': _captureHeight,
-      // Which rear lens was in use for this session. zoom factor 1.0 = the main
-      // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
-      // human-readable lens name shown on the switch button.
-      'selected_lens_zoom': _lenses.isNotEmpty
-          ? _lenses[_lensIndex].zoomFactor
-          : _config.selectedLensZoom,
-      if (_lensLabel.isNotEmpty) 'selected_lens_label': _lensLabel,
-      // Focus mode chosen for this session: 'manual' (locked, recommended),
-      // 'auto' (continuous autofocus), or 'fixed' (fixed-focus lens). For a
-      // locked focus we also log the 0..1 distance (0 = far/infinity, 1 = near).
-      'focus_mode': focusMode,
-      if (focusMode == 'manual') 'focus_value': _focusValue,
-      'confidence_threshold': _config.confidenceThreshold,
-      'iou_threshold': _config.iouThreshold,
-      'step_seconds': _config.stepSeconds,
-      'duration_seconds': _config.durationSeconds,
-      'session_minutes': _config.sessionMinutes,
-      // Effective (live) tracker params: trackBuffer and minHitsToConfirm here
-      // are the *frame counts* derived from the user's occlusion/min-hit seconds
-      // at the current FPS — not the static defaults. The seconds the user
-      // actually set are in the `config` block (occlusionSeconds, minHitsSeconds).
-      'tracker_params': _tracker.params.toJson(),
-      // ROI sizes are expressed against the full-resolution still that is
-      // actually saved (capture dims); the smaller analysis frame fed to the
-      // detector is logged separately for context.
-      'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
-      // Which source the ROI dims above refer to ('fast' = analysis frame,
-      // 'still' = full-res still) — in auto mode it depends on the box size.
-      'roi_source': _activePath.name,
-      // Exact side of the file this box would save (crop snap + max-side cap),
-      // so post-processing never has to re-derive it from the fraction.
-      'saves_px': _savedSideNow,
-      'analysis_frame_width_px': _imageWidth,
-      'analysis_frame_height_px': _imageHeight,
-      'inference_fps': _config.inferenceFps,
-      'fps_sample_seconds': _config.fpsSampleSeconds,
-      'thermal_sample_seconds': _config.thermalSampleSeconds,
-      'power_sample_seconds': _config.powerSampleSeconds,
-      // Full user configuration as one self-describing block, so the end-of-session
-      // summary can list *every* setting the user chose (and any setting added in
-      // future automatically appears) without each one needing its own top-level
-      // key here. The individual keys above are kept for existing readers and for
-      // sessions recorded before this block existed.
-      'config': _config.toJson(),
-      'thermal': startReading.toJson(),
-    });
-
-    _capture = RoiCaptureScheduler(
-      framesDir: framesDir,
-      sessionId: _sessionId,
-      stepMs: (_config.stepSeconds * 1000).round(),
-      durationMs: (_config.durationSeconds * 1000).round(),
-      // The scheduler picks the source PER PHOTO (chooseCapturePath): the fast
-      // live-frame crop when it meets the minimum saved size, otherwise a
-      // full-resolution still (briefly stalls the camera).
-      mode: _config.captureMode,
-      targetPx: _config.targetRoiSavedPx,
-      streamDims: () => (_imageWidth, _imageHeight),
-      stillDims: () => (_captureWidth, _captureHeight),
-      fastCaptureFn: () => _controller.captureRoiFromFrame(
-        cx: _roi.centerX,
-        cy: _roi.centerY,
-        side: _roi.sideFraction,
-        maxPx: _config.targetRoiSavedPx,
-      ),
-      stillCaptureFn: () async {
-        // Raw (unrotated) still + rotation info — the round-63 lag fix: the
-        // full 12 MP frame is never rotated; only the ROI crop is.
-        final raw = await _controller.capturePhotoRaw();
-        if (raw != null) {
-          return RawStill(bytes: raw.$1, rotationDegrees: raw.$2, isFront: raw.$3);
-        }
-        // Degraded fallback: preview-snapshot bytes are already upright.
-        final frame = await _controller.captureFrame();
-        return frame == null
-            ? null
-            : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
-      },
-      roiProvider: () => _roi,
-      onStat: (s) {
-        if (!_recording) return;
-        _logger?.logCapture({
-          'file': s.fileName,
-          'track_ids': s.trackIds,
-          'total_ms': s.totalMs,
-          'bytes': s.bytes,
-          'full_res': s.fullRes,
-          // Per-photo source + saved square side, so post-processing knows the
-          // real resolution of every file (in auto mode it varies with the ROI).
-          'path': s.path.name,
-          'saved_px': s.savedPx,
+    await _recorder.start(
+      folderName: _config.folderName,
+      onLogWriteError: (error) {
+        if (!mounted) return;
+        setState(() {
+          _logWriteError =
+              'Cannot write to the session log (storage full or removed?). '
+              'The session keeps running, but detections may no longer be '
+              'saved. Free up storage or stop the session.';
+          _errorBannerDismissed = false;
         });
       },
-      onError: (fileName, error) =>
-          _logAsyncError('roi_capture', 'Photo $fileName failed: $error'),
+      onStartReadings: (thermal, storage) {
+        if (!mounted) return;
+        _thermalVN.value = thermal;
+        _storageVN.value = storage;
+      },
+      startMetadata: () => {
+        'model_path': _config.modelPath,
+        'task': _config.task.name,
+        'use_gpu': _config.useGpu,
+        // What was actually used (vs the request above). int8 models run on CPU.
+        'accelerator': _accelerator,
+        'camera_full_width_px': _captureWidth,
+        'camera_full_height_px': _captureHeight,
+        // Which rear lens was in use for this session. zoom factor 1.0 = the main
+        // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
+        // human-readable lens name shown on the switch button.
+        'selected_lens_zoom': _lenses.isNotEmpty
+            ? _lenses[_lensIndex].zoomFactor
+            : _config.selectedLensZoom,
+        if (_lensLabel.isNotEmpty) 'selected_lens_label': _lensLabel,
+        // Focus mode chosen for this session: 'manual' (locked, recommended),
+        // 'auto' (continuous autofocus), or 'fixed' (fixed-focus lens). For a
+        // locked focus we also log the 0..1 distance (0 = far/infinity, 1 = near).
+        'focus_mode': focusMode,
+        if (focusMode == 'manual') 'focus_value': _focusValue,
+        'confidence_threshold': _config.confidenceThreshold,
+        'iou_threshold': _config.iouThreshold,
+        'step_seconds': _config.stepSeconds,
+        'duration_seconds': _config.durationSeconds,
+        'session_minutes': _config.sessionMinutes,
+        // Effective (live) tracker params: trackBuffer and minHitsToConfirm here
+        // are the *frame counts* derived from the user's occlusion/min-hit seconds
+        // at the current FPS — not the static defaults. The seconds the user
+        // actually set are in the `config` block (occlusionSeconds, minHitsSeconds).
+        'tracker_params': _tracker.params.toJson(),
+        // ROI sizes are expressed against the full-resolution still that is
+        // actually saved (capture dims); the smaller analysis frame fed to the
+        // detector is logged separately for context.
+        'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
+        // Which source the ROI dims above refer to ('fast' = analysis frame,
+        // 'still' = full-res still) — in auto mode it depends on the box size.
+        'roi_source': _activePath.name,
+        // Exact side of the file this box would save (crop snap + max-side cap),
+        // so post-processing never has to re-derive it from the fraction.
+        'saves_px': _savedSideNow,
+        'analysis_frame_width_px': _imageWidth,
+        'analysis_frame_height_px': _imageHeight,
+        'inference_fps': _config.inferenceFps,
+        'fps_sample_seconds': _config.fpsSampleSeconds,
+        'thermal_sample_seconds': _config.thermalSampleSeconds,
+        'power_sample_seconds': _config.powerSampleSeconds,
+        // Full user configuration as one self-describing block, so the end-of-session
+        // summary can list *every* setting the user chose (and any setting added in
+        // future automatically appears) without each one needing its own top-level
+        // key here. The individual keys above are kept for existing readers and for
+        // sessions recorded before this block existed.
+        'config': _config.toJson(),
+      },
+      captureBuilder: (framesDir, sessionId) => RoiCaptureScheduler(
+        framesDir: framesDir,
+        sessionId: sessionId,
+        stepMs: (_config.stepSeconds * 1000).round(),
+        durationMs: (_config.durationSeconds * 1000).round(),
+        // The scheduler picks the source PER PHOTO (chooseCapturePath): the fast
+        // live-frame crop when it meets the minimum saved size, otherwise a
+        // full-resolution still (briefly stalls the camera).
+        mode: _config.captureMode,
+        targetPx: _config.targetRoiSavedPx,
+        streamDims: () => (_imageWidth, _imageHeight),
+        stillDims: () => (_captureWidth, _captureHeight),
+        fastCaptureFn: () => _controller.captureRoiFromFrame(
+          cx: _roi.centerX,
+          cy: _roi.centerY,
+          side: _roi.sideFraction,
+          maxPx: _config.targetRoiSavedPx,
+        ),
+        stillCaptureFn: () async {
+          // Raw (unrotated) still + rotation info — the round-63 lag fix: the
+          // full 12 MP frame is never rotated; only the ROI crop is.
+          final raw = await _controller.capturePhotoRaw();
+          if (raw != null) {
+            return RawStill(
+              bytes: raw.$1,
+              rotationDegrees: raw.$2,
+              isFront: raw.$3,
+            );
+          }
+          // Degraded fallback: preview-snapshot bytes are already upright.
+          final frame = await _controller.captureFrame();
+          return frame == null
+              ? null
+              : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
+        },
+        roiProvider: () => _roi,
+        onStat: (s) {
+          if (!_recording) return;
+          _logger?.logCapture({
+            'file': s.fileName,
+            'track_ids': s.trackIds,
+            'total_ms': s.totalMs,
+            'bytes': s.bytes,
+            'full_res': s.fullRes,
+            // Per-photo source + saved square side, so post-processing knows the
+            // real resolution of every file (in auto mode it varies with the ROI).
+            'path': s.path.name,
+            'saved_px': s.savedPx,
+          });
+        },
+        onError: (fileName, error) =>
+            _logAsyncError('roi_capture', 'Photo $fileName failed: $error'),
+      ),
     );
 
-    await WakelockPlus.enable();
-    // Keep the OS from sleeping/killing this long session: a foreground service
-    // (with an ongoing notification) protects the process. Ask for the
-    // notification permission first (Android 13+) so the notification can show;
-    // the service still runs either way.
-    await Permission.notification.request();
-    await RecordingKeepAlive.start();
     _sessionTimer = Timer(
       Duration(minutes: _config.sessionMinutes),
       () => _toggleRecording(),
@@ -1296,149 +1022,29 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _checkCameraDelivery();
     });
 
-    setState(() {
-      _logger = logger;
-      _recording = true;
-    });
+    // Recording is already live inside the recorder; rebuild the screen so
+    // the REC banner and controls reflect it.
+    setState(() {});
 
     // Snapshot the engine-selection logs (still in the ring buffer at this point)
     // into the session folder for later offline diagnosis.
-    await _saveLogcat('logcat_start.txt', maxLines: 2000);
+    await _recorder.saveLogcat('logcat_start.txt', maxLines: 2000);
   }
 
-  /// Saves the app's own recent logcat to a file in the session folder, so an
-  /// *uncoupled* run (no `flutter run`) still preserves the native engine
-  /// decision (e.g. "GPU… falling back to CPU: Failed to compile model") and the
-  /// per-second PERF lines. Best-effort; silently skips if the platform refuses
-  /// (e.g. iOS) or no logger/dir is available.
-  Future<void> _saveLogcat(String fileName, {int maxLines = 5000}) async {
-    final dir = _logger?.file.parent;
-    if (dir == null) return;
-    final text = await Diagnostics.captureLogcat(maxLines: maxLines);
-    if (text == null || text.isEmpty) return;
-    try {
-      await File('${dir.path}/$fileName').writeAsString(text, flush: true);
-    } catch (_) {
-      // Diagnostics are best-effort; never let them break a recording.
-    }
-  }
-
-  /// Ordered so the records that matter most land earliest (B3): when this
-  /// runs unawaited from dispose() — or the OS is in the middle of killing
-  /// the app — every step it manages to reach must have been more important
-  /// than the ones after it. Critical path first (end_of_session on disk,
-  /// error routing off, keep-alive service down), best-effort diagnostics
-  /// after, and each remaining step guarded so a mid-teardown failure can't
-  /// abort the rest.
+  /// Thin wrapper around [SessionRecorder.stop] (which owns the ordered
+  /// teardown — critical records first, best-effort diagnostics after):
+  /// cancels the screen's timers, hands over the tracker's visit count for
+  /// the end record, then rebuilds. Safe to run unawaited from dispose().
   Future<void> _stopRecording({required bool normal}) async {
-    if (_stopping) return;
-    _stopping = true;
+    if (_recorder.stopping) return;
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
     _recordTicker = null;
-    // Stop the frame path from logging new records right away. Plain
-    // assignment, not setState: this runs synchronously from dispose() too.
-    _recording = false;
-    // End-of-session readings, time-bounded: a hung platform channel (mid
-    // camera teardown) must not stall the stop sequence and with it the
-    // end_of_session record.
-    int? battery;
-    var endReading = const ThermalReading();
-    try {
-      battery = await _safeBatteryLevel().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => null,
-      );
-      // Fresh closing reading so the end `thermal` block carries the final
-      // charge counter — the start↔end drop is the battery-drain estimate.
-      endReading = await DeviceThermal.read().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => const ThermalReading(),
-      );
-    } catch (_) {
-      // Best-effort: the end record is worth more than its extras.
-    }
-    _logger?.logEnd({
-      'ended_normally': normal,
-      'battery_percent': battery,
-      'unique_track_count': _tracker.totalConfirmed,
-      'thermal': endReading.toJson(),
-    });
-    // Waits for the writer queue to drain, so end_of_session is on disk.
-    await _logger?.close();
-    // The log is closed: stop routing global uncaught errors to it.
-    appErrorSink = null;
-    // Tear down the keep-alive foreground service + its notification.
-    try {
-      await RecordingKeepAlive.stop();
-    } catch (e) {
-      debugPrint('Keep-alive stop failed: $e');
-    }
-    // Best-effort extras, after the critical path. The logcat capture
-    // (throttle-era native logs + persisted PERF lines) writes its own file
-    // in the session folder, so it doesn't need the logger to be open.
-    try {
-      await _saveLogcat('logcat_end.txt');
-    } catch (e) {
-      debugPrint('logcat_end.txt failed: $e');
-    }
-    try {
-      await WakelockPlus.disable();
-    } catch (_) {}
-    _stopping = false;
+    await _recorder.stop(
+      normal: normal,
+      uniqueTrackCount: _tracker.totalConfirmed,
+    );
     if (mounted) setState(() {});
-  }
-
-  /// Creates `…/Android/data/<pkg>/files/sessions/<folder>/` (USB-visible).
-  /// A numeric suffix is added if the folder already exists.
-  Future<Directory> _resolveSessionDir(String folderName) async {
-    final base =
-        (await getExternalStorageDirectory()) ??
-        await getApplicationDocumentsDirectory();
-    final safe = folderName.trim().isEmpty
-        ? 'session'
-        : folderName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_\- ]'), '_');
-    var dir = Directory('${base.path}/sessions/$safe');
-    var i = 2;
-    while (dir.existsSync()) {
-      dir = Directory('${base.path}/sessions/${safe}_$i');
-      i++;
-    }
-    dir.createSync(recursive: true);
-    return dir;
-  }
-
-  Future<int?> _safeBatteryLevel() async {
-    try {
-      return await Battery().batteryLevel;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>> _safeDeviceDescriptor() async {
-    try {
-      final info = DeviceInfoPlugin();
-      if (Platform.isAndroid) {
-        final a = await info.androidInfo;
-        return {
-          'platform': 'android',
-          'model': a.model,
-          'manufacturer': a.manufacturer,
-          'id': a.id,
-          'android_sdk': a.version.sdkInt,
-        };
-      } else if (Platform.isIOS) {
-        final i = await info.iosInfo;
-        return {
-          'platform': 'ios',
-          'model': i.utsname.machine,
-          'name': i.name,
-          'id': i.identifierForVendor,
-        };
-      }
-    } catch (_) {}
-    return {'platform': Platform.operatingSystem};
   }
 
   // --- Settings -----------------------------------------------------------
@@ -1455,7 +1061,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// The inference-rate ceiling (fps): the user's manual cap, or a sane 15 fps
   /// when they left it uncapped (0) — used as the auto-throttle's upper bound.
-  int get _inferenceCeilFps => _config.inferenceFps > 0 ? _config.inferenceFps : 15;
+  int get _inferenceCeilFps =>
+      _config.inferenceFps > 0 ? _config.inferenceFps : 15;
 
   /// (Re)builds the auto-throttle from the current config and seeds the applied
   /// cap. Called at init and whenever settings change. When auto-throttle is off
@@ -1620,12 +1227,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (_recording) {
       _logger?.logRoiUpdate({
         'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
-      // Which source the ROI dims above refer to ('fast' = analysis frame,
-      // 'still' = full-res still) — in auto mode it depends on the box size.
-      'roi_source': _activePath.name,
-      // Exact side of the file this box would save (crop snap + max-side cap),
-      // so post-processing never has to re-derive it from the fraction.
-      'saves_px': _savedSideNow,
+        // Which source the ROI dims above refer to ('fast' = analysis frame,
+        // 'still' = full-res still) — in auto mode it depends on the box size.
+        'roi_source': _activePath.name,
+        // Exact side of the file this box would save (crop snap + max-side cap),
+        // so post-processing never has to re-derive it from the fraction.
+        'saves_px': _savedSideNow,
       });
     }
   }
@@ -1658,7 +1265,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// with a live slider OR by typing a number, so they don't have to pinch
   /// precisely. Values snap to the nearest multiple of 32 (what the crop uses).
   ///
-  /// The sheet is a real widget (_RoiSizeSheet, round 71) rather than an
+  /// The sheet is a real widget (RoiSizeSheet, round 71) rather than an
   /// inline StatefulBuilder: the old version disposed its text controller as
   /// soon as the sheet's future completed, but the builder could still run
   /// once more during the closing animation (keyboard inset animating away)
@@ -1684,7 +1291,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Let the sheet grow with its content and sit above the keyboard so the
       // helper text below the slider is never clipped off the bottom.
       isScrollControlled: true,
-      builder: (_) => _RoiSizeSheet(
+      builder: (_) => RoiSizeSheet(
         minPx: minPx,
         maxPx: maxPx,
         initialPx: curPx,
@@ -1735,7 +1342,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         .catchError((Object e) => _logAsyncError('set_motion_gate', e));
     if (!_config.motionGateEnabled && _gateIdle) {
       // Gate switched off while idle: clear the idle indicator immediately.
-      setState(() => _gateIdle = false);
+      setState(_frame.forceGateAwake);
     }
   }
 
@@ -2087,7 +1694,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ],
           // Big "Calibrating…" banner until the ROI resolution is known.
           if (!haveRoiDim)
-            const IgnorePointer(child: Center(child: _CalibratingBanner())),
+            const IgnorePointer(child: Center(child: CalibratingBanner())),
           // Error banner: a broken session log (storage full) outranks a
           // detector error — the watchdog auto-clears _inferenceError once
           // frames flow again, but a log-write failure must stay visible.
@@ -2564,302 +2171,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A prominent centred banner shown while the ROI resolution is being measured
-/// from the first full-resolution still, so the user knows the app is busy.
-class _CalibratingBanner extends StatelessWidget {
-  const _CalibratingBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: Colors.white,
-            ),
-          ),
-          SizedBox(height: 14),
-          Text(
-            'Calibrating…',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Measuring ROI resolution',
-            style: TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One-time setup reminder shown when the camera screen opens. It explains how
-/// to frame the shot (fix the flower, centre the ROI) and — importantly — points
-/// the user at the focus button beside the record button so they lock focus
-/// *before* recording. It does not block recording; the user dismisses it with
-/// "Got it" and can tick "Don't show again" to never see it again.
-///
-/// Pops `true` if the user asked to hide it permanently, otherwise `false`.
-class _SessionInfoDialog extends StatefulWidget {
-  const _SessionInfoDialog();
-
-  @override
-  State<_SessionInfoDialog> createState() => _SessionInfoDialogState();
-}
-
-class _SessionInfoDialogState extends State<_SessionInfoDialog> {
-  bool _dontShowAgain = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Setting up a session'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _bullet(
-              Icons.park,
-              'Fix the target flower in place — e.g. tie it to a pole — so it '
-              'does not sway in the wind.',
-            ),
-            const SizedBox(height: 12),
-            _bullet(
-              Icons.crop_square,
-              'Centre the yellow ROI box on the target flower(s) or '
-              'inflorescence(s).',
-            ),
-            const SizedBox(height: 12),
-            _bullet(
-              Icons.center_focus_strong,
-              'Before recording, tap the focus button (just right of the record '
-              'button) and lock focus on the flower. Focus then stays fixed for '
-              'the whole session. This is recommended: autofocus can drift onto '
-              'the background if the flower moves.',
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        // Checkbox + button share the actions row; keep them readable on small
-        // screens by letting the row wrap.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(
-              child: InkWell(
-                onTap: () => setState(() => _dontShowAgain = !_dontShowAgain),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: _dontShowAgain,
-                      onChanged: (v) =>
-                          setState(() => _dontShowAgain = v ?? false),
-                    ),
-                    const Flexible(child: Text("Don't show again")),
-                  ],
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(_dontShowAgain),
-              child: const Text('Got it'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _bullet(IconData icon, String text) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(icon, size: 20),
-      const SizedBox(width: 10),
-      Expanded(child: Text(text)),
-    ],
-  );
-}
-
-/// Bottom sheet for setting an exact ROI side in pixels: live slider plus a
-/// type-a-number field. A proper StatefulWidget so its TextEditingController
-/// is disposed by the framework when the sheet is truly gone (round 71 — the
-/// previous inline builder crashed writing to an already-disposed controller
-/// during the closing animation).
-///
-/// Every path into [_apply] snaps to the multiple-of-32 grid the crop uses
-/// and clamps to [minPx]..[maxPx], and the field is rewritten to the value
-/// actually applied — so the number on screen is always the real ROI size.
-/// Typed input applies on the keyboard's submit, on the field losing focus,
-/// and on Done, so "type a value, tap Done" can no longer leave an unapplied
-/// arbitrary number standing.
-class _RoiSizeSheet extends StatefulWidget {
-  final int minPx;
-  final int maxPx;
-  final int initialPx;
-  final ValueChanged<int> onApply;
-
-  const _RoiSizeSheet({
-    required this.minPx,
-    required this.maxPx,
-    required this.initialPx,
-    required this.onApply,
-  });
-
-  @override
-  State<_RoiSizeSheet> createState() => _RoiSizeSheetState();
-}
-
-class _RoiSizeSheetState extends State<_RoiSizeSheet> {
-  late int _curPx = widget.initialPx;
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialPx.toString(),
-  );
-  final FocusNode _fieldFocus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _fieldFocus.addListener(() {
-      if (!_fieldFocus.hasFocus) _applyTyped();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _fieldFocus.dispose();
-    super.dispose();
-  }
-
-  /// Snap, clamp, show what was applied, and hand the value to the screen.
-  void _apply(int px) {
-    if (!mounted) return;
-    final snapped = snapToMultipleOf32(
-      px.toDouble(),
-    ).clamp(widget.minPx, widget.maxPx).toInt();
-    setState(() => _curPx = snapped);
-    _controller.text = snapped.toString();
-    widget.onApply(snapped);
-  }
-
-  void _applyTyped() {
-    final v = int.tryParse(_controller.text.trim());
-    if (v != null) {
-      _apply(v);
-    } else if (mounted) {
-      // Unparseable leftovers (empty field): restore the current value.
-      _controller.text = _curPx.toString();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      // Scrollable so the sheet can never overflow while the keyboard
-      // animates in for the px text field — in a debug build that overflow
-      // flashes the striped "BOTTOM OVERFLOWED" banner, which reads like an
-      // app error (round 65, owner report session_99).
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          20 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'ROI size: $_curPx × $_curPx px  (max ${widget.maxPx})',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    value: _curPx.toDouble().clamp(
-                      widget.minPx.toDouble(),
-                      widget.maxPx.toDouble(),
-                    ),
-                    min: widget.minPx.toDouble(),
-                    max: widget.maxPx.toDouble(),
-                    divisions: ((widget.maxPx - widget.minPx) ~/ 32).clamp(
-                      1,
-                      1000,
-                    ),
-                    label: '$_curPx px',
-                    onChanged: (v) => _apply(v.round()),
-                  ),
-                ),
-                SizedBox(
-                  width: 88,
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _fieldFocus,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      suffixText: 'px',
-                      suffixStyle: TextStyle(color: Colors.white54),
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => _applyTyped(),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Slide or type the exact ROI resolution (it snaps to the '
-              'nearest multiple of 32). Then drag or pinch on the preview '
-              'to position it. The maximum equals the full sensor width.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: () {
-                  // Apply whatever is typed before closing, so Done never
-                  // discards a value the user can still see in the field.
-                  _applyTyped();
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Done'),
-              ),
-            ),
-          ],
         ),
       ),
     );

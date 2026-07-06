@@ -2575,3 +2575,87 @@ pre-existing KGP/fetch-script warnings); 78/78 tests pass (no Dart touched).
 On-device check pending (owner): run a session with time-lapse photos and
 confirm photos look whole (no tearing), detections unchanged, and FRAMEPERF
 `toBitmapMs` similar or lower.
+
+## Round 73 (2026-07-06): god-class split (review B6, all four steps) + B8 tests
+
+**What was asked:** implement review item B6 — split `camera_session_screen.dart`
+incrementally and behaviour-preservingly — plus the two still-open B8 test gaps
+(`RoiCaptureScheduler.evaluate()` and the motion-gate `expireLostTracks` trigger,
+which B6(a) makes testable).
+
+**The split (new `lib/pollinator/session/`):**
+
+- **B6(a) `frame_processor.dart` — `FrameProcessor`.** A plain class (no widgets,
+  no timers, no platform calls) owning the per-frame pipeline state that isn't UI:
+  `process()` maps native detections (ROI-normalized when the native crop is
+  active, else full-frame filtered by ROI centre) onto the frame, confines them to
+  the ROI, drops degenerate slivers, and advances the ByteTracker, returning a
+  `FrameResult` (tracks, roiRect, trackMs, timestamp); `setGateIdle()` holds the
+  motion-gate idle state and expires lost tracks when a sleep exceeded the
+  occlusion tolerance, returning a `GateChange` for the screen to log;
+  `updatePipelineFps()` keeps the smoothed pipeline-FPS estimate. The clock is
+  injectable so tests can fake long gate sleeps. `forceGateAwake()` mirrors the old
+  "gate disabled while idle" bypass (no logging, no expiry — exactly as before).
+- **B6(b) `session_recorder.dart` — `SessionRecorder`.** Owns one session's disk +
+  lifecycle work: session folder resolution (`sessions/<name>[_N]`), JSONL logger
+  open/close + `onWriteError` app_error line + `appErrorSink` routing, the start
+  record (device/battery/storage/thermal read here; screen-state fields supplied
+  via a `startMetadata()` callback so key order and values match the old record
+  exactly), the `RoiCaptureScheduler` via a `captureBuilder` callback (capture
+  functions and ROI provider are screen wiring), wakelock + notification permission
+  + keep-alive service, the ordered stop sequence (unchanged: recording=false
+  first, time-bounded end readings, logEnd, close, sink off, keep-alive down,
+  logcat_end, wakelock off), `recordFrame()` (one `detections` record per frame,
+  ~0.5 s flush cadence, shared-photo trigger — returns true so the screen can
+  blink the capture cue), and `saveLogcat()`.
+- **B6(c) `camera_diagnostics_controller.dart` — `CameraDiagnosticsController`.**
+  The six one-time probes (still size incl. analysis-frame fallback, manual-focus
+  support, stream resolutions, analysis ceiling, available lenses + persisted-lens
+  snap, per-camera diagnostics) plus `cycleLens()`. A `_disposed` flag replaces the
+  screen's `mounted` guards; results land in plain fields and fire one `onChanged`
+  (screen: `setState`).
+- **B6(d) widgets:** `_CalibratingBanner` → `widgets/calibrating_banner.dart`,
+  `_SessionInfoDialog` → `widgets/session_info_dialog.dart`, `_RoiSizeSheet` →
+  `widgets/roi_size_sheet.dart` (now public, otherwise verbatim).
+
+**How the screen stayed behaviour-identical:** it keeps its original vocabulary
+through thin getters (`_recording`, `_logger`, `_gateIdle`, `_captureWidth`,
+`_lenses`, `_minFocusDistance`, …) mapping onto the three collaborators, so the
+~480-line `build()` and every read site are textually unchanged; only write sites
+and the moved method bodies changed. The screen went ~2,870 → ~2,180 lines.
+Ordering was preserved deliberately: the once-a-second housekeeping (tracker-param
+re-derivation, throttle update, PERF debug line) still runs BEFORE the tracker
+update, so updated params apply from this frame and the PERF line still shows the
+previous frame's tracker cost, exactly as before. Two accepted micro-deviations,
+noted in the review doc: session/REC timers now start a few ms later (after
+`SessionRecorder.start()` returns instead of between keep-alive start and the
+logcat snapshot), and probe results now rebuild via a plain `setState(() {})`
+instead of field-assigning setStates (same rebuild, same values).
+
+**B8 tests (both remaining items closed):**
+
+- `test/pollinator/roi_capture_scheduler_test.dart` — `evaluate()`: first-sight
+  photo with deterministic `roi_<session>_<ts>.jpg` name; step interval counted
+  from the last photo; per-track duration window; ONE shared photo for concurrent
+  due tracks; a late-starting track gets its own full window; a momentary lost
+  blip does NOT reset an expired window (the id-reuse double-capture guard); the
+  window is forgotten only after the id is gone longer than the duration; and
+  `evaluate()` returns null while a capture is in flight (busy flag, tested with a
+  Completer-gated capture function).
+- `test/pollinator/frame_processor_test.dart` — mapping (full-ROI and half-ROI
+  boxes land exactly on/inside the ROI rect; fallback path filters by ROI centre
+  and clamps), clock fallback, and the gate rule: waking after a sleep longer than
+  the occlusion tolerance expires lost tracks (a returning insect gets a fresh id)
+  while a shorter sleep keeps the old id revivable; no-op re-reports; the
+  `forceGateAwake` bypass; pipeline-FPS EMA.
+
+**Verification:** `flutter analyze lib/pollinator test/pollinator` → no issues;
+`flutter test test/pollinator` → 95/95 pass (78 before, 17 new);
+`flutter build apk --debug` → ✓ (only the pre-existing KGP deprecation warning and
+missing `fetch_bundled_models.sh` note, both unrelated). On-device check pending
+(owner): start/stop a short session, confirm the JSONL start/end records and
+time-lapse photos look as before, lens/focus/settings probes populate, and the
+motion-gate indicator behaves.
+
+**Docs:** review doc B6 (a–d) and both open B8 boxes ticked with done-notes;
+overview module map gained the `session/` row and the widgets/tests updates.
