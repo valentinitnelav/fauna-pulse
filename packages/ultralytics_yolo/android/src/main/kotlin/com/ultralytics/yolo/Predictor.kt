@@ -63,9 +63,15 @@ interface InferenceModel {
     }
 }
 
-/** Widen unsigned 8-bit model outputs (e.g. semantic class maps) into the predictors' float pipeline. */
-internal fun widenToFloats(bytes: ByteArray): FloatArray =
-    FloatArray(bytes.size) { i -> (bytes[i].toInt() and 0xFF).toFloat() }
+/**
+ * Widen unsigned 8-bit model outputs (e.g. semantic class maps) into the predictors' float pipeline.
+ * Fills [into] when it is the right size (per-frame buffer reuse, perf review A3); allocates otherwise.
+ */
+internal fun widenToFloats(bytes: ByteArray, into: FloatArray? = null): FloatArray {
+    val target = if (into != null && into.size == bytes.size) into else FloatArray(bytes.size)
+    for (i in bytes.indices) target[i] = (bytes[i].toInt() and 0xFF).toFloat()
+    return target
+}
 
 interface Predictor {
     /**

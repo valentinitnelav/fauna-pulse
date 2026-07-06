@@ -1980,6 +1980,11 @@ class YOLOView @JvmOverloads constructor(
 
     // Latest analysis frame + its orientation, for cropping ROI photos straight
     // from the live stream (no full-res still capture → no camera stall).
+    // Reused per-frame conversion buffer (perf review A3): one Bitmap gets overwritten
+    // each frame instead of allocating a fresh multi-MB one 10-30x per second. Only
+    // ever touched from the camera analyzer thread.
+    private val frameBitmapBuffer = ImageUtils.BitmapFrameBuffer()
+
     @Volatile private var lastFrameBitmap: Bitmap? = null
     @Volatile private var lastFrameRotationDegrees: Int = 0
     @Volatile private var lastFrameIsFront: Boolean = false
@@ -2083,7 +2088,7 @@ class YOLOView @JvmOverloads constructor(
         }
 
         val tb0 = System.nanoTime()
-        val bitmap = ImageUtils.toBitmap(imageProxy) ?: run {
+        val bitmap = frameBitmapBuffer.convert(imageProxy) ?: run {
             Log.e(TAG, "Failed to convert ImageProxy to Bitmap")
             imageProxy.close()
             return
@@ -2092,8 +2097,10 @@ class YOLOView @JvmOverloads constructor(
         perfConverted++
 
         // Cache the latest frame so ROI photos can be cropped from it WITHOUT a
-        // separate full-res still capture (which stalls the camera). The bitmap
-        // is read-only here and not recycled, so holding the reference is safe.
+        // separate full-res still capture (which stalls the camera). Since A3 the
+        // bitmap is a REUSED buffer that this thread overwrites on a later frame;
+        // cropRoiFromFrame synchronizes on the bitmap instance (as does the writer),
+        // so a photo crop on another thread sees a whole frame, never a torn one.
         // (Since A1 this refreshes at the capped inference rate, not the camera
         // rate — the photo crop is at most one cap interval older than before.)
         lastFrameBitmap = bitmap

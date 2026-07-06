@@ -237,21 +237,45 @@ class LiteRtModel(
         }
     }
 
-    /** Run inference: write [input] floats into the first input buffer, run, and return each output as a flat float array. */
+    /**
+     * Run inference: write [input] floats into the first input buffer, run, and return each output as a flat
+     * float array. Integer outputs are returned in reused per-output arrays that are only valid until the next
+     * run() — the same contract as [OrtQnnModel].
+     */
     override fun run(input: FloatArray): List<FloatArray> {
         inputBuffers[0].writeFloat(input)
         model.run(inputBuffers, outputBuffers)
-        return List(outputBuffers.size) { readAsFloats(outputBuffers[it], outputTypes[it]) }
+        return List(outputBuffers.size) { readAsFloats(outputBuffers[it], outputTypes[it], reuseIndex = it) }
+    }
+
+    // Reused widening targets, one per output (perf review A3): without these, an integer
+    // output would allocate a fresh FloatArray every inference. Float outputs (all official
+    // assets) CANNOT reuse a buffer — LiteRT 2.x TensorBuffer only exposes readFloat():
+    // FloatArray, which allocates a new array inside the runtime on every call (verified
+    // against litert 2.1.5; no read-into-existing-array variant like ONNX Runtime's).
+    // Revisit if the API grows one.
+    private var widenTargets = arrayOfNulls<FloatArray>(0)
+
+    private fun widenTarget(index: Int, size: Int): FloatArray {
+        if (index < 0) return FloatArray(size) // model-load probe: reuse not needed
+        if (widenTargets.size <= index) widenTargets = widenTargets.copyOf(index + 1)
+        widenTargets[index]?.takeIf { it.size == size }?.let { return it }
+        return FloatArray(size).also { widenTargets[index] = it }
     }
 
     /**
-     * Read a tensor buffer as floats; integer outputs (e.g. semantic class maps) are widened. Dispatch on the
-     * declared element type - the native read functions don't type-check, so a mistyped read corrupts memory.
+     * Read a tensor buffer as floats; integer outputs (e.g. semantic class maps) are widened, into a reused
+     * per-output target when [reuseIndex] >= 0. Dispatch on the declared element type - the native read
+     * functions don't type-check, so a mistyped read corrupts memory.
      */
-    private fun readAsFloats(buffer: TensorBuffer, type: TensorType.ElementType?): FloatArray = when (type) {
-        TensorType.ElementType.INT -> buffer.readInt().let { v -> FloatArray(v.size) { v[it].toFloat() } }
-        TensorType.ElementType.INT8 -> widenToFloats(buffer.readInt8())
-        TensorType.ElementType.INT64 -> buffer.readLong().let { v -> FloatArray(v.size) { v[it].toFloat() } }
+    private fun readAsFloats(buffer: TensorBuffer, type: TensorType.ElementType?, reuseIndex: Int = -1): FloatArray = when (type) {
+        TensorType.ElementType.INT -> buffer.readInt().let { v ->
+            widenTarget(reuseIndex, v.size).also { t -> for (i in v.indices) t[i] = v[i].toFloat() }
+        }
+        TensorType.ElementType.INT8 -> buffer.readInt8().let { v -> widenToFloats(v, widenTarget(reuseIndex, v.size)) }
+        TensorType.ElementType.INT64 -> buffer.readLong().let { v ->
+            widenTarget(reuseIndex, v.size).also { t -> for (i in v.indices) t[i] = v[i].toFloat() }
+        }
         else -> buffer.readFloat() // FLOAT, or null when the type can't be read (all official assets are float)
     }
 

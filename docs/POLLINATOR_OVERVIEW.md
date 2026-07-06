@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 71 (ROI-size pencil sheet rebuilt as `_RoiSizeSheet` StatefulWidget after session_107 field test: fixes the disposed-TextEditingController crash flash during the sheet's closing animation, and typed sizes now apply + snap to the ×32 grid on submit/focus-loss/Done with the applied value written back into the field. Rounds 67–70 verified healthy on-device in session_107).
+> Last synced with: round 72 (perf review A3: per-frame Bitmap reuse via `ImageUtils.BitmapFrameBuffer` + reused integer-output widening targets in `LiteRtModel`; float outputs can't reuse — LiteRT 2.x `readFloat()` allocates internally, no read-into API. Writer and `cropRoiFromFrame` synchronize on the bitmap instance so fast-path photos can't tear).
 
 ## What the app is about
 

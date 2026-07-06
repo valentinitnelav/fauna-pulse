@@ -81,6 +81,68 @@ object ImageUtils {
         return yuvImageToBitmap(yuvImage)
     }
 
+    /**
+     * Converts analysis frames to a Bitmap while REUSING the same backing bitmap across
+     * frames (perf review A3), instead of allocating a fresh one per frame like [toBitmap].
+     * "Allocation" refresher: creating a new multi-megabyte Bitmap 10-30x per second forces
+     * the garbage collector to run often, which shows up as periodic stutter over a
+     * multi-hour session.
+     *
+     * Threading contract:
+     * - [convert] must only ever be called from ONE thread (CameraX's analyzer thread).
+     * - The returned bitmap is overwritten by the NEXT [convert] call. Readers on the same
+     *   thread (motion gate, model preprocessing) need no locking, because the next
+     *   overwrite cannot start until they return. Readers on OTHER threads (the fast ROI
+     *   photo path, [cropRoiFromFrame]) must `synchronized` on the bitmap instance itself —
+     *   the writes here hold that same monitor, so a photo crop can never observe a
+     *   half-written (torn) frame.
+     */
+    class BitmapFrameBuffer {
+        private var output: Bitmap? = null // published to callers; monitor-guarded
+        private var padded: Bitmap? = null // private staging when camera rows are padded
+        private val blitRect = Rect()
+
+        fun convert(imageProxy: ImageProxy): Bitmap? {
+            if (imageProxy.format == PixelFormat.RGBA_8888 && imageProxy.planes.size == 1) {
+                val plane = imageProxy.planes[0]
+                val pixelStride = plane.pixelStride
+                val rowPadding = plane.rowStride - pixelStride * imageProxy.width
+                val out = obtainOutput(imageProxy.width, imageProxy.height)
+                plane.buffer.rewind()
+                if (rowPadding == 0) {
+                    synchronized(out) { out.copyPixelsFromBuffer(plane.buffer) }
+                } else {
+                    // Row padding: the camera buffer is wider than the image. Copy at full
+                    // stride width into the private staging bitmap, then blit just the image
+                    // region into the published bitmap — the same single copy the old
+                    // Bitmap.createBitmap() crop did, but into reused memory.
+                    val paddedWidth = imageProxy.width + rowPadding / pixelStride
+                    val stage = obtainPadded(paddedWidth, imageProxy.height)
+                    stage.copyPixelsFromBuffer(plane.buffer)
+                    blitRect.set(0, 0, imageProxy.width, imageProxy.height)
+                    synchronized(out) { Canvas(out).drawBitmap(stage, blitRect, blitRect, null) }
+                }
+                return out
+            }
+            // YUV_420_888 fallback allocates inherently (JPEG round-trip); rare legacy path.
+            return toBitmap(imageProxy)
+        }
+
+        private fun obtainOutput(width: Int, height: Int): Bitmap {
+            val cur = output
+            if (cur != null && cur.width == width && cur.height == height) return cur
+            // First frame or stream size changed: allocate once at the new size. The old
+            // bitmap is NOT recycled — an in-flight photo crop may still be reading it.
+            return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output = it }
+        }
+
+        private fun obtainPadded(width: Int, height: Int): Bitmap {
+            val cur = padded
+            if (cur != null && cur.width == width && cur.height == height) return cur
+            return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { padded = it }
+        }
+    }
+
     private fun yuvImageToBitmap(yuvImage: YuvImage): Bitmap? {
         val out = ByteArrayOutputStream()
         val success = yuvImage.compressToJpeg(
@@ -302,13 +364,19 @@ object ImageUtils {
         // at the centre of the output square.
         val tx = roiPx / 2f + (orientedWidth / 2f - roiCxPx)
         val ty = roiPx / 2f + (orientedHeight / 2f - roiCyPx)
-        Canvas(output).apply {
-            drawColor(Color.BLACK)
-            save()
-            translate(tx, ty)
-            rotate(degrees.toFloat())
-            drawBitmap(bitmap, -bitmap.width / 2f, -bitmap.height / 2f, filterPaint)
-            restore()
+        // The source may be a reused [BitmapFrameBuffer] bitmap that the camera thread
+        // overwrites each frame; holding its monitor during the read (just the draw —
+        // scaling and JPEG encoding below work on our private copy) guarantees a whole
+        // frame, never a torn one. For fresh bitmaps the lock is uncontended and free.
+        synchronized(bitmap) {
+            Canvas(output).apply {
+                drawColor(Color.BLACK)
+                save()
+                translate(tx, ty)
+                rotate(degrees.toFloat())
+                drawBitmap(bitmap, -bitmap.width / 2f, -bitmap.height / 2f, filterPaint)
+                restore()
+            }
         }
         // Apply the saved-side cap (mirrors the Dart capSavedSidePx math).
         val savedCap = if (maxPx > 0) max(32, (maxPx / 32) * 32) else 0

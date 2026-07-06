@@ -2526,3 +2526,52 @@ exact ROI at every detection), and outside ROI adjustments they don't occur.
 pending (owner): open the pencil sheet, drag the slider, type a non-multiple
 (e.g. 1000) and tap Done — the field should snap (→ 992), the ROI should
 resize, and no red flash should appear while the sheet closes.
+
+## Round 72 (2026-07-06): per-frame buffer reuse (review A3)
+
+Perf review item A3, all native Kotlin in the vendored plugin. Goal: stop
+allocating multi-megabyte objects on every camera frame, so the garbage
+collector (the runtime's periodic memory sweep, which pauses the app briefly)
+runs far less often over a multi-hour session.
+
+**Bitmap reuse (`ImageUtils.kt`, `YOLOView.kt`):** new
+`ImageUtils.BitmapFrameBuffer`, one instance owned by `YOLOView`. Instead of
+`toBitmap` creating a fresh Bitmap per frame (and a second one when the
+camera pads its rows), the converter keeps one published bitmap plus a
+private staging bitmap for the row-padded case and overwrites them in place;
+it reallocates only when the stream size changes (old bitmaps are left for
+the GC, never recycled, since a photo crop may still hold one). The
+YUV_420_888 fallback path still allocates — its JPEG round-trip does anyway,
+and it's a rare legacy path. `YOLO.kt`'s single-shot path keeps the old
+allocating `toBitmap` (its result may be held by the caller).
+
+**The safety wrinkle:** the converted bitmap doubles as `lastFrameBitmap`,
+the fast ROI-photo source that `cropRoiFromFrame` reads from the
+platform-channel thread. With reuse, the camera thread now *overwrites* that
+bitmap while a photo crop may be reading it — a torn (half-old/half-new)
+photo. Fix: writer (`BitmapFrameBuffer.convert`) and reader
+(`cropRoiFromFrame`'s source draw — only the draw, not the JPEG encode) both
+`synchronized` on the bitmap instance. The camera thread can block only for
+the few ms of a crop draw, at most once per photo (photos are ≤1/s); for
+fresh bitmaps the lock is uncontended and free. Same-thread readers (motion
+gate, model preprocessing) need no lock. `MotionGate` was checked: it copies
+the ROI into its own persistent `ssBitmap` synchronously, so reuse is safe.
+
+**Model-output reuse (`LiteRtModel.kt`, `Predictor.kt`):** `readAsFloats` now
+widens integer outputs (INT/INT8/INT64) into reused per-output `FloatArray`
+targets — valid until the next `run()`, the same contract `OrtQnnModel`
+already established for the NPU path. `widenToFloats` gained an optional
+destination parameter. **Honest caveat:** the float path *cannot* mirror
+`OrtQnnModel` — LiteRT 2.x `TensorBuffer` exposes only `readFloat():
+FloatArray`, which allocates a fresh array inside the runtime on every call
+(verified with `javap` against the litert 2.1.5 AAR; write* methods take
+arrays, read* methods only return new ones). All shipped models have float
+outputs, so that one per-inference allocation stays until the LiteRT API
+grows a read-into-buffer variant; noted in the review doc for a future
+revisit.
+
+**Verification:** `flutter build apk --debug` compiles clean (only the
+pre-existing KGP/fetch-script warnings); 78/78 tests pass (no Dart touched).
+On-device check pending (owner): run a session with time-lapse photos and
+confirm photos look whole (no tearing), detections unchanged, and FRAMEPERF
+`toBitmapMs` similar or lower.

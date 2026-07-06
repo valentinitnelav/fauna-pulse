@@ -83,10 +83,10 @@ If the sink is gone at drain time the existing `scheduleRetry`/
 
 ### A3. Reuse per-frame buffers instead of allocating
 
-- [ ] `ImageUtils.kt` — `toBitmap` creates a new `Bitmap` **every frame**
+- [x] `ImageUtils.kt` — `toBitmap` creates a new `Bitmap` **every frame**
   (~line 68), and a second one when the camera pads its rows (~line 74).
   Reuse one (or two) pre-allocated bitmaps of the stream size.
-- [ ] `LiteRtModel.kt` — `readAsFloats` allocates a fresh `FloatArray` per
+- [x] `LiteRtModel.kt` — `readAsFloats` allocates a fresh `FloatArray` per
   model output **every inference** (~lines 244–255). The NPU path already does
   this right: `OrtQnnModel.kt` reuses its output buffers (~line 80). Mirror
   that.
@@ -94,6 +94,22 @@ If the sink is gone at drain time the existing `scheduleRetry`/
 *Expected gain:* less garbage-collector churn → fewer periodic stutters over a
 multi-hour session.
 *Effort:* small each; watch out for the row-stride crop case in `toBitmap`.
+**Done (round 72):** new `ImageUtils.BitmapFrameBuffer` (one instance owned by
+`YOLOView`) reuses a single published bitmap, plus a private staging bitmap for
+row-padded frames, across all frames; the YUV_420_888 fallback still allocates
+(inherent JPEG round-trip, rare legacy path). Because the reused bitmap doubles
+as `lastFrameBitmap` — the fast ROI-photo source read from the platform-channel
+thread — the writer and `cropRoiFromFrame`'s source draw both `synchronized` on
+the bitmap instance, so a photo can never capture a torn half-old/half-new
+frame; the camera thread can only block for the few ms of a crop draw, at most
+once per photo. `LiteRtModel` now reuses per-output widening targets for
+*integer* outputs (valid until the next `run()`, same contract as
+`OrtQnnModel`). **Caveat:** the float path cannot mirror `OrtQnnModel` — LiteRT
+2.x `TensorBuffer` exposes only `readFloat(): FloatArray`, which allocates a
+fresh array inside the runtime on every call (verified with `javap` against
+litert 2.1.5; there is no read-into-existing-buffer variant). All shipped
+models have float outputs, so that one per-inference allocation remains until
+the LiteRT API grows a destination-buffer read.
 
 ### A4. Implement the startup CPU-vs-GPU benchmark (spec says it exists; it doesn't)
 
@@ -329,5 +345,6 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 2. **A1** + **A2** — the two big heat/latency wins in the native path.
    ✔ **Done** (round 68).
 3. **B3 + B4** — lifecycle + camera watchdog. ✔ **Done** (round 70).
-4. **A3**, then **B6(a)** + **B8** tests.
+4. **A3**, then **B6(a)** + **B8** tests. ✔ **A3 done** (round 72; float
+   model outputs excluded — LiteRT API limitation, see A3 note).
 5. **A4** (benchmark) as its own round; **A5/A6/B7/B9** opportunistically.
