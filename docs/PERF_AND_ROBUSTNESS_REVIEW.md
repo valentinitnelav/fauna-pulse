@@ -131,10 +131,16 @@ documented behaviour.
 
 ### A5. Rasterize the ROI once per frame, not twice
 
-- [ ] `MotionGate.kt` (~line 124) draws the ROI into its small thumbnail, and
+- [x] `MotionGate.kt` (~line 124) draws the ROI into its small thumbnail, and
   `ObjectDetector.kt` `predict` (~line 102) draws the same ROI again into the
   model-input bitmap. Derive the gate thumbnail by downscaling the model-input
   bitmap (or vice versa) so the ROI region is copied once.
+  *(Done, round 74: on frames that run inference the gate thumbnail is now
+  derived from the detector's model-input bitmap
+  (`MotionGate.motionDetectedFromModelInput`, fed via
+  `BasePredictor.lastRoiModelInput()`); idle and FPS-capped frames keep the
+  direct tiny draw, since no model raster exists there and forcing one would
+  cost far more than it saves.)*
 
 *Expected gain:* modest; only matters while the gate is awake.
 *Effort:* small–medium (the two consumers want different sizes/filters).

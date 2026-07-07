@@ -133,6 +133,14 @@ abstract class BasePredictor : Predictor {
     // the centre and [side] is the square's side as a fraction of frame WIDTH.
     var inferenceRoi: InferenceRoi? = null
 
+    /** The model-input bitmap of the last [predict] IF that predict rasterized
+     *  the [inferenceRoi] into it; null otherwise. Lets the motion gate derive
+     *  its thumbnail from pixels the detector already produced instead of
+     *  drawing the ROI a second time (perf review A5). Contents are only valid
+     *  on the thread that called predict, until the next predict overwrites the
+     *  reused buffer. */
+    open fun lastRoiModelInput(): Bitmap? = null
+
     fun close() {
         if (isInterpreterInitialized()) {
             rtModel.close()

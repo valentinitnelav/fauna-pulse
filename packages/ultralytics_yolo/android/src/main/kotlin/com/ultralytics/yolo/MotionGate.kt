@@ -3,7 +3,11 @@
 package com.ultralytics.yolo
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
 import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Motion gate (Pollinator Monitor).
@@ -16,6 +20,9 @@ import kotlin.math.abs
  * How it works, in plain language:
  *  1. Every camera frame, the ROI is shrunk down to a tiny [gridSize]²
  *     grayscale thumbnail (a few thousand pixels — well under 1 ms of work).
+ *     On frames that also run the detector, the thumbnail is derived from the
+ *     model-input bitmap the detector already rasterized, so the ROI is only
+ *     copied out of the camera frame once (see [motionDetectedFromModelInput]).
  *  2. The gate keeps a "background" image: a slowly-updated running average of
  *     those thumbnails (an *exponential moving average*, i.e. each new frame
  *     nudges the remembered background a little). Slow drift — sun moving,
@@ -82,6 +89,11 @@ class MotionGate {
     // slow enough that a walking insect stays "different" for many frames.
     private val bgAlpha = 0.05f
 
+    // Scratch objects for [motionDetectedFromModelInput] (allocation-free frames).
+    private val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val srcRect = Rect()
+    private val dstRect = Rect()
+
     /** Forget the learned background (call when the ROI moves or the camera
      *  restarts — the old background no longer matches what the ROI sees). */
     fun reset() {
@@ -107,17 +119,7 @@ class MotionGate {
         roiCy: Float,
         roiSide: Float,
     ): Boolean {
-        // Apply a grid-size change here, on the analyzer thread that owns the
-        // buffers: reallocate and relearn the background from scratch.
-        val grid = gridSize
-        val ss = grid * 2
-        if (grid != currentGrid) {
-            currentGrid = grid
-            ssBitmap = Bitmap.createBitmap(ss, ss, Bitmap.Config.ARGB_8888)
-            ssPixels = IntArray(ss * ss)
-            background = FloatArray(grid * grid)
-            hasBackground = false
-        }
+        val grid = ensureBuffers()
 
         // Reuse the exact ROI-crop geometry the detector uses, just with a tiny
         // target bitmap — so the gate watches precisely what the model would see.
@@ -132,6 +134,57 @@ class MotionGate {
             roiCy = roiCy,
             roiSide = roiSide,
         )
+        return scoreThumbnail(grid)
+    }
+
+    /**
+     * Same decision as [motionDetected], but fed from the model-input bitmap the
+     * detector just rasterized for this frame — so the ROI is copied out of the
+     * camera frame once per frame instead of twice (perf review A5). Because the
+     * square ROI letterboxes into the (normally square) model input with zero
+     * padding, the ROI is exactly the centered square of [modelInput] (the whole
+     * bitmap when it is square). Only call this on frames where the detector
+     * actually ran with an ROI set; otherwise use [motionDetected]. Same
+     * analyzer-thread rule as [motionDetected].
+     *
+     * Noise note (see the r60 buffer comment below): the 2× supersampled fold is
+     * identical on this path, and for typical ROIs (smaller than the model input
+     * side) [modelInput] is an *upscaled* — hence smoother — copy of the ROI, so
+     * this path is if anything calmer than the direct one.
+     */
+    fun motionDetectedFromModelInput(modelInput: Bitmap): Boolean {
+        val grid = ensureBuffers()
+        val ss = grid * 2
+        val side = min(modelInput.width, modelInput.height)
+        val left = (modelInput.width - side) / 2
+        val top = (modelInput.height - side) / 2
+        srcRect.set(left, top, left + side, top + side)
+        dstRect.set(0, 0, ss, ss)
+        Canvas(ssBitmap).drawBitmap(modelInput, srcRect, dstRect, filterPaint)
+        return scoreThumbnail(grid)
+    }
+
+    /** Applies a pending grid-size change here, on the analyzer thread that owns
+     *  the buffers: reallocate and relearn the background from scratch. Returns
+     *  the grid side to use for this frame. */
+    private fun ensureBuffers(): Int {
+        val grid = gridSize
+        if (grid != currentGrid) {
+            currentGrid = grid
+            val ss = grid * 2
+            ssBitmap = Bitmap.createBitmap(ss, ss, Bitmap.Config.ARGB_8888)
+            ssPixels = IntArray(ss * ss)
+            background = FloatArray(grid * grid)
+            hasBackground = false
+        }
+        return grid
+    }
+
+    /** Folds the freshly drawn [ssBitmap] into grid cells, compares against and
+     *  updates the learned background, records [lastScore], and returns the
+     *  motion verdict. Shared tail of both public entry points. */
+    private fun scoreThumbnail(grid: Int): Boolean {
+        val ss = grid * 2
         ssBitmap.getPixels(ssPixels, 0, ss, 0, 0, ss, ss)
 
         // Fold the supersampled image down: each grid cell = mean luma of its

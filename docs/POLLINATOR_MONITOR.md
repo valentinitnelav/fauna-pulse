@@ -2659,3 +2659,70 @@ motion-gate indicator behaves.
 
 **Docs:** review doc B6 (a–d) and both open B8 boxes ticked with done-notes;
 overview module map gained the `session/` row and the widgets/tests updates.
+
+## Round 74 (2026-07-07): rasterize the ROI once per frame (review A5)
+
+**What was asked:** implement review item A5 — while the motion gate is awake,
+the same ROI was being drawn out of the camera frame twice per frame: once by
+`MotionGate.motionDetected` into its tiny supersampled thumbnail, and again by
+`ObjectDetector.predict` into the model-input bitmap.
+
+**Design (which direction to share):** the review offered "downscale the
+model-input bitmap for the gate, or vice versa". Only the first direction is
+viable, and only on frames that actually run inference:
+
+- The model input must stay full quality, so it can never be derived from the
+  tiny gate thumbnail.
+- On **idle** frames (gate asleep, sampling a few frames/s) and on **awake but
+  FPS-capped** frames, the detector never rasterizes anything — forcing a
+  640×640 model raster there just to feed the gate would cost ~45× more
+  destination pixels than the gate's own ~96×96 draw. Those frames keep the
+  direct path, which also keeps the background-EMA cadence unchanged (the gate
+  still sees every converted frame while awake).
+- On frames that **do** run inference, the model input already contains the
+  rasterized ROI (a square ROI letterboxes into the square model input with
+  zero padding, so the ROI is exactly the centered square — the whole bitmap
+  for square models). The gate now downscales that instead of touching the
+  camera frame again.
+
+**How it's wired (all Kotlin, plugin + view):**
+
+- `MotionGate.kt`: shared tail extracted (`ensureBuffers()` grid realloc +
+  `scoreThumbnail()` fold/compare/EMA); new entry point
+  `motionDetectedFromModelInput(modelInput)` draws the centered square of the
+  model input into the supersampled thumbnail (reused `Rect`s + filter paint,
+  allocation-free). The r60 2×-supersample noise averaging applies identically;
+  for typical ROIs the model input is an *upscaled* (smoother) copy, so this
+  path is if anything calmer than the direct one.
+- `Predictor.kt` (`BasePredictor`): new `open fun lastRoiModelInput(): Bitmap?`
+  (default null). Valid only on the analyzer thread until the next `predict`
+  overwrites the reused buffer.
+- `ObjectDetector.kt`: overrides it, returning `scaledBitmap` only when the
+  last `predict` actually took the ROI branch (`lastPredictUsedRoi`).
+- `YOLOView.onFrame`: the gate block now branches on wake state first. Awake →
+  consult the FPS cap once (stateful — the old code consulted it once too, just
+  later); approved frames set `gateFromModelInput` and run the gate right
+  after `p.predict(...)` from `lastRoiModelInput()` (falling back to the direct
+  draw if no ROI is set or the predictor doesn't expose its input); capped
+  frames run the direct gate and close. Idle frames keep the old direct
+  check-heartbeat-or-wake behaviour. The triplicated `motionDetected(...)`
+  argument list moved into a `gateMotionFromFrame()` helper.
+
+**Behaviour deltas (intended, small):** on inferred frames the motion check now
+runs a few ms later (after inference, same frame data, same wake-extension
+semantics); the gate thumbnail on those frames is resampled via the model input
+instead of straight from the frame, so its pixel values differ slightly from
+the idle/capped path (well under the default `pixelDelta` 25 — no observed
+effect expected, worth a glance at gate behaviour on the next field test).
+Everything else — cap accounting, `perfInferred`, heartbeat, detection-keeps-
+awake, `motionScore` in stream data — unchanged.
+
+**Verification:** `flutter build apk --debug` → ✓ compiles (pre-existing KGP
+deprecation warning only); `flutter analyze lib/pollinator test/pollinator` and
+`flutter test test/pollinator` untouched by a Kotlin-only change but re-run →
+clean / 95/95. On-device check pending (owner): with the gate enabled, confirm
+"DETECTOR ON"/"SLEEPING" transitions and the motion score still behave during a
+short session.
+
+**Docs:** review A5 ticked with a done-note; overview motion-gate bullet gained
+the shared-raster sentence and the sync line moved to round 74.

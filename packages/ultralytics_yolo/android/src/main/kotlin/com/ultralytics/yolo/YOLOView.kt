@@ -393,6 +393,26 @@ class YOLOView @JvmOverloads constructor(
         Log.i(TAG, "MotionGate ${if (enabled) "ON" else "OFF"} pixelDelta=$pixelDelta areaFraction=$areaFraction wakeSeconds=$wakeSeconds gridSize=$gridSize")
     }
 
+    /** Runs the motion gate directly on the camera frame (the gate draws its own
+     *  tiny ROI thumbnail). Only used on frames without a model-input raster —
+     *  gate idle, or awake but FPS-capped; frames that run inference reuse the
+     *  detector's model-input bitmap instead (perf review A5, see onFrame). */
+    private fun gateMotionFromFrame(bitmap: Bitmap, rotationDegrees: Int): Boolean {
+        val roi = inferenceRoi
+        return motionGate.motionDetected(
+            bitmap = bitmap,
+            rotateForCamera = true,
+            isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+            isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
+            rotationDegrees = rotationDegrees,
+            // No ROI set -> watch the centered full-height square (side is
+            // clamped to the frame's short side inside the crop helper).
+            roiCx = roi?.cx ?: 0.5f,
+            roiCy = roi?.cy ?: 0.5f,
+            roiSide = roi?.side ?: 1f,
+        )
+    }
+
     // detection thresholds (can be changed externally via setters)
     private var confidenceThreshold = 0.25  // initial value
     private var iouThreshold = 0.7
@@ -2122,33 +2142,46 @@ class YOLOView @JvmOverloads constructor(
                 return
             }
 
-            // Pollinator Monitor motion gate: on every frame (cheap, <1 ms) check
+            // Pollinator Monitor motion gate: on every frame (cheap, <1 ms) decide
             // whether anything moved inside the ROI. While there is neither motion
             // nor a recent detection, skip inference entirely — the detector
-            // sleeps, the phone stays cool. Runs BEFORE the FPS-cap check so the
-            // background model keeps learning even on frames the cap would skip.
+            // sleeps, the phone stays cool. The gate sees every converted frame,
+            // but where the pixels come from depends on the frame (perf review
+            // A5 — rasterize the ROI once per frame, not twice): frames that run
+            // inference reuse the ROI the detector rasterizes into its model
+            // input anyway (checked AFTER predict, below), while idle and
+            // FPS-capped frames — where that raster never happens — draw the
+            // gate's own tiny thumbnail so the background model keeps learning.
+            var gateFromModelInput = false
             if (motionGateEnabled) {
-                val gateLandscape =
-                    context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-                val roi = inferenceRoi
-                val motion = motionGate.motionDetected(
-                    bitmap = bitmap,
-                    rotateForCamera = true,
-                    isLandscape = gateLandscape,
-                    isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
-                    rotationDegrees = imageProxy.imageInfo.rotationDegrees,
-                    // No ROI set -> watch the centered full-height square (side is
-                    // clamped to the frame's short side inside the crop helper).
-                    roiCx = roi?.cx ?: 0.5f,
-                    roiCy = roi?.cy ?: 0.5f,
-                    roiSide = roi?.side ?: 1f,
-                )
                 val nowGate = System.nanoTime()
-                if (motion) gateAwakeUntilNs = nowGate + motionGateWakeNs
-                if (nowGate > gateAwakeUntilNs) {
-                    // Idle: tell Flutter once a second that we are alive but gated,
-                    // so the UI can show "motion gate: idle" instead of tripping
-                    // the 0-FPS "detector not producing results" watchdog.
+                if (nowGate <= gateAwakeUntilNs) {
+                    // Awake: consult the FPS cap once (it is stateful — asking
+                    // twice per frame would advance its clock and veto itself).
+                    inferenceApproved = shouldRunInference()
+                    if (inferenceApproved) {
+                        // This frame runs inference: derive the gate thumbnail
+                        // from the model-input bitmap after predict() instead of
+                        // rasterizing the ROI a second time here.
+                        gateFromModelInput = true
+                    } else {
+                        // Awake but FPS-capped: no model raster this frame, so
+                        // the gate draws its own thumbnail; motion must keep
+                        // extending the wake window between inferred frames.
+                        if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees)) {
+                            gateAwakeUntilNs = nowGate + motionGateWakeNs
+                        }
+                        imageProxy.close()
+                        return
+                    }
+                } else if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees)) {
+                    // Was idle, motion just woke the gate; the FPS-cap check
+                    // below decides whether this frame also runs inference.
+                    gateAwakeUntilNs = nowGate + motionGateWakeNs
+                } else {
+                    // Still idle: tell Flutter once a second that we are alive but
+                    // gated, so the UI can show "motion gate: idle" instead of
+                    // tripping the 0-FPS "detector not producing results" watchdog.
                     if (nowGate - lastGateHeartbeatNs >= 1_000_000_000L) {
                         lastGateHeartbeatNs = nowGate
                         streamCallback?.invoke(
@@ -2165,9 +2198,10 @@ class YOLOView @JvmOverloads constructor(
                 }
             }
 
-            // Check if we should run inference on this frame. Skipped when the
-            // pre-conversion check (A1, gate off) already approved it — asking
-            // twice would advance the cap clock and veto its own approval.
+            // Check if we should run inference on this frame. Skipped when an
+            // earlier check already approved it (pre-conversion when the gate is
+            // off — A1; inside the awake gate branch above when it is on) —
+            // asking twice would advance the cap clock and veto its own approval.
             if (!inferenceApproved && !shouldRunInference()) {
                 imageProxy.close()
                 return
@@ -2203,6 +2237,23 @@ class YOLOView @JvmOverloads constructor(
                     rotateForCamera = true,
                     isLandscape = isLandscape
                 )
+
+                // Motion gate, deferred from before inference (perf review A5):
+                // predict() just rasterized the ROI into its model-input bitmap,
+                // so derive the gate thumbnail from those pixels instead of
+                // drawing the ROI from the camera frame a second time. Same
+                // analyzer thread, so the reused buffer is still this frame's.
+                // Falls back to the direct draw when no ROI raster exists (no
+                // ROI set, or a predictor that doesn't expose its input).
+                if (gateFromModelInput) {
+                    val roiInput = (p as? BasePredictor)?.lastRoiModelInput()
+                    val motion = if (roiInput != null) {
+                        motionGate.motionDetectedFromModelInput(roiInput)
+                    } else {
+                        gateMotionFromFrame(bitmap, rotationDegrees)
+                    }
+                    if (motion) gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+                }
 
                 // Apply originalImage if streaming config requires it
                 val resultWithOriginalImage = if (streamConfig?.includeOriginalImage == true) {

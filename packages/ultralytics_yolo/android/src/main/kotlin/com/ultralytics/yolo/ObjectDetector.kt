@@ -34,6 +34,12 @@ class ObjectDetector(
     // (3) Reusable float input (1 * height * width * 3) for the CompiledModel input buffer.
     private lateinit var floatInput: FloatArray
 
+    // Whether the LAST predict() cropped to an ROI — only then does scaledBitmap
+    // hold the rasterized ROI the motion gate can reuse (perf review A5).
+    private var lastPredictUsedRoi = false
+
+    override fun lastRoiModelInput(): Bitmap? = if (lastPredictUsedRoi) scaledBitmap else null
+
     init {
         // Labels from the model metadata: Ultralytics' appended ZIP, falling back to standard embedded TFLite
         // (FlatBuffers) metadata so drag-and-dropped custom models keep their labels.
@@ -96,6 +102,7 @@ class ObjectDetector(
         // treat the ROI's pixel size as the "original" frame for mapping boxes
         // back — so detections come out normalized to the ROI (0..1 inside it).
         val roi = inferenceRoi
+        lastPredictUsedRoi = roi != null
         val effWidth: Int
         val effHeight: Int
         if (roi != null) {

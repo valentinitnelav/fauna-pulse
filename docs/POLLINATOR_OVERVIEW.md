@@ -6,7 +6,7 @@ This file is a *current* picture of the app, meant to ground a new session cheap
 invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
 and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
-> Last synced with: round 73 (review B6 god-class split, all four steps, behaviour-preserving: `camera_session_screen.dart` ~2,870 → ~2,180 lines. New `lib/pollinator/session/` — `FrameProcessor` (detection mapping + tracking + motion-gate idle/expire, injectable clock), `SessionRecorder` (logger/photos/keep-alive lifecycle, ordered stop), `CameraDiagnosticsController` (one-time probes); embedded widgets moved to `widgets/`. Screen keeps old names via thin getters. Review B8 closed: new tests for `RoiCaptureScheduler.evaluate()` and the gate-wake `expireLostTracks` rule — 95/95 pass).
+> Last synced with: round 74 (review A5, ROI rasterized once per frame: on frames that run inference the motion gate derives its thumbnail from the detector's model-input bitmap — `MotionGate.motionDetectedFromModelInput` fed by `BasePredictor.lastRoiModelInput()` — instead of drawing the ROI from the camera frame a second time; idle and FPS-capped frames keep the gate's own tiny direct draw. Kotlin-only, behaviour-preserving). Round 73 (review B6 god-class split, all four steps, behaviour-preserving: `camera_session_screen.dart` ~2,870 → ~2,180 lines. New `lib/pollinator/session/` — `FrameProcessor` (detection mapping + tracking + motion-gate idle/expire, injectable clock), `SessionRecorder` (logger/photos/keep-alive lifecycle, ordered stop), `CameraDiagnosticsController` (one-time probes); embedded widgets moved to `widgets/`. Screen keeps old names via thin getters. Review B8 closed: new tests for `RoiCaptureScheduler.evaluate()` and the gate-wake `expireLostTracks` rule — 95/95 pass).
 
 ## What the app is about
 
@@ -147,7 +147,12 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   gate-idle grey > recording red > yellow). Handheld shake keeps the gate awake by
   design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
   and box-averaged (bilinear minification is point-sampling; without this, coarse grids
-  were NOISIER than fine ones — session_89 observation).
+  were NOISIER than fine ones — session_89 observation). r74 (review A5): on frames that
+  run inference the thumbnail is derived from the detector's already-rasterized
+  model-input bitmap (`motionDetectedFromModelInput` ← `BasePredictor.lastRoiModelInput()`,
+  checked right after `predict`) so the ROI is copied out of the camera frame once per
+  frame; idle and FPS-capped frames keep the gate's own direct draw (no model raster
+  exists there), so the gate still sees every converted frame while awake.
 - **Session summary is tabbed (round 60):** Overview | Settings | Photos | Graphs
   (`DefaultTabController`, `session_summary_screen.dart`). The Settings tab reads the
   `config` block from the start record, so every new `SessionConfig` field appears in
