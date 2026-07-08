@@ -397,12 +397,12 @@ class YOLOView @JvmOverloads constructor(
      *  tiny ROI thumbnail). Only used on frames without a model-input raster —
      *  gate idle, or awake but FPS-capped; frames that run inference reuse the
      *  detector's model-input bitmap instead (perf review A5, see onFrame). */
-    private fun gateMotionFromFrame(bitmap: Bitmap, rotationDegrees: Int): Boolean {
+    private fun gateMotionFromFrame(bitmap: Bitmap, rotationDegrees: Int, isLandscape: Boolean): Boolean {
         val roi = inferenceRoi
         return motionGate.motionDetected(
             bitmap = bitmap,
             rotateForCamera = true,
-            isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+            isLandscape = isLandscape,
             isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
             rotationDegrees = rotationDegrees,
             // No ROI set -> watch the centered full-height square (side is
@@ -2123,11 +2123,17 @@ class YOLOView @JvmOverloads constructor(
         // so a photo crop on another thread sees a whole frame, never a torn one.
         // (Since A1 this refreshes at the capped inference rate, not the camera
         // rate — the photo crop is at most one cap interval older than before.)
+        // Perf review A6: read the device orientation ONCE per frame and share the
+        // answer with every consumer below (frame cache, motion gate, inference).
+        // Resources.getConfiguration() is not free, and this used to be asked up
+        // to three times per frame.
+        val frameIsLandscape =
+            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
         lastFrameBitmap = bitmap
         lastFrameRotationDegrees = imageProxy.imageInfo.rotationDegrees
         lastFrameIsFront = lensFacing == CameraSelector.LENS_FACING_FRONT
-        lastFrameIsLandscape =
-            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        lastFrameIsLandscape = frameIsLandscape
 
         // Check again after bitmap conversion (in case stop() was called during conversion)
         if (isStopped) {
@@ -2168,13 +2174,13 @@ class YOLOView @JvmOverloads constructor(
                         // Awake but FPS-capped: no model raster this frame, so
                         // the gate draws its own thumbnail; motion must keep
                         // extending the wake window between inferred frames.
-                        if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees)) {
+                        if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees, frameIsLandscape)) {
                             gateAwakeUntilNs = nowGate + motionGateWakeNs
                         }
                         imageProxy.close()
                         return
                     }
-                } else if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees)) {
+                } else if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees, frameIsLandscape)) {
                     // Was idle, motion just woke the gate; the FPS-cap check
                     // below decides whether this frame also runs inference.
                     gateAwakeUntilNs = nowGate + motionGateWakeNs
@@ -2210,10 +2216,9 @@ class YOLOView @JvmOverloads constructor(
 
             try {
                 syncTargetRotation()
-                // Get device orientation
-                val orientation = context.resources.configuration.orientation
-                val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
-                
+                // Device orientation, read once per frame above (perf review A6)
+                val isLandscape = frameIsLandscape
+
                 // Check if using front camera
                 val isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT
                 val rotationDegrees = imageProxy.imageInfo.rotationDegrees
@@ -2250,7 +2255,7 @@ class YOLOView @JvmOverloads constructor(
                     val motion = if (roiInput != null) {
                         motionGate.motionDetectedFromModelInput(roiInput)
                     } else {
-                        gateMotionFromFrame(bitmap, rotationDegrees)
+                        gateMotionFromFrame(bitmap, rotationDegrees, frameIsLandscape)
                     }
                     if (motion) gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
                 }
@@ -2281,10 +2286,11 @@ class YOLOView @JvmOverloads constructor(
                     if (shouldProcessFrame()) {
                         updateLastInferenceTime()
                         
-                        // Convert to stream data and send
-                        val streamData = convertResultToStreamData(resultWithOriginalImage)
+                        // Convert to stream data and send. The converter returns a
+                        // fresh mutable map, so enrich it in place instead of copying
+                        // every entry into a second map (perf review A6).
+                        val enhancedStreamData = convertResultToStreamData(resultWithOriginalImage)
                         // Add timestamp and frame info
-                        val enhancedStreamData = HashMap<String, Any>(streamData)
                         enhancedStreamData["timestamp"] = System.currentTimeMillis()
                         enhancedStreamData["frameNumber"] = frameNumberCounter++
                         // Dimensions of the upright FULL frame, so the Flutter overlay maps onto the whole preview.
@@ -2824,13 +2830,15 @@ class YOLOView @JvmOverloads constructor(
      * Convert YOLOResult to a Map for streaming (ported from archived YOLOPlatformView)
      * Uses detection index correctly to avoid class index confusion
      */
-    private fun convertResultToStreamData(result: YOLOResult): Map<String, Any> {
-        val map = HashMap<String, Any>()
-        val config = streamConfig ?: return emptyMap()
-        
+    private fun convertResultToStreamData(result: YOLOResult): HashMap<String, Any> {
+        // Sized for the handful of top-level keys plus the extras onFrame adds
+        // in place after this returns (timestamp, dimensions, gate state, ...).
+        val map = HashMap<String, Any>(32)
+        val config = streamConfig ?: return map
+
         // Convert detection results (if enabled)
         if (config.includeDetections) {
-            val detections = ArrayList<Map<String, Any>>()
+            val detections = ArrayList<Map<String, Any>>(result.boxes.size)
 
             if (config.includePoses && result.keypointsList.isNotEmpty() && result.boxes.isEmpty()) {
                 for ((poseIndex, keypoints) in result.keypointsList.withIndex()) {
@@ -2874,22 +2882,24 @@ class YOLOView @JvmOverloads constructor(
             }
             
             // Convert detection boxes - CRITICAL: use detectionIndex, not class index
+            // These maps are built per detection on the camera thread, so they are
+            // pre-sized to their known entry counts to avoid rehashing (perf review A6).
             for ((detectionIndex, box) in result.boxes.withIndex()) {
-                val detection = HashMap<String, Any>()
+                val detection = HashMap<String, Any>(12)
                 detection["classIndex"] = box.index
                 detection["className"] = box.cls
                 detection["confidence"] = box.conf.toDouble()
-                
+
                 // Bounding box in original coordinates
-                val boundingBox = HashMap<String, Any>()
+                val boundingBox = HashMap<String, Any>(8)
                 boundingBox["left"] = box.xywh.left.toDouble()
                 boundingBox["top"] = box.xywh.top.toDouble()
                 boundingBox["right"] = box.xywh.right.toDouble()
                 boundingBox["bottom"] = box.xywh.bottom.toDouble()
                 detection["boundingBox"] = boundingBox
-                
+
                 // Normalized bounding box (0-1)
-                val normalizedBox = HashMap<String, Any>()
+                val normalizedBox = HashMap<String, Any>(8)
                 normalizedBox["left"] = box.xywhn.left.toDouble()
                 normalizedBox["top"] = box.xywhn.top.toDouble()
                 normalizedBox["right"] = box.xywhn.right.toDouble()
@@ -3079,6 +3089,10 @@ class YOLOView @JvmOverloads constructor(
         }
         
         // Add original image (if available and enabled)
+        // ⚠️ FOOTGUN: this JPEG-encodes the FULL camera frame at quality 90 on every
+        // streamed frame, on the camera analyzer thread. The Pollinator Monitor app
+        // never enables includeOriginalImage — keep it that way (perf review A6);
+        // ROI photos use captureRoiFromFrame/capturePhoto instead.
         if (config.includeOriginalImage) {
             result.originalImage?.let { bitmap ->
                 val outputStream = java.io.ByteArrayOutputStream()

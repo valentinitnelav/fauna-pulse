@@ -147,19 +147,31 @@ documented behaviour.
 
 ### A6. Smaller cleanups (batch these opportunistically)
 
-- [ ] `YOLOView.kt` reads `context.resources.configuration.orientation` three
+- [x] `YOLOView.kt` reads `context.resources.configuration.orientation` three
   times per frame (~2052, ~2094, ~2140) — read once per frame (or cache and
-  update on configuration change).
-- [ ] `YOLOView.kt` `convertResultToStreamData` (~2787–2806) builds several
+  update on configuration change). *(Done, round 75: one `frameIsLandscape`
+  read at the top of `onFrame` now feeds the frame cache, both
+  `gateMotionFromFrame` call sites — which take it as a parameter — and the
+  inference block.)*
+- [x] `YOLOView.kt` `convertResultToStreamData` (~2787–2806) builds several
   nested `HashMap`s per detection on the camera thread, then copies the whole
   map again (`HashMap(streamData)`, ~2196). Pre-size maps, drop the copy.
-- [ ] `ImageUtils.kt` `copyRgbBitmapToFloatArray` (~362–376) normalizes pixels
+  *(Done, round 75: converter returns `HashMap` and `onFrame` enriches it in
+  place — copy gone; top-level map, `detections` list, and the per-box maps of
+  the detect path are pre-sized. Pose/OBB/classification branches left as-is —
+  this app never streams them.)*
+- [x] `ImageUtils.kt` `copyRgbBitmapToFloatArray` (~362–376) normalizes pixels
   in a scalar per-pixel loop. Fine at 640×640, but a good candidate for a
-  lookup table or vectorized loop if input sizes grow.
-- [ ] Document the `includeOriginalImage` stream option as a footgun: when
+  lookup table or vectorized loop if input sizes grow. *(Done, round 75: a
+  cached 256-entry LUT replaces the per-channel subtract+divide in both
+  `copyRgbBitmapToFloatArray` and the `copyRgbBitmapToFloatBuffer` sibling;
+  rebuilt only if mean/std change, which no current caller does.)*
+- [x] Document the `includeOriginalImage` stream option as a footgun: when
   enabled it JPEG-encodes the **full camera frame at quality 90 on every
   frame** on the camera thread (`YOLOView.kt` ~2991–2997). The app never
-  enables it; make sure nothing ever does casually.
+  enables it; make sure nothing ever does casually. *(Done, round 75: ⚠️
+  warning comments at the flag definition in `YOLOStreamConfig.kt` and at the
+  encode site in `convertResultToStreamData`.)*
 
 ### A7. Noted for the roadmap (no action this round)
 

@@ -405,6 +405,26 @@ object ImageUtils {
 
     private fun Int.floorMod(other: Int): Int = ((this % other) + other) % other
 
+    // A channel value is one of only 256 possible bytes, so the normalized float for each value can be
+    // precomputed once into a small table ("lookup table"/LUT) instead of doing subtract+divide three times
+    // per pixel on the camera thread. Rebuilt only if a caller passes different mean/std constants; every
+    // current caller uses the default 0/255 pair, so in practice it is built once. Only the camera analyzer
+    // thread runs these copies, so plain fields are safe here.
+    private var normLut = FloatArray(0)
+    private var normLutMean = 0f
+    private var normLutStd = 0f
+
+    private fun normalizationLut(inputMean: Float, inputStd: Float): FloatArray {
+        var lut = normLut
+        if (lut.isEmpty() || inputMean != normLutMean || inputStd != normLutStd) {
+            lut = FloatArray(256) { (it - inputMean) / inputStd }
+            normLut = lut
+            normLutMean = inputMean
+            normLutStd = inputStd
+        }
+        return lut
+    }
+
     @JvmStatic
     fun copyRgbBitmapToFloatBuffer(
         bitmap: Bitmap,
@@ -413,13 +433,14 @@ object ImageUtils {
         inputMean: Float = 0f,
         inputStd: Float = 255f
     ) {
+        val lut = normalizationLut(inputMean, inputStd)
         byteBuffer.clear()
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
         for (pixel in pixels) {
-            byteBuffer.putFloat((((pixel shr 16) and 0xFF) - inputMean) / inputStd)
-            byteBuffer.putFloat((((pixel shr 8) and 0xFF) - inputMean) / inputStd)
-            byteBuffer.putFloat(((pixel and 0xFF) - inputMean) / inputStd)
+            byteBuffer.putFloat(lut[(pixel shr 16) and 0xFF])
+            byteBuffer.putFloat(lut[(pixel shr 8) and 0xFF])
+            byteBuffer.putFloat(lut[pixel and 0xFF])
         }
         byteBuffer.rewind()
     }
@@ -434,12 +455,13 @@ object ImageUtils {
         inputMean: Float = 0f,
         inputStd: Float = 255f
     ) {
+        val lut = normalizationLut(inputMean, inputStd)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         var j = 0
         for (pixel in pixels) {
-            out[j++] = (((pixel shr 16) and 0xFF) - inputMean) / inputStd
-            out[j++] = (((pixel shr 8) and 0xFF) - inputMean) / inputStd
-            out[j++] = ((pixel and 0xFF) - inputMean) / inputStd
+            out[j++] = lut[(pixel shr 16) and 0xFF]
+            out[j++] = lut[(pixel shr 8) and 0xFF]
+            out[j++] = lut[pixel and 0xFF]
         }
     }
 

@@ -18,7 +18,12 @@ data class YOLOStreamConfig(
     val includePoses: Boolean = false,
     val includeOBB: Boolean = false,
     
-    // Original image data (uses ImageProxy bitmap reuse - no additional conversion needed)
+    // Original image data.
+    // ⚠️ FOOTGUN — do not enable casually. When true, YOLOView JPEG-encodes the FULL
+    // camera frame at quality 90 on EVERY streamed frame, on the camera analyzer
+    // thread (see convertResultToStreamData in YOLOView.kt). At field frame rates
+    // that alone can dwarf inference cost and heat the phone. The Pollinator Monitor
+    // app never enables it; ROI photos go through the dedicated capture path instead.
     val includeOriginalImage: Boolean = false,
     
     // Performance controls

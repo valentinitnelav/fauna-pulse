@@ -2726,3 +2726,50 @@ short session.
 
 **Docs:** review A5 ticked with a done-note; overview motion-gate bullet gained
 the shared-raster sentence and the sync line moved to round 74.
+
+## Round 75 (2026-07-08): review A6 small-cleanups batch (Kotlin-only)
+
+All four A6 items from `PERF_AND_ROBUSTNESS_REVIEW.md`, batched as the review
+suggested. Behaviour-preserving; no Dart touched.
+
+1. **Orientation read once per frame** (`YOLOView.kt`). `onFrame` used to ask
+   `context.resources.configuration.orientation` up to three times per frame
+   (frame-cache write, `gateMotionFromFrame` — the round-74 helper that
+   inherited one of the reads — and the inference block). A single
+   `frameIsLandscape` val is now computed right after bitmap conversion and
+   passed everywhere; `gateMotionFromFrame` takes it as a parameter instead of
+   reading it itself. Resources/Configuration lookups aren't free and this ran
+   on the camera analyzer thread 10–30×/s.
+2. **Stream-data map copy dropped, hot maps pre-sized** (`YOLOView.kt`).
+   `convertResultToStreamData` now returns `HashMap<String, Any>` (pre-sized to
+   32) and `onFrame` enriches that same map in place — the per-frame
+   `HashMap<String, Any>(streamData)` full copy is gone. In the detect-box loop
+   (the only branch this app streams) the per-detection map (12) and the two
+   4-entry box maps (8) are pre-sized so they never rehash mid-build; the
+   `detections` list is sized to `result.boxes.size`. Pose/OBB/classification
+   branches deliberately untouched.
+3. **Pixel-normalization lookup table** (`ImageUtils.kt`). A "lookup table"
+   (LUT) is a precomputed array: since a colour channel can only be one of 256
+   values, the normalized float for each value is computed once into a
+   256-entry array and the per-pixel loop becomes three array reads instead of
+   three subtract+divides. Applied to `copyRgbBitmapToFloatArray` (the LiteRT
+   2.x path all predictors use) and the `copyRgbBitmapToFloatBuffer` sibling.
+   The table is cached in the `ImageUtils` object and rebuilt only if a caller
+   passes different mean/std (none currently does); copies only run on the
+   camera analyzer thread, so no locking is needed.
+4. **`includeOriginalImage` documented as a footgun.** ⚠️ comments now sit at
+   the flag definition (`YOLOStreamConfig.kt`) and at the encode site in
+   `convertResultToStreamData`: enabling it JPEG-encodes the FULL camera frame
+   at quality 90 on every streamed frame, on the camera thread. The app never
+   enables it (ROI photos have their own capture path) — the comments exist so
+   nobody flips it on casually.
+
+**Verification:** `./gradlew :ultralytics_yolo:compileDebugKotlin` → ✓ clean.
+No Dart changes, so analyzer/tests unaffected. Stream-map change is
+shape-identical on the wire (same keys, same values — only allocation pattern
+changed), so no on-device check is strictly required; behaviour will get
+covered incidentally by the next field session anyway.
+
+**Docs:** all four A6 boxes ticked with done-notes; overview sync line moved to
+round 75 and its stale "nothing implemented yet" note on the review pointer
+replaced (A1/A3/A5/A6/B6/B8 are done as of this round).
