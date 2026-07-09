@@ -640,7 +640,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         const Text(
           'Times the selected model on the GPU and on the CPU at several '
-          'thread counts, then lets you apply the fastest. Runs the model at '
+          'thread counts — fed test frames at the model\'s own input '
+          'resolution — then lets you apply the fastest. Runs the model at '
           'full speed for a few seconds per engine, so the phone warms up a '
           'little — run it when you change model, not before every session. '
           'The live preview keeps detecting in the background, which can make '
@@ -666,6 +667,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// after switching models), never automatically at session start.
   Future<void> _runEngineBenchmark() async {
     setState(() => _benchmarkRunning = true);
+    final clock = Stopwatch()..start();
     List<Map<String, dynamic>> results;
     try {
       results = await YOLO.benchmarkAccelerators(_c.modelPath);
@@ -689,10 +691,26 @@ class _SettingsSheetState extends State<SettingsSheet> {
     }
     if (!mounted) return;
     setState(() => _benchmarkRunning = false);
-    await _showBenchmarkResults(results);
+    await _showBenchmarkResults(results, clock.elapsedMilliseconds / 1000.0);
   }
 
-  Future<void> _showBenchmarkResults(List<Map<String, dynamic>> results) async {
+  Future<void> _showBenchmarkResults(
+    List<Map<String, dynamic>> results,
+    double elapsedS,
+  ) async {
+    // Model input resolution the timings apply to, from the native side's
+    // [1, height, width, 3] tensor shape (same for every configuration).
+    String? inputSize;
+    for (final r in results) {
+      final dims = (r['inputDims'] as List?)
+          ?.whereType<num>()
+          .map((e) => e.toInt())
+          .toList();
+      if (dims != null && dims.length == 4) {
+        inputSize = '${dims[2]}×${dims[1]}';
+        break;
+      }
+    }
     // Fastest configuration that actually produced a timing.
     Map<String, dynamic>? fastest;
     for (final r in results) {
@@ -712,6 +730,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                '${inputSize != null ? 'Model input: $inputSize px · ' : ''}'
+                'benchmark took ${elapsedS.toStringAsFixed(1)} s',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 8),
               for (final r in results) ...[
                 Text(
                   '${r['label']}',
@@ -734,11 +758,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
               ],
               const Text(
                 '"ms per inference" = how long ONE frame takes to go through '
-                'the model on that engine, averaged over the timed runs. The '
-                '"inferences/s" figure is just 1000 ÷ that — the ceiling if '
-                'the model ran back-to-back with no camera or tracking work. '
-                'Your session detector rate will be at or below it (and is '
-                'capped by the inference-rate setting).\n\n'
+                'the model on that engine, averaged over 20 timed runs (after '
+                '3 untimed warm-ups). The "inferences/s" figure is just '
+                '1000 ÷ that — the ceiling if the model ran back-to-back with '
+                'no camera or tracking work. Your session detector rate will '
+                'be at or below it (and is capped by the inference-rate '
+                'setting).\n\n'
+                'The test frames are random noise generated at exactly the '
+                'model\'s input resolution, so camera capture and downscaling '
+                'are NOT part of these timings (in a session that cost shows '
+                'up separately, as pre_ms in the log).\n\n'
                 'Applying the fastest sets the "Use GPU" switch and the '
                 'CPU-thread count above; Apply the settings sheet as usual '
                 'afterwards.',

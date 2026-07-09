@@ -61,6 +61,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed |
 | GPU when faster | on | see GPU/CPU note below |
+| CPU threads | `0` (auto) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest |
 
 ## Key invariants
 
@@ -110,8 +111,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   the scale-flipping readout misled the owner into shrinking the box to ~17% of the
   frame without realising it.
 - **GPU vs CPU is decided by whether the GPU backend can compile the model's op graph — not
-  by int8 vs fp16** (log §6). A 2-strike GPU-crash blocklist demotes crashing models to
-  CPU. The chosen engine is logged and shown on screen.
+  by int8 vs fp16** (log §6; re-verified r77: `arthropod_yolov11_int8` runs on GPU). A
+  2-strike GPU-crash blocklist demotes crashing models to CPU. The chosen engine is logged
+  and shown on screen. Engine choice is user-informed via the benchmark (r76:
+  `benchmarkAccelerators` in `YOLOPlugin.kt`, noise input at the model's own resolution,
+  3 warm-up + 20 timed runs per config; deliberately never run automatically).
 - **Stream resolution honesty (round 56).** The settings dropdown can over-promise; the
   live "Stream: W×H" readout is ground truth (CameraX may cap the analysis stream). Stream
   size only affects fast-crop sharpness, **not** detection (every frame is downscaled to the
@@ -140,8 +144,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   side heartbeats `gateIdle: true` ~1 Hz — `_onStreamingData` short-circuits on it (no
   watchdog, "Gate: idle" stat line). On wake after sleeping > `occlusionSeconds`,
   `ByteTracker.expireLostTracks()` runs so a newcomer never inherits a stale id. Gate
-  transitions are logged as `motion_gate` JSONL entries. Don't gate in Dart — frames
-  never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
+  transitions are logged as `motion_gate` JSONL entries. r77: while idle, per-second
+  `fps` records OMIT all inference-derived fields and carry `gate_idle: true` instead
+  (absent = detector off — never log stale/zero inference numbers), the on-screen
+  Pipeline/FPS/inference values read 0, and summary graphs break lines across the gap.
+  Don't gate in Dart — frames never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
   atop the status strip + ROI border turns grey while idle (priority: capture flash >
   gate-idle grey > recording red > yellow). Handheld shake keeps the gate awake by
   design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
@@ -168,7 +175,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 
 - **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
 - **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
-- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; being worked through — done items are ticked in place with a round number, e.g. A1/A3/A5/A6/B6/B8 as of round 75).
+- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; being worked through — done items are ticked in place with a round number, e.g. A1/A3/A4/A5/A6/B6/B8 as of round 77).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
 - **Archived selected Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).

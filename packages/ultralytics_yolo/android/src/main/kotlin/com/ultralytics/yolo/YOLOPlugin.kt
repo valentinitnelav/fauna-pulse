@@ -153,6 +153,10 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         val model = LiteRtModel(context, modelPath, c.useGpu, "AccelBenchmark", c.cpuThreads)
         try {
           entry["accelerator"] = model.accelerator
+          // Tensor shape the model is fed ([1, H, W, 3]) - surfaced so the UI can show
+          // the resolution the timings apply to. The benchmark input is noise generated
+          // at exactly this size; camera capture/downscaling is not part of the timing.
+          entry["inputDims"] = model.inputDims.toList()
           entry["compileMs"] = (System.nanoTime() - t0) / 1e6
           if (c.useGpu && model.accelerator != "GPU") {
             // The ladder inside LiteRtModel fell back to CPU (blocklisted or failed to

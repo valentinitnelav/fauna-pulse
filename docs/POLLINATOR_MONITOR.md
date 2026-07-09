@@ -2886,3 +2886,41 @@ camera_session_screen metadata comment) that seeded the myth.
 On-device check pending (owner): sleep the gate and confirm Pipeline reads 0,
 end-of-session FPS/inference graphs show real gaps, and fps records during
 idle carry `gate_idle: true` with no `inf_ms`.
+
+## Round 78 (2026-07-09): benchmark transparency (input size + duration) + idle-heat analysis (session_122)
+
+**Benchmark questions (owner):** what resolution do the benchmark timings
+apply to, and how long does the test take?
+- The benchmark never touches camera frames: the native side generates
+  fixed-seed random noise at **exactly the model's input tensor size**
+  (e.g. 320×320 for arthropod_yolov11_int8, 640×640 for yolo26n). No
+  downscaling happens and none is included in the timings — they are pure
+  model-execution time. In a real session the capture/downscale cost shows
+  up separately as `pre_ms`.
+- Changes: `benchmarkAccelerators` now returns `inputDims` per config; the
+  results dialog header shows "Model input: W×H px · benchmark took N s"
+  (Dart stopwatch around the call), and the dialog/footer texts spell out
+  the noise-input detail and the 3 warm-up + 20 timed runs per config.
+- Kept **iteration-based** (not user-set seconds): with 20 runs the average
+  is already stable (min vs avg spread is visible in the log), and a longer
+  benchmark mostly measures thermal drift — which would make configs run
+  later in the list look unfairly slow. Can add a user knob later if wanted.
+
+**Idle warming is real and not charging (session_122).** On battery,
+motion gate idle for the entire 6.8 min (detector ran 0 frames), the phone
+still drew a steady **~4.4 W** and warmed 30→35 °C. That draw is the
+always-on baseline the gate cannot remove: camera sensor + image processor
+streaming 30 fps for the live preview (only the *analysis* stream drops to
+~5 fps while idle), the screen at field brightness, display compositing,
+and system base load. The gate removes the detector's *additional* load
+(which previously drove thermal collapse in ~25–30 s uncapped — round 55
+sessions), so it is working as designed. Mitigations available today:
+blackout power-save mode (drops brightness to minimum while recording).
+Roadmap candidate (NOT implemented): request a lower CameraX frame-rate
+range while the gate is idle, to cut sensor/ISP load — the preview would
+visibly stutter while asleep.
+
+**Docs:** overview updated in place (CPU-threads defaults row, benchmark
+note in the GPU/CPU invariant, r77 gate-idle logging note, roadmap pointer
+now lists A4). Verification: Kotlin compiles, analyze clean, 95/95 tests,
+`flutter build apk --debug` ✓.
