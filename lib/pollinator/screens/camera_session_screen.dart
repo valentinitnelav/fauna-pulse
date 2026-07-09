@@ -414,15 +414,26 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final trio = _fpsTrioVN.value; // [cameraFps, detectorFps, pipelineFps]
     final perf = _perfVN.value; // [preMs, infMs, postMs]
     double at(List<double> l, int i) => i < l.length ? l[i] : 0.0;
+    // While the motion gate keeps the detector asleep, no inference happens —
+    // so the inference-derived fields are OMITTED rather than logged as 0 (or,
+    // worse, as their last awake values, which is what flat-lined the FPS and
+    // inference-time graphs before round 77). Absent = "gate idle, detector
+    // off"; present = the detector really ran at that number. Stats read the
+    // gaps as missing data, exactly as the owner wants. `gate_idle` makes the
+    // state explicit; camera_fps stays, it is real regardless.
+    final gateIdle = _gateIdle;
     _logger?.logFps({
-      'fps': _fpsVN.value,
+      if (gateIdle) 'gate_idle': true,
+      if (!gateIdle) ...{
+        'fps': _fpsVN.value,
+        'detector_fps': at(trio, 1),
+        'pipeline_fps': at(trio, 2),
+        'pre_ms': at(perf, 0),
+        'inf_ms': at(perf, 1),
+        'post_ms': at(perf, 2),
+        'track_ms': _lastTrackMs,
+      },
       'camera_fps': at(trio, 0),
-      'detector_fps': at(trio, 1),
-      'pipeline_fps': at(trio, 2),
-      'pre_ms': at(perf, 0),
-      'inf_ms': at(perf, 1),
-      'post_ms': at(perf, 2),
-      'track_ms': _lastTrackMs,
       'engine': _accelerator,
       'analysis_w': _imageWidth,
       'analysis_h': _imageHeight,
@@ -531,7 +542,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (data['gateIdle'] == true) {
       final hbCamFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
       _motionScoreVN.value = (data['motionScore'] as num?)?.toDouble() ?? 0;
-      _fpsTrioVN.value = [hbCamFps, 0, _frame.pipelineFpsEma];
+      // The detector is asleep: no inference is happening, so every
+      // inference-derived number must read 0 now. These used to keep their
+      // last awake values ("Pipeline: 11.7 fps", frozen inf_ms flat-lining
+      // the end-of-session graphs) — round 77.
+      _fpsVN.value = 0;
+      _perfVN.value = const [0, 0, 0];
+      _lastTrackMs = 0;
+      _fpsTrioVN.value = [hbCamFps, 0, 0];
       _setGateIdle(true);
       return;
     }
@@ -899,7 +917,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'task': _config.task.name,
         'use_gpu': _config.useGpu,
         'cpu_threads': _config.cpuThreads,
-        // What was actually used (vs the request above). int8 models run on CPU.
+        // What was actually used (vs the request above). CPU fallback happens
+        // per model when the GPU backend can't compile its graph — int8 models
+        // CAN run on GPU (verified round 77, session_120).
         'accelerator': _accelerator,
         'camera_full_width_px': _captureWidth,
         'camera_full_height_px': _captureHeight,

@@ -2831,3 +2831,58 @@ packages/ultralytics_yolo/lib` → clean; `flutter test test/pollinator` →
 warning only). On-device check pending (owner): run the benchmark on the
 Xiaomi with yolo26n, confirm GPU/CPU numbers look sane and "Use <fastest>"
 updates the two controls.
+
+## Round 77 (2026-07-09): gate-idle honesty pass (session_120 findings)
+
+Owner field-tested round 76 (session_120, arthropod_yolov11_int8 320px, GPU,
+uncapped, motion gate on, phone charging). Three findings, three fixes, plus
+a factual correction.
+
+**Finding 1 — stale numbers while the gate sleeps.** With the detector asleep,
+the UI showed "Pipeline: ~11–12 fps" and the per-second `fps` records kept
+logging `pipeline_fps=11.7`, `inf_ms=7.2`, `fps=11.5` — all frozen last-awake
+values, NOT live work (native FRAMEPERF proved `inferredFps=0.0`,
+`deliveredFps≈4.6` throughout the idle stretch; 436 of 503 fps records were
+affected). Causes: the gate-idle heartbeat branch reused `pipelineFpsEma` and
+never cleared `_fpsVN`/`_perfVN`/`_lastTrackMs`; the EMA itself never decays
+without callbacks. Fixes:
+- `FrameProcessor.setGateIdle(idle=true)` resets the pipeline EMA and its
+  timestamp (also stops the first post-wake frame averaging across the gap).
+- The heartbeat branch zeroes `_fpsVN`, `_perfVN`, `_lastTrackMs` and the
+  trio's pipeline slot — on-screen Pipeline now reads 0 while sleeping.
+- `_sampleFps` while gate-idle **omits** every inference-derived field
+  (`fps`, `detector_fps`, `pipeline_fps`, `pre_ms`, `inf_ms`, `post_ms`,
+  `track_ms`) and writes `gate_idle: true` instead; `camera_fps`, `engine`,
+  throttle fields stay. Owner's explicit preference: absent = gate idle
+  (missing data for stats), present = the detector really ran at that value.
+- Summary-graph painter breaks the polyline across sampling holes (gap > 3×
+  the series' median interval, floor 3 s) instead of drawing a bridge that
+  looks like data. Graph parsing already skipped absent fields, so old
+  sessions render unchanged.
+
+**Finding 2 — phone warms while "sleeping" (no bug).** Session thermal log:
+31→36 °C, but `is_charging: true` the whole session at ~2–6.5 W — charging
+alone is a heater. Beyond that, the camera sensor+ISP keep streaming at
+30 fps for the live preview (only the analyzer drops to ~4.6 fps sampled
+frames), the screen is on, and the gate costs one bitmap conversion (~4.7 ms)
++ tiny grid diff 5×/s. No zombie AI threads — FRAMEPERF shows inferred=0.
+Told owner: unplug during sessions if heat matters; the gate is emphatically
+still worth it (the detector at uncapped GPU speed is far hotter).
+
+**Finding 3 — benchmark dialog units unclear.** Result lines now read
+"X ms per inference — up to ~N inferences/s" and the footer explains: ms per
+inference = one frame through the model, averaged over the timed runs; the
+/s figure is 1000÷that, a back-to-back ceiling, not the session rate.
+
+**Correction — "int8 can't use GPU" was wrong (my error, round 76 summary).**
+Session_120 proves `arthropod_yolov11_int8` compiles and runs on the Adreno
+GPU ("LiteRT compiled on GPU", engine=GPU all session). GPU-vs-CPU fallback
+is decided per model by whether the GPU backend can compile that graph —
+never by dtype; the GPU dequantizes int8 internally. Purged the three stale
+"int8 → CPU" comments (YOLOView.kt accelerator note, LiteRtModel.kt header,
+camera_session_screen metadata comment) that seeded the myth.
+
+**Verification:** analyze clean; 95/95 tests; `flutter build apk --debug` ✓.
+On-device check pending (owner): sleep the gate and confirm Pipeline reads 0,
+end-of-session FPS/inference graphs show real gaps, and fps records during
+idle carry `gate_idle: true` with no `inf_ms`.

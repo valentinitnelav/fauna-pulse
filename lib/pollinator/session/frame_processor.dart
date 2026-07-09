@@ -125,6 +125,12 @@ class FrameProcessor {
     var expired = false;
     if (idle) {
       _gateIdleSinceMs = nowMs;
+      // No frames are handled while the detector sleeps, so the pipeline-FPS
+      // estimate must not linger at its last awake value (it used to freeze
+      // on screen and in the fps log — round 77). Clearing the timestamp also
+      // stops the first post-wake frame from averaging across the sleep gap.
+      _pipelineFpsEma = 0;
+      _lastCallbackMs = 0;
     } else if (_gateIdleSinceMs > 0) {
       idleS = (nowMs - _gateIdleSinceMs) / 1000.0;
       if (idleS > occlusionSeconds) {

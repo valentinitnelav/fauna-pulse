@@ -2306,8 +2306,10 @@ class YOLOView @JvmOverloads constructor(
                         enhancedStreamData["gateIdle"] = false
                         enhancedStreamData["motionScore"] = motionGate.lastScore
                     }
-                        // Which processor is actually running inference ("GPU"/"CPU"/"NPU"). Note GPU
-                        // can't compile int8 models and falls back to CPU (see LiteRtModel).
+                        // Which processor is actually running inference ("GPU"/"CPU"/"NPU"). CPU
+                        // fallback is decided per model by whether the GPU backend can compile its
+                        // graph, NOT by dtype - int8 models can and do compile on GPU (verified:
+                        // arthropod_yolov11_int8 runs on GPU, session_120). See LiteRtModel.
                         enhancedStreamData["accelerator"] = (p as? BasePredictor)?.accelerator ?: "unknown"
                         // Camera analysis delivery rate (frames/sec the sensor feeds the analyzer).
                         enhancedStreamData["cameraFps"] = lastDeliveredFps

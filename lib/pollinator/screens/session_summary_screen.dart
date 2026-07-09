@@ -1751,11 +1751,21 @@ class _SeriesPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeJoin = StrokeJoin.round;
+    // A hole in the series (e.g. the motion gate kept the detector asleep, so
+    // no inference samples were logged for that stretch — round 77) must show
+    // as a gap, not as a straight bridge that looks like data. Any pause much
+    // longer than the series' median sampling interval breaks the line.
+    final gaps = <int>[
+      for (var i = 1; i < points.length; i++) points[i].$1 - points[i - 1].$1,
+    ]..sort();
+    final medianGapMs = gaps.isEmpty ? 0 : gaps[gaps.length ~/ 2];
+    final breakMs = max(3000, medianGapMs * 3);
     final path = Path();
     for (var i = 0; i < points.length; i++) {
       final x = xForMs(points[i].$1);
       final y = yForV(points[i].$2);
-      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      final startsSegment = i == 0 || points[i].$1 - points[i - 1].$1 > breakMs;
+      startsSegment ? path.moveTo(x, y) : path.lineTo(x, y);
     }
     canvas.drawPath(path, linePaint);
   }

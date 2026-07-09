@@ -722,8 +722,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 ),
                 Text(
                   r['avgMs'] != null
-                      ? '${(r['avgMs'] as num).toStringAsFixed(1)} ms/inference '
-                            '(~${(1000 / (r['avgMs'] as num)).toStringAsFixed(1)}/s)'
+                      ? '${(r['avgMs'] as num).toStringAsFixed(1)} ms per '
+                            'inference — up to '
+                            '~${(1000 / (r['avgMs'] as num)).toStringAsFixed(0)} '
+                            'inferences/s'
                             '${identical(r, fastest) ? ' — fastest' : ''}'
                       : 'Unavailable: ${r['error'] ?? 'unknown error'}',
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
@@ -731,10 +733,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 const SizedBox(height: 8),
               ],
               const Text(
-                'Timings are averages over repeated runs on this phone with '
-                'this model. Applying the fastest sets the "Use GPU" switch '
-                'and the CPU-thread count above; Apply the settings sheet as '
-                'usual afterwards.',
+                '"ms per inference" = how long ONE frame takes to go through '
+                'the model on that engine, averaged over the timed runs. The '
+                '"inferences/s" figure is just 1000 ÷ that — the ceiling if '
+                'the model ran back-to-back with no camera or tracking work. '
+                'Your session detector rate will be at or below it (and is '
+                'capped by the inference-rate setting).\n\n'
+                'Applying the fastest sets the "Use GPU" switch and the '
+                'CPU-thread count above; Apply the settings sheet as usual '
+                'afterwards.',
                 style: TextStyle(fontSize: 12),
               ),
             ],

@@ -13,8 +13,9 @@ import com.google.ai.edge.litert.TensorType
  * [TensorBuffer]s or the accelerator framework directly.
  *
  * Accelerator ladder: GPU first (the CL/GL accelerator bundled with `litert`; profiled at ~4.7ms/inf for a non-end2end
- * fp16 YOLO26 on a Galaxy S26 GPU vs ~29ms CPU), falling back to CPU when the GPU can't compile the model (e.g. int8 or
- * end2end graphs). Unlike the old `Interpreter`+`GpuDelegate`, `CompiledModel` compiles the whole graph for one
+ * fp16 YOLO26 on a Galaxy S26 GPU vs ~29ms CPU), falling back to CPU when the GPU can't compile the model. Whether it
+ * can is a per-graph property (some end2end/custom exports fail), NOT a dtype rule - int8 models can compile and run
+ * on GPU (verified: arthropod_yolov11_int8, session_120). Unlike the old `Interpreter`+`GpuDelegate`, `CompiledModel` compiles the whole graph for one
  * accelerator, so a model either runs fully on GPU or fully on CPU - no per-op fragmentation.
  *
  * Tensor names follow the Ultralytics tflite export convention: input `images`, outputs `Identity`, `Identity_1`, ...
