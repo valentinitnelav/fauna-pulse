@@ -13,6 +13,7 @@ class PoseEstimator(
     modelPath: String,
     override var labels: List<String>,
     private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0,
     private var confidenceThreshold: Float = 0.25f,   // Can be changed as needed
     private var iouThreshold: Float = 0.7f,
     private var numItemsThreshold: Int = 30
@@ -52,7 +53,7 @@ class PoseEstimator(
             Log.w("PoseEstimator", "No embedded labels found and none provided; detections may lack class names.")
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "PoseEstimator")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "PoseEstimator", cpuThreads)
 
         val inDims = rtModel.inputDims
         val inHeight = if (inDims.size >= 4) inDims[1] else 640

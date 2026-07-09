@@ -650,6 +650,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     add('Model', _setting('modelPath', 'model_path'));
     add('Task', _setting('task', 'task'));
     add('GPU requested', _setting('useGpu', 'use_gpu'));
+    add('CPU threads (0 = automatic)', _setting('cpuThreads', 'cpu_threads'));
     add('Inference engine used', _accelerator);
     add('Confidence threshold', _setting('confidenceThreshold', 'confidence_threshold'));
     add('IoU threshold', _setting('iouThreshold', 'iou_threshold'));

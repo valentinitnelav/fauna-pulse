@@ -53,6 +53,12 @@ class YOLOView extends StatefulWidget {
   final double confidenceThreshold;
   final double iouThreshold;
   final bool useGpu;
+
+  /// CPU inference threads when the model runs on CPU (0 = the runtime's default).
+  /// LiteRT's CPU backend (XNNPACK) can spread its work over several threads:
+  /// often faster, but draws more power. Benchmark before raising it - see
+  /// [YOLO.benchmarkAccelerators].
+  final int cpuThreads;
   final LensFacing lensFacing;
 
   const YOLOView({
@@ -71,6 +77,7 @@ class YOLOView extends StatefulWidget {
     this.confidenceThreshold = 0.25,
     this.iouThreshold = 0.7,
     this.useGpu = true,
+    this.cpuThreads = 0,
     this.lensFacing = LensFacing.back,
   });
 
@@ -266,6 +273,8 @@ class _YOLOViewState extends State<YOLOView> {
               await _effectiveController.switchModel(
                 resolvedModel.modelPath,
                 resolvedModel.task,
+                widget.useGpu,
+                widget.cpuThreads,
               );
             } catch (_) {
               _nativeSwitchTarget = previousTarget;
@@ -468,6 +477,7 @@ class _YOLOViewState extends State<YOLOView> {
       'numItemsThreshold': _effectiveController.numItemsThreshold,
       'viewId': _viewId,
       'useGpu': widget.useGpu,
+      'cpuThreads': widget.cpuThreads,
       'lensFacing': widget.lensFacing.name,
     };
 

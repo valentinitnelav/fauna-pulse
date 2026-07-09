@@ -100,6 +100,12 @@ class SessionConfig {
   /// Use the GPU when available (the plugin falls back to CPU automatically).
   final bool useGpu;
 
+  /// CPU inference threads when the model runs on CPU (0 = let the runtime
+  /// decide). The CPU backend can spread the model's math over several cores:
+  /// often faster, but draws more power and heat. Use the engine benchmark in
+  /// Settings to see what this device actually gains before raising it.
+  final int cpuThreads;
+
   /// Cap on how many times per second the detector runs ("inference").
   /// **0 means uncapped** — run as fast as the device can. A positive value
   /// throttles inference to that rate to cut heat and battery (the model is the
@@ -265,6 +271,7 @@ class SessionConfig {
     this.showOverlayInfo = true,
     this.flashOnCapture = true,
     this.useGpu = true,
+    this.cpuThreads = 0,
     this.inferenceFps =
         10, // deliberate default cap: plenty for second-scale insect visits,
     // and it delays the thermal collapse under field sun. 0 = uncapped
@@ -338,6 +345,7 @@ class SessionConfig {
     bool? showOverlayInfo,
     bool? flashOnCapture,
     bool? useGpu,
+    int? cpuThreads,
     int? inferenceFps,
     bool? autoThrottle,
     int? minInferenceFps,
@@ -374,6 +382,7 @@ class SessionConfig {
     showOverlayInfo: showOverlayInfo ?? this.showOverlayInfo,
     flashOnCapture: flashOnCapture ?? this.flashOnCapture,
     useGpu: useGpu ?? this.useGpu,
+    cpuThreads: cpuThreads ?? this.cpuThreads,
     inferenceFps: inferenceFps ?? this.inferenceFps,
     autoThrottle: autoThrottle ?? this.autoThrottle,
     minInferenceFps: minInferenceFps ?? this.minInferenceFps,
@@ -414,6 +423,7 @@ class SessionConfig {
     'showOverlayInfo': showOverlayInfo,
     'flashOnCapture': flashOnCapture,
     'useGpu': useGpu,
+    'cpuThreads': cpuThreads,
     'inferenceFps': inferenceFps,
     'autoThrottle': autoThrottle,
     'minInferenceFps': minInferenceFps,
@@ -454,6 +464,7 @@ class SessionConfig {
     showOverlayInfo: j['showOverlayInfo'] as bool? ?? true,
     flashOnCapture: j['flashOnCapture'] as bool? ?? true,
     useGpu: j['useGpu'] as bool? ?? true,
+    cpuThreads: (j['cpuThreads'] as num?)?.toInt() ?? 0,
     inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? 10,
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,

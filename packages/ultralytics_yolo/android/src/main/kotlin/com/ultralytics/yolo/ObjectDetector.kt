@@ -17,6 +17,7 @@ class ObjectDetector(
     modelPath: String,
     override var labels: List<String>,
     private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0,
     private var numItemsThreshold: Int = 30
 ) : BasePredictor() {
     // Inference output dimensions
@@ -51,7 +52,7 @@ class ObjectDetector(
             Log.w(TAG, "No embedded labels found and none provided; detections may lack class names.")
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObjectDetector")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObjectDetector", cpuThreads)
 
         // Input dims [1, H, W, 3].
         val inDims = rtModel.inputDims

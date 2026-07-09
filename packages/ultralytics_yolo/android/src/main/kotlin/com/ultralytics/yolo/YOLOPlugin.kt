@@ -115,6 +115,84 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     return modelPath
   }
 
+  /**
+   * Times real inferences per engine configuration: GPU first, then CPU once per entry in
+   * [threadVariants] (0 = the runtime's default thread count). Reuses [LiteRtModel], so the
+   * GPU attempt inherits the crash-guard marker, the 2-strike blocklist and the program cache
+   * - a model that is known to crash the GPU is reported as unavailable, not retried.
+   *
+   * Timing detail: each configuration compiles the model fresh, then runs 3 untimed warm-up
+   * inferences (the first runs on any engine are slower while caches fill) before the timed
+   * ones. Input is fixed-seed random noise - convolution cost does not depend on pixel values,
+   * so noise times the same work a real frame would.
+   *
+   * Returns one map per configuration: label, useGpu, cpuThreads, accelerator actually used,
+   * avgMs / minMs / compileMs / iterations on success, or an "error" string on failure.
+   */
+  private fun runAcceleratorBenchmark(
+    context: android.content.Context,
+    modelPath: String,
+    iterations: Int,
+    threadVariants: List<Int>,
+  ): List<Map<String, Any>> {
+    data class Config(val label: String, val useGpu: Boolean, val cpuThreads: Int)
+    val configs = mutableListOf(Config("GPU", useGpu = true, cpuThreads = 0))
+    for (t in threadVariants.distinct()) {
+      configs += Config(if (t == 0) "CPU (default threads)" else "CPU ($t threads)", useGpu = false, cpuThreads = t)
+    }
+
+    val out = mutableListOf<Map<String, Any>>()
+    for (c in configs) {
+      val entry = mutableMapOf<String, Any>(
+        "label" to c.label,
+        "useGpu" to c.useGpu,
+        "cpuThreads" to c.cpuThreads,
+      )
+      try {
+        val t0 = System.nanoTime()
+        val model = LiteRtModel(context, modelPath, c.useGpu, "AccelBenchmark", c.cpuThreads)
+        try {
+          entry["accelerator"] = model.accelerator
+          entry["compileMs"] = (System.nanoTime() - t0) / 1e6
+          if (c.useGpu && model.accelerator != "GPU") {
+            // The ladder inside LiteRtModel fell back to CPU (blocklisted or failed to
+            // compile). Timing that here would just duplicate the CPU-default entry.
+            entry["error"] = "GPU unavailable for this model (blocklisted or failed to compile)"
+          } else {
+            val inputSize = if (model.inputDims.isNotEmpty()) model.inputDims.fold(1) { a, b -> a * b } else 0
+            if (inputSize <= 0) {
+              entry["error"] = "Could not determine the model's input size"
+            } else {
+              val input = FloatArray(inputSize)
+              val rng = java.util.Random(42)
+              for (i in input.indices) input[i] = rng.nextFloat()
+              repeat(3) { model.run(input) }
+              var totalNs = 0L
+              var minNs = Long.MAX_VALUE
+              repeat(iterations) {
+                val s = System.nanoTime()
+                model.run(input)
+                val d = System.nanoTime() - s
+                totalNs += d
+                if (d < minNs) minNs = d
+              }
+              entry["avgMs"] = totalNs / iterations / 1e6
+              entry["minMs"] = minNs / 1e6
+              entry["iterations"] = iterations
+            }
+          }
+        } finally {
+          runCatching { model.close() }
+        }
+      } catch (e: Throwable) {
+        entry["error"] = e.message ?: e.javaClass.simpleName
+      }
+      Log.i(TAG, "AccelBenchmark ${c.label}: $entry")
+      out += entry
+    }
+    return out
+  }
+
   override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
     when (call.method) {
       "createInstance" -> {
@@ -404,7 +482,41 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         }
       }
       // END OF "checkModelExists" case
-      
+
+      // Pollinator Monitor (perf review A4): user-triggered CPU-vs-GPU benchmark. Compiles the
+      // model once per engine configuration and times real inferences on each, so the user can
+      // pick the faster engine for THIS device+model pair instead of trusting the GPU-first
+      // default. Deliberately NOT run automatically at session start - compiling the model
+      // several times costs seconds and heats the phone, so the user decides when it happens
+      // (e.g. after switching models). Runs on its own thread; the channel reply is async.
+      "benchmarkAccelerators" -> {
+        try {
+          val args = call.arguments as? Map<*, *>
+          val originalPath = args?.get("modelPath") as? String ?: ""
+          val iterations = ((args?.get("iterations") as? Number)?.toInt() ?: 20).coerceIn(1, 200)
+          val threadVariants = (args?.get("cpuThreadVariants") as? List<*>)
+            ?.mapNotNull { (it as? Number)?.toInt() }
+            ?.ifEmpty { null } ?: listOf(0, 2, 4)
+          val modelPath = resolveModelPath(originalPath)
+          Thread({
+            val results = runCatching {
+              runAcceleratorBenchmark(applicationContext, modelPath, iterations, threadVariants)
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+              results.fold(
+                onSuccess = { result.success(it) },
+                onFailure = { e ->
+                  Log.e(TAG, "Accelerator benchmark failed", e)
+                  result.error("benchmark_error", "Benchmark failed: ${e.message}", null)
+                },
+              )
+            }
+          }, "yolo-accel-benchmark").start()
+        } catch (e: Exception) {
+          result.error("benchmark_error", "Failed to start benchmark: ${e.message}", null)
+        }
+      }
+
       "getStoragePaths" -> {
         try {
           val paths = mapOf(

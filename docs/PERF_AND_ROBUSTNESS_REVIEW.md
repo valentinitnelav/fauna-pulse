@@ -113,10 +113,19 @@ the LiteRT API grows a destination-buffer read.
 
 ### A4. Implement the startup CPU-vs-GPU benchmark (spec says it exists; it doesn't)
 
-- [ ] `LiteRtModel.kt` (~lines 100–123) — engine choice is a fixed ladder: try
+- [x] `LiteRtModel.kt` (~lines 100–123) — engine choice is a fixed ladder: try
   GPU, and on any error fall back to CPU. The "benchmark" mentioned in
   CLAUDE.md and in the file's own header comment (~lines 15–18) is only a
-  doc comment with numbers profiled on other hardware.
+  doc comment with numbers profiled on other hardware. *(Done, round 76, with
+  an owner-decided design change: the benchmark is **user-triggered from
+  Settings → AI**, not automatic at model load — compiling the model several
+  times costs seconds and heat, so the user runs it when it matters (e.g.
+  after switching models). Native `benchmarkAccelerators` in `YOLOPlugin.kt`
+  times GPU and CPU at several thread counts through `LiteRtModel` (inheriting
+  the crash guard / blocklist / program cache); a results dialog offers
+  "Use <fastest>", which sets the existing `useGpu` switch and the new
+  `cpuThreads` setting. No per-model persisted auto-choice — the chosen engine
+  lives in `SessionConfig` like every other tunable.)*
 
 GPU is *usually* faster, but not always (small nano models on some SoCs run
 faster on CPU, and GPU keeps the device warmer). Proposal: at model load, run
@@ -175,9 +184,17 @@ documented behaviour.
 
 ### A7. Noted for the roadmap (no action this round)
 
-- There is **no CPU thread-count or XNNPACK tuning surface** in the current
+- ~~There is **no CPU thread-count or XNNPACK tuning surface** in the current
   LiteRT 2.x `CompiledModel` API path — CPU behaviour is whatever the runtime
-  defaults to. If CPU sessions matter more after A4, revisit.
+  defaults to. If CPU sessions matter more after A4, revisit.~~ *(Corrected in
+  round 76: litert 2.1.5 does expose `CompiledModel.CpuOptions(numThreads,
+  xnnPackFlags, xnnPackWeightCachePath)` — verified with javap against the
+  AAR. XNNPACK itself is already LiteRT's default CPU backend, so there was
+  nothing to "add"; `numThreads` is now plumbed through (`cpuThreads` setting,
+  0 = runtime default) and measured by the A4 benchmark. `xnnPackFlags` left
+  alone (exotic), and the weight cache deliberately skipped: a cache file
+  corrupted by a mid-write kill would be re-read by native code at next launch
+  with no crash-guard around it, for only a small load-time win.)*
 - Larger speed/accuracy items (full-res stills strategy, alternative runtimes
   such as ncnn, model retraining) are tracked in the owner's performance
   roadmap and are out of scope for this review.

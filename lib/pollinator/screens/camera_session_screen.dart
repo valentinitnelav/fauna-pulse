@@ -898,6 +898,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'model_path': _config.modelPath,
         'task': _config.task.name,
         'use_gpu': _config.useGpu,
+        'cpu_threads': _config.cpuThreads,
         // What was actually used (vs the request above). int8 models run on CPU.
         'accelerator': _accelerator,
         'camera_full_width_px': _captureWidth,
@@ -1441,6 +1442,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             task: _config.task,
             controller: _controller,
             useGpu: _config.useGpu,
+            cpuThreads: _config.cpuThreads,
             confidenceThreshold: _config.confidenceThreshold,
             iouThreshold: _config.iouThreshold,
             // Cap how often the model runs (camera preview is unaffected). This

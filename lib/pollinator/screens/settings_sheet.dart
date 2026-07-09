@@ -99,6 +99,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// Mirrors the inverse of the persisted "hide" flag; loaded in [initState].
   bool _showSetupTips = true;
 
+  /// True while the engine benchmark runs (disables its button).
+  bool _benchmarkRunning = false;
+
   @override
   void initState() {
     super.initState();
@@ -605,6 +608,45 @@ class _SettingsSheetState extends State<SettingsSheet> {
           value: _c.useGpu,
           onChanged: (v) => setState(() => _c = _c.copyWith(useGpu: v)),
         ),
+        NumericSettingField(
+          label: 'CPU threads (0 = automatic)',
+          value: _c.cpuThreads.toDouble(),
+          min: 0,
+          max: 8,
+          isInt: true,
+          helperText:
+              'How many processor cores the model may use when it runs on the '
+              'CPU (GPU runs ignore this). 0 lets the runtime decide. More '
+              'threads can be faster but draw more power and heat — run the '
+              'benchmark below before changing it.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(cpuThreads: v.round())),
+        ),
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
+          onPressed: _benchmarkRunning ? null : _runEngineBenchmark,
+          icon: _benchmarkRunning
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.speed),
+          label: Text(
+            _benchmarkRunning
+                ? 'Benchmarking… (up to ~30 s)'
+                : 'Benchmark engines (GPU vs CPU)',
+          ),
+        ),
+        const Text(
+          'Times the selected model on the GPU and on the CPU at several '
+          'thread counts, then lets you apply the fastest. Runs the model at '
+          'full speed for a few seconds per engine, so the phone warms up a '
+          'little — run it when you change model, not before every session. '
+          'The live preview keeps detecting in the background, which can make '
+          'all numbers read slightly slow; their ranking is still valid.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
 
         const Divider(color: Colors.white24),
         const Text(
@@ -615,6 +657,115 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const SizedBox(height: 8),
       ],
     );
+  }
+
+  /// Runs the plugin's engine benchmark (perf review A4) on the currently
+  /// selected model and shows the timings. User-triggered on purpose: the
+  /// benchmark compiles the model once per engine and runs seconds of
+  /// full-speed inference, so it should happen when the user decides (e.g.
+  /// after switching models), never automatically at session start.
+  Future<void> _runEngineBenchmark() async {
+    setState(() => _benchmarkRunning = true);
+    List<Map<String, dynamic>> results;
+    try {
+      results = await YOLO.benchmarkAccelerators(_c.modelPath);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _benchmarkRunning = false);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Benchmark failed'),
+          content: Text('$e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _benchmarkRunning = false);
+    await _showBenchmarkResults(results);
+  }
+
+  Future<void> _showBenchmarkResults(List<Map<String, dynamic>> results) async {
+    // Fastest configuration that actually produced a timing.
+    Map<String, dynamic>? fastest;
+    for (final r in results) {
+      final avg = (r['avgMs'] as num?)?.toDouble();
+      if (avg == null) continue;
+      if (fastest == null || avg < (fastest['avgMs'] as num).toDouble()) {
+        fastest = r;
+      }
+    }
+
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Engine benchmark'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final r in results) ...[
+                Text(
+                  '${r['label']}',
+                  style: TextStyle(
+                    fontWeight:
+                        identical(r, fastest) ? FontWeight.bold : null,
+                  ),
+                ),
+                Text(
+                  r['avgMs'] != null
+                      ? '${(r['avgMs'] as num).toStringAsFixed(1)} ms/inference '
+                            '(~${(1000 / (r['avgMs'] as num)).toStringAsFixed(1)}/s)'
+                            '${identical(r, fastest) ? ' — fastest' : ''}'
+                      : 'Unavailable: ${r['error'] ?? 'unknown error'}',
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+              ],
+              const Text(
+                'Timings are averages over repeated runs on this phone with '
+                'this model. Applying the fastest sets the "Use GPU" switch '
+                'and the CPU-thread count above; Apply the settings sheet as '
+                'usual afterwards.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Close'),
+          ),
+          if (fastest != null)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Use ${fastest['label']}'),
+            ),
+        ],
+      ),
+    );
+
+    if (apply == true && fastest != null && mounted) {
+      setState(() {
+        _c = _c.copyWith(
+          useGpu: fastest!['useGpu'] as bool? ?? true,
+          // Winner on GPU: thread count stays as-is (it only matters if the
+          // model ever falls back to CPU). Winner on CPU: adopt its threads.
+          cpuThreads: (fastest['useGpu'] as bool? ?? true)
+              ? _c.cpuThreads
+              : (fastest['cpuThreads'] as num? ?? 0).toInt(),
+        );
+      });
+    }
   }
 
   Widget _trackerFields() {

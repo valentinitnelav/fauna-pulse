@@ -328,7 +328,15 @@ class YOLOViewController {
     'idleFps': idleFps,
   });
 
-  Future<void> switchModel(String modelPath, [YOLOTask? task]) async {
+  Future<void> switchModel(
+    String modelPath, [
+    YOLOTask? task,
+    // Engine choice for the newly loaded model. Without these the native side would fall
+    // back to its own defaults (GPU-first, runtime thread count) on every in-place model
+    // switch, silently ignoring what the user configured for the session.
+    bool useGpu = true,
+    int cpuThreads = 0,
+  ]) async {
     final channel = _methodChannel;
     if (channel == null || _viewId == null) return;
     final resolvedModel = await YOLOModelResolver.resolve(
@@ -342,6 +350,8 @@ class YOLOViewController {
       await channel.invokeMethod<void>('setModel', {
         'modelPath': resolvedModel.modelPath,
         'task': resolvedModel.task.name,
+        'useGpu': useGpu,
+        'cpuThreads': cpuThreads,
       });
     } catch (e) {
       logInfo('YOLOViewController.setModel failed: $e');

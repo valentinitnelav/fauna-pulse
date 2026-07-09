@@ -292,6 +292,40 @@ class YOLO {
     }
   }
 
+  /// Benchmarks inference speed per engine for [modelPath] (Android only).
+  ///
+  /// Compiles the model once per configuration - GPU, then CPU once per entry
+  /// in [cpuThreadVariants] (0 = the runtime's default thread count) - and
+  /// times [iterations] real inferences on each. Returns one map per
+  /// configuration with `label`, `useGpu`, `cpuThreads`, `accelerator`, and
+  /// either `avgMs` / `minMs` / `compileMs` / `iterations` or an `error`
+  /// string (e.g. when the GPU cannot compile this model).
+  ///
+  /// This is deliberately a user-triggered call, not something to run at every
+  /// session start: it costs several seconds of full-speed inference and warms
+  /// the phone. Don't run it while a camera session is live.
+  static Future<List<Map<String, dynamic>>> benchmarkAccelerators(
+    String modelPath, {
+    int iterations = 20,
+    List<int> cpuThreadVariants = const [0, 2, 4],
+  }) async {
+    // Same resolution step the live view uses, so asset-bundled models are
+    // materialized to a real file path before the native side opens them.
+    final resolvedPath = await YOLOModelResolver.preparePath(modelPath);
+    final channel = ChannelConfig.createSingleImageChannel();
+    final result = await channel.invokeMethod('benchmarkAccelerators', {
+      'modelPath': resolvedPath,
+      'iterations': iterations,
+      'cpuThreadVariants': cpuThreadVariants,
+    });
+    return [
+      for (final entry in result as List)
+        Map<String, dynamic>.fromEntries(
+          (entry as Map).entries.map((e) => MapEntry(e.key.toString(), e.value)),
+        ),
+    ];
+  }
+
   /// Gets the available storage paths for the app.
   ///
   /// Returns a map containing paths to different storage locations:

@@ -13,7 +13,8 @@ class SemanticSegmenter(
     context: Context,
     modelPath: String,
     override var labels: List<String>,
-    private val useGpu: Boolean = true
+    private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0
 ) : BasePredictor() {
     private lateinit var floatInput: FloatArray
     private lateinit var inputBitmap: Bitmap
@@ -27,7 +28,7 @@ class SemanticSegmenter(
     init {
         YOLOFileUtils.loadModelLabels(context, modelPath)?.let { labels = it }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "SemanticSegmenter")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "SemanticSegmenter", cpuThreads)
 
         val inDims = rtModel.inputDims
         val inHeight = if (inDims.size >= 4) inDims[1] else 640

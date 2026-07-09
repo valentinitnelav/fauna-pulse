@@ -137,7 +137,8 @@ class YOLOPlatformView(
             
             // Load model
             val useGpu = creationParams?.get("useGpu") as? Boolean ?: true
-            yoloView.setModel(modelPath, task, useGpu)
+            val cpuThreads = (creationParams?.get("cpuThreads") as? Number)?.toInt() ?: 0
+            yoloView.setModel(modelPath, task, useGpu, cpuThreads)
             
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing YOLOPlatformView", e)
@@ -396,16 +397,17 @@ class YOLOPlatformView(
                     var modelPath = call.argument<String>("modelPath")
                     val taskString = call.argument<String>("task")
                     val useGpu = call.argument<Boolean>("useGpu") ?: true
-                    
+                    val cpuThreads = call.argument<Int>("cpuThreads") ?: 0
+
                     if (modelPath == null || taskString == null) {
                         result.error("invalid_args", "modelPath and task are required", null)
                         return
                     }
-                    
+
                     modelPath = resolveModelPath(context, modelPath)
                     val task = YOLOTask.valueOf(taskString.uppercase())
-                    
-                    yoloView.setModel(modelPath, task, useGpu) { success ->
+
+                    yoloView.setModel(modelPath, task, useGpu, cpuThreads) { success ->
                         if (success) {
                             result.success(null)
                         } else {

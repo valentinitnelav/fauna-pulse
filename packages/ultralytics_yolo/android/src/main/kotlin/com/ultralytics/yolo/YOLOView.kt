@@ -689,8 +689,8 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
-    fun setModel(modelPath: String, task: YOLOTask, useGpu: Boolean = true, callback: ((Boolean) -> Unit)? = null) {
-        val cacheKey = "$modelPath|$task|$useGpu"
+    fun setModel(modelPath: String, task: YOLOTask, useGpu: Boolean = true, cpuThreads: Int = 0, callback: ((Boolean) -> Unit)? = null) {
+        val cacheKey = "$modelPath|$task|$useGpu|$cpuThreads"
         inferenceResult = null
         post {
             overlayView.invalidate()
@@ -718,12 +718,12 @@ class YOLOView @JvmOverloads constructor(
         Executors.newSingleThreadExecutor().execute {
             try {
                 val newPredictor = when (task) {
-                    YOLOTask.DETECT -> ObjectDetector(context = context, modelPath = modelPath, labels = emptyList(), useGpu = useGpu)
-                    YOLOTask.SEGMENT -> Segmenter(context, modelPath, labels = emptyList(), useGpu = useGpu)
-                    YOLOTask.SEMANTIC -> SemanticSegmenter(context, modelPath, labels = emptyList(), useGpu = useGpu)
-                    YOLOTask.CLASSIFY -> Classifier(context, modelPath, labels = emptyList(), useGpu = useGpu)
-                    YOLOTask.POSE -> PoseEstimator(context, modelPath, labels = emptyList(), useGpu = useGpu)
-                    YOLOTask.OBB -> ObbDetector(context, modelPath, labels = emptyList(), useGpu = useGpu)
+                    YOLOTask.DETECT -> ObjectDetector(context = context, modelPath = modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
+                    YOLOTask.SEGMENT -> Segmenter(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
+                    YOLOTask.SEMANTIC -> SemanticSegmenter(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
+                    YOLOTask.CLASSIFY -> Classifier(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
+                    YOLOTask.POSE -> PoseEstimator(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
+                    YOLOTask.OBB -> ObbDetector(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
                 }
 
                 // Apply thresholds to all predictor types

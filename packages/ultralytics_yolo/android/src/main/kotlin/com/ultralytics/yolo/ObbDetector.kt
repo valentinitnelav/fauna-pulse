@@ -13,6 +13,7 @@ class ObbDetector(
     modelPath: String,
     override var labels: List<String>,
     private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0,
     private var numItemsThreshold: Int = 30
 ) : BasePredictor() {
 
@@ -39,7 +40,7 @@ class ObbDetector(
             Log.w("ObbDetector", "No embedded labels found and none provided; detections may lack class names.")
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObbDetector")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObbDetector", cpuThreads)
 
         val inDims = rtModel.inputDims
         val inHeight = if (inDims.size >= 4) inDims[1] else 640

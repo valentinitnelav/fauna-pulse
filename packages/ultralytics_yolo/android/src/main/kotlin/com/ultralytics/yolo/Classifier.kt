@@ -13,6 +13,7 @@ class Classifier(
     modelPath: String,
     override var labels: List<String> = emptyList(),
     private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0,
     private val classifierOptions: Map<String, Any>? = null
 ) : BasePredictor() {
 
@@ -39,7 +40,7 @@ class Classifier(
             }
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "Classifier")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "Classifier", cpuThreads)
 
         // Input dims [1, H, W, C].
         val inDims = rtModel.inputDims

@@ -35,7 +35,7 @@ class YOLO(
             YOLOTask.DETECT -> ObjectDetector(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
             YOLOTask.SEGMENT -> Segmenter(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
             YOLOTask.SEMANTIC -> SemanticSegmenter(context, modelPath, labels, useGpu)
-            YOLOTask.CLASSIFY -> Classifier(context, modelPath, labels, useGpu, classifierOptions)
+            YOLOTask.CLASSIFY -> Classifier(context, modelPath, labels, useGpu, classifierOptions = classifierOptions)
             YOLOTask.POSE -> PoseEstimator(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
             YOLOTask.OBB -> ObbDetector(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
         }

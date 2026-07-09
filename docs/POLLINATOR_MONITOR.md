@@ -2773,3 +2773,61 @@ covered incidentally by the next field session anyway.
 **Docs:** all four A6 boxes ticked with done-notes; overview sync line moved to
 round 75 and its stale "nothing implemented yet" note on the review pointer
 replaced (A1/A3/A5/A6/B6/B8 are done as of this round).
+
+## Round 76 (2026-07-08): user-triggered engine benchmark (review A4) + CPU thread tunable (A7 correction)
+
+Owner redefined A4's design: the CPU-vs-GPU benchmark must NOT run
+automatically at session start (it costs seconds of full-speed inference and
+heats the phone). Instead it is an explicit action the user takes when it
+matters — typically after switching models. CLAUDE.md's "Hardware
+Acceleration" spec bullet was updated to match.
+
+**A7 correction (checked before building anything):** the review's claim that
+LiteRT 2.x has "no CPU thread-count or XNNPACK tuning surface" is wrong for
+the litert 2.1.5 we ship — `javap` against the AAR shows
+`CompiledModel.CpuOptions(numThreads, xnnPackFlags, xnnPackWeightCachePath)`.
+Also clarified for the owner: **XNNPACK is not something to "implement" — it
+is already the default CPU engine inside LiteRT.** The only meaningful knob is
+its thread count, which is exactly what this round exposes and what the
+benchmark measures. `xnnPackFlags` left untouched (exotic); the XNNPACK weight
+cache deliberately skipped — a mid-write kill could leave a corrupt file that
+native code re-reads at next launch with no crash-guard, for a small
+load-time-only win.
+
+**Native (Kotlin):**
+- `LiteRtModel` takes `cpuThreads: Int = 0` (0 = runtime default) and sets
+  `CompiledModel.CpuOptions(numThreads=…)` on CPU compiles. Plumbed through
+  `InferenceModel.create`, all six predictors, `YOLOView.setModel` (also part
+  of the predictor cache key), and `YOLOPlatformView` (creation params + the
+  in-place `"setModel"` call).
+- `YOLOPlugin` gains `"benchmarkAccelerators"`: resolves the model path, then
+  on a dedicated thread compiles once per configuration — GPU, then CPU per
+  thread variant (default 0/2/4) — and times 20 inferences each after 3
+  warm-ups, fixed-seed random input. Reuses `LiteRtModel`, so the GPU attempt
+  inherits the compile crash-guard, 2-strike blocklist and program cache; a
+  blocklisted model reports "GPU unavailable" instead of retrying. Returns
+  label/accelerator/avgMs/minMs/compileMs or an error string per config.
+- Fixed in passing: `YOLOViewController.switchModel` never passed `useGpu`, so
+  an in-place model switch silently reverted to GPU-first regardless of the
+  session setting. It now passes `useGpu` and `cpuThreads` from the widget.
+
+**App (Dart):**
+- `YOLO.benchmarkAccelerators(modelPath)` static in the plugin (resolves
+  asset models to real files first, same as the live view).
+- `SessionConfig.cpuThreads` (default 0), persisted + copyWith + JSON.
+- Settings → AI: "CPU threads (0 = automatic)" numeric field and a
+  "Benchmark engines (GPU vs CPU)" button (spinner while running, ~10–30 s);
+  results dialog lists each configuration's ms/inference and offers
+  "Use <fastest>" — GPU winner sets `useGpu=true`, CPU winner sets
+  `useGpu=false` + its thread count. Helper text warns the live preview keeps
+  detecting during the benchmark, which can slow all numbers slightly but not
+  their ranking.
+- Session metadata logs `cpu_threads`; summary screen shows
+  "CPU threads (0 = automatic)" under Model & detection.
+
+**Verification:** `flutter analyze lib/pollinator test/pollinator
+packages/ultralytics_yolo/lib` → clean; `flutter test test/pollinator` →
+95/95; `flutter build apk --debug` → ✓ (pre-existing fetch_bundled_models.sh
+warning only). On-device check pending (owner): run the benchmark on the
+Xiaomi with yolo26n, confirm GPU/CPU numbers look sane and "Use <fastest>"
+updates the two controls.

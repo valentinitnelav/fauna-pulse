@@ -24,6 +24,11 @@ class LiteRtModel(
     modelPath: String,
     useGpu: Boolean,
     private val tag: String,
+    // CPU inference threads. 0 = leave it to the runtime's default. LiteRT's CPU backend is
+    // XNNPACK (a library of hand-optimized CPU kernels that TFLite/LiteRT uses automatically);
+    // this only tunes how many threads those kernels may spread across. More threads can be
+    // faster but also draws more power/heat - benchmark before changing (see benchmarkAccelerators).
+    private val cpuThreads: Int = 0,
 ) : InferenceModel {
     private data class PreparedModel(
         val model: CompiledModel,
@@ -169,6 +174,14 @@ class LiteRtModel(
 
     private fun prepareModel(modelPath: String, accelerator: Accelerator, gpuCacheDir: java.io.File): PreparedModel {
         val options = CompiledModel.Options(accelerator)
+        if (accelerator == Accelerator.CPU && cpuThreads > 0) {
+            // litert 2.1.5 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. Only
+            // numThreads is set here: flags are exotic, and the weight cache is deliberately
+            // skipped - a cache file corrupted by a mid-write kill would be read back by
+            // native code on the next launch, and unlike the GPU program cache above there
+            // is no crash-guard around it yet.
+            options.cpuOptions = CompiledModel.CpuOptions(numThreads = cpuThreads)
+        }
         if (accelerator == Accelerator.GPU) {
             // Serialize compiled GPU programs so subsequent model opens skip CL compilation entirely.
             // Kept in a dedicated sub-directory so the crash-guard above can wipe just this cache.

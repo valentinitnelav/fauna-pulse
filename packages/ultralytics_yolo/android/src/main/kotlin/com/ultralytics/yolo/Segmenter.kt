@@ -14,6 +14,7 @@ class Segmenter(
     modelPath: String,
     override var labels: List<String>,
     private val useGpu: Boolean = true,
+    private val cpuThreads: Int = 0,
     private var numItemsThreshold: Int = 30
 ) : BasePredictor() {
 
@@ -45,7 +46,7 @@ class Segmenter(
             Log.w("Segmenter", "No embedded labels found and none provided; detections may lack class names.")
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "Segmenter")
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "Segmenter", cpuThreads)
 
         val inDims = rtModel.inputDims
         val inHeight = if (inDims.size >= 4) inDims[1] else 640
