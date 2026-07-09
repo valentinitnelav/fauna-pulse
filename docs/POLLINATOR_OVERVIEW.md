@@ -1,12 +1,11 @@
 # Pollinator Monitor — Current-State Overview
 
 This file is a *current* picture of the app, meant to ground a new session cheaply 
-(instead of reading the full ~1800-line log history from POLLINATOR_MONITOR.md).
-**Rewrite it in place; never append.** Update it whenever a change alters a default, an
-invariant, or the file map. Keep it short (≤ ~250 lines). The round-by-round narrative
-and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
-
-> Last synced with: round 77 (gate-idle honesty pass, from session_120 findings: while the motion gate keeps the detector asleep, `fps` records now OMIT all inference-derived fields — `fps`/`detector_fps`/`pipeline_fps`/`pre_ms`/`inf_ms`/`post_ms`/`track_ms` — and carry `gate_idle: true` instead (absent = detector off; they used to freeze at last-awake values, flat-lining graphs and showing a stale "Pipeline: ~12 fps" on screen). `FrameProcessor.setGateIdle` resets the pipeline-FPS EMA on idle; summary graphs break the line across sampling holes instead of bridging them. Benchmark dialog wording clarified (ms per inference / back-to-back ceiling). Stale "int8 → CPU" comments corrected: GPU-vs-CPU fallback is per-graph compilability, not dtype — arthropod_yolov11_int8 verifiably runs on GPU.) Round 76 (review A4, user-triggered engine benchmark + A7 correction: litert 2.1.5 *does* expose `CompiledModel.CpuOptions` — XNNPACK is already the default CPU backend, its thread count is now tunable. New native `benchmarkAccelerators` in `YOLOPlugin.kt` times GPU vs CPU at several thread counts via `LiteRtModel` (inherits crash guard/blocklist/GPU program cache); Settings → AI gains a "Benchmark engines" button with a results dialog whose "Use <fastest>" sets `useGpu` + new `cpuThreads` tunable (SessionConfig field, settings control, summary row, `cpu_threads` in session metadata; default 0 = runtime default). `cpuThreads` is plumbed Dart→creation params→`YOLOView.setModel`→all six predictors→`LiteRtModel`; in-place `switchModel` now also passes `useGpu`/`cpuThreads` instead of silently reverting to GPU-first defaults. Benchmark is deliberately NOT run at session start — owner decision, heat/time cost.) Round 75 (review A6 small-cleanups batch, Kotlin-only, behaviour-preserving: device orientation read once per `YOLOView.onFrame` and shared with frame cache / motion gate / inference; `convertResultToStreamData` returns a pre-sized mutable map that `onFrame` enriches in place — the per-frame `HashMap(streamData)` full copy is gone; `ImageUtils` normalizes pixels through a cached 256-entry lookup table; `includeOriginalImage` documented as a ⚠️ footgun — enabling it JPEG-encodes the full frame every streamed frame on the camera thread, the app never enables it). Round 74 (review A5, ROI rasterized once per frame: on frames that run inference the motion gate derives its thumbnail from the detector's model-input bitmap — `MotionGate.motionDetectedFromModelInput` fed by `BasePredictor.lastRoiModelInput()` — instead of drawing the ROI from the camera frame a second time; idle and FPS-capped frames keep the gate's own tiny direct draw. Kotlin-only, behaviour-preserving). Round 73 (review B6 god-class split, all four steps, behaviour-preserving: `camera_session_screen.dart` ~2,870 → ~2,180 lines. New `lib/pollinator/session/` — `FrameProcessor` (detection mapping + tracking + motion-gate idle/expire, injectable clock), `SessionRecorder` (logger/photos/keep-alive lifecycle, ordered stop), `CameraDiagnosticsController` (one-time probes); embedded widgets moved to `widgets/`. Screen keeps old names via thin getters. Review B8 closed: new tests for `RoiCaptureScheduler.evaluate()` and the gate-wake `expireLostTracks` rule — 95/95 pass).
+(instead of reading the full thousands-line log history from POLLINATOR_MONITOR.md).
+**Rewrite this file in place instead of appending to avoid unnecessary verbosity** 
+Update it whenever a change alters a default, an invariant, or the file map. 
+Keep it short (e.g. ≤ ~250 lines). 
+The round-by-round narrative and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
 ## What the app is about
 
@@ -162,26 +161,25 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 ## Device quirks (test phones)
 
 - **Xiaomi `2107113SG`** (adb `2b2dc560`): primary test device. Deploy **debug build only**,
-  **Install via USB** (MIUI quirk). Adreno GPU.
-- **Samsung `RF8T403A3AT`** (Galaxy M12-class): analysis stream caps around **960×720**
-  (selecting higher falls back); used to validate the round-56 "truthful stream readout".
+  Install via USB, MIUI quirk.
+- **Samsung `RF8T403A3AT`** (Galaxy M12-class): secondary test device
 
 ## Pointers
 
-- **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries).
-- **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot.
+- **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
+- **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
 - **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; being worked through — done items are ticked in place with a round number, e.g. A1/A3/A5/A6/B6/B8 as of round 75).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
-- **Archived Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
+- **Archived selected Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).
-- **General spec:** `/InsectDetectApp/CLAUDE.md`.
+- **General spec:** `/InsectDetectApp/CLAUDE.md`. This should load at the beginning of each session for general context.
 - **Deny-listed:** see `.claude/settings.local.json`.
-These are large txt files - avoid to parse unless owner points to them.
+
 
 ## Build / test quick reference
 
-- Analyze: `flutter analyze` — Test suite: `flutter test test/pollinator` (38 tests as of r57).
+- Analyze: `flutter analyze` — Test suite: `flutter test test/pollinator`.
 - Build: `flutter build apk --debug` (the app deploys as debug).
 - Pre-existing build warnings (KGP deprecation, optional `fetch_bundled_models.sh`) are
   unrelated to app logic.
-- do not git commit or run git commands without owner's consent.
+- do not git commit or run git push without owner's consent.
