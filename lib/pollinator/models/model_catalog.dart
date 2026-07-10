@@ -24,6 +24,7 @@ import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import '../logging/app_error_hooks.dart';
 
 enum ModelSource { official, bundled, imported }
 
@@ -113,7 +114,9 @@ class ModelCatalog {
       base =
           (await getExternalStorageDirectory()) ??
           await getApplicationDocumentsDirectory();
-    } catch (_) {
+    } catch (e) {
+      // Models land in the internal dir instead (not browsable over USB).
+      logSwallowed('models_dir_external', e);
       base = await getApplicationDocumentsDirectory();
     }
     final dir = Directory('${base.path}/models');
@@ -217,8 +220,9 @@ class ModelCatalog {
       try {
         await File(path).copy('${dir.path}/${picked.name}');
         imported++;
-      } catch (_) {
+      } catch (e) {
         // Skip files we can't read/copy; the rest still import.
+        logSwallowed('model_import_copy', e);
       }
     }
     return imported;
@@ -229,7 +233,9 @@ class ModelCatalog {
     try {
       final f = File(filePath);
       if (await f.exists()) await f.delete();
-    } catch (_) {}
+    } catch (e) {
+      logSwallowed('model_delete', e);
+    }
   }
 
   /// Input resolution (square side, px) for a single model path, or null when
@@ -251,7 +257,10 @@ class ModelCatalog {
         'modelPath': modelPath,
       });
       if (r is Map) return Map<String, dynamic>.from(r);
-    } catch (_) {}
+    } catch (e) {
+      // Resolution shows as unknown; common for non-YOLO .tflite files.
+      logSwallowed('model_inspect', e);
+    }
     return {};
   }
 

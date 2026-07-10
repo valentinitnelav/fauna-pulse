@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 import '../models/session_config.dart';
 import 'camera_session_screen.dart';
@@ -102,8 +103,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       found.sort((a, b) => b.start.compareTo(a.start));
-    } catch (_) {
+    } catch (e) {
       // Leave empty on any error (e.g. storage not ready).
+      logSwallowed('session_list_scan', e);
     }
     if (mounted) {
       setState(() {
@@ -153,8 +155,9 @@ class _HomeScreenState extends State<HomeScreen> {
       } finally {
         await raf.close();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave nulls; a truncated/empty file just yields an unknown duration.
+      logSwallowed('session_duration_scan', e);
     }
     return (startMs: startMs, endMs: endMs, endedNormally: endedNormally);
   }
@@ -163,6 +166,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       return jsonDecode(line) as Map<String, dynamic>;
     } catch (_) {
+      // Deliberately silent (B7-reviewed): a line truncated by a crash is
+      // expected in an append-only log, and this runs per line.
       return null;
     }
   }
@@ -285,7 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
         config: config,
         sessionLog: lastLog,
       );
-    } catch (_) {
+    } catch (e) {
+      logSwallowed('error_report_build', e);
       report = null;
     }
     if (!mounted) return;

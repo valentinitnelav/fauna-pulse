@@ -135,6 +135,9 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   uncaught errors to the live session's `app_error` lines via `appErrorSink` (rate-limited
   to 1 per 2 s) and mark uncaught async errors handled (app stays alive). Don't add naked
   fire-and-forget futures — route failures to `_logAsyncError` / `RoiCaptureScheduler.onError`.
+  Best-effort `catch` blocks (probes, platform calls, cleanup) must not be empty (r79, review
+  B7): call `logSwallowed(site, e)` from `app_error_hooks.dart` — rate-limited debugPrint
+  (reaches `logcat_end.txt`) + `app_error` JSONL line while recording.
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
@@ -175,7 +178,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 
 - **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
 - **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
-- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; being worked through — done items are ticked in place with a round number, e.g. A1/A3/A4/A5/A6/B6/B8 as of round 77).
+- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; **complete** — every item ticked in place with its round number as of round 79).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
 - **Archived selected Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).

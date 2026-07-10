@@ -1,4 +1,6 @@
-# Performance & Robustness Review (round 66, 2026-07-04)
+# Performance & Robustness Review 
+
+Opened with round 66, 2026-07-04.
 
 **Who this is for:** the project owner deciding what to improve next, and any
 collaborator implementing one of these items.
@@ -184,7 +186,7 @@ documented behaviour.
 
 ### A7. Noted for the roadmap (no action this round)
 
-- ~~There is **no CPU thread-count or XNNPACK tuning surface** in the current
+- a. ~~There is **no CPU thread-count or XNNPACK tuning surface** in the current
   LiteRT 2.x `CompiledModel` API path — CPU behaviour is whatever the runtime
   defaults to. If CPU sessions matter more after A4, revisit.~~ *(Corrected in
   round 76: litert 2.1.5 does expose `CompiledModel.CpuOptions(numThreads,
@@ -195,7 +197,7 @@ documented behaviour.
   alone (exotic), and the weight cache deliberately skipped: a cache file
   corrupted by a mid-write kill would be re-read by native code at next launch
   with no crash-guard around it, for only a small load-time win.)*
-- Larger speed/accuracy items (full-res stills strategy, alternative runtimes
+- b. Larger speed/accuracy items (full-res stills strategy, alternative runtimes
   such as ncnn, model retraining) are tracked in the owner's performance
   roadmap and are out of scope for this review.
 
@@ -354,13 +356,21 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
 
 ### B7. Silent `catch (_) {}` sites — make failures leave a trace
 
-- [ ] ~36 empty catches across the app (probes, platform calls, best-effort
+- [x] ~36 empty catches across the app (probes, platform calls, best-effort
   cleanup — e.g. `camera_session_screen.dart` ~697, ~711, ~749, ~770, ~803,
   ~847; `home_screen.dart` ~105, ~156; `model_catalog.dart` ~116, ~220).
   Most are legitimately best-effort, but when one fails in the field there is
   no evidence anywhere. Route them through `logAppError` (rate-limited) or at
   least `debugPrint`, so "the lens button did nothing all day" is diagnosable
   from the session folder afterwards.
+  *Done round 79:* new `logSwallowed(site, error)` in `app_error_hooks.dart`
+  (debugPrint at most once per 10 s per site — lands in logcat and therefore
+  in `logcat_end.txt` — plus the existing 2 s rate-limited `app_error` JSONL
+  line while recording, with the site as `source`). All ~30 legitimate
+  best-effort catches now route through it; the three deliberate silents
+  remain (the hook's own recursion guard and the two per-line JSONL parse
+  guards, now commented "B7-reviewed"). `SessionLogger.close()` uses a plain
+  debugPrint (it cannot log to itself). Tests in `app_error_hooks_test.dart`.
 
 *Effort:* small, mechanical.
 
@@ -388,10 +398,17 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
 
 ### B9. Minor per-frame hygiene (low priority)
 
-- [ ] `_onStreamingData` assigns `_fpsTrioVN.value` on both the gated and
+- [x] `_onStreamingData` assigns `_fpsTrioVN.value` on both the gated and
   normal paths (~456 and ~488) and rebuilds two closures per frame
   (~568, ~579). Harmless individually; tidy while doing B6(a). The
   `ValueNotifier`-based UI updates are already the right pattern — keep them.
+  *Resolved round 79 without a code change:* the double `_fpsTrioVN`
+  assignment became intentional in round 77 (the gate-idle path must zero
+  every inference-derived number), and the two closures (`roiToFrame` /
+  `clampToRoi`) moved into `FrameProcessor.process` in round 73, where they
+  are part of a unit-tested pure function. Two tiny closure allocations per
+  processed frame at ≤10 fps are negligible — hoisting them would only hurt
+  readability.
 
 ---
 
@@ -406,4 +423,7 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
 4. **A3**, then **B6(a)** + **B8** tests. ✔ **A3 done** (round 72; float
    model outputs excluded — LiteRT API limitation, see A3 note).
    ✔ **B6 done in full (a–d) + both open B8 tests** (round 73).
-5. **A4** (benchmark) as its own round; **A5/A6/B7/B9** opportunistically.
+5. **A4** (benchmark) as its own round; ✔ **Done** (rounds 76-78, double checked A7(a) too)
+6. **A5/A6/B7/B9** opportunistically.
+    - A5/A6 ✔ **Done** (rounds 74-75)
+    - B7/B9 ✔ **Done** (round 77, 79)

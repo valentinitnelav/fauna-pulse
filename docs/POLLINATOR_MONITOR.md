@@ -2924,3 +2924,37 @@ visibly stutter while asleep.
 note in the GPU/CPU invariant, r77 gate-idle logging note, roadmap pointer
 now lists A4). Verification: Kotlin compiles, analyze clean, 95/95 tests,
 `flutter build apk --debug` ✓.
+## Round 79 (2026-07-10): silent catches leave a trace (review B7) + B9 closed — review complete
+
+- **B7:** added `logSwallowed(site, error, [stack])` to `logging/app_error_hooks.dart`:
+  debugPrints at most once per 10 s per site (debugPrint reaches logcat, so failures
+  land in the session folder's `logcat_end.txt`), and forwards to the existing
+  rate-limited `app_error` JSONL sink while a session is recording, with the site
+  name as `source`. `resetAppErrorRateLimitsForTest()` added for tests.
+- Routed all ~30 legitimately best-effort `catch (_) {}` sites through it, with
+  stable site names, e.g.: camera probes (`still_size_probe`, `min_focus_probe`,
+  `stream_resolutions_probe`, `analysis_ceiling_probe`, `lens_probe`,
+  `camera_diagnostics_probe`), recorder stop path (`end_thermal_read`,
+  `wakelock_disable`, `save_logcat`, `battery_level`, `device_info`), keep-alive
+  channel (`battery_optimizations_query`/`_request`, `keepalive_<method>`),
+  periodic readers (`thermal_read`, `storage_read` — rate limit matters here),
+  `config_load`, `logcat_capture`, `native_still_crop` (Dart fallback still saves
+  the photo), `models_dir_external`, `model_import_copy`, `model_delete`,
+  `model_inspect`, `screen_dim`, `screen_brightness_reset`, home/summary scans
+  (`session_list_scan`, `session_duration_scan`, `error_report_build`,
+  `summary_stats_scan`, `summary_graphs_scan`, `summary_photos_scan`),
+  `reports_dir_external`.
+- Three deliberate silents remain: the reporter's own recursion guard in
+  `app_error_hooks.dart`, and the two per-line `_tryDecode` JSONL parse guards
+  (truncated lines are expected after a crash) — commented "B7-reviewed" so a
+  future grep knows they were assessed. `SessionLogger.close()` uses a plain
+  debugPrint because the logger cannot write to itself while closing.
+- New `test/pollinator/app_error_hooks_test.dart`: sink routing, rate-limit
+  suppression, no-session/throwing-sink safety. Suite: 98 tests green;
+  `flutter analyze` clean.
+- **B9 closed without a code change:** the duplicated `_fpsTrioVN` assignment is
+  intentional since round 77 (gate-idle zeroing), and the two per-frame closures
+  moved into the unit-tested `FrameProcessor.process` in round 73; hoisting two
+  tiny allocations at ≤10 fps would only hurt readability.
+- With B7/B9 done, **every item in PERF_AND_ROBUSTNESS_REVIEW.md is now ticked**.
+

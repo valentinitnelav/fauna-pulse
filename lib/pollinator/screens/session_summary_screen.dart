@@ -20,6 +20,8 @@ import 'package:flutter/material.dart';
 
 import '../models/session_config.dart';
 
+import '../logging/app_error_hooks.dart';
+
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
 
@@ -184,8 +186,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       } finally {
         await raf.close();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave defaults; the file may be empty or truncated by a crash.
+      logSwallowed('summary_stats_scan', e);
     }
     if (mounted) setState(() => _loadingStats = false);
   }
@@ -194,6 +197,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     try {
       return jsonDecode(line) as Map<String, dynamic>;
     } catch (_) {
+      // Deliberately silent (B7-reviewed): a line truncated by a crash is
+      // expected in an append-only log, and this runs per line.
       return null;
     }
   }
@@ -285,8 +290,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _endMs ??= _spans.values.map((s) => s.$2).reduce(max);
       }
       _uniqueTracks ??= _spans.length;
-    } catch (_) {
+    } catch (e) {
       // Leave whatever parsed; a truncated line just stops the scan.
+      logSwallowed('summary_graphs_scan', e);
     }
     if (mounted) setState(() => _graphsLoading = false);
   }
@@ -497,8 +503,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           addEntry(rec, timeMs);
         }
       }
-    } catch (_) {
+    } catch (e) {
       // Use whatever parsed.
+      logSwallowed('summary_photos_scan', e);
     }
 
     // Builds a fully-populated sample for a given file name (joins all the

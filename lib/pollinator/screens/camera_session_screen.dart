@@ -15,6 +15,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
+import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../logging/error_reporter.dart';
@@ -1156,9 +1157,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (!_blackout) return;
       try {
         await ScreenBrightness().setApplicationScreenBrightness(0.0);
-      } catch (_) {
+      } catch (e) {
         // Some devices reject 0.0 or lack the API; the opaque black cover alone
         // still hides the screen.
+        logSwallowed('screen_dim', e);
       }
     });
   }
@@ -1179,7 +1181,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try {
       await ScreenBrightness().resetApplicationScreenBrightness();
-    } catch (_) {}
+    } catch (e) {
+      logSwallowed('screen_brightness_reset', e);
+    }
     if (!_recording) await WakelockPlus.disable();
   }
 

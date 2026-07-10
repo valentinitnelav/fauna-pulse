@@ -22,6 +22,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 /// Formats [dt] as ISO-8601 with millisecond precision and the local UTC
 /// offset, e.g. `2026-06-13T19:03:12.123+02:00`.
 String isoWithOffset(DateTime dt) {
@@ -237,8 +239,10 @@ class SessionLogger {
     }
     try {
       await _raf?.close();
-    } catch (_) {
-      // Nothing useful left to do with a handle that won't close.
+    } catch (e) {
+      // Nothing useful left to do with a handle that won't close — and this
+      // logger is the one shutting down, so a print is the only trace left.
+      debugPrint('Best-effort session_log_close failed: $e');
     }
     _raf = null;
   }

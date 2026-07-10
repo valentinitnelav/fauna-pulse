@@ -21,6 +21,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/session_config.dart';
+
+import 'app_error_hooks.dart';
 import 'diagnostics.dart';
 
 /// A saved error report on disk, plus its size for showing the user.
@@ -161,7 +163,9 @@ class ErrorReporter {
       base =
           (await getExternalStorageDirectory()) ??
           await getApplicationDocumentsDirectory();
-    } catch (_) {
+    } catch (e) {
+      // Reports land in the internal dir instead (not browsable over USB).
+      logSwallowed('reports_dir_external', e);
       base = await getApplicationDocumentsDirectory();
     }
     final dir = Directory('${base.path}/error_reports');

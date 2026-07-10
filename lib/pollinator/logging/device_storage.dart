@@ -7,6 +7,8 @@
 
 import 'package:flutter/services.dart';
 
+import 'app_error_hooks.dart';
+
 /// One free-storage sample. All-null when the platform gave us nothing
 /// (e.g. running on a platform without the channel) — the UI hides itself.
 class StorageReading {
@@ -58,7 +60,9 @@ class DeviceStorage {
         freeBytes: (map?['freeBytes'] as num?)?.toInt(),
         totalBytes: (map?['totalBytes'] as num?)?.toInt(),
       );
-    } catch (_) {
+    } catch (e) {
+      // Polled periodically while recording; the trace is rate-limited.
+      logSwallowed('storage_read', e);
       return const StorageReading();
     }
   }

@@ -26,6 +26,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
+import '../logging/app_error_hooks.dart';
+
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../models/track.dart';
@@ -404,7 +406,9 @@ class RoiCaptureScheduler {
             'rotationDegrees': raw.rotationDegrees,
             'isFront': raw.isFront,
           });
-        } catch (_) {
+        } catch (e) {
+          // The Dart fallback crop below still saves the photo, just slower.
+          logSwallowed('native_still_crop', e);
           native = null;
         }
         finalBytes =

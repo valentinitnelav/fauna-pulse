@@ -8,6 +8,8 @@
 
 import 'package:flutter/services.dart';
 
+import 'app_error_hooks.dart';
+
 /// One reading: battery temperature in °C and a thermal-status label
 /// ("none".."shutdown"), plus the live battery power figures used to estimate how
 /// much ENERGY a session consumes. Any field may be null if the device doesn't
@@ -102,7 +104,9 @@ class DeviceThermal {
         isCharging: res['isCharging'] as bool?,
         thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
       );
-    } catch (_) {
+    } catch (e) {
+      // Polled ~1/s while recording; logSwallowed rate-limits the trace.
+      logSwallowed('thermal_read', e);
       return const ThermalReading();
     }
   }

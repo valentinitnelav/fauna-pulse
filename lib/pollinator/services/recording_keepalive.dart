@@ -19,6 +19,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../logging/app_error_hooks.dart';
+
 class RecordingKeepAlive {
   RecordingKeepAlive._();
 
@@ -40,7 +42,8 @@ class RecordingKeepAlive {
             'isIgnoringBatteryOptimizations',
           )) ??
           false;
-    } catch (_) {
+    } catch (e) {
+      logSwallowed('battery_optimizations_query', e);
       return false;
     }
   }
@@ -54,7 +57,8 @@ class RecordingKeepAlive {
             'requestIgnoreBatteryOptimizations',
           )) ??
           false;
-    } catch (_) {
+    } catch (e) {
+      logSwallowed('battery_optimizations_request', e);
       return false;
     }
   }
@@ -63,8 +67,9 @@ class RecordingKeepAlive {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod<void>(method);
-    } catch (_) {
+    } catch (e) {
       // Best-effort: recording continues even if the keep-alive channel fails.
+      logSwallowed('keepalive_$method', e);
     }
   }
 }

@@ -7,6 +7,8 @@
 
 import 'package:flutter/services.dart';
 
+import 'app_error_hooks.dart';
+
 class Diagnostics {
   static const MethodChannel _channel = MethodChannel('pollinator/diagnostics');
 
@@ -17,7 +19,8 @@ class Diagnostics {
       return await _channel.invokeMethod<String>('captureLogcat', {
         'maxLines': maxLines,
       });
-    } catch (_) {
+    } catch (e) {
+      logSwallowed('logcat_capture', e);
       return null;
     }
   }

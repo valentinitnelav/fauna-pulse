@@ -164,8 +164,9 @@ class SessionRecorder {
         const Duration(seconds: 2),
         onTimeout: () => const ThermalReading(),
       );
-    } catch (_) {
+    } catch (e) {
       // Best-effort: the end record is worth more than its extras.
+      logSwallowed('end_thermal_read', e);
     }
     _logger?.logEnd({
       'ended_normally': normal,
@@ -193,7 +194,9 @@ class SessionRecorder {
     }
     try {
       await WakelockPlus.disable();
-    } catch (_) {}
+    } catch (e) {
+      logSwallowed('wakelock_disable', e);
+    }
     _stopping = false;
   }
 
@@ -248,8 +251,9 @@ class SessionRecorder {
     if (text == null || text.isEmpty) return;
     try {
       await File('${dir.path}/$fileName').writeAsString(text, flush: true);
-    } catch (_) {
+    } catch (e) {
       // Diagnostics are best-effort; never let them break a recording.
+      logSwallowed('save_logcat', e);
     }
   }
 
@@ -288,7 +292,8 @@ class SessionRecorder {
   Future<int?> _safeBatteryLevel() async {
     try {
       return await Battery().batteryLevel;
-    } catch (_) {
+    } catch (e) {
+      logSwallowed('battery_level', e);
       return null;
     }
   }
@@ -314,7 +319,9 @@ class SessionRecorder {
           'id': i.identifierForVendor,
         };
       }
-    } catch (_) {}
+    } catch (e) {
+      logSwallowed('device_info', e);
+    }
     return {'platform': Platform.operatingSystem};
   }
 }

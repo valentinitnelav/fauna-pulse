@@ -49,6 +49,33 @@ void _report(String source, String message, StackTrace? stack) {
   }
 }
 
+// Last debugPrint per call site, so a failure repeating every second (e.g. a
+// broken thermal channel polled at 1 Hz) cannot flood logcat.
+final Map<String, int> _lastSwallowedPrintMs = {};
+
+/// Call from a `catch` that intentionally swallows a best-effort failure
+/// (camera probes, platform channels, cleanup) so it still leaves a trace
+/// (review B7). It debugPrints — which lands in logcat and therefore in the
+/// session folder's `logcat_end.txt` — at most once per 10 s per [site], and
+/// while a session is recording also writes a rate-limited `app_error` JSONL
+/// line. So "the lens button did nothing all day" is diagnosable afterwards.
+void logSwallowed(String site, Object error, [StackTrace? stack]) {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  if (now - (_lastSwallowedPrintMs[site] ?? 0) >= 10000) {
+    _lastSwallowedPrintMs[site] = now;
+    debugPrint('Best-effort $site failed: $error');
+  }
+  _report(site, '$error', stack);
+}
+
+/// Resets the rate-limiter state so tests don't suppress each other.
+@visibleForTesting
+void resetAppErrorRateLimitsForTest() {
+  _lastReportMs = 0;
+  _suppressedSinceLast = 0;
+  _lastSwallowedPrintMs.clear();
+}
+
 String _headLines(String text, int maxLines) {
   final lines = text.split('\n');
   if (lines.length <= maxLines) return text;

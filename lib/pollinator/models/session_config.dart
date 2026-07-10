@@ -11,6 +11,8 @@ import 'package:ultralytics_yolo/models/yolo_task.dart';
 
 import '../tracking/byte_track.dart';
 
+import '../logging/app_error_hooks.dart';
+
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
 /// stored bool is true the dialog is suppressed; clearing it (Settings → Camera →
 /// "Show setup tips") makes the reminder appear again next time the screen opens.
@@ -512,7 +514,9 @@ class SessionConfig {
     if (raw == null) return const SessionConfig();
     try {
       return SessionConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
+    } catch (e) {
+      // Corrupt saved settings: start over from defaults, but say so.
+      logSwallowed('config_load', e);
       return const SessionConfig();
     }
   }

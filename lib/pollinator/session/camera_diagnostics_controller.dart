@@ -13,6 +13,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
+import '../logging/app_error_hooks.dart';
+
 import '../capture/roi_capture.dart';
 
 /// Fires the one-time camera probes and holds their results.
@@ -150,8 +152,9 @@ class CameraDiagnosticsController {
             return;
           }
         }
-      } catch (_) {
-        // Try again after a short pause.
+      } catch (e) {
+        // Try again after a short pause (traced, rate-limited per site).
+        logSwallowed('still_size_probe', e);
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
     }
@@ -174,8 +177,9 @@ class CameraDiagnosticsController {
         minFocusDistance = d;
         _notify();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave at 0 (manual focus unsupported / unavailable).
+      logSwallowed('min_focus_probe', e);
     }
   }
 
@@ -188,8 +192,9 @@ class CameraDiagnosticsController {
         streamResolutions = list;
         _notify();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave empty; settings falls back to a standard preset list.
+      logSwallowed('stream_resolutions_probe', e);
     }
   }
 
@@ -203,8 +208,9 @@ class CameraDiagnosticsController {
         analysisCeiling = c;
         _notify();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave empty; the dropdown simply won't annotate a ceiling.
+      logSwallowed('analysis_ceiling_probe', e);
     }
   }
 
@@ -234,8 +240,9 @@ class CameraDiagnosticsController {
       if (found[index].zoomFactor != 1.0) {
         await controller.setLens(found[index].zoomFactor);
       }
-    } catch (_) {
+    } catch (e) {
       // Leave empty: the switch button stays disabled, default lens in use.
+      logSwallowed('lens_probe', e);
     }
   }
 
@@ -250,8 +257,9 @@ class CameraDiagnosticsController {
         cameraDiagnostics = cams;
         _notify();
       }
-    } catch (_) {
+    } catch (e) {
       // Leave empty; the settings section shows a "not available" note.
+      logSwallowed('camera_diagnostics_probe', e);
     }
   }
 }
