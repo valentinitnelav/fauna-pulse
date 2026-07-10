@@ -2958,3 +2958,18 @@ now lists A4). Verification: Kotlin compiles, analyze clean, 95/95 tests,
   tiny allocations at ≤10 fps would only hurt readability.
 - With B7/B9 done, **every item in PERF_AND_ROBUSTNESS_REVIEW.md is now ticked**.
 
+## Round 80 (2026-07-10): session storage size in the previous-sessions list
+
+- Each entry in the home screen's "Previous sessions" list now shows how much
+  storage the whole session folder uses (log + JPEGs + diagnostic files),
+  right-aligned on the date line with a small storage icon.
+- `_PastSession` gained `sizeBytes`; `_loadSessions` sums it per folder via the
+  new `_folderSizeBytes()` (recursive `dir.list`, metadata-only — no file
+  contents are read, so it stays quick even with thousands of photos; errors go
+  through `logSwallowed('session_size_scan', …)`).
+- `_formatBytes()` picks the unit by magnitude — "412 KB", "8.3 MB", "1.2 GB"
+  (1024-based, same convention as the problem-report `humanSize`, extended to
+  GB because photo-heavy sessions can reach gigabytes).
+- UI-only change: no new tunables, no SessionConfig/log-format change.
+  `flutter analyze` clean, all 98 tests pass.
+

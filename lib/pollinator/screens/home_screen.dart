@@ -22,9 +22,10 @@ import 'session_summary_screen.dart';
 /// One past session found on disk: its folder name and log file, the real
 /// session [start]/[end] clock times read from the log (falling back to the
 /// file's last-modified time when a record is missing), how long it ran
-/// ([duration]) and whether it stopped cleanly ([endedNormally]). [end] and
-/// [duration] are null when the session has no end record (e.g. it crashed
-/// before writing one).
+/// ([duration]), whether it stopped cleanly ([endedNormally]) and how much
+/// storage the whole session folder uses ([sizeBytes] — log + photos +
+/// diagnostic files). [end] and [duration] are null when the session has no
+/// end record (e.g. it crashed before writing one).
 class _PastSession {
   final String name;
   final File logFile;
@@ -32,6 +33,7 @@ class _PastSession {
   final DateTime? end;
   final Duration? duration;
   final bool endedNormally;
+  final int sizeBytes;
   const _PastSession(
     this.name,
     this.logFile,
@@ -39,6 +41,7 @@ class _PastSession {
     this.end,
     this.duration,
     this.endedNormally = false,
+    this.sizeBytes = 0,
   });
 }
 
@@ -78,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Read just the first/last records to learn when the session started,
             // ended and how long it ran (cheap — no full scan, even for a huge log).
             final span = await _readSessionSpan(log);
+            final sizeBytes = await _folderSizeBytes(entity);
             final start = span.startMs != null
                 ? DateTime.fromMillisecondsSinceEpoch(span.startMs!)
                 : log.statSync().modified;
@@ -97,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 end: end,
                 duration: dur,
                 endedNormally: span.endedNormally,
+                sizeBytes: sizeBytes,
               ),
             );
           }
@@ -160,6 +165,37 @@ class _HomeScreenState extends State<HomeScreen> {
       logSwallowed('session_duration_scan', e);
     }
     return (startMs: startMs, endMs: endMs, endedNormally: endedNormally);
+  }
+
+  /// Total size in bytes of everything inside a session folder (the log, the
+  /// captured JPEGs, diagnostic logcat files). Only file *metadata* is read —
+  /// never file contents — so this stays quick even for a photo-heavy session
+  /// with thousands of images.
+  Future<int> _folderSizeBytes(Directory dir) async {
+    var total = 0;
+    try {
+      await for (final e in dir.list(recursive: true, followLinks: false)) {
+        if (e is File) total += await e.length();
+      }
+    } catch (e) {
+      // A vanished file mid-scan just yields a slightly-off total.
+      logSwallowed('session_size_scan', e);
+    }
+    return total;
+  }
+
+  /// Formats a byte count with the unit that fits its magnitude — "412 KB",
+  /// "8.3 MB", "1.2 GB" — so a log-only session and a multi-gigabyte
+  /// photo-heavy one both read naturally (same 1024-based convention as the
+  /// problem-report size).
+  String _formatBytes(int bytes) {
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
+    if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
+    if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
+    return '$bytes B';
   }
 
   Map<String, dynamic>? _tryDecode(String line) {
@@ -419,17 +455,39 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListTile(
             leading: const Icon(Icons.bar_chart, color: Colors.amber),
             title: Text(s.name),
-            // Two compact lines under the name: the calendar date, then the
-            // start→end clock times on the left with a colour-coded duration pill
-            // on the right.
+            // Two compact lines under the name: the calendar date with the
+            // folder's storage size on the right, then the start→end clock
+            // times on the left with a colour-coded duration pill on the right.
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _dateOnly(s.start),
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  Row(
+                    children: [
+                      Text(
+                        _dateOnly(s.start),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const Spacer(),
+                      const Icon(
+                        Icons.sd_storage_outlined,
+                        size: 13,
+                        color: Colors.white38,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatBytes(s.sizeBytes),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(

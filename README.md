@@ -29,7 +29,7 @@ It covers both installing a ready-made app (no coding) and building from source.
 
 ## Vibe coding
 
-I was curious to see how far I could push the limits of what is possible with "vibe coding." 
+I was curious to see how far I could push the limits of what is possible with "vibe coding". 
 Initially, developing a custom field tool felt like a costly and daunting endeavor, 
 likely requiring me to apply for grants just to hire Android developers. 
 However, as coding agents grew more capable and popular, I decided to give them a try. 
