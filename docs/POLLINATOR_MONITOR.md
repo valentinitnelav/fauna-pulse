@@ -2973,3 +2973,54 @@ now lists A4). Verification: Kotlin compiles, analyze clean, 95/95 tests,
 - UI-only change: no new tunables, no SessionConfig/log-format change.
   `flutter analyze` clean, all 98 tests pass.
 
+
+## Round 81 (2026-07-11): live adb thermal diagnosis — where "sleeping" heat actually comes from
+
+Owner question: even with the motion gate asleep (phone face down, no motion) the
+phone warms significantly — is the gate not helping? Diagnosis was run **live over
+adb** on the Xiaomi (Claude Code drove the UI via `input tap` + screenshots and
+sampled thermal zones / per-process CPU every ~18 s; session_124, 10 min recording,
+gate asleep the whole time, 0 tracks — safe to delete).
+
+**The gate itself is working perfectly.** While asleep: `FRAMEPERF` showed
+convertedFps≈4.5, inferredFps=0, toBitmap≈5 ms → the app's frame pipeline uses
+~2–3 % of one core. Inference contributes nothing to idle heat.
+
+**The heat is the standing cost of everything around the detector** (phase-mean
+numbers; CPU % of 800 total; temps °C):
+
+| Phase | camera HAL CPU | app CPU | total CPU | skin (quiet_therm) | battery |
+|---|---|---|---|---|---|
+| Idle baseline (app closed) | 0 | 0 | ~40 | 41.7 | 32.0 |
+| Camera preview open | ~200 | ~75 | ~410 | 44→47.5 (50 s) | 33 |
+| Recording, gate asleep, bright | ~210 | ~85 | ~440 | 49.6→55.7 (5 min) | 33→38 |
+| Recording, gate asleep, power-save dim | ~230 | ~100 | ~490 | 56.4→57.9 (plateau) | 38→40 |
+| Stopped (summary screen) / cooldown | 0 | 0 | ~60 | 58.4→45 (8 min) | 40→36 |
+
+- **Camera subsystem ≈ 2 full cores** (`vendor.qti.camera.provider`): sensor + ISP
+  stream 30 fps regardless of the gate (1080×1440 analysis + preview + ZSL still
+  ring buffer). This is the dominant heater and confirms round 78's ~4.4 W estimate.
+- **App process ≈ 1 core even in power-save mode** — the black scrim drops
+  brightness but the preview surface + Flutter compositing keep rendering; dim
+  mode produced **no** CPU reduction and only a small thermal one.
+- CPU junction hit 69–73 °C, MIUI cooling level escalated 10→18 (big core pinned
+  at 844 MHz). Note the phone throttles at level 9–10 **at idle before launch**
+  (charging at 100 % + USB tethering modem: pa_therm 39–43 °C baseline) — field
+  runs start from a warm floor even "doing nothing".
+- **Config observation:** owner's saved stream is 1080×1440, but with ROI 480 px →
+  target 1024 the per-photo path is *still* anyway, so the big analysis stream buys
+  no photo sharpness and costs ISP/conversion work. Dropping stream to 640×480
+  should be a free heat win in this configuration.
+
+**Proposed next steps (not implemented — owner to choose):**
+1. Stream back to 640×480 (settings only, no code).
+2. Camera2Interop `CONTROL_AE_TARGET_FPS_RANGE` ≈ 10–15 fps for the session
+   (inference is capped at 10 anyway) — cuts sensor/ISP load; roadmap item from r78.
+3. Power-save mode could *unbind the Preview use case* + pause stats UI instead of
+   just a scrim (app ~1 core → near 0; also removes one HAL output stream).
+4. Evaluate unbinding/disabling ZSL ImageCapture while the gate is idle (part of
+   the HAL standing cost; rebind-on-wake latency needs measuring).
+5. Field hygiene: don't charge during sessions; disable USB tethering/hotspot.
+
+Raw samples: scratchpad `thermals.csv` (session-ephemeral); key numbers preserved
+in the table above.
