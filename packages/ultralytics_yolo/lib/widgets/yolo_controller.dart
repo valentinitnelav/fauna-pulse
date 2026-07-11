@@ -328,6 +328,29 @@ class YOLOViewController {
     'idleFps': idleFps,
   });
 
+  /// Caps the camera's own frame rate (Pollinator Monitor, round 82).
+  ///
+  /// Different from the inference FPS cap: that one only skips frames in
+  /// software after the camera already produced them, while the sensor and
+  /// image processor keep running at ~30 fps — a standing heat cost. This
+  /// asks the camera hardware to capture slower (Camera2 AE target FPS
+  /// range), so preview, still ring buffer and analysis all do
+  /// proportionally less work. [maxFps] <= 0 restores the device default.
+  /// The device only accepts rates it advertises; the native side picks the
+  /// closest legal range and logs the choice. Android only; a no-op where
+  /// unimplemented.
+  Future<void> setCameraFpsCap(int maxFps) =>
+      _invoke<void>('setCameraFpsCap', {'maxFps': maxFps});
+
+  /// Attaches/detaches only the live camera preview (Pollinator Monitor,
+  /// round 82). With [enabled] false the detector, motion gate and photo
+  /// capture keep running but the preview stream is stopped at the camera —
+  /// a black overlay alone does NOT stop that work. Used by the power-save
+  /// ("screen off") mode. Reattaching takes ~0.2 s. Android only; a no-op
+  /// where unimplemented.
+  Future<void> setPreviewEnabled(bool enabled) =>
+      _invoke<void>('setPreviewEnabled', {'enabled': enabled});
+
   Future<void> switchModel(
     String modelPath, [
     YOLOTask? task,

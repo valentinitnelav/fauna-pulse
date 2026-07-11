@@ -675,6 +675,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // Only for sessions that recorded these fields (config block, round 44+).
     if (_setting('autoThrottle') != null || _setting('motionGateEnabled') != null) {
       rows.add(_subhead('Heat management'));
+      // Camera hardware rate cap (round 82) — distinct from the inference cap.
+      final camFps = _setting('cameraFpsCap');
+      add(
+        'Camera frame rate cap',
+        camFps == null
+            ? null
+            : (camFps is num && camFps == 0
+                  ? 'device default'
+                  : '${_numStr(camFps)} /s'),
+      );
       add('Auto-throttle', _setting('autoThrottle'));
       add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
       add('Throttle duty target', _setting('throttleDutyTarget'));

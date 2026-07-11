@@ -91,6 +91,13 @@ continues in the background. **Tap anywhere to wake** the screen; a brief
 "tap to wake" hint fades in when you enter blackout. Recording, detection,
 tracking and photo capture all keep running while the screen is dark.
 
+Since round 82 blackout also **stops the live preview stream at the camera**
+(not just the display): the phone no longer spends effort producing preview
+images nobody can see, which was measured to cut the phone's total load
+roughly in half during quiet (motion-gated) periods. Waking takes about a
+fifth of a second while the preview reattaches; the locked focus and the
+camera frame-rate cap are re-applied automatically.
+
 (Recording only runs while the app is open — blackout is *not* the same as
 locking the phone. Don't press the hardware lock button; use blackout.)
 

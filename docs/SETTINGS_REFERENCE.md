@@ -81,6 +81,7 @@ converts them against the live frame rate as it varies during the session.
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Stream resolution** | `640 × 480` | The video resolution the detector analyzes (4:3). The phone delivers the nearest it supports. The short side caps how large a *fast* (no-stall) ROI crop can be. Higher = bigger fast crops but can cost FPS on weaker phones. |
+| **Camera frame rate cap** | `15 /s` | How many frames per second the camera *hardware* captures (round 82). Different from the inference rate cap: that one only skips frames in software, while the sensor + image processor otherwise keep running at ~30/s the whole session — even while the motion gate has the detector asleep. This standing camera load was measured to be the main reason a "sleeping" phone still warms up. Lower = cooler phone, slightly choppier preview; detection is unaffected while this stays at or above the inference cap. `0` = device default (~30/s). The phone only supports certain rates; the nearest supported one is used (logged at session start). |
 | **Lens** | `1.0` (main wide) | Which rear lens, by zoom factor: 1.0 = main wide, 0.5 = ultra-wide, 2.0/3.0 = telephoto. The app snaps to the available lens closest to this value; single-lens phones just stay on their one lens. Use a telephoto/zoom to reach the target photo size on a small flower. |
 | **Focus** | manual/auto/fixed | Locked manual focus is recommended for a mounted session so the flower stays sharp; the log records which mode was used. |
 

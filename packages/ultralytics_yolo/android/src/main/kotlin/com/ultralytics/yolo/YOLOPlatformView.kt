@@ -602,6 +602,18 @@ class YOLOPlatformView(
                     yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize, idleFps)
                     result.success(null)
                 }
+                "setCameraFpsCap" -> {
+                    // Pollinator Monitor (round 82): slow the camera hardware itself (sensor/ISP),
+                    // not just inference. 0 = device default. See YOLOView.setCameraFpsCap.
+                    yoloView.setCameraFpsCap(call.argument<Int>("maxFps") ?: 0)
+                    result.success(null)
+                }
+                "setPreviewEnabled" -> {
+                    // Pollinator Monitor (round 82): detach/reattach only the preview stream while
+                    // detection + capture keep running (real power-save behind the black cover).
+                    yoloView.setPreviewEnabled(call.argument<Boolean>("enabled") ?: true)
+                    result.success(null)
+                }
                 "getStreamResolutions" -> {
                     result.success(yoloView.supportedStreamResolutions())
                 }

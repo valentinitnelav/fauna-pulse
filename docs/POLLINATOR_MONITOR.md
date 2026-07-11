@@ -3024,3 +3024,65 @@ numbers; CPU % of 800 total; temps °C):
 
 Raw samples: scratchpad `thermals.csv` (session-ephemeral); key numbers preserved
 in the table above.
+
+## Round 82 (2026-07-11): camera hardware fps cap + real power-save (preview detach) — verified live on-device
+
+Follow-up to the round-81 diagnosis. Owner asked: (1) let the user cap the camera's
+frame rate ("I thought this was already set at 10 FPS" — no: that was the *inference*
+cap, which only skips frames in software after the sensor/ISP already produced them
+at ~30/s); (2) make power-save real; (3) treat field charging (power bank) as an
+invariant; (4) explain ZSL in plain language.
+
+**1. Camera frame rate cap (new tunable, default 15/s).**
+- `SessionConfig.cameraFpsCap` (0 = device default; explicitly saved 0 survives,
+  missing key → 15). Settings → Camera control, summary Settings-tab row under
+  Heat management, SETTINGS_REFERENCE entry, round-trip test — all same round.
+- Native: `YOLOView.setCameraFpsCap` sets the Camera2 `CONTROL_AE_TARGET_FPS_RANGE`
+  at RUNTIME via `Camera2CameraControl` (no rebind needed). `chooseAeFpsRange`
+  picks the closest HAL-advertised range ≤ the request (else smallest above;
+  narrower preferred) and logs `Camera fps cap: requested=X applied=[a,b]`.
+- **Interop funnel:** `setCaptureRequestOptions` REPLACES the whole option set, so
+  the old `setManualFocus`/`setAutoFocus` and the new fps cap were merged into one
+  `applyInteropOptions()` funnel (single place that API is called). It re-runs
+  after every bind and preview reattach — as a side effect the manual-focus lock
+  now also survives lens-switch rebinds instead of silently resetting.
+
+**2. Real power-save.** Blackout's brightness-drop was measured (r81) to save
+~nothing: camera HAL ~2 cores and the app ~1 core kept running under the scrim.
+Now, when the "tap to wake" hint finishes fading, Dart calls the new
+`setPreviewEnabled(false)`: native unbinds ONLY the Preview use case (analysis +
+ImageCapture stay bound; recording untouched). Wake reattaches it and re-asserts
+the funnel. A power-save preview-off also survives full rebinds (honored in the
+bind path).
+
+**3. Measured on the Xiaomi (session_125, ~7.5 min, gate asleep, USB-charging —
+same live-adb method as r81):**
+| state | cam HAL CPU | app CPU | total | skin temp |
+|---|---|---|---|---|
+| r81 recording asleep (dim) | ~230% | ~100% | ~490% | climbing → plateau ~58 °C @ throttle 18 |
+| r82 recording asleep (blackout) | **~115%** | **~30%** | **~225%** | **flat ~48 °C @ throttle 11** |
+Battery 35 °C flat (was 38→40). Awake check: gate-start window showed
+convertedFps=15.0 / inferredFps=10.3 — camera cap and inference cap compose
+correctly. HAL accepted a fixed [15,15]. Blackout logs "Preview use case
+detached (power save)" / "…reattached"; recording ran through the whole cycle
+(REC survived, summary shows the new settings row). Wake-by-ROI-nudge via
+synthetic `adb input swipe` did not register (gesture slop — untouched code
+path); motion-wake itself is unchanged native MotionGate logic.
+
+**4. ZSL (explained, deliberately NOT changed).** Zero-Shutter-Lag keeps a rolling
+ring buffer of full-resolution frames so a still can be grabbed instantly; that
+buffer refills at the sensor rate, so the 15/s cap already halves its standing
+cost. Unbinding ImageCapture while the gate sleeps was considered and deferred:
+rebinding on wake takes hundreds of ms right when the first insect photo is due
+(risking a lost/late first still on every wake), for a saving the fps cap already
+shrinks. Revisit only if measurements still show ImageCapture dominating.
+
+**Owner constraints recorded:** field phone is ALWAYS on a power bank (charging
+heat is an invariant — plan with it; energy estimates stay unreliable while
+plugged); USB tethering/hotspot is a home-office-only confounder, not a field
+concern; stream resolution deliberately left at the owner's 1080×1440 for now.
+
+Verification: `flutter analyze` clean, 99/99 tests, debug APK built + installed +
+exercised live on the Xiaomi as above. Docs: SETTINGS_REFERENCE (new setting),
+FIELD_GUIDE §4 (blackout now detaches preview), OVERVIEW (defaults row + interop
+funnel & blackout invariants + field power invariant).

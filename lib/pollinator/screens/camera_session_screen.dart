@@ -692,6 +692,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _captureProbeStarted = true;
       _pushInferenceRoi();
       _pushMotionGate();
+      _pushCameraFpsCap();
       _probes.begin(
         analysisDims: () => (_imageWidth, _imageHeight),
         preferredLensZoom: _config.selectedLensZoom,
@@ -1155,6 +1156,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _blackoutHintTimer?.cancel();
     _blackoutHintTimer = Timer(_blackoutFade, () async {
       if (!_blackout) return;
+      // Round 82: dropping brightness alone was measured to save almost
+      // nothing — the camera kept producing and compositing preview frames
+      // behind the black cover (~1 CPU core). Detach the preview stream at
+      // the camera; detection, tracking and photo capture keep running.
+      _controller
+          .setPreviewEnabled(false)
+          .catchError((Object e) => _logAsyncError('preview_off', e));
       try {
         await ScreenBrightness().setApplicationScreenBrightness(0.0);
       } catch (e) {
@@ -1172,6 +1180,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Future<void> _exitBlackout() async {
     if (!_blackout) return;
     _blackoutHintTimer?.cancel();
+    // Reattach the preview stream first (round 82) so the live image is back
+    // within ~0.2 s of the wake tap; the native side re-asserts the focus
+    // lock and camera fps cap after the reattach.
+    _controller
+        .setPreviewEnabled(true)
+        .catchError((Object e) => _logAsyncError('preview_on', e));
     setState(() {
       _blackout = false;
       _blackoutHint = false;
@@ -1229,6 +1243,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       iouThreshold: updated.iouThreshold,
     );
     _pushMotionGate();
+    _pushCameraFpsCap();
   }
 
   void _onRoiChanged(Roi roi) {
@@ -1349,6 +1364,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           side: _roi.sideFraction,
         )
         .catchError((Object e) => _logAsyncError('set_inference_roi', e));
+  }
+
+  /// Sends the camera frame-rate cap to the native side (round 82). This slows
+  /// the camera *hardware* (sensor + image processor) — the standing load that
+  /// keeps warming the phone even while the motion gate has the detector
+  /// asleep. The inference cap above it only skips frames in software.
+  void _pushCameraFpsCap() {
+    _controller
+        .setCameraFpsCap(_config.cameraFpsCap)
+        .catchError((Object e) => _logAsyncError('set_camera_fps_cap', e));
   }
 
   /// Sends the motion-gate settings to the native pipeline. When enabled the

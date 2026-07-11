@@ -118,6 +118,18 @@ class SessionConfig {
   /// benchmarking the device's raw speed.
   final int inferenceFps;
 
+  /// Cap on the CAMERA's own frame rate (round 82). Unlike [inferenceFps] —
+  /// which only decides how many of the delivered frames the detector looks
+  /// at — this slows the camera hardware itself: with no cap the sensor and
+  /// image processor capture and process ~30 frames every second even while
+  /// the motion gate has the detector asleep, which is the main reason a
+  /// "sleeping" phone still warms up. Lower = cooler but a less smooth
+  /// preview. 0 = device default (uncapped). The phone only supports certain
+  /// rates; the closest supported one at or below this is used. Default 15:
+  /// comfortably above the 10/s inference default, roughly half the standing
+  /// camera heat.
+  final int cameraFpsCap;
+
   /// When true (default), the app **automatically** adjusts the inference rate
   /// during a session to keep the CPU cool enough to hold a steady frame rate,
   /// instead of running flat-out and overheating into a ~3 fps collapse. When
@@ -280,6 +292,7 @@ class SessionConfig {
     // (raw benchmark mode).
     // Low default stream (≈ model input) so inference runs at full speed like the
     // original; the stream-resolution setting can raise it for bigger fast crops.
+    this.cameraFpsCap = 15, // camera hardware rate; 0 = device default (~30)
     this.autoThrottle = true,
     this.minInferenceFps = 3,
     this.throttleDutyTarget = 0.5,
@@ -349,6 +362,7 @@ class SessionConfig {
     bool? useGpu,
     int? cpuThreads,
     int? inferenceFps,
+    int? cameraFpsCap,
     bool? autoThrottle,
     int? minInferenceFps,
     double? throttleDutyTarget,
@@ -386,6 +400,7 @@ class SessionConfig {
     useGpu: useGpu ?? this.useGpu,
     cpuThreads: cpuThreads ?? this.cpuThreads,
     inferenceFps: inferenceFps ?? this.inferenceFps,
+    cameraFpsCap: cameraFpsCap ?? this.cameraFpsCap,
     autoThrottle: autoThrottle ?? this.autoThrottle,
     minInferenceFps: minInferenceFps ?? this.minInferenceFps,
     throttleDutyTarget: throttleDutyTarget ?? this.throttleDutyTarget,
@@ -427,6 +442,7 @@ class SessionConfig {
     'useGpu': useGpu,
     'cpuThreads': cpuThreads,
     'inferenceFps': inferenceFps,
+    'cameraFpsCap': cameraFpsCap,
     'autoThrottle': autoThrottle,
     'minInferenceFps': minInferenceFps,
     'throttleDutyTarget': throttleDutyTarget,
@@ -468,6 +484,7 @@ class SessionConfig {
     useGpu: j['useGpu'] as bool? ?? true,
     cpuThreads: (j['cpuThreads'] as num?)?.toInt() ?? 0,
     inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? 10,
+    cameraFpsCap: (j['cameraFpsCap'] as num?)?.toInt() ?? 15,
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,

@@ -53,6 +53,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Capture duration | `10.0 s` | per track id; must be > step |
 | Session length | `60 min` | user-editable |
 | Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload |
+| Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range) — the standing sensor/ISP load the gate can't touch; `0` = device default (~30); explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
 | Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
@@ -141,6 +142,25 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
+- **Camera2 interop options go through ONE funnel (round 82).**
+  `applyInteropOptions()` in `YOLOView.kt` is the only place
+  `setCaptureRequestOptions` may be called: that API REPLACES the whole option
+  set, so manual focus and the camera fps cap must always be applied together
+  (a separate call would silently erase the other — e.g. unlock the focus).
+  The funnel re-runs after every camera (re)bind and after a preview reattach.
+  The fps cap picks a HAL-advertised AE range (closest ≤ requested; logged as
+  "Camera fps cap: requested=X applied=[a, b]"). Xiaomi accepts a fixed [15,15].
+- **Blackout (power save) detaches the Preview use case (round 82).** The black
+  scrim + min brightness alone saved ~nothing (measured: camera HAL ~2 cores,
+  app ~1 core kept running under it). `setPreviewEnabled(false)` unbinds ONLY
+  the preview stream — analysis (detector/gate) + ImageCapture stay bound and
+  a recording continues; wake reattaches it (~0.2 s) and re-asserts the interop
+  funnel. Measured effect (r82, gate asleep, USB-charging): total CPU ~490%→
+  ~225%, skin temp plateau ~58 °C → flat ~48 °C. The r78 "idle warming is real"
+  analysis is the *why*; r81/82 in POLLINATOR_MONITOR.md carry the numbers.
+- **Field power invariant (owner, 2026-07-11):** the phone is assumed to be on
+  a power bank during field sessions — charging heat is a given, plan heat
+  budgets with it; don't build features that assume battery-only operation.
 - **Motion gate (round 58, opt-in).** Native `MotionGate.kt` (48×48 EMA background diff on
   the ROI) skips inference while nothing moves; motion, detections, and ROI drags all
   extend a `wakeSeconds` window, and the gate always starts awake. While idle the native

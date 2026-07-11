@@ -949,6 +949,36 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _streamCeilingNote(),
       const SizedBox(height: 16),
 
+      // 0 = device default (~30/s); 5..30 asks the camera hardware itself to
+      // capture slower. Different from the inference cap on the AI tab, which
+      // only skips frames in software after the camera already produced them.
+      NumericSettingField(
+        label: 'Camera frame rate cap',
+        value: _c.cameraFpsCap.toDouble(),
+        min: 0,
+        max: 30,
+        isInt: true,
+        unitSuffix: '/s',
+        helperText:
+            'How many frames per second the camera itself captures. Without a '
+            'cap the sensor and image processor run at ~30/s the whole '
+            'session — even while the motion gate has the detector asleep — '
+            'which is the main reason a "sleeping" phone still warms up. '
+            'Lower = cooler phone but a less smooth preview; detection is '
+            'unaffected as long as this stays at or above the inference rate '
+            'cap. The phone only supports certain rates, so the nearest '
+            'supported one is used. Type 0 for the device default. '
+            'Default 15.',
+        onChanged: (v) {
+          final r = v.round();
+          // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.
+          setState(
+            () => _c = _c.copyWith(cameraFpsCap: r == 0 ? 0 : (r < 5 ? 5 : r)),
+          );
+        },
+      ),
+      const Divider(color: Colors.white24),
+
       _label(
         'ROI photo source. Auto (recommended): each photo is a fast crop of '
         'the live frame when that already meets the minimum size below, and a '

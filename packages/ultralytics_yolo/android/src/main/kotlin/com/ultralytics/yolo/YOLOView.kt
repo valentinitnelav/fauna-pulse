@@ -311,6 +311,24 @@ class YOLOView @JvmOverloads constructor(
     // Optional ImageCapture use-case (bound alongside Preview+Analysis when supported)
     private var imageCaptureUseCase: ImageCapture? = null
 
+    // Round 82 (Pollinator Monitor): the camera provider + selector actually bound, kept so
+    // setPreviewEnabled() can detach/reattach ONLY the preview use case without a full rebind.
+    private var boundCameraProvider: ProcessCameraProvider? = null
+    private var boundCameraSelector: CameraSelector? = null
+    // Whether the live preview should be attached. Power-save ("screen off") turns this off:
+    // the preview output is one of the streams the camera hardware pipeline produces every
+    // frame, so detaching it saves real sensor/ISP/compositing work while nobody is looking.
+    @Volatile private var previewEnabled = true
+
+    // Round 82: Camera2 interop state. setCaptureRequestOptions() REPLACES the whole option
+    // set, so manual focus and the AE frame-rate cap must be applied together through the ONE
+    // funnel below (applyInteropOptions) — never call setCaptureRequestOptions anywhere else,
+    // or one setting will silently erase the other (e.g. re-enabling autofocus mid-session).
+    private var interopAfMode: Int? = null          // null = leave device default
+    private var interopFocusDioptres: Float? = null // only when interopAfMode == AF_MODE_OFF
+    private var requestedCameraFpsCap = 0           // user wish; 0 = device default (~30)
+    private var appliedFpsRange: android.util.Range<Int>? = null // what the HAL accepted
+
     // Round 63: still photos are processed OFF the main thread. CameraX runs the
     // takePicture callback on whatever executor it is given; handing it the main
     // executor meant ~1.5 s of JPEG work per photo (12 MP copy/decode/rotate/
@@ -1041,6 +1059,23 @@ class YOLOView @JvmOverloads constructor(
 
                         previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
 
+                        // Round 82: remember what was bound (setPreviewEnabled needs it), honor
+                        // an active power-save preview-off across rebinds (lens switch/resume),
+                        // and re-assert the Camera2 interop options — a rebind builds a fresh
+                        // capture session, which would otherwise drop the focus lock / fps cap.
+                        boundCameraProvider = cameraProvider
+                        boundCameraSelector = cameraSelector
+                        if (!previewEnabled) {
+                            previewUseCase?.let { p ->
+                                try {
+                                    if (cameraProvider.isBound(p)) cameraProvider.unbind(p)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Could not keep preview detached across rebind", e)
+                                }
+                            }
+                        }
+                        applyInteropOptions()
+
                         // Initialize zoom
                         camera?.let { cam: Camera ->
                             val cameraInfo = cam.cameraInfo
@@ -1718,18 +1753,9 @@ class YOLOView @JvmOverloads constructor(
             return
         }
         val n = normalized.toFloat().coerceIn(0f, 1f)
-        val dioptres = n * maxDioptres
-        try {
-            val c2 = Camera2CameraControl.from(cam.cameraControl)
-            c2.setCaptureRequestOptions(
-                CaptureRequestOptions.Builder()
-                    .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-                    .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, dioptres)
-                    .build()
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "setManualFocus failed", e)
-        }
+        interopAfMode = CaptureRequest.CONTROL_AF_MODE_OFF
+        interopFocusDioptres = n * maxDioptres
+        applyInteropOptions()
     }
 
     /**
@@ -1737,16 +1763,110 @@ class YOLOView @JvmOverloads constructor(
      * the camera resumes its normal auto behaviour.
      */
     fun setAutoFocus() {
-        val cam = camera ?: return
-        try {
-            val c2 = Camera2CameraControl.from(cam.cameraControl)
-            c2.setCaptureRequestOptions(
-                CaptureRequestOptions.Builder()
-                    .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                    .build()
-            )
+        interopAfMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+        interopFocusDioptres = null
+        applyInteropOptions()
+    }
+
+    /**
+     * Caps the CAMERA's own frame rate (Pollinator Monitor, round 82). This is different from
+     * the inference FPS cap: that one only decides which of the delivered frames the detector
+     * looks at, while the sensor + image processor still capture and process ~30 frames every
+     * second regardless — a large standing heat cost the motion gate cannot remove. This asks
+     * the camera hardware itself to run slower (Camera2 AE target FPS range), so every stage
+     * downstream (ISP, preview, ZSL still ring buffer, analysis delivery) does proportionally
+     * less work. [maxFps] <= 0 restores the device default. The HAL only accepts ranges it
+     * advertises; [chooseAeFpsRange] picks the closest legal one and the choice is logged.
+     * Survives lens-switch rebinds (re-applied after every successful bind).
+     */
+    fun setCameraFpsCap(maxFps: Int) {
+        requestedCameraFpsCap = maxFps
+        applyInteropOptions()
+    }
+
+    /**
+     * Picks the AE target FPS range closest to the requested cap among the ranges this camera
+     * actually supports. Prefers the highest upper bound that stays <= [cap] (the strongest
+     * legal cap not exceeding the wish); when none exists, the smallest upper bound available.
+     * Ties prefer a narrower range (fixed rate = steadier, and AE can't speed back up).
+     */
+    private fun chooseAeFpsRange(cap: Int): android.util.Range<Int>? {
+        val cam = camera ?: return null
+        if (cap <= 0) return null
+        val available: Array<android.util.Range<Int>> = try {
+            Camera2CameraInfo.from(cam.cameraInfo)
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                ?: return null
         } catch (e: Exception) {
-            Log.e(TAG, "setAutoFocus failed", e)
+            Log.w(TAG, "chooseAeFpsRange: cannot read supported ranges", e)
+            return null
+        }
+        if (available.isEmpty()) return null
+        val within = available.filter { it.upper <= cap }
+        val pool = if (within.isNotEmpty()) within else available.toList()
+        val bestUpper = if (within.isNotEmpty()) pool.maxOf { it.upper } else pool.minOf { it.upper }
+        return pool.filter { it.upper == bestUpper }.maxByOrNull { it.lower }
+    }
+
+    /**
+     * The ONE place Camera2 interop options are written (see the field comments): rebuilds the
+     * full option set (focus + AE fps range) and applies it atomically. Safe to call before the
+     * camera is bound (it just returns; the bind path calls it again once `camera` is set).
+     */
+    private fun applyInteropOptions() {
+        val cam = camera ?: return
+        val builder = CaptureRequestOptions.Builder()
+        interopAfMode?.let { mode ->
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, mode)
+            if (mode == CaptureRequest.CONTROL_AF_MODE_OFF) {
+                interopFocusDioptres?.let {
+                    builder.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, it)
+                }
+            }
+        }
+        val range = chooseAeFpsRange(requestedCameraFpsCap)
+        if (range != null) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range)
+        }
+        if (range != appliedFpsRange) {
+            Log.i(TAG, "Camera fps cap: requested=$requestedCameraFpsCap applied=${range ?: "device default"}")
+            appliedFpsRange = range
+        }
+        try {
+            Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(builder.build())
+        } catch (e: Exception) {
+            Log.e(TAG, "applyInteropOptions failed", e)
+        }
+    }
+
+    /**
+     * Attaches/detaches ONLY the live preview use case (Pollinator Monitor, round 82). The
+     * analysis stream (detector, motion gate) and the still-capture use case stay bound, so a
+     * recording continues untouched. Used by the app's power-save mode: a black cover alone
+     * does NOT stop the preview pipeline — the camera keeps producing and compositing preview
+     * frames nobody can see. Detaching the use case does. Reattaching triggers a short (~0.2 s)
+     * camera reconfiguration, then re-asserts the interop options (focus lock, fps cap).
+     */
+    fun setPreviewEnabled(enabled: Boolean) {
+        previewEnabled = enabled
+        val provider = boundCameraProvider ?: return
+        val preview = previewUseCase ?: return
+        val owner = lifecycleOwner ?: return
+        val selector = boundCameraSelector ?: return
+        try {
+            if (!enabled) {
+                if (provider.isBound(preview)) provider.unbind(preview)
+                Log.i(TAG, "Preview use case detached (power save)")
+            } else if (!provider.isBound(preview)) {
+                camera = provider.bindToLifecycle(owner, selector, preview)
+                preview.setSurfaceProvider(previewView.surfaceProvider)
+                // The repeating request was rebuilt for the new session config; re-assert the
+                // manual focus / fps cap so waking the screen can never unlock the focus.
+                applyInteropOptions()
+                Log.i(TAG, "Preview use case reattached")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "setPreviewEnabled($enabled) failed", e)
         }
     }
 

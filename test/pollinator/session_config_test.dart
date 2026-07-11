@@ -187,6 +187,20 @@ void main() {
     });
   });
 
+  test('camera fps cap: default 15, 0 survives, missing key falls back', () {
+    // Round 82: caps the camera HARDWARE rate (sensor/ISP), unlike
+    // inferenceFps which only skips delivered frames in software.
+    expect(const SessionConfig().cameraFpsCap, 15);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(cameraFpsCap: 24).toJson(),
+    );
+    expect(restored.cameraFpsCap, 24);
+    // An explicitly saved 0 (device default) must survive the round-trip —
+    // only a MISSING key falls back to the 15 default (mirrors inferenceFps).
+    expect(SessionConfig.fromJson(const {'cameraFpsCap': 0}).cameraFpsCap, 0);
+    expect(SessionConfig.fromJson(const {}).cameraFpsCap, 15);
+  });
+
   test('gate idle check rate: default 5, survives the JSON round-trip', () {
     expect(const SessionConfig().motionGateIdleFps, 5);
     final restored = SessionConfig.fromJson(
