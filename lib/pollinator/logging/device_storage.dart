@@ -5,9 +5,43 @@
 // much room is left so the recording screen can show it and the session log
 // can record it alongside the thermal samples.
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 import 'app_error_hooks.dart';
+
+/// Total size in bytes of everything inside a session folder (the log, the
+/// captured JPEGs, diagnostic logcat files). Only file *metadata* is read —
+/// never file contents — so this stays quick even for a photo-heavy session
+/// with thousands of images. Shared by the home history list and the session
+/// summary so both always show the same number.
+Future<int> folderSizeBytes(Directory dir) async {
+  var total = 0;
+  try {
+    await for (final e in dir.list(recursive: true, followLinks: false)) {
+      if (e is File) total += await e.length();
+    }
+  } catch (e) {
+    // A vanished file mid-scan just yields a slightly-off total.
+    logSwallowed('session_size_scan', e);
+  }
+  return total;
+}
+
+/// Formats a byte count with the unit that fits its magnitude — "412 KB",
+/// "8.3 MB", "1.2 GB" — so a log-only session and a multi-gigabyte
+/// photo-heavy one both read naturally (same 1024-based convention as the
+/// problem-report size).
+String formatBytes(int bytes) {
+  const kb = 1024;
+  const mb = kb * 1024;
+  const gb = mb * 1024;
+  if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
+  if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
+  if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
+  return '$bytes B';
+}
 
 /// One free-storage sample. All-null when the platform gave us nothing
 /// (e.g. running on a platform without the channel) — the UI hides itself.

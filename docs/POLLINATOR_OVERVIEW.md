@@ -211,7 +211,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   each otherwise wins drags meant as photo panning); ‹ › buttons change photo
   (resetting zoom first), a chip shows the zoom mode, a 4-arrow pan pad nudges the
   view without any drag gesture, and `_BoxPainter` divides stroke/label size by the
-  zoom so boxes stay thin on screen.
+  zoom so boxes stay thin on screen. r90: Overview shows Date/Start/End (home-list
+  formats) above Duration, plus a storage section (session folder size via shared
+  `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free GB)
+  and a red confirm-guarded "Delete session" button (recursive folder delete →
+  pops; home list rescans on return from a summary).
 
 ## Device quirks (test phones)
 

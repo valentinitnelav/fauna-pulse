@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../models/session_config.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../logging/device_storage.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
@@ -72,6 +73,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ? (t, t)
         : (cur.$1 < t ? cur.$1 : t, cur.$2 > t ? cur.$2 : t);
   }
+
   final List<(int ms, double v)> _temps = [];
   // "Thermal headroom" 0..1+ (0 = cool, 1 = throttling threshold) — a direct
   // throttling signal, sampled alongside temperature.
@@ -98,11 +100,31 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // ListView freeze so their drags can't steal the user's panning (round 89).
   bool _photoViewerZoomed = false;
 
+  // Overview storage section (round 90): the session folder's on-disk size
+  // and the phone's free storage, loaded once in initState.
+  int? _sessionSizeBytes;
+  StorageReading _storage = const StorageReading();
+
   @override
   void initState() {
     super.initState();
     _scroll.addListener(_updateTimelineInView);
     _init();
+    _loadStorageInfo();
+  }
+
+  /// Loads the Overview's storage section: the session folder's total size
+  /// (same scan as the home history list, so the numbers match) and the
+  /// phone's free storage (same source as the recording screen's readout).
+  Future<void> _loadStorageInfo() async {
+    final size = await folderSizeBytes(widget.logFile.parent);
+    final storage = await DeviceStorage.read();
+    if (mounted) {
+      setState(() {
+        _sessionSizeBytes = size;
+        _storage = storage;
+      });
+    }
   }
 
   @override
@@ -631,7 +653,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// top-level `tracker_params` (older sessions).
   Map? get _trackerParams {
     final cfg = _startRec?['config'];
-    if (cfg is Map && cfg['trackerParams'] is Map) return cfg['trackerParams'] as Map;
+    if (cfg is Map && cfg['trackerParams'] is Map) {
+      return cfg['trackerParams'] as Map;
+    }
     final tp = _startRec?['tracker_params'];
     return tp is Map ? tp : null;
   }
@@ -704,7 +728,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     add('GPU requested', _setting('useGpu', 'use_gpu'));
     add('CPU threads (0 = automatic)', _setting('cpuThreads', 'cpu_threads'));
     add('Inference engine used', _accelerator);
-    add('Confidence threshold', _setting('confidenceThreshold', 'confidence_threshold'));
+    add(
+      'Confidence threshold',
+      _setting('confidenceThreshold', 'confidence_threshold'),
+    );
     add('IoU threshold', _setting('iouThreshold', 'iou_threshold'));
     final infFps = _setting('inferenceFps', 'inference_fps');
     add(
@@ -718,7 +745,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // --- Heat management ---
     // Only for sessions that recorded these fields (config block, round 44+).
-    if (_setting('autoThrottle') != null || _setting('motionGateEnabled') != null) {
+    if (_setting('autoThrottle') != null ||
+        _setting('motionGateEnabled') != null) {
       rows.add(_subhead('Heat management'));
       // Camera hardware rate cap (round 82) — distinct from the inference cap.
       final camFps = _setting('cameraFpsCap');
@@ -739,9 +767,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         add('Gate pixel sensitivity', _setting('motionGatePixelDelta'));
         final area = _setting('motionGateAreaFraction');
         add('Gate trigger area', area is num ? area * 100 : null, suffix: ' %');
-        add('Gate wake duration', _setting('motionGateWakeSeconds'), suffix: ' s');
-        add('Gate grid resolution', _setting('motionGateGridSize'), suffix: ' cells');
-    add('Gate idle check rate', _setting('motionGateIdleFps'), suffix: ' fps');
+        add(
+          'Gate wake duration',
+          _setting('motionGateWakeSeconds'),
+          suffix: ' s',
+        );
+        add(
+          'Gate grid resolution',
+          _setting('motionGateGridSize'),
+          suffix: ' cells',
+        );
+        add(
+          'Gate idle check rate',
+          _setting('motionGateIdleFps'),
+          suffix: ' fps',
+        );
       }
     }
 
@@ -751,7 +791,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       'Output folder',
       _setting('folderName') ?? widget.logFile.parent.path.split('/').last,
     );
-    add('Photo step interval', _setting('stepSeconds', 'step_seconds'), suffix: ' s');
+    add(
+      'Photo step interval',
+      _setting('stepSeconds', 'step_seconds'),
+      suffix: ' s',
+    );
     add(
       'Photo capture duration',
       _setting('durationSeconds', 'duration_seconds'),
@@ -772,7 +816,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
     add(
       'Camera resolution',
-      _dims(_startRec?['camera_full_width_px'], _startRec?['camera_full_height_px']),
+      _dims(
+        _startRec?['camera_full_width_px'],
+        _startRec?['camera_full_height_px'],
+      ),
     );
     add(
       'Stream resolution (requested)',
@@ -800,8 +847,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // --- Session & sampling ---
     rows.add(_subhead('Session & sampling'));
-    add('Max session length', _setting('sessionMinutes', 'session_minutes'), suffix: ' min');
-    add('FPS sample interval', _setting('fpsSampleSeconds', 'fps_sample_seconds'), suffix: ' s');
+    add(
+      'Max session length',
+      _setting('sessionMinutes', 'session_minutes'),
+      suffix: ' min',
+    );
+    add(
+      'FPS sample interval',
+      _setting('fpsSampleSeconds', 'fps_sample_seconds'),
+      suffix: ' s',
+    );
     add(
       'Temperature sample interval',
       _setting('thermalSampleSeconds', 'thermal_sample_seconds'),
@@ -856,7 +911,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           color: Colors.white10,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows,
+        ),
       ),
     ];
   }
@@ -904,29 +962,141 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   static const _tabPadding = EdgeInsets.fromLTRB(16, 16, 16, 64);
 
   /// Headline numbers: the quick "how did it go" read.
-  Widget _overviewTab() => ListView(
-    padding: _tabPadding,
-    children: [
-      _stat('Unique insects (track ids)', _uniqueTracks?.toString() ?? 'unknown'),
-      _stat('Session duration', _durationLabel),
-      _stat('Model', _model ?? 'unknown'),
-      if (_accelerator != null && _accelerator!.isNotEmpty)
-        _stat('Inference engine', _accelerator!),
-      _stat('Ended normally', _endedNormally ? 'Yes' : 'No (crash / forced stop)'),
-      _stat('Battery used', _batteryUsedLabel),
-      if (_chargingDuringSession)
-        const Padding(
-          padding: EdgeInsets.only(top: 2, bottom: 6),
-          child: Text(
-            '⚠ The phone was plugged in during (part of) this session, so '
-            'the power/energy graph is hidden — the battery sensor would '
-            'measure charging, not consumption. Measure unplugged.',
-            style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+  Widget _overviewTab() {
+    // Same date/time formats as the home history list: yyyy-mm-dd, hh:mm:ss.
+    final start = _startMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(_startMs!)
+        : null;
+    final end = _endMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(_endMs!)
+        : null;
+    // A session can run past midnight: the end then carries its own date so
+    // the bare time isn't ambiguous.
+    final endLabel = end == null
+        ? 'unknown'
+        : (start != null && _dateOnly(end) != _dateOnly(start))
+        ? '${_dateOnly(end)}, ${_timeOnly(end)}'
+        : _timeOnly(end);
+    return ListView(
+      padding: _tabPadding,
+      children: [
+        _stat(
+          'Unique insects (track ids)',
+          _uniqueTracks?.toString() ?? 'unknown',
+        ),
+        _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
+        _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
+        _stat('End time', endLabel),
+        _stat('Session duration', _durationLabel),
+        _stat('Model', _model ?? 'unknown'),
+        if (_accelerator != null && _accelerator!.isNotEmpty)
+          _stat('Inference engine', _accelerator!),
+        _stat(
+          'Ended normally',
+          _endedNormally ? 'Yes' : 'No (crash / forced stop)',
+        ),
+        _stat('Battery used', _batteryUsedLabel),
+        if (_chargingDuringSession)
+          const Padding(
+            padding: EdgeInsets.only(top: 2, bottom: 6),
+            child: Text(
+              '⚠ The phone was plugged in during (part of) this session, so '
+              'the power/energy graph is hidden — the battery sensor would '
+              'measure charging, not consumption. Measure unplugged.',
+              style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+            ),
+          ),
+        _stat('Saved to', widget.logFile.parent.path),
+        // --- Storage & cleanup (round 90) ---
+        const Divider(height: 32, color: Colors.white24),
+        _stat(
+          'Session storage',
+          _sessionSizeBytes != null
+              ? formatBytes(_sessionSizeBytes!)
+              : 'measuring…',
+        ),
+        _stat(
+          'Phone storage free',
+          _storage.freeGb != null
+              ? '${_storage.isLow ? '⚠ ' : ''}'
+                    '${_storage.freeGb!.toStringAsFixed(1)} GB'
+              : 'unknown',
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: _confirmDeleteSession,
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('Delete session'),
           ),
         ),
-      _stat('Saved to', widget.logFile.parent.path),
-    ],
-  );
+      ],
+    );
+  }
+
+  /// The calendar date, e.g. `2026-06-22` — same format as the home list.
+  String _dateOnly(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  /// The wall-clock time of day, `hh:mm:ss` — same format as the home list.
+  String _timeOnly(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+  }
+
+  /// Asks for confirmation, then deletes the WHOLE session folder (log,
+  /// metadata, photos, diagnostic files) and leaves the summary. The home
+  /// list rescans on return, and the recording screen's free-storage readout
+  /// polls the OS, so both show the freed space without extra plumbing.
+  Future<void> _confirmDeleteSession() async {
+    final size = _sessionSizeBytes != null
+        ? ' (${formatBytes(_sessionSizeBytes!)})'
+        : '';
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this session?'),
+        content: Text(
+          'This permanently deletes the whole session$size from the phone — '
+          'the data log, all metadata and every saved photo. '
+          'This cannot be undone.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    try {
+      await widget.logFile.parent.delete(recursive: true);
+    } catch (e) {
+      logSwallowed('session_delete', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete the session.')),
+        );
+      }
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
 
   /// Every parameter the user chose at session start (from the log's config
   /// block), grouped — its own tab so the overview stays scannable.
@@ -937,16 +1107,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     padding: _tabPadding,
     // Frozen while a photo is zoomed: the list's vertical drag otherwise
     // wins vertical/diagonal photo pans and scrolls the viewer away.
-    physics: _photoViewerZoomed
-        ? const NeverScrollableScrollPhysics()
-        : null,
+    physics: _photoViewerZoomed ? const NeverScrollableScrollPhysics() : null,
     children: _photoSection(),
   );
 
   Widget _graphsTab() {
     // Recompute timeline visibility after this frame lays out, so the floating
     // button appears even before the first scroll if the timeline starts visible.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateTimelineInView());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _updateTimelineInView(),
+    );
     return Stack(
       children: [
         ListView(
@@ -1224,7 +1394,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _startMs == null ||
         _endMs == null ||
         _endMs! <= _startMs!) {
-      return Center(key: _timelineKey, child: const Text('No visits recorded.'));
+      return Center(
+        key: _timelineKey,
+        child: const Text('No visits recorded.'),
+      );
     }
     final ids = _spans.keys.toList()
       ..sort((a, b) => _spans[a]!.$1.compareTo(_spans[b]!.$1));
@@ -1499,8 +1672,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     final minT = _viewerSide - _viewerSide * s; // ≤ 0
     final tx = (centre.dx - scene.dx * s).clamp(minT, 0.0);
     final ty = (centre.dy - scene.dy * s).clamp(minT, 0.0);
-    c.value = Matrix4.diagonal3Values(s, s, 1)
-      ..setTranslationRaw(tx, ty, 0);
+    c.value = Matrix4.diagonal3Values(s, s, 1)..setTranslationRaw(tx, ty, 0);
     setState(() => _scale = s);
     _notifyZoom();
   }
@@ -1992,9 +2164,7 @@ class _BoxPainter extends CustomPainter {
   final vals = [for (final p in points) p.$2]..sort();
   final n = vals.length;
   final mean = vals.reduce((a, b) => a + b) / n;
-  final median = n.isOdd
-      ? vals[n ~/ 2]
-      : (vals[n ~/ 2 - 1] + vals[n ~/ 2]) / 2;
+  final median = n.isOdd ? vals[n ~/ 2] : (vals[n ~/ 2 - 1] + vals[n ~/ 2]) / 2;
   return (mean: mean, median: median, min: vals.first, max: vals.last);
 }
 

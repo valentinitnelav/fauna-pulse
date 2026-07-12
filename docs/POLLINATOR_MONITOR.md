@@ -2801,6 +2801,7 @@ native code re-reads at next launch with no crash-guard, for a small
 load-time-only win.
 
 **Native (Kotlin):**
+
 - `LiteRtModel` takes `cpuThreads: Int = 0` (0 = runtime default) and sets
   `CompiledModel.CpuOptions(numThreads=…)` on CPU compiles. Plumbed through
   `InferenceModel.create`, all six predictors, `YOLOView.setModel` (also part
@@ -2818,6 +2819,7 @@ load-time-only win.
   session setting. It now passes `useGpu` and `cpuThreads` from the widget.
 
 **App (Dart):**
+
 - `YOLO.benchmarkAccelerators(modelPath)` static in the plugin (resolves
   asset models to real files first, same as the live view).
 - `SessionConfig.cpuThreads` (default 0), persisted + copyWith + JSON.
@@ -3308,4 +3310,32 @@ Fixes (`session_summary_screen.dart`):
 Verification: `flutter analyze` clean, 101/101 tests, debug APK builds. Owner
 should re-test on the Xiaomi: zoom in → one-finger drag must pan (not scroll the
 page/switch tabs), vertical pans included; arrows/double-tap exit; pad nudges.
+
+## Round 90 (2026-07-12): Overview tab — date/start/end rows + storage section + Delete session
+
+Owner request, all on the summary's Overview tab:
+
+- Under the headline stats: Date (yyyy-mm-dd), Start time, End time (hh:mm:ss),
+  then Session duration last — same formats as the home history list. A session
+  crossing midnight shows the end's own date; a crashed session shows End
+  "unknown" (matches the list's "incomplete").
+- After a divider, a storage section: "Session storage" (folder size — same scan
+  as the home list, so the numbers match) and "Phone storage free" (same GB/1-dp
+  reading + ⚠-low marker as the recording screen's readout; via
+  `DeviceStorage.read()`).
+- A red "Delete session" button: an AlertDialog warns that the whole folder —
+  log, metadata, every photo (+ its size) — is permanently lost; confirming
+  deletes `logFile.parent` recursively and pops the summary. Failures surface as
+  a snackbar (`logSwallowed('session_delete')`), never a crash.
+
+Plumbing: `_folderSizeBytes`/`_formatBytes` moved OUT of home_screen into shared
+top-level `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart` (one
+source for list + summary). `HomeScreen._openSession` now rescans the list on
+return (it previously only rescanned after recording), so a deleted session
+disappears and per-session sizes stay fresh. Free-storage readouts elsewhere need
+no plumbing: the home list rescans folders, and the recording screen polls StatFs
+on the thermal cadence, so freed space shows up automatically.
+
+Verification: `flutter analyze` clean (plus one pre-existing single-line `if`
+braced after `dart format` reflowed it), 101/101 tests, debug APK builds.
 

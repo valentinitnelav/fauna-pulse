@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../logging/device_storage.dart';
 import '../logging/error_reporter.dart';
 import '../models/session_config.dart';
 import 'camera_session_screen.dart';
@@ -81,14 +82,15 @@ class _HomeScreenState extends State<HomeScreen> {
             // Read just the first/last records to learn when the session started,
             // ended and how long it ran (cheap — no full scan, even for a huge log).
             final span = await _readSessionSpan(log);
-            final sizeBytes = await _folderSizeBytes(entity);
+            final sizeBytes = await folderSizeBytes(entity);
             final start = span.startMs != null
                 ? DateTime.fromMillisecondsSinceEpoch(span.startMs!)
                 : log.statSync().modified;
             final end = span.endMs != null
                 ? DateTime.fromMillisecondsSinceEpoch(span.endMs!)
                 : null;
-            final dur = (span.startMs != null &&
+            final dur =
+                (span.startMs != null &&
                     span.endMs != null &&
                     span.endMs! >= span.startMs!)
                 ? Duration(milliseconds: span.endMs! - span.startMs!)
@@ -165,37 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
       logSwallowed('session_duration_scan', e);
     }
     return (startMs: startMs, endMs: endMs, endedNormally: endedNormally);
-  }
-
-  /// Total size in bytes of everything inside a session folder (the log, the
-  /// captured JPEGs, diagnostic logcat files). Only file *metadata* is read —
-  /// never file contents — so this stays quick even for a photo-heavy session
-  /// with thousands of images.
-  Future<int> _folderSizeBytes(Directory dir) async {
-    var total = 0;
-    try {
-      await for (final e in dir.list(recursive: true, followLinks: false)) {
-        if (e is File) total += await e.length();
-      }
-    } catch (e) {
-      // A vanished file mid-scan just yields a slightly-off total.
-      logSwallowed('session_size_scan', e);
-    }
-    return total;
-  }
-
-  /// Formats a byte count with the unit that fits its magnitude — "412 KB",
-  /// "8.3 MB", "1.2 GB" — so a log-only session and a multi-gigabyte
-  /// photo-heavy one both read naturally (same 1024-based convention as the
-  /// problem-report size).
-  String _formatBytes(int bytes) {
-    const kb = 1024;
-    const mb = kb * 1024;
-    const gb = mb * 1024;
-    if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
-    if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
-    if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
-    return '$bytes B';
   }
 
   Map<String, dynamic>? _tryDecode(String line) {
@@ -289,6 +260,9 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => SessionSummaryScreen(logFile: s.logFile),
       ),
     );
+    // The summary can DELETE its session (round 90) — rescan so the list and
+    // the per-session sizes stay accurate.
+    _loadSessions();
   }
 
   /// The calendar date, e.g. `2026-06-22`.
@@ -480,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _formatBytes(s.sizeBytes),
+                        formatBytes(s.sizeBytes),
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 12,
