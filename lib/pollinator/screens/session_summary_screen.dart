@@ -94,6 +94,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _photosLoading = false;
   List<_PhotoSample> _photos = const [];
 
+  // True while the photo viewer is zoomed in: the TabBarView and the Photos
+  // ListView freeze so their drags can't steal the user's panning (round 89).
+  bool _photoViewerZoomed = false;
+
   @override
   void initState() {
     super.initState();
@@ -879,6 +883,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         body: _loadingStats
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(
+                // Frozen while a photo is zoomed: the tab swipe would win the
+                // horizontal drags the user means as photo panning. Tapping
+                // the tab bar still switches tabs (physics gate user drags
+                // only).
+                physics: _photoViewerZoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
                 children: [
                   _overviewTab(),
                   _settingsTab(),
@@ -922,8 +933,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Widget _settingsTab() =>
       ListView(padding: _tabPadding, children: _settingsSection());
 
-  Widget _photosTab() =>
-      ListView(padding: _tabPadding, children: _photoSection());
+  Widget _photosTab() => ListView(
+    padding: _tabPadding,
+    // Frozen while a photo is zoomed: the list's vertical drag otherwise
+    // wins vertical/diagonal photo pans and scrolls the viewer away.
+    physics: _photoViewerZoomed
+        ? const NeverScrollableScrollPhysics()
+        : null,
+    children: _photoSection(),
+  );
 
   Widget _graphsTab() {
     // Recompute timeline visibility after this frame lays out, so the floating
@@ -1190,7 +1208,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
         )
       else if (_photos.isNotEmpty)
-        _PhotoViewer(photos: _photos),
+        _PhotoViewer(
+          photos: _photos,
+          onZoomChanged: (z) {
+            if (mounted && z != _photoViewerZoomed) {
+              setState(() => _photoViewerZoomed = z);
+            }
+          },
+        ),
     ];
   }
 
@@ -1377,7 +1402,15 @@ class _PhotoSample {
 /// overlay directly on a 1:1 image.
 class _PhotoViewer extends StatefulWidget {
   final List<_PhotoSample> photos;
-  const _PhotoViewer({required this.photos});
+
+  /// Fires when the viewer enters/leaves zoom mode. The parent must freeze
+  /// its OWN scrollables on it (the tab ListView and the TabBarView): they
+  /// sit above the photo in the gesture arena and otherwise win most drags —
+  /// vertical pans scrolled the page away and horizontal pans switched tabs,
+  /// which is why zoomed panning felt broken even after round 88 froze the
+  /// inner PageView.
+  final ValueChanged<bool> onZoomChanged;
+  const _PhotoViewer({required this.photos, required this.onZoomChanged});
 
   @override
   State<_PhotoViewer> createState() => _PhotoViewerState();
@@ -1398,6 +1431,20 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// zooming too.
   double _scale = 1.0;
 
+  /// True while the current photo is zoomed in: page-swiping is disabled so a
+  /// one-finger drag pans the photo, and the zoom-mode chip is shown.
+  bool get _zoomed => _scale > 1.01;
+
+  /// Last zoom state reported to [widget.onZoomChanged], so the parent is
+  /// only rebuilt on actual mode changes, not on every pinch step.
+  bool _lastNotifiedZoomed = false;
+
+  void _notifyZoom() {
+    if (_zoomed == _lastNotifiedZoomed) return;
+    _lastNotifiedZoomed = _zoomed;
+    widget.onZoomChanged(_zoomed);
+  }
+
   static const double _maxZoom = 8.0;
 
   /// One transform per page: PageView keeps neighbouring pages alive during a
@@ -1411,6 +1458,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 
   @override
   void dispose() {
+    // If disposed mid-zoom (e.g. photos reloaded), unfreeze the parent's
+    // scrollables — post-frame, because the parent may be rebuilding now.
+    if (_lastNotifiedZoomed) {
+      final notify = widget.onZoomChanged;
+      WidgetsBinding.instance.addPostFrameCallback((_) => notify(false));
+    }
     _controller.dispose();
     for (final c in _transforms.values) {
       c.dispose();
@@ -1425,7 +1478,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         c.addListener(() {
           if (page != _page) return;
           final s = c.value.getMaxScaleOnAxis();
-          if ((s - _scale).abs() > 0.01) setState(() => _scale = s);
+          if ((s - _scale).abs() > 0.01) {
+            setState(() => _scale = s);
+            _notifyZoom();
+          }
         });
         return c;
       });
@@ -1446,7 +1502,38 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     c.value = Matrix4.diagonal3Values(s, s, 1)
       ..setTranslationRaw(tx, ty, 0);
     setState(() => _scale = s);
+    _notifyZoom();
   }
+
+  /// Pans the zoomed view one step in the given direction (each unit = a
+  /// third of the viewport) — the button fallback for panning, so moving
+  /// around never depends on winning a drag gesture. Clamped like [_setZoom].
+  void _nudge(double dxDir, double dyDir) {
+    final c = _transformFor(_page);
+    final s = c.value.getMaxScaleOnAxis();
+    if (s <= 1.01) return;
+    final step = _viewerSide / 3;
+    final t = c.value.getTranslation();
+    final minT = _viewerSide - _viewerSide * s; // ≤ 0
+    // "Look right" = content slides left = translation decreases.
+    final tx = (t.x - dxDir * step).clamp(minT, 0.0);
+    final ty = (t.y - dyDir * step).clamp(minT, 0.0);
+    c.value = Matrix4.diagonal3Values(s, s, 1)..setTranslationRaw(tx, ty, 0);
+  }
+
+  /// One small arrow key of the pan pad shown while zoomed.
+  Widget _padButton(IconData icon, VoidCallback onTap) => SizedBox(
+    width: 32,
+    height: 32,
+    child: IconButton(
+      padding: EdgeInsets.zero,
+      icon: Icon(icon),
+      color: Colors.white,
+      iconSize: 22,
+      visualDensity: VisualDensity.compact,
+      onPressed: onTap,
+    ),
+  );
 
   /// One round translucent tool button for the viewer's top-right column;
   /// [active] tints the icon so the state is visible at a glance.
@@ -1471,6 +1558,32 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     ),
   );
 
+  /// A round translucent ‹ / › photo-navigation button; greyed out at the
+  /// ends of the gallery. Navigating first resets the zoom, so the page
+  /// transition never slides a zoomed crop around.
+  Widget _navButton(IconData icon, bool enabled, int toPage) => Container(
+    decoration: const BoxDecoration(
+      color: Colors.black54,
+      shape: BoxShape.circle,
+    ),
+    child: IconButton(
+      icon: Icon(icon),
+      color: enabled ? Colors.white : Colors.white24,
+      iconSize: 24,
+      visualDensity: VisualDensity.compact,
+      onPressed: enabled
+          ? () {
+              if (_zoomed) _setZoom(1);
+              _controller.animateToPage(
+                toPage,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+              );
+            }
+          : null,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1488,6 +1601,15 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                   PageView.builder(
                     controller: _controller,
                     itemCount: widget.photos.length,
+                    // While zoomed, one-finger drags must PAN the photo — but
+                    // the PageView competes for the same horizontal drag and
+                    // usually wins (this is what made panning after a pinch
+                    // feel broken, round 88). So page-swiping is disabled in
+                    // zoom mode; the ‹ › buttons (which first reset the zoom)
+                    // are the way to change photo.
+                    physics: _zoomed
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
                     onPageChanged: (i) {
                       final old = _page;
                       setState(() {
@@ -1495,9 +1617,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         _scale = 1;
                       });
                       // Gallery convention: zoom belongs to one photo — reset
-                      // it when leaving (also makes the next swipe work: the
-                      // pan owns the horizontal drag while zoomed in).
+                      // it when leaving.
                       _transforms[old]?.value = Matrix4.identity();
+                      _notifyZoom();
                     },
                     itemBuilder: (_, i) {
                       final p = widget.photos[i];
@@ -1532,7 +1654,17 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                   if (_showBoxes)
                                     Positioned.fill(
                                       child: CustomPaint(
-                                        painter: _BoxPainter(p.boxes),
+                                        // The page's own zoom factor: stroke
+                                        // width and label size are divided by
+                                        // it inside the painter so they keep a
+                                        // constant ON-SCREEN thickness while
+                                        // the photo underneath scales up.
+                                        painter: _BoxPainter(
+                                          p.boxes,
+                                          _transformFor(
+                                            i,
+                                          ).value.getMaxScaleOnAxis(),
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -1602,6 +1734,100 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       ],
                     ),
                   ),
+                  // ‹ › photo navigation, vertically centred on the edges.
+                  // Always present: while zoomed they are the ONLY way to
+                  // change photo (swiping then pans instead).
+                  Positioned(
+                    left: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _navButton(
+                        Icons.chevron_left,
+                        _page > 0,
+                        _page - 1,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _navButton(
+                        Icons.chevron_right,
+                        _page < widget.photos.length - 1,
+                        _page + 1,
+                      ),
+                    ),
+                  ),
+                  // Zoom-mode chip: makes the mode switch visible — while it
+                  // shows, a one-finger drag moves the zoomed photo and the
+                  // ‹ › buttons (or a double-tap) leave the mode.
+                  if (_zoomed)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Zoom ${_scale.toStringAsFixed(1)}× — drag to move, '
+                          '‹ › or double-tap to exit',
+                          style: const TextStyle(
+                            color: Color(0xFF00E5FF),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Pan pad (round 89): button fallback for moving the
+                  // zoomed view, so panning never depends on winning a drag
+                  // gesture against the surrounding scrollables.
+                  if (_zoomed)
+                    Positioned(
+                      bottom: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _padButton(
+                              Icons.keyboard_arrow_up,
+                              () => _nudge(0, -1),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _padButton(
+                                  Icons.keyboard_arrow_left,
+                                  () => _nudge(-1, 0),
+                                ),
+                                _padButton(
+                                  Icons.keyboard_arrow_down,
+                                  () => _nudge(0, 1),
+                                ),
+                                _padButton(
+                                  Icons.keyboard_arrow_right,
+                                  () => _nudge(1, 0),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               );
             },
@@ -1697,7 +1923,14 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 /// Draws ROI-normalized detection boxes (0..1) over the displayed square photo.
 class _BoxPainter extends CustomPainter {
   final List<_DetBox> boxes;
-  _BoxPainter(this.boxes);
+
+  /// Zoom factor of the enclosing InteractiveViewer. The painter draws in the
+  /// photo's (pre-zoom) coordinates, so stroke width and label size are
+  /// divided by this to keep a constant ON-SCREEN thickness at any zoom —
+  /// otherwise an 8× zoom turns the 2 px border into a fat 16 px band and the
+  /// label into a banner covering the insect.
+  final double zoom;
+  _BoxPainter(this.boxes, [this.zoom = 1]);
 
   /// Box color of the insect(s) whose time-lapse schedule triggered the photo
   /// (the color all boxes used before round 86).
@@ -1714,7 +1947,7 @@ class _BoxPainter extends CustomPainter {
       final stroke = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
+        ..strokeWidth = 2 / zoom;
       final rect = Rect.fromLTRB(
         b.left * size.width,
         b.top * size.height,
@@ -1728,7 +1961,7 @@ class _BoxPainter extends CustomPainter {
             text: b.label,
             style: TextStyle(
               color: Colors.black,
-              fontSize: 11,
+              fontSize: 11 / zoom,
               backgroundColor: color,
             ),
           ),
@@ -1736,14 +1969,15 @@ class _BoxPainter extends CustomPainter {
         )..layout();
         tp.paint(
           canvas,
-          Offset(rect.left, (rect.top - 13).clamp(0, size.height)),
+          Offset(rect.left, (rect.top - 13 / zoom).clamp(0, size.height)),
         );
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _BoxPainter old) => old.boxes != boxes;
+  bool shouldRepaint(covariant _BoxPainter old) =>
+      old.boxes != boxes || old.zoom != zoom;
 }
 
 /// Mean, median, min and max of a time series' values (the `ms` timestamps are

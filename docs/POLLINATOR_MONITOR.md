@@ -3255,3 +3255,57 @@ Implementation (`_PhotoViewer` in `session_summary_screen.dart`, display-only):
 Verification: `flutter analyze` clean, 101/101 tests, debug APK builds. View-state
 only (no SessionConfig/logging change), so no settings/summary/data-guide rows.
 
+## Round 88 (2026-07-12): photo viewer zoom UX — swipe/pan conflict, ‹ › nav, thin boxes
+
+Owner field-test feedback on r87: after pinch-zooming and lifting both fingers, a
+one-finger drag usually swiped to the NEXT photo instead of panning ("the pinch
+evaporates"); wanted a way to move the zoomed view, explicit prev/next buttons,
+a visible zoom mode, and box lines/labels that stay thin at 8×.
+
+Root cause of the pan problem: PageView and InteractiveViewer both compete for
+one-finger horizontal drags in the gesture arena, and PageView usually wins.
+Fixes (all in `_PhotoViewer` / `_BoxPainter`, `session_summary_screen.dart`):
+
+- While zoomed (`_scale > 1.01`), the PageView gets
+  `NeverScrollableScrollPhysics` — a one-finger drag then always PANS the photo
+  (no extra "move" button needed; the requested button became unnecessary once
+  the drag conflict was removed).
+- ‹ › navigation buttons, vertically centred on the viewer edges, greyed at the
+  gallery ends; they reset the zoom BEFORE animating so a zoomed crop never
+  slides around. While zoomed they are the only way to change photo.
+- A cyan chip (top-left) makes the mode explicit: "Zoom N.N× — drag to move,
+  ‹ › or double-tap to exit".
+- `_BoxPainter` now takes the page's zoom factor and divides stroke width
+  (2/zoom), label font (11/zoom) and label offset by it, so boxes/labels keep a
+  constant ON-SCREEN thickness at any zoom (glyphs rasterize under the full
+  transform, so scaled-up text stays crisp); `shouldRepaint` compares zoom too.
+
+Verification: `flutter analyze` clean, 101/101 tests, debug APK builds. View-state
+only; no SessionConfig/logging change.
+
+## Round 89 (2026-07-12): zoomed panning still stolen — freeze ALL ancestor scrollables + pan pad
+
+Owner re-test of r88 on the Xiaomi: panning a zoomed photo still barely worked.
+Not a device quirk — r88 only froze the INNER PageView, but two more scrollables
+sit above the photo in the gesture arena and win most drags: the summary's
+TabBarView takes horizontal drags (tab swipe) and the Photos tab's ListView takes
+vertical/diagonal drags (page scroll). A pan is rarely axis-pure, so almost every
+drag was stolen by one of them.
+
+Fixes (`session_summary_screen.dart`):
+- `_PhotoViewer` now reports zoom-mode changes via `onZoomChanged` (debounced to
+  actual mode flips via `_lastNotifiedZoomed`; dispose-time un-freeze is
+  post-frame). While zoomed, the parent gives BOTH the TabBarView and the Photos
+  ListView `NeverScrollableScrollPhysics` — with the r88 PageView freeze, the
+  InteractiveViewer is then the only drag contender, so one-finger panning and
+  re-pinching work. Physics only gate USER drags: tab-bar taps still switch tabs,
+  and everything unfreezes at 1×.
+- Pan pad (owner request): while zoomed, a 4-arrow nudge pad (bottom-right)
+  moves the view by ⅓ viewport per tap with the same translation clamping as the
+  slider — a button fallback so moving around never depends on winning a drag
+  gesture, on any device.
+
+Verification: `flutter analyze` clean, 101/101 tests, debug APK builds. Owner
+should re-test on the Xiaomi: zoom in → one-finger drag must pan (not scroll the
+page/switch tabs), vertical pans included; arrows/double-tap exit; pad nudges.
+

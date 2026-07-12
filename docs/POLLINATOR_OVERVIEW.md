@@ -206,6 +206,12 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   pinch/slider zoom (per-page `TransformationController`, overlay inside the
   transform, double-tap resets); a "send crop to citizen-science classifier" button
   is planned but NOT built (no GPS in session logs yet — platforms want location).
+  r88/r89: while zoomed, ALL ancestor scrollables freeze (`NeverScrollableScrollPhysics`
+  on the inner PageView, the Photos ListView AND the TabBarView via `onZoomChanged` —
+  each otherwise wins drags meant as photo panning); ‹ › buttons change photo
+  (resetting zoom first), a chip shows the zoom mode, a 4-arrow pan pad nudges the
+  view without any drag gesture, and `_BoxPainter` divides stroke/label size by the
+  zoom so boxes stay thin on screen.
 
 ## Device quirks (test phones)
 
