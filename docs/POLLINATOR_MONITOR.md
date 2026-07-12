@@ -3224,3 +3224,34 @@ Verified on session_128: 52 of 66 photos gain the previously hidden boxes
 (e.g. 1 trigger + 1 co-detected), photo count unchanged, single-insect photos
 identical. `flutter analyze` clean, 101/101 tests.
 
+## Round 87 (2026-07-12): photo viewer tools — boxes on/off + pinch/slider zoom
+
+Owner request: viewer tool buttons (top-right column) for (1) toggling the detection
+boxes overlay, (2) zooming (two-finger pinch and a magnifier slider). A third button
+(send crop to a citizen-science classifier, e.g. iNaturalist/Observation.org) was
+discussed and is PLANNED ONLY — see the chat plan; groundwork thinking: sessions log
+no GPS, which observation platforms want, so a future round may add optional
+session-start location capture.
+
+Implementation (`_PhotoViewer` in `session_summary_screen.dart`, display-only):
+- Each page's photo+overlay Stack sits inside an `InteractiveViewer` (Flutter's
+  built-in pinch-zoom/pan), max 8×. The box overlay is INSIDE the transformed child
+  so boxes stay glued to insects while zooming. Double-tap resets to 1×.
+- One `TransformationController` PER PAGE (PageView keeps neighbours alive during a
+  swipe — a shared controller would zoom the incoming photo too); zoom resets when
+  leaving a page (gallery convention; also keeps swiping working, since pan owns the
+  horizontal drag while zoomed). Controllers disposed with the state.
+- Tool column fixed at the viewer's top-right (does not swipe/zoom with the photo):
+  boxes toggle (`Icons.crop_din`, cyan when active) and magnifier (`Icons.zoom_in`)
+  that unfolds a vertical 1–8× slider with a live "N.N×" readout. Slider zooming
+  keeps the current viewport centre fixed (so it doesn't jump off a pinch-panned
+  insect) and clamps the pan to keep the photo covering the viewport —
+  InteractiveViewer only enforces its boundary during gestures, not programmatic
+  transforms. A controller listener mirrors pinch scale back into the slider thumb.
+- Non-deprecated matrix construction (`Matrix4.diagonal3Values` +
+  `setTranslationRaw`) — `..translate()..scale()` are deprecated in current
+  vector_math.
+
+Verification: `flutter analyze` clean, 101/101 tests, debug APK builds. View-state
+only (no SessionConfig/logging change), so no settings/summary/data-guide rows.
+

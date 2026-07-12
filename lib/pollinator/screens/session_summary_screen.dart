@@ -1387,11 +1387,89 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   final _controller = PageController();
   int _page = 0;
 
+  /// Detection boxes + labels overlay on/off (round 87, top-right tool button).
+  bool _showBoxes = true;
+
+  /// Whether the zoom slider is unfolded under the magnifier button.
+  bool _zoomSliderOpen = false;
+
+  /// Current page's zoom factor. Kept in sync with pinch gestures (via the
+  /// transform controller's listener) so the slider thumb follows two-finger
+  /// zooming too.
+  double _scale = 1.0;
+
+  static const double _maxZoom = 8.0;
+
+  /// One transform per page: PageView keeps neighbouring pages alive during a
+  /// swipe, so a single shared controller would visibly zoom the incoming
+  /// photo as well.
+  final Map<int, TransformationController> _transforms = {};
+
+  /// Side (logical px) of the square viewer area, captured at build time —
+  /// the zoom slider needs it to keep the viewport centre fixed while scaling.
+  double _viewerSide = 320;
+
   @override
   void dispose() {
     _controller.dispose();
+    for (final c in _transforms.values) {
+      c.dispose();
+    }
     super.dispose();
   }
+
+  TransformationController _transformFor(int page) =>
+      _transforms.putIfAbsent(page, () {
+        final c = TransformationController();
+        // Mirror pinch zooming into [_scale] so the slider follows the fingers.
+        c.addListener(() {
+          if (page != _page) return;
+          final s = c.value.getMaxScaleOnAxis();
+          if ((s - _scale).abs() > 0.01) setState(() => _scale = s);
+        });
+        return c;
+      });
+
+  /// Applies zoom factor [s] around the point currently at the viewport
+  /// centre — so slider zooming doesn't jump away from an insect the user
+  /// pinch-panned to — clamping the pan so the photo keeps covering the
+  /// viewport (InteractiveViewer only enforces its boundary during gestures,
+  /// not for programmatic transforms).
+  void _setZoom(double s) {
+    s = s.clamp(1.0, _maxZoom);
+    final c = _transformFor(_page);
+    final centre = Offset(_viewerSide / 2, _viewerSide / 2);
+    final scene = c.toScene(centre);
+    final minT = _viewerSide - _viewerSide * s; // ≤ 0
+    final tx = (centre.dx - scene.dx * s).clamp(minT, 0.0);
+    final ty = (centre.dy - scene.dy * s).clamp(minT, 0.0);
+    c.value = Matrix4.diagonal3Values(s, s, 1)
+      ..setTranslationRaw(tx, ty, 0);
+    setState(() => _scale = s);
+  }
+
+  /// One round translucent tool button for the viewer's top-right column;
+  /// [active] tints the icon so the state is visible at a glance.
+  Widget _toolButton({
+    required IconData icon,
+    required String tooltip,
+    required bool active,
+    required VoidCallback onTap,
+  }) => Container(
+    margin: const EdgeInsets.only(bottom: 4),
+    decoration: const BoxDecoration(
+      color: Colors.black54,
+      shape: BoxShape.circle,
+    ),
+    child: IconButton(
+      icon: Icon(icon),
+      color: active ? const Color(0xFF00E5FF) : Colors.white70,
+      iconSize: 20,
+      visualDensity: VisualDensity.compact,
+      tooltip: tooltip,
+      onPressed: onTap,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1402,37 +1480,129 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         // the page or trap the vertical scroll past it.
         SizedBox(
           height: 320,
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: widget.photos.length,
-            onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (_, i) {
-              final p = widget.photos[i];
-              // The saved ROI crop is square, and the boxes are normalized to it.
-              // Pin the image AND the overlay to the SAME square box (AspectRatio
-              // 1) so the boxes map 1:1 onto the visible photo. Previously the
-              // painter filled the whole non-square 320-tall area while the image
-              // was letterboxed inside it, so the boxes landed off the photo (they
-              // appeared to flash and vanish). Positioned.fill keeps the overlay
-              // exactly the image's size across the relayout when the file decodes,
-              // and gaplessPlayback stops the image blanking on rebuild.
-              return Center(
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(
-                        p.file,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                      Positioned.fill(
-                        child: CustomPaint(painter: _BoxPainter(p.boxes)),
-                      ),
-                    ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              _viewerSide = min(constraints.maxWidth, 320.0);
+              return Stack(
+                children: [
+                  PageView.builder(
+                    controller: _controller,
+                    itemCount: widget.photos.length,
+                    onPageChanged: (i) {
+                      final old = _page;
+                      setState(() {
+                        _page = i;
+                        _scale = 1;
+                      });
+                      // Gallery convention: zoom belongs to one photo — reset
+                      // it when leaving (also makes the next swipe work: the
+                      // pan owns the horizontal drag while zoomed in).
+                      _transforms[old]?.value = Matrix4.identity();
+                    },
+                    itemBuilder: (_, i) {
+                      final p = widget.photos[i];
+                      // The saved ROI crop is square, and the boxes are normalized to it.
+                      // Pin the image AND the overlay to the SAME square box (AspectRatio
+                      // 1) so the boxes map 1:1 onto the visible photo. Previously the
+                      // painter filled the whole non-square 320-tall area while the image
+                      // was letterboxed inside it, so the boxes landed off the photo (they
+                      // appeared to flash and vanish). Positioned.fill keeps the overlay
+                      // exactly the image's size across the relayout when the file decodes,
+                      // and gaplessPlayback stops the image blanking on rebuild.
+                      return Center(
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          // Two-finger pinch zooms/pans (InteractiveViewer);
+                          // double-tap resets to 1×. The box overlay sits
+                          // INSIDE the transformed child so it scales/pans
+                          // with the photo and stays glued to the insects.
+                          child: GestureDetector(
+                            onDoubleTap: () => _setZoom(1),
+                            child: InteractiveViewer(
+                              transformationController: _transformFor(i),
+                              maxScale: _maxZoom,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.file(
+                                    p.file,
+                                    fit: BoxFit.contain,
+                                    gaplessPlayback: true,
+                                  ),
+                                  if (_showBoxes)
+                                    Positioned.fill(
+                                      child: CustomPaint(
+                                        painter: _BoxPainter(p.boxes),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ),
+                  // Tool column, fixed at the viewer's top-right corner (it
+                  // does not swipe or zoom with the photo).
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _toolButton(
+                          icon: Icons.crop_din,
+                          tooltip: 'Show/hide detection boxes',
+                          active: _showBoxes,
+                          onTap: () => setState(() => _showBoxes = !_showBoxes),
+                        ),
+                        _toolButton(
+                          icon: Icons.zoom_in,
+                          tooltip:
+                              'Zoom: slider here, or pinch with two fingers; '
+                              'double-tap the photo to reset',
+                          active: _zoomSliderOpen,
+                          onTap: () => setState(
+                            () => _zoomSliderOpen = !_zoomSliderOpen,
+                          ),
+                        ),
+                        if (_zoomSliderOpen)
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '${_scale.toStringAsFixed(1)}×',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 140,
+                                  width: 40,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: Slider(
+                                      value: _scale.clamp(1.0, _maxZoom),
+                                      min: 1,
+                                      max: _maxZoom,
+                                      onChanged: _setZoom,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           ),

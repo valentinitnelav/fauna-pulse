@@ -202,7 +202,10 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   frame (the `jpeg` filename is shared across the record's entries at parse time —
   only due tracks carry it in the log): cyan box = triggered the photo, amber =
   co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)
-  stay trigger-only.
+  stay trigger-only. r87: photo viewer has a top-right tool column — boxes on/off +
+  pinch/slider zoom (per-page `TransformationController`, overlay inside the
+  transform, double-tap resets); a "send crop to citizen-science classifier" button
+  is planned but NOT built (no GPS in session logs yet — platforms want location).
 
 ## Device quirks (test phones)
 
