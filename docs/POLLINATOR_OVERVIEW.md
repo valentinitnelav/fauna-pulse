@@ -1,11 +1,11 @@
-# Pollinator Monitor — Current-State Overview
+# Pollinator Monitor — Current-State Overview (for Claude Code)
 
-This file is a *current* picture of the app, meant to ground a new session cheaply 
+This file is a *current* picture of the app, meant to ground a new Claude session cheaply 
 (instead of reading the full thousands-line log history from POLLINATOR_MONITOR.md).
 **Rewrite this file in place instead of appending to avoid unnecessary verbosity** 
 Update it whenever a change alters a default, an invariant, or the file map. 
-Keep it short (e.g. ≤ ~250 lines). 
-The round-by-round narrative and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
+Keep it short (e.g. ≤ ~300 lines). 
+The round-by-round narrative, details and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
 
 ## What the app is about
 
@@ -19,7 +19,7 @@ on a clone of `ultralytics/yolo-flutter-app`.
 
 - **App (Dart):** `pollinator-monitor/lib/pollinator/` — all custom code. `lib/main.dart`
   points to the home screen.
-- **Vendored plugin:** `packages/ultralytics_yolo/` — Dart widget + native Kotlin
+- **Plugin:** `packages/ultralytics_yolo/` — Dart widget + native Kotlin
   (CameraX + LiteRT inference). Modified for ROI-crop inference and fast ROI capture.
 - **Native app shell:** `android/app/src/main/kotlin/com/ultralytics/yolo/MainActivity.kt`
   — hosts the full-res `cropRoiJpeg` method channel.
@@ -155,7 +155,10 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   app ~1 core kept running under it). `setPreviewEnabled(false)` unbinds ONLY
   the preview stream — analysis (detector/gate) + ImageCapture stay bound and
   a recording continues; wake reattaches it (~0.2 s) and re-asserts the interop
-  funnel. Measured effect (r82, gate asleep, USB-charging): total CPU ~490%→
+  funnel. A timed session end must (and does, r83) `_exitBlackout()` before
+  pushing the summary — the window-brightness override is per-Activity, so a
+  summary pushed over the cover would render unreadably dim with no cover to tap. 
+  Measured effect (r82, gate asleep, USB-charging): total CPU ~490%→
   ~225%, skin temp plateau ~58 °C → flat ~48 °C. The r78 "idle warming is real"
   analysis is the *why*; r81/82 in POLLINATOR_MONITOR.md carry the numbers.
 - **Field power invariant (owner, 2026-07-11):** the phone is assumed to be on

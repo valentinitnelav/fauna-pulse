@@ -2529,7 +2529,7 @@ resize, and no red flash should appear while the sheet closes.
 
 ## Round 72 (2026-07-06): per-frame buffer reuse (review A3)
 
-Perf review item A3, all native Kotlin in the vendored plugin. Goal: stop
+Perf review item A3, all native Kotlin in the ultralytics plugin. Goal: stop
 allocating multi-megabyte objects on every camera frame, so the garbage
 collector (the runtime's periodic memory sweep, which pauses the app briefly)
 runs far less often over a multi-hour session.
@@ -3086,3 +3086,28 @@ Verification: `flutter analyze` clean, 99/99 tests, debug APK built + installed 
 exercised live on the Xiaomi as above. Docs: SETTINGS_REFERENCE (new setting),
 FIELD_GUIDE §4 (blackout now detaches preview), OVERVIEW (defaults row + interop
 funnel & blackout invariants + field power invariant).
+## Round 83 (2026-07-12): fix — screen stuck at minimum brightness after a timed session end in blackout
+
+Owner field report: after using the moon (blackout) button during a recording, the
+screen sometimes stayed so dim after the session ended that it was unreadable
+outdoors.
+
+Diagnosis: when the session ended via `_sessionTimer` (max session length) while
+blacked out, `_toggleRecording()` stopped the recording and pushed the summary
+screen without ever calling `_exitBlackout()`. The window-brightness override
+(`setApplicationScreenBrightness(0.0)`) is per-Activity — and the whole Flutter
+app is one Activity — so the summary rendered at minimum brightness with the
+system bars still hidden. Neither safety net could fire: the tap-to-wake cover was
+buried under the pushed summary route, and the `dispose()` restore never ran
+because `Navigator.push` keeps the camera screen alive underneath. Manual stops
+were unaffected (waking by tap runs `_exitBlackout()` first), which is why the bug
+only showed up on timer-ended sessions.
+
+Fix: `_toggleRecording()`'s stop branch now `await _exitBlackout()` before
+stopping/pushing the summary (no-op when not blacked out). That single call
+restores brightness + system bars, reattaches the preview, and keeps the wakelock
+bookkeeping consistent (`_recording` is still true at that point), so the manual
+and timed end paths converge.
+
+Verification: `flutter analyze` clean, full `flutter test test/pollinator` pass.
+

@@ -809,6 +809,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       return;
     }
     if (_recording) {
+      // A timed session end arrives here straight from [_sessionTimer] with the
+      // blackout cover still up: the summary would otherwise be pushed on top of
+      // it at minimum window brightness, with no cover left to tap (the window
+      // brightness override outlives this route — it is per-Activity, and the
+      // whole app is one Activity). No-op when not blacked out.
+      await _exitBlackout();
       final logFile = _logger?.file;
       await _stopRecording(normal: true);
       if (!mounted || logFile == null) return;
