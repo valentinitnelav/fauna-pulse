@@ -220,5 +220,41 @@ void main() {
       expect(fp.updatePipelineFps(1150), closeTo(0.1 * 20 + 0.9 * 10, 1e-9));
       expect(fp.pipelineFpsEma, closeTo(11.0, 1e-9));
     });
+
+    test('a long pause (gate sleep) is skipped, not blended in (round 85)', () {
+      final fp = FrameProcessor(tracker: tracker());
+      // Establish a steady ~10 fps rhythm.
+      var now = 1000;
+      fp.updatePipelineFps(now);
+      for (var i = 0; i < 50; i++) {
+        now += 100;
+        fp.updatePipelineFps(now);
+      }
+      final steady = fp.pipelineFpsEma;
+      expect(steady, closeTo(10.0, 0.01));
+      // 30 s gate sleep: the resume callback must NOT dip the estimate
+      // (blending 1/30 fps into the EMA would report ~9 fps for no reason).
+      now += 30000;
+      expect(fp.updatePipelineFps(now), closeTo(steady, 1e-9));
+      // …and the estimator keeps tracking normally afterwards.
+      now += 100;
+      expect(
+        fp.updatePipelineFps(now),
+        closeTo(0.1 * 10 + 0.9 * steady, 1e-9),
+      );
+    });
+
+    test('slow-but-steady rhythms below the 2 s floor still blend', () {
+      final fp = FrameProcessor(tracker: tracker());
+      // A 1 fps inference cap produces legitimate 1 s gaps — those are the
+      // real rate, not pauses, and must keep feeding the EMA.
+      var now = 1000;
+      fp.updatePipelineFps(now);
+      for (var i = 0; i < 60; i++) {
+        now += 1000;
+        fp.updatePipelineFps(now);
+      }
+      expect(fp.pipelineFpsEma, closeTo(1.0, 0.01));
+    });
   });
 }

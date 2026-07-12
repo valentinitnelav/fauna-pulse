@@ -174,6 +174,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   `fps` records OMIT all inference-derived fields and carry `gate_idle: true` instead
   (absent = detector off — never log stale/zero inference numbers), the on-screen
   Pipeline/FPS/inference values read 0, and summary graphs break lines across the gap.
+  r85: a wake (or any long pause — settings sheet, summary screen) must NOT blend the
+  gap into the fps EMAs — `Predictor.finishTiming` (native) and
+  `FrameProcessor.updatePipelineFps` (Dart) share a resume guard (gap > max(2 s, 5×
+  interval) → skip blend; KEEP IN SYNC), and the summary FPS graph plots
+  `pipeline_fps ?? fps` so pre-r85 sessions read honestly too.
   Don't gate in Dart — frames never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
   atop the status strip + ROI border turns grey while idle (priority: capture flash >
   gate-idle grey > recording red > yellow). Handheld shake keeps the gate awake by

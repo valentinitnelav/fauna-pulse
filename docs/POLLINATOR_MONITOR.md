@@ -96,6 +96,7 @@ Two design rules were followed throughout:
 ## 4. Changes relative to upstream
 
 ### 4a. New application code (all under `/lib/pollinator/`)
+
 A self-contained module added to the app:
 
 | Area | Files | Purpose |
@@ -111,6 +112,7 @@ A self-contained module added to the app:
 `/lib/main.dart` was repointed to the new home screen.
 
 ### 4b. Plugin (native + Dart) modifications — the ROI-crop inference
+
 To make detection **truly operate only on the ROI** (and to give small insects
 the model's full input resolution), the inference path was modified to crop to
 the ROI *before* running the model, rather than running on the whole frame and
@@ -137,11 +139,13 @@ The Dart side maps the ROI-relative detections back onto the full frame for the
 tracker and overlay, and logs box coordinates relative to the ROI.
 
 ### 4c. Native temperature method channel
+
 - `.../MainActivity.kt` — a `pollinator/thermal` method channel reading
   battery temperature (°C) and the OS thermal-throttling status, so heat build-up
   during long real-time sessions can be displayed and logged.
 
 ### 4d. Accelerator (GPU/CPU) reporting
+
 - `android/.../YOLOView.kt` — streams the **actual** inference processor
   (`accelerator` = "GPU"/"CPU"/"NPU") to Flutter each frame. The plugin already
   picks GPU-first with CPU fallback; this just surfaces what was chosen. It is
@@ -151,6 +155,7 @@ tracker and overlay, and logs box coordinates relative to the ROI.
   see §7.
 
 ### 4e. Build, dependencies, branding
+
 - `pubspec.yaml` — added `image`, `fl_chart` (later replaced by a custom
   painter), `battery_plus`, `device_info_plus`, `screen_brightness`,
   `permission_handler`, `shared_preferences`, `wakelock_plus`.
@@ -1606,6 +1611,7 @@ is a property of the model's architecture/exported ops and the device's GPU driv
 read from the model file at load time, **not** from any metadata field.
 
 Practical guidance:
+
 - If a custom model runs on CPU and you want the GPU, try **different export
   variants** (e.g. YOLO26 vs YOLO11, with/without end2end NMS in the graph, fp16 vs
   fp32) and watch the on-screen **"Engine"** readout to see which compiles on GPU.
@@ -2924,6 +2930,7 @@ visibly stutter while asleep.
 note in the GPU/CPU invariant, r77 gate-idle logging note, roadmap pointer
 now lists A4). Verification: Kotlin compiles, analyze clean, 95/95 tests,
 `flutter build apk --debug` ✓.
+
 ## Round 79 (2026-07-10): silent catches leave a trace (review B7) + B9 closed — review complete
 
 - **B7:** added `logSwallowed(site, error, [stack])` to `logging/app_error_hooks.dart`:
@@ -3013,6 +3020,7 @@ numbers; CPU % of 800 total; temps °C):
   should be a free heat win in this configuration.
 
 **Proposed next steps (not implemented — owner to choose):**
+
 1. Stream back to 640×480 (settings only, no code).
 2. Camera2Interop `CONTROL_AE_TARGET_FPS_RANGE` ≈ 10–15 fps for the session
    (inference is capped at 10 anyway) — cuts sensor/ISP load; roadmap item from r78.
@@ -3034,6 +3042,7 @@ at ~30/s); (2) make power-save real; (3) treat field charging (power bank) as an
 invariant; (4) explain ZSL in plain language.
 
 **1. Camera frame rate cap (new tunable, default 15/s).**
+
 - `SessionConfig.cameraFpsCap` (0 = device default; explicitly saved 0 survives,
   missing key → 15). Settings → Camera control, summary Settings-tab row under
   Heat management, SETTINGS_REFERENCE entry, round-trip test — all same round.
@@ -3057,6 +3066,7 @@ bind path).
 
 **3. Measured on the Xiaomi (session_125, ~7.5 min, gate asleep, USB-charging —
 same live-adb method as r81):**
+
 | state | cam HAL CPU | app CPU | total | skin temp |
 |---|---|---|---|---|
 | r81 recording asleep (dim) | ~230% | ~100% | ~490% | climbing → plateau ~58 °C @ throttle 18 |
@@ -3086,6 +3096,7 @@ Verification: `flutter analyze` clean, 99/99 tests, debug APK built + installed 
 exercised live on the Xiaomi as above. Docs: SETTINGS_REFERENCE (new setting),
 FIELD_GUIDE §4 (blackout now detaches preview), OVERVIEW (defaults row + interop
 funnel & blackout invariants + field power invariant).
+
 ## Round 83 (2026-07-12): fix — screen stuck at minimum brightness after a timed session end in blackout
 
 Owner field report: after using the moon (blackout) button during a recording, the
@@ -3147,4 +3158,42 @@ are still written every sample, so offline analysis keeps the full data either w
 
 Verification: `flutter analyze` clean, 99/99 tests. Manual check: a power-bank session
 summary shows the note instead of the W graph; an unplugged session renders as before.
+
+## Round 85 (2026-07-12): fake low-FPS spikes after motion-gate wake — EMA resume guard
+
+Owner report: with the gate mostly asleep, the FPS (and seemingly inference-time)
+graphs show near-vertical downward spikes around gate transitions and the averages
+come out far too low; proposed masking the wake/sleep moments out of graphs + stats.
+
+Diagnosis (session_127): the spikes are WRONG NUMBERS, not brief real slowdowns.
+`Predictor.finishTiming` keeps `t4` as an EMA (α=0.05) of the interval between
+inferences and reports `fps = 1/t4`. While the gate sleeps `t3` goes stale, so the
+first inference after wake blends the whole sleep gap into the EMA (53 s × 0.05 →
+"0.4 fps") and recovery takes ~45 inferred frames (~4.5 s at 10 fps) — longer than a
+typical wake window. Proof: all 10 awake fps samples in session_127 read 0.49–5.3
+while `pipeline_fps` on the same rows read 9.4–11.7 (detector truly ran ~10 fps).
+Sleep-side is clean (r77 omits inference fields while idle). The `inf_ms` bumps on
+the first post-wake frame (7→13 ms) are RAW per-frame truth (cold caches/clocks) —
+left as is. Masking (the proposed remedy) was rejected: in gate-heavy sessions the
+contamination spans the entire wake window, so masking would delete ALL awake FPS
+data (127's graph would be empty). Fix the measurement instead:
+
+- `Predictor.finishTiming` (native): a gap > max(2 s, 5×t4) is a RESUME (gate wake,
+  settings-sheet pause, summary screen) — reseed `t3`, skip the blend, keep the last
+  known rate. The relative bound keeps very low fps caps (≈1 s gaps) blending
+  normally. Also fixes a real tracking bug for free: `_trackerParamsForFps` derives
+  the occlusion buffer / min-hits from this fps every second, so each wake used to
+  shrink the occlusion window ~10–20×.
+- `FrameProcessor.updatePipelineFps` (Dart): same guard (its α=0.1 EMA dipped ~10%
+  per wake). KEEP IN SYNC pair with the native guard. Two new unit tests (gap
+  skipped; legitimate 1 fps rhythm still blends) — 101 tests total.
+- Summary FPS graph (`session_summary_screen.dart`): plots `pipeline_fps ?? fps` so
+  ALREADY-RECORDED sessions display honestly too (both fields estimate results/s;
+  post-r85 they agree; pre-r85 pipeline_fps is far less contaminated; oldest logs
+  only carry `fps`). Measured on session_127: avg 2.24 → 10.49 fps, min 0.49 → 9.39.
+
+Verification: `flutter analyze` clean, 101/101 tests, debug APK builds (Kotlin
+compiles). On-device check still advised: per-second `fps` records right after a
+wake should read ≈ the inference cap, and the live readout must not crater after
+waking or after closing the settings sheet.
 

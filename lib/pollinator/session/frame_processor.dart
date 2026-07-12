@@ -7,6 +7,7 @@
 // State object never was. The camera screen keeps everything UI: notifiers,
 // banners, setState, and the once-a-second housekeeping.
 
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
@@ -94,10 +95,22 @@ class FrameProcessor {
 
   /// Updates the pipeline-FPS estimate for a frame callback arriving at
   /// [nowMs] and returns the new smoothed value.
+  ///
+  /// A gap far above the current rhythm is a *pause* (motion-gate sleep, the
+  /// settings sheet pausing the camera, the summary screen) — not a slow frame
+  /// rate — so it is skipped instead of blended in (round 85): one blended
+  /// 30 s gap would otherwise dip the estimate ~10% per wake for no reason.
+  /// The relative bound keeps very low inference-fps caps (≈1 s gaps are their
+  /// normal rhythm) blending normally. Mirrors the detector-fps EMA guard in
+  /// the native `Predictor.finishTiming` — KEEP IN SYNC.
   double updatePipelineFps(int nowMs) {
     if (_lastCallbackMs > 0) {
       final dt = nowMs - _lastCallbackMs;
-      if (dt > 0) {
+      // 5000/ema ms = 5× the smoothed inter-frame interval.
+      final resumeMs = _pipelineFpsEma > 0
+          ? math.max(2000.0, 5000.0 / _pipelineFpsEma)
+          : 2000.0;
+      if (dt > 0 && dt <= resumeMs) {
         final inst = 1000.0 / dt;
         _pipelineFpsEma = _pipelineFpsEma == 0
             ? inst

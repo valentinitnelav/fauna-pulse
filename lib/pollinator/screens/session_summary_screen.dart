@@ -263,7 +263,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             break;
           case 'fps':
             if (t == null) break;
-            final f = (rec['fps'] as num?)?.toDouble();
+            // Both fields estimate the detector's results/second; prefer
+            // `pipeline_fps` because in sessions recorded before round 85 the
+            // native `fps` EMA blended motion-gate sleep gaps in and read near
+            // zero for the whole wake window (session_127: 0.5–5 logged vs ~10
+            // real), while pipeline_fps stayed ≈ true. Post-r85 the two agree;
+            // older sessions only carry `fps`.
+            final f = ((rec['pipeline_fps'] ?? rec['fps']) as num?)?.toDouble();
             if (f != null) _fps.add((t, f));
             // Newer sessions also carry the inference time here; older ones don't.
             final inf = (rec['inf_ms'] as num?)?.toDouble();

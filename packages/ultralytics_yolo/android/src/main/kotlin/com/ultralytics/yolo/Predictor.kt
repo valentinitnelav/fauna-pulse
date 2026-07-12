@@ -160,7 +160,20 @@ abstract class BasePredictor : Predictor {
         val now = System.nanoTime()
         val dtMs = (now - t0) / 1_000_000.0
         t2 = 0.05 * dtMs + 0.95 * t2
-        t4 = 0.05 * ((now - t3) / 1e9) + 0.95 * t4
+        // t4 is an EMA of the interval BETWEEN inferences (fps = 1/t4). A long
+        // pause — motion-gate sleep, the settings sheet pausing the camera, the
+        // summary screen — is not a slow frame rhythm: blended in, it reports a
+        // bogus near-zero fps for the next ~45 frames (0.95^45 ≈ 0.1), often
+        // longer than the whole gate wake window (round 85 / session_127: every
+        // awake sample read 0.5–5 fps while the detector really ran ~10). Any
+        // gap far above the current rhythm is therefore a RESUME: keep the last
+        // known rate. The relative bound keeps very low inference-fps caps
+        // (≈1 s gaps are their normal rhythm) blending normally. Mirrored by
+        // the pipeline-fps guard in frame_processor.dart — KEEP IN SYNC.
+        val gapS = (now - t3) / 1e9
+        if (gapS <= max(2.0, 5.0 * t4)) {
+            t4 = 0.05 * gapS + 0.95 * t4
+        }
         t3 = now
         return FrameTiming(
             speedMs = dtMs,
