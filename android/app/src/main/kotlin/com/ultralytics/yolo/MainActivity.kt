@@ -2,6 +2,7 @@
 
 package com.ultralytics.yolo
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -17,6 +18,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -100,6 +102,29 @@ class MainActivity : FlutterFragmentActivity() {
                                     if (cropped != null) result.success(cropped)
                                     else result.error("crop_failed", "region decode failed", null)
                                 }
+                            }
+                        }
+                    }
+                    // Round 91: puts an exported insect crop into the shared Gallery
+                    // (MediaStore, Pictures/PollinatorMonitor) so identification apps'
+                    // photo pickers can see it. Returns false below Android 10, where
+                    // MediaStore inserts need the legacy storage permission — the Dart
+                    // side then keeps the crop in the session folder instead.
+                    "saveImageToGallery" -> {
+                        val bytes = call.argument<ByteArray>("bytes")
+                        val name = call.argument<String>("displayName") ?: "crop.jpg"
+                        if (bytes == null) {
+                            result.error("bad_args", "bytes required", null)
+                        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            result.success(false)
+                        } else {
+                            cropExecutor.execute {
+                                val ok = try {
+                                    saveImageToGallery(bytes, name)
+                                } catch (e: Exception) {
+                                    false
+                                }
+                                mainHandler.post { result.success(ok) }
                             }
                         }
                     }
@@ -273,6 +298,44 @@ class MainActivity : FlutterFragmentActivity() {
             return out.toByteArray()
         } finally {
             decoder.recycle()
+        }
+    }
+
+    /// Inserts a JPEG into the shared Pictures collection (MediaStore) so the
+    /// Gallery app and other apps' photo pickers can see it. Runs on
+    /// [cropExecutor]. Android 10+ only: RELATIVE_PATH/IS_PENDING don't exist
+    /// below, where shared writes need the legacy storage permission instead
+    /// (the caller returns false there without calling this).
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun saveImageToGallery(bytes: ByteArray, displayName: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PollinatorMonitor")
+            // IS_PENDING hides the row from other apps until the bytes are
+            // fully written, so the Gallery never shows a half-saved file.
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = contentResolver
+        val collection =
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val uri = resolver.insert(collection, values) ?: return false
+        return try {
+            val out = resolver.openOutputStream(uri)
+            if (out == null) {
+                resolver.delete(uri, null, null)
+                false
+            } else {
+                out.use { it.write(bytes) }
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                true
+            }
+        } catch (e: Exception) {
+            // Don't leave an invisible pending row behind.
+            try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            false
         }
     }
 

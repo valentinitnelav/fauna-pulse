@@ -3339,3 +3339,44 @@ on the thermal cadence, so freed space shows up automatically.
 Verification: `flutter analyze` clean (plus one pre-existing single-line `if`
 braced after `dart format` reflowed it), 101/101 tests, debug APK builds.
 
+
+## Round 91 (2026-07-12): crop-and-export from the summary photo viewer
+
+Phase 1 of the "send to a classifier" idea: instead of API integration (deferred —
+needs GPS in session logs + platform decisions), the Photos-tab viewer can now cut
+a user-drawn rectangle out of a saved photo and hand it to the identification apps
+the owner already has (Google Lens, iNaturalist/Seek). Owner decisions this round:
+save destination is the **Gallery** (MediaStore Pictures — photo pickers surface it
+far better than Downloads), plus a direct **Share** button.
+
+- **Crop mode** (`_PhotoViewerState`, `session_summary_screen.dart`): new crop tool
+  button. While active, a full-square gesture layer sits ABOVE the InteractiveViewer
+  and wins every one-finger drag; drag points are converted to the photo's scene
+  coordinates immediately (`toScene`), so the box is drawn correctly at any zoom/pan
+  and stays glued to the insect (the painter re-maps scene → viewport each build;
+  the transform listener also repaints on pure pans while a box exists). Page
+  swiping and ancestor scrollables freeze exactly as in zoom mode (`_scrollFrozen =
+  _zoomed || _cropMode` feeds the existing `onZoomChanged` plumbing). A crop bar
+  under the viewer shows the box's REAL saved-pixel size (⚠ tiny under 100 px —
+  honesty about deep-zoom crops), with Save / Share actions; a chip explains the
+  mode. The rectangle is dropped on page change and when it would land under 16 px.
+- **Export path** (`capture/crop_export.dart`, new): pure geometry helpers
+  (`sceneRectForDrag` with the 1:1 lock + edge shrinking, `normalizedRect`,
+  `cropExportName`) + `cropJpegRectSync` (decode → `copyCrop` → JPEG q90, never
+  from the screen) run through a background isolate (`cropJpegNormRect`).
+  `saveCropToGallery` calls the platform; fallback on failure/old Android writes to
+  `<session>/crops/`. `shareCrop` reuses the ErrorReporter SharePlus pattern.
+- **Native** (`MainActivity.kt`): `saveImageToGallery` method on the existing
+  `pollinator/crop` channel — MediaStore insert with RELATIVE_PATH
+  `Pictures/PollinatorMonitor` + IS_PENDING (API 29+; returns false below, both
+  test phones are above). Runs on `cropExecutor`, deletes the pending row on error.
+- **New tunable** (owner rule): `cropSquareLock` (default off) — SessionConfig
+  (all 5 spots), Settings → Summary switch, in-viewer "1:1" chip (same setting,
+  re-loads the config before saving so it can't stomp other fields), summary
+  Settings-tab row, round-trip test.
+- Tests: `crop_export_test.dart` (drag geometry incl. square lock + edge clamp,
+  name format, pixel-verified JPEG crop, clamping, tiny/garbage rejection).
+
+Verification: `flutter analyze` clean, 114/114 tests, debug APK builds. Field check
+still pending: save a crop on the Xiaomi, find it in the Gallery, feed it to
+Seek/Lens (also answers whether ~300–1000 px crops identify well).

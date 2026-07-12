@@ -576,8 +576,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             final minHigh = (v + _highScoreBuffer).clamp(0.30, 0.95);
             _c = _c.copyWith(
               confidenceThreshold: v,
-              trackerParams:
-                  p.highThresh < minHigh ? p.copyWith(highThresh: minHigh) : p,
+              trackerParams: p.highThresh < minHigh
+                  ? p.copyWith(highThresh: minHigh)
+                  : p,
             );
           }),
         ),
@@ -740,8 +741,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 Text(
                   '${r['label']}',
                   style: TextStyle(
-                    fontWeight:
-                        identical(r, fastest) ? FontWeight.bold : null,
+                    fontWeight: identical(r, fastest) ? FontWeight.bold : null,
                   ),
                 ),
                 Text(
@@ -859,8 +859,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'clear, sustained landings. This directly affects the visitation '
               'rate for short visits. Converted to frames live from the current '
               'FPS (0–2 s; default 0.2).',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(minHitsSeconds: v)),
+          onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
         NumericSettingField(
           label: 'Match overlap (IoU)',
@@ -1015,8 +1014,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ),
           ),
         ],
-        onChanged: (m) =>
-            setState(() => _c = _c.copyWith(captureMode: m)),
+        onChanged: (m) => setState(() => _c = _c.copyWith(captureMode: m)),
       ),
       NumericSettingField(
         label: 'Saved photo side (px)',
@@ -1148,7 +1146,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         isThreeLine: true,
         value: _c.motionGateEnabled,
-        onChanged: (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
+        onChanged: (v) =>
+            setState(() => _c = _c.copyWith(motionGateEnabled: v)),
       ),
       if (_c.motionGateEnabled) ...[
         NumericSettingField(
@@ -1177,7 +1176,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'movement. Lower = more sensitive (wakes on small insects, but also '
               'on petal shadows); higher = stricter. Default 25.',
           onChanged: (v) => setState(
-            () => _c = _c.copyWith(motionGatePixelDelta: v.round().clamp(5, 100)),
+            () =>
+                _c = _c.copyWith(motionGatePixelDelta: v.round().clamp(5, 100)),
           ),
         ),
         NumericSettingField(
@@ -1190,9 +1190,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           helperText:
               'How much of the ROI must change in one frame to wake the detector. '
               'Keep small — an insect covers little of the ROI. Default 0.5%.',
-          onChanged: (v) => setState(
-            () => _c = _c.copyWith(motionGateAreaFraction: v / 100),
-          ),
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(motionGateAreaFraction: v / 100)),
         ),
         NumericSettingField(
           label: 'Motion grid resolution',
@@ -1541,6 +1540,23 @@ class _SettingsSheetState extends State<SettingsSheet> {
             setState(() => _c = _c.copyWith(autoComputeGraphs: v)),
       ),
       const Divider(color: Colors.white24),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Square (1:1) export crops',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'Force the crop-and-export box in the summary photo viewer to a '
+          'square. Off = free rectangle that can hug the insect\'s shape. '
+          'The "1:1" chip next to the crop box toggles this same setting.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.cropSquareLock,
+        onChanged: (v) => setState(() => _c = _c.copyWith(cropSquareLock: v)),
+      ),
+      const Divider(color: Colors.white24),
       _label(
         'How often the end-of-session graphs are sampled while recording. '
         'Lower values give finer graphs but measure more often; the defaults are '
@@ -1702,7 +1718,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final dh = (widget.analysisCeiling['displayH'] as num?)?.toInt() ?? 0;
     final lines = <String>[
       'Estimated live-stream ceiling: ~$ceilLo×$ceilHi px',
-      if (hwLevel.isNotEmpty && hwLevel != 'unknown') 'Camera hardware level: $hwLevel',
+      if (hwLevel.isNotEmpty && hwLevel != 'unknown')
+        'Camera hardware level: $hwLevel',
       if (dw > 0 && dh > 0) 'Screen: $dw×$dh px',
     ];
     return Container(

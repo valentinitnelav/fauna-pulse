@@ -259,6 +259,13 @@ class SessionConfig {
   /// session and when re-opening any past session. Default true.
   final bool autoComputeGraphs;
 
+  /// Whether the crop-and-export tool in the summary photo viewer forces the
+  /// dragged rectangle to a square (1:1). Free aspect (default) hugs the
+  /// insect's shape; the square option suits identification apps/models that
+  /// prefer square inputs. The "1:1" chip in the viewer's crop bar toggles
+  /// this same setting.
+  final bool cropSquareLock;
+
   /// Which rear camera lens to use, expressed as the lens's effective zoom
   /// factor (1.0 = main "wide" lens, 0.5 = ultra-wide, 2.0/3.0 = telephoto). The
   /// app snaps to the available lens whose factor is closest to this value at
@@ -305,13 +312,15 @@ class SessionConfig {
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.captureMode = RoiCaptureMode.auto,
-    this.targetRoiSavedPx = 1024, // ÷32; photos save at exactly this when possible
+    this.targetRoiSavedPx =
+        1024, // ÷32; photos save at exactly this when possible
     this.occlusionSeconds = 3.0,
     this.minHitsSeconds = 0.2,
     this.fpsSampleSeconds = 5,
     this.thermalSampleSeconds = 10,
     this.powerSampleSeconds = 10,
     this.autoComputeGraphs = true,
+    this.cropSquareLock = false,
     this.selectedLensZoom = 1.0,
     this.trackerParams = const ByteTrackParams(),
   });
@@ -382,6 +391,7 @@ class SessionConfig {
     int? thermalSampleSeconds,
     int? powerSampleSeconds,
     bool? autoComputeGraphs,
+    bool? cropSquareLock,
     double? selectedLensZoom,
     ByteTrackParams? trackerParams,
   }) => SessionConfig(
@@ -408,8 +418,7 @@ class SessionConfig {
     motionGatePixelDelta: motionGatePixelDelta ?? this.motionGatePixelDelta,
     motionGateAreaFraction:
         motionGateAreaFraction ?? this.motionGateAreaFraction,
-    motionGateWakeSeconds:
-        motionGateWakeSeconds ?? this.motionGateWakeSeconds,
+    motionGateWakeSeconds: motionGateWakeSeconds ?? this.motionGateWakeSeconds,
     motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
     motionGateIdleFps: motionGateIdleFps ?? this.motionGateIdleFps,
     streamWidth: streamWidth ?? this.streamWidth,
@@ -422,6 +431,7 @@ class SessionConfig {
     thermalSampleSeconds: thermalSampleSeconds ?? this.thermalSampleSeconds,
     powerSampleSeconds: powerSampleSeconds ?? this.powerSampleSeconds,
     autoComputeGraphs: autoComputeGraphs ?? this.autoComputeGraphs,
+    cropSquareLock: cropSquareLock ?? this.cropSquareLock,
     selectedLensZoom: selectedLensZoom ?? this.selectedLensZoom,
     trackerParams: trackerParams ?? this.trackerParams,
   );
@@ -464,6 +474,7 @@ class SessionConfig {
     'thermalSampleSeconds': thermalSampleSeconds,
     'powerSampleSeconds': powerSampleSeconds,
     'autoComputeGraphs': autoComputeGraphs,
+    'cropSquareLock': cropSquareLock,
     'selectedLensZoom': selectedLensZoom,
     'trackerParams': trackerParams.toJson(),
   };
@@ -514,6 +525,7 @@ class SessionConfig {
     thermalSampleSeconds: (j['thermalSampleSeconds'] as num?)?.toInt() ?? 10,
     powerSampleSeconds: (j['powerSampleSeconds'] as num?)?.toInt() ?? 10,
     autoComputeGraphs: j['autoComputeGraphs'] as bool? ?? true,
+    cropSquareLock: j['cropSquareLock'] as bool? ?? false,
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
     trackerParams: j['trackerParams'] is Map
         ? ByteTrackParams.fromJson(

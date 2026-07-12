@@ -14,13 +14,16 @@ void main() {
     test('occlusion tolerance defaults to 3 s', () {
       expect(const SessionConfig().occlusionSeconds, 3.0);
     });
-    test('legacy config missing occlusionSeconds falls back to 3 s, not 1 s', () {
-      // A config saved before this key existed must load the current bee-tuned
-      // buffer. The fromJson fallback used to be 1.0, silently fragmenting
-      // tracks for old configs even though the constructor default was 3.0.
-      final restored = SessionConfig.fromJson(const {'inferenceFps': 0});
-      expect(restored.occlusionSeconds, 3.0);
-    });
+    test(
+      'legacy config missing occlusionSeconds falls back to 3 s, not 1 s',
+      () {
+        // A config saved before this key existed must load the current bee-tuned
+        // buffer. The fromJson fallback used to be 1.0, silently fragmenting
+        // tracks for old configs even though the constructor default was 3.0.
+        final restored = SessionConfig.fromJson(const {'inferenceFps': 0});
+        expect(restored.occlusionSeconds, 3.0);
+      },
+    );
     test('match overlap defaults to 0.1', () {
       expect(const ByteTrackParams().matchThresh, 0.1);
     });
@@ -32,11 +35,13 @@ void main() {
     expect(c.minInferenceFps, 3);
     expect(c.throttleDutyTarget, 0.5);
     final restored = SessionConfig.fromJson(
-      c.copyWith(
-        autoThrottle: false,
-        minInferenceFps: 5,
-        throttleDutyTarget: 0.4,
-      ).toJson(),
+      c
+          .copyWith(
+            autoThrottle: false,
+            minInferenceFps: 5,
+            throttleDutyTarget: 0.4,
+          )
+          .toJson(),
     );
     expect(restored.autoThrottle, false);
     expect(restored.minInferenceFps, 5);
@@ -58,13 +63,15 @@ void main() {
     expect(c.motionGateWakeSeconds, 3.0);
     expect(c.motionGateGridSize, 48);
     final restored = SessionConfig.fromJson(
-      c.copyWith(
-        motionGateEnabled: true,
-        motionGatePixelDelta: 40,
-        motionGateAreaFraction: 0.01,
-        motionGateWakeSeconds: 5.0,
-        motionGateGridSize: 96,
-      ).toJson(),
+      c
+          .copyWith(
+            motionGateEnabled: true,
+            motionGatePixelDelta: 40,
+            motionGateAreaFraction: 0.01,
+            motionGateWakeSeconds: 5.0,
+            motionGateGridSize: 96,
+          )
+          .toJson(),
     );
     expect(restored.motionGateEnabled, true);
     expect(restored.motionGatePixelDelta, 40);
@@ -86,10 +93,7 @@ void main() {
     expect(const SessionConfig().inferenceFps, 10);
     // An explicitly saved 0 (uncapped) must survive the round-trip — only a
     // MISSING key falls back to the new default.
-    expect(
-      SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps,
-      0,
-    );
+    expect(SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps, 0);
     expect(SessionConfig.fromJson(const {}).inferenceFps, 10);
   });
 
@@ -149,10 +153,7 @@ void main() {
     test('round-trips through toJson/fromJson', () {
       final restored = SessionConfig.fromJson(
         const SessionConfig()
-            .copyWith(
-              captureMode: RoiCaptureMode.still,
-              targetRoiSavedPx: 512,
-            )
+            .copyWith(captureMode: RoiCaptureMode.still, targetRoiSavedPx: 512)
             .toJson(),
       );
       expect(restored.captureMode, RoiCaptureMode.still);
@@ -180,10 +181,7 @@ void main() {
     });
 
     test('configs without either key get the new auto default', () {
-      expect(
-        SessionConfig.fromJson(const {}).captureMode,
-        RoiCaptureMode.auto,
-      );
+      expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.auto);
     });
   });
 
@@ -199,6 +197,16 @@ void main() {
     // only a MISSING key falls back to the 15 default (mirrors inferenceFps).
     expect(SessionConfig.fromJson(const {'cameraFpsCap': 0}).cameraFpsCap, 0);
     expect(SessionConfig.fromJson(const {}).cameraFpsCap, 15);
+  });
+
+  test('crop 1:1 lock: default off, survives the JSON round-trip', () {
+    expect(const SessionConfig().cropSquareLock, false);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(cropSquareLock: true).toJson(),
+    );
+    expect(restored.cropSquareLock, true);
+    // Configs saved before the key existed fall back to off.
+    expect(SessionConfig.fromJson(const {}).cropSquareLock, false);
   });
 
   test('gate idle check rate: default 5, survives the JSON round-trip', () {

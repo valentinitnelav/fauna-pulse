@@ -61,6 +61,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed |
+| Crop 1:1 lock | off | r91: forces the summary-viewer crop-export box square; viewer chip ↔ Settings → Summary switch |
 | GPU when faster | on | see GPU/CPU note below |
 | CPU threads | `0` (auto) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest |
 
@@ -204,8 +205,19 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)
   stay trigger-only. r87: photo viewer has a top-right tool column — boxes on/off +
   pinch/slider zoom (per-page `TransformationController`, overlay inside the
-  transform, double-tap resets); a "send crop to citizen-science classifier" button
-  is planned but NOT built (no GPS in session logs yet — platforms want location).
+  transform, double-tap resets). r91 crop-and-export: a crop tool button enters a
+  mode where a one-finger drag draws a box over the photo (drag layer ABOVE the
+  InteractiveViewer, points mapped via `toScene` so it works while zoomed; ancestor
+  scrollables freeze exactly as in zoom mode); optional 1:1 lock
+  (`cropSquareLock` — the in-viewer chip and the Settings → Summary switch are the
+  same setting). Save cuts the box FROM THE ORIGINAL JPEG (never the screen;
+  `capture/crop_export.dart`, background isolate) into the Gallery via MediaStore
+  (`saveImageToGallery` on the `pollinator/crop` channel →
+  Pictures/PollinatorMonitor; < Android 10 or MediaStore failure →
+  `<session>/crops/`); Share opens the share sheet (Google Lens / iNaturalist).
+  The crop bar shows the crop's real saved-pixel size (⚠ tiny under 100 px).
+  In-app API identification (Observation.org NIA / iNaturalist upload) stays
+  future work — needs GPS in session logs + platform decisions first.
   r88/r89: while zoomed, ALL ancestor scrollables freeze (`NeverScrollableScrollPhysics`
   on the inner PageView, the Photos ListView AND the TabBarView via `onZoomChanged` —
   each otherwise wins drags meant as photo panning); ‹ › buttons change photo

@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../models/session_config.dart';
 
+import '../capture/crop_export.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 
@@ -803,6 +804,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     add('Photo source mode', _setting('captureMode'));
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
+    // Crop-and-export 1:1 lock (round 91) — only sessions recorded since then
+    // carry the key (add() skips null).
+    add('Square export crops', _setting('cropSquareLock'));
     // Rows below only appear for sessions recorded with older configs.
     add('Min saved photo side', _setting('minRoiSavedPx'), suffix: ' px');
     final maxSaved = _setting('maxRoiSavedPx');
@@ -1608,14 +1612,46 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// one-finger drag pans the photo, and the zoom-mode chip is shown.
   bool get _zoomed => _scale > 1.01;
 
-  /// Last zoom state reported to [widget.onZoomChanged], so the parent is
-  /// only rebuilt on actual mode changes, not on every pinch step.
-  bool _lastNotifiedZoomed = false;
+  /// Crop-and-export mode (round 91): a one-finger drag draws an export
+  /// rectangle instead of panning/swiping, so the same scrollables must be
+  /// frozen as in zoom mode.
+  bool _cropMode = false;
 
-  void _notifyZoom() {
-    if (_zoomed == _lastNotifiedZoomed) return;
-    _lastNotifiedZoomed = _zoomed;
-    widget.onZoomChanged(_zoomed);
+  /// Where the current crop drag started, in the photo's own ("scene")
+  /// coordinates — 0..[_viewerSide] on each axis, independent of zoom/pan.
+  Offset? _cropDragStartScene;
+
+  /// The drawn crop rectangle in scene coordinates; null while none is set.
+  Rect? _cropSceneRect;
+
+  /// Mirrors [SessionConfig.cropSquareLock] (loaded in [initState]); the
+  /// "1:1" chip in the crop bar writes it back, so the chip and the Settings
+  /// switch are one and the same setting.
+  bool _cropSquareLock = false;
+
+  /// True while a crop is being cut/saved/shared, to debounce the buttons.
+  bool _cropBusy = false;
+
+  /// True whenever one-finger drags must NOT reach the surrounding
+  /// scrollables (zoomed panning, or crop-rectangle drawing).
+  bool get _scrollFrozen => _zoomed || _cropMode;
+
+  /// Last freeze state reported to [widget.onZoomChanged], so the parent is
+  /// only rebuilt on actual mode changes, not on every pinch step.
+  bool _lastNotifiedFrozen = false;
+
+  void _notifyFreeze() {
+    if (_scrollFrozen == _lastNotifiedFrozen) return;
+    _lastNotifiedFrozen = _scrollFrozen;
+    widget.onZoomChanged(_scrollFrozen);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    SessionConfig.load().then((c) {
+      if (mounted) setState(() => _cropSquareLock = c.cropSquareLock);
+    });
   }
 
   static const double _maxZoom = 8.0;
@@ -1633,7 +1669,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   void dispose() {
     // If disposed mid-zoom (e.g. photos reloaded), unfreeze the parent's
     // scrollables — post-frame, because the parent may be rebuilding now.
-    if (_lastNotifiedZoomed) {
+    if (_lastNotifiedFrozen) {
       final notify = widget.onZoomChanged;
       WidgetsBinding.instance.addPostFrameCallback((_) => notify(false));
     }
@@ -1651,9 +1687,13 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         c.addListener(() {
           if (page != _page) return;
           final s = c.value.getMaxScaleOnAxis();
-          if ((s - _scale).abs() > 0.01) {
+          // Also rebuild on pure pans while a crop rectangle is on screen:
+          // the rectangle is glued to the photo, so its viewport position
+          // depends on the whole transform, not just the scale.
+          if ((s - _scale).abs() > 0.01 ||
+              (_cropMode && _cropSceneRect != null)) {
             setState(() => _scale = s);
-            _notifyZoom();
+            _notifyFreeze();
           }
         });
         return c;
@@ -1674,7 +1714,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     final ty = (centre.dy - scene.dy * s).clamp(minT, 0.0);
     c.value = Matrix4.diagonal3Values(s, s, 1)..setTranslationRaw(tx, ty, 0);
     setState(() => _scale = s);
-    _notifyZoom();
+    _notifyFreeze();
   }
 
   /// Pans the zoomed view one step in the given direction (each unit = a
@@ -1730,6 +1770,180 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     ),
   );
 
+  /// Normalized (0..1) form of the current crop rectangle, or null.
+  Rect? get _cropNormRect => _cropSceneRect == null
+      ? null
+      : normalizedRect(_cropSceneRect!, _viewerSide);
+
+  /// Real pixel size of the current crop on the SAVED photo (not the screen),
+  /// or null when the photo's size isn't in the log.
+  (int, int)? _cropPxSize() {
+    final norm = _cropNormRect;
+    final p = widget.photos[_page];
+    if (norm == null || p.width == null || p.height == null) return null;
+    return ((norm.width * p.width!).round(), (norm.height * p.height!).round());
+  }
+
+  /// The crop rectangle mapped from scene to on-screen (viewport) coordinates
+  /// for painting. The transform is a uniform scale + translation
+  /// (InteractiveViewer without rotation), so the mapping is scale-and-shift.
+  Rect? _viewportCropRect(int page) {
+    final r = _cropSceneRect;
+    if (r == null) return null;
+    final m = _transformFor(page).value;
+    final s = m.getMaxScaleOnAxis();
+    final t = m.getTranslation();
+    return Rect.fromLTRB(
+      r.left * s + t.x,
+      r.top * s + t.y,
+      r.right * s + t.x,
+      r.bottom * s + t.y,
+    );
+  }
+
+  /// End of a crop drag: drop a rectangle that would come out below
+  /// [kMinCropSidePx] on the saved photo — almost certainly a stray tap, and
+  /// too small to identify anything from anyway.
+  void _finishCropDrag() {
+    final r = _cropSceneRect;
+    if (r == null) return;
+    final p = widget.photos[_page];
+    final px = min(p.width ?? 1024, p.height ?? 1024);
+    if (r.width / _viewerSide * px < kMinCropSidePx ||
+        r.height / _viewerSide * px < kMinCropSidePx) {
+      setState(() {
+        _cropSceneRect = null;
+        _cropDragStartScene = null;
+      });
+    }
+  }
+
+  /// Flips the 1:1 lock and persists it via [SessionConfig]. The config is
+  /// re-loaded first so only this field changes even if settings were edited
+  /// since this screen opened. A live rectangle is dropped: silently
+  /// reshaping it would misrepresent what the user drew.
+  Future<void> _setCropSquareLock(bool v) async {
+    setState(() {
+      _cropSquareLock = v;
+      _cropDragStartScene = null;
+      _cropSceneRect = null;
+    });
+    final cfg = await SessionConfig.load();
+    await cfg.copyWith(cropSquareLock: v).save();
+  }
+
+  /// Cuts the drawn rectangle out of the ORIGINAL saved JPEG (never the
+  /// screen — screen pixels are already downscaled) on a background isolate,
+  /// then saves it to the Gallery or opens the share sheet.
+  Future<void> _exportCrop({required bool share}) async {
+    final norm = _cropNormRect;
+    if (norm == null || _cropBusy) return;
+    final p = widget.photos[_page];
+    setState(() => _cropBusy = true);
+    String msg;
+    try {
+      final cropped = await cropJpegNormRect(p.file, norm);
+      if (cropped == null) {
+        msg =
+            'Crop failed — the box is too small (under $kMinCropSidePx px) '
+            'or the photo could not be read.';
+      } else {
+        final name = cropExportName(p.name);
+        if (share) {
+          await shareCrop(cropped.jpeg, name);
+          msg =
+              '${cropped.width} × ${cropped.height} px crop handed to the '
+              'share sheet.';
+        } else {
+          // Fallback dir (older Android / MediaStore failure): keep the crop
+          // with its session, next to roi_frames/.
+          final res = await saveCropToGallery(
+            cropped.jpeg,
+            name,
+            fallbackDir: Directory('${p.file.parent.parent.path}/crops'),
+          );
+          msg = res == null
+              ? 'Saving the crop failed.'
+              : 'Saved ${cropped.width} × ${cropped.height} px crop to '
+                    '${res.location}.';
+        }
+      }
+    } catch (e) {
+      logSwallowed('crop_export', e);
+      msg = 'Crop export failed: $e';
+    } finally {
+      if (mounted) setState(() => _cropBusy = false);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  /// Action bar under the viewer while crop mode is on: the 1:1 lock chip,
+  /// the crop's real pixel size (from the saved file, not the screen — the
+  /// honest number that decides whether an identification app has enough
+  /// detail), and the Save / Share actions.
+  Widget _cropBar() {
+    final size = _cropPxSize();
+    final hasRect = _cropSceneRect != null;
+    final String label;
+    if (!hasRect) {
+      label = 'Drag a box around the insect';
+    } else if (size == null) {
+      label = 'Crop set';
+    } else {
+      final tiny = size.$1 < 100 || size.$2 < 100;
+      label = 'Crop: ${size.$1} × ${size.$2} px${tiny ? '  ⚠ tiny' : ''}';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          FilterChip(
+            label: const Text('1:1'),
+            selected: _cropSquareLock,
+            visualDensity: VisualDensity.compact,
+            tooltip:
+                'Force the crop box to a square (same setting as in '
+                'Settings → Summary)',
+            onSelected: _setCropSquareLock,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.save_alt),
+            tooltip:
+                'Save the crop to the phone Gallery '
+                '(Pictures/PollinatorMonitor)',
+            color: Colors.white,
+            onPressed: hasRect && !_cropBusy
+                ? () => _exportCrop(share: false)
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip:
+                'Share the crop to another app '
+                '(e.g. Google Lens, iNaturalist)',
+            color: Colors.white,
+            onPressed: hasRect && !_cropBusy
+                ? () => _exportCrop(share: true)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// A round translucent ‹ / › photo-navigation button; greyed out at the
   /// ends of the gallery. Navigating first resets the zoom, so the page
   /// transition never slides a zoomed crop around.
@@ -1777,9 +1991,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                     // the PageView competes for the same horizontal drag and
                     // usually wins (this is what made panning after a pinch
                     // feel broken, round 88). So page-swiping is disabled in
-                    // zoom mode; the ‹ › buttons (which first reset the zoom)
-                    // are the way to change photo.
-                    physics: _zoomed
+                    // zoom mode (and in crop mode, where a drag draws the
+                    // export box); the ‹ › buttons (which first reset the
+                    // zoom) are the way to change photo.
+                    physics: _scrollFrozen
                         ? const NeverScrollableScrollPhysics()
                         : null,
                     onPageChanged: (i) {
@@ -1787,11 +2002,15 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       setState(() {
                         _page = i;
                         _scale = 1;
+                        // A crop rectangle belongs to one photo: drop it when
+                        // leaving (crop mode itself stays on).
+                        _cropDragStartScene = null;
+                        _cropSceneRect = null;
                       });
                       // Gallery convention: zoom belongs to one photo — reset
                       // it when leaving.
                       _transforms[old]?.value = Matrix4.identity();
-                      _notifyZoom();
+                      _notifyFreeze();
                     },
                     itemBuilder: (_, i) {
                       final p = widget.photos[i];
@@ -1806,42 +2025,83 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       return Center(
                         child: AspectRatio(
                           aspectRatio: 1,
-                          // Two-finger pinch zooms/pans (InteractiveViewer);
-                          // double-tap resets to 1×. The box overlay sits
-                          // INSIDE the transformed child so it scales/pans
-                          // with the photo and stays glued to the insects.
-                          child: GestureDetector(
-                            onDoubleTap: () => _setZoom(1),
-                            child: InteractiveViewer(
-                              transformationController: _transformFor(i),
-                              maxScale: _maxZoom,
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.file(
-                                    p.file,
-                                    fit: BoxFit.contain,
-                                    gaplessPlayback: true,
-                                  ),
-                                  if (_showBoxes)
-                                    Positioned.fill(
-                                      child: CustomPaint(
-                                        // The page's own zoom factor: stroke
-                                        // width and label size are divided by
-                                        // it inside the painter so they keep a
-                                        // constant ON-SCREEN thickness while
-                                        // the photo underneath scales up.
-                                        painter: _BoxPainter(
-                                          p.boxes,
-                                          _transformFor(
-                                            i,
-                                          ).value.getMaxScaleOnAxis(),
-                                        ),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              // Two-finger pinch zooms/pans (InteractiveViewer);
+                              // double-tap resets to 1×. The box overlay sits
+                              // INSIDE the transformed child so it scales/pans
+                              // with the photo and stays glued to the insects.
+                              GestureDetector(
+                                onDoubleTap: () => _setZoom(1),
+                                child: InteractiveViewer(
+                                  transformationController: _transformFor(i),
+                                  maxScale: _maxZoom,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Image.file(
+                                        p.file,
+                                        fit: BoxFit.contain,
+                                        gaplessPlayback: true,
                                       ),
-                                    ),
-                                ],
+                                      if (_showBoxes)
+                                        Positioned.fill(
+                                          child: CustomPaint(
+                                            // The page's own zoom factor: stroke
+                                            // width and label size are divided by
+                                            // it inside the painter so they keep a
+                                            // constant ON-SCREEN thickness while
+                                            // the photo underneath scales up.
+                                            painter: _BoxPainter(
+                                              p.boxes,
+                                              _transformFor(
+                                                i,
+                                              ).value.getMaxScaleOnAxis(),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
+                              // Crop mode (round 91): a drag layer ABOVE the
+                              // viewer wins every one-finger drag and draws
+                              // the export rectangle. Points are converted to
+                              // the photo's scene coordinates immediately
+                              // (toScene), so the rectangle stays glued to the
+                              // insect however the view is zoomed or panned.
+                              if (_cropMode && i == _page)
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onPanStart: (d) => setState(() {
+                                    _cropDragStartScene = _transformFor(
+                                      i,
+                                    ).toScene(d.localPosition);
+                                    _cropSceneRect = null;
+                                  }),
+                                  onPanUpdate: (d) {
+                                    final a = _cropDragStartScene;
+                                    if (a == null) return;
+                                    setState(() {
+                                      _cropSceneRect = sceneRectForDrag(
+                                        a,
+                                        _transformFor(
+                                          i,
+                                        ).toScene(d.localPosition),
+                                        _viewerSide,
+                                        square: _cropSquareLock,
+                                      );
+                                    });
+                                  },
+                                  onPanEnd: (_) => _finishCropDrag(),
+                                  child: CustomPaint(
+                                    painter: _CropRectPainter(
+                                      _viewportCropRect(i),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       );
@@ -1860,6 +2120,22 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                           tooltip: 'Show/hide detection boxes',
                           active: _showBoxes,
                           onTap: () => setState(() => _showBoxes = !_showBoxes),
+                        ),
+                        _toolButton(
+                          icon: Icons.crop,
+                          tooltip:
+                              'Crop & export: drag a box around an insect, '
+                              'then save it to the Gallery or share it to an '
+                              'identification app (zoom in first if needed)',
+                          active: _cropMode,
+                          onTap: () {
+                            setState(() {
+                              _cropMode = !_cropMode;
+                              _cropDragStartScene = null;
+                              _cropSceneRect = null;
+                            });
+                            _notifyFreeze();
+                          },
                         ),
                         _toolButton(
                           icon: Icons.zoom_in,
@@ -1933,10 +2209,37 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       ),
                     ),
                   ),
+                  // Crop-mode chip (takes priority over the zoom chip: in
+                  // crop mode a drag draws the box, whatever the zoom is).
+                  if (_cropMode)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _cropSceneRect == null
+                              ? 'Crop: drag a box around the insect'
+                              : 'Crop: drag again to redraw, or Save/Share '
+                                    'below',
+                          style: const TextStyle(
+                            color: _CropRectPainter.color,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    )
                   // Zoom-mode chip: makes the mode switch visible — while it
                   // shows, a one-finger drag moves the zoomed photo and the
                   // ‹ › buttons (or a double-tap) leave the mode.
-                  if (_zoomed)
+                  else if (_zoomed)
                     Positioned(
                       top: 8,
                       left: 8,
@@ -2006,6 +2309,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           ),
         ),
         const SizedBox(height: 8),
+        if (_cropMode) ...[_cropBar(), const SizedBox(height: 8)],
         Text(
           'Photo ${_page + 1} / ${widget.photos.length}'
           '  •  ${widget.photos[_page].boxes.length} detection'
@@ -2150,6 +2454,39 @@ class _BoxPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BoxPainter old) =>
       old.boxes != boxes || old.zoom != zoom;
+}
+
+/// Draws the crop-export rectangle. It paints in VIEWPORT coordinates (the
+/// rectangle is re-mapped from the photo's scene coordinates every build, see
+/// [_PhotoViewerState._viewportCropRect]) so it stays glued to the photo while
+/// zooming/panning, and dims everything outside so the kept region is obvious.
+class _CropRectPainter extends CustomPainter {
+  final Rect? rect;
+  _CropRectPainter(this.rect);
+
+  static const color = Color(0xFFFF9100);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = rect;
+    if (r == null) return;
+    final outside = Path.combine(
+      PathOperation.difference,
+      Path()..addRect(Offset.zero & size),
+      Path()..addRect(r),
+    );
+    canvas.drawPath(outside, Paint()..color = Colors.black38);
+    canvas.drawRect(
+      r,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CropRectPainter old) => old.rect != rect;
 }
 
 /// Mean, median, min and max of a time series' values (the `ms` timestamps are
