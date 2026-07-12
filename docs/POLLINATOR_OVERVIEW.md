@@ -189,7 +189,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   (`DefaultTabController`, `session_summary_screen.dart`). The Settings tab reads the
   `config` block from the start record, so every new `SessionConfig` field appears in
   the JSON automatically — but add a display row in `_settingsSection()` when adding
-  a setting.
+  a setting. r84: the power (W) graph + energy numbers render only for sessions with
+  NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
+  flags as fallback for older logs) — battery-terminal current measures charging, not
+  consumption, while plugged in, so a note replaces the graph. Raw `power` records are
+  still always logged.
 
 ## Device quirks (test phones)
 

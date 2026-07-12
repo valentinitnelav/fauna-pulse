@@ -278,6 +278,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 voltageMv: (rec['battery_voltage_mv'] as num?)?.toInt(),
                 chargeUah: (rec['charge_counter_uah'] as num?)?.toInt(),
                 loggedW: (rec['power_w'] as num?)?.toDouble(),
+                isCharging: rec['is_charging'] as bool?,
               ),
             );
             break;
@@ -306,6 +307,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   ///  - Some phones (notably Xiaomi) report a 2-cell *series* voltage (~8.8 V);
   ///    [_singleCellVoltageV] normalizes that so power/energy aren't doubled.
   void _buildEnergySeries(List<_PowerSample> raw) {
+    // Battery-terminal readings only measure the PHONE's consumption while it
+    // is discharging: plugged in, the sensor sees the charging current (or ~0
+    // once the battery is full and the charger carries the load). Any charging
+    // anywhere in the session — per-sample flags (round 84), or the start/end
+    // flags already read by [_readChargingFlag] (the only signal on older logs
+    // whose power records lack `is_charging`) — invalidates the whole series,
+    // so nothing is built and no misleading W/Wh number can surface. The
+    // Graphs tab shows an explanatory note instead.
+    if (raw.any((s) => s.isCharging == true)) _chargingDuringSession = true;
+    if (_chargingDuringSession) return;
     if (raw.length < 2) return;
 
     // Average single-cell voltage (V) across the session, used wherever a
@@ -866,8 +877,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 2, bottom: 6),
           child: Text(
-            '⚠ The phone was plugged in during this session, so the '
-            'energy estimate is not reliable (measure unplugged).',
+            '⚠ The phone was plugged in during (part of) this session, so '
+            'the power/energy graph is hidden — the battery sensor would '
+            'measure charging, not consumption. Measure unplugged.',
             style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
           ),
         ),
@@ -1011,23 +1023,33 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 4),
-    const Text(
-      'Watts (W) = how fast energy is being used right now '
-      '(battery current × voltage). Higher = more drain.',
-      style: TextStyle(color: Colors.white70, fontSize: 12),
-    ),
-    const SizedBox(height: 12),
-    _series(_power, const Color(0xFFFFCA28), 'W'),
-    if (_powerAvg != null) ...[
-      const SizedBox(height: 8),
-      Text(
-        'Average power ${_powerAvg!.toStringAsFixed(2)} W '
-        '(median ${_powerMedian!.toStringAsFixed(2)} W; '
-        'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
-        'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
-        '(= average power × duration); battery level dropped $_batteryUsedLabel.',
-        style: const TextStyle(color: Colors.white70, fontSize: 12),
+    if (_chargingDuringSession)
+      const Text(
+        'Not shown: the phone was plugged in during (part of) this session. '
+        'The battery sensor then measures charging current — not what the '
+        'phone consumes — so a power or energy estimate would be wrong. '
+        'Record a full session on battery to see this graph.',
+        style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+      )
+    else ...[
+      const Text(
+        'Watts (W) = how fast energy is being used right now '
+        '(battery current × voltage). Higher = more drain.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
+      const SizedBox(height: 12),
+      _series(_power, const Color(0xFFFFCA28), 'W'),
+      if (_powerAvg != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Average power ${_powerAvg!.toStringAsFixed(2)} W '
+          '(median ${_powerMedian!.toStringAsFixed(2)} W; '
+          'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
+          'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
+          '(= average power × duration); battery level dropped $_batteryUsedLabel.',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
     ],
   ];
 
@@ -1234,12 +1256,14 @@ class _PowerSample {
   final int? chargeUah; // remaining charge counter (µAh) — spec-reliable units
   final double?
   loggedW; // power computed at capture time (last-resort fallback)
+  final bool? isCharging; // plugged in at sample time (null on older logs)
   const _PowerSample({
     required this.ms,
     required this.currentUa,
     required this.voltageMv,
     required this.chargeUah,
     required this.loggedW,
+    required this.isCharging,
   });
 }
 

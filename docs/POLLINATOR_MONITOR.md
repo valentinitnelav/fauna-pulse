@@ -3111,3 +3111,40 @@ and timed end paths converge.
 
 Verification: `flutter analyze` clean, full `flutter test test/pollinator` pass.
 
+## Round 84 (2026-07-12): power graph hidden for sessions with any charging
+
+Owner question: with the field invariant that the phone runs on a power bank, is the
+end-of-session "Power draw (W)" graph meaningful while charging?
+
+Answer: no — and it cannot be corrected by computation. The source is
+`BatteryManager.BATTERY_PROPERTY_CURRENT_NOW` (battery-terminal current). Plugged in,
+the charger carries the load and the sensor sees the *charging* current: because the
+summary takes `abs(current)` (OEM sign conventions vary), charging graphs as if it were
+consumption, and a full battery on a power bank reads ≈ 0 W while the phone actually
+draws several watts. The Wh integral is wrong for the same reason, and Android exposes
+no charger-input-power API.
+
+Change (all-or-nothing per owner decision; per-segment masking of charging periods was
+considered and rejected — in practice a session is either fully on the power bank
+(field) or fully on battery (home benchmark), and spliced averages/partial Wh would
+confuse more than help):
+
+- `_PowerSample` now parses the per-sample `is_charging` flag that `power` records have
+  carried since the power logging round; `_buildEnergySeries` sets
+  `_chargingDuringSession` if ANY sample was charging (previously only the start/end
+  records' thermal flags were checked, so a mid-session plug-in was missed; those flags
+  remain the fallback for older logs) and then builds NOTHING — no `_power` series, no
+  avg/median/min/max, no Wh — so no misleading number can surface anywhere.
+- Graphs tab: the power section keeps its heading but shows an orange explanatory note
+  ("battery sensor measures charging current, not consumption; record on battery to see
+  this graph") instead of the graph + stats.
+- Overview tab: the existing ⚠ plugged-in note now also fires for mid-session charging
+  and says the graph is hidden, so both tabs tell one story. "Battery used %" stays
+  visible (self-explaining, with the note right under it).
+
+Logging is unchanged — raw `power` records (current/voltage/charge counter/is_charging)
+are still written every sample, so offline analysis keeps the full data either way.
+
+Verification: `flutter analyze` clean, 99/99 tests. Manual check: a power-bank session
+summary shows the note instead of the W graph; an unplugged session renders as before.
+

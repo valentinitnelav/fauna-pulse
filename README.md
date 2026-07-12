@@ -10,8 +10,7 @@ Detection runs **fully on-device** (no network needed) using [LiteRT](https://gi
 A draggable square **region of interest (ROI)** is placed over the target flower 
 (or portion of inflorescence or path of flowers). 
 When an insect enters the ROI, a combined detection + tracking pipeline activates, 
-assigns each insect a tracking ID, saves ROI-cropped JPEGs, 
-and writes an append-only JSON log of the session. 
+assigns each insect a tracking ID, saves ROI-cropped JPEGs and session metadata.
 
 Intended usage:
 
@@ -33,9 +32,9 @@ I was curious to see how far I could push the limits of what is possible with "v
 Initially, developing a custom field tool felt like a costly and daunting endeavor, 
 likely requiring me to apply for grants just to hire Android developers. 
 However, as coding agents grew more capable and popular, I decided to give them a try. 
-While I am not completely new to programming (and I doubt I could have built this app 
+While I am not new to programming (and I doubt I could have built this app 
 without some prior understanding of software development) this process has been 
-an incredibly rewarding journey. It is worth noting that I use paid tools like Claude Code, 
+a rewarding journey. It is worth noting that I use paid tools like Claude Code, 
 which I recognize is a luxury that may not be accessible to everyone, 
 but it has been instrumental in bringing this project to life.
 
@@ -65,6 +64,7 @@ pollinator-monitor/
 ```
 
 This repository is the app, it sits at the root, not in a subfolder (previously `/yolo-flutter-app/example/`).
+That older path might appear in the log history.
 
 The app depends on the ultralytics plugin:
 
