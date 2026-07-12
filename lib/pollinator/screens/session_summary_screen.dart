@@ -468,10 +468,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
           continue;
         }
-        // One tracked insect that carries a `jpeg` filename: joins the entry
-        // to its photo. Shared by both record shapes.
-        void addEntry(Map<String, dynamic> entry, int timeMs) {
-          final jpeg = entry['jpeg'] as String?;
+        // Joins one tracked insect's entry to a photo. Shared by both record
+        // shapes. Only the tracks whose time-lapse step was DUE carry the
+        // `jpeg` filename in the log; [frameJpeg] passes that filename to the
+        // OTHER tracks of the same frame record, so every insect visible in
+        // the photo gets its box drawn (round 86) — jpeg-carrying entries are
+        // marked as the photo's trigger and drawn in a distinct color.
+        void addEntry(
+          Map<String, dynamic> entry,
+          int timeMs, {
+          String? frameJpeg,
+        }) {
+          final own = entry['jpeg'] as String?;
+          final jpeg = own ?? frameJpeg;
           if (jpeg == null || jpeg.isEmpty) return;
           if (!byFile.containsKey(jpeg)) {
             order.add(jpeg);
@@ -503,6 +512,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
                 label: '#${tid ?? '?'} ${entry['class_name'] ?? ''}$confLabel'
                     .trim(),
+                triggered: own != null,
               ),
             );
           }
@@ -512,8 +522,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         if (rec['type'] == 'detections') {
           final tracks = rec['tracks'];
           if (tracks is List) {
+            // The frame's shared photo filename (one photo per frame at most):
+            // handed to the entries that lack their own, so co-detected
+            // insects appear on the photo too. Legacy per-track 'detection'
+            // records (≤ round 68) can't be regrouped into frames, so they
+            // keep showing trigger boxes only.
+            String? frameJpeg;
             for (final e in tracks) {
-              if (e is Map<String, dynamic>) addEntry(e, timeMs);
+              if (e is Map<String, dynamic> && e['jpeg'] is String) {
+                frameJpeg = e['jpeg'] as String;
+                break;
+              }
+            }
+            for (final e in tracks) {
+              if (e is Map<String, dynamic>) {
+                addEntry(e, timeMs, frameJpeg: frameJpeg);
+              }
             }
           }
         } else {
@@ -1094,6 +1118,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'the results make visual sense. Swipe left/right to step through them.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
+      const SizedBox(height: 4),
+      // Box-color legend (round 86): a photo shows EVERY insect detected in
+      // the frame that scheduled it, not only the one(s) whose time-lapse
+      // step was due.
+      const Text.rich(
+        TextSpan(
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+          children: [
+            TextSpan(
+              text: '■ ',
+              style: TextStyle(color: _BoxPainter.triggerColor),
+            ),
+            TextSpan(text: 'insect whose photo schedule triggered this shot'),
+            TextSpan(text: '   '),
+            TextSpan(
+              text: '■ ',
+              style: TextStyle(color: _BoxPainter.coDetectedColor),
+            ),
+            TextSpan(text: 'other insect detected in the same frame'),
+          ],
+        ),
+      ),
       const SizedBox(height: 8),
       Row(
         children: [
@@ -1279,12 +1325,17 @@ class _PowerSample {
 class _DetBox {
   final double left, top, right, bottom;
   final String label;
+
+  /// True when this insect's time-lapse schedule is what triggered the photo;
+  /// false for insects that simply happened to be detected in the same frame.
+  final bool triggered;
   const _DetBox({
     required this.left,
     required this.top,
     required this.right,
     required this.bottom,
     required this.label,
+    required this.triggered,
   });
 }
 
@@ -1478,13 +1529,22 @@ class _BoxPainter extends CustomPainter {
   final List<_DetBox> boxes;
   _BoxPainter(this.boxes);
 
+  /// Box color of the insect(s) whose time-lapse schedule triggered the photo
+  /// (the color all boxes used before round 86).
+  static const triggerColor = Color(0xFF00E5FF);
+
+  /// Box color of insects that were detected in the same frame but did not
+  /// trigger the photo themselves.
+  static const coDetectedColor = Color(0xFFFFC107);
+
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = const Color(0xFF00E5FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
     for (final b in boxes) {
+      final color = b.triggered ? triggerColor : coDetectedColor;
+      final stroke = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
       final rect = Rect.fromLTRB(
         b.left * size.width,
         b.top * size.height,
@@ -1496,10 +1556,10 @@ class _BoxPainter extends CustomPainter {
         final tp = TextPainter(
           text: TextSpan(
             text: b.label,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.black,
               fontSize: 11,
-              backgroundColor: Color(0xFF00E5FF),
+              backgroundColor: color,
             ),
           ),
           textDirection: TextDirection.ltr,

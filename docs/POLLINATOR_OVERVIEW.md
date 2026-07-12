@@ -198,7 +198,11 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
   flags as fallback for older logs) — battery-terminal current measures charging, not
   consumption, while plugged in, so a note replaces the graph. Raw `power` records are
-  still always logged.
+  still always logged. r86: the Photos tab draws EVERY insect of the photo's trigger
+  frame (the `jpeg` filename is shared across the record's entries at parse time —
+  only due tracks carry it in the log): cyan box = triggered the photo, amber =
+  co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)
+  stay trigger-only.
 
 ## Device quirks (test phones)
 

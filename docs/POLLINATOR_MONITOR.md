@@ -3197,3 +3197,30 @@ compiles). On-device check still advised: per-second `fps` records right after a
 wake should read ≈ the inference cap, and the live readout must not crater after
 waking or after closing the settings sheet.
 
+## Round 86 (2026-07-12): Photos tab shows ALL insects detected in the trigger frame
+
+Owner request: photos with multiple insects only showed boxes for the insect(s) that
+triggered the photo; the others detected in the same frame were missing.
+
+Cause: `RoiCaptureScheduler.evaluate` puts only the DUE track ids into
+`PendingCapture.trackIds`, and `SessionRecorder.recordFrame` writes the `jpeg`
+filename only into those tracks' entries. A track that was present but not due
+(step not reached, or its capture window expired) has its `box_in_roi` in the very
+same `detections` record — the summary's `_loadPhotos` just skipped entries without
+a `jpeg` field.
+
+Fix (display-side only, so it works retroactively on already-recorded sessions —
+no logging change): when parsing a `detections` record, the first entry's `jpeg`
+filename is shared with the record's other entries (`frameJpeg`), so every insect
+of the trigger frame gets a box on the photo. Entries carrying their own `jpeg`
+are marked `triggered` and keep the cyan box (`_BoxPainter.triggerColor`, the
+pre-r86 color for everything); co-detected insects draw amber
+(`coDetectedColor`); a two-swatch legend line sits under the Photos-tab explainer.
+The per-photo track-id list and confidences now naturally include the co-detected
+insects (they ARE in the photo). Legacy per-track `detection` records (≤ r68)
+can't be regrouped into frames and keep trigger-only boxes.
+
+Verified on session_128: 52 of 66 photos gain the previously hidden boxes
+(e.g. 1 trigger + 1 co-detected), photo count unchanged, single-insect photos
+identical. `flutter analyze` clean, 101/101 tests.
+
