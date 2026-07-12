@@ -3380,3 +3380,31 @@ far better than Downloads), plus a direct **Share** button.
 Verification: `flutter analyze` clean, 114/114 tests, debug APK builds. Field check
 still pending: save a crop on the Xiaomi, find it in the Gallery, feed it to
 Seek/Lens (also answers whether ~300–1000 px crops identify well).
+
+## Round 92 (2026-07-12): movable crop box in the summary viewer
+
+Field feedback after round 91 (owner tested crop-export successfully with Google
+Lens and Seek): framing the insect needs the drawn box to be MOVABLE, not only
+redrawable. Also re-confirmed on request: the export has always cropped the
+ORIGINAL saved JPEG (`cropJpegNormRect(p.file, …)` decodes the `roi_frames/` file;
+the screen only supplies normalized coordinates), so small crops are purely a
+saved-resolution matter — raising `targetRoiSavedPx` / using stills is the fix.
+
+- A pan starting INSIDE the existing box (inflated by 12 on-screen px for finger
+  tolerance, converted to scene px via the zoom) now MOVES it; starting outside
+  redraws as before. Moving shifts the rectangle as it was at drag start
+  (`_cropMoveOriginRect`) by the drag delta via the new pure helper
+  `moveSceneRect` (`capture/crop_export.dart`): translation clamped so the box
+  stays fully on the photo, size untouched — an enforced 1:1 therefore stays 1:1
+  through any move, as does a free-aspect shape.
+- Visual cue: `_CropRectPainter` draws a four-arrow "move" glyph
+  (`Icons.open_with`) just inside the box's top-right corner, clamped to the
+  canvas so it stays visible when that corner is panned off-screen. The crop-mode
+  chip now reads "drag inside the box to move it, outside to redraw".
+- `_finishCropDrag` clears the drag/move state on every pan end; the tiny-box
+  drop only ever triggers for freshly drawn boxes (a moved box kept its
+  already-validated size).
+- Tests: `moveSceneRect` (shift, edge clamping, size/aspect preservation for
+  square and non-square boxes) in `crop_export_test.dart`.
+
+Verification: `flutter analyze` clean, 118/118 tests, debug APK builds.

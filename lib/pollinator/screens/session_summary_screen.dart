@@ -1624,6 +1624,11 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// The drawn crop rectangle in scene coordinates; null while none is set.
   Rect? _cropSceneRect;
 
+  /// The rectangle as it was when a MOVE drag started (drag began inside the
+  /// box); null while drawing a new box instead. Moving shifts this original
+  /// by the drag delta, so the size — and an enforced 1:1 — never changes.
+  Rect? _cropMoveOriginRect;
+
   /// Mirrors [SessionConfig.cropSquareLock] (loaded in [initState]); the
   /// "1:1" chip in the crop bar writes it back, so the chip and the Settings
   /// switch are one and the same setting.
@@ -1803,18 +1808,18 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 
   /// End of a crop drag: drop a rectangle that would come out below
   /// [kMinCropSidePx] on the saved photo — almost certainly a stray tap, and
-  /// too small to identify anything from anyway.
+  /// too small to identify anything from anyway. (A MOVE drag keeps its
+  /// already-validated size, so it always passes.)
   void _finishCropDrag() {
+    _cropDragStartScene = null;
+    _cropMoveOriginRect = null;
     final r = _cropSceneRect;
     if (r == null) return;
     final p = widget.photos[_page];
     final px = min(p.width ?? 1024, p.height ?? 1024);
     if (r.width / _viewerSide * px < kMinCropSidePx ||
         r.height / _viewerSide * px < kMinCropSidePx) {
-      setState(() {
-        _cropSceneRect = null;
-        _cropDragStartScene = null;
-      });
+      setState(() => _cropSceneRect = null);
     }
   }
 
@@ -1826,6 +1831,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     setState(() {
       _cropSquareLock = v;
       _cropDragStartScene = null;
+      _cropMoveOriginRect = null;
       _cropSceneRect = null;
     });
     final cfg = await SessionConfig.load();
@@ -2005,6 +2011,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         // A crop rectangle belongs to one photo: drop it when
                         // leaving (crop mode itself stays on).
                         _cropDragStartScene = null;
+                        _cropMoveOriginRect = null;
                         _cropSceneRect = null;
                       });
                       // Gallery convention: zoom belongs to one photo — reset
@@ -2074,24 +2081,46 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                               if (_cropMode && i == _page)
                                 GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onPanStart: (d) => setState(() {
-                                    _cropDragStartScene = _transformFor(
+                                  onPanStart: (d) {
+                                    final scene = _transformFor(
                                       i,
                                     ).toScene(d.localPosition);
-                                    _cropSceneRect = null;
-                                  }),
+                                    final r = _cropSceneRect;
+                                    final scale = _transformFor(
+                                      i,
+                                    ).value.getMaxScaleOnAxis();
+                                    // Starting INSIDE the existing box (with
+                                    // a finger-friendly margin, in on-screen
+                                    // pixels) MOVES it; anywhere else redraws.
+                                    final moving =
+                                        r != null &&
+                                        r.inflate(12 / scale).contains(scene);
+                                    setState(() {
+                                      _cropDragStartScene = scene;
+                                      _cropMoveOriginRect = moving ? r : null;
+                                      if (!moving) _cropSceneRect = null;
+                                    });
+                                  },
                                   onPanUpdate: (d) {
                                     final a = _cropDragStartScene;
                                     if (a == null) return;
+                                    final scene = _transformFor(
+                                      i,
+                                    ).toScene(d.localPosition);
                                     setState(() {
-                                      _cropSceneRect = sceneRectForDrag(
-                                        a,
-                                        _transformFor(
-                                          i,
-                                        ).toScene(d.localPosition),
-                                        _viewerSide,
-                                        square: _cropSquareLock,
-                                      );
+                                      final origin = _cropMoveOriginRect;
+                                      _cropSceneRect = origin != null
+                                          ? moveSceneRect(
+                                              origin,
+                                              scene - a,
+                                              _viewerSide,
+                                            )
+                                          : sceneRectForDrag(
+                                              a,
+                                              scene,
+                                              _viewerSide,
+                                              square: _cropSquareLock,
+                                            );
                                     });
                                   },
                                   onPanEnd: (_) => _finishCropDrag(),
@@ -2132,6 +2161,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                             setState(() {
                               _cropMode = !_cropMode;
                               _cropDragStartScene = null;
+                              _cropMoveOriginRect = null;
                               _cropSceneRect = null;
                             });
                             _notifyFreeze();
@@ -2227,8 +2257,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         child: Text(
                           _cropSceneRect == null
                               ? 'Crop: drag a box around the insect'
-                              : 'Crop: drag again to redraw, or Save/Share '
-                                    'below',
+                              : 'Crop: drag inside the box to move it, '
+                                    'outside to redraw',
                           style: const TextStyle(
                             color: _CropRectPainter.color,
                             fontSize: 11,
@@ -2482,6 +2512,27 @@ class _CropRectPainter extends CustomPainter {
         ..color = color
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
+    );
+    // Four-arrow "move" glyph just inside the top-right corner: the visual
+    // cue that a drag starting inside the box MOVES it (clamped to the
+    // canvas so it stays visible when that corner is panned off-screen).
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(Icons.open_with.codePoint),
+        style: const TextStyle(
+          fontFamily: 'MaterialIcons',
+          fontSize: 16,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset(
+        (r.right - tp.width - 3).clamp(0.0, size.width - tp.width),
+        (r.top + 3).clamp(0.0, size.height - tp.height),
+      ),
     );
   }
 

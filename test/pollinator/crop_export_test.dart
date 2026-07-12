@@ -74,6 +74,38 @@ void main() {
     });
   });
 
+  group('moveSceneRect', () {
+    const box = Rect.fromLTRB(100, 100, 200, 200);
+
+    test('shifts the rectangle by the drag delta', () {
+      final r = moveSceneRect(box, const Offset(30, -20), 320);
+      expect(r, const Rect.fromLTRB(130, 80, 230, 180));
+    });
+
+    test('clamps at the photo edges instead of leaving it', () {
+      // 500 px right / 500 up on a 320 photo: stops flush at the edges.
+      final r = moveSceneRect(box, const Offset(500, -500), 320);
+      expect(r, const Rect.fromLTRB(220, 0, 320, 100));
+    });
+
+    test('never changes the size — an enforced 1:1 stays 1:1', () {
+      for (final d in const [Offset(500, 0), Offset(-500, 123), Offset(7, 9)]) {
+        final r = moveSceneRect(box, d, 320);
+        expect(r.width, box.width);
+        expect(r.height, box.height);
+      }
+    });
+
+    test('a non-square rectangle keeps its aspect too', () {
+      const wide = Rect.fromLTRB(10, 10, 210, 60); // 200 × 50
+      final r = moveSceneRect(wide, const Offset(1000, 1000), 320);
+      expect(r.width, 200);
+      expect(r.height, 50);
+      expect(r.right, 320);
+      expect(r.bottom, 320);
+    });
+  });
+
   test('normalizedRect divides by the viewer side', () {
     final n = normalizedRect(const Rect.fromLTRB(80, 160, 240, 320), 320);
     expect(n, const Rect.fromLTRB(0.25, 0.5, 0.75, 1.0));

@@ -54,6 +54,15 @@ Rect sceneRectForDrag(Offset a, Offset b, double side, {required bool square}) {
   );
 }
 
+/// Shifts an existing crop rectangle by [delta] (scene coordinates), clamped
+/// so the whole rectangle stays on the photo. The size — and therefore an
+/// enforced 1:1 aspect — is preserved exactly.
+Rect moveSceneRect(Rect r, Offset delta, double side) {
+  final dx = delta.dx.clamp(-r.left, side - r.right);
+  final dy = delta.dy.clamp(-r.top, side - r.bottom);
+  return r.shift(Offset(dx, dy));
+}
+
 /// Scene rectangle (0..[side]) → normalized 0..1 fractions of the photo, the
 /// resolution-independent form the pixel crop is computed from.
 Rect normalizedRect(Rect scene, double side) => Rect.fromLTRB(

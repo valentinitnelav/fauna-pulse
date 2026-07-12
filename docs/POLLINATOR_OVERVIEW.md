@@ -210,7 +210,9 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   InteractiveViewer, points mapped via `toScene` so it works while zoomed; ancestor
   scrollables freeze exactly as in zoom mode); optional 1:1 lock
   (`cropSquareLock` — the in-viewer chip and the Settings → Summary switch are the
-  same setting). Save cuts the box FROM THE ORIGINAL JPEG (never the screen;
+  same setting). r92: a drag starting INSIDE the drawn box MOVES it (size and 1:1
+  preserved — `moveSceneRect`; four-arrow glyph at the box's top-right as the cue),
+  outside redraws. Save cuts the box FROM THE ORIGINAL JPEG (never the screen;
   `capture/crop_export.dart`, background isolate) into the Gallery via MediaStore
   (`saveImageToGallery` on the `pollinator/crop` channel →
   Pictures/PollinatorMonitor; < Android 10 or MediaStore failure →
