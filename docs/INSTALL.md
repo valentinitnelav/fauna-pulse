@@ -291,12 +291,19 @@ There you find these:
 ```bash
 # 1) Locate the destination folder on your computer
 cd ~/InsectDetectApp/sessions/Xiaomi/
+
 # 2) Pull all content (everything from .../files/)
 # It will also create a folder named "files" at the path above
 adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/
 # -a : preserve file timestamp and mode
 # This will avoid the creation of the "files" folder locally
 adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/. ./
+
+# If you need to pull from a specific smartphone, use their flutter device id.
+# Check all connected devices with:
+flutter devices
+# Then pull from a specific smartphone using their id
+adb -s 2b2dc560 pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/. ./
 
 # Or pull directly into the destination folder (without `cd` command first):
 adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/ ~/InsectDetectApp/sessions/Xiaomi/
