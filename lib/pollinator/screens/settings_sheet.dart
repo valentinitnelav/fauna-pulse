@@ -1265,24 +1265,59 @@ class _SettingsSheetState extends State<SettingsSheet> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
-          'Motion gate (experimental): sleep while the flower is empty',
+          'Motion-only capture (experimental): photos on motion, no AI',
           style: TextStyle(color: Colors.white),
         ),
         subtitle: const Text(
+          'Takes ROI photos whenever something moves inside the ROI — the AI '
+          'detector NEVER runs, so this is the biggest energy saver for long '
+          'sessions (the model still loads at start but is never used). No '
+          'species or track data is recorded, only the photos and their '
+          'timestamps. Photos follow the time-lapse interval/duration and the '
+          'photo-source setting above. Trade-off: wind or shadows produce '
+          'extra junk photos instead of wasted computation. Uses the motion '
+          'gate below as its trigger (forced on); validate its sensitivity '
+          'against a detector session first.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.motionOnlyCapture,
+        onChanged: (v) => setState(
+          () => _c = _c.copyWith(
+            motionOnlyCapture: v,
+            // Motion-only capture cannot work without the gate — it IS the
+            // trigger — so switching it on switches the gate on too.
+            motionGateEnabled: v ? true : _c.motionGateEnabled,
+          ),
+        ),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Motion gate (experimental): sleep while the flower is empty',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: Text(
           'Runs the detector only when something moves inside the ROI (a cheap '
           'brightness check watches every frame). Big heat/battery saving during '
           'long empty periods. Designed for a MOUNTED phone: handheld shake '
           'counts as motion, so in the hand the gate stays awake — that is '
           'normal, not a fault. Off by default — validate against an always-on '
-          'session before trusting it for real counts.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+          'session before trusting it for real counts.'
+          '${_c.motionOnlyCapture ? ' (Required by motion-only capture.)' : ''}',
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
         isThreeLine: true,
         value: _c.motionGateEnabled,
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(motionGateEnabled: v)),
+        // Locked on while motion-only capture depends on it.
+        onChanged: _c.motionOnlyCapture
+            ? null
+            : (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
       ),
       if (_c.motionGateEnabled) ...[
+        // These tuning fields double as the motion-only capture sensitivity
+        // controls — the same gate decides both "wake the detector" and
+        // "take a photo".
         NumericSettingField(
           label: 'Wake duration after motion',
           value: _c.motionGateWakeSeconds,

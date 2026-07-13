@@ -57,6 +57,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range) — the standing sensor/ISP load the gate can't touch; `0` = device default (~30); explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
 | Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
+| Motion-only capture | off (opt-in) | r95: photos on ROI motion, detector NEVER runs (model loads but `predict()` is never called); forces the gate on; gate tunables = its sensitivity, time-lapse + photo-source settings apply; logs `motion_capture` records, NO `detections` |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
@@ -197,7 +198,23 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   `pipeline_fps ?? fps` so pre-r85 sessions read honestly too.
   Don't gate in Dart — frames never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
   atop the status strip + ROI border turns grey while idle (priority: capture flash >
-  gate-idle grey > recording red > yellow). Handheld shake keeps the gate awake by
+  gate-idle grey > recording red > yellow).
+  r95 **motion-only capture**: a `motionOnlyMode` branch in `onFrame` sits BEFORE
+  `predictor?.let` (needs nothing from the model; detector path untouched when off) —
+  gate check on every converted frame, awake stream maps `{motionOnly:true,
+  gateIdle:false, motionScore, cameraFps, imageWidth/Height, roiActive}` at ≤10 Hz
+  (fixed 100 ms, NOT shouldRunInference — that cap needs inference timings; wake
+  transition emits immediately; dims are MANDATORY — the Dart probe/ROI bootstrap
+  needs them), idle heartbeat via the shared `maybeEmitGateIdleHeartbeat` helper.
+  Dart: `camera_session_screen` branches on `motionOnly:true` maps → zeroes
+  inference numbers → `SessionRecorder.recordMotionFrame` →
+  `RoiCaptureScheduler.evaluateMotion` (ONE shared window, same step/duration
+  hysteresis as track windows) → returns BEFORE the 0-FPS watchdog (critical).
+  `recordFrame` is skipped in this mode (startup race must not write `detections`
+  records). `fps` records omit inference fields even while awake + carry
+  `motion_only:true` (r77 rule). Summary: `motion_capture` records (and, backstop,
+  `capture` records) seed the Photos list; timeline/unique-insects show a
+  motion-only note. Chip reads "CAPTURING"/"WAITING FOR MOTION". Handheld shake keeps the gate awake by
   design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
   and box-averaged (bilinear minification is point-sampling; without this, coarse grids
   were NOISIER than fine ones — session_89 observation). r74 (review A5): on frames that

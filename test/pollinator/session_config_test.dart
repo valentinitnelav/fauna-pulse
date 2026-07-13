@@ -218,6 +218,16 @@ void main() {
     expect(restored.motionGateIdleFps, 12);
   });
 
+  test('motion-only capture: default off, survives the JSON round-trip', () {
+    expect(const SessionConfig().motionOnlyCapture, false); // opt-in
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(motionOnlyCapture: true).toJson(),
+    );
+    expect(restored.motionOnlyCapture, true);
+    // Configs saved before the key existed fall back to off.
+    expect(SessionConfig.fromJson(const {}).motionOnlyCapture, false);
+  });
+
   group('scheduled recording', () {
     test('defaults: off, one 06:00–10:00 window, 1 day', () {
       const c = SessionConfig();

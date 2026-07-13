@@ -205,6 +205,15 @@ class SessionConfig {
   /// frame flows regardless.
   final int motionGateIdleFps;
 
+  /// Motion-only capture (opt-in). Photos are taken whenever the motion gate
+  /// sees movement in the ROI — the AI detector NEVER runs (the model still
+  /// loads at start but is never used, so the biggest per-frame energy cost is
+  /// gone). No species/track data is recorded; the time-lapse step/duration
+  /// and photo-source settings apply to the motion-triggered photos. Requires
+  /// the motion gate (forced on while this is on). Trade-off: wind or shadow
+  /// false triggers become extra junk photos instead of wasted computation.
+  final bool motionOnlyCapture;
+
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
   /// crop can be. Higher = bigger crops but can cost FPS on weaker phones.
@@ -331,6 +340,7 @@ class SessionConfig {
     this.motionGateWakeSeconds = 3.0,
     this.motionGateGridSize = 48,
     this.motionGateIdleFps = 5,
+    this.motionOnlyCapture = false,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.captureMode = RoiCaptureMode.auto,
@@ -422,6 +432,7 @@ class SessionConfig {
     double? motionGateWakeSeconds,
     int? motionGateGridSize,
     int? motionGateIdleFps,
+    bool? motionOnlyCapture,
     int? streamWidth,
     int? streamHeight,
     RoiCaptureMode? captureMode,
@@ -465,6 +476,7 @@ class SessionConfig {
     motionGateWakeSeconds: motionGateWakeSeconds ?? this.motionGateWakeSeconds,
     motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
     motionGateIdleFps: motionGateIdleFps ?? this.motionGateIdleFps,
+    motionOnlyCapture: motionOnlyCapture ?? this.motionOnlyCapture,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     captureMode: captureMode ?? this.captureMode,
@@ -509,6 +521,7 @@ class SessionConfig {
     'motionGateWakeSeconds': motionGateWakeSeconds,
     'motionGateGridSize': motionGateGridSize,
     'motionGateIdleFps': motionGateIdleFps,
+    'motionOnlyCapture': motionOnlyCapture,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'captureMode': captureMode.name,
@@ -557,6 +570,7 @@ class SessionConfig {
         (j['motionGateWakeSeconds'] as num?)?.toDouble() ?? 3.0,
     motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
     motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
+    motionOnlyCapture: j['motionOnlyCapture'] as bool? ?? false,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     captureMode: _captureModeFromJson(j),

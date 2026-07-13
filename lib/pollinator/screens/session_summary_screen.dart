@@ -479,7 +479,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final isDetection =
             line.contains('"detections"') || line.contains('"detection"');
         final isCapture = line.contains('"type":"capture"');
-        if (!isRoiSource && !isDetection && !isCapture) continue;
+        // Motion-only capture sessions: no detector ran, so these records are
+        // the only lines carrying the photo names.
+        final isMotionCapture = line.contains('"motion_capture"');
+        if (!isRoiSource && !isDetection && !isCapture && !isMotionCapture) {
+          continue;
+        }
         final rec = _tryDecode(line);
         if (rec == null) continue;
         if (isRoiSource) {
@@ -500,7 +505,31 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           // estimate).
           final file = rec['file'] as String?;
           final px = (rec['saved_px'] as num?)?.toInt();
+          // Backstop: a photo no detections/motion_capture record ever named
+          // (shouldn't happen, but a lost line must not hide a saved JPEG)
+          // still becomes browsable — seeded here, boxes simply empty.
+          if (file != null && file.isNotEmpty && !byFile.containsKey(file)) {
+            order.add(file);
+            byFile[file] = [];
+            byFileTracks[file] = <int>{};
+            byFileTime[file] = (rec['time_ms'] as num?)?.toInt() ?? 0;
+          }
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
+          continue;
+        }
+        if (isMotionCapture && rec['type'] == 'motion_capture') {
+          // Motion-only capture mode: the discovery line for its photo (the
+          // detector never ran, so no detections record carries the name).
+          final jpeg = rec['jpeg'] as String?;
+          if (jpeg != null && jpeg.isNotEmpty && !byFile.containsKey(jpeg)) {
+            order.add(jpeg);
+            byFile[jpeg] = [];
+            byFileTracks[jpeg] = <int>{};
+            byFileTime[jpeg] = (rec['time_ms'] as num?)?.toInt() ?? 0;
+            if (curRoiW != null && curRoiH != null) {
+              byFileRes[jpeg] = (curRoiW, curRoiH);
+            }
+          }
           continue;
         }
         // Joins one tracked insect's entry to a photo. Shared by both record
@@ -658,6 +687,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return null;
   }
 
+  /// True for sessions recorded in motion-only capture mode (detector never
+  /// ran): zero detections/tracks is the mode working, not an empty session.
+  bool get _motionOnlySession => _setting('motionOnlyCapture') == true;
+
   /// The tracker (ByteTrack) tuning block, from the `config` block or the
   /// top-level `tracker_params` (older sessions).
   Map? get _trackerParams {
@@ -770,6 +803,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Auto-throttle', _setting('autoThrottle'));
       add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
       add('Throttle duty target', _setting('throttleDutyTarget'));
+      // Motion-only capture: photos on ROI motion, detector never ran.
+      add('Motion-only capture (detector off)', _setting('motionOnlyCapture'));
       // Motion gate (round 58+): detector sleeps while nothing moves in the ROI.
       add('Motion gate', _setting('motionGateEnabled'));
       if (_setting('motionGateEnabled') == true) {
@@ -1018,7 +1053,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       children: [
         _stat(
           'Unique insects (track ids)',
-          _uniqueTracks?.toString() ?? 'unknown',
+          _motionOnlySession
+              ? 'n/a (motion-only capture — detector off)'
+              : _uniqueTracks?.toString() ?? 'unknown',
         ),
         _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
         _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
@@ -1560,7 +1597,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _endMs! <= _startMs!) {
       return Center(
         key: _timelineKey,
-        child: const Text('No visits recorded.'),
+        child: Text(
+          _motionOnlySession
+              ? 'Motion-only capture session — the AI detector was off, so '
+                    'no visits or tracks were recorded. Photos were taken on '
+                    'ROI motion; see the Photos tab.'
+              : 'No visits recorded.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
     final ids = _spans.keys.toList()

@@ -358,6 +358,41 @@ class RoiCaptureScheduler {
     );
   }
 
+  // Motion-only capture mode: no tracker runs, so there is one shared window
+  // per "motion event" instead of one per track id.
+  _Window? _motionWindow;
+
+  /// Motion-driven counterpart of [evaluate] (motion-only capture mode, where
+  /// the detector never runs and no track ids exist). Call it on every awake
+  /// motion event; independent of the per-track windows.
+  ///
+  /// Same cadence semantics as a track window: first photo immediately when
+  /// motion starts, then one every [stepMs] while motion persists, stopping
+  /// [durationMs] after the event began. A NEW event (fresh window) starts
+  /// only after motion has been absent for longer than [durationMs] — the
+  /// same forget rule as the track-window removeWhere above, so a brief lull
+  /// can't restart the window and double the photos.
+  PendingCapture? evaluateMotion(int nowMs) {
+    if (_busy) return null;
+
+    var w = _motionWindow;
+    if (w != null && nowMs - w.lastSeenMs > durationMs) w = null;
+    w ??= _Window(startMs: nowMs, lastCaptureMs: null, lastSeenMs: nowMs);
+    _motionWindow = w;
+    w.lastSeenMs = nowMs;
+
+    if (nowMs - w.startMs > durationMs) return null; // window exhausted
+    final due = w.lastCaptureMs == null || nowMs - w.lastCaptureMs! >= stepMs;
+    if (!due) return null;
+
+    w.lastCaptureMs = nowMs;
+    return PendingCapture(
+      fileName: 'roi_${sessionId}_$nowMs.jpg',
+      trackIds: const [],
+      capturedAtMs: nowMs,
+    );
+  }
+
   /// Grabs the image and writes [pending.fileName]. Safe to fire-and-forget;
   /// overlapping calls are skipped via the busy flag. The photo source is
   /// chosen HERE, per photo (see [chooseCapturePath]): fast-path bytes arrive

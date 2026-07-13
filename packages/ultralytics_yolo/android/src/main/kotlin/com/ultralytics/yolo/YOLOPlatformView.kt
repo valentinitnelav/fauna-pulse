@@ -599,7 +599,10 @@ class YOLOPlatformView(
                     val wakeSeconds = call.argument<Double>("wakeSeconds") ?: 3.0
                     val gridSize = call.argument<Int>("gridSize") ?: MotionGate.DEFAULT_GRID
                     val idleFps = call.argument<Int>("idleFps") ?: 5
-                    yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize, idleFps)
+                    // Motion-only capture mode: photos on ROI motion, detector never
+                    // runs. Optional — absent from older Dart callers.
+                    val motionOnly = call.argument<Boolean>("motionOnly") ?: false
+                    yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize, idleFps, motionOnly)
                     result.success(null)
                 }
                 "setCameraFpsCap" -> {

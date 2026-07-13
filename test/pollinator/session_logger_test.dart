@@ -108,6 +108,24 @@ void main() {
     expect(cap['full_res'], true);
   });
 
+  test('logMotionCapture writes a motion_capture record with the jpeg link '
+      'and the motion score that fired it', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logMotionCapture({'jpeg': 'roi_S_10000.jpg', 'motion_score': 0.012});
+    await logger.close();
+
+    final rec =
+        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    expect(rec['type'], 'motion_capture');
+    // Keyed `jpeg` on purpose — the same photo-link key detections records
+    // use, so postprocessing joins photos identically in both modes.
+    expect(rec['jpeg'], 'roi_S_10000.jpg');
+    expect(rec['motion_score'], 0.012);
+    expect(rec['time_ms'], isA<int>());
+    expect(rec['time_iso'], isA<String>());
+  });
+
   test('enriched fps record round-trips the diagnostic fields', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();

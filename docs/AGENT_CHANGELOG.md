@@ -3545,3 +3545,82 @@ tests pending (owner): two short windows minutes apart → dark sleep with
 tappable status, auto-wake/re-dim, two `_d1w1`/`_d1w2` folders ending
 `ended_normally: true`, completion dialog, notification present throughout;
 manual-mode regression with the switch off; overnight 2×2 field run.
+
+## Round 95 (2026-07-13): motion-only capture mode — photos on motion, detector never runs
+
+Owner request: an option that captures ROI photos on motion alone, WITHOUT running
+the AI — but only if it genuinely consumes less energy. It does, strictly: idle cost
+is identical to the gated detector mode (same pre-conversion frame drop at
+`motionGateIdleFps`), and when motion wakes it only the MotionGate thumbnail diff
+(<1 ms) runs — `predict()` never executes, the GPU stays cold. Documented trade-off:
+wind/shadow false wakes now produce junk PHOTOS (storage + review burden) instead of
+wasted inference, and there is no detector to reject them.
+
+Design decisions:
+- **Model still loads, predict is never called.** Camera startup is coupled to
+  `setModel`; a model-less YOLOView would be a structural rewrite for zero
+  runtime-energy gain (load is one-time). A native `motionOnlyMode` flag routes
+  frames into a self-contained branch in `YOLOView.onFrame` placed AFTER bitmap
+  conversion + frame-cache and BEFORE `predictor?.let` — the detector path is
+  byte-identical while the flag is off. The branch runs `gateMotionFromFrame` on
+  every converted frame (background EMA must keep learning; never
+  `motionDetectedFromModelInput` — no raster exists), extends `gateAwakeUntilNs`
+  on motion, and emits awake stream maps at ≤10 Hz (fixed 100 ms interval, NOT
+  `shouldRunInference()` — that cap is tied to the auto-throttle, which never
+  updates without inference timings; a wake TRANSITION emits immediately). Idle:
+  the existing ~1 Hz `gateIdle:true` heartbeat, now via a shared helper
+  `maybeEmitGateIdleHeartbeat` so the two paths can't drift.
+- **Stream contract additions:** awake maps `{gateIdle:false, motionOnly:true,
+  motionScore, cameraFps, imageWidth, imageHeight, roiActive, timestamp}` — the
+  dims are mandatory (the Dart capture-probe/ROI-push bootstrap needs a map with
+  `imageWidth > 0`; heartbeats don't carry dims, and the gate starts awake after
+  `setMotionGate`, so the first events do). Heartbeats gained a harmless
+  `motionOnly` key.
+- **Config: `bool motionOnlyCapture` (default false)**, not an enum. Requires the
+  gate: the Settings switch forces `motionGateEnabled: true` and locks the gate
+  toggle while on; `_pushMotionGate` sends `enabled: gate || motionOnly` and the
+  Kotlin side guards the same way (belt and braces). Gate tunables double as the
+  motion-only sensitivity controls; time-lapse step/duration + photo-source mode
+  apply unchanged.
+- **Scheduler:** `RoiCaptureScheduler.evaluateMotion(nowMs)` — ONE shared
+  `_motionWindow` (no track ids): first photo on motion onset, one per step while
+  motion persists, stop after durationMs; a NEW window only after motion has been
+  absent > durationMs (same hysteresis as track windows). `capture()` unchanged
+  (already track-agnostic).
+- **Logging:** new `motion_capture` record `{jpeg, motion_score}` per photo
+  trigger (key named `jpeg` to match the detections-record photo link);
+  `SessionRecorder.recordMotionFrame(ts, motionScore)` drives it. The per-second
+  `fps` record omits ALL inference-derived fields in this mode even while awake
+  (r77 rule: absent = detector off, never a logged 0) and carries
+  `motion_only: true`. Guard: the detector-path `recordFrame` is skipped when
+  `motionOnlyCapture` so the startup race (detector-style frames before the first
+  `setMotionGate` lands) can't write `detections` records into a motion-only log.
+- **Summary:** `_loadPhotos` parses `motion_capture` records into the photo list;
+  general backstop — `capture` records now also seed unseen files into the list
+  (any session's saved JPEGs stay browsable even if their discovery line is
+  missing; `containsKey`-guarded so detector photos never double-count). Empty
+  visit timeline shows a "motion-only capture session" note instead of "No visits
+  recorded"; Overview's unique-insects row reads "n/a (motion-only capture)";
+  Settings tab gained the row.
+- **UI:** gate chip reads "CAPTURING"/"WAITING FOR MOTION" in this mode; Engine
+  line replaced by "Mode: motion-only capture (detector off)"; detector/pipeline
+  FPS + pre/inf/post lines hidden; Model line kept (the model really loads).
+  ROI-border grey + motion-% stat line now show for gate-or-motion-only.
+
+Files: `YOLOView.kt` (flag, setMotionGate param, onFrame branch, heartbeat
+helper), `YOLOPlatformView.kt` + `yolo_controller.dart` (motionOnly arg),
+`session_config.dart`, `roi_capture.dart` (evaluateMotion), `session_logger.dart`
+(logMotionCapture), `session_recorder.dart` (recordMotionFrame),
+`camera_session_screen.dart` (stream branch, gate push, chip/stats, fps record),
+`settings_sheet.dart`, `session_summary_screen.dart`; tests in
+`session_config_test.dart`, `roi_capture_scheduler_test.dart`,
+`session_logger_test.dart`.
+
+Verification: `flutter analyze` clean; 154/154 tests; `flutter build apk --debug`
+succeeds. On-device pending (owner): chip WAITING FOR MOTION ↔ CAPTURING on a
+hand-wave; first photo immediately on motion then per step, stopping after the
+capture duration; no watchdog banner during long idle; logcat FRAMEPERF
+`inferredFps=0.0` throughout; session.jsonl has `motion_capture` + `capture`
+records and zero `detections` records; motion-only summary shows photos + note;
+an OLD session summary parses unchanged; a detector session after toggling the
+mode off behaves exactly as before.

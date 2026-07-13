@@ -251,6 +251,24 @@ class SessionRecorder {
     return false;
   }
 
+  /// Motion-only capture mode counterpart of [recordFrame]: called once per
+  /// awake motion event from the stream (the detector never runs, so there are
+  /// no tracks). Triggers a scheduler photo when one is due and logs a
+  /// `motion_capture` record for it. Returns true when a photo was triggered
+  /// (the screen blinks its capture cue on it). No-op unless [recording].
+  bool recordMotionFrame(int ts, {required double motionScore}) {
+    if (!_recording) return false;
+    final pending = _capture?.evaluateMotion(ts);
+    if (pending == null) return false;
+    _logger?.logMotionCapture({
+      'jpeg': pending.fileName,
+      'motion_score': motionScore,
+    });
+    // Fire-and-forget; the scheduler serializes its own work.
+    _capture?.capture(pending);
+    return true;
+  }
+
   /// Saves the app's own recent logcat to a file in the session folder, so an
   /// *uncoupled* run (no `flutter run`) still preserves the native engine
   /// decision (e.g. "GPU… falling back to CPU: Failed to compile model") and

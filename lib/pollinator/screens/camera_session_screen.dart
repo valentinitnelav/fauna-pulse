@@ -446,9 +446,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // gaps as missing data, exactly as the owner wants. `gate_idle` makes the
     // state explicit; camera_fps stays, it is real regardless.
     final gateIdle = _gateIdle;
+    // Motion-only capture: the detector never runs at all, so the
+    // inference-derived fields are omitted even while the gate is awake
+    // (same rule — absent means "detector off", never a logged 0).
+    final detectorOff = gateIdle || _config.motionOnlyCapture;
     _logger?.logFps({
       if (gateIdle) 'gate_idle': true,
-      if (!gateIdle) ...{
+      if (_config.motionOnlyCapture) 'motion_only': true,
+      if (!detectorOff) ...{
         'fps': _fpsVN.value,
         'detector_fps': at(trio, 1),
         'pipeline_fps': at(trio, 2),
@@ -600,6 +605,51 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _motionScoreVN.value = (data['motionScore'] as num?)?.toDouble() ?? 0;
     }
 
+    // Motion-only capture mode: the detector never runs, so the native side
+    // sends awake gate maps (`motionOnly: true`, no detections) instead of
+    // results. Drive the motion time-lapse photos from them and bail out —
+    // no tracking, and the 0-FPS detector watchdog below must NEVER see these
+    // frames (0 detector FPS is the whole point of the mode, not a failure).
+    if (_config.motionOnlyCapture && data['motionOnly'] == true) {
+      final w = (data['imageWidth'] as num?)?.toInt() ?? _imageWidth;
+      final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
+      final cameraFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
+      // No inference is happening: every inference-derived number reads 0
+      // (same honesty rule as the gate-idle heartbeat above, round 77).
+      _fpsVN.value = 0;
+      _perfVN.value = const [0, 0, 0];
+      _lastTrackMs = 0;
+      _fpsTrioVN.value = [cameraFps, 0, 0];
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (_recorder.recordMotionFrame(
+        nowMs,
+        motionScore: _motionScoreVN.value,
+      )) {
+        _flashCaptureCue();
+      }
+      if (mounted && (w != _imageWidth || h != _imageHeight)) {
+        setState(() {
+          _imageWidth = w;
+          _imageHeight = h;
+          _snapRoiToSourceGrid();
+        });
+      }
+      // Same one-time bootstrap as the detector path below: these maps carry
+      // the analysis dims precisely so the ROI push + still-size probe can
+      // run when the app starts straight into motion-only mode.
+      if (!_captureProbeStarted && w > 0 && h > 0) {
+        _captureProbeStarted = true;
+        _pushInferenceRoi();
+        _pushMotionGate();
+        _pushCameraFpsCap();
+        _probes.begin(
+          analysisDims: () => (_imageWidth, _imageHeight),
+          preferredLensZoom: _config.selectedLensZoom,
+        );
+      }
+      return;
+    }
+
     final w = (data['imageWidth'] as num?)?.toInt() ?? _imageWidth;
     final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
     final fps = (data['fps'] as num?)?.toDouble() ?? _fpsVN.value;
@@ -698,12 +748,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _lastTrackMs = result.trackMs;
 
     // While recording, log this frame's tracks and trigger a shared ROI photo
-    // when one is due; blink the border as the visual cue if it was.
-    if (_recorder.recordFrame(
-      result.tracks,
-      result.roiRect,
-      result.timestampMs,
-    )) {
+    // when one is due; blink the border as the visual cue if it was. Guarded
+    // against motion-only mode: during startup a few detector-style frames can
+    // arrive before the first setMotionGate(motionOnly: true) lands natively,
+    // and they must never write `detections` records into a motion-only log.
+    if (!_config.motionOnlyCapture &&
+        _recorder.recordFrame(
+          result.tracks,
+          result.roiRect,
+          result.timestampMs,
+        )) {
       _flashCaptureCue();
     }
 
@@ -1892,15 +1946,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void _pushMotionGate() {
     _controller
         .setMotionGate(
-          enabled: _config.motionGateEnabled,
+          // Motion-only capture cannot work without the gate (it IS the
+          // trigger), so it forces the gate on; the native side guards the
+          // same way (belt and braces).
+          enabled: _config.motionGateEnabled || _config.motionOnlyCapture,
           pixelDelta: _config.motionGatePixelDelta,
           areaFraction: _config.motionGateAreaFraction,
           wakeSeconds: _config.motionGateWakeSeconds,
           gridSize: _config.motionGateGridSize,
           idleFps: _config.motionGateIdleFps,
+          motionOnly: _config.motionOnlyCapture,
         )
         .catchError((Object e) => _logAsyncError('set_motion_gate', e));
-    if (!_config.motionGateEnabled && _gateIdle) {
+    if (!_config.motionGateEnabled && !_config.motionOnlyCapture && _gateIdle) {
       // Gate switched off while idle: clear the idle indicator immediately.
       setState(_frame.forceGateAwake);
     }
@@ -2078,7 +2136,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     ? const Color(0xFF00FF6A) // capture flash
                     // Gate idle: detector deliberately asleep — grey the ROI so
                     // the state reads at a glance from arm's length in the field.
-                    : (_config.motionGateEnabled && _gateIdle)
+                    : ((_config.motionGateEnabled ||
+                              _config.motionOnlyCapture) &&
+                          _gateIdle)
                     ? const Color(0x99B0BEC5)
                     : (_recording ? Colors.red : const Color(0xFFFFEB3B)),
                 borderWidth: flashing ? 4.0 : 2.5,
@@ -2102,7 +2162,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       // detector running, grey = deliberately asleep because
                       // nothing is moving in the ROI. Bigger and color-coded so
                       // it reads from arm's length in the field.
-                      if (_config.motionGateEnabled) _gateStateChip(),
+                      if (_config.motionGateEnabled ||
+                          _config.motionOnlyCapture)
+                        _gateStateChip(),
                       if (_config.showFps)
                         ValueListenableBuilder<List<double>>(
                           valueListenable: _fpsTrioVN,
@@ -2113,18 +2175,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                               _statLine(
                                 'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
                               ),
-                              _statLine(
-                                'Detector: ${f[1].toStringAsFixed(1)} fps '
-                                '(pre+inf+NMS)',
-                              ),
-                              _statLine(
-                                'Pipeline: ${f[2].toStringAsFixed(1)} fps '
-                                '(+track/overlay)',
-                              ),
+                              // Detector/pipeline rates are meaningless while
+                              // the detector never runs (motion-only mode).
+                              if (!_config.motionOnlyCapture) ...[
+                                _statLine(
+                                  'Detector: ${f[1].toStringAsFixed(1)} fps '
+                                  '(pre+inf+NMS)',
+                                ),
+                                _statLine(
+                                  'Pipeline: ${f[2].toStringAsFixed(1)} fps '
+                                  '(+track/overlay)',
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                      if (_config.showFps)
+                      if (_config.showFps && !_config.motionOnlyCapture)
                         ValueListenableBuilder<List<double>>(
                           valueListenable: _perfVN,
                           builder: (_, p, _) => _statLine(
@@ -2137,7 +2203,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       // deliberately asleep (nothing moving in the ROI) — the
                       // 0-fps Detector line above is expected, not a fault. The
                       // live motion % helps tune the trigger-area setting.
-                      if (_config.motionGateEnabled)
+                      if (_config.motionGateEnabled ||
+                          _config.motionOnlyCapture)
                         ValueListenableBuilder<double>(
                           valueListenable: _motionScoreVN,
                           builder: (_, score, _) => _statLine(
@@ -2150,7 +2217,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                         ),
                       // Engine first (just under the perf line), then the Model
                       // line, which carries the input resolution in brackets.
-                      _statLine(engineLabel),
+                      // Motion-only mode replaces the Engine line: no engine is
+                      // doing any work (the model loaded but never runs).
+                      _statLine(
+                        _config.motionOnlyCapture
+                            ? 'Mode: motion-only capture (detector off)'
+                            : engineLabel,
+                      ),
                       _statLine(modelLabel),
                       _statLine(streamLabel),
                       // Tappable: opens the exact-size slider when we know the
@@ -2460,11 +2533,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// Prominent detector on/off chip, shown only while the motion gate is
   /// enabled: green "DETECTOR ON" while inference runs, grey "SLEEPING" while
   /// the gate keeps it idle (nothing moving in the ROI — expected on a mounted
-  /// phone over an empty flower, and NOT a fault).
+  /// phone over an empty flower, and NOT a fault). In motion-only capture mode
+  /// the same states read "CAPTURING" / "WAITING FOR MOTION" — no detector
+  /// exists to be on.
   Widget _gateStateChip() {
     const awakeColor = Color(0xFF00E676); // vivid green
     const idleColor = Color(0xFFB0BEC5); // blue-grey
     final color = _gateIdle ? idleColor : awakeColor;
+    final label = _config.motionOnlyCapture
+        ? (_gateIdle ? 'WAITING FOR MOTION' : 'CAPTURING')
+        : (_gateIdle ? 'SLEEPING' : 'DETECTOR ON');
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Container(
@@ -2480,7 +2558,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             Icon(Icons.circle, size: 12, color: color),
             const SizedBox(width: 8),
             Text(
-              _gateIdle ? 'SLEEPING' : 'DETECTOR ON',
+              label,
               style: TextStyle(
                 color: color,
                 fontSize: 14,

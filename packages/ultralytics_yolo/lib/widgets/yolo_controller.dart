@@ -310,6 +310,11 @@ class YOLOViewController {
   /// insects register (each cell covers ROI-side/gridSize of the scene). While
   /// idle the native side emits ~1 Hz heartbeat maps with `gateIdle: true`
   /// through the streaming callback. Android only; a no-op where unimplemented.
+  ///
+  /// With [motionOnly] true the detector NEVER runs (the model stays loaded but
+  /// cold): the gate alone decides, and while motion keeps it awake the native
+  /// side emits maps with `motionOnly: true` + `gateIdle: false` (≤10 Hz, no
+  /// detections) so the app can drive photo captures. Implies the gate is on.
   Future<void> setMotionGate({
     required bool enabled,
     int pixelDelta = 25,
@@ -319,6 +324,7 @@ class YOLOViewController {
     // Frames per second the motion check inspects while the gate is idle;
     // all other idle frames are dropped before conversion (heat saver).
     int idleFps = 5,
+    bool motionOnly = false,
   }) => _invoke<void>('setMotionGate', {
     'enabled': enabled,
     'pixelDelta': pixelDelta,
@@ -326,6 +332,7 @@ class YOLOViewController {
     'wakeSeconds': wakeSeconds,
     'gridSize': gridSize,
     'idleFps': idleFps,
+    'motionOnly': motionOnly,
   });
 
   /// Caps the camera's own frame rate (Pollinator Monitor, round 82).

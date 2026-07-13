@@ -149,4 +149,86 @@ void main() {
       expect(s.evaluate([track(1), track(2)], 12000), isNotNull);
     });
   });
+
+  // Motion-only capture mode: same cadence semantics as a track window, but
+  // there is exactly ONE shared window per "motion event" (no tracker runs,
+  // so no track ids exist).
+  group('RoiCaptureScheduler.evaluateMotion', () {
+    test('first motion takes a photo immediately, with no track ids', () {
+      final s = scheduler();
+      final pending = s.evaluateMotion(10000);
+      expect(pending, isNotNull);
+      expect(pending!.fileName, 'roi_S_10000.jpg');
+      expect(pending.trackIds, isEmpty);
+      expect(pending.capturedAtMs, 10000);
+    });
+
+    test('respects the step interval while motion persists', () {
+      final s = scheduler(stepMs: 1000);
+      expect(s.evaluateMotion(10000), isNotNull); // first photo
+      expect(s.evaluateMotion(10400), isNull);
+      expect(s.evaluateMotion(10999), isNull);
+      expect(s.evaluateMotion(11000), isNotNull);
+      // The step counts from the LAST photo, not from motion onset.
+      expect(s.evaluateMotion(11900), isNull);
+      expect(s.evaluateMotion(12000), isNotNull);
+    });
+
+    test('stops once the duration window is over despite continued motion '
+        '(wind shaking a flower must not fill the storage)', () {
+      final s = scheduler(stepMs: 1000, durationMs: 3000);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluateMotion(11000), isNotNull);
+      expect(s.evaluateMotion(12000), isNotNull);
+      expect(s.evaluateMotion(13000), isNotNull); // 3000 ms, not yet >
+      // Motion keeps coming (calls stay within durationMs of each other, so
+      // it is all one event): the exhausted window stays exhausted. Only a
+      // quiet gap > durationMs would start a new one (next test).
+      expect(s.evaluateMotion(14000), isNull);
+      expect(s.evaluateMotion(15000), isNull);
+      expect(s.evaluateMotion(16000), isNull);
+    });
+
+    test('a lull shorter than the duration does NOT restart the window', () {
+      final s = scheduler(stepMs: 1000, durationMs: 2000);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluateMotion(11000), isNotNull);
+      expect(s.evaluateMotion(12000), isNotNull); // window complete
+      // Motion pauses and resumes within durationMs of the last event: still
+      // the same visit, no fresh "first photo".
+      expect(s.evaluateMotion(13500), isNull);
+      expect(s.evaluateMotion(14000), isNull);
+    });
+
+    test('a quiet gap longer than the duration starts a NEW window '
+        '(fresh immediate photo)', () {
+      final s = scheduler(stepMs: 1000, durationMs: 2000);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluateMotion(12000), isNotNull); // window ends here
+      // Nothing moves for > durationMs after the last motion at 12000 —
+      // the next motion is a new event.
+      expect(s.evaluateMotion(14500), isNotNull);
+    });
+
+    test('returns null while a previous capture is still in flight', () async {
+      final gate = Completer<Uint8List?>();
+      final s = scheduler(fastCapture: () => gate.future);
+      final pending = s.evaluateMotion(10000)!;
+      final inFlight = s.capture(pending);
+      expect(s.evaluateMotion(11000), isNull);
+      gate.complete(null);
+      await inFlight;
+      expect(s.evaluateMotion(12000), isNotNull);
+    });
+
+    test('motion window is independent of the per-track windows', () {
+      final s = scheduler(stepMs: 1000, durationMs: 5000);
+      // A track photo at 10000 must not make the motion window think it
+      // already photographed anything (and vice versa).
+      expect(s.evaluate([track(1)], 10000), isNotNull);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluate([track(1)], 11000), isNotNull);
+      expect(s.evaluateMotion(11000), isNotNull);
+    });
+  });
 }

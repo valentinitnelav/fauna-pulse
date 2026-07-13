@@ -380,6 +380,12 @@ class YOLOView @JvmOverloads constructor(
     // motion (7–16 ms each, ~30 fps) was the main idle heat source.
     private var lastGateSampleNs = 0L // analyzer thread only
     @Volatile private var gateIdleSampleNs = 200_000_000L // set via setMotionGate(idleFps)
+    // Motion-only capture mode: photos are taken on ROI motion alone and the
+    // detector NEVER runs — predict() is skipped entirely (the model stays
+    // loaded but cold, so the GPU never spins up). Frames divert into their own
+    // branch in onFrame, BEFORE the predictor block. Requires the motion gate.
+    @Volatile private var motionOnlyMode = false
+    private var lastMotionOnlyEmitNs = 0L // analyzer thread only
 
     /**
      * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
@@ -398,6 +404,7 @@ class YOLOView @JvmOverloads constructor(
         wakeSeconds: Double,
         gridSize: Int = MotionGate.DEFAULT_GRID,
         idleFps: Int = 5,
+        motionOnly: Boolean = false,
     ) {
         motionGate.pixelDelta = pixelDelta.coerceIn(1, 255)
         motionGate.areaFraction = areaFraction.coerceIn(0.0001, 1.0)
@@ -407,8 +414,11 @@ class YOLOView @JvmOverloads constructor(
         gateIdleSampleNs = 1_000_000_000L / idleFps.coerceIn(1, 30)
         motionGate.reset()
         gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
-        motionGateEnabled = enabled
-        Log.i(TAG, "MotionGate ${if (enabled) "ON" else "OFF"} pixelDelta=$pixelDelta areaFraction=$areaFraction wakeSeconds=$wakeSeconds gridSize=$gridSize")
+        motionOnlyMode = motionOnly
+        // Motion-only capture cannot work without the gate (it IS the trigger),
+        // so it forces the gate on regardless of the caller's enabled flag.
+        motionGateEnabled = enabled || motionOnly
+        Log.i(TAG, "MotionGate ${if (motionGateEnabled) "ON" else "OFF"} pixelDelta=$pixelDelta areaFraction=$areaFraction wakeSeconds=$wakeSeconds gridSize=$gridSize motionOnly=$motionOnly")
     }
 
     /** Runs the motion gate directly on the camera frame (the gate draws its own
@@ -428,6 +438,24 @@ class YOLOView @JvmOverloads constructor(
             roiCx = roi?.cx ?: 0.5f,
             roiCy = roi?.cy ?: 0.5f,
             roiSide = roi?.side ?: 1f,
+        )
+    }
+
+    /** Tells Flutter once a second that we are alive but gated, so the UI can
+     *  show "motion gate: idle" instead of tripping the 0-FPS "detector not
+     *  producing results" watchdog. Single emitter shared by the detector-gate
+     *  and motion-only idle paths so the two heartbeat shapes cannot drift. */
+    private fun maybeEmitGateIdleHeartbeat(nowNs: Long) {
+        if (nowNs - lastGateHeartbeatNs < 1_000_000_000L) return
+        lastGateHeartbeatNs = nowNs
+        streamCallback?.invoke(
+            mapOf(
+                "gateIdle" to true,
+                "motionOnly" to motionOnlyMode,
+                "motionScore" to motionGate.lastScore,
+                "cameraFps" to lastDeliveredFps,
+                "timestamp" to System.currentTimeMillis(),
+            )
         )
     }
 
@@ -2261,6 +2289,54 @@ class YOLOView @JvmOverloads constructor(
             return
         }
 
+        // Pollinator Monitor motion-only capture mode: the detector never runs.
+        // Every converted frame feeds the motion gate (the background model must
+        // keep learning), motion extends the wake window, and Flutter is told at
+        // a bounded rate so it can drive time-lapse photo captures. Placed BEFORE
+        // the predictor block on purpose: it needs nothing from the model, and
+        // the detector path below stays byte-identical while the flag is off.
+        // The idle 5-fps sampler at the top of onFrame throttles idle frames
+        // exactly as in detector-gate mode, so idle heat is identical.
+        if (motionOnlyMode && motionGateEnabled) {
+            val nowGate = System.nanoTime()
+            val wasAwake = nowGate <= gateAwakeUntilNs
+            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+            // Always the direct thumbnail draw: no model raster ever exists here
+            // (motionDetectedFromModelInput needs the predictor to have run).
+            val motion = gateMotionFromFrame(bitmap, rotationDegrees, frameIsLandscape)
+            if (motion) gateAwakeUntilNs = nowGate + motionGateWakeNs
+            if (motion || wasAwake) {
+                // Awake: emit at most every 100 ms — plenty for a >= 1 s photo
+                // step — except a wake TRANSITION, which emits immediately so the
+                // first photo and the chip flip land without delay. Deliberately
+                // NOT shouldRunInference(): that cap is tied to the auto-throttle,
+                // which never updates without inference timings.
+                if (!wasAwake || nowGate - lastMotionOnlyEmitNs >= 100_000_000L) {
+                    lastMotionOnlyEmitNs = nowGate
+                    val isRotated = rotationDegrees % 180 != 0
+                    streamCallback?.invoke(
+                        mapOf(
+                            "gateIdle" to false,
+                            "motionOnly" to true,
+                            "motionScore" to motionGate.lastScore,
+                            "cameraFps" to lastDeliveredFps,
+                            // Oriented full-frame dims: the Dart side bootstraps
+                            // its ROI push + still-size probe from the first map
+                            // that carries them (heartbeats don't).
+                            "imageWidth" to (if (isRotated) h else w),
+                            "imageHeight" to (if (isRotated) w else h),
+                            "roiActive" to (inferenceRoi != null),
+                            "timestamp" to System.currentTimeMillis(),
+                        )
+                    )
+                }
+            } else {
+                maybeEmitGateIdleHeartbeat(nowGate)
+            }
+            imageProxy.close()
+            return
+        }
+
         predictor?.let { p ->
             // Double-check stopped flag before inference (predictor might be closed)
             if (isStopped) {
@@ -2305,20 +2381,8 @@ class YOLOView @JvmOverloads constructor(
                     // below decides whether this frame also runs inference.
                     gateAwakeUntilNs = nowGate + motionGateWakeNs
                 } else {
-                    // Still idle: tell Flutter once a second that we are alive but
-                    // gated, so the UI can show "motion gate: idle" instead of
-                    // tripping the 0-FPS "detector not producing results" watchdog.
-                    if (nowGate - lastGateHeartbeatNs >= 1_000_000_000L) {
-                        lastGateHeartbeatNs = nowGate
-                        streamCallback?.invoke(
-                            mapOf(
-                                "gateIdle" to true,
-                                "motionScore" to motionGate.lastScore,
-                                "cameraFps" to lastDeliveredFps,
-                                "timestamp" to System.currentTimeMillis(),
-                            )
-                        )
-                    }
+                    // Still idle: heartbeat instead of results (see helper doc).
+                    maybeEmitGateIdleHeartbeat(nowGate)
                     imageProxy.close()
                     return
                 }

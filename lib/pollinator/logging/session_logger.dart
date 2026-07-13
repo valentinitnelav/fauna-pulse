@@ -184,6 +184,14 @@ class SessionLogger {
   void logDetections(List<Map<String, dynamic>> tracks, {DateTime? at}) =>
       _append('detections', {'tracks': tracks}, at: at, flush: false);
 
+  /// A motion-only-mode photo trigger: the saved JPEG's name plus the motion
+  /// score that fired it. The detector never runs in that mode, so there are
+  /// no tracks/boxes — the `capture` record that follows carries timing/size/
+  /// saved_px as usual. The photo key is named `jpeg` on purpose, matching the
+  /// link detections records use, so postprocessing joins the same way.
+  void logMotionCapture(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('motion_capture', payload, at: at);
+
   /// A periodic phone-temperature sample taken during the session (battery °C
   /// and OS thermal status), so heat can be correlated with the recording.
   void logThermal(Map<String, dynamic> payload, {DateTime? at}) =>
