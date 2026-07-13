@@ -39,7 +39,7 @@ which I recognize is a luxury that may not be accessible to everyone,
 but it has been instrumental in bringing this project to life.
 
 So, [Claude Code](https://claude.com/product/claude-code) was used for software development.
-See [`./docs/POLLINATOR_OVERVIEW.md`](./docs/POLLINATOR_OVERVIEW.md) & the detailed [`./docs/POLLINATOR_MONITOR.md`](./docs/POLLINATOR_MONITOR.md) for the full development log history and pipeline configuration.
+See [`./docs/AGENT_CHANGELOG_OVERVIEW.md`](./docs/AGENT_CHANGELOG_OVERVIEW.md) & the detailed [`./docs/AGENT_CHANGELOG.md`](./docs/AGENT_CHANGELOG.md) for the full development log history and pipeline configuration.
 
 This app is built on Ultralytics' [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app) 
 (forked from upstream commit `22b2e5d`). 
@@ -88,7 +88,7 @@ dependencies:
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | developer | Build/test, conventions, docs index. |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
-| [POLLINATOR_OVERVIEW.md](docs/POLLINATOR_OVERVIEW.md) / [POLLINATOR_MONITOR.md](docs/POLLINATOR_MONITOR.md) | maintainer | Current-state snapshot / append-only development journal. |
+| [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) / [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | maintainer | Current-state snapshot / append-only development journal. |
 
 
 ## Models

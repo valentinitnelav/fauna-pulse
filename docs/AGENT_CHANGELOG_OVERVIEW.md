@@ -1,11 +1,11 @@
 # Pollinator Monitor — Current-State Overview (for Claude Code)
 
 This file is a *current* picture of the app, meant to ground a new Claude session cheaply 
-(instead of reading the full thousands-line log history from POLLINATOR_MONITOR.md).
+(instead of reading the full thousands-line log history from AGENT_CHANGELOG.md).
 **Rewrite this file in place instead of appending to avoid unnecessary verbosity** 
 Update it whenever a change alters a default, an invariant, or the file map. 
 Keep it short (e.g. ≤ ~300 lines). 
-The round-by-round narrative, details and rationale belong in `POLLINATOR_MONITOR.md`, **not** here.
+The round-by-round narrative, details and rationale belong in `AGENT_CHANGELOG.md`, **not** here.
 
 ## What the app is about
 
@@ -161,7 +161,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   summary pushed over the cover would render unreadably dim with no cover to tap. 
   Measured effect (r82, gate asleep, USB-charging): total CPU ~490%→
   ~225%, skin temp plateau ~58 °C → flat ~48 °C. The r78 "idle warming is real"
-  analysis is the *why*; r81/82 in POLLINATOR_MONITOR.md carry the numbers.
+  analysis is the *why*; r81/82 in AGENT_CHANGELOG.md carry the numbers.
 - **Field power invariant (owner, 2026-07-11):** the phone is assumed to be on
   a power bank during field sessions — charging heat is a given, plan heat
   budgets with it; don't build features that assume battery-only operation.
@@ -239,7 +239,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 
 ## Pointers
 
-- **Full history & rationale:** `POLLINATOR_MONITOR.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
+- **Full history & rationale:** `AGENT_CHANGELOG.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
 - **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
 - **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; **complete** — every item ticked in place with its round number as of round 79).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).

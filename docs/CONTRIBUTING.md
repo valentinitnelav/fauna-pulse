@@ -78,10 +78,10 @@ Claude-facing overview):
 
 ## Documentation maintenance
 
-- **[POLLINATOR_OVERVIEW.md](POLLINATOR_OVERVIEW.md)** is the current-state
+- **[AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md)** is the current-state
   snapshot — **rewrite it in place, never append**, and keep it short. Update
   it whenever a change alters a default, invariant, or the file map.
-- **[POLLINATOR_MONITOR.md](POLLINATOR_MONITOR.md)** is the append-only
+- **[AGENT_CHANGELOG.md](AGENT_CHANGELOG.md)** is the append-only
   development journal — add a round entry describing what changed and why.
 - Keep the human-facing docs (this file, ARCHITECTURE, FIELD_GUIDE,
   SETTINGS_REFERENCE, DATA_GUIDE) accurate when behaviour changes; they are the
@@ -112,5 +112,5 @@ retains its own `LICENSE`. Contributions are made under AGPL-3.0.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | developer | Build/test, conventions, this index. |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
-| [POLLINATOR_OVERVIEW.md](POLLINATOR_OVERVIEW.md) | AI grounding | Current-state snapshot (rewrite in place). |
-| [POLLINATOR_MONITOR.md](POLLINATOR_MONITOR.md) | maintainer | Append-only development journal. |
+| [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | AI grounding | Current-state snapshot (rewrite in place). |
+| [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | maintainer | Append-only development journal. |

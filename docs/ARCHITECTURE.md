@@ -4,7 +4,7 @@
 camera frame becomes a logged visit, where the native (Kotlin) and Dart sides
 meet, and which pieces must be kept in sync. For per-directory file summaries,
 see [`lib/pollinator/README.md`](../lib/pollinator/README.md); for current
-defaults and invariants, see [POLLINATOR_OVERVIEW.md](POLLINATOR_OVERVIEW.md).
+defaults and invariants, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md).
 
 ---
 
@@ -88,7 +88,7 @@ live-frame ROI crop through the `YOLOView` controller.
 
 Some logic is duplicated across the language boundary or across capture paths;
 changing one without the other causes subtle field bugs (documented in
-POLLINATOR_MONITOR.md rounds 57, 62, 63):
+AGENT_CHANGELOG.md rounds 57, 62, 63):
 
 - **ROI ÷32 snapping.** Three crop paths must all snap the side to a multiple
   of 32 and cap it to the source's short side: the fast live-frame crop
@@ -104,7 +104,7 @@ POLLINATOR_MONITOR.md rounds 57, 62, 63):
 - **ROI box geometry lives in one scale** (the analysis/stream grid). The
   on-screen size readout, resize snapping, and inference ROI all use the
   analysis frame; the still source only feeds the separate "saves N×N" label.
-  See the invariants in POLLINATOR_OVERVIEW.md before touching ROI code.
+  See the invariants in AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
 
 ## 5. What the plugin fork changed vs upstream
 
@@ -113,7 +113,7 @@ reading its (upstream) docs won't see these. Forked from `22b2e5d`, with:
 
 - **GPU-crash guard** (`LiteRtModel.kt`): a 2-strike blocklist that drops a
   model to CPU permanently if it crashes the GPU compile, plus a GPU program
-  cache. See the [litert-gpu memory] rationale in POLLINATOR_MONITOR.md.
+  cache. See the [litert-gpu memory] rationale in AGENT_CHANGELOG.md.
 - **ROI-crop inference**: the detector runs on the cropped ROI square (better
   small-insect recall) instead of the whole letterboxed frame.
 - **Fast ROI capture** from the live analysis frame (no camera stall).
@@ -135,5 +135,5 @@ it.
 
 - Output format & analysis: [DATA_GUIDE.md](DATA_GUIDE.md)
 - Photo resolution pipeline: [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md)
-- Full round-by-round rationale: [POLLINATOR_MONITOR.md](POLLINATOR_MONITOR.md)
+- Full round-by-round Claude Code rationale: [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md)
 - Build, test, conventions: [CONTRIBUTING.md](CONTRIBUTING.md)

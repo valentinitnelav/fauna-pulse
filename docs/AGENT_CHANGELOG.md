@@ -1,6 +1,6 @@
 # Pollinator Monitor — Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
 
-> **For the current state at a glance, read [`POLLINATOR_OVERVIEW.md`](POLLINATOR_OVERVIEW.md)
+> **For the current state at a glance, read [`AGENT_CHANGELOG_OVERVIEW.md`](AGENT_CHANGELOG_OVERVIEW.md)
 > first** (a short living snapshot: current defaults, file map, key invariants, device
 > quirks). **This** file is the full append-only history — open it when you need the
 > round-by-round narrative or the rationale behind a past decision.
@@ -1779,7 +1779,7 @@ pollinator-monitor/
 ├── lib/ android/ ios/ assets/ test/ …   # the app (was example/)
 ├── pubspec.yaml        # name: pollinator_monitor; ultralytics_yolo: path: packages/ultralytics_yolo
 ├── README.md           # app-first, with a "Built on" attribution section
-├── POLLINATOR_MONITOR.md  # this dev log, moved to the repo root
+├── AGENT_CHANGELOG.md  # this dev log, moved to the repo root
 ├── LICENSE             # AGPL-3.0 (copied; plugin keeps its own copy too)
 └── packages/ultralytics_yolo/   # the modified plugin (was the repo root), minus example/
 ```
@@ -2259,7 +2259,7 @@ code, TODO markers only where owner field knowledge is needed):
   maintenance rules, git etiquette, AGPL note, and a docs index by audience.
 
 Rationale: much reference material (defaults, invariants, device quirks) had
-lived **only** in `POLLINATOR_OVERVIEW.md`, which is explicitly a rewrite-in-place
+lived **only** in `AGENT_CHANGELOG_OVERVIEW.md`, which is explicitly a rewrite-in-place
 AI-grounding file — not durable human documentation. This round gives both
 audiences (field researchers, collaborators) stable homes and leaves OVERVIEW as
 the short grounding snapshot it's meant to be.
