@@ -51,7 +51,8 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | IoU (NMS) | `0.7` | overlap threshold |
 | Time-lapse step | `1.0 s` | first photo on detection, then every step |
 | Capture duration | `10.0 s` | per track id; must be > step |
-| Session length | `60 min` | user-editable |
+| Session length | `60 min` | user-editable; ignored during scheduled runs |
+| Scheduled recording | off | r94: 1–3 daily windows (default 06:00–10:00) × N days (default 1); REC starts the run; sleeps dark between windows |
 | Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload |
 | Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range) — the standing sensor/ISP load the gate can't touch; `0` = device default (~30); explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
@@ -165,6 +166,20 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 - **Field power invariant (owner, 2026-07-11):** the phone is assumed to be on
   a power bank during field sessions — charging heat is a given, plan heat
   budgets with it; don't build features that assume battery-only operation.
+- **Scheduled recording (round 94).** `SchedulePlan` (`session/schedule_plan.dart`,
+  pure Dart, clock-injected) plans "1–3 daily windows × N days";
+  `_scheduleTick()` in the camera screen reconciles real state against
+  `phaseAt(now)` on a timer capped at 60 s (doze/clock jumps self-heal — never
+  accumulate). Each window = its OWN session (folder `<name>_d<day>w<win>`,
+  normal `ended_normally` end; log format unchanged); between windows =
+  scheduled sleep: session closed, camera FULLY unbound via `_controller.pause()`
+  (blackout alone only detaches preview), blackout cover in a status-tap
+  variant (tap shows next-window info, never wakes). `SessionRecorder.stop(
+  retainKeepAlive: true)` keeps the foreground service + wakelock across
+  sleeps; only the run's very end (or abort/dispose) releases them. In schedule
+  mode `_sessionTimer` (session length) is NOT armed. Deliberately NO
+  AlarmManager/deep sleep: staying foreground with a wakelock is the app's
+  MIUI-survival strategy, and the phone is on a power bank anyway.
 - **Motion gate (round 58, opt-in).** Native `MotionGate.kt` (48×48 EMA background diff on
   the ROI) skips inference while nothing moves; motion, detections, and ROI drags all
   extend a `wakeSeconds` window, and the gate always starts awake. While idle the native

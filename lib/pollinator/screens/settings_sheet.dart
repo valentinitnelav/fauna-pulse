@@ -23,6 +23,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
+import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -353,6 +354,68 @@ class _SettingsSheetState extends State<SettingsSheet> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
+          'Scheduled recording',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'The record button starts a multi-window run: record during each '
+          'daily window below, sleep (screen dark, camera off) in between. '
+          'Each window is saved as its own session. Session length above is '
+          'ignored — the window end times govern.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.scheduleEnabled,
+        onChanged: (v) => setState(() => _c = _c.copyWith(scheduleEnabled: v)),
+      ),
+      if (_c.scheduleEnabled) ...[
+        for (var i = 0; i < _c.scheduleWindows.length; i++) _windowRow(i),
+        if (_c.scheduleWindows.length < 3)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(
+                () => _c = _c.copyWith(
+                  scheduleWindows: [
+                    ..._c.scheduleWindows,
+                    // A fresh window defaults to the afternoon so it doesn't
+                    // instantly overlap the default morning one.
+                    const ScheduleWindow(15 * 60, 20 * 60),
+                  ],
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add window'),
+            ),
+          ),
+        if (!_c.isScheduleValid)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              '⚠ Windows must not overlap, and each must end after it starts '
+              '(a window cannot cross midnight — split it in two).',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
+            ),
+          ),
+        NumericSettingField(
+          label: 'Days to run',
+          value: _c.scheduleDays.toDouble(),
+          min: 1,
+          max: 14,
+          decimals: 0,
+          helperText:
+              'The windows repeat every day for this many days (1–14). '
+              'Day 1 is the day you start the run; windows already past '
+              'at that moment are skipped.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(scheduleDays: v.round())),
+        ),
+      ],
+
+      const Divider(color: Colors.white24),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
           'Show setup tips at session start',
           style: TextStyle(color: Colors.white),
         ),
@@ -427,6 +490,76 @@ class _SettingsSheetState extends State<SettingsSheet> {
       const SizedBox(height: 8),
     ],
   );
+
+  /// One schedule-window row: "Window N  [06:00] – [10:00]  🗑". The time
+  /// buttons open the system time picker; the delete icon appears only while
+  /// more than one window remains (a schedule needs at least one).
+  Widget _windowRow(int index) {
+    final w = _c.scheduleWindows[index];
+    Widget timeButton({required bool isStart}) => OutlinedButton(
+      onPressed: () => _pickWindowTime(index, isStart: isStart),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: const BorderSide(color: Colors.white24),
+      ),
+      child: Text(isStart ? w.startLabel : w.endLabel),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              'Window ${index + 1}',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+          timeButton(isStart: true),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6),
+            child: Text('–', style: TextStyle(color: Colors.white54)),
+          ),
+          timeButton(isStart: false),
+          const Spacer(),
+          if (_c.scheduleWindows.length > 1)
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline,
+                color: Colors.white54,
+                size: 20,
+              ),
+              onPressed: () => setState(() {
+                final windows = [..._c.scheduleWindows]..removeAt(index);
+                _c = _c.copyWith(scheduleWindows: windows);
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Opens the system time picker for one end of a window and stores the
+  /// result as minutes since midnight. An invalid combination (start ≥ end,
+  /// overlap with another window) is allowed here and flagged by the warning
+  /// under the rows — same lenient pattern as the time-lapse check.
+  Future<void> _pickWindowTime(int index, {required bool isStart}) async {
+    final w = _c.scheduleWindows[index];
+    final current = isStart ? w.startMinute : w.endMinute;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null || !mounted) return;
+    final minutes = picked.hour * 60 + picked.minute;
+    setState(() {
+      final windows = [..._c.scheduleWindows];
+      windows[index] = isStart
+          ? ScheduleWindow(minutes, w.endMinute)
+          : ScheduleWindow(w.startMinute, minutes);
+      _c = _c.copyWith(scheduleWindows: windows);
+    });
+  }
 
   // --- Tab 2: AI pipeline -------------------------------------------------
 

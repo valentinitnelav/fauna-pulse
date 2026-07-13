@@ -6,6 +6,7 @@
 // live frame rate.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pollinator_monitor/pollinator/models/schedule_window.dart';
 import 'package:pollinator_monitor/pollinator/models/session_config.dart';
 import 'package:pollinator_monitor/pollinator/tracking/byte_track.dart';
 
@@ -215,5 +216,102 @@ void main() {
       const SessionConfig().copyWith(motionGateIdleFps: 12).toJson(),
     );
     expect(restored.motionGateIdleFps, 12);
+  });
+
+  group('scheduled recording', () {
+    test('defaults: off, one 06:00–10:00 window, 1 day', () {
+      const c = SessionConfig();
+      expect(c.scheduleEnabled, false);
+      expect(c.scheduleWindows, const [ScheduleWindow(360, 600)]);
+      expect(c.scheduleDays, 1);
+      expect(c.isScheduleValid, true);
+    });
+
+    test('round-trips through toJson/fromJson', () {
+      final restored = SessionConfig.fromJson(
+        const SessionConfig()
+            .copyWith(
+              scheduleEnabled: true,
+              scheduleWindows: const [
+                ScheduleWindow(360, 600), // 06:00–10:00
+                ScheduleWindow(900, 1200), // 15:00–20:00
+              ],
+              scheduleDays: 2,
+            )
+            .toJson(),
+      );
+      expect(restored.scheduleEnabled, true);
+      expect(restored.scheduleWindows, const [
+        ScheduleWindow(360, 600),
+        ScheduleWindow(900, 1200),
+      ]);
+      expect(restored.scheduleDays, 2);
+    });
+
+    test('legacy configs without the keys fall back to defaults', () {
+      final restored = SessionConfig.fromJson(const {'inferenceFps': 0});
+      expect(restored.scheduleEnabled, false);
+      expect(restored.scheduleWindows, const [ScheduleWindow(360, 600)]);
+      expect(restored.scheduleDays, 1);
+    });
+
+    test('malformed window entries are dropped, garbage list falls back', () {
+      final restored = SessionConfig.fromJson(const {
+        'scheduleWindows': [
+          {'start': 900, 'end': 1200},
+          {'start': 'six', 'end': 600}, // malformed → dropped
+          42, // malformed → dropped
+          {'start': 700, 'end': 650}, // start >= end → dropped
+        ],
+      });
+      expect(restored.scheduleWindows, const [ScheduleWindow(900, 1200)]);
+      // A non-list value falls back to the default window.
+      expect(
+        SessionConfig.fromJson(const {'scheduleWindows': 'no'}).scheduleWindows,
+        const [ScheduleWindow(360, 600)],
+      );
+    });
+
+    test('windows load sorted by start and capped at 3', () {
+      final restored = SessionConfig.fromJson(const {
+        'scheduleWindows': [
+          {'start': 900, 'end': 960},
+          {'start': 60, 'end': 120},
+          {'start': 360, 'end': 600},
+          {'start': 1300, 'end': 1400},
+        ],
+      });
+      expect(restored.scheduleWindows, const [
+        ScheduleWindow(60, 120),
+        ScheduleWindow(360, 600),
+        ScheduleWindow(900, 960),
+      ]);
+    });
+
+    test('isScheduleValid rejects overlapping windows', () {
+      final c = const SessionConfig().copyWith(
+        scheduleWindows: const [
+          ScheduleWindow(360, 600),
+          ScheduleWindow(540, 720), // overlaps the first
+        ],
+      );
+      expect(c.isScheduleValid, false);
+      // Touching ends (one starts exactly when the other ends) are fine.
+      final touching = const SessionConfig().copyWith(
+        scheduleWindows: const [
+          ScheduleWindow(360, 600),
+          ScheduleWindow(600, 720),
+        ],
+      );
+      expect(touching.isScheduleValid, true);
+    });
+
+    test('scheduleDays clamps to at least 1 on load', () {
+      expect(SessionConfig.fromJson(const {'scheduleDays': 0}).scheduleDays, 1);
+      expect(
+        SessionConfig.fromJson(const {'scheduleDays': -3}).scheduleDays,
+        1,
+      );
+    });
   });
 }

@@ -12,6 +12,7 @@ import 'package:ultralytics_yolo/models/yolo_task.dart';
 import '../tracking/byte_track.dart';
 
 import '../logging/app_error_hooks.dart';
+import 'schedule_window.dart';
 
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
 /// stored bool is true the dialog is suppressed; clearing it (Settings → Camera →
@@ -74,7 +75,25 @@ class SessionConfig {
   final double durationSeconds;
 
   /// Maximum session length in minutes; recording auto-stops after this.
+  /// Ignored during a scheduled run ([scheduleEnabled]) — there each window's
+  /// end time decides when recording stops.
   final int sessionMinutes;
+
+  /// Scheduled recording (opt-in). When on, the record button starts a
+  /// *scheduled run* instead of a single manual session: the app records
+  /// during each of [scheduleWindows] every day for [scheduleDays] days, and
+  /// between windows it sleeps (screen dark at minimum brightness, camera
+  /// fully off) while staying in the foreground so the OS can't kill it.
+  /// Each window is logged as its own separate session folder.
+  final bool scheduleEnabled;
+
+  /// The daily recording windows (1–3, sorted by start, non-overlapping).
+  /// The same windows repeat every day of the run.
+  final List<ScheduleWindow> scheduleWindows;
+
+  /// How many days the scheduled run lasts (1 = today only). Day 1 is the
+  /// day the run is started; windows already past at start time are skipped.
+  final int scheduleDays;
 
   /// Folder name for this session's output (often the target flower species).
   final String folderName;
@@ -286,6 +305,9 @@ class SessionConfig {
     this.stepSeconds = 1.0,
     this.durationSeconds = 10.0,
     this.sessionMinutes = 60,
+    this.scheduleEnabled = false,
+    this.scheduleWindows = const [ScheduleWindow(360, 600)], // 06:00–10:00
+    this.scheduleDays = 1,
     this.folderName = 'session',
     this.showFps = true,
     this.showBoxes = true,
@@ -325,6 +347,22 @@ class SessionConfig {
     this.trackerParams = const ByteTrackParams(),
   });
 
+  /// True when the schedule can actually run: 1–3 windows, each with
+  /// start < end, and no two windows overlapping. The settings sheet warns
+  /// when this is false (mirroring [isTimeLapseValid]); the camera screen
+  /// refuses to *start* an invalid schedule.
+  bool get isScheduleValid {
+    if (scheduleWindows.isEmpty || scheduleWindows.length > 3) return false;
+    if (scheduleDays < 1) return false;
+    for (var i = 0; i < scheduleWindows.length; i++) {
+      if (!scheduleWindows[i].isValid) return false;
+      for (var k = i + 1; k < scheduleWindows.length; k++) {
+        if (scheduleWindows[i].overlaps(scheduleWindows[k])) return false;
+      }
+    }
+    return true;
+  }
+
   /// True when [durationSeconds] is a positive whole multiple of [stepSeconds].
   /// The UI warns when this is false (per CLAUDE.md).
   bool get isTimeLapseValid {
@@ -363,6 +401,9 @@ class SessionConfig {
     double? stepSeconds,
     double? durationSeconds,
     int? sessionMinutes,
+    bool? scheduleEnabled,
+    List<ScheduleWindow>? scheduleWindows,
+    int? scheduleDays,
     String? folderName,
     bool? showFps,
     bool? showBoxes,
@@ -402,6 +443,9 @@ class SessionConfig {
     stepSeconds: stepSeconds ?? this.stepSeconds,
     durationSeconds: durationSeconds ?? this.durationSeconds,
     sessionMinutes: sessionMinutes ?? this.sessionMinutes,
+    scheduleEnabled: scheduleEnabled ?? this.scheduleEnabled,
+    scheduleWindows: scheduleWindows ?? this.scheduleWindows,
+    scheduleDays: scheduleDays ?? this.scheduleDays,
     folderName: folderName ?? this.folderName,
     showFps: showFps ?? this.showFps,
     showBoxes: showBoxes ?? this.showBoxes,
@@ -444,6 +488,9 @@ class SessionConfig {
     'stepSeconds': stepSeconds,
     'durationSeconds': durationSeconds,
     'sessionMinutes': sessionMinutes,
+    'scheduleEnabled': scheduleEnabled,
+    'scheduleWindows': [for (final w in scheduleWindows) w.toJson()],
+    'scheduleDays': scheduleDays,
     'folderName': folderName,
     'showFps': showFps,
     'showBoxes': showBoxes,
@@ -487,6 +534,9 @@ class SessionConfig {
     stepSeconds: (j['stepSeconds'] as num?)?.toDouble() ?? 1.0,
     durationSeconds: (j['durationSeconds'] as num?)?.toDouble() ?? 10.0,
     sessionMinutes: (j['sessionMinutes'] as num?)?.toInt() ?? 60,
+    scheduleEnabled: j['scheduleEnabled'] as bool? ?? false,
+    scheduleWindows: _scheduleWindowsFromJson(j['scheduleWindows']),
+    scheduleDays: ((j['scheduleDays'] as num?)?.toInt() ?? 1).clamp(1, 365),
     folderName: j['folderName'] as String? ?? 'session',
     showFps: j['showFps'] as bool? ?? true,
     showBoxes: j['showBoxes'] as bool? ?? true,
@@ -555,4 +605,22 @@ class SessionConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(toJson()));
   }
+}
+
+/// Reads the schedule windows list from a saved config. Defensive like every
+/// other fromJson field: a missing/garbage value falls back to the default,
+/// malformed entries are dropped, the rest are sorted by start time and capped
+/// at 3 (the UI maximum). May legitimately return an overlapping set — that is
+/// [SessionConfig.isScheduleValid]'s job to flag, not a load failure.
+List<ScheduleWindow> _scheduleWindowsFromJson(dynamic raw) {
+  const fallback = [ScheduleWindow(360, 600)];
+  if (raw is! List) return fallback;
+  final windows = <ScheduleWindow>[];
+  for (final entry in raw) {
+    final w = ScheduleWindow.fromJson(entry);
+    if (w != null) windows.add(w);
+  }
+  if (windows.isEmpty) return fallback;
+  windows.sort((a, b) => a.startMinute.compareTo(b.startMinute));
+  return List.unmodifiable(windows.take(3));
 }

@@ -18,6 +18,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 
 import '../capture/crop_export.dart';
@@ -863,6 +864,30 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _setting('sessionMinutes', 'session_minutes'),
       suffix: ' min',
     );
+    // Scheduled recording (only sessions recorded with the feature carry the
+    // keys; add() skips null). The `schedule` block on the start record marks
+    // which slot of a run THIS session was.
+    add('Scheduled recording', _setting('scheduleEnabled'));
+    final schedWindows = _setting('scheduleWindows');
+    if (schedWindows is List) {
+      final labels = <String>[
+        for (final w in schedWindows)
+          if (w is Map && w['start'] is num && w['end'] is num)
+            '${ScheduleWindow.hhmm((w['start'] as num).toInt())}–'
+                '${ScheduleWindow.hhmm((w['end'] as num).toInt())}',
+      ];
+      if (labels.isNotEmpty) add('Schedule windows', labels.join(', '));
+    }
+    add('Schedule days', _setting('scheduleDays'));
+    final sched = _startRec?['schedule'];
+    if (sched is Map) {
+      add(
+        'Schedule slot',
+        'day ${sched['day']}/${sched['days_total']}, '
+            'window ${sched['window']} '
+            '(${sched['window_start']}–${sched['window_end']})',
+      );
+    }
     add(
       'FPS sample interval',
       _setting('fpsSampleSeconds', 'fps_sample_seconds'),

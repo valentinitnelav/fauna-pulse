@@ -3465,3 +3465,83 @@ Verification: `flutter analyze` clean, 126/126 tests, debug APK builds.
 Manual on-phone steps still pending (owner): export a real session, check the
 Gallery album, re-press for the skip path, zero-photo session message.
 
+
+## Round 94 (2026-07-13): scheduled recording — daily windows × N days with sleep between
+
+Owner request: leave the phone mounted and have it record on a schedule (e.g.
+06:00–10:00 and 15:00–20:00 every day for 2 days), sleeping between windows to
+save power. Design decisions (owner-confirmed): between windows the app stays
+FOREGROUND with the screen blacked out and the camera fully unbound (true OS
+deep sleep via AlarmManager was rejected — MIUI kills backgrounded apps and a
+silent overnight death would cost the morning window); each window is its own
+session (existing JSONL format, summary and R/Python parsers untouched); the
+schedule shape is "same 1–3 windows every day × N days".
+
+**New files**
+- `models/schedule_window.dart` — `ScheduleWindow(startMinute, endMinute)`
+  (minutes since midnight; start < end, no crossing midnight — split in two),
+  JSON round-trip with malformed-entry drop, `label`/`startLabel`/`endLabel`,
+  `overlaps()`, static `hhmm()`.
+- `session/schedule_plan.dart` — pure-Dart planner (clock injected, no timers/
+  I/O): `phaseAt/activeSlotAt/nextSlotAt/nextTransitionAt/startOf/endOf` over
+  `SchedulePhase {sleeping, recording, finished}` + `ScheduleSlot(day, window)`.
+  Everything recomputed from `now` each call, so timer drift / doze / clock
+  jumps self-heal. Day indices via UTC-rebuilt calendar dates (DST-safe).
+  Windows already past at start are skipped; a mid-window start records the
+  partial window.
+- `test/pollinator/schedule_plan_test.dart` — 12 tests (phases, mid-window
+  start, skip-past, day/month rollover, 3 windows, finished detection).
+
+**Config (owner rule: tunable = Settings + JSON + summary row + test, same round)**
+- `SessionConfig`: `scheduleEnabled` (off), `scheduleWindows` (default one
+  06:00–10:00 window; load sorts, drops malformed, caps at 3), `scheduleDays`
+  (1, clamped ≥1 on load), `isScheduleValid` (1–3 valid, pairwise
+  non-overlapping; touching ends OK). Round-trip + legacy-fallback tests.
+- Settings → Setup: "Scheduled recording" switch; per-window rows with
+  `showTimePicker` buttons + delete; "Add window" (max 3); orange warning on
+  invalid combos (lenient, like the time-lapse check); "Days to run" (1–14).
+- Summary → Settings tab: Scheduled recording / Schedule windows / Schedule
+  days rows + "Schedule slot: day 1/2, window 2 (06:00–10:00)" from the start
+  record's `schedule` block. Null-safe; old sessions omit them.
+
+**Driver (camera_session_screen.dart)**
+- REC button with scheduling enabled = "start scheduled run" (clock glyph in
+  the button, confirm dialog spelling out windows/days/dark-screen); while a
+  run is active it means "stop the whole run" (confirm-guarded).
+- `_scheduleTick()` reconciles actual state vs `plan.phaseAt(now)`; re-arms
+  `_scheduleTimer` for the next boundary, capped at 60 s (self-check absorbs
+  doze gaps and retries failed wakes). Also ticked from
+  `didChangeAppLifecycleState(resumed)`.
+- Window end (`_endWindow`): `_stopRecording(normal: true, retainKeepAlive:
+  true)` — NEW `retainKeepAlive` param on `SessionRecorder.stop` keeps the
+  foreground service + wakelock across the sleep — then `_controller.pause()`
+  (FULL unbind: analysis + capture + preview; the r82 blackout alone only
+  detaches preview) + blackout with the sleep-status cover variant. No summary
+  push (user asleep/away).
+- Window start (`_wakeForWindow`): `resume()` under the cover, poll
+  `_lastStreamEventMs` for real frames (20 s timeout; on failure park + retry
+  on next tick), `_startRecording(scheduleSlot:)` → folder
+  `<name>_d<day>w<win>`, start record gains a `schedule` block, and the
+  `_sessionTimer` auto-end is NOT armed (window end governs — the 60-min
+  default must not truncate a 4-h window). Then `_applyBlackoutSteadyState()`
+  (split out of `_enterBlackout`'s hint timer) re-detaches the preview the
+  resume brought back.
+- Sleep cover: tap shows status ("day 1/2 · next recording 15:00 · N sessions
+  recorded") at readable brightness for 8 s + "Stop scheduled run" button, then
+  re-dims. Never a full wake (camera is off — a dead preview would mislead).
+  Status also shown once on sleep entry. Abort-dialog freezes the auto-dim.
+- Run end (`_finishSchedule`): release keep-alive + wakelock, exit blackout,
+  resume preview, "Scheduled run complete — N sessions recorded" dialog; the
+  per-window sessions are on the home list.
+- Blackout guards for the paused-camera state: `setPreviewEnabled(true/false)`
+  skipped while `_paused` (whole camera unbound — dead channel call), and
+  `_exitBlackout` keeps the wakelock while `_schedule != null` (not just while
+  recording). Settings gear locked during a run.
+- dispose() while sleeping releases the keep-alive service (recording path
+  already did via `_stopRecording`).
+
+Verification: `flutter analyze` clean; 145/145 tests. On-phone bench + field
+tests pending (owner): two short windows minutes apart → dark sleep with
+tappable status, auto-wake/re-dim, two `_d1w1`/`_d1w2` folders ending
+`ended_normally: true`, completion dialog, notification present throughout;
+manual-mode regression with the switch off; overnight 2×2 field run.

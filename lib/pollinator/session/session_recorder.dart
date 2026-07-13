@@ -140,9 +140,16 @@ class SessionRecorder {
   ///
   /// [uniqueTrackCount] is the tracker's confirmed-track total for the
   /// end_of_session record (the tracker lives with the screen's frame path).
+  ///
+  /// [retainKeepAlive] keeps the foreground service + wakelock running after
+  /// the session closes. Used between the windows of a scheduled run: the
+  /// process must stay protected (and the ongoing notification visible) all
+  /// the way to the run's end, or the OS could kill the sleeping app before
+  /// the next window. The final stop of the run passes false as usual.
   Future<void> stop({
     required bool normal,
     required int uniqueTrackCount,
+    bool retainKeepAlive = false,
   }) async {
     if (_stopping) return;
     _stopping = true;
@@ -178,11 +185,14 @@ class SessionRecorder {
     await _logger?.close();
     // The log is closed: stop routing global uncaught errors to it.
     appErrorSink = null;
-    // Tear down the keep-alive foreground service + its notification.
-    try {
-      await RecordingKeepAlive.stop();
-    } catch (e) {
-      debugPrint('Keep-alive stop failed: $e');
+    // Tear down the keep-alive foreground service + its notification —
+    // unless a scheduled run is still going and needs the protection.
+    if (!retainKeepAlive) {
+      try {
+        await RecordingKeepAlive.stop();
+      } catch (e) {
+        debugPrint('Keep-alive stop failed: $e');
+      }
     }
     // Best-effort extras, after the critical path. The logcat capture
     // (throttle-era native logs + persisted PERF lines) writes its own file
@@ -192,10 +202,12 @@ class SessionRecorder {
     } catch (e) {
       debugPrint('logcat_end.txt failed: $e');
     }
-    try {
-      await WakelockPlus.disable();
-    } catch (e) {
-      logSwallowed('wakelock_disable', e);
+    if (!retainKeepAlive) {
+      try {
+        await WakelockPlus.disable();
+      } catch (e) {
+        logSwallowed('wakelock_disable', e);
+      }
     }
     _stopping = false;
   }

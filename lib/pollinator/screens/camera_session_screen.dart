@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
@@ -22,12 +23,14 @@ import '../logging/error_reporter.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
+import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../services/recording_keepalive.dart';
 import '../models/track.dart';
 import '../perf/adaptive_inference_throttle.dart';
 import '../session/camera_diagnostics_controller.dart';
 import '../session/frame_processor.dart';
+import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
 import '../tracking/byte_track.dart';
 import '../widgets/calibrating_banner.dart';
@@ -234,6 +237,26 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Timer? _blackoutHintTimer;
   SessionLogger? get _logger => _recorder.logger;
   Timer? _sessionTimer;
+
+  // Scheduled recording (opt-in via Settings). While [_schedule] is non-null a
+  // scheduled run is active: [_scheduleTimer] re-arms itself for the next
+  // window boundary (capped at 60 s so doze gaps / clock jumps self-heal) and
+  // [_scheduleTick] reconciles the actual state against the plan. Between
+  // windows the run "scheduled-sleeps": the session is closed, the camera is
+  // FULLY unbound (`_controller.pause()` — the blackout alone only detaches
+  // the preview) and the blackout cover is up; the keep-alive service +
+  // wakelock stay on for the whole run so the OS can't kill the sleeping app.
+  // [_scheduleBusy] serializes the async transitions (a 60 s tick must not
+  // start a second wake while one is mid-flight).
+  SchedulePlan? _schedule;
+  Timer? _scheduleTimer;
+  bool _scheduleBusy = false;
+  bool _scheduleSleeping = false;
+  int _scheduleSessionsDone = 0;
+  // Tap-for-status while scheduled-sleeping: shows day/next-window info at
+  // readable brightness for a few seconds, then re-dims (never wakes fully).
+  bool _sleepStatusVisible = false;
+  Timer? _sleepStatusTimer;
 
   // Recording elapsed-time clock (shown in the REC banner). Updated by a 1s
   // ticker so the rest of the screen doesn't rebuild.
@@ -466,12 +489,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   @override
   void dispose() {
     _sessionTimer?.cancel();
+    _scheduleTimer?.cancel();
+    _sleepStatusTimer?.cancel();
     _thermalTimer?.cancel();
     _fpsLogTimer?.cancel();
     _powerTimer?.cancel();
     _recordTicker?.cancel();
     _errorSub?.cancel();
     _blackoutHintTimer?.cancel();
+    // A scheduled run disposed while *sleeping* holds the keep-alive service
+    // without a recording (the recording path releases it via _stopRecording
+    // below). Best-effort, unawaited — the screen is going away.
+    if (_schedule != null && !_recording) {
+      RecordingKeepAlive.stop().catchError(
+        (Object e) => logSwallowed('schedule_keepalive_stop', e),
+      );
+    }
     WidgetsBinding.instance.removeObserver(this);
     // Stop late camera-probe results from calling setState on a dead screen.
     _probes.dispose();
@@ -501,9 +534,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Returning to the foreground mid-session: re-assert the screen-on wakelock in
     // case it was cleared while away, so a long unattended recording keeps the
-    // screen on (and the app foreground) reliably.
-    if (state == AppLifecycleState.resumed && _recording) {
+    // screen on (and the app foreground) reliably. A scheduled run needs it even
+    // while sleeping between windows (no recording, but the run must survive).
+    if (state == AppLifecycleState.resumed &&
+        (_recording || _schedule != null)) {
       WakelockPlus.enable();
+    }
+    // A scheduled run reconciles against the plan immediately on resume: if
+    // the OS froze our timers while away, this catches a missed boundary now
+    // rather than at the next ≤60 s self-check.
+    if (state == AppLifecycleState.resumed && _schedule != null) {
+      _scheduleTick();
     }
     // Going to the background (or the engine detaching): force the log queue
     // to disk NOW. Aggressive OEM battery managers — the Xiaomi test device
@@ -794,6 +835,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // A tap while the previous stop sequence is still tearing down does
     // nothing (it would otherwise start a new session mid-teardown).
     if (_recorder.stopping) return;
+    // While a scheduled run is active the record button means "stop the whole
+    // run", never "stop this one window" — confirm-guarded, since it ends a
+    // possibly multi-day deployment.
+    if (_schedule != null) {
+      await _confirmAbortSchedule();
+      return;
+    }
     // Don't allow recording to start until calibration (the one-time full-res
     // probe that establishes the true ROI resolution) has finished. Before that
     // the ROI pixel size — logged at session start — isn't known yet.
@@ -809,33 +857,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       return;
     }
     if (_recording) {
-      // A timed session end arrives here straight from [_sessionTimer] with the
-      // blackout cover still up: the summary would otherwise be pushed on top of
-      // it at minimum window brightness, with no cover left to tap (the window
-      // brightness override outlives this route — it is per-Activity, and the
-      // whole app is one Activity). No-op when not blacked out.
-      await _exitBlackout();
-      final logFile = _logger?.file;
-      await _stopRecording(normal: true);
-      if (!mounted || logFile == null) return;
-      // Pause the camera + detector while reviewing the summary so the phone
-      // stops heating — inference is the hot part and isn't needed here. Resume
-      // it when the user returns to the live preview.
-      await _controller.pause();
-      _paused = true;
-      if (!mounted) return;
-      // The summary shows the headline numbers immediately (read cheaply from
-      // the first/last log lines); the heavier graphs are computed only when the
-      // user taps a button there.
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SessionSummaryScreen(logFile: logFile),
-        ),
-      );
-      if (mounted && _paused) {
-        _paused = false;
-        await _controller.resume();
-      }
+      await _stopAndShowSummary();
+    } else if (_config.scheduleEnabled) {
+      // Scheduled mode: the record button launches the whole windows×days run
+      // (after a confirm dialog spelling out what will happen) instead of a
+      // single manual session.
+      await _confirmStartSchedule();
     } else {
       // One-time nudge to exempt the app from battery optimization, so a long
       // unattended session isn't killed by the OS / an OEM battery manager.
@@ -844,6 +871,37 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Recording starts in a single tap; the focus state (manual/auto/fixed) is
       // whatever the user set via the focus button, and is logged for the record.
       await _startRecording(focusMode: _focusModeForLog());
+    }
+  }
+
+  /// The manual stop path: end the session normally and review its summary.
+  /// Shared by the record-button stop, the [_sessionTimer] timed end, and a
+  /// schedule abort mid-window (the user is present in all three).
+  Future<void> _stopAndShowSummary() async {
+    // A timed session end arrives here straight from [_sessionTimer] with the
+    // blackout cover still up: the summary would otherwise be pushed on top of
+    // it at minimum window brightness, with no cover left to tap (the window
+    // brightness override outlives this route — it is per-Activity, and the
+    // whole app is one Activity). No-op when not blacked out.
+    await _exitBlackout();
+    final logFile = _logger?.file;
+    await _stopRecording(normal: true);
+    if (!mounted || logFile == null) return;
+    // Pause the camera + detector while reviewing the summary so the phone
+    // stops heating — inference is the hot part and isn't needed here. Resume
+    // it when the user returns to the live preview.
+    await _controller.pause();
+    _paused = true;
+    if (!mounted) return;
+    // The summary shows the headline numbers immediately (read cheaply from
+    // the first/last log lines); the heavier graphs are computed only when the
+    // user taps a button there.
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SessionSummaryScreen(logFile: logFile)),
+    );
+    if (mounted && _paused) {
+      _paused = false;
+      await _controller.resume();
     }
   }
 
@@ -895,7 +953,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
-  Future<void> _startRecording({required String focusMode}) async {
+  /// [scheduleSlot] is set when this session is one window of a scheduled run:
+  /// the folder gets a `_d<day>w<window>` suffix so the per-window sessions
+  /// sort readably, the start record carries a `schedule` block, and the
+  /// [_sessionTimer] auto-end is NOT armed (the window's end time governs —
+  /// the default 60-min session length must not truncate a 4-hour window).
+  Future<void> _startRecording({
+    required String focusMode,
+    ScheduleSlot? scheduleSlot,
+  }) async {
     _tracker.reset();
 
     // The session folder, logger, photo scheduler, wakelock and keep-alive
@@ -904,7 +970,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // metadata, the capture wiring, and the log-write-failure banner.
     _logWriteError = null;
     await _recorder.start(
-      folderName: _config.folderName,
+      folderName: scheduleSlot == null
+          ? _config.folderName
+          : '${_config.folderName}'
+                '_d${scheduleSlot.day + 1}w${scheduleSlot.windowIndex + 1}',
       onLogWriteError: (error) {
         if (!mounted) return;
         setState(() {
@@ -969,6 +1038,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'fps_sample_seconds': _config.fpsSampleSeconds,
         'thermal_sample_seconds': _config.thermalSampleSeconds,
         'power_sample_seconds': _config.powerSampleSeconds,
+        // Which slot of a scheduled run this session is (1-based for humans);
+        // absent for a manual session. The windows themselves are in `config`.
+        if (scheduleSlot != null && _schedule != null)
+          'schedule': {
+            'day': scheduleSlot.day + 1,
+            'days_total': _schedule!.days,
+            'window': scheduleSlot.windowIndex + 1,
+            'windows_per_day': _schedule!.windows.length,
+            'window_start':
+                _schedule!.windows[scheduleSlot.windowIndex].startLabel,
+            'window_end':
+                _schedule!.windows[scheduleSlot.windowIndex].endLabel,
+          },
         // Full user configuration as one self-describing block, so the end-of-session
         // summary can list *every* setting the user chose (and any setting added in
         // future automatically appears) without each one needing its own top-level
@@ -1031,10 +1113,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       ),
     );
 
-    _sessionTimer = Timer(
-      Duration(minutes: _config.sessionMinutes),
-      () => _toggleRecording(),
-    );
+    // The session-length auto-end applies to MANUAL sessions only: in a
+    // scheduled run each window's end time governs (via _scheduleTick), and
+    // the default 60-min length must not silently truncate a longer window.
+    if (scheduleSlot == null) {
+      _sessionTimer = Timer(
+        Duration(minutes: _config.sessionMinutes),
+        () => _toggleRecording(),
+      );
+    }
 
     // Start the elapsed-time clock for the REC banner. The same 1 s tick
     // hosts the camera-delivery watchdog: it must run on a timer because a
@@ -1064,7 +1151,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// teardown — critical records first, best-effort diagnostics after):
   /// cancels the screen's timers, hands over the tracker's visit count for
   /// the end record, then rebuilds. Safe to run unawaited from dispose().
-  Future<void> _stopRecording({required bool normal}) async {
+  Future<void> _stopRecording({
+    required bool normal,
+    bool retainKeepAlive = false,
+  }) async {
     if (_recorder.stopping) return;
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
@@ -1072,8 +1162,404 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await _recorder.stop(
       normal: normal,
       uniqueTrackCount: _tracker.totalConfirmed,
+      retainKeepAlive: retainKeepAlive,
     );
     if (mounted) setState(() {});
+  }
+
+  // --- Scheduled recording --------------------------------------------------
+
+  /// Spells out the run before starting it (windows, days, and that the
+  /// screen goes dark between windows) — a scheduled run can hold the phone
+  /// for days, so a stray tap must not launch one silently.
+  Future<void> _confirmStartSchedule() async {
+    if (!_config.isScheduleValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The schedule is invalid (check the windows in Settings).',
+          ),
+        ),
+      );
+      return;
+    }
+    final windows = _config.scheduleWindows.map((w) => w.label).join(', ');
+    final days = _config.scheduleDays;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start scheduled run?'),
+        content: Text(
+          'Recording windows: $windows\n'
+          'Days: $days\n\n'
+          'Each window is saved as its own session. Between windows the '
+          'screen goes dark and the camera turns off to save power — the app '
+          'must stay open (and on power) the whole time. Tap the dark screen '
+          'to see the status; the record button stops the run.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Start',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) await _startSchedule();
+  }
+
+  Future<void> _startSchedule() async {
+    final plan = SchedulePlan(
+      windows: _config.scheduleWindows,
+      days: _config.scheduleDays,
+      startedAt: DateTime.now(),
+    );
+    if (plan.phaseAt(DateTime.now()) == SchedulePhase.finished) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "All of today's windows are already over — nothing to record. "
+            'Adjust the windows or the number of days in Settings.',
+          ),
+        ),
+      );
+      return;
+    }
+    // Same one-time battery-optimization nudge as a manual session — even
+    // more important here, where the app may sleep unattended overnight.
+    await _ensureUnrestricted();
+    if (!mounted) return;
+    setState(() {
+      _schedule = plan;
+      _scheduleSessionsDone = 0;
+    });
+    // Protect the WHOLE run up front (not just each window): the foreground
+    // service + wakelock must already be up if the run starts with a sleep
+    // phase (e.g. started at 22:00 for a 06:00 window). Both are idempotent,
+    // so the per-window SessionRecorder.start() calls are harmless.
+    await Permission.notification.request();
+    await RecordingKeepAlive.start();
+    await WakelockPlus.enable();
+    _scheduleTick();
+  }
+
+  /// The reconciler: compares what the plan says SHOULD be happening against
+  /// what IS happening and transitions if they differ, then re-arms the timer
+  /// for the next boundary (capped at 60 s). Everything derives from the wall
+  /// clock on each call, so a missed/late tick — OS doze, a clock jump, a
+  /// failed wake — is corrected by the next one instead of compounding.
+  void _scheduleTick() {
+    final plan = _schedule;
+    if (plan == null) return;
+    if (!_scheduleBusy && !_recorder.stopping) {
+      switch (plan.phaseAt(DateTime.now())) {
+        case SchedulePhase.recording:
+          if (!_recording) {
+            final slot = plan.activeSlotAt(DateTime.now());
+            if (slot != null) _wakeForWindow(slot);
+          }
+        case SchedulePhase.sleeping:
+          if (_recording) {
+            _endWindow();
+          } else if (!_scheduleSleeping) {
+            // Sleep-first start (or a wake that found its window already
+            // over): park the camera and go dark until the next window.
+            _enterScheduledSleep();
+          }
+        case SchedulePhase.finished:
+          _finishSchedule();
+          return; // run over — don't re-arm
+      }
+    }
+    _armScheduleTimer();
+  }
+
+  void _armScheduleTimer() {
+    _scheduleTimer?.cancel();
+    final plan = _schedule;
+    if (plan == null) return;
+    final now = DateTime.now();
+    // Aim just past the next boundary so the tick lands cleanly inside the
+    // new phase; never sleep longer than 60 s so doze gaps, clock changes and
+    // failed wakes are retried promptly.
+    var delay = const Duration(seconds: 60);
+    final next = plan.nextTransitionAt(now);
+    if (next != null) {
+      final toNext = next.difference(now) + const Duration(milliseconds: 500);
+      if (toNext < delay) delay = toNext;
+    }
+    if (delay <= Duration.zero) delay = const Duration(seconds: 1);
+    _scheduleTimer = Timer(delay, _scheduleTick);
+  }
+
+  /// A window's end: close this window's session normally (its own folder +
+  /// summary data, `ended_normally: true`) WITHOUT the summary screen — the
+  /// user is asleep/away — and go into scheduled sleep until the next window.
+  Future<void> _endWindow() async {
+    _scheduleBusy = true;
+    try {
+      // Keep the foreground service + wakelock: the run isn't over, and the
+      // sleeping app must survive until the next window (MIUI kills easily).
+      await _stopRecording(normal: true, retainKeepAlive: true);
+      _scheduleSessionsDone++;
+      await _enterScheduledSleep();
+    } finally {
+      _scheduleBusy = false;
+    }
+  }
+
+  /// Scheduled sleep = the real between-windows power save: the camera is
+  /// FULLY unbound (analysis + still capture + preview — `pause()` is the
+  /// same call the summary/settings cool-down uses), and the blackout cover
+  /// goes up with the sleep-status variant (tap shows status, never wakes).
+  Future<void> _enterScheduledSleep() async {
+    if (!_paused) {
+      try {
+        await _controller.pause();
+        _paused = true;
+      } catch (e) {
+        _logAsyncError('schedule_pause', e);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _scheduleSleeping = true);
+    await _enterBlackout();
+    // Show the status once on entry (next window, day X/Y) at readable
+    // brightness; it re-dims by itself like a tap would.
+    _showSleepStatus();
+  }
+
+  /// A window's start: rebind the camera (cover stays up), wait until frames
+  /// actually flow, then start this window's session and re-assert the
+  /// blackout steady state. On a wake failure the camera is parked again and
+  /// the ≤60 s tick retries — a transient camera error at 06:00 must not
+  /// silently cost the whole morning window.
+  Future<void> _wakeForWindow(ScheduleSlot slot) async {
+    _scheduleBusy = true;
+    try {
+      if (_paused) {
+        await _controller.resume();
+        _paused = false;
+      }
+      final gotFrames = await _waitForFrames(const Duration(seconds: 20));
+      if (!mounted || _schedule == null) return;
+      if (!gotFrames) {
+        logSwallowed(
+          'schedule_wake',
+          'Camera produced no frames within 20 s of the scheduled wake — '
+              'parked again, retrying on the next tick.',
+        );
+        try {
+          await _controller.pause();
+          _paused = true;
+        } catch (e) {
+          _logAsyncError('schedule_wake_pause', e);
+        }
+        return;
+      }
+      _sleepStatusTimer?.cancel();
+      setState(() {
+        _scheduleSleeping = false;
+        _sleepStatusVisible = false;
+      });
+      await _startRecording(
+        focusMode: _focusModeForLog(),
+        scheduleSlot: slot,
+      );
+      // The cover never came down: put the display + preview back into the
+      // measured power-save state now that the camera is running again. (If
+      // the cover happens to be down — user was watching — recording proceeds
+      // visibly and the moon button re-darkens as usual.)
+      if (_blackout) await _applyBlackoutSteadyState();
+    } finally {
+      _scheduleBusy = false;
+    }
+  }
+
+  /// Polls [_lastStreamEventMs] (fed by every native stream event, including
+  /// gate-idle heartbeats) until a frame newer than the call arrives.
+  Future<bool> _waitForFrames(Duration timeout) async {
+    final since = DateTime.now().millisecondsSinceEpoch;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted || _schedule == null) return false;
+      if (_lastStreamEventMs >= since) return true;
+    }
+    return false;
+  }
+
+  /// The run's natural end: close everything, release the keep-alive service
+  /// + wakelock, restore the screen and tell the user what was recorded. The
+  /// per-window sessions are on the home screen's list — no summary stack.
+  Future<void> _finishSchedule() async {
+    final plan = _schedule;
+    if (plan == null) return;
+    _scheduleBusy = true;
+    try {
+      _scheduleTimer?.cancel();
+      _scheduleTimer = null;
+      if (_recording) {
+        // Final window ran to the end of the run: a plain stop releases the
+        // keep-alive service and wakelock as usual.
+        await _stopRecording(normal: true);
+        _scheduleSessionsDone++;
+      } else {
+        try {
+          await RecordingKeepAlive.stop();
+        } catch (e) {
+          logSwallowed('schedule_keepalive_stop', e);
+        }
+      }
+      final recorded = _scheduleSessionsDone;
+      _scheduleSleeping = false;
+      // Clear the run BEFORE exiting blackout so its wakelock guard
+      // (`_schedule == null`) really drops the wakelock.
+      setState(() => _schedule = null);
+      await _exitBlackout();
+      if (_paused && mounted) {
+        _paused = false;
+        await _controller.resume();
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Scheduled run complete'),
+          content: Text(
+            '$recorded session${recorded == 1 ? '' : 's'} recorded. '
+            'Each window is its own session — find them in the list on the '
+            'home screen.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _scheduleBusy = false;
+    }
+  }
+
+  /// Confirm-guarded abort of the whole run (record button, or the sleep
+  /// overlay's stop button).
+  Future<void> _confirmAbortSchedule() async {
+    // Freeze the sleep-status auto-dim while the dialog is up — its 8 s timer
+    // would otherwise drop the brightness to 0 mid-question.
+    _sleepStatusTimer?.cancel();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Stop the scheduled run?'),
+        content: Text(
+          _recording
+              ? 'The current window will be closed and its summary shown. '
+                    'No further windows will be recorded.'
+              : 'No further windows will be recorded.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep running'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Stop run',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await _abortSchedule();
+    } else if (mounted && _scheduleSleeping) {
+      // Kept running: restart the status display so it re-dims normally.
+      _showSleepStatus();
+    }
+  }
+
+  /// Ends the run right now. Mid-window the user is present, so this follows
+  /// the manual-stop path (summary screen for the aborted window); mid-sleep
+  /// it just releases everything and brings the live preview back.
+  Future<void> _abortSchedule() async {
+    _scheduleBusy = true;
+    try {
+      _scheduleTimer?.cancel();
+      _scheduleTimer = null;
+      _sleepStatusTimer?.cancel();
+      final wasSleeping = _scheduleSleeping;
+      _scheduleSleeping = false;
+      setState(() => _schedule = null);
+      if (_recording) {
+        await _stopAndShowSummary();
+      } else if (wasSleeping) {
+        try {
+          await RecordingKeepAlive.stop();
+        } catch (e) {
+          logSwallowed('schedule_keepalive_stop', e);
+        }
+        await _exitBlackout();
+        if (_paused && mounted) {
+          _paused = false;
+          await _controller.resume();
+        }
+      }
+    } finally {
+      _scheduleBusy = false;
+    }
+  }
+
+  /// Tap on the dark cover while scheduled-sleeping: show the status (day,
+  /// next window, sessions so far) at readable brightness for a few seconds,
+  /// then drop back to dark. Deliberately NOT a full wake — the camera stays
+  /// off and the cover stays up; only the stop button leaves the run.
+  void _showSleepStatus() {
+    _sleepStatusTimer?.cancel();
+    if (mounted) setState(() => _sleepStatusVisible = true);
+    ScreenBrightness().resetApplicationScreenBrightness().catchError(
+      (Object e) => logSwallowed('sleep_status_brightness', e),
+    );
+    _sleepStatusTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted || !_scheduleSleeping) return;
+      setState(() => _sleepStatusVisible = false);
+      ScreenBrightness().setApplicationScreenBrightness(0.0).catchError(
+        (Object e) => logSwallowed('sleep_status_dim', e),
+      );
+    });
+  }
+
+  /// The sleep overlay's status text, recomputed on each build from the plan.
+  String _sleepStatusText() {
+    final plan = _schedule;
+    if (plan == null) return '';
+    final now = DateTime.now();
+    final next = plan.nextSlotAt(now);
+    if (next == null) return 'Scheduled run finishing…';
+    final start = plan.startOf(next);
+    final startsToday =
+        start.year == now.year &&
+        start.month == now.month &&
+        start.day == now.day;
+    final when = ScheduleWindow.hhmm(start.hour * 60 + start.minute);
+    return 'Scheduled sleep — day ${next.day + 1}/${plan.days}\n'
+        'Next recording: ${startsToday ? '' : 'tomorrow '}$when\n'
+        '$_scheduleSessionsDone session'
+        '${_scheduleSessionsDone == 1 ? '' : 's'} recorded so far';
   }
 
   // --- Settings -----------------------------------------------------------
@@ -1160,23 +1646,34 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Once the hint has faded, drop the brightness to minimum (its big saving on
     // LCD panels; OLED already draws ≈ nothing on the black cover).
     _blackoutHintTimer?.cancel();
-    _blackoutHintTimer = Timer(_blackoutFade, () async {
-      if (!_blackout) return;
-      // Round 82: dropping brightness alone was measured to save almost
-      // nothing — the camera kept producing and compositing preview frames
-      // behind the black cover (~1 CPU core). Detach the preview stream at
-      // the camera; detection, tracking and photo capture keep running.
+    _blackoutHintTimer = Timer(_blackoutFade, _applyBlackoutSteadyState);
+  }
+
+  /// The blackout's steady-state power savings: preview stream detached at the
+  /// camera + brightness at minimum. Split out of [_enterBlackout]'s hint
+  /// timer so a scheduled wake — which starts recording underneath a cover
+  /// that is ALREADY up — can re-apply it directly (the resumed camera comes
+  /// back with the preview attached and compositing frames nobody can see).
+  Future<void> _applyBlackoutSteadyState() async {
+    if (!_blackout) return;
+    // Round 82: dropping brightness alone was measured to save almost
+    // nothing — the camera kept producing and compositing preview frames
+    // behind the black cover (~1 CPU core). Detach the preview stream at
+    // the camera; detection, tracking and photo capture keep running.
+    // Skipped while the whole camera is unbound (scheduled sleep): there is
+    // no bound preview use-case to detach, only a dead channel call.
+    if (!_paused) {
       _controller
           .setPreviewEnabled(false)
           .catchError((Object e) => _logAsyncError('preview_off', e));
-      try {
-        await ScreenBrightness().setApplicationScreenBrightness(0.0);
-      } catch (e) {
-        // Some devices reject 0.0 or lack the API; the opaque black cover alone
-        // still hides the screen.
-        logSwallowed('screen_dim', e);
-      }
-    });
+    }
+    try {
+      await ScreenBrightness().setApplicationScreenBrightness(0.0);
+    } catch (e) {
+      // Some devices reject 0.0 or lack the API; the opaque black cover alone
+      // still hides the screen.
+      logSwallowed('screen_dim', e);
+    }
   }
 
   /// Leaves blackout: restores the previous screen brightness and the normal UI
@@ -1186,15 +1683,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Future<void> _exitBlackout() async {
     if (!_blackout) return;
     _blackoutHintTimer?.cancel();
+    _sleepStatusTimer?.cancel();
     // Reattach the preview stream first (round 82) so the live image is back
     // within ~0.2 s of the wake tap; the native side re-asserts the focus
-    // lock and camera fps cap after the reattach.
-    _controller
-        .setPreviewEnabled(true)
-        .catchError((Object e) => _logAsyncError('preview_on', e));
+    // lock and camera fps cap after the reattach. Skipped while the whole
+    // camera is unbound (scheduled sleep) — resume() rebinds everything.
+    if (!_paused) {
+      _controller
+          .setPreviewEnabled(true)
+          .catchError((Object e) => _logAsyncError('preview_on', e));
+    }
     setState(() {
       _blackout = false;
       _blackoutHint = false;
+      _sleepStatusVisible = false;
     });
     // Bring back the status/navigation bars (edge-to-edge matches the Activity's
     // default) and the screen brightness.
@@ -1204,7 +1706,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     } catch (e) {
       logSwallowed('screen_brightness_reset', e);
     }
-    if (!_recording) await WakelockPlus.disable();
+    // An active recording keeps its own wakelock; so does a scheduled run —
+    // even between windows the sleeping app must stay alive for days.
+    if (!_recording && _schedule == null) await WakelockPlus.disable();
   }
 
   Future<void> _openSettings() async {
@@ -1791,7 +2295,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             iconSize: 32,
                             color: Colors.white,
                             icon: const Icon(Icons.settings),
-                            onPressed: _recording ? null : _openSettings,
+                            // Also locked during a scheduled run's sleep phase:
+                            // settings changes mid-run would desync the plan.
+                            onPressed: (_recording || _schedule != null)
+                                ? null
+                                : _openSettings,
                           ),
                           const SizedBox(width: 16),
                           IconButton(
@@ -1842,10 +2350,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        _recording
+                        _schedule != null
+                            ? (_recording
+                                  ? 'Scheduled recording — tap ■ to stop the run'
+                                  : 'Scheduled run active')
+                            : _recording
                             ? 'Recording — tap to stop'
                             : haveCaptureDims
-                            ? 'Preview — tap ● to start recording'
+                            ? (_config.scheduleEnabled
+                                  ? 'Tap ● to start scheduled run '
+                                        '(${_config.scheduleWindows.length} '
+                                        'window'
+                                        '${_config.scheduleWindows.length == 1 ? '' : 's'}'
+                                        ' × ${_config.scheduleDays} '
+                                        'day${_config.scheduleDays == 1 ? '' : 's'})'
+                                  : 'Preview — tap ● to start recording')
                             : 'Calibrating — please wait…',
                         style: TextStyle(
                           color: _recording
@@ -1872,25 +2391,34 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _exitBlackout,
+                // While scheduled-sleeping a tap shows the status (then
+                // re-dims) instead of waking: the camera is OFF between
+                // windows and a full wake would misleadingly show a dead
+                // preview. Only the overlay's stop button leaves the run.
+                onTap: _scheduleSleeping ? _showSleepStatus : _exitBlackout,
                 child: Container(
                   color: Colors.black,
                   alignment: Alignment.center,
-                  child: AnimatedOpacity(
-                    opacity: _blackoutHint ? 1.0 : 0.0,
-                    // Slow fade (held at normal brightness) so the message is easy
-                    // to read; easeIn keeps it bright most of the window, then
-                    // fades near the end. Kept in sync with the brightness-drop
-                    // timer via [_blackoutFade].
-                    duration: _blackoutFade,
-                    curve: Curves.easeIn,
-                    child: const Text(
-                      'Screen off to save power\n'
-                      'Recording continues — tap anywhere to wake',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                  ),
+                  child: _scheduleSleeping
+                      ? _sleepStatusOverlay()
+                      : AnimatedOpacity(
+                          opacity: _blackoutHint ? 1.0 : 0.0,
+                          // Slow fade (held at normal brightness) so the message is easy
+                          // to read; easeIn keeps it bright most of the window, then
+                          // fades near the end. Kept in sync with the brightness-drop
+                          // timer via [_blackoutFade].
+                          duration: _blackoutFade,
+                          curve: Curves.easeIn,
+                          child: const Text(
+                            'Screen off to save power\n'
+                            'Recording continues — tap anywhere to wake',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -2164,9 +2692,52 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     );
   }
 
+  /// Content of the blackout cover during scheduled sleep: the run status +
+  /// a stop button, shown for a few seconds after a tap (or on sleep entry)
+  /// and hidden the rest of the time (pure black). The button only accepts
+  /// taps while visible — an invisible tappable stop button under a black
+  /// screen would be an accidental-abort trap.
+  Widget _sleepStatusOverlay() => IgnorePointer(
+    ignoring: !_sleepStatusVisible,
+    child: AnimatedOpacity(
+      opacity: _sleepStatusVisible ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 400),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bedtime_outlined, color: Colors.white38, size: 36),
+          const SizedBox(height: 12),
+          Text(
+            _sleepStatusText(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 15,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton(
+            onPressed: _confirmAbortSchedule,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              side: const BorderSide(color: Colors.redAccent),
+            ),
+            child: const Text('Stop scheduled run'),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _recordButton() {
     // Greyed out until calibration completes (recording is blocked before then).
     final bool ready = _recording || _captureWidth > 0;
+    // While a scheduled run is active (recording or sleeping) the button is a
+    // stop-square; when idle with scheduling enabled it carries a clock badge
+    // so the different tap behaviour (launches the whole run) is visible.
+    final bool runActive = _schedule != null;
+    final bool square = _recording || runActive;
     return GestureDetector(
       onTap: _toggleRecording,
       child: Opacity(
@@ -2184,9 +2755,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               height: 56,
               decoration: BoxDecoration(
                 color: Colors.red,
-                shape: _recording ? BoxShape.rectangle : BoxShape.circle,
-                borderRadius: _recording ? BorderRadius.circular(8) : null,
+                shape: square ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: square ? BorderRadius.circular(8) : null,
               ),
+              child: (!square && _config.scheduleEnabled)
+                  ? const Icon(Icons.schedule, color: Colors.white, size: 30)
+                  : null,
             ),
           ),
         ),
