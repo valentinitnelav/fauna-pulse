@@ -335,6 +335,21 @@ class YOLOViewController {
     'motionOnly': motionOnly,
   });
 
+  /// Enables/disables time-lapse capture mode (Pollinator Monitor, round 97).
+  ///
+  /// While enabled, neither the detector nor the motion gate runs — the app
+  /// triggers ROI photos on its own timer via [captureRoiFromFrame] /
+  /// [capturePhotoRaw]. The native side converts only [sampleFps] frames/s
+  /// (keeps the cached frame fresh for fast crops; conversion is the idle
+  /// heat cost — raise it during a burst, lower it between bursts) and emits
+  /// ~1 Hz heartbeat maps with `timeLapse: true` + the oriented frame dims.
+  /// Android only; a no-op where unimplemented.
+  Future<void> setTimeLapse({required bool enabled, int sampleFps = 1}) =>
+      _invoke<void>('setTimeLapse', {
+        'enabled': enabled,
+        'sampleFps': sampleFps,
+      });
+
   /// Caps the camera's own frame rate (Pollinator Monitor, round 82).
   ///
   /// Different from the inference FPS cap: that one only skips frames in

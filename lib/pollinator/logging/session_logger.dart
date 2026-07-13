@@ -192,6 +192,13 @@ class SessionLogger {
   void logMotionCapture(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('motion_capture', payload, at: at);
 
+  /// A time-lapse-mode photo trigger (round 97): the saved JPEG's name plus
+  /// the burst cycle it belongs to. Clock-driven — no detector, no motion
+  /// check; the `capture` record that follows carries timing/size as usual.
+  /// Same `jpeg` key convention as motion/detections records.
+  void logTimeLapseCapture(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('timelapse_capture', payload, at: at);
+
   /// A periodic phone-temperature sample taken during the session (battery °C
   /// and OS thermal status), so heat can be correlated with the recording.
   void logThermal(Map<String, dynamic> payload, {DateTime? at}) =>

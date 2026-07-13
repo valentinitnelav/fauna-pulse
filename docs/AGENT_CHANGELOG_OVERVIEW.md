@@ -57,7 +57,8 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range) — the standing sensor/ISP load the gate can't touch; `0` = device default (~30); explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
 | Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
-| Motion-only capture | off (opt-in) | r95: photos on ROI motion, detector NEVER runs (model loads but `predict()` is never called); forces the gate on; gate tunables = its sensitivity, time-lapse + photo-source settings apply; logs `motion_capture` records, NO `detections` |
+| Capture trigger | `detector` | r97 enum `CaptureTrigger {detector, motion, timelapse}` (Setup-tab dropdown; replaces r95 `motionOnlyCapture` bool — legacy configs migrate). `motion`: photos on ROI motion, detector NEVER runs (model loads, `predict()` never called), gate forced on, gate tunables = sensitivity, logs `motion_capture` records. `timelapse`: clock-driven bursts, no AI + no gate, logs `timelapse_capture` records. Both: NO `detections` records |
+| Time-lapse burst interval | `30 min` | r97 "Repeat burst every" (`timeLapseIntervalSeconds`, s/min/h input): START-TO-START burst spacing; burst = photo every step for the photo duration; interval ≤ duration ⇒ continuous. Photo duration max now 24 h (unit-aware `DurationSettingField`) |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
@@ -218,6 +219,21 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   No ROI video (VideoCapture is full-frame; 4th use case exceeds device combos);
   ≥5 fps bursts = fast photo source + step ≤ 0.2 s (fast crops cap at the
   stream short side).
+- **Time-lapse capture (round 97, `CaptureTrigger.timelapse`).** Photos on a pure
+  Dart clock: `TimeLapsePlan` (`capture/time_lapse_plan.dart`, pure + clock-
+  injected like SchedulePlan) + a self-rescheduling `_timeLapseTick` timer in the
+  camera screen (armed per recording, capped 60 s) → `recordTimeLapseFrame`
+  reuses the scheduler's motion window (`evaluateMotion` + `resetMotionWindow`
+  at each burst start via `beginTimeLapseBurst`). Native `setTimeLapse(enabled,
+  sampleFps)`: pre-conversion frame drop (Dart pushes ceil(2/step) during a
+  burst, 1 fps between) + ~1 Hz `{timeLapse:true, dims…}` heartbeats emitted
+  BEFORE `predictor?.let` — predict() never runs; the Dart branch returns before
+  the 0-FPS watchdog. Gate forced OFF natively in this mode. Chip: green
+  "TIME-LAPSE: CAPTURING" / grey "NEXT BURST in mm:ss". `recordFrame` is gated
+  on `detectorEnabled` (startup race guard for both no-AI modes). Scheduled
+  windows compose (each window anchors its own plan); session length applies.
+  Future (not built): camera full-unbind between long bursts via the r94 pause
+  machinery; on-device post-processing detector/tracker on saved photos.
   `recordFrame` is skipped in this mode (startup race must not write `detections`
   records). `fps` records omit inference fields even while awake + carry
   `motion_only:true` (r77 rule). Summary: `motion_capture` records (and, backstop,

@@ -274,6 +274,29 @@ class SessionRecorder {
   /// photo burst. `_capture` only exists while recording; no-op otherwise.
   void onMotionGateIdle() => _capture?.resetMotionWindow();
 
+  /// Time-lapse mode (round 97): a new burst cycle begins — re-arm the shared
+  /// capture window so the burst's first photo fires immediately.
+  void beginTimeLapseBurst() => _capture?.resetMotionWindow();
+
+  /// Time-lapse mode: one call per driving-timer tick while a burst is
+  /// active. The scheduler's shared window (same one motion mode uses)
+  /// provides the first-photo-immediately / step / duration cadence, so timer
+  /// jitter cannot double-photograph. Logs a `timelapse_capture` record per
+  /// trigger. Returns true when a photo was triggered. No-op unless
+  /// [recording].
+  bool recordTimeLapseFrame(int ts, {required int burstIndex}) {
+    if (!_recording) return false;
+    final pending = _capture?.evaluateMotion(ts);
+    if (pending == null) return false;
+    _logger?.logTimeLapseCapture({
+      'jpeg': pending.fileName,
+      'burst': burstIndex,
+    });
+    // Fire-and-forget; the scheduler serializes its own work.
+    _capture?.capture(pending);
+    return true;
+  }
+
   /// Saves the app's own recent logcat to a file in the session folder, so an
   /// *uncoupled* run (no `flutter run`) still preserves the native engine
   /// decision (e.g. "GPU… falling back to CPU: Failed to compile model") and

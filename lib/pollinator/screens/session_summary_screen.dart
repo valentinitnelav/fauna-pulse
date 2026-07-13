@@ -479,10 +479,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final isDetection =
             line.contains('"detections"') || line.contains('"detection"');
         final isCapture = line.contains('"type":"capture"');
-        // Motion-only capture sessions: no detector ran, so these records are
-        // the only lines carrying the photo names.
-        final isMotionCapture = line.contains('"motion_capture"');
-        if (!isRoiSource && !isDetection && !isCapture && !isMotionCapture) {
+        // Motion-only / time-lapse sessions: no detector ran, so these
+        // trigger records are the only lines carrying the photo names.
+        final isTriggerRecord =
+            line.contains('"motion_capture"') ||
+            line.contains('"timelapse_capture"');
+        if (!isRoiSource && !isDetection && !isCapture && !isTriggerRecord) {
           continue;
         }
         final rec = _tryDecode(line);
@@ -517,9 +519,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
           continue;
         }
-        if (isMotionCapture && rec['type'] == 'motion_capture') {
-          // Motion-only capture mode: the discovery line for its photo (the
-          // detector never ran, so no detections record carries the name).
+        if (isTriggerRecord &&
+            (rec['type'] == 'motion_capture' ||
+                rec['type'] == 'timelapse_capture')) {
+          // Motion-only / time-lapse mode: the discovery line for its photo
+          // (the detector never ran, so no detections record carries the
+          // name).
           final jpeg = rec['jpeg'] as String?;
           if (jpeg != null && jpeg.isNotEmpty && !byFile.containsKey(jpeg)) {
             order.add(jpeg);
@@ -689,7 +694,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// True for sessions recorded in motion-only capture mode (detector never
   /// ran): zero detections/tracks is the mode working, not an empty session.
-  bool get _motionOnlySession => _setting('motionOnlyCapture') == true;
+  /// Accepts both the round-97 enum key and the legacy round-95 bool.
+  bool get _motionOnlySession =>
+      _setting('captureTrigger') == 'motion' ||
+      _setting('motionOnlyCapture') == true;
+
+  /// True for time-lapse sessions (round 97) — clock-triggered photos, no
+  /// detector, no motion check.
+  bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
   /// The tracker (ByteTrack) tuning block, from the `config` block or the
   /// top-level `tracker_params` (older sessions).
@@ -835,6 +847,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       'Output folder',
       _setting('folderName') ?? widget.logFile.parent.path.split('/').last,
     );
+    // The session's operating mode (round 97 enum; older sessions carry the
+    // motion-only bool shown in Heat management instead — add() skips null).
+    add('Capture trigger', _setting('captureTrigger'));
+    if (_timeLapseSession) {
+      add(
+        'Burst repeat interval',
+        _setting('timeLapseIntervalSeconds'),
+        suffix: ' s',
+      );
+    }
     add(
       'Photo step interval',
       _setting('stepSeconds', 'step_seconds'),
@@ -1055,6 +1077,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           'Unique insects (track ids)',
           _motionOnlySession
               ? 'n/a (motion-only capture — detector off)'
+              : _timeLapseSession
+              ? 'n/a (time-lapse — detector off)'
               : _uniqueTracks?.toString() ?? 'unknown',
         ),
         _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
@@ -1602,6 +1626,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ? 'Motion-only capture session — the AI detector was off, so '
                     'no visits or tracks were recorded. Photos were taken on '
                     'ROI motion; see the Photos tab.'
+              : _timeLapseSession
+              ? 'Time-lapse session — the AI detector was off, so no visits '
+                    'or tracks were recorded. Photos were taken in scheduled '
+                    'bursts; see the Photos tab.'
               : 'No visits recorded.',
           textAlign: TextAlign.center,
         ),

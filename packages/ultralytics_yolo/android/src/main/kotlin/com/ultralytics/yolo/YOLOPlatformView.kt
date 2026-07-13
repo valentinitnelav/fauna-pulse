@@ -605,6 +605,15 @@ class YOLOPlatformView(
                     yoloView.setMotionGate(enabled, pixelDelta, areaFraction, wakeSeconds, gridSize, idleFps, motionOnly)
                     result.success(null)
                 }
+                "setTimeLapse" -> {
+                    // Pollinator Monitor (round 97): time-lapse capture — no detector,
+                    // no motion gate; Dart drives photos on a timer. sampleFps controls
+                    // how many frames/s are converted (frame-cache freshness).
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    val sampleFps = call.argument<Int>("sampleFps") ?: 1
+                    yoloView.setTimeLapse(enabled, sampleFps)
+                    result.success(null)
+                }
                 "setCameraFpsCap" -> {
                     // Pollinator Monitor (round 82): slow the camera hardware itself (sensor/ISP),
                     // not just inference. 0 = device default. See YOLOView.setCameraFpsCap.

@@ -3678,3 +3678,74 @@ wave → burst; wait for WAITING FOR MOTION (~wakeSeconds); wave again → NEW b
 immediately, repeatable. Burst rate: photo source "fast", step 0.2 s → ~5
 photos/s during a wave; `capture` records' `total_ms` confirm the fast path
 keeps up.
+
+## Round 97 (2026-07-14): time-lapse capture mode + CaptureTrigger enum + unit-aware durations
+
+Owner request: a third session mode — pure time-lapse photo bursts, no AI and no
+motion check (cheapest possible; wind-proof; meant for OFFLINE detection/tracking
+on the saved photos afterwards, possibly on-phone with tiled inference — future
+work, but filenames/records already carry ms timestamps so nothing blocks it).
+
+**CaptureTrigger enum.** `motionOnlyCapture` (r95 bool) became
+`CaptureTrigger { detector, motion, timelapse }` with compatibility getters
+(`motionOnlyCapture` / `timeLapseCapture` / `detectorEnabled`) so most call
+sites read unchanged. Migration mirrors captureMode/fullResPhotos:
+`_captureTriggerFromJson` reads the new `captureTrigger` string, falls back to
+legacy `motionOnlyCapture:true` → motion; toJson writes BOTH keys for one
+generation. The mode selector is a dropdown at the top of the SETUP tab (moved
+from the Camera tab's motion-only switch, which is gone); the Camera tab keeps
+the motion GATE switch + tuning (locked ON for the motion trigger, locked OUT
+in time-lapse where it does nothing).
+
+**Time-lapse semantics.** Each burst = the same capture window motion mode
+uses: first photo at burst start, then every "Photo step", stopping after
+"Photo duration". Bursts repeat every `timeLapseIntervalSeconds` — the new
+**"Repeat burst every"** setting (START-TO-START, so "every 30 min" stays every
+30 min regardless of burst length; default 1800 s). Interval ≤ duration ⇒
+CONTINUOUS time-lapse. Session length / scheduled windows compose unchanged
+(each window anchors its own plan). Both "Photo duration" and "Repeat burst
+every" use the new `DurationSettingField` (NumericSettingField + s/min/h unit
+dropdown; value stored in seconds; duration max raised 60 s → 24 h).
+
+**Implementation.**
+- Pure planner `capture/time_lapse_plan.dart` (`TimeLapsePlan`): stepMs/
+  burstMs/intervalMs; `inBurstAt`/`cycleIndexAt`/`nextBurstStartAt`/
+  `nextTickDelayMs`; clock-injected like SchedulePlan; unit-tested.
+- Camera screen: `_timeLapseTick` self-rescheduling one-shot timer (armed in
+  `_startRecording`, capped 60 s, min 100 ms — doze/clock jumps self-heal),
+  drives `SessionRecorder.recordTimeLapseFrame(ts, burstIndex)` (→ scheduler
+  `evaluateMotion` window → `capture()`) and `beginTimeLapseBurst()`
+  (`resetMotionWindow`) at each cycle start. Photos only while recording.
+- Native `YOLOView.setTimeLapse(enabled, sampleFps)`: pre-conversion frame drop
+  at sampleFps (the gate-idle trick, rate-controlled by Dart: `ceil(2/step)`
+  clamped 1–30 during a burst so fast crops stay fresher than half a step,
+  1 fps between bursts) + a branch BEFORE `predictor?.let` that heartbeats
+  ~1 Hz `{timeLapse:true, cameraFps, imageWidth/Height, roiActive, timestamp}`
+  (dims feed the Dart bootstrap) and returns — predict() never runs. Channel
+  plumbing in YOLOPlatformView.kt + yolo_controller.dart.
+- Dart stream branch on `timeLapse:true` maps: zero inference numbers, dims/
+  bootstrap, return BEFORE the 0-FPS watchdog (same guard as motion mode).
+  `recordFrame` now gated on `detectorEnabled` (startup race). `fps` records
+  omit inference fields in any detector-off mode + carry `time_lapse:true`.
+- Logging: new `timelapse_capture` record `{jpeg, burst}` per photo trigger.
+- UI: `_timeLapseChip` — green "TIME-LAPSE: CAPTURING" during a burst, grey
+  "NEXT BURST in mm:ss" countdown between (ticks off `_recordElapsedVN`),
+  "starts with REC" before recording. Engine line reads "Mode: time-lapse
+  (detector off)"; detector fps/perf/gate lines hidden appropriately.
+- Summary: `timelapse_capture` seeds the Photos list (plus the r95 capture-
+  record backstop); timeline/unique-insects show a time-lapse note; Settings
+  tab gains "Capture trigger" + "Burst repeat interval" rows; motion-only
+  detection accepts both the enum and the legacy bool.
+
+NOT done (deliberate): ROI-cropped video (full-frame-only VideoCapture, GPU
+pipeline needed, use-case combo limits — fast photos serve the same purpose);
+camera full-unbind between long bursts (r94's pause machinery could halve the
+standing cost for 30-min intervals — a follow-up if field heat demands it);
+the on-device post-processing detector/tracker (owner: future round).
+
+Verification: `flutter analyze` clean; 171/171 tests; debug APK builds.
+On-device pending (owner): time-lapse session → chip counts down, bursts fire
+on schedule (first photo at burst start, step cadence, duration cutoff), zero
+`detections` records, `timelapse_capture` + `capture` records present, photos
+in summary + time-lapse note; motion + detector modes regress unchanged (r95
+sessions' summaries still show their motion-only rows).

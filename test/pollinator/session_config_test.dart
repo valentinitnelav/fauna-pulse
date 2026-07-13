@@ -218,14 +218,57 @@ void main() {
     expect(restored.motionGateIdleFps, 12);
   });
 
-  test('motion-only capture: default off, survives the JSON round-trip', () {
-    expect(const SessionConfig().motionOnlyCapture, false); // opt-in
+  group('capture trigger (r97 enum, replaces the r95 motionOnlyCapture bool)', () {
+    test('defaults to the AI detector', () {
+      const c = SessionConfig();
+      expect(c.captureTrigger, CaptureTrigger.detector);
+      expect(c.detectorEnabled, true);
+      expect(c.motionOnlyCapture, false);
+      expect(c.timeLapseCapture, false);
+    });
+
+    test('round-trips through toJson/fromJson', () {
+      for (final t in CaptureTrigger.values) {
+        final restored = SessionConfig.fromJson(
+          const SessionConfig().copyWith(captureTrigger: t).toJson(),
+        );
+        expect(restored.captureTrigger, t);
+      }
+    });
+
+    test('legacy r95 motionOnlyCapture:true loads as the motion trigger', () {
+      final restored = SessionConfig.fromJson(const {
+        'motionOnlyCapture': true,
+      });
+      expect(restored.captureTrigger, CaptureTrigger.motion);
+      expect(restored.motionOnlyCapture, true);
+    });
+
+    test('configs without either key default to detector', () {
+      expect(
+        SessionConfig.fromJson(const {}).captureTrigger,
+        CaptureTrigger.detector,
+      );
+    });
+
+    test('toJson still writes the legacy motionOnlyCapture bool', () {
+      // One-generation compatibility, mirroring captureMode/fullResPhotos.
+      final j = const SessionConfig()
+          .copyWith(captureTrigger: CaptureTrigger.motion)
+          .toJson();
+      expect(j['motionOnlyCapture'], true);
+      expect(j['captureTrigger'], 'motion');
+    });
+  });
+
+  test('time-lapse burst interval: default 30 min, survives the round-trip', () {
+    expect(const SessionConfig().timeLapseIntervalSeconds, 1800.0);
     final restored = SessionConfig.fromJson(
-      const SessionConfig().copyWith(motionOnlyCapture: true).toJson(),
+      const SessionConfig().copyWith(timeLapseIntervalSeconds: 600.0).toJson(),
     );
-    expect(restored.motionOnlyCapture, true);
-    // Configs saved before the key existed fall back to off.
-    expect(SessionConfig.fromJson(const {}).motionOnlyCapture, false);
+    expect(restored.timeLapseIntervalSeconds, 600.0);
+    // Configs saved before the key existed fall back to the default.
+    expect(SessionConfig.fromJson(const {}).timeLapseIntervalSeconds, 1800.0);
   });
 
   group('scheduled recording', () {

@@ -16,6 +16,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
+import '../capture/time_lapse_plan.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
@@ -238,6 +239,18 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   SessionLogger? get _logger => _recorder.logger;
   Timer? _sessionTimer;
 
+  // Time-lapse capture mode (round 97): a self-rescheduling one-shot timer
+  // drives clock-triggered photo bursts while recording. [_timeLapsePlan] is
+  // the pure burst math (anchored at [_timeLapseStartMs] = recording start);
+  // [_tlBurstActive] mirrors the current phase for the chip and for pushing
+  // the phase-appropriate native frame-sampling rate; [_tlLastCycle] detects
+  // burst starts (re-arm the scheduler's capture window).
+  Timer? _timeLapseTimer;
+  TimeLapsePlan? _timeLapsePlan;
+  int _timeLapseStartMs = 0;
+  int _tlLastCycle = -1;
+  bool _tlBurstActive = false;
+
   // Scheduled recording (opt-in via Settings). While [_schedule] is non-null a
   // scheduled run is active: [_scheduleTimer] re-arms itself for the next
   // window boundary (capped at 60 s so doze gaps / clock jumps self-heal) and
@@ -446,13 +459,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // gaps as missing data, exactly as the owner wants. `gate_idle` makes the
     // state explicit; camera_fps stays, it is real regardless.
     final gateIdle = _gateIdle;
-    // Motion-only capture: the detector never runs at all, so the
-    // inference-derived fields are omitted even while the gate is awake
-    // (same rule — absent means "detector off", never a logged 0).
-    final detectorOff = gateIdle || _config.motionOnlyCapture;
+    // Motion-only and time-lapse capture: the detector never runs at all, so
+    // the inference-derived fields are omitted even while frames flow (same
+    // rule — absent means "detector off", never a logged 0).
+    final detectorOff = gateIdle || !_config.detectorEnabled;
     _logger?.logFps({
       if (gateIdle) 'gate_idle': true,
       if (_config.motionOnlyCapture) 'motion_only': true,
+      if (_config.timeLapseCapture) 'time_lapse': true,
       if (!detectorOff) ...{
         'fps': _fpsVN.value,
         'detector_fps': at(trio, 1),
@@ -500,6 +514,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _fpsLogTimer?.cancel();
     _powerTimer?.cancel();
     _recordTicker?.cancel();
+    _timeLapseTimer?.cancel();
     _errorSub?.cancel();
     _blackoutHintTimer?.cancel();
     // A scheduled run disposed while *sleeping* holds the keep-alive service
@@ -642,6 +657,41 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _pushInferenceRoi();
         _pushMotionGate();
         _pushCameraFpsCap();
+        _pushTimeLapse();
+        _probes.begin(
+          analysisDims: () => (_imageWidth, _imageHeight),
+          preferredLensZoom: _config.selectedLensZoom,
+        );
+      }
+      return;
+    }
+
+    // Time-lapse capture mode: photos are driven by [_timeLapseTick]'s clock,
+    // NOT by these maps — the native side only heartbeats ~1 Hz (with dims)
+    // so the bootstrap and the camera watchdog stay fed. Zero the inference
+    // numbers and bail out before the 0-FPS detector watchdog, exactly like
+    // the motion-only branch above.
+    if (_config.timeLapseCapture && data['timeLapse'] == true) {
+      final w = (data['imageWidth'] as num?)?.toInt() ?? _imageWidth;
+      final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
+      final cameraFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
+      _fpsVN.value = 0;
+      _perfVN.value = const [0, 0, 0];
+      _lastTrackMs = 0;
+      _fpsTrioVN.value = [cameraFps, 0, 0];
+      if (mounted && (w != _imageWidth || h != _imageHeight)) {
+        setState(() {
+          _imageWidth = w;
+          _imageHeight = h;
+          _snapRoiToSourceGrid();
+        });
+      }
+      if (!_captureProbeStarted && w > 0 && h > 0) {
+        _captureProbeStarted = true;
+        _pushInferenceRoi();
+        _pushMotionGate();
+        _pushCameraFpsCap();
+        _pushTimeLapse();
         _probes.begin(
           analysisDims: () => (_imageWidth, _imageHeight),
           preferredLensZoom: _config.selectedLensZoom,
@@ -748,11 +798,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _lastTrackMs = result.trackMs;
 
     // While recording, log this frame's tracks and trigger a shared ROI photo
-    // when one is due; blink the border as the visual cue if it was. Guarded
-    // against motion-only mode: during startup a few detector-style frames can
-    // arrive before the first setMotionGate(motionOnly: true) lands natively,
-    // and they must never write `detections` records into a motion-only log.
-    if (!_config.motionOnlyCapture &&
+    // when one is due; blink the border as the visual cue if it was. Detector
+    // mode only: during startup a few detector-style frames can arrive before
+    // the first setMotionGate/setTimeLapse lands natively, and they must
+    // never write `detections` records into a motion-only/time-lapse log.
+    if (_config.detectorEnabled &&
         _recorder.recordFrame(
           result.tracks,
           result.roiRect,
@@ -788,6 +838,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _pushInferenceRoi();
       _pushMotionGate();
       _pushCameraFpsCap();
+      _pushTimeLapse();
       _probes.begin(
         analysisDims: () => (_imageWidth, _imageHeight),
         preferredLensZoom: _config.selectedLensZoom,
@@ -1200,6 +1251,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _checkCameraDelivery();
     });
 
+    // Time-lapse mode: anchor the burst plan at the recording start and kick
+    // off the self-rescheduling tick (works the same for manual sessions and
+    // scheduled windows — each window is its own recording, so each anchors
+    // its own plan).
+    if (_config.timeLapseCapture) {
+      _timeLapsePlan = TimeLapsePlan(
+        stepMs: (_config.stepSeconds * 1000).round(),
+        burstMs: (_config.durationSeconds * 1000).round(),
+        intervalMs: (_config.timeLapseIntervalSeconds * 1000).round(),
+      );
+      _timeLapseStartMs = DateTime.now().millisecondsSinceEpoch;
+      _tlLastCycle = -1;
+      _tlBurstActive = false;
+      _timeLapseTimer?.cancel();
+      _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+    }
+
     // Recording is already live inside the recorder; rebuild the screen so
     // the REC banner and controls reflect it.
     setState(() {});
@@ -1221,6 +1289,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
     _recordTicker = null;
+    _timeLapseTimer?.cancel();
+    _timeLapseTimer = null;
+    _timeLapsePlan = null;
+    if (_tlBurstActive) {
+      _tlBurstActive = false;
+      _pushTimeLapse(); // back to the low between-burst sampling rate
+    }
     await _recorder.stop(
       normal: normal,
       uniqueTrackCount: _tracker.totalConfirmed,
@@ -1816,6 +1891,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     );
     _pushMotionGate();
     _pushCameraFpsCap();
+    _pushTimeLapse();
   }
 
   void _onRoiChanged(Roi roi) {
@@ -1952,12 +2028,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// detector sleeps while nothing moves inside the ROI (heat/battery saver);
   /// the native side always starts the gate awake so the user sees it working.
   void _pushMotionGate() {
+    // In time-lapse mode the gate is irrelevant (photos are clock-driven):
+    // force it off natively even if the detector-mode setting is on.
+    final gateOn =
+        _config.motionOnlyCapture ||
+        (_config.detectorEnabled && _config.motionGateEnabled);
     _controller
         .setMotionGate(
           // Motion-only capture cannot work without the gate (it IS the
           // trigger), so it forces the gate on; the native side guards the
           // same way (belt and braces).
-          enabled: _config.motionGateEnabled || _config.motionOnlyCapture,
+          enabled: gateOn,
           pixelDelta: _config.motionGatePixelDelta,
           areaFraction: _config.motionGateAreaFraction,
           wakeSeconds: _config.motionGateWakeSeconds,
@@ -1966,10 +2047,54 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           motionOnly: _config.motionOnlyCapture,
         )
         .catchError((Object e) => _logAsyncError('set_motion_gate', e));
-    if (!_config.motionGateEnabled && !_config.motionOnlyCapture && _gateIdle) {
+    if (!gateOn && _gateIdle) {
       // Gate switched off while idle: clear the idle indicator immediately.
       setState(_frame.forceGateAwake);
     }
+  }
+
+  /// Applies time-lapse mode natively. The frame-sampling rate follows the
+  /// burst phase: high during a burst so fast ROI crops stay fresher than
+  /// half a photo step, 1 fps between bursts (just frame-cache freshness for
+  /// the next burst's first photo + the 1 Hz heartbeat).
+  void _pushTimeLapse() {
+    final burstFps = (2 / _config.stepSeconds).ceil().clamp(1, 30);
+    _controller
+        .setTimeLapse(
+          enabled: _config.timeLapseCapture,
+          sampleFps: _config.timeLapseCapture && _tlBurstActive ? burstFps : 1,
+        )
+        .catchError((Object e) => _logAsyncError('set_time_lapse', e));
+  }
+
+  /// Time-lapse driving tick (self-rescheduling one-shot; capped at 60 s so
+  /// clock jumps/doze self-heal): asks the pure [TimeLapsePlan] what phase
+  /// we're in, re-arms the capture window at each burst start, triggers the
+  /// due photo, and re-pushes the native sampling rate on phase changes.
+  void _timeLapseTick() {
+    _timeLapseTimer = null;
+    final plan = _timeLapsePlan;
+    if (!_recording || !_config.timeLapseCapture || plan == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final t = nowMs - _timeLapseStartMs;
+    final inBurst = plan.inBurstAt(t);
+    if (inBurst) {
+      final cycle = plan.cycleIndexAt(t);
+      if (cycle != _tlLastCycle) {
+        _tlLastCycle = cycle;
+        _recorder.beginTimeLapseBurst();
+      }
+      if (_recorder.recordTimeLapseFrame(nowMs, burstIndex: cycle)) {
+        _flashCaptureCue();
+      }
+    }
+    if (inBurst != _tlBurstActive) {
+      _tlBurstActive = inBurst;
+      _pushTimeLapse();
+      if (mounted) setState(() {}); // chip label flips
+    }
+    final delay = plan.nextTickDelayMs(t).clamp(100, 60000);
+    _timeLapseTimer = Timer(Duration(milliseconds: delay), _timeLapseTick);
   }
 
   // --- UI -----------------------------------------------------------------
@@ -2144,7 +2269,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     ? const Color(0xFF00FF6A) // capture flash
                     // Gate idle: detector deliberately asleep — grey the ROI so
                     // the state reads at a glance from arm's length in the field.
-                    : ((_config.motionGateEnabled ||
+                    : (((_config.motionGateEnabled &&
+                                  _config.detectorEnabled) ||
                               _config.motionOnlyCapture) &&
                           _gateIdle)
                     ? const Color(0x99B0BEC5)
@@ -2169,8 +2295,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       // Detector state at a glance (motion gate only): green =
                       // detector running, grey = deliberately asleep because
                       // nothing is moving in the ROI. Bigger and color-coded so
-                      // it reads from arm's length in the field.
-                      if (_config.motionGateEnabled ||
+                      // it reads from arm's length in the field. Time-lapse
+                      // mode has its own chip (burst state + countdown).
+                      if (_config.timeLapseCapture)
+                        _timeLapseChip()
+                      else if ((_config.motionGateEnabled &&
+                              _config.detectorEnabled) ||
                           _config.motionOnlyCapture)
                         _gateStateChip(),
                       if (_config.showFps)
@@ -2184,8 +2314,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                 'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
                               ),
                               // Detector/pipeline rates are meaningless while
-                              // the detector never runs (motion-only mode).
-                              if (!_config.motionOnlyCapture) ...[
+                              // the detector never runs (motion-only and
+                              // time-lapse modes).
+                              if (_config.detectorEnabled) ...[
                                 _statLine(
                                   'Detector: ${f[1].toStringAsFixed(1)} fps '
                                   '(pre+inf+NMS)',
@@ -2198,7 +2329,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             ],
                           ),
                         ),
-                      if (_config.showFps && !_config.motionOnlyCapture)
+                      if (_config.showFps && _config.detectorEnabled)
                         ValueListenableBuilder<List<double>>(
                           valueListenable: _perfVN,
                           builder: (_, p, _) => _statLine(
@@ -2211,7 +2342,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       // deliberately asleep (nothing moving in the ROI) — the
                       // 0-fps Detector line above is expected, not a fault. The
                       // live motion % helps tune the trigger-area setting.
-                      if (_config.motionGateEnabled ||
+                      if ((_config.motionGateEnabled &&
+                              _config.detectorEnabled) ||
                           _config.motionOnlyCapture)
                         ValueListenableBuilder<double>(
                           valueListenable: _motionScoreVN,
@@ -2225,11 +2357,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                         ),
                       // Engine first (just under the perf line), then the Model
                       // line, which carries the input resolution in brackets.
-                      // Motion-only mode replaces the Engine line: no engine is
-                      // doing any work (the model loaded but never runs).
+                      // Detector-off modes replace the Engine line: no engine
+                      // is doing any work (the model loaded but never runs).
                       _statLine(
                         _config.motionOnlyCapture
                             ? 'Mode: motion-only capture (detector off)'
+                            : _config.timeLapseCapture
+                            ? 'Mode: time-lapse (detector off)'
                             : engineLabel,
                       ),
                       _statLine(modelLabel),
@@ -2577,6 +2711,68 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ],
         ),
       ),
+    );
+  }
+
+  /// Time-lapse mode chip: green "CAPTURING" during a burst, grey countdown
+  /// to the next burst between them (ticks via [_recordElapsedVN], which the
+  /// 1 s record ticker already updates), grey "starts with REC" before
+  /// recording. Mirrors the gate chip's look so the field glance stays the
+  /// same: green = photos happening now.
+  Widget _timeLapseChip() {
+    const awakeColor = Color(0xFF00E676); // vivid green
+    const idleColor = Color(0xFFB0BEC5); // blue-grey
+    return ValueListenableBuilder<int>(
+      valueListenable: _recordElapsedVN,
+      builder: (_, _, _) {
+        String label;
+        bool active;
+        final plan = _timeLapsePlan;
+        if (!_recording || plan == null) {
+          label = 'TIME-LAPSE (starts with REC)';
+          active = false;
+        } else {
+          final t =
+              DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
+          active = plan.inBurstAt(t);
+          if (active) {
+            label = 'TIME-LAPSE: CAPTURING';
+          } else {
+            final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
+            final mm = (waitS ~/ 60).toString().padLeft(2, '0');
+            final ss = (waitS % 60).toString().padLeft(2, '0');
+            label = 'NEXT BURST in $mm:$ss';
+          }
+        }
+        final color = active ? awakeColor : idleColor;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color, width: 1.5),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.circle, size: 12, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -26,6 +26,7 @@ import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
+import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 
 class SettingsSheet extends StatefulWidget {
@@ -272,6 +273,67 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       const SizedBox(height: 16),
 
+      _label('Capture trigger — what causes photos during a session'),
+      DropdownButton<CaptureTrigger>(
+        value: _c.captureTrigger,
+        isExpanded: true,
+        dropdownColor: Colors.black87,
+        items: const [
+          DropdownMenuItem(
+            value: CaptureTrigger.detector,
+            child: Text(
+              'AI detector — detect, track & photograph insects',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          DropdownMenuItem(
+            value: CaptureTrigger.motion,
+            child: Text(
+              'Motion-triggered photos — no AI',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          DropdownMenuItem(
+            value: CaptureTrigger.timelapse,
+            child: Text(
+              'Time-lapse photo bursts — no AI, no motion check',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+        onChanged: (t) => setState(
+          () => _c = _c.copyWith(
+            captureTrigger: t,
+            // The motion trigger cannot work without the gate — it IS the
+            // trigger — so selecting it switches the gate on too.
+            motionGateEnabled: t == CaptureTrigger.motion
+                ? true
+                : _c.motionGateEnabled,
+          ),
+        ),
+      ),
+      Text(
+        switch (_c.captureTrigger) {
+          CaptureTrigger.detector =>
+            'The full pipeline: on-device detection + tracking, photos per '
+            'track id, visitation data in the log.',
+          CaptureTrigger.motion =>
+            'Photos whenever something moves in the ROI; the AI model loads '
+            'but never runs (big energy saver). No species/track data — the '
+            'motion gate on the Camera tab is the trigger (forced on) and '
+            'its sensitivity settings apply. Wind/shadows produce junk '
+            'photos instead of wasted computation.',
+          CaptureTrigger.timelapse =>
+            'Photos on a pure clock — no AI, no motion check: the cheapest '
+            'mode. Each burst takes a photo every "Photo step" for "Photo '
+            'duration", and bursts repeat per "Repeat burst every" below. '
+            'Set the repeat ≤ the duration for a continuous time-lapse. '
+            'Meant for running a detector on the photos afterwards.',
+        },
+        style: const TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+
       NumericSettingField(
         label: 'Photo step',
         value: _c.stepSeconds,
@@ -281,28 +343,40 @@ class _SettingsSheetState extends State<SettingsSheet> {
         unitSuffix: 's',
         helperText:
             'Seconds between saved ROI photos — of the same track id (AI '
-            'detector on) or within one motion-only capture burst (0.1–10). '
+            'detector on) or within one motion/time-lapse burst (0.1–10). '
             'Default 1. Steps below ~0.5 s need the "fast" photo source: '
             'full-resolution stills take 0.5–1.5 s each and cannot keep up. '
             'Fast photos are capped at the live-stream short side, so raise '
             'the stream resolution if fast bursts need bigger photos.',
         onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
       ),
-      NumericSettingField(
+      DurationSettingField(
         label: 'Photo duration',
-        value: _c.durationSeconds,
-        min: 1,
-        max: 60,
-        decimals: 1,
-        unitSuffix: 's',
+        valueSeconds: _c.durationSeconds,
+        minSeconds: 1,
+        maxSeconds: 86400,
         helperText:
-            'How long photos keep being saved — per track id when the AI '
-            'pipeline (detector + tracker) is on, or per motion event in '
-            'motion-only capture mode (a new event starts once the gate has '
-            'gone to sleep and motion returns) (1–60). Should be a whole '
-            'multiple of the step.',
+            'How long photos keep being saved — per track id (AI detector), '
+            'per motion event (motion trigger; a new event starts once the '
+            'gate has slept and motion returns), or per time-lapse burst. '
+            'Should be a whole multiple of the step.',
         onChanged: (v) => setState(() => _c = _c.copyWith(durationSeconds: v)),
       ),
+      if (_c.timeLapseCapture)
+        DurationSettingField(
+          label: 'Repeat burst every',
+          valueSeconds: _c.timeLapseIntervalSeconds,
+          minSeconds: 1,
+          maxSeconds: 86400,
+          helperText:
+              'Time from the START of one photo burst to the start of the '
+              'next (so "every 30 min" stays every 30 min regardless of the '
+              'burst length). Set it ≤ the photo duration for a continuous '
+              'time-lapse. Default 30 min.',
+          onChanged: (v) => setState(
+            () => _c = _c.copyWith(timeLapseIntervalSeconds: v),
+          ),
+        ),
       if (!_c.isTimeLapseValid)
         const Padding(
           padding: EdgeInsets.only(bottom: 8),
@@ -1269,35 +1343,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       const Divider(color: Colors.white24),
 
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Motion-only capture (experimental): photos on motion, no AI',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'Takes ROI photos whenever something moves inside the ROI — the AI '
-          'detector NEVER runs, so this is the biggest energy saver for long '
-          'sessions (the model still loads at start but is never used). No '
-          'species or track data is recorded, only the photos and their '
-          'timestamps. Photos follow the time-lapse interval/duration and the '
-          'photo-source setting above. Trade-off: wind or shadows produce '
-          'extra junk photos instead of wasted computation. Uses the motion '
-          'gate below as its trigger (forced on); validate its sensitivity '
-          'against a detector session first.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.motionOnlyCapture,
-        onChanged: (v) => setState(
-          () => _c = _c.copyWith(
-            motionOnlyCapture: v,
-            // Motion-only capture cannot work without the gate — it IS the
-            // trigger — so switching it on switches the gate on too.
-            motionGateEnabled: v ? true : _c.motionGateEnabled,
-          ),
-        ),
-      ),
+      // The capture trigger itself (AI detector / motion photos / time-lapse)
+      // moved to the Setup tab in round 97 — this section keeps the motion
+      // GATE and its sensitivity tuning, which serve both the detector mode
+      // (sleep while the flower is empty) and the motion trigger.
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
@@ -1311,13 +1360,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'counts as motion, so in the hand the gate stays awake — that is '
           'normal, not a fault. Off by default — validate against an always-on '
           'session before trusting it for real counts.'
-          '${_c.motionOnlyCapture ? ' (Required by motion-only capture.)' : ''}',
+          '${_c.motionOnlyCapture ? ' (Required by the motion capture trigger — see Setup tab.)' : ''}'
+          '${_c.timeLapseCapture ? ' (Not used in time-lapse mode.)' : ''}',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
         isThreeLine: true,
-        value: _c.motionGateEnabled,
-        // Locked on while motion-only capture depends on it.
-        onChanged: _c.motionOnlyCapture
+        value: _c.motionOnlyCapture || _c.motionGateEnabled,
+        // Locked on while the motion trigger depends on it; locked out in
+        // time-lapse mode where it does nothing.
+        onChanged: _c.motionOnlyCapture || _c.timeLapseCapture
             ? null
             : (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
       ),

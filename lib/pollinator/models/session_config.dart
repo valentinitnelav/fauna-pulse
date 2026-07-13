@@ -52,6 +52,33 @@ RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
   return RoiCaptureMode.auto;
 }
 
+/// What causes photos (and detections) during a session — the session's
+/// fundamental operating mode:
+///  * **detector** — the default AI pipeline: detect, track, photograph per
+///    track id.
+///  * **motion** — motion-triggered photos, the detector never runs (round 95;
+///    the motion gate alone decides).
+///  * **timelapse** — clock-triggered photo bursts, no AI and no motion check
+///    (round 97): a photo every [SessionConfig.stepSeconds] for
+///    [SessionConfig.durationSeconds] per burst, a new burst every
+///    [SessionConfig.timeLapseIntervalSeconds] (start-to-start). The cheapest
+///    mode — meant for later offline detection/tracking on the saved photos.
+enum CaptureTrigger { detector, motion, timelapse }
+
+/// Reads the capture trigger from a saved config, accepting both the new
+/// `captureTrigger` string and the legacy round-95 `motionOnlyCapture` boolean
+/// it replaced (true meant what is now [CaptureTrigger.motion]).
+CaptureTrigger _captureTriggerFromJson(Map<String, dynamic> j) {
+  final name = j['captureTrigger'] as String?;
+  if (name != null) {
+    for (final t in CaptureTrigger.values) {
+      if (t.name == name) return t;
+    }
+  }
+  if (j['motionOnlyCapture'] as bool? ?? false) return CaptureTrigger.motion;
+  return CaptureTrigger.detector;
+}
+
 class SessionConfig {
   /// Model identifier or path (e.g. a bundled "yolo26n" id, or a path to a
   /// user-placed .tflite file).
@@ -205,14 +232,40 @@ class SessionConfig {
   /// frame flows regardless.
   final int motionGateIdleFps;
 
-  /// Motion-only capture (opt-in). Photos are taken whenever the motion gate
-  /// sees movement in the ROI — the AI detector NEVER runs (the model still
-  /// loads at start but is never used, so the biggest per-frame energy cost is
-  /// gone). No species/track data is recorded; the time-lapse step/duration
-  /// and photo-source settings apply to the motion-triggered photos. Requires
-  /// the motion gate (forced on while this is on). Trade-off: wind or shadow
-  /// false triggers become extra junk photos instead of wasted computation.
-  final bool motionOnlyCapture;
+  /// The session's operating mode — see [CaptureTrigger]. Replaces the
+  /// round-95 `motionOnlyCapture` boolean (old saved configs migrate in
+  /// [_captureTriggerFromJson]).
+  ///
+  /// [CaptureTrigger.motion]: photos are taken whenever the motion gate sees
+  /// movement in the ROI — the AI detector NEVER runs (the model still loads
+  /// at start but is never used). No species/track data is recorded; the
+  /// photo step/duration and photo-source settings apply to the
+  /// motion-triggered photos. Requires the motion gate (forced on).
+  /// Trade-off: wind/shadow false triggers become junk photos.
+  ///
+  /// [CaptureTrigger.timelapse]: photo bursts on a pure clock, no AI and no
+  /// motion check — the cheapest mode. Each burst: first photo at the burst
+  /// start, then every [stepSeconds] for [durationSeconds]; bursts repeat
+  /// every [timeLapseIntervalSeconds] (start-to-start). Set the interval ≤
+  /// the duration for a CONTINUOUS time-lapse. Meant for offline detection/
+  /// tracking on the saved photos afterwards.
+  final CaptureTrigger captureTrigger;
+
+  /// Convenience: motion-triggered photo mode (round 95 name, kept so call
+  /// sites read naturally).
+  bool get motionOnlyCapture => captureTrigger == CaptureTrigger.motion;
+
+  /// Convenience: clock-triggered time-lapse mode (round 97).
+  bool get timeLapseCapture => captureTrigger == CaptureTrigger.timelapse;
+
+  /// Convenience: the AI pipeline (detector + tracker) actually runs.
+  bool get detectorEnabled => captureTrigger == CaptureTrigger.detector;
+
+  /// Time-lapse mode only: seconds from the START of one photo burst to the
+  /// START of the next (so "every 30 minutes" is 1800 regardless of how long
+  /// each burst lasts). An interval ≤ [durationSeconds] means the bursts touch
+  /// or overlap — photos then flow continuously every [stepSeconds].
+  final double timeLapseIntervalSeconds;
 
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
@@ -340,7 +393,8 @@ class SessionConfig {
     this.motionGateWakeSeconds = 3.0,
     this.motionGateGridSize = 48,
     this.motionGateIdleFps = 5,
-    this.motionOnlyCapture = false,
+    this.captureTrigger = CaptureTrigger.detector,
+    this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.captureMode = RoiCaptureMode.auto,
@@ -432,7 +486,8 @@ class SessionConfig {
     double? motionGateWakeSeconds,
     int? motionGateGridSize,
     int? motionGateIdleFps,
-    bool? motionOnlyCapture,
+    CaptureTrigger? captureTrigger,
+    double? timeLapseIntervalSeconds,
     int? streamWidth,
     int? streamHeight,
     RoiCaptureMode? captureMode,
@@ -476,7 +531,9 @@ class SessionConfig {
     motionGateWakeSeconds: motionGateWakeSeconds ?? this.motionGateWakeSeconds,
     motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
     motionGateIdleFps: motionGateIdleFps ?? this.motionGateIdleFps,
-    motionOnlyCapture: motionOnlyCapture ?? this.motionOnlyCapture,
+    captureTrigger: captureTrigger ?? this.captureTrigger,
+    timeLapseIntervalSeconds:
+        timeLapseIntervalSeconds ?? this.timeLapseIntervalSeconds,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     captureMode: captureMode ?? this.captureMode,
@@ -521,7 +578,11 @@ class SessionConfig {
     'motionGateWakeSeconds': motionGateWakeSeconds,
     'motionGateGridSize': motionGateGridSize,
     'motionGateIdleFps': motionGateIdleFps,
+    'captureTrigger': captureTrigger.name,
+    // Legacy key kept one generation (mirrors the captureMode/fullResPhotos
+    // pattern) so round-95/96 parsers still recognise motion-only sessions.
     'motionOnlyCapture': motionOnlyCapture,
+    'timeLapseIntervalSeconds': timeLapseIntervalSeconds,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'captureMode': captureMode.name,
@@ -570,7 +631,9 @@ class SessionConfig {
         (j['motionGateWakeSeconds'] as num?)?.toDouble() ?? 3.0,
     motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
     motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
-    motionOnlyCapture: j['motionOnlyCapture'] as bool? ?? false,
+    captureTrigger: _captureTriggerFromJson(j),
+    timeLapseIntervalSeconds:
+        (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     captureMode: _captureModeFromJson(j),

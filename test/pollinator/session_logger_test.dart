@@ -126,6 +126,21 @@ void main() {
     expect(rec['time_iso'], isA<String>());
   });
 
+  test('logTimeLapseCapture writes a timelapse_capture record with the jpeg '
+      'link and its burst index', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logTimeLapseCapture({'jpeg': 'roi_S_20000.jpg', 'burst': 3});
+    await logger.close();
+
+    final rec =
+        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    expect(rec['type'], 'timelapse_capture');
+    expect(rec['jpeg'], 'roi_S_20000.jpg');
+    expect(rec['burst'], 3);
+    expect(rec['time_ms'], isA<int>());
+  });
+
   test('enriched fps record round-trips the diagnostic fields', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();

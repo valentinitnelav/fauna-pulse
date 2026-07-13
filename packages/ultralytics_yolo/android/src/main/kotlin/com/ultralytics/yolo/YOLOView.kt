@@ -387,6 +387,26 @@ class YOLOView @JvmOverloads constructor(
     @Volatile private var motionOnlyMode = false
     private var lastMotionOnlyEmitNs = 0L // analyzer thread only
 
+    // Time-lapse capture mode (round 97): photos on a pure Dart-side clock —
+    // no detector, no motion gate. The native side only (1) keeps the cached
+    // frame fresh enough for fast ROI crops by converting at sampleFps
+    // (Dart raises it during a burst, lowers it between bursts — conversion
+    // is the idle heat source, same lesson as the gate's idle sampler) and
+    // (2) heartbeats ~1 Hz so the Dart watchdog/bootstrap stay fed.
+    @Volatile private var timeLapseMode = false
+    @Volatile private var timeLapseSampleNs = 1_000_000_000L // via setTimeLapse
+    private var lastTimeLapseSampleNs = 0L // analyzer thread only
+    private var lastTimeLapseEmitNs = 0L // analyzer thread only
+
+    /** Enables/disables time-lapse mode. [sampleFps] is how many camera
+     *  frames per second are converted (frame-cache freshness for fast ROI
+     *  crops); the rest are dropped before the costly bitmap conversion. */
+    fun setTimeLapse(enabled: Boolean, sampleFps: Int) {
+        timeLapseSampleNs = 1_000_000_000L / sampleFps.coerceIn(1, 30)
+        timeLapseMode = enabled
+        Log.i(TAG, "TimeLapse ${if (enabled) "ON" else "OFF"} sampleFps=$sampleFps")
+    }
+
     /**
      * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
      * per-pixel brightness change (0..255) that counts as "changed"; [areaFraction]
@@ -2206,6 +2226,18 @@ class YOLOView @JvmOverloads constructor(
             lastGateSampleNs = nowIdle
         }
 
+        // Time-lapse mode: same pre-conversion drop, but rate-controlled by
+        // Dart (raised during a burst so fast crops stay fresh, ~1 fps
+        // between bursts). No gate, no inference — see the branch below.
+        if (timeLapseMode) {
+            val nowTl = System.nanoTime()
+            if (nowTl - lastTimeLapseSampleNs < timeLapseSampleNs) {
+                imageProxy.close()
+                return
+            }
+            lastTimeLapseSampleNs = nowTl
+        }
+
         perfFramesIn++
 
         val w = imageProxy.width
@@ -2285,6 +2317,33 @@ class YOLOView @JvmOverloads constructor(
 
         // Check again after bitmap conversion (in case stop() was called during conversion)
         if (isStopped) {
+            imageProxy.close()
+            return
+        }
+
+        // Pollinator Monitor time-lapse capture mode: no detector, no motion
+        // gate — photos are triggered by a Dart-side timer via the capture
+        // channel methods. This branch only refreshes the frame cache (done
+        // above) and heartbeats ~1 Hz with the oriented dims so the Dart
+        // watchdog and its ROI/still-probe bootstrap stay fed. BEFORE the
+        // predictor block: the detector path stays untouched when off.
+        if (timeLapseMode) {
+            val nowTl = System.nanoTime()
+            if (nowTl - lastTimeLapseEmitNs >= 1_000_000_000L) {
+                lastTimeLapseEmitNs = nowTl
+                val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+                val isRotated = rotationDegrees % 180 != 0
+                streamCallback?.invoke(
+                    mapOf(
+                        "timeLapse" to true,
+                        "cameraFps" to lastDeliveredFps,
+                        "imageWidth" to (if (isRotated) h else w),
+                        "imageHeight" to (if (isRotated) w else h),
+                        "roiActive" to (inferenceRoi != null),
+                        "timestamp" to System.currentTimeMillis(),
+                    )
+                )
+            }
             imageProxy.close()
             return
         }
