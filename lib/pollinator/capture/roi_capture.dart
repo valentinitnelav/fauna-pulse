@@ -368,10 +368,14 @@ class RoiCaptureScheduler {
   ///
   /// Same cadence semantics as a track window: first photo immediately when
   /// motion starts, then one every [stepMs] while motion persists, stopping
-  /// [durationMs] after the event began. A NEW event (fresh window) starts
-  /// only after motion has been absent for longer than [durationMs] — the
-  /// same forget rule as the track-window removeWhere above, so a brief lull
-  /// can't restart the window and double the photos.
+  /// [durationMs] after the event began. A NEW event = a gate sleep→wake
+  /// cycle: [resetMotionWindow] re-arms when the gate goes idle, so the next
+  /// wake bursts again (round 96 — the on-screen chip IS the re-arm state).
+  /// The gap>durationMs forget rule below survives only as a backstop for
+  /// paused streams (settings sheet, blackout); while the gate is awake the
+  /// stream emissions never pause, so it cannot fire — it originally doubled
+  /// as the re-arm rule and silently required ~wakeSeconds+duration of total
+  /// stillness before a second burst (the round-96 field bug).
   PendingCapture? evaluateMotion(int nowMs) {
     if (_busy) return null;
 
@@ -391,6 +395,13 @@ class RoiCaptureScheduler {
       trackIds: const [],
       capturedAtMs: nowMs,
     );
+  }
+
+  /// Re-arms the motion time-lapse: the next [evaluateMotion] starts a fresh
+  /// window (immediate first photo). Called when the motion gate goes idle —
+  /// a sleep→wake cycle is what defines a new motion event.
+  void resetMotionWindow() {
+    _motionWindow = null;
   }
 
   /// Grabs the image and writes [pending.fileName]. Safe to fire-and-forget;

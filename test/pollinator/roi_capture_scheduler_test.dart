@@ -210,6 +210,31 @@ void main() {
       expect(s.evaluateMotion(14500), isNotNull);
     });
 
+    test('resetMotionWindow re-arms an exhausted window: the next motion '
+        'bursts again immediately (round-96 second-wave field bug)', () {
+      final s = scheduler(stepMs: 1000, durationMs: 2000);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluateMotion(11000), isNotNull);
+      expect(s.evaluateMotion(12000), isNotNull); // window complete
+      expect(s.evaluateMotion(13000), isNull); // exhausted
+      // The gate goes idle (motion event over), then a SECOND hand-wave
+      // arrives well within durationMs of the last awake emission — before
+      // this fix the gap rule kept the window and nothing was captured.
+      s.resetMotionWindow();
+      expect(s.evaluateMotion(13500), isNotNull); // fresh burst, photo now
+      expect(s.evaluateMotion(14500), isNotNull); // and its own step cadence
+    });
+
+    test('resetMotionWindow mid-window also restarts the burst', () {
+      final s = scheduler(stepMs: 1000, durationMs: 5000);
+      expect(s.evaluateMotion(10000), isNotNull);
+      expect(s.evaluateMotion(10500), isNull); // step not elapsed
+      // Only the gate going idle calls this, so a restart here is by
+      // definition a new motion event — an immediate photo is correct.
+      s.resetMotionWindow();
+      expect(s.evaluateMotion(10600), isNotNull);
+    });
+
     test('returns null while a previous capture is still in flight', () async {
       final gate = Completer<Uint8List?>();
       final s = scheduler(fastCapture: () => gate.future);

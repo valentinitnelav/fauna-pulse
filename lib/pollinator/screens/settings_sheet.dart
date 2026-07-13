@@ -275,25 +275,32 @@ class _SettingsSheetState extends State<SettingsSheet> {
       NumericSettingField(
         label: 'Photo step',
         value: _c.stepSeconds,
-        min: 0.5,
+        min: 0.1,
         max: 10,
         decimals: 1,
         unitSuffix: 's',
         helperText:
-            'Seconds between saved ROI photos of the same track '
-            '(0.5–10). Default 1.',
+            'Seconds between saved ROI photos — of the same track id (AI '
+            'detector on) or within one motion-only capture burst (0.1–10). '
+            'Default 1. Steps below ~0.5 s need the "fast" photo source: '
+            'full-resolution stills take 0.5–1.5 s each and cannot keep up. '
+            'Fast photos are capped at the live-stream short side, so raise '
+            'the stream resolution if fast bursts need bigger photos.',
         onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
       ),
       NumericSettingField(
-        label: 'Photo duration per track',
+        label: 'Photo duration',
         value: _c.durationSeconds,
         min: 1,
         max: 60,
         decimals: 1,
         unitSuffix: 's',
         helperText:
-            'How long photos keep being saved for one track id '
-            '(1–60). Should be a whole multiple of the step.',
+            'How long photos keep being saved — per track id when the AI '
+            'pipeline (detector + tracker) is on, or per motion event in '
+            'motion-only capture mode (a new event starts once the gate has '
+            'gone to sleep and motion returns) (1–60). Should be a whole '
+            'multiple of the step.',
         onChanged: (v) => setState(() => _c = _c.copyWith(durationSeconds: v)),
       ),
       if (!_c.isTimeLapseValid)

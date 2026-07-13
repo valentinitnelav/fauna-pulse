@@ -269,6 +269,11 @@ class SessionRecorder {
     return true;
   }
 
+  /// Motion-only capture mode: the gate just went idle, so the current motion
+  /// event is over — re-arm the scheduler so the next wake starts a fresh
+  /// photo burst. `_capture` only exists while recording; no-op otherwise.
+  void onMotionGateIdle() => _capture?.resetMotionWindow();
+
   /// Saves the app's own recent logcat to a file in the session folder, so an
   /// *uncoupled* run (no `flutter run`) still preserves the native engine
   /// decision (e.g. "GPU… falling back to CPU: Failed to compile model") and

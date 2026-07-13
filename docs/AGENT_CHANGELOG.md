@@ -3624,3 +3624,57 @@ capture duration; no watchdog banner during long idle; logcat FRAMEPERF
 records and zero `detections` records; motion-only summary shows photos + note;
 an OLD session summary parses unchanged; a detector session after toggling the
 mode off behaves exactly as before.
+
+## Round 96 (2026-07-13): motion-only capture — second-burst bug fix, burst rate, setting texts
+
+Field test (Xiaomi, owner): motion-only capture worked — first hand-wave produced
+the expected burst (Photo step 1 s × Photo duration 5 s = 5 photos) — but a SECOND
+wave "a few moments" later captured nothing.
+
+**Root cause.** `evaluateMotion` re-armed only after a quiet gap > `durationMs`,
+measured from `lastSeenMs` — which every awake stream emission refreshed. The
+native side keeps emitting awake maps every 100 ms for the whole `wakeSeconds`
+window after motion stops (`motion || wasAwake` in the onFrame branch), so a
+second burst effectively required ~`wakeSeconds + durationMs` (≈8 s at defaults)
+of TOTAL stillness. Any wave inside that window refreshed the clock and stayed
+silent.
+
+**Fix.** A new motion event = a gate sleep→wake cycle. `_setGateIdle` (camera
+screen) on the awake→idle TRANSITION (motion-only mode) calls
+`SessionRecorder.onMotionGateIdle()` → `RoiCaptureScheduler.resetMotionWindow()`.
+The next wake starts a fresh window (immediate first photo). This is visible on
+screen: chip shows WAITING FOR MOTION ⇒ the next motion will photograph. The old
+gap>durationMs rule survives only as a backstop for paused streams (settings
+sheet, blackout) — while awake, emissions never pause, so it can't fire.
+Regression tests: exhausted window + reset → immediate burst; reset mid-window
+restarts.
+
+**Burst rate for offline detection/tracking (owner wants ~5–10 fps on the saved
+photos).** Decision: no ROI video — CameraX `VideoCapture` records the full frame
+only, ROI-cropped video would need an OpenGL surface pipeline, and a 4th use case
+alongside Preview+Analysis+ImageCapture hits device use-case combination limits.
+Fast-path photos already deliver: `captureRoiFromFrame` crops the cached analysis
+frame in tens of ms and the native motion emissions arrive at up to 10 Hz — so
+"Photo step" min was lowered 0.5 → **0.1 s**. Caveats in the helper text:
+sub-second steps need the "fast" photo source (stills take 0.5–1.5 s each; in
+auto mode with a small stream every burst photo would go still-path and stall),
+and fast crops are capped at the STREAM short side (÷32) — 1024 px at 5 fps needs
+a delivered stream short side ≥ 1056; otherwise photos save at the
+stream-limited size (fine for offline detection, which downscales anyway).
+
+**Setting texts (owner request).** "Photo step" helper now says it drives both
+per-track photos and motion-only bursts + the fast-source caveat. "Photo duration
+per track" renamed to "Photo duration"; helper: per track id with the AI pipeline,
+per motion event in motion-only mode (new event once the gate has slept and
+motion returns). Summary rows were already mode-neutral — unchanged.
+
+Files: `roi_capture.dart` (resetMotionWindow + evaluateMotion doc),
+`session_recorder.dart` (onMotionGateIdle), `camera_session_screen.dart`
+(_setGateIdle hook), `settings_sheet.dart` (texts + step min),
+`roi_capture_scheduler_test.dart` (2 new tests). No native changes.
+
+Verification: `flutter analyze` clean; 156/156 tests. On-device pending (owner):
+wave → burst; wait for WAITING FOR MOTION (~wakeSeconds); wave again → NEW burst
+immediately, repeatable. Burst rate: photo source "fast", step 0.2 s → ~5
+photos/s during a wave; `capture` records' `total_ms` confirm the fast path
+keeps up.

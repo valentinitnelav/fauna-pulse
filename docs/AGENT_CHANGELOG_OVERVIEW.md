@@ -49,7 +49,7 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
 | Model | `yolo26n` | Only nano ships bundled; others need an added `.tflite` |
 | Confidence | `0.25` | min detection score |
 | IoU (NMS) | `0.7` | overlap threshold |
-| Time-lapse step | `1.0 s` | first photo on detection, then every step |
+| Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — stills can't keep up) |
 | Capture duration | `10.0 s` | per track id; must be > step |
 | Session length | `60 min` | user-editable; ignored during scheduled runs |
 | Scheduled recording | off | r94: 1–3 daily windows (default 06:00–10:00) × N days (default 1); REC starts the run; sleeps dark between windows |
@@ -208,8 +208,16 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   needs them), idle heartbeat via the shared `maybeEmitGateIdleHeartbeat` helper.
   Dart: `camera_session_screen` branches on `motionOnly:true` maps → zeroes
   inference numbers → `SessionRecorder.recordMotionFrame` →
-  `RoiCaptureScheduler.evaluateMotion` (ONE shared window, same step/duration
-  hysteresis as track windows) → returns BEFORE the 0-FPS watchdog (critical).
+  `RoiCaptureScheduler.evaluateMotion` (ONE shared window, step/duration cadence)
+  → returns BEFORE the 0-FPS watchdog (critical). r96: a new motion event = a
+  gate sleep→wake CYCLE — `_setGateIdle` (idle transition, motion-only) calls
+  `recorder.onMotionGateIdle()` → `resetMotionWindow()`; the in-window
+  gap>durationMs rule is a paused-stream backstop ONLY (awake emissions flow
+  every 100 ms for the whole wakeSeconds window, so it can never fire while
+  awake — relying on it required ~wake+duration of stillness, the r96 field bug).
+  No ROI video (VideoCapture is full-frame; 4th use case exceeds device combos);
+  ≥5 fps bursts = fast photo source + step ≤ 0.2 s (fast crops cap at the
+  stream short side).
   `recordFrame` is skipped in this mode (startup race must not write `detections`
   records). `fps` records omit inference fields even while awake + carry
   `motion_only:true` (r77 rule). Summary: `motion_capture` records (and, backstop,

@@ -807,6 +807,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       occlusionSeconds: _config.occlusionSeconds,
     );
     if (change == null) return;
+    // Motion-only capture: the gate going to sleep ends the motion event —
+    // re-arm the photo burst so the NEXT wake photographs immediately
+    // (round 96: without this, a second hand-wave within ~wake+duration
+    // seconds of the first burst captured nothing). Transition-only: a
+    // repeated idle heartbeat returns null above.
+    if (change.idle && _config.motionOnlyCapture) {
+      _recorder.onMotionGateIdle();
+    }
     if (mounted) setState(() {});
     if (_recording) {
       _logger?.logMotionGate({
