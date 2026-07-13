@@ -52,7 +52,8 @@ iOS compatibility is planned for a later phase.
 ## Repository layout
 
 General layout:
-```
+
+```text
 pollinator-monitor/
 ├── lib/                     # the Pollinator Monitor app (Dart scripts)
 ├── android/                 # app platform code

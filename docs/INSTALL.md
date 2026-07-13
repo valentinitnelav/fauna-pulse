@@ -76,7 +76,7 @@ git clone git@github.com:valentinitnelav/pollinator-monitor.git
 # If you don't use SSH, clone the HTTPS URL shown on the GitHub repo page instead.
 
 cd pollinator-monitor
-flutter pub get
+flutter pub get           # retrieve or upgrade flutter dependencies
 ```
 
 ### B2. Add the models
@@ -94,51 +94,57 @@ Two options:
 1. On the phone: **Settings → Developer options → enable USB debugging**.
 2. Check the phone is seen:
 
+    Run this
+
     ```bash
     flutter devices
-
-    # Example of possible output (2 smartphones were connected, 1st row points to a Xiaomi model, 2nd is a Samsung)
-
-    # Found 4 connected devices:
-    #   2107113SG (mobile) • 2b2dc560    • android-arm64  • Android 14 (API 34)
-    #   SM M127F (mobile)  • RF8T403A3AT • android-arm64  • Android 12 (API 31)
-    #   Linux (desktop)    • linux       • linux-x64      • Ubuntu 24.04.4 LTS 6.8.0-124-generic
-    #   Chrome (web)       • chrome      • web-javascript • Google Chrome 149.0.7827.196
-
-    # Run "flutter emulators" to list and start any available device emulators.
-
-    # If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit
-    # https://flutter.dev/setup/ for troubleshooting tips.
     ```
+
+    Example of possible output (2 smartphones were connected, 1st row points to a Xiaomi model, 2nd is a Samsung):
+
+    ```text
+    Found 4 connected devices:
+      2107113SG (mobile) • 2b2dc560    • android-arm64  • Android 14 (API 34)
+      SM M127F (mobile)  • RF8T403A3AT • android-arm64  • Android 12 (API 31)
+      Linux (desktop)    • linux       • linux-x64      • Ubuntu 24.04.4 LTS 6.8.0-124-generic
+      Chrome (web)       • chrome      • web-javascript • Google Chrome 149.0.7827.196
+  
+    Run "flutter emulators" to list and start any available device emulators.
+  
+    If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit https://flutter.dev/setup/ for troubleshooting tips.
+    ```
+
 3. Launch the app (debug):
 
    ```bash
-   cd pollinator-monitor    # navigate to the git repository
-   flutter pub get          # retrieve or upgrade dependencies
-   flutter run              # will run on the first detected smartphone
+   cd pollinator-monitor    # navigate to the git repository (cloned on your computer)
+   flutter pub get          # retrieve or upgrade flutter dependencies
+   flutter run              # will run the app on the first detected smartphone
    ```
 
    If you have multiple smartphones connected, and need to run on a specific smartphone, use its ID listed in the output of `flutter devices`.
    See above the device IDs: "2b2dc560" & "RF8T403A3AT"
    
    ```bash
-   cd pollinator-monitor # navigate to the git repository
-   flutter run -d 2b2dc560 
+   cd pollinator-monitor    # navigate to this git repository (cloned on your computer)
+   flutter run -d 2b2dc560  # will run the app on mobile device id "2b2dc560"
    # -d stands for --device-id
    ```
 
-   Or if you want to also store the terminal outputs into a txt file, can get inspired from this Linux command:
+   Or if you want to also store the terminal outputs into a txt file (useful for diagnostics & debugging when testing the app), can get inspired from this Linux command:
 
    ```bash
-   cd pollinator-monitor # navigate to the git repository
+   cd pollinator-monitor # navigate to the git repository (cloned on your computer)
    stdbuf -oL -eL flutter run -d 2b2dc560 2>&1 | tee -a ~/InsectDetectApp/sessions/logcats/flutter_run_output_xiaomi_$(date +"%Y-%m-%d_%H:%M:%S").txt
    ```
+
+   > Note that in the path used above, `~/InsectDetectApp/sessions/logcats/` is an example on my local computer at the time of writing this guide.
 
 ### B4. Or build an installable `.apk` to share
 
 ```bash
-cd pollinator-monitor           # navigate to the git repository
-flutter pub get                 # retrieve or upgrade dependencies
+cd pollinator-monitor           # navigate to the git repository (cloned on your computer)
+flutter pub get                 # retrieve or upgrade flutter dependencies
 flutter build apk --release     # or: flutter build apk --debug (but slower app run time)
 
 # Expected output if success:
@@ -220,3 +226,82 @@ be redistributed**.
 The in-app model picker is built **dynamically** from whatever `.tflite` files it finds. 
 Models can also be placed in `assets/models/` / `assets/models/custom/` before building and running the app (those folders stay
 git-ignored).
+
+## Pulling data from the smartphone
+
+### USB transfer via Media Transfer Protocol (MTP)
+
+#### On Linux
+
+Connect your Android smartphone to your computer and allow File Transfer option. On your smartphone you should get a info message where you can allow the file transfer option.
+
+Then you can see the content of the folder associated with the app on your file explorer. Note that the path on your file explorer could appear like `mtp:/<your phone name>/Internal shared storage/Android/data/com.pollinatormonitor.app/files/`. This is the usual Media Transfer Protocol (MTP).
+
+You can copy or add files and folders between your computer and the smartphone using your favorite file explorer.
+
+#### On Windows
+
+> To be added.
+
+
+### USB transfer via Android Debug Bridge (ADB)
+
+Need to install [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools#downloads). There you get download links for all 3 major operating systems: Windows, Mac, Linux.
+
+#### On Linux
+
+Can also install ADB tools with these commands:
+
+```bash
+sudo apt-get update
+sudo apt-get -y install android-tools-adb
+```
+
+Verify that ADB is installed.
+
+```bash
+adb version
+```
+
+Should see something like:
+
+```text
+Android Debug Bridge version 1.0.41
+Version 34.0.4-debian
+Installed as /usr/lib/android-sdk/platform-tools/adb
+Running on Linux 6.8.0-134-generic (x86_64)
+```
+
+Example on how to pull the results of a particular recording session.
+
+Usually, on Linux, the 'adb' path to the app on the Android smartphone is something like: 
+`/sdcard/Android/data/com.pollinatormonitor.app/files/`. 
+This path is also valid: 
+`/storage/emulated/0/Android/data/com.pollinatormonitor.app/files/`
+
+There you find these:
+
+```text
+/sdcard/.../files
+├── error_reports/    # error reports generated by the end-user
+├── models/           # any custom models (e.g. `.tflite` files)
+└── sessions/         # a folder per recording session with the results (images + metadata)
+```
+
+```bash
+# 1) Locate the destination folder on your computer
+cd ~/InsectDetectApp/sessions/Xiaomi/
+# 2) Pull all content (everything from .../files/)
+# It will also create a folder named "files" at the path above
+adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/
+# -a : preserve file timestamp and mode
+# This will avoid the creation of the "files" folder locally
+adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/. ./
+
+# Or pull directly into the destination folder (without `cd` command first):
+adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/ ~/InsectDetectApp/sessions/Xiaomi/
+```
+
+#### On Windows
+
+> To be added.
