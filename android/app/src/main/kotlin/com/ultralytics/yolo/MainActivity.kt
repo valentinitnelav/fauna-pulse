@@ -128,6 +128,45 @@ class MainActivity : FlutterFragmentActivity() {
                             }
                         }
                     }
+                    // Round 93: batch-copy a session's saved photos into the shared
+                    // Gallery as one album (Pictures/PollinatorMonitor/<album>).
+                    // Only file PATHS cross the channel — Kotlin reads the JPEGs from
+                    // disk itself, so no image bytes are shipped between Dart and
+                    // native. Sharing cropExecutor is safe: capture (its only other
+                    // user) and the summary screen never run at the same time.
+                    "saveImagesToGallery" -> {
+                        val paths = call.argument<List<String>>("paths")
+                        val album = call.argument<String>("album")
+                        if (paths == null || album.isNullOrBlank()) {
+                            result.error("bad_args", "paths and album required", null)
+                        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            // Below Android 10 shared writes need the legacy storage
+                            // permission, which this app deliberately doesn't request.
+                            // The Dart side shows a "needs Android 10+" note instead.
+                            result.success(
+                                mapOf(
+                                    "supported" to false,
+                                    "exported" to 0,
+                                    "skipped" to 0,
+                                    "failed" to 0,
+                                ),
+                            )
+                        } else {
+                            cropExecutor.execute {
+                                val r = try {
+                                    saveImagesToGallery(paths, album)
+                                } catch (e: Exception) {
+                                    mapOf(
+                                        "supported" to true,
+                                        "exported" to 0,
+                                        "skipped" to 0,
+                                        "failed" to paths.size,
+                                    )
+                                }
+                                mainHandler.post { result.success(r) }
+                            }
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -307,11 +346,22 @@ class MainActivity : FlutterFragmentActivity() {
     /// below, where shared writes need the legacy storage permission instead
     /// (the caller returns false there without calling this).
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-    private fun saveImageToGallery(bytes: ByteArray, displayName: String): Boolean {
+    private fun saveImageToGallery(bytes: ByteArray, displayName: String): Boolean =
+        insertJpegIntoMediaStore(displayName, "Pictures/PollinatorMonitor") { it.write(bytes) }
+
+    /// Shared MediaStore insert (round 93 refactor of the round-91 crop save):
+    /// creates a hidden "pending" row, streams the JPEG via [write], then
+    /// publishes it. Returns false (and removes the pending row) on any failure.
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun insertJpegIntoMediaStore(
+        displayName: String,
+        relativePath: String,
+        write: (java.io.OutputStream) -> Unit,
+    ): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PollinatorMonitor")
+            put(MediaStore.Images.Media.RELATIVE_PATH, relativePath)
             // IS_PENDING hides the row from other apps until the bytes are
             // fully written, so the Gallery never shows a half-saved file.
             put(MediaStore.Images.Media.IS_PENDING, 1)
@@ -326,7 +376,7 @@ class MainActivity : FlutterFragmentActivity() {
                 resolver.delete(uri, null, null)
                 false
             } else {
-                out.use { it.write(bytes) }
+                out.use { write(it) }
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
@@ -337,6 +387,64 @@ class MainActivity : FlutterFragmentActivity() {
             try { resolver.delete(uri, null, null) } catch (_: Exception) {}
             false
         }
+    }
+
+    /// File names already present in a shared Gallery folder, so a re-export
+    /// can skip them instead of duplicating. On query failure returns an empty
+    /// set — worst case MediaStore renames duplicates to "name (1).jpg".
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun existingDisplayNames(relativePath: String): HashSet<String> {
+        val names = HashSet<String>()
+        try {
+            contentResolver.query(
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                arrayOf(MediaStore.Images.Media.DISPLAY_NAME),
+                "${MediaStore.Images.Media.RELATIVE_PATH} = ?",
+                // MediaStore stores RELATIVE_PATH with a trailing slash.
+                arrayOf("$relativePath/"),
+                null,
+            )?.use { cursor ->
+                while (cursor.moveToNext()) names.add(cursor.getString(0))
+            }
+        } catch (_: Exception) {}
+        return names
+    }
+
+    /// Round 93: copies a whole session's saved photos into the shared Gallery
+    /// (MediaStore = Android's index of shared photos) as one album folder.
+    /// Skips files already exported (same name in the same folder), so pressing
+    /// the export button twice never duplicates. Photos only; the session's
+    /// data log stays in the private session folder.
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun saveImagesToGallery(paths: List<String>, album: String): Map<String, Any> {
+        val relativePath = "Pictures/PollinatorMonitor/$album"
+        val existing = existingDisplayNames(relativePath)
+        var exported = 0
+        var skipped = 0
+        var failed = 0
+        for (p in paths) {
+            val f = java.io.File(p)
+            when {
+                !f.exists() -> failed++ // deleted between listing and export
+                f.name in existing -> skipped++ // idempotent re-export
+                else -> {
+                    val ok = try {
+                        insertJpegIntoMediaStore(f.name, relativePath) { out ->
+                            f.inputStream().use { it.copyTo(out) }
+                        }
+                    } catch (e: Exception) {
+                        false
+                    }
+                    if (ok) exported++ else failed++ // keep going past one bad file
+                }
+            }
+        }
+        return mapOf(
+            "supported" to true,
+            "exported" to exported,
+            "skipped" to skipped,
+            "failed" to failed,
+        )
     }
 
     /// Where an upright-frame rectangle lands inside the RAW (unrotated) still.

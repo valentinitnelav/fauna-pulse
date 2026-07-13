@@ -181,6 +181,77 @@ Future<CropSaveResult?> saveCropToGallery(
   }
 }
 
+/// One chunk per channel call for the whole-session gallery export: small
+/// enough that the progress bar moves visibly, large enough that the per-call
+/// overhead is noise (only path strings cross the channel, never image bytes).
+const int kGalleryExportChunk = 25;
+
+/// Album folder name for a session under Pictures/PollinatorMonitor. Session
+/// folders are already limited to letters/digits/space/_/- when created
+/// (session_recorder.dart), but MediaStore is stricter about odd names than
+/// the file system, so this re-sanitizes as a safety net: no path separators,
+/// no leading dot (a leading dot hides the folder from the Gallery).
+String galleryAlbumName(String sessionFolderName) {
+  // Strip leading dots/spaces BEFORE the character sweep — otherwise the
+  // sweep turns a leading dot into a leading underscore and hides nothing.
+  var s = sessionFolderName.replaceFirst(RegExp(r'^[. ]+'), '');
+  s = s.replaceAll(RegExp(r'[^A-Za-z0-9_\- ]'), '_').trim();
+  return s.isEmpty ? 'session' : s;
+}
+
+/// Counts from one whole-session gallery export, for the completion message.
+/// [supported] is false when the phone runs Android 9 or older, where the app
+/// can't write into the shared Gallery without a legacy permission.
+class GalleryExportResult {
+  final bool supported;
+  final int exported;
+  final int skipped;
+  final int failed;
+  const GalleryExportResult(
+    this.supported,
+    this.exported,
+    this.skipped,
+    this.failed,
+  );
+}
+
+/// Round 93: copies [photos] into the shared Gallery under
+/// Pictures/PollinatorMonitor/[album], in chunks so [onProgress] can drive a
+/// determinate progress bar. Photos already exported (same file name in that
+/// folder) are skipped natively, so re-running is safe. Never throws: a chunk
+/// that fails is counted in [GalleryExportResult.failed] (and logged via
+/// logSwallowed) and the remaining chunks still go out.
+Future<GalleryExportResult> exportPhotosToGallery(
+  List<File> photos,
+  String album, {
+  void Function(int done, int total)? onProgress,
+}) async {
+  final total = photos.length;
+  var exported = 0, skipped = 0, failed = 0;
+  for (var i = 0; i < total; i += kGalleryExportChunk) {
+    final chunk = photos.sublist(i, min(i + kGalleryExportChunk, total));
+    try {
+      final r = await _channel.invokeMapMethod<String, Object?>(
+        'saveImagesToGallery',
+        {'paths': chunk.map((f) => f.path).toList(), 'album': album},
+      );
+      if (r == null) throw StateError('null reply from saveImagesToGallery');
+      if (r['supported'] != true) {
+        // Pre-Android-10 phone: no point sending the remaining chunks.
+        return const GalleryExportResult(false, 0, 0, 0);
+      }
+      exported += (r['exported'] as int?) ?? 0;
+      skipped += (r['skipped'] as int?) ?? 0;
+      failed += (r['failed'] as int?) ?? 0;
+    } catch (e) {
+      logSwallowed('gallery_batch_export', e);
+      failed += chunk.length;
+    }
+    onProgress?.call(min(i + kGalleryExportChunk, total), total);
+  }
+  return GalleryExportResult(true, exported, skipped, failed);
+}
+
 /// Opens the OS share sheet with the crop attached (same pattern as
 /// ErrorReporter.share), letting the user hand it straight to Google Lens,
 /// iNaturalist, etc. The temp copy is small and the OS clears the cache dir.

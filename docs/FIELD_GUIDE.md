@@ -138,6 +138,17 @@ To retrieve the data: connect the phone by **USB** and copy the `sessions`
 folder to your computer with your file manager (or `adb pull`). This location
 is app-scoped external storage, which is visible over USB.
 
+**Viewing a session's photos in the phone's own Gallery app:** the session
+folder above is invisible to gallery apps by design (Android never indexes
+app-private storage). To browse photos on the phone itself, open the session's
+summary → Overview tab → **Export photos to Gallery**. This copies every saved
+photo into the shared album `Pictures/PollinatorMonitor/<session-name>`, which
+any gallery app shows as its own album. Notes: they are *copies* (the dialog
+shows how much extra storage they take), the data log is not exported,
+pressing the button again skips photos already exported (no duplicates), and
+the feature needs Android 10 or newer.
+Also, avoid creating copy of sessions with large data volumes.
+
 ## 7. Field troubleshooting
 
 **FPS dropped a lot after ~30 seconds.** Under direct sun the phone's own

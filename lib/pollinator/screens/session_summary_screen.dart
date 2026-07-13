@@ -106,6 +106,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   int? _sessionSizeBytes;
   StorageReading _storage = const StorageReading();
 
+  // Gallery export (round 93): busy flag + progress ticks for the Overview
+  // "Export photos to Gallery" button. While busy, Delete is disabled too —
+  // deleting the folder mid-copy would only produce confusing "failed" counts.
+  bool _galleryExportBusy = false;
+  int _galleryExportDone = 0;
+  int _galleryExportTotal = 0;
+
   @override
   void initState() {
     super.initState();
@@ -1027,13 +1034,37 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               : 'unknown',
         ),
         const SizedBox(height: 12),
+        // --- Export photos to the phone's own Gallery app (round 93) ---
+        if (_galleryExportBusy) ...[
+          LinearProgressIndicator(
+            value: _galleryExportTotal == 0
+                ? null
+                : _galleryExportDone / _galleryExportTotal,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Exporting photo $_galleryExportDone of $_galleryExportTotal…',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Center(
+          child: FilledButton.tonalIcon(
+            onPressed: _galleryExportBusy
+                ? null
+                : _confirmExportPhotosToGallery,
+            icon: const Icon(Icons.photo_library),
+            label: const Text('Export photos to Gallery'),
+          ),
+        ),
+        const SizedBox(height: 12),
         Center(
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: Colors.red.shade700,
               foregroundColor: Colors.white,
             ),
-            onPressed: _confirmDeleteSession,
+            onPressed: _galleryExportBusy ? null : _confirmDeleteSession,
             icon: const Icon(Icons.delete_forever),
             label: const Text('Delete session'),
           ),
@@ -1100,6 +1131,110 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       return;
     }
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Lists the session's saved photos, asks for confirmation (count + the
+  /// extra storage the copies will take), then copies them into the phone's
+  /// own Gallery app as one album under Pictures/PollinatorMonitor. Copies
+  /// only — the session folder keeps its originals and the data log stays in
+  /// the private session folder. The photo list comes from the real
+  /// `roi_frames/` folder on disk, not from the log, so crash-ended sessions
+  /// (whose log may be missing its tail) still export every file.
+  Future<void> _confirmExportPhotosToGallery() async {
+    final dir = Directory('${widget.logFile.parent.path}/roi_frames');
+    final files = <File>[];
+    var bytes = 0;
+    try {
+      if (await dir.exists()) {
+        await for (final e in dir.list()) {
+          if (e is File && e.path.toLowerCase().endsWith('.jpg')) {
+            files.add(e);
+            bytes += await e.length();
+          }
+        }
+      }
+    } catch (e) {
+      logSwallowed('gallery_export_scan', e);
+    }
+    if (!mounted) return;
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This session has no saved photos to export.'),
+        ),
+      );
+      return;
+    }
+    // File names embed the capture time in milliseconds, so sorting by path
+    // puts the photos in capture order.
+    files.sort((a, b) => a.path.compareTo(b.path));
+    final album = galleryAlbumName(
+      widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
+    );
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Export ${files.length} photos to Gallery?'),
+        content: Text(
+          'Copies every saved photo of this session into the phone\'s '
+          'Gallery app, as the album "Pictures/PollinatorMonitor/$album". '
+          'The copies take about ${formatBytes(bytes)} of extra storage; '
+          'the originals stay in the session folder. Photos already '
+          'exported are skipped, so re-running is safe.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Export',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    await _runGalleryExport(files, album);
+  }
+
+  /// Runs the chunked copy with a progress bar, then reports the counts.
+  /// `exportPhotosToGallery` never throws (failures are counted and logged),
+  /// so the try/finally only guarantees the busy flag resets.
+  Future<void> _runGalleryExport(List<File> files, String album) async {
+    setState(() {
+      _galleryExportBusy = true;
+      _galleryExportDone = 0;
+      _galleryExportTotal = files.length;
+    });
+    GalleryExportResult res;
+    try {
+      res = await exportPhotosToGallery(
+        files,
+        album,
+        onProgress: (done, total) {
+          if (mounted) setState(() => _galleryExportDone = done);
+        },
+      );
+    } finally {
+      if (mounted) setState(() => _galleryExportBusy = false);
+    }
+    if (!mounted) return;
+    final msg = !res.supported
+        ? 'Export to Gallery needs Android 10 or newer — this phone runs an '
+              'older Android. The photos are still on the phone in the '
+              'session folder (reachable over USB).'
+        : 'Exported ${res.exported} photos to Gallery ▸ '
+              'Pictures/PollinatorMonitor/$album.'
+              '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
+              '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// Every parameter the user chose at session start (from the log's config

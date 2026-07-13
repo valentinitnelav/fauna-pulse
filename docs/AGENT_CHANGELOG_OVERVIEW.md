@@ -229,7 +229,17 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   formats) above Duration, plus a storage section (session folder size via shared
   `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free GB)
   and a red confirm-guarded "Delete session" button (recursive folder delete →
-  pops; home list rescans on return from a summary).
+  pops; home list rescans on return from a summary). r93 "Export photos to
+  Gallery" (Overview button): batch-copies the session's `roi_frames/*.jpg`
+  into the shared album `Pictures/PollinatorMonitor/<session>` so the phone's
+  own Gallery shows each session as an album — `saveImagesToGallery` on
+  `pollinator/crop` takes file PATHS (never bytes; Kotlin reads the JPEGs
+  itself), Dart sends chunks of 25 (`exportPhotosToGallery` in
+  `capture/crop_export.dart`) for a determinate progress bar, re-export is
+  idempotent (native DISPLAY_NAME query per RELATIVE_PATH — stored WITH a
+  trailing slash), < Android 10 replies `supported:false` (clear message, no
+  legacy permission), Delete is disabled while exporting. Photos only —
+  session.jsonl stays private. Capture path untouched.
 
 ## Device quirks (test phones)
 

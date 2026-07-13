@@ -3408,3 +3408,60 @@ saved-resolution matter — raising `targetRoiSavedPx` / using stills is the fix
   square and non-square boxes) in `crop_export_test.dart`.
 
 Verification: `flutter analyze` clean, 118/118 tests, debug APK builds.
+
+## Round 93 (2026-07-13): export a session's photos to the Gallery as an album
+
+Why: session photos live in app-private storage (`Android/data/.../files/sessions/`),
+which Android's media index (MediaStore) deliberately never scans — so the phone's
+own Gallery app can't show them, and end-users only had the in-app viewer or a
+USB cable. Owner decision: a MANUAL button (no auto-export, capture path is
+heat/perf-critical and untouched), PHOTOS ONLY (session.jsonl stays private).
+
+What was built:
+- **Kotlin (`MainActivity.kt`)**: new `saveImagesToGallery` method on the existing
+  `pollinator/crop` channel. Args: `paths` (≤25 absolute JPEG paths) + `album`
+  (Kotlin prepends `Pictures/PollinatorMonitor/` itself so Dart can never redirect
+  the insert). Returns `{supported, exported, skipped, failed}` (counts sum to
+  paths.length when supported). Only PATH STRINGS cross the channel — Kotlin
+  streams each file from disk into MediaStore. The r91 single-crop insert body was
+  refactored into a shared `insertJpegIntoMediaStore(displayName, relativePath,
+  write)` (IS_PENDING row, orphan cleanup on failure); `saveImageToGallery` is now
+  a one-line wrapper, behavior unchanged. Runs on the existing `cropExecutor`
+  (safe: capture and the summary screen never run concurrently).
+- **Idempotent re-export**: `existingDisplayNames(relativePath)` queries MediaStore
+  for DISPLAY_NAMEs already under that RELATIVE_PATH and skips them. GOTCHA worth
+  remembering: MediaStore stores RELATIVE_PATH with a TRAILING SLASH — the
+  selection arg must be `"$relativePath/"` or the query matches nothing. Photo
+  filenames are globally unique (`roi_<sessionId>_<ms>.jpg`), so no false
+  cross-session skips. Query failure → empty set (worst case MediaStore renames
+  to "name (1).jpg", never crashes).
+- **Dart (`capture/crop_export.dart`)**: `exportPhotosToGallery(photos, album,
+  onProgress)` sends chunks of `kGalleryExportChunk = 25` and accumulates counts;
+  first `supported:false` reply aborts remaining chunks; a chunk that throws is
+  logged (`logSwallowed('gallery_batch_export')`), counted failed, and the NEXT
+  chunk still goes out — the function never throws. Chunking chosen over one big
+  native call + EventChannel: negligible overhead (short strings), plain
+  request/response handler, free progress ticks. `galleryAlbumName()` re-sanitizes
+  the session folder name as a safety net (strip leading dots BEFORE the character
+  sweep — a swept leading dot becomes `_` and the strip then misses it; caught by
+  the unit test).
+- **UI (`session_summary_screen.dart`, Overview → Storage & cleanup)**:
+  `FilledButton.tonalIcon` "Export photos to Gallery" above Delete; confirm dialog
+  shows photo count + extra storage (`formatBytes`) and explains copies/skips;
+  determinate `LinearProgressIndicator` + "Exporting photo N of M…" while busy;
+  completion SnackBar with exported/skipped/failed or a plain-language
+  "needs Android 10+" note. Photo list comes from the real `roi_frames/` dir (not
+  the log), so crash-ended sessions export fully. Delete session is DISABLED while
+  exporting (closes the delete-mid-copy race).
+- **SDK < 29**: native replies `supported:false` before touching MediaStore; no
+  legacy WRITE_EXTERNAL_STORAGE path. No new SessionConfig tunable (user action,
+  not a session parameter). Docs: FIELD_GUIDE §6 paragraph; overview bullet
+  extended.
+- **Tests**: new `test/pollinator/gallery_export_test.dart` — album-name
+  sanitizing; mocked-channel chunking (60 → 25/25/10), count accumulation,
+  unsupported early-stop, failed-chunk survival, progress ticks.
+
+Verification: `flutter analyze` clean, 126/126 tests, debug APK builds.
+Manual on-phone steps still pending (owner): export a real session, check the
+Gallery album, re-press for the skip path, zero-photo session message.
+
