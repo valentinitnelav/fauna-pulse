@@ -162,6 +162,24 @@ void main() {
   // there is exactly ONE shared window per "motion event" (no tracker runs,
   // so no track ids exist).
   group('RoiCaptureScheduler.evaluateMotion', () {
+    test('with an effectively unbounded duration it is a pure periodic clock '
+        '(the round-107 ground-truth frame dump configuration)', () {
+      // The gt dump reuses the motion window as its clock: huge durationMs
+      // means the window never exhausts and never resets, so photos land at
+      // exactly the step interval however often the driving timer asks.
+      final s = scheduler(stepMs: 5000, durationMs: 1 << 50);
+      expect(s.evaluateMotion(0), isNotNull); // first frame immediately
+      expect(s.evaluateMotion(1000), isNull); // 1 s tick: not due
+      expect(s.evaluateMotion(4999), isNull);
+      expect(s.evaluateMotion(5000), isNotNull);
+      expect(s.evaluateMotion(9000), isNull);
+      // A stretched tick (doze) still lands ONE photo, not a backlog.
+      expect(s.evaluateMotion(23000), isNotNull);
+      expect(s.evaluateMotion(24000), isNull);
+      // Far into a long session the window still hasn't exhausted.
+      expect(s.evaluateMotion(3600000), isNotNull);
+    });
+
     test('first motion takes a photo immediately, with no track ids', () {
       final s = scheduler();
       final pending = s.evaluateMotion(10000);

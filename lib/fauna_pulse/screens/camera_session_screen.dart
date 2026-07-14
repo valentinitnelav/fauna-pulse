@@ -248,6 +248,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // the phase-appropriate native frame-sampling rate; [_tlLastCycle] detects
   // burst starts (re-arm the scheduler's capture window).
   Timer? _timeLapseTimer;
+
+  /// Drives the ground-truth frame dump (round 107) while recording with the
+  /// toggle on. Ticks every second regardless of the configured interval —
+  /// the gt scheduler's own window decides when a photo is really due, so
+  /// timer jitter (or doze stretching a tick) can never double-photograph.
+  /// A plain timer, deliberately independent of the frame stream: dumps must
+  /// continue while the motion gate holds the detector asleep.
+  Timer? _gtFrameTimer;
   TimeLapsePlan? _timeLapsePlan;
   int _timeLapseStartMs = 0;
   int _tlLastCycle = -1;
@@ -530,6 +538,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _powerTimer?.cancel();
     _recordTicker?.cancel();
     _timeLapseTimer?.cancel();
+    _gtFrameTimer?.cancel();
     _errorSub?.cancel();
     _blackoutHintTimer?.cancel();
     // A scheduled run disposed while *sleeping* holds the keep-alive service
@@ -1247,6 +1256,64 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         onError: (fileName, error) =>
             _logAsyncError('roi_capture', 'Photo $fileName failed: $error'),
       ),
+      // Ground-truth frame dump (round 107): a second scheduler on its own
+      // clock, writing into gt_frames/ regardless of detections, so true
+      // visits can be hand-counted from photos the tracker did not trigger.
+      // Same capture pipeline as normal photos, so the Camera tab's saved
+      // photo side governs the size.
+      gtCaptureBuilder: !_config.gtFramesEnabled
+          ? null
+          : (gtDir, fileToken) => RoiCaptureScheduler(
+              framesDir: gtDir,
+              sessionToken: fileToken,
+              stepMs: (_config.gtFrameSeconds * 1000).round().clamp(
+                1000,
+                86400000,
+              ),
+              // Effectively unbounded: the dump's shared window must span the
+              // whole session (evaluateMotion is the periodic clock here).
+              durationMs: 1 << 50,
+              mode: _config.captureMode,
+              targetPx: _config.targetRoiSavedPx,
+              streamDims: () => (_imageWidth, _imageHeight),
+              stillDims: () => (_captureWidth, _captureHeight),
+              fastCaptureFn: () => _controller.captureRoiFromFrame(
+                cx: _roi.centerX,
+                cy: _roi.centerY,
+                side: _roi.sideFraction,
+                maxPx: _config.targetRoiSavedPx,
+              ),
+              stillCaptureFn: () async {
+                final raw = await _controller.capturePhotoRaw();
+                if (raw != null) {
+                  return RawStill(
+                    bytes: raw.$1,
+                    rotationDegrees: raw.$2,
+                    isFront: raw.$3,
+                  );
+                }
+                final frame = await _controller.captureFrame();
+                return frame == null
+                    ? null
+                    : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
+              },
+              roiProvider: () => _roi,
+              onStat: (s) {
+                if (!_recording) return;
+                _logger?.logGtCapture({
+                  'jpeg': s.fileName,
+                  'captured_at_ms': s.capturedAtMs,
+                  'total_ms': s.totalMs,
+                  'bytes': s.bytes,
+                  'path': s.path.name,
+                  'saved_px': s.savedPx,
+                });
+              },
+              onError: (fileName, error) => _logAsyncError(
+                'gt_capture',
+                'Ground-truth frame $fileName failed: $error',
+              ),
+            ),
     );
 
     // The session-length auto-end applies to MANUAL sessions only: in a
@@ -1301,6 +1368,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
     }
 
+    // Ground-truth frame dump (round 107): first frame right away, then the
+    // 1 s tick keeps asking; the scheduler's interval window answers.
+    if (_config.gtFramesEnabled) {
+      _gtFrameTimer?.cancel();
+      _recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch);
+      _gtFrameTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch);
+      });
+    }
+
     // Recording is already live inside the recorder; rebuild the screen so
     // the REC banner and controls reflect it.
     setState(() {});
@@ -1326,6 +1403,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _recordSlotLabel = null;
     _timeLapseTimer?.cancel();
     _timeLapseTimer = null;
+    _gtFrameTimer?.cancel();
+    _gtFrameTimer = null;
     _timeLapsePlan = null;
     if (_tlBurstActive) {
       _tlBurstActive = false;

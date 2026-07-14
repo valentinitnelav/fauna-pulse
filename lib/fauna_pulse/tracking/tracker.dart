@@ -42,6 +42,11 @@ abstract class InsectTracker {
   /// the number of visits actually counted.
   int get totalConfirmed;
 
+  /// Tracks currently held in ANY state (tentative + confirmed + lost) —
+  /// the tracker's working-set size, reported by the replay harness as a
+  /// memory/cost proxy (round 107).
+  int get activeTrackCount;
+
   /// The frame-count buffers currently in effect. The user sets these in
   /// SECONDS (occlusion tolerance / min visit length); the camera screen
   /// converts them to frames against the live detector FPS about once a

@@ -90,6 +90,8 @@ rate as it varies during the session.
 | **Search margin — pass 1** | C-BIoU | `0.30` | Boxes are enlarged by this fraction of their own size before the overlap test. Bigger tolerates faster movement but risks mixing close neighbours. |
 | **Search margin — pass 2** | C-BIoU | `0.50` | A wider second matching round for whatever pass 1 missed — catches big between-frame jumps. Always ≥ pass 1. |
 | **Log raw detections** | both | `off` | Evaluation aid: writes the detector's pre-tracking boxes for every frame into the session file so it can be replayed through either tracker offline (`flutter test test/fauna_pulse/tracker_replay_test.dart --dart-define=REPLAY_SESSION=…/session.jsonl`). Adds ~1–2 MB/h. |
+| **Ground-truth frames** | both | `off` | Evaluation aid (round 107): saves an ROI photo at a fixed interval into `gt_frames/`, whether or not anything is detected — an independent record for hand-counting true visits, so the tracker is never judged against photos it triggered itself. Size follows Camera tab → Saved photo side. |
+| **Ground-truth frame interval** | both | `5 s` | Time between ground-truth photos (1 s–1 h). 5 s ≈ 720 photos/hour; shorter catches briefer visits but uses more storage. |
 
 A **Reset tracking to defaults** button in Advanced restores every setting in
 this section (keeping the algorithm choice).

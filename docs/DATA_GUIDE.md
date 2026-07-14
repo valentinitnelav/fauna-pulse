@@ -120,6 +120,16 @@ association algorithms on real data
 | `frame_ms` | The frame's timestamp (ms since epoch) — use this, not `time_ms` (which is stamped at log-queue time). |
 | `boxes` | Array of `[left, top, right, bottom, confidence, class_index]`, boxes **frame-normalized** 0..1 (not ROI-relative like `box_in_roi`). |
 
+### `gt_capture` — ground-truth frame saves (round 107, only when that toggle is on)
+
+One record per periodic ground-truth photo (Settings → AI → Visit tracking →
+Advanced → **Ground-truth frames**). These photos land in `gt_frames/` (not
+`roi_frames/`) and are taken on a fixed clock regardless of detections — use
+them to hand-count the true visits when evaluating a tracker. Fields:
+`jpeg` (filename), `captured_at_ms` (trigger moment), plus the same
+`total_ms` / `bytes` / `path` / `saved_px` stats as a `capture` record.
+Deliberately a separate type: never mix these into detection-photo joins.
+
 ### `roi_update` — when the ROI is moved/resized mid-session
 
 Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`) and `saves_px`.

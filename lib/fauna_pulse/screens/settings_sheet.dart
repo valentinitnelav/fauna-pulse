@@ -1188,6 +1188,38 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(logRawDetections: v)),
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Ground-truth frames (evaluation)',
+            style: TextStyle(color: Colors.white),
+          ),
+          subtitle: const Text(
+            'Saves an ROI photo at a fixed interval into a separate '
+            'gt_frames folder, whether or not anything is detected — an '
+            'independent record for counting the true visits by eye, so the '
+            'tracker is never checked against photos it triggered itself. '
+            'Uses the same photo pipeline and size as normal photos '
+            '(Camera tab → Saved photo side).',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          value: _c.gtFramesEnabled,
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(gtFramesEnabled: v)),
+        ),
+        if (_c.gtFramesEnabled)
+          DurationSettingField(
+            label: 'Ground-truth frame interval',
+            valueSeconds: _c.gtFrameSeconds,
+            minSeconds: 1,
+            maxSeconds: 3600,
+            helperText:
+                'Time between ground-truth photos. Default 5 s — about '
+                '720 photos per hour; shorter catches briefer visits but '
+                'uses more storage.',
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
+          ),
       ],
     ),
   ];
@@ -1347,6 +1379,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           highThresh: cbp.highThresh < minHigh ? minHigh : cbp.highThresh,
         ),
         logRawDetections: false,
+        gtFramesEnabled: false,
+        gtFrameSeconds: 5.0,
       );
     });
   }

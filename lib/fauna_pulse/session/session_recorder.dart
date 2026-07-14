@@ -39,6 +39,11 @@ class SessionRecorder {
 
   RoiCaptureScheduler? _capture;
 
+  /// Ground-truth frame dump (round 107): a second, independent scheduler
+  /// writing periodic ROI photos into `gt_frames/` regardless of detections.
+  /// Only exists when the session was started with the gt-frames toggle on.
+  RoiCaptureScheduler? _gtCapture;
+
   /// True while a session is being recorded. Flips false at the very START of
   /// [stop] (plain assignment, no async gap) so the frame path stops logging
   /// instantly — [stop] also runs unawaited from the screen's dispose().
@@ -73,6 +78,12 @@ class SessionRecorder {
     required void Function(Object error) onLogWriteError,
     void Function(ThermalReading thermal, StorageReading storage)?
     onStartReadings,
+    // Ground-truth frame dump (round 107): when non-null, a `gt_frames/`
+    // folder is created and this builds its scheduler (screen wiring, like
+    // [captureBuilder]). The screen's periodic timer drives it through
+    // [recordGtFrame].
+    RoiCaptureScheduler Function(Directory gtDir, String fileToken)?
+    gtCaptureBuilder,
   }) async {
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
     // Per-session random token embedded in every photo filename (see
@@ -129,6 +140,13 @@ class SessionRecorder {
     });
 
     _capture = captureBuilder(framesDir, fileToken);
+    if (gtCaptureBuilder != null) {
+      final gtDir = Directory('${dir.path}/gt_frames');
+      gtDir.createSync(recursive: true);
+      _gtCapture = gtCaptureBuilder(gtDir, fileToken);
+    } else {
+      _gtCapture = null;
+    }
 
     await WakelockPlus.enable();
     // Keep the OS from sleeping/killing this long session: a foreground
@@ -309,6 +327,22 @@ class SessionRecorder {
     });
     // Fire-and-forget; the scheduler serializes its own work.
     _capture?.capture(pending);
+    return true;
+  }
+
+  /// Ground-truth frame tick (round 107): called from the camera screen's
+  /// periodic timer while recording with the gt-frames toggle on. The gt
+  /// scheduler's shared window (huge duration → a pure periodic clock) makes
+  /// this jitter-safe: however often the timer fires, a photo lands only when
+  /// the configured interval has really elapsed. Returns true when a photo
+  /// was triggered. The `gt_capture` record itself is written by the
+  /// scheduler's onStat, AFTER the JPEG is on disk, carrying its real stats.
+  bool recordGtFrame(int ts) {
+    if (!_recording) return false;
+    final pending = _gtCapture?.evaluateMotion(ts);
+    if (pending == null) return false;
+    // Fire-and-forget; the scheduler serializes its own work.
+    _gtCapture?.capture(pending);
     return true;
   }
 

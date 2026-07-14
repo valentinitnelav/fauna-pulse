@@ -80,6 +80,62 @@ List<ReplayFrame> parseRawDetectionLines(Iterable<String> lines) {
   return frames;
 }
 
+// --- Frame-stream degraders (round 107) -------------------------------------
+// Irregular-delivery stress scenarios: the same recorded detections, thinned
+// the way a hot/throttled phone would deliver them. Timestamps are always the
+// ORIGINAL ones — only which frames survive changes — so the trackers' time
+// handling is what gets exercised.
+
+/// Keeps every [n]-th frame (n=2 halves the rate, n=3 thirds it, ...).
+List<ReplayFrame> keepEveryNth(List<ReplayFrame> frames, int n) => [
+  for (var i = 0; i < frames.length; i++)
+    if (i % n == 0) frames[i],
+];
+
+/// Periodically removes whole blocks of frames: every [everySeconds] of
+/// stream time, the frames inside the next [gapSeconds] are dropped —
+/// isolated 0.5–2 s stalls, like a camera hiccup or a burst of stills.
+List<ReplayFrame> injectGaps(
+  List<ReplayFrame> frames, {
+  required double gapSeconds,
+  required double everySeconds,
+}) {
+  if (frames.isEmpty) return frames;
+  final t0 = frames.first.timestampMs;
+  final everyMs = (everySeconds * 1000).round();
+  final gapMs = (gapSeconds * 1000).round();
+  return [
+    for (final f in frames)
+      if ((f.timestampMs - t0) % everyMs >= gapMs) f,
+  ];
+}
+
+/// Thins the stream to a repeating staircase of FPS caps: the stream time is
+/// split into consecutive [segmentSeconds] segments cycling through
+/// [fpsSteps] (e.g. `[15, 3, 10]`), and within each segment frames closer
+/// than 1/fps to the last kept frame are dropped. Models the auto-throttle
+/// ramping the rate up and down mid-session.
+List<ReplayFrame> staircaseFps(
+  List<ReplayFrame> frames,
+  List<double> fpsSteps, {
+  double segmentSeconds = 10,
+}) {
+  if (frames.isEmpty || fpsSteps.isEmpty) return frames;
+  final t0 = frames.first.timestampMs;
+  final segMs = (segmentSeconds * 1000).round();
+  final kept = <ReplayFrame>[];
+  var lastKeptTs = -1 << 62;
+  for (final f in frames) {
+    final seg = ((f.timestampMs - t0) ~/ segMs) % fpsSteps.length;
+    final minIntervalMs = (1000 / fpsSteps[seg]).round();
+    if (f.timestampMs - lastKeptTs >= minIntervalMs) {
+      kept.add(f);
+      lastKeptTs = f.timestampMs;
+    }
+  }
+  return kept;
+}
+
 /// What one replay run produced, in visitation-rate terms.
 class TrackerReplayReport {
   /// Which algorithm ran ([InsectTracker.algorithmName]).
@@ -101,6 +157,16 @@ class TrackerReplayReport {
   /// Most tracks confirmed simultaneously in any single frame.
   final int maxConcurrent;
 
+  /// Largest working set the tracker ever held (tentative + confirmed +
+  /// lost) — a memory/cost proxy.
+  final int peakActiveTracks;
+
+  /// Tracker cost per frame in milliseconds (mean and 95th percentile),
+  /// measured around `update()` on the replaying machine — comparative
+  /// between variants, not an on-phone absolute.
+  final double meanTrackMs;
+  final double p95TrackMs;
+
   const TrackerReplayReport({
     required this.algorithm,
     required this.frames,
@@ -108,6 +174,9 @@ class TrackerReplayReport {
     required this.visits,
     required this.visitDurationsS,
     required this.maxConcurrent,
+    required this.peakActiveTracks,
+    required this.meanTrackMs,
+    required this.p95TrackMs,
   });
 
   double get totalVisitS =>
@@ -132,7 +201,9 @@ class TrackerReplayReport {
       'durations mean ${meanVisitS.toStringAsFixed(1)} s / '
       'median ${medianVisitS.toStringAsFixed(1)} s / '
       'total ${totalVisitS.toStringAsFixed(1)} s, '
-      'max concurrent $maxConcurrent';
+      'max concurrent $maxConcurrent, peak active $peakActiveTracks, '
+      'track ${meanTrackMs.toStringAsFixed(3)} ms/frame '
+      '(p95 ${p95TrackMs.toStringAsFixed(3)})';
 }
 
 /// Replays [frames] through [tracker], reproducing the live pipeline's
@@ -161,6 +232,8 @@ TrackerReplayReport replayTracker({
   var lastBudgetTs = 0;
   var detections = 0;
   var maxConcurrent = 0;
+  var peakActive = 0;
+  final trackMsSamples = <double>[];
   // id -> (firstSeenMs, lastSeenMs) of every track ever seen confirmed.
   final firstSeen = <int, int>{};
   final lastSeen = <int, int>{};
@@ -207,8 +280,14 @@ TrackerReplayReport replayTracker({
     }
 
     detections += frame.detections.length;
+    final sw = Stopwatch()..start();
     final tracks = tracker.update(frame.detections, frame.timestampMs);
+    sw.stop();
+    trackMsSamples.add(sw.elapsedMicroseconds / 1000.0);
     if (tracks.length > maxConcurrent) maxConcurrent = tracks.length;
+    if (tracker.activeTrackCount > peakActive) {
+      peakActive = tracker.activeTrackCount;
+    }
     for (final t in tracks) {
       if (!firstSeen.containsKey(t.id)) {
         firstSeen[t.id] = t.firstSeenMs;
@@ -217,6 +296,14 @@ TrackerReplayReport replayTracker({
       lastSeen[t.id] = t.lastSeenMs;
     }
   }
+
+  trackMsSamples.sort();
+  final meanMs = trackMsSamples.isEmpty
+      ? 0.0
+      : trackMsSamples.reduce((a, b) => a + b) / trackMsSamples.length;
+  final p95Ms = trackMsSamples.isEmpty
+      ? 0.0
+      : trackMsSamples[((trackMsSamples.length - 1) * 0.95).floor()];
 
   return TrackerReplayReport(
     algorithm: tracker.algorithmName,
@@ -228,5 +315,8 @@ TrackerReplayReport replayTracker({
         ((lastSeen[id] ?? firstSeen[id]!) - firstSeen[id]!) / 1000.0,
     ],
     maxConcurrent: maxConcurrent,
+    peakActiveTracks: peakActive,
+    meanTrackMs: meanMs,
+    p95TrackMs: p95Ms,
   );
 }

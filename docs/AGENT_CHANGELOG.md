@@ -4046,3 +4046,55 @@ a selectable option with ByteTrack staying the default.
     sessions with a hand count.
 - No config/format changes; analyzer + 196 tests green.
 
+## Round 107 (2026-07-15): ChatGPT-critique follow-ups — variant A/B flags + ground-truth frame dump
+
+Owner had ChatGPT review the r105 tracker analysis. Point-by-point verdict:
+its two best catches were (1) motion should be normalized by REAL elapsed
+time (our velocity was per-frame while field frame gaps swing 130→950 ms) and
+(2) my "the distance fallback already gives you C-BIoU's benefit" was too
+strong — the hybrid (buffered-IoU fallback INSIDE ByteTrack) deserved a test.
+Its ground-truth-circularity critique was half right: raw_detections records
+already ARE the pre-tracker cache it demanded, but the photo record used for
+hand counts WAS tracker-triggered. Its "don't ship a selectable tracker"
+recommendation was overtaken (owner explicitly wanted it, r105); the license/
+benchmark-scoping/ReID-phrasing corrections were fair but prose-only.
+
+- **Internal variant flags (constructor-only, NEVER SessionConfig/UI;
+  adoption rule: default only changes after winning on gt-frame hand counts):**
+  - `timeAwareMotion` on BOTH trackers: velocity in normalized units/second
+    measured from the last true observation (`lastObservedCenter`) over real
+    dt; association + coasting use `Track.predictedBoxAfter(dt)` with the
+    frame's actual gap (capped 2 s). Legacy per-frame path untouched and
+    still the default.
+  - `FallbackMode {distance, bufferedIou}` on ByteTracker: the third pass
+    can score by buffered IoU anchored at the last observed position, box
+    reach = max(0.5 × size, 0.05 absolute floor) per side, accept ≥ 0.05.
+- **Replay harness:** frame-stream degraders (`keepEveryNth`, `injectGaps`,
+  `staircaseFps` — timestamps always original), report now carries tracker
+  ms/frame (mean/p95), `peakActiveTracks` (new `InsectTracker.activeTrackCount`),
+  and the optional REPLAY_SESSION test prints a permanent 6-variant × 2-stream
+  matrix (no more throwaway sweep files).
+- **Variant matrix on the r106 screen sessions** (no ground truth — loop
+  count unknown — so NO defaults changed): `byte` 2/2 visits; `byte dtAware`
+  identical 2/2 (no regression); `cbiou` 3/5 → `cbiou dtAware` 2/4 and under
+  the 15/3/10 staircase 4→3 — time-aware motion consistently reduced C-BIoU
+  fragmentation and never hurt. `byte bIoU-fb` collapsed both sessions to
+  ONE ~2-minute visit — the 0.05 absolute reach floor on 0.06 boxes bridges
+  the ~0.15 video-restart teleports, i.e. it over-merges; evidence AGAINST
+  adopting it as-is (the distance gate's 1.5×diag scaling is what keeps
+  ByteTrack from doing the same).
+- **Ground-truth frame dump (user-facing, owner-specified):**
+  `gtFramesEnabled` (off) + `gtFrameSeconds` (5 s; 1 s–1 h via
+  DurationSettingField) in tracking Advanced; a SECOND RoiCaptureScheduler
+  writes into `gt_frames/` on its own clock (`evaluateMotion` with a 1<<50
+  duration = pure periodic window; scheduler-window test added), driven by a
+  1 s screen timer through `SessionRecorder.recordGtFrame` so dumps continue
+  while the motion gate sleeps. Same photo pipeline ⇒ size follows
+  `targetRoiSavedPx` (deliberately no new resolution setting). One
+  `gt_capture` JSONL record per save (jpeg, captured_at_ms, timing/size),
+  logged from onStat AFTER the write. Not in the summary Photos tab yet
+  (future work). Reset-tracking-defaults covers the new fields.
+- Docs: SETTINGS_REFERENCE Advanced table + DATA_GUIDE `gt_capture` record.
+- 206 tests green (new: time-aware + buffered-fallback knob tests, degrader
+  tests, gt scheduler window, gt config round-trip), analyzer clean.
+

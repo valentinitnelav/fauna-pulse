@@ -227,6 +227,16 @@ class SessionLogger {
   void logPower(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('power', payload, at: at);
 
+  /// A ground-truth frame-dump save (round 107): a periodic ROI photo written
+  /// to `gt_frames/` regardless of detections, so true visits can be
+  /// hand-counted from a record the tracker did NOT influence. One record per
+  /// saved frame, carrying the jpeg name, the trigger moment and the same
+  /// timing/size stats as a `capture` record. Deliberately a separate type:
+  /// the summary's Photos tab and detection-photo joins must never confuse
+  /// these with detection-triggered photos.
+  void logGtCapture(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('gt_capture', payload, at: at);
+
   /// A single ROI-photo save event: how long the grab+crop+write took, the byte
   /// size, whether it was a full-resolution still, and the track ids it covered.
   /// Lets the end-of-session diagnostics tell whether photo-saving contributes to

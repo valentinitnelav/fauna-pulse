@@ -10,10 +10,14 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/models/track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/tracker_replay.dart';
+
+Detection det(Rect box, [double conf = 0.9]) =>
+    Detection(box: box, confidence: conf, classIndex: 0, className: 'bee');
 
 /// Builds a session.jsonl line exactly as SessionRecorder.recordFrame writes
 /// it (envelope from SessionLogger._append), so the parser is tested against
@@ -116,10 +120,130 @@ void main() {
     });
   });
 
+  group('frame-stream degraders (round 107)', () {
+    final frames = parseRawDetectionLines(visitLines(0, 10000, 100, 0.40));
+
+    test('keepEveryNth keeps 1-in-n with original timestamps', () {
+      final thinned = keepEveryNth(frames, 3);
+      expect(thinned.length, (frames.length / 3).ceil());
+      expect(thinned[1].timestampMs, frames[3].timestampMs);
+    });
+
+    test('injectGaps removes the frames inside each periodic window', () {
+      final gapped = injectGaps(frames, gapSeconds: 1.0, everySeconds: 5.0);
+      // 0–1 s and 5–6 s of every 5 s block are gone.
+      expect(gapped.any((f) => f.timestampMs < 1000), isFalse);
+      expect(
+        gapped.any((f) => f.timestampMs >= 5000 && f.timestampMs < 6000),
+        isFalse,
+      );
+      expect(gapped.any((f) => f.timestampMs >= 1000 && f.timestampMs < 5000),
+          isTrue);
+    });
+
+    test('staircaseFps thins each segment to its cap', () {
+      // Segments of 2 s cycling 10 → 2 fps over a 10 fps stream.
+      final stepped = staircaseFps(frames, [10, 2], segmentSeconds: 2);
+      final seg0 = stepped.where((f) => f.timestampMs < 2000).length;
+      final seg1 = stepped
+          .where((f) => f.timestampMs >= 2000 && f.timestampMs < 4000)
+          .length;
+      expect(seg0, greaterThan(15)); // ~10 fps kept
+      expect(seg1, lessThanOrEqualTo(5)); // capped to ~2 fps
+    });
+  });
+
+  group('time-aware motion variant (round 107)', () {
+    // Constant rightward motion (0.3 frame-widths/s), regular 100 ms frames,
+    // then one 1 s delivery gap. The per-frame velocity reading predicts a
+    // tenth of the true displacement across the gap and loses the insect;
+    // reading velocity per SECOND lands the prediction on it.
+    List<Detection> at(double t) => [
+      det(Rect.fromLTWH(0.10 + 0.3 * t, 0.40, 0.10, 0.10)),
+    ];
+
+    int confirmedAfterGap(InsectTracker t) {
+      t.update(at(0.0), 0);
+      t.update(at(0.1), 100);
+      t.update(at(0.2), 200); // confirmed, velocity warmed up
+      t.update(at(1.2), 1200); // the gap frame
+      t.update(at(1.3), 1300); // enough to re-confirm a split id
+      return t.totalConfirmed;
+    }
+
+    test('ByteTracker: per-frame velocity splits the id across the gap', () {
+      expect(
+        confirmedAfterGap(ByteTracker(
+          params: const ByteTrackParams(
+            minHitsToConfirm: 2,
+            velocitySmoothing: 0.8,
+          ),
+        )),
+        2,
+      );
+    });
+    test('ByteTracker: time-aware velocity holds the id across the gap', () {
+      expect(
+        confirmedAfterGap(ByteTracker(
+          params: const ByteTrackParams(
+            minHitsToConfirm: 2,
+            velocitySmoothing: 0.8,
+          ),
+          timeAwareMotion: true,
+        )),
+        1,
+      );
+    });
+    test('CBiouTracker: same contrast with strict buffers', () {
+      CBiouTracker make({required bool timeAware}) => CBiouTracker(
+        params: const CBiouParams(
+          minHitsToConfirm: 2,
+          bufferScale1: 0.05,
+          bufferScale2: 0.05,
+        ),
+        timeAwareMotion: timeAware,
+      );
+      expect(confirmedAfterGap(make(timeAware: false)), 2);
+      expect(confirmedAfterGap(make(timeAware: true)), 1);
+    });
+  });
+
+  group('buffered-IoU fallback variant (round 107)', () {
+    // A small (0.06) stationary box jumps 0.13 — past the distance gate
+    // (1.5 × diagonal ≈ 0.127) but within the buffered reach (0.05 absolute
+    // floor per side). IoU passes are locked out with a 0.9 threshold so
+    // ONLY the fallback can hold the id (mirrors the r105 distance test).
+    int confirmedAfterJump(FallbackMode mode) {
+      final t = ByteTracker(
+        params: const ByteTrackParams(
+          minHitsToConfirm: 2,
+          matchThresh: 0.9,
+          lowMatchThresh: 0.9,
+        ),
+        fallbackMode: mode,
+      );
+      const before = Rect.fromLTWH(0.40, 0.40, 0.06, 0.06);
+      const after = Rect.fromLTWH(0.53, 0.40, 0.06, 0.06);
+      t.update([det(before)], 0);
+      t.update([det(before)], 100); // confirmed, velocity ~0
+      t.update([det(after)], 200); // the jump
+      t.update([det(after)], 300); // re-confirms a split id if one spawned
+      return t.totalConfirmed;
+    }
+
+    test('distance fallback loses the jump (outside its gate)', () {
+      expect(confirmedAfterJump(FallbackMode.distance), 2);
+    });
+    test('buffered-IoU fallback holds it (absolute reach floor)', () {
+      expect(confirmedAfterJump(FallbackMode.bufferedIou), 1);
+    });
+  });
+
   // --- Optional: replay a REAL session --------------------------------------
   // Skipped unless --dart-define=REPLAY_SESSION=/path/to/session.jsonl is
-  // given. Prints one summary line per tracker; judge them against a hand
-  // count of visits from the session's saved ROI photos.
+  // given. Prints the round-107 variant matrix (each tracker/flag combination
+  // on the full stream and on one throttle-like degraded stream); judge the
+  // counts against a hand count of visits from the session's photos.
   const sessionPath = String.fromEnvironment('REPLAY_SESSION');
   test('replay a recorded session through both trackers', () {
     final lines = File(sessionPath).readAsLinesSync();
@@ -153,15 +277,40 @@ void main() {
     // ignore: avoid_print
     print('Replaying ${frames.length} frames from $sessionPath '
         '(occlusion $occlusionS s, min visit $minHitsS s):');
-    for (final InsectTracker tracker in [ByteTracker(), CBiouTracker()]) {
-      final report = replayTracker(
-        tracker: tracker,
-        frames: frames,
-        occlusionSeconds: occlusionS,
-        minHitsSeconds: minHitsS,
-      );
+    // The round-107 variant matrix. Factories, not instances: each run
+    // needs a fresh tracker, and the degraded pass must not share state
+    // with the full-stream pass.
+    final variants = <String, InsectTracker Function()>{
+      'byte': () => ByteTracker(),
+      'byte dtAware': () => ByteTracker(timeAwareMotion: true),
+      'byte bIoU-fb': () =>
+          ByteTracker(fallbackMode: FallbackMode.bufferedIou),
+      'byte dt+bIoU': () => ByteTracker(
+        timeAwareMotion: true,
+        fallbackMode: FallbackMode.bufferedIou,
+      ),
+      'cbiou': () => CBiouTracker(),
+      'cbiou dtAware': () => CBiouTracker(timeAwareMotion: true),
+    };
+    // One throttle-like stress stream: the same detections delivered at a
+    // 15 → 3 → 10 fps staircase (10 s segments).
+    final degraded = staircaseFps(frames, [15, 3, 10]);
+    for (final (label, stream) in [
+      ('full stream', frames),
+      ('staircase 15/3/10 fps (${degraded.length} frames)', degraded),
+    ]) {
       // ignore: avoid_print
-      print('  ${report.summary()}');
+      print('--- $label ---');
+      for (final e in variants.entries) {
+        final report = replayTracker(
+          tracker: e.value(),
+          frames: stream,
+          occlusionSeconds: occlusionS,
+          minHitsSeconds: minHitsS,
+        );
+        // ignore: avoid_print
+        print('  ${e.key.padRight(13)} -> ${report.summary()}');
+      }
     }
   }, skip: sessionPath.isEmpty ? 'no REPLAY_SESSION defined' : false);
 }

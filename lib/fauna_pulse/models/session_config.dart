@@ -379,6 +379,17 @@ class SessionConfig {
   /// default — at 10 FPS it adds roughly 1–2 MB per hour to the session log.
   final bool logRawDetections;
 
+  /// Evaluation toggle (round 107): save a periodic ROI photo every
+  /// [gtFrameSeconds] into `gt_frames/` REGARDLESS of detections — an
+  /// independent visual record for hand-counting the true visits, so tracker
+  /// output is never checked against photos the tracker itself triggered.
+  /// Uses the normal photo pipeline, so [targetRoiSavedPx] (Camera tab)
+  /// governs the size. Off by default.
+  final bool gtFramesEnabled;
+
+  /// Interval between ground-truth frames, in seconds (default 5).
+  final double gtFrameSeconds;
+
   const SessionConfig({
     this.modelPath = 'yolo26n',
     this.task = YOLOTask.detect,
@@ -432,6 +443,8 @@ class SessionConfig {
     this.trackerParams = const ByteTrackParams(),
     this.cbiouParams = const CBiouParams(),
     this.logRawDetections = false,
+    this.gtFramesEnabled = false,
+    this.gtFrameSeconds = 5.0,
   });
 
   /// True when the schedule can actually run: 1–3 windows, each with
@@ -527,6 +540,8 @@ class SessionConfig {
     ByteTrackParams? trackerParams,
     CBiouParams? cbiouParams,
     bool? logRawDetections,
+    bool? gtFramesEnabled,
+    double? gtFrameSeconds,
   }) => SessionConfig(
     modelPath: modelPath ?? this.modelPath,
     task: task ?? this.task,
@@ -576,6 +591,8 @@ class SessionConfig {
     trackerParams: trackerParams ?? this.trackerParams,
     cbiouParams: cbiouParams ?? this.cbiouParams,
     logRawDetections: logRawDetections ?? this.logRawDetections,
+    gtFramesEnabled: gtFramesEnabled ?? this.gtFramesEnabled,
+    gtFrameSeconds: gtFrameSeconds ?? this.gtFrameSeconds,
   );
 
   Map<String, dynamic> toJson() => {
@@ -630,6 +647,8 @@ class SessionConfig {
     'trackerParams': trackerParams.toJson(),
     'cbiouParams': cbiouParams.toJson(),
     'logRawDetections': logRawDetections,
+    'gtFramesEnabled': gtFramesEnabled,
+    'gtFrameSeconds': gtFrameSeconds,
   };
 
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
@@ -703,6 +722,8 @@ class SessionConfig {
           )
         : const CBiouParams(),
     logRawDetections: j['logRawDetections'] as bool? ?? false,
+    gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? false,
+    gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 5.0,
   );
 
   static const String _prefsKey = 'faunapulse_session_config';

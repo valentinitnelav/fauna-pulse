@@ -66,6 +66,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
 | Tracker algorithm | `bytetrack` | r105: AI-tab "Visit tracking" dropdown; `cbiou` = buffered-IoU alternative (search margins 0.30/0.50, own highThresh 0.5); both share the seconds-based settings above |
 | Log raw detections | off | r105 eval toggle (tracking Advanced): one `raw_detections` JSONL record per frame (pre-tracking boxes) for the offline tracker replay harness; ~1–2 MB/h |
+| Ground-truth frames | off / every `5 s` | r107 eval toggle (tracking Advanced): periodic ROI photo → `gt_frames/` + `gt_capture` records, independent of detections (hand-count ground truth); interval 1 s–1 h; size follows `targetRoiSavedPx`; second RoiCaptureScheduler driven by a 1 s screen timer via `SessionRecorder.recordGtFrame` |
 | Crop 1:1 lock | off | r91: forces the summary-viewer crop-export box square; viewer chip ↔ Settings → Summary switch |
 | GPU when faster | on | see GPU/CPU note below |
 | CPU threads | `0` (auto) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest |
@@ -171,8 +172,17 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   "Log raw detections" toggle writes pre-tracking `raw_detections` records
   that `tracking/tracker_replay.dart` replays through either tracker
   (`flutter test test/fauna_pulse/tracker_replay_test.dart
-  --dart-define=REPLAY_SESSION=…/session.jsonl`); judge reports against a
-  hand count from the session's photos, not MOT benchmarks.
+  --dart-define=REPLAY_SESSION=…/session.jsonl` — prints the full variant
+  matrix incl. a throttle-staircase stress stream); judge reports against a
+  hand count from the session's `gt_frames/` photos, not MOT benchmarks.
+  r107: both trackers carry INTERNAL evaluation flags (constructor-only,
+  never SessionConfig): `timeAwareMotion` (velocity per second of real
+  elapsed time; helps at irregular FPS — reduced C-BIoU fragmentation on the
+  r106 screen sessions, never hurt ByteTrack) and ByteTracker's
+  `FallbackMode.bufferedIou` (over-merged on that data — bridges ~0.15
+  teleports). Adoption rule: a variant becomes default only after it wins on
+  field sessions with gt-frame hand counts (less fragmentation, no new
+  merges); until then live behavior is unchanged.
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
 - **Camera2 interop options go through ONE funnel (round 82).**
   `applyInteropOptions()` in `YOLOView.kt` is the only place

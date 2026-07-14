@@ -97,6 +97,13 @@ class Track {
   /// estimated velocity. Used during association.
   Rect get predictedBox => box.shift(Offset(vx, vy));
 
+  /// The predicted box after [dtSeconds], reading [vx]/[vy] as normalized
+  /// units PER SECOND (round 107 time-aware motion variant). The plain
+  /// [predictedBox] getter above keeps the legacy per-frame reading — which
+  /// interpretation applies is the tracker's choice, not the track's.
+  Rect predictedBoxAfter(double dtSeconds) =>
+      box.shift(Offset(vx * dtSeconds, vy * dtSeconds));
+
   /// How long (milliseconds) this track has been alive, first to last match.
   int get durationMs => lastSeenMs - firstSeenMs;
 }

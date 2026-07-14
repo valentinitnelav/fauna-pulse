@@ -1035,6 +1035,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_setting('logRawDetections') == true) {
       add('Log raw detections', 'on (replayable session)');
     }
+    if (_setting('gtFramesEnabled') == true) {
+      add(
+        'Ground-truth frames',
+        'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)',
+      );
+    }
 
     return [
       header,

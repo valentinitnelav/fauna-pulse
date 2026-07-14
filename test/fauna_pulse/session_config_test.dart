@@ -137,6 +137,20 @@ void main() {
     expect(restored.logRawDetections, true);
   });
 
+  test('ground-truth frame dump settings round-trip (round 107)', () {
+    const c = SessionConfig();
+    expect(c.gtFramesEnabled, false);
+    expect(c.gtFrameSeconds, 5.0);
+    final restored = SessionConfig.fromJson(
+      c.copyWith(gtFramesEnabled: true, gtFrameSeconds: 30.0).toJson(),
+    );
+    expect(restored.gtFramesEnabled, true);
+    expect(restored.gtFrameSeconds, 30.0);
+    // Configs saved before the fields existed load the defaults.
+    expect(SessionConfig.fromJson(const {}).gtFramesEnabled, false);
+    expect(SessionConfig.fromJson(const {}).gtFrameSeconds, 5.0);
+  });
+
   test('configs saved before round 105 load as ByteTrack', () {
     // No trackerAlgorithm key at all, and an unknown name: both must fall
     // back to the algorithm those sessions actually used.

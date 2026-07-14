@@ -137,13 +137,25 @@ class CBiouTracker implements InsectTracker {
   /// ByteTrack-style tracker must expose it).
   static const double _motionSmoothing = 0.5;
 
+  /// Round-107 evaluation variant, mirroring [ByteTracker.timeAwareMotion]:
+  /// velocity read as normalized units per SECOND instead of per frame.
+  final bool timeAwareMotion;
+
+  /// Prediction horizon cap for the time-aware variant (see ByteTracker).
+  static const double _maxPredictSeconds = 2.0;
+
   final List<Track> _tracks = [];
   int _nextId = 1;
+  int _lastFrameTs = 0;
+  double _frameDtS = 0;
 
   @override
   int totalConfirmed = 0;
 
-  CBiouTracker({this.params = const CBiouParams()});
+  CBiouTracker({this.params = const CBiouParams(), this.timeAwareMotion = false});
+
+  Rect _predictedOf(Track t) =>
+      timeAwareMotion ? t.predictedBoxAfter(_frameDtS) : t.predictedBox;
 
   @override
   List<Track> get confirmedTracks =>
@@ -151,6 +163,9 @@ class CBiouTracker implements InsectTracker {
 
   @override
   String get algorithmName => TrackerAlgorithm.cbiou.name;
+
+  @override
+  int get activeTrackCount => _tracks.length;
 
   @override
   int get trackBuffer => params.trackBuffer;
@@ -180,6 +195,8 @@ class CBiouTracker implements InsectTracker {
     _tracks.clear();
     _nextId = 1;
     totalConfirmed = 0;
+    _lastFrameTs = 0;
+    _frameDtS = 0;
   }
 
   @override
@@ -189,6 +206,9 @@ class CBiouTracker implements InsectTracker {
 
   @override
   List<Track> update(List<Detection> detections, int timestampMs) {
+    _frameDtS = (_lastFrameTs > 0 && timestampMs > _lastFrameTs)
+        ? ((timestampMs - _lastFrameTs) / 1000.0).clamp(0.0, _maxPredictSeconds)
+        : 0.0;
     final unmatchedTracks = List<Track>.from(_tracks);
 
     // Cascade pass 1 (small buffer, strict): every track vs every detection.
@@ -216,7 +236,7 @@ class CBiouTracker implements InsectTracker {
         t.timeSinceUpdate += 1;
         // Coast along the last known velocity so a moving insect can still be
         // caught by the buffered match when it reappears.
-        t.box = t.predictedBox;
+        t.box = _predictedOf(t);
         if (t.state == TrackState.confirmed) {
           t.state = TrackState.lost;
         }
@@ -248,6 +268,7 @@ class CBiouTracker implements InsectTracker {
       );
     }
 
+    _lastFrameTs = timestampMs;
     return confirmedTracks;
   }
 
@@ -265,7 +286,7 @@ class CBiouTracker implements InsectTracker {
     final pairs = <_Pair>[];
     for (var ti = 0; ti < tracks.length; ti++) {
       for (var di = 0; di < dets.length; di++) {
-        final score = biou(tracks[ti].predictedBox, dets[di].box, scale);
+        final score = biou(_predictedOf(tracks[ti]), dets[di].box, scale);
         if (score >= _minBiou) pairs.add(_Pair(ti, di, score));
       }
     }
@@ -294,12 +315,23 @@ class CBiouTracker implements InsectTracker {
   }
 
   void _applyMatch(Track t, Detection d, int timestampMs) {
-    final oldCenter = t.box.center;
     final newCenter = d.box.center;
-    t.vx = _motionSmoothing * (newCenter.dx - oldCenter.dx) +
-        (1 - _motionSmoothing) * t.vx;
-    t.vy = _motionSmoothing * (newCenter.dy - oldCenter.dy) +
-        (1 - _motionSmoothing) * t.vy;
+    if (timeAwareMotion) {
+      // Units/second from the last true observation (see ByteTracker).
+      final dtS = (timestampMs - t.lastSeenMs) / 1000.0;
+      if (dtS > 0) {
+        t.vx = _motionSmoothing * ((newCenter.dx - t.lastObservedCenter.dx) / dtS) +
+            (1 - _motionSmoothing) * t.vx;
+        t.vy = _motionSmoothing * ((newCenter.dy - t.lastObservedCenter.dy) / dtS) +
+            (1 - _motionSmoothing) * t.vy;
+      }
+    } else {
+      final oldCenter = t.box.center;
+      t.vx = _motionSmoothing * (newCenter.dx - oldCenter.dx) +
+          (1 - _motionSmoothing) * t.vx;
+      t.vy = _motionSmoothing * (newCenter.dy - oldCenter.dy) +
+          (1 - _motionSmoothing) * t.vy;
+    }
 
     t.box = d.box;
     t.lastObservedCenter = newCenter;
