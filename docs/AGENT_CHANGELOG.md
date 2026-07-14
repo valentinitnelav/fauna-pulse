@@ -3816,3 +3816,28 @@ Field follow-up on round 98 after the first live session (session_132).
   readers and standard tooling (`jq`, pandas `lines=True`). For human
   reading: `jq . session.jsonl | less`.
 - Tests: format-locking regex updated (token-first); full suite green (172).
+## Round 100 (2026-07-14): REC banner countdown + scheduled-run session position
+
+- The red REC pill (top of the live screen) now has a second, smaller line
+  under "REC mm:ss": the time LEFT until the recording auto-stops, e.g.
+  "54:48 left". Works in every capture mode (detector / motion-only /
+  time-lapse) because the pill is mode-independent — it renders whenever
+  `_recording` is true.
+- The end moment lives in a new `_recordEndAt` field, set in
+  `_startRecording`: manual session → now + `sessionMinutes` (same Duration
+  used to arm `_sessionTimer`); scheduled window → `SchedulePlan.endOf(slot)`
+  (session length is deliberately ignored in scheduled runs — unchanged r94
+  rule, the countdown just mirrors it honestly). Cleared in `_stopRecording`.
+  Countdown clamps at 0 (a scheduled stop can lag the window end by ≤1 tick).
+- Scheduled runs additionally show which session of the planned bundle is
+  recording: "· session k/N" on the same line, where k = the slot's position
+  in the whole plan (day × windowsPerDay + windowIndex + 1 — same ordering as
+  the folder `d<day>w<win>` suffix) and N = days × windowsPerDay. Bundle
+  POSITION, not sessions-recorded count: a run started mid-day that skips the
+  morning window still labels the afternoon window by its plan position.
+- Elapsed and remaining are shown as two separate values (never merged into
+  one number) per the one-scale UI rule; both use `_formatElapsed`
+  (mm:ss → hh:mm:ss → dd:hh:mm:ss).
+- No new tunables, no log-format change. `flutter analyze` clean; full test
+  suite green (171).
+

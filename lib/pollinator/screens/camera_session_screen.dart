@@ -277,6 +277,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Timer? _recordTicker;
   DateTime? _recordStart;
 
+  // Planned end of the CURRENT recording, for the REC banner's countdown:
+  // a manual session ends after the configured session length, a scheduled
+  // window ends at the window's wall-clock end time. The banner shows the
+  // remaining time as its own value next to the elapsed time (never blended
+  // into one number — the two run on different clocks in a scheduled run).
+  DateTime? _recordEndAt;
+
+  // "session k/N" when the current recording is one window of a scheduled
+  // run: k is the window's position in the whole planned bundle (same order
+  // as the folders' d<day>w<win> suffixes), N the bundle size. Null for a
+  // manual session.
+  String? _recordSlotLabel;
+
   // Photo-capture flash: briefly true the moment a photo is saved, so the ROI
   // border can blink a contrasting colour as a visual cue. Only this border
   // rebuilds (via a ValueListenableBuilder), at the photo cadence — not per
@@ -1232,11 +1245,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // The session-length auto-end applies to MANUAL sessions only: in a
     // scheduled run each window's end time governs (via _scheduleTick), and
     // the default 60-min length must not silently truncate a longer window.
+    // [_recordEndAt] mirrors whichever end applies so the REC banner can
+    // count down to it.
     if (scheduleSlot == null) {
-      _sessionTimer = Timer(
-        Duration(minutes: _config.sessionMinutes),
-        () => _toggleRecording(),
-      );
+      final length = Duration(minutes: _config.sessionMinutes);
+      _sessionTimer = Timer(length, () => _toggleRecording());
+      _recordEndAt = DateTime.now().add(length);
+      _recordSlotLabel = null;
+    } else {
+      final plan = _schedule;
+      _recordEndAt = plan?.endOf(scheduleSlot);
+      _recordSlotLabel = plan == null
+          ? null
+          : 'session '
+                '${scheduleSlot.day * plan.windows.length + scheduleSlot.windowIndex + 1}'
+                '/${plan.days * plan.windows.length}';
     }
 
     // Start the elapsed-time clock for the REC banner. The same 1 s tick
@@ -1292,6 +1315,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
     _recordTicker = null;
+    _recordEndAt = null;
+    _recordSlotLabel = null;
     _timeLapseTimer?.cancel();
     _timeLapseTimer = null;
     _timeLapsePlan = null;
@@ -2428,7 +2453,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 ),
               ),
             ),
-          // REC banner makes it unmistakable that a session is live.
+          // REC banner makes it unmistakable that a session is live. Second
+          // line: countdown to the auto-stop (manual: session length;
+          // scheduled: this window's end) and, in a scheduled run, which
+          // session of the planned bundle this is.
           if (_recording) ...[
             SafeArea(
               child: Align(
@@ -2437,35 +2465,58 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                   padding: const EdgeInsets.only(top: 52),
                   child: ValueListenableBuilder<int>(
                     valueListenable: _recordElapsedVN,
-                    builder: (_, secs, _) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.fiber_manual_record,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'REC  ${_formatElapsed(secs)}',
-                            style: const TextStyle(
+                    builder: (_, secs, _) {
+                      final leftSecs = _recordEndAt
+                          ?.difference(DateTime.now())
+                          .inSeconds;
+                      final left = leftSecs == null
+                          ? null
+                          : (leftSecs < 0 ? 0 : leftSecs);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.fiber_manual_record,
                               color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
+                              size: 14,
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            const SizedBox(width: 6),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'REC  ${_formatElapsed(secs)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                                if (left != null)
+                                  Text(
+                                    '${_formatElapsed(left)} left'
+                                    '${_recordSlotLabel == null ? '' : '  ·  $_recordSlotLabel'}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -2645,8 +2696,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     );
   }
 
-  /// Formats the elapsed recording time, adding coarser units only once they
-  /// become relevant so short sessions stay compact:
+  /// Formats a recording duration (elapsed or remaining), adding coarser
+  /// units only once they become relevant so short sessions stay compact:
   ///   • under 1 hour  → mm:ss
   ///   • 1–24 hours    → hh:mm:ss
   ///   • 24 hours+     → dd:hh:mm:ss
