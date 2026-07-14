@@ -4014,3 +4014,35 @@ a selectable option with ByteTrack staying the default.
   field sessions is the decision tool. C-BIoU stays "experimental" in the UI
   until it wins there.
 
+## Round 106 (2026-07-15): neutral tracker names + first replay evaluation (screen tests)
+
+- **UI (owner request):** tracker dropdown shows plain names only — "ByteTrack"
+  / "C-BIoU", no "field-tested default"/"experimental, for fast/erratic
+  movers" qualifiers — while the comparison is still open; the helper text
+  below was neutralized the same way (mechanics only, no recommendation).
+  SETTINGS_REFERENCE row matched. Default stays bytetrack.
+- **First real evaluation** (owner screen test: phone at a laptop playing a
+  looping bee-pollination video; one session per tracker, raw logging on;
+  sessions/Xiaomi/sessions/session{,_2}):
+  - Pipeline verified end-to-end: `raw_detections` written for every frame
+    (966/919, incl. empty ones), no corrupt lines, no `app_error`s, and the
+    replay harness reproduced each live run EXACTLY (cbiou session: live 3
+    ids ↔ replayed cbiou 3 visits; bytetrack session: live 2 ↔ replayed 2).
+  - Cross-comparison on identical input: bytetrack 2 visits (long durations)
+    vs cbiou 3 (session 1); bytetrack 2 vs cbiou 5 (session 2). C-BIoU
+    fragments here. Mechanism measured from the raw boxes: detections are
+    tiny (median ~0.056×0.04 normalized) and the bee repeatedly jumps
+    ~0.14 frame-widths between consecutive frames; C-BIoU's buffers scale
+    with BOX SIZE, so even pass 2 (0.5) reaches only ~0.11 — short of the
+    jumps — while ByteTrack bridges them via velocity prediction + the
+    distance fallback's ABSOLUTE 0.05 floor. A buffer sweep (throwaway test,
+    deleted) was non-monotonic — b2 1.0 made it worse (noise matches), b2
+    ≥1.5 partial recovery, never reaching bytetrack's 2 — so this is not
+    fixable by one knob on tiny boxes.
+  - Caveats: no ground truth (unknown loop count), screen artifacts, and the
+    video-restart teleport SHOULD split ids (a new continuous appearance is
+    a new event by app semantics — "one id across restarts" is not the goal).
+    Early evidence still favors bytetrack as default; retest on real-field
+    sessions with a hand count.
+- No config/format changes; analyzer + 196 tests green.
+

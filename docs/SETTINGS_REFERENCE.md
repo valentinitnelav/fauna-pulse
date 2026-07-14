@@ -72,7 +72,7 @@ same way, so results stay comparable across sessions.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Tracker algorithm** | `ByteTrack` | How detections are linked frame to frame. **ByteTrack** (field-tested default) predicts where each insect went and matches by box overlap. **C-BIoU** (experimental) instead enlarges the boxes before comparing — worth trying when insects jump far between frames (fast fliers, low frame rates). |
+| **Tracker algorithm** | `ByteTrack` | How detections are linked frame to frame. **ByteTrack** predicts where each insect went and matches by box overlap; **C-BIoU** enlarges the boxes before comparing them. Compare them on your own recordings with the replay harness (see "Log raw detections" below) rather than trusting labels. |
 | **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low fragments one visit into several IDs; too high can merge separate visits. 3 s was tuned for bees. |
 | **Minimum visit length** | `0.2 s` | How long an insect must be continuously detected before it counts as a confirmed visit (anything briefer is treated as noise). Directly affects visitation rate for brief touchdowns: lower counts more brief visits (and more false blips); higher counts only clear landings. |
 

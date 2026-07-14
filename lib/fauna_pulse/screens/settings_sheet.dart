@@ -1054,17 +1054,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
           isExpanded: true,
           dropdownColor: Colors.black87,
           items: const [
+            // Names only (owner, 2026-07-15): no "default"/"experimental"
+            // qualifiers while the two are still being compared in the field.
             DropdownMenuItem(
               value: TrackerAlgorithm.bytetrack,
               child: Text(
-                'ByteTrack — field-tested default',
+                'ByteTrack',
                 style: TextStyle(color: Colors.white, fontSize: 13),
               ),
             ),
             DropdownMenuItem(
               value: TrackerAlgorithm.cbiou,
               child: Text(
-                'C-BIoU — experimental, for fast/erratic movers',
+                'C-BIoU',
                 style: TextStyle(color: Colors.white, fontSize: 13),
               ),
             ),
@@ -1076,11 +1078,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           padding: EdgeInsets.only(bottom: 8),
           child: Text(
             'How detections are linked frame to frame. ByteTrack predicts '
-            'where each insect went and matches by box overlap — keep it '
-            'unless you have a reason not to. C-BIoU instead enlarges the '
-            'boxes before comparing, which can hold onto insects that jump '
-            'far between frames (fast fliers, low frame rates). Both count '
-            'visits the same way, so results stay comparable.',
+            'where each insect went and matches by box overlap; C-BIoU '
+            'enlarges the boxes before comparing them. Both count visits '
+            'the same way, so results stay comparable across sessions.',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ),
