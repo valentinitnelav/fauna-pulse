@@ -1,4 +1,4 @@
-// Pollinator Monitor — global uncaught-error hooks.
+// FaunaPulse — global uncaught-error hooks.
 //
 // Field sessions run unattended; if the app hits an error nobody caught, the
 // default behaviour is either a silent console line (framework errors) or a

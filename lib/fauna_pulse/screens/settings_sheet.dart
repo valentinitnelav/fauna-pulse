@@ -1,4 +1,4 @@
-// Pollinator Monitor — session settings sheet.
+// FaunaPulse — session settings sheet.
 //
 // Opened from the live preview (a bottom sheet). Edits a working copy of the
 // SessionConfig and returns it via Navigator.pop when the user taps Apply, so

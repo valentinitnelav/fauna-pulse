@@ -1,4 +1,4 @@
-// Pollinator Monitor — dims everything outside the ROI on the preview.
+// FaunaPulse — dims everything outside the ROI on the preview.
 //
 // The model only looks inside the ROI, so we darken the rest of the frame to
 // make that unmistakable (and to keep the user's eye on the target flower). It

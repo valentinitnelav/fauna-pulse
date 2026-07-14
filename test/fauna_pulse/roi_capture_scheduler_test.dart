@@ -16,10 +16,10 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/capture/roi_capture.dart';
-import 'package:pollinator_monitor/pollinator/models/roi.dart';
-import 'package:pollinator_monitor/pollinator/models/session_config.dart';
-import 'package:pollinator_monitor/pollinator/models/track.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart';
+import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
+import 'package:fauna_pulse/fauna_pulse/models/track.dart';
 
 /// A minimal confirmed track; only [Track.id] matters to the scheduler.
 Track track(int id) => Track(

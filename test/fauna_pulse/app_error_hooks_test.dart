@@ -3,7 +3,7 @@
 // harmless when no session is recording or the sink itself throws.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/logging/app_error_hooks.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/app_error_hooks.dart';
 
 void main() {
   setUp(resetAppErrorRateLimitsForTest);

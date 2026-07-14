@@ -1,4 +1,4 @@
-// Pollinator Monitor — one-time camera probes & diagnostics, extracted from
+// FaunaPulse — one-time camera probes & diagnostics, extracted from
 // the camera screen (round 73, review item B6c).
 //
 // Once the camera delivers its first frame, the app asks it a batch of

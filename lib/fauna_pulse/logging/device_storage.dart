@@ -1,4 +1,4 @@
-// Pollinator Monitor — free-storage reading.
+// FaunaPulse — free-storage reading.
 //
 // A field session writes JPEGs for hours; the one resource it can exhaust is
 // disk space. This asks the native side (StatFs on the session volume) how
@@ -80,7 +80,7 @@ class StorageReading {
 
 class DeviceStorage {
   // Same channel as DeviceThermal: both are one-shot device-stat reads.
-  static const MethodChannel _channel = MethodChannel('pollinator/thermal');
+  static const MethodChannel _channel = MethodChannel('faunapulse/thermal');
 
   /// Reads free/total bytes of the volume holding [path] (null = the app's
   /// external-files dir, where sessions are saved). Never throws.

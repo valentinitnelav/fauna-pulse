@@ -1,10 +1,10 @@
-// Pollinator Monitor — export a user-drawn crop of a saved ROI photo.
+// FaunaPulse — export a user-drawn crop of a saved ROI photo.
 //
 // The summary photo viewer lets the user drag a rectangle around one insect;
 // this module cuts that rectangle OUT OF THE ORIGINAL SAVED JPEG (never from
 // the screen — screen pixels are already downscaled to the ~320-px viewer) and
 // either saves it to the phone's Gallery (MediaStore, the Android system index
-// of shared photos, under Pictures/PollinatorMonitor) or hands it to the
+// of shared photos, under Pictures/FaunaPulse) or hands it to the
 // Android share sheet, so an identification app (Google Lens, iNaturalist/
 // Seek, ObsIdentify) can take it from there.
 //
@@ -140,7 +140,7 @@ Future<CroppedImage?> cropJpegNormRect(File src, Rect norm) async {
 
 /// Same channel MainActivity registers for the capture-time still crop; the
 /// gallery save is just one more method on it.
-const MethodChannel _channel = MethodChannel('pollinator/crop');
+const MethodChannel _channel = MethodChannel('faunapulse/crop');
 
 /// Where a crop ended up, for the confirmation SnackBar. [inGallery] is false
 /// when the MediaStore save wasn't possible (pre-Android-10, or it failed)
@@ -165,7 +165,7 @@ Future<CropSaveResult?> saveCropToGallery(
       'displayName': displayName,
     });
     if (ok == true) {
-      return const CropSaveResult(true, 'Gallery ▸ Pictures/PollinatorMonitor');
+      return const CropSaveResult(true, 'Gallery ▸ Pictures/FaunaPulse');
     }
   } catch (e) {
     logSwallowed('crop_gallery_save', e);
@@ -186,7 +186,7 @@ Future<CropSaveResult?> saveCropToGallery(
 /// overhead is noise (only path strings cross the channel, never image bytes).
 const int kGalleryExportChunk = 25;
 
-/// Album folder name for a session under Pictures/PollinatorMonitor. Session
+/// Album folder name for a session under Pictures/FaunaPulse. Session
 /// folders are already limited to letters/digits/space/_/- when created
 /// (session_recorder.dart), but MediaStore is stricter about odd names than
 /// the file system, so this re-sanitizes as a safety net: no path separators,
@@ -216,7 +216,7 @@ class GalleryExportResult {
 }
 
 /// Round 93: copies [photos] into the shared Gallery under
-/// Pictures/PollinatorMonitor/[album], in chunks so [onProgress] can drive a
+/// Pictures/FaunaPulse/[album], in chunks so [onProgress] can drive a
 /// determinate progress bar. Photos already exported (same file name in that
 /// folder) are skipped natively, so re-running is safe. Never throws: a chunk
 /// that fails is counted in [GalleryExportResult.failed] (and logged via

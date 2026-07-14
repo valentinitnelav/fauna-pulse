@@ -10,7 +10,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * Motion gate (Pollinator Monitor).
+ * Motion gate (FaunaPulse).
  *
  * Decides — very cheaply — whether anything is moving inside the region of
  * interest (ROI), so the expensive object detector can sleep while the flower

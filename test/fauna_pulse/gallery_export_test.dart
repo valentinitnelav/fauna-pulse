@@ -8,7 +8,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/capture/crop_export.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/crop_export.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,7 +36,7 @@ void main() {
   group('exportPhotosToGallery', () {
     // Channel identity is by name, so a fresh instance reaches the same
     // mock handler the production code's private channel does.
-    const channel = MethodChannel('pollinator/crop');
+    const channel = MethodChannel('faunapulse/crop');
 
     List<File> fakePhotos(int n) =>
         List.generate(n, (i) => File('/fake/roi_frames/roi_1_$i.jpg'));

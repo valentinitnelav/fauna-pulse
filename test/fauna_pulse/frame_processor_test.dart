@@ -13,10 +13,10 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/models/roi.dart';
-import 'package:pollinator_monitor/pollinator/models/track.dart';
-import 'package:pollinator_monitor/pollinator/session/frame_processor.dart';
-import 'package:pollinator_monitor/pollinator/tracking/byte_track.dart';
+import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
+import 'package:fauna_pulse/fauna_pulse/models/track.dart';
+import 'package:fauna_pulse/fauna_pulse/session/frame_processor.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
 
 /// One native detection as the platform channel delivers it.
 Map<String, dynamic> det({

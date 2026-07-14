@@ -1,4 +1,4 @@
-// Pollinator Monitor — adaptive (thermal-aware) inference-rate throttle.
+// FaunaPulse — adaptive (thermal-aware) inference-rate throttle.
 //
 // Why this exists: the detector runs on the CPU here, and running it
 // flat-out ("uncapped") keeps the processor ~100% busy. After ~1 minute the

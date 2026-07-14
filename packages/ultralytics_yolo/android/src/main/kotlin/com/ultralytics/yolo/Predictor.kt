@@ -125,7 +125,7 @@ abstract class BasePredictor : Predictor {
     var cameraRotationDegrees: Int? = null
     var includeRawMaskData: Boolean = true
 
-    // Optional region-of-interest crop (Pollinator Monitor). When set, the
+    // Optional region-of-interest crop (FaunaPulse). When set, the
     // predictor feeds ONLY this square region of the frame to the model — the
     // crop is upscaled to fill the model input, so small objects inside the ROI
     // get the model's full resolution and nothing outside it is ever detected.

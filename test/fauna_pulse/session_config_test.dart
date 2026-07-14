@@ -6,9 +6,9 @@
 // live frame rate.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/models/schedule_window.dart';
-import 'package:pollinator_monitor/pollinator/models/session_config.dart';
-import 'package:pollinator_monitor/pollinator/tracking/byte_track.dart';
+import 'package:fauna_pulse/fauna_pulse/models/schedule_window.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
 
 void main() {
   group('bee-tuned defaults', () {

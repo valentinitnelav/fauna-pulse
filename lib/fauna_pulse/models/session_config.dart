@@ -1,4 +1,4 @@
-// Pollinator Monitor — session configuration.
+// FaunaPulse — session configuration.
 //
 // Everything the user can set before/while recording, with sensible defaults
 // from CLAUDE.md. Persisted as a single JSON string in SharedPreferences so the
@@ -17,7 +17,7 @@ import 'schedule_window.dart';
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
 /// stored bool is true the dialog is suppressed; clearing it (Settings → Camera →
 /// "Show setup tips") makes the reminder appear again next time the screen opens.
-const String kHideSessionInfoPrefKey = 'pollinator_hide_session_info';
+const String kHideSessionInfoPrefKey = 'faunapulse_hide_session_info';
 
 /// Where each saved ROI photo comes from. Two sources exist, with opposite
 /// trade-offs:
@@ -661,7 +661,7 @@ class SessionConfig {
         : const ByteTrackParams(),
   );
 
-  static const String _prefsKey = 'pollinator_session_config';
+  static const String _prefsKey = 'faunapulse_session_config';
 
   /// Loads the last-saved config, or defaults if none/invalid.
   static Future<SessionConfig> load() async {

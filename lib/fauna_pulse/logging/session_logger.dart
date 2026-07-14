@@ -1,4 +1,4 @@
-// Pollinator Monitor — append-only session log.
+// FaunaPulse — append-only session log.
 //
 // We write one JSON object per line ("JSONL" / newline-delimited JSON). Unlike a
 // single big JSON array, JSONL can be *appended* to without rewriting the file,

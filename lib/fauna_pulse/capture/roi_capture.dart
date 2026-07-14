@@ -1,4 +1,4 @@
-// Pollinator Monitor — time-lapse capture of the ROI while a visit is active.
+// FaunaPulse — time-lapse capture of the ROI while a visit is active.
 //
 // Rules (from CLAUDE.md):
 //  * When an insect (track) first appears, take a photo immediately, then one
@@ -173,7 +173,7 @@ CapturePath chooseCapturePath({
 
 /// Native fast-crop channel: decodes only the ROI rectangle from the full-res
 /// JPEG (Android BitmapRegionDecoder), avoiding a whole-image decode in Dart.
-const MethodChannel _cropChannel = MethodChannel('pollinator/crop');
+const MethodChannel _cropChannel = MethodChannel('faunapulse/crop');
 
 /// Reads only a JPEG's pixel dimensions (width, height) on a background isolate.
 /// Upright (as-displayed) dimensions of a still that was delivered with

@@ -1,6 +1,6 @@
 # Contributing
 
-**Who this is for:** developers contributing to Pollinator Monitor. For how the
+**Who this is for:** developers contributing to FaunaPulse. For how the
 code fits together, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
 
 ---
@@ -23,16 +23,16 @@ dependencies:
 ```bash
 flutter pub get                      # after changing dependencies
 flutter analyze                      # static analysis (must be clean)
-flutter test test/pollinator         # the app's unit tests
+flutter test test/fauna_pulse         # the app's unit tests
 flutter build apk --debug            # the app is deployed as a debug build
 flutter run                          # run on a connected device
 ```
 
-Run `flutter analyze` and `flutter test test/pollinator` before every PR.
+Run `flutter analyze` and `flutter test test/fauna_pulse` before every PR.
 
 ## Testing
 
-Unit tests live in `test/pollinator/` and cover the pure logic: ROI math
+Unit tests live in `test/fauna_pulse/` and cover the pure logic: ROI math
 (`roi_test.dart`), the ByteTrack tracker (`byte_track_test.dart`), the logger
 (`session_logger_test.dart`), config round-trip/migration
 (`session_config_test.dart`), the adaptive throttle

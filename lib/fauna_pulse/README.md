@@ -1,4 +1,4 @@
-# Pollinator Monitor (Phase 1)
+# FaunaPulse (Phase 1)
 
 Field app for detecting and timing flower-visiting insects, built on the
 Ultralytics YOLO Flutter plugin. This folder holds all the app-specific code;

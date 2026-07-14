@@ -1,4 +1,4 @@
-// Pollinator Monitor — error reporting.
+// FaunaPulse — error reporting.
 //
 // Builds a single, self-contained plain-text diagnostic report and saves it to a
 // folder reachable over USB/adb, so a problem (e.g. an incompatible AI model that
@@ -63,7 +63,7 @@ class ErrorReporter {
   }) async {
     final now = DateTime.now();
     final b = StringBuffer();
-    b.writeln('==== Pollinator Monitor — Error Report ====');
+    b.writeln('==== FaunaPulse — Error Report ====');
     b.writeln('Generated: ${now.toIso8601String()}');
     b.writeln('Trigger:   $trigger');
     b.writeln();
@@ -138,8 +138,8 @@ class ErrorReporter {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(report.file.path)],
-        subject: 'Pollinator Monitor error report',
-        text: 'Pollinator Monitor error report attached.',
+        subject: 'FaunaPulse error report',
+        text: 'FaunaPulse error report attached.',
       ),
     );
   }

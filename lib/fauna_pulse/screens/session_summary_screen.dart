@@ -1,4 +1,4 @@
-// Pollinator Monitor — end-of-session dashboard.
+// FaunaPulse — end-of-session dashboard.
 //
 // Two stages, to stay fast even after a long, busy session:
 //  1. Headline numbers shown immediately — unique insect count, session length,
@@ -1233,7 +1233,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// Lists the session's saved photos, asks for confirmation (count + the
   /// extra storage the copies will take), then copies them into the phone's
-  /// own Gallery app as one album under Pictures/PollinatorMonitor. Copies
+  /// own Gallery app as one album under Pictures/FaunaPulse. Copies
   /// only — the session folder keeps its originals and the data log stays in
   /// the private session folder. The photo list comes from the real
   /// `roi_frames/` folder on disk, not from the log, so crash-ended sessions
@@ -1276,7 +1276,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         title: Text('Export ${files.length} photos to Gallery?'),
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
-          'Gallery app, as the album "Pictures/PollinatorMonitor/$album". '
+          'Gallery app, as the album "Pictures/FaunaPulse/$album". '
           'The copies take about ${formatBytes(bytes)} of extra storage; '
           'the originals stay in the session folder. Photos already '
           'exported are skipped, so re-running is safe.',
@@ -1328,7 +1328,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               'older Android. The photos are still on the phone in the '
               'session folder (reachable over USB).'
         : 'Exported ${res.exported} photos to Gallery ▸ '
-              'Pictures/PollinatorMonitor/$album.'
+              'Pictures/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
               '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
     ScaffoldMessenger.of(
@@ -2174,7 +2174,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             icon: const Icon(Icons.save_alt),
             tooltip:
                 'Save the crop to the phone Gallery '
-                '(Pictures/PollinatorMonitor)',
+                '(Pictures/FaunaPulse)',
             color: Colors.white,
             onPressed: hasRect && !_cropBusy
                 ? () => _exportCrop(share: false)

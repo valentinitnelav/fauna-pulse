@@ -22,7 +22,7 @@ data class YOLOStreamConfig(
     // ⚠️ FOOTGUN — do not enable casually. When true, YOLOView JPEG-encodes the FULL
     // camera frame at quality 90 on EVERY streamed frame, on the camera analyzer
     // thread (see convertResultToStreamData in YOLOView.kt). At field frame rates
-    // that alone can dwarf inference cost and heat the phone. The Pollinator Monitor
+    // that alone can dwarf inference cost and heat the phone. The FaunaPulse
     // app never enables it; ROI photos go through the dedicated capture path instead.
     val includeOriginalImage: Boolean = false,
     

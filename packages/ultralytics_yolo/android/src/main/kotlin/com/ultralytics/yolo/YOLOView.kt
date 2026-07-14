@@ -250,7 +250,7 @@ class YOLOView @JvmOverloads constructor(
         // Force TextureView usage so the overlay can be on top
         implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         // FIT_CENTER ("contain"): show the WHOLE camera frame, adding thin letterbox bars rather
-        // than cropping. The Pollinator Monitor needs the entire sensor frame visible so the square
+        // than cropping. The FaunaPulse needs the entire sensor frame visible so the square
         // region of interest can be dragged anywhere and grown to the full sensor resolution while
         // staying inside what the user sees. (FILL_CENTER would crop the frame to fill the screen,
         // which hid part of the sensor and capped the ROI below the true sensor width.)
@@ -311,7 +311,7 @@ class YOLOView @JvmOverloads constructor(
     // Optional ImageCapture use-case (bound alongside Preview+Analysis when supported)
     private var imageCaptureUseCase: ImageCapture? = null
 
-    // Round 82 (Pollinator Monitor): the camera provider + selector actually bound, kept so
+    // Round 82 (FaunaPulse): the camera provider + selector actually bound, kept so
     // setPreviewEnabled() can detach/reattach ONLY the preview use case without a full rebind.
     private var boundCameraProvider: ProcessCameraProvider? = null
     private var boundCameraSelector: CameraSelector? = null
@@ -339,7 +339,7 @@ class YOLOView @JvmOverloads constructor(
     // must survive camera rebinds).
     private val stillExecutor = Executors.newSingleThreadExecutor()
 
-    // Pollinator Monitor: optional region of interest. When non-null, inference runs only on this
+    // FaunaPulse: optional region of interest. When non-null, inference runs only on this
     // square crop of the frame (see BasePredictor.inferenceRoi). Volatile because it is written from
     // the Flutter platform-channel thread and read on the camera analyzer thread.
     @Volatile
@@ -362,7 +362,7 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
-    // Pollinator Monitor: optional motion gate. When enabled, frames where nothing
+    // FaunaPulse: optional motion gate. When enabled, frames where nothing
     // moved inside the ROI (and no detection happened recently) skip inference
     // entirely — the detector "sleeps" while the flower is empty, saving heat and
     // battery in the field. See MotionGate for the algorithm. All fields volatile:
@@ -1262,7 +1262,7 @@ class YOLOView @JvmOverloads constructor(
      * Enumerate physical lenses for the active camera side. Back cameras include public CameraX cameras plus Camera2
      * physical IDs from logical multi-camera devices; front cameras return their single active lens.
      *
-     * On-device findings (Pollinator Monitor, round 49) — the result is intentionally *device-limited*, not a bug:
+     * On-device findings (FaunaPulse, round 49) — the result is intentionally *device-limited*, not a bug:
      *  - **Xiaomi Mi 11 Lite 5G (MIUI):** the HAL has 8 camera devices (several back logical multi-cameras with
      *    hidden physical IDs), but MIUI exposes only ONE logical back camera + one front to third-party apps via
      *    CameraX/Camera2. The ultra-wide/macro are hidden physical sub-cameras CameraX cannot bind ImageAnalysis to,
@@ -1571,7 +1571,7 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
-     * The realistic ceiling for the **live analysis stream** on the currently bound camera (Pollinator Monitor).
+     * The realistic ceiling for the **live analysis stream** on the currently bound camera (FaunaPulse).
      *
      * Why this exists: `supportedStreamResolutions()` lists sizes from `getOutputSizes(YUV)`, but those are the sizes
      * the camera's *still/preview* path can produce — NOT necessarily what CameraX `ImageAnalysis` can actually stream.
@@ -1631,7 +1631,7 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
-     * Full per-camera diagnostics for the "which lenses can this app actually use?" dialog (Pollinator Monitor).
+     * Full per-camera diagnostics for the "which lenses can this app actually use?" dialog (FaunaPulse).
      *
      * Walks every camera the OS reports (`CameraManager.cameraIdList`) and, for logical multi-camera devices, every
      * hidden physical sub-camera under each one (`physicalCameraIds`). For each it reports the lens facing, focal
@@ -1817,7 +1817,7 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
-     * Caps the CAMERA's own frame rate (Pollinator Monitor, round 82). This is different from
+     * Caps the CAMERA's own frame rate (FaunaPulse, round 82). This is different from
      * the inference FPS cap: that one only decides which of the delivered frames the detector
      * looks at, while the sensor + image processor still capture and process ~30 frames every
      * second regardless — a large standing heat cost the motion gate cannot remove. This asks
@@ -1888,7 +1888,7 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
-     * Attaches/detaches ONLY the live preview use case (Pollinator Monitor, round 82). The
+     * Attaches/detaches ONLY the live preview use case (FaunaPulse, round 82). The
      * analysis stream (detector, motion gate) and the still-capture use case stay bound, so a
      * recording continues untouched. Used by the app's power-save mode: a black cover alone
      * does NOT stop the preview pipeline — the camera keeps producing and compositing preview
@@ -1957,7 +1957,7 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
-     * Round 63 (Pollinator Monitor): the still exactly as the camera delivered it — NOT rotated upright — plus the
+     * Round 63 (FaunaPulse): the still exactly as the camera delivered it — NOT rotated upright — plus the
      * info needed to interpret it ("bytes", "rotationDegrees" = clockwise rotation that would make it upright,
      * "isFront"). Skips normalizeJpegOrientation's full-frame decode/rotate/re-encode (~1.5 s per 12 MP photo);
      * the app's ROI crop maps its rectangle into raw coordinates and rotates only the small square. The callback is
@@ -2321,7 +2321,7 @@ class YOLOView @JvmOverloads constructor(
             return
         }
 
-        // Pollinator Monitor time-lapse capture mode: no detector, no motion
+        // FaunaPulse time-lapse capture mode: no detector, no motion
         // gate — photos are triggered by a Dart-side timer via the capture
         // channel methods. This branch only refreshes the frame cache (done
         // above) and heartbeats ~1 Hz with the oriented dims so the Dart
@@ -2348,7 +2348,7 @@ class YOLOView @JvmOverloads constructor(
             return
         }
 
-        // Pollinator Monitor motion-only capture mode: the detector never runs.
+        // FaunaPulse motion-only capture mode: the detector never runs.
         // Every converted frame feeds the motion gate (the background model must
         // keep learning), motion extends the wake window, and Flutter is told at
         // a bounded rate so it can drive time-lapse photo captures. Placed BEFORE
@@ -2403,7 +2403,7 @@ class YOLOView @JvmOverloads constructor(
                 return
             }
 
-            // Pollinator Monitor motion gate: on every frame (cheap, <1 ms) decide
+            // FaunaPulse motion gate: on every frame (cheap, <1 ms) decide
             // whether anything moved inside the ROI. While there is neither motion
             // nor a recent detection, skip inference entirely — the detector
             // sleeps, the phone stays cool. The gate sees every converted frame,
@@ -2474,7 +2474,7 @@ class YOLOView @JvmOverloads constructor(
                     basePredictor.isFrontCamera = isFrontCamera
                     basePredictor.cameraRotationDegrees = rotationDegrees
                     basePredictor.includeRawMaskData = streamConfig?.includeMasks == true
-                    // Pollinator Monitor: crop inference to the ROI when one is set.
+                    // FaunaPulse: crop inference to the ROI when one is set.
                     basePredictor.inferenceRoi = inferenceRoi
                 }
                 
@@ -3335,7 +3335,7 @@ class YOLOView @JvmOverloads constructor(
         
         // Add original image (if available and enabled)
         // ⚠️ FOOTGUN: this JPEG-encodes the FULL camera frame at quality 90 on every
-        // streamed frame, on the camera analyzer thread. The Pollinator Monitor app
+        // streamed frame, on the camera analyzer thread. The FaunaPulse app
         // never enables includeOriginalImage — keep it that way (perf review A6);
         // ROI photos use captureRoiFromFrame/capturePhoto instead.
         if (config.includeOriginalImage) {

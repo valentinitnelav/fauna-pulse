@@ -56,11 +56,11 @@ app.*.map.json
 **/.flutter-plugins-dependencies
 **/Pods/
 
-# --- Pollinator Monitor: model weights are NEVER committed ---
+# --- FaunaPulse: model weights are NEVER committed ---
 # Privacy: some detectors belong to collaborators and must not be redistributed via
 # this repo. ALL model binaries are git-ignored, everywhere in the tree. Distribute
 # models out-of-band (e.g. direct transfer / a shared drive). The in-app model picker
-# (lib/pollinator/models/model_catalog.dart) loads whatever .tflite files are present
+# (lib/fauna_pulse/models/model_catalog.dart) loads whatever .tflite files are present
 # locally, so the app still works — a fresh clone simply has no models until you add them.
 *.tflite
 *.mlpackage

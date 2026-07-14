@@ -3,7 +3,7 @@
 // and always stay within [minFps, ceilFps].
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/perf/adaptive_inference_throttle.dart';
+import 'package:fauna_pulse/fauna_pulse/perf/adaptive_inference_throttle.dart';
 
 void main() {
   AdaptiveInferenceThrottle make() => AdaptiveInferenceThrottle(

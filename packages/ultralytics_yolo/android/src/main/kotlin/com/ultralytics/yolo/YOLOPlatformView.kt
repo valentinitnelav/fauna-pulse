@@ -518,7 +518,7 @@ class YOLOPlatformView(
                     result.success(payload)
                 }
                 "getCameraDiagnostics" -> {
-                    // Pollinator Monitor: per-camera/lens info for the "which lenses can this
+                    // FaunaPulse: per-camera/lens info for the "which lenses can this
                     // app actually use?" diagnostic dialog (id, facing, focal length, physical
                     // vs logical, usable-for-inference verdict + reason, analysis sizes).
                     result.success(yoloView.cameraDiagnostics())
@@ -543,7 +543,7 @@ class YOLOPlatformView(
                     }
                 }
                 "setManualFocus" -> {
-                    // Pollinator Monitor: lock focus at a 0..1 distance (0 = far/infinity, 1 = near).
+                    // FaunaPulse: lock focus at a 0..1 distance (0 = far/infinity, 1 = near).
                     val value = call.argument<Double>("value")
                     if (value == null) {
                         result.error("invalid_args", "value is required", null)
@@ -571,7 +571,7 @@ class YOLOPlatformView(
                     }
                 }
                 "capturePhotoRaw" -> {
-                    // Pollinator Monitor (round 63): the still exactly as delivered —
+                    // FaunaPulse (round 63): the still exactly as delivered —
                     // unrotated JPEG + rotation/mirror info — so the caller can crop
                     // first and rotate only the small square (the still-lag fix).
                     yoloView.capturePhotoRaw { map ->
@@ -583,7 +583,7 @@ class YOLOPlatformView(
                     }
                 }
                 "setInferenceRoi" -> {
-                    // Pollinator Monitor: crop inference to a square ROI. Pass side <= 0 to clear.
+                    // FaunaPulse: crop inference to a square ROI. Pass side <= 0 to clear.
                     val cx = call.argument<Double>("cx") ?: 0.5
                     val cy = call.argument<Double>("cy") ?: 0.5
                     val side = call.argument<Double>("side") ?: 0.0
@@ -591,7 +591,7 @@ class YOLOPlatformView(
                     result.success(null)
                 }
                 "setMotionGate" -> {
-                    // Pollinator Monitor: skip inference while nothing moves in the ROI
+                    // FaunaPulse: skip inference while nothing moves in the ROI
                     // (see MotionGate). Saves heat/battery during empty-flower periods.
                     val enabled = call.argument<Boolean>("enabled") ?: false
                     val pixelDelta = call.argument<Int>("pixelDelta") ?: 25
@@ -606,7 +606,7 @@ class YOLOPlatformView(
                     result.success(null)
                 }
                 "setTimeLapse" -> {
-                    // Pollinator Monitor (round 97): time-lapse capture — no detector,
+                    // FaunaPulse (round 97): time-lapse capture — no detector,
                     // no motion gate; Dart drives photos on a timer. sampleFps controls
                     // how many frames/s are converted (frame-cache freshness).
                     val enabled = call.argument<Boolean>("enabled") ?: false
@@ -615,13 +615,13 @@ class YOLOPlatformView(
                     result.success(null)
                 }
                 "setCameraFpsCap" -> {
-                    // Pollinator Monitor (round 82): slow the camera hardware itself (sensor/ISP),
+                    // FaunaPulse (round 82): slow the camera hardware itself (sensor/ISP),
                     // not just inference. 0 = device default. See YOLOView.setCameraFpsCap.
                     yoloView.setCameraFpsCap(call.argument<Int>("maxFps") ?: 0)
                     result.success(null)
                 }
                 "setPreviewEnabled" -> {
-                    // Pollinator Monitor (round 82): detach/reattach only the preview stream while
+                    // FaunaPulse (round 82): detach/reattach only the preview stream while
                     // detection + capture keep running (real power-save behind the black cover).
                     yoloView.setPreviewEnabled(call.argument<Boolean>("enabled") ?: true)
                     result.success(null)
@@ -630,12 +630,12 @@ class YOLOPlatformView(
                     result.success(yoloView.supportedStreamResolutions())
                 }
                 "getAnalysisStreamCeiling" -> {
-                    // Pollinator Monitor: estimated max size CameraX ImageAnalysis can actually
+                    // FaunaPulse: estimated max size CameraX ImageAnalysis can actually
                     // stream on this device (+ hardware level), so the UI stops over-promising.
                     result.success(yoloView.analysisStreamCeiling())
                 }
                 "captureRoiFromFrame" -> {
-                    // Pollinator Monitor: crop the ROI from the live analysis frame (no
+                    // FaunaPulse: crop the ROI from the live analysis frame (no
                     // full-res still capture, so the camera pipeline isn't stalled).
                     val cx = call.argument<Double>("cx") ?: 0.5
                     val cy = call.argument<Double>("cy") ?: 0.5

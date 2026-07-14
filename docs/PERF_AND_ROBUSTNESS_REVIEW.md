@@ -203,7 +203,7 @@ documented behaviour.
 
 ---
 
-## Part B — Robustness for field deployment (Dart, `lib/pollinator/`)
+## Part B — Robustness for field deployment (Dart, `lib/fauna_pulse/`)
 
 ### B1. The per-frame log write can crash a session (highest priority)
 
@@ -339,7 +339,7 @@ extraction order (each step compiles, passes tests, and changes no behaviour):
 
 *Effort:* medium per step; do them in separate rounds.
 **Done (round 73), all four steps in one behaviour-preserving pass:** new
-`lib/pollinator/session/` holds `FrameProcessor` (detection mapping + tracker
+`lib/fauna_pulse/session/` holds `FrameProcessor` (detection mapping + tracker
 update + motion-gate idle/expire state, injectable clock), `SessionRecorder`
 (session folder, JSONL logger lifecycle + appErrorSink routing, capture
 scheduler wiring, wakelock/keep-alive, the ordered stop sequence, per-frame
@@ -381,7 +381,7 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
   track, shared photos across concurrent tracks, window cleanup that guards
   against id-reuse double-capture) decides *how many photos land on disk* and
   has zero tests. The pure helpers around it are tested; the scheduler is not.
-  *Done round 73:* `test/pollinator/roi_capture_scheduler_test.dart` covers
+  *Done round 73:* `test/fauna_pulse/roi_capture_scheduler_test.dart` covers
   first-sight photo + deterministic filename, step interval, duration window,
   shared photo across concurrent tracks, per-track windows for late arrivals,
   blip-survival vs. cleanup boundary, and the in-flight busy skip.
@@ -391,7 +391,7 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
   (pairs with B5). *Done round 66.*
 - [x] Motion-gate Dart side: `_setGateIdle`'s `expireLostTracks` trigger when
   idle exceeds `occlusionSeconds` (~665–687) — becomes testable after B6(a).
-  *Done round 73:* `test/pollinator/frame_processor_test.dart` proves a wake
+  *Done round 73:* `test/fauna_pulse/frame_processor_test.dart` proves a wake
   after a sleep longer than the tolerance expires lost tracks (returning
   insect gets a fresh id) and a shorter sleep keeps the id revivable; plus
   detection-mapping/clamping and pipeline-FPS tests for the extracted core.

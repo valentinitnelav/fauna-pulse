@@ -1,4 +1,4 @@
-// Pollinator Monitor — planner for scheduled recording runs.
+// FaunaPulse — planner for scheduled recording runs.
 //
 // Pure Dart, no timers, no I/O: given the daily windows, the number of days
 // and the moment the run was started, it answers "what should the app be

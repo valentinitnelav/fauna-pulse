@@ -1,4 +1,4 @@
-// Pollinator Monitor — "Calibrating…" banner (moved out of the camera screen
+// FaunaPulse — "Calibrating…" banner (moved out of the camera screen
 // in round 73, review item B6d; behaviour unchanged).
 
 import 'package:flutter/material.dart';

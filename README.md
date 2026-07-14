@@ -1,23 +1,36 @@
-# Pollinator Monitor
+# FaunaPulse
 
-An Android field application that detects flower-visiting insects in real time and
-logs their visits. The primary scientific deliverable is the **visitation rate** 
-(how often insects visit a given flower and how long each visit lasts).
+FaunaPulse is an Android field application for detecting, tracking and documenting animals and other moving subjects at a fixed observation point.
 
-Insect identification (to the lowest taxonomic level possible) is planned.
+Its initial and primary scientific use case is the monitoring of flower-visiting insects. For pollination studies, FaunaPulse can measure **visitation rate**: how often insects visit a flower or inflorescence and how long each visit lasts.
 
-Detection runs **fully on-device** (no network needed) using [LiteRT](https://github.com/google-ai-edge/litert). 
-A draggable square **region of interest (ROI)** is placed over the target flower 
-(or portion of inflorescence or path of flowers). 
-When an insect enters the ROI, a combined detection + tracking pipeline activates, 
-assigns each insect a tracking ID, saves ROI-cropped JPEGs and session metadata.
+The application is not limited to pollinators. By loading a suitable object-detection model, end-users can adapt it to monitor arthropods, birds, mammals, pets or other organisms. It can also operate without an AI model by using motion-triggered capture or time-lapse photography, making it suitable for documenting a wide range of activity and other observable events.
 
-Intended usage:
+Future development may include automated identification of detected organisms to the lowest taxonomic level supported by the available classification models.
 
-- pollination researchers can compare visitation rates across various treatments 
-(e.g. plant species, experimental treatments, land use management, etc.);
-- citizen scientists curious about pollination (e.g. monitor your outdoor plants
-capture images of those pollinators in the moment of visiting your plants).
+Detection, tracking and image processing run **fully on-device**, without requiring an internet connection (using the [LiteRT](https://github.com/google-ai-edge/litert) framework for edge-AI).
+
+End-users can place a draggable square **region of interest (ROI)** over a flower, inflorescence, feeding site, nest entrance, animal path or any other area of interest. When a target is detected within the ROI, the detection and tracking pipeline assigns it a tracking ID, records its activity and saves ROI-cropped JPEG images together with detailed session metadata.
+
+Captured ROI images can also be reviewed directly within FaunaPulse. End-users can also crop the monitored organism from a saved image and export or share the resulting crop with a identification application installed on the same smartphone, such as [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/), or another preferred classification tool. Where direct image sharing is not supported, the crop can instead be saved locally and imported manually into the chosen application. This allows FaunaPulse to remain focused on detection, tracking and documentation while giving end-users the extra option to select the taxonomic identification service best suited to their interests.
+
+Depending on the selected operating mode, FaunaPulse can be used for:
+
+* **AI-based** object detection and tracking;
+* **motion-triggered** image capture;
+* scheduled **time-lapse** photography.
+
+## Intended usage
+
+* **Pollination research:** measure and compare flower-visitation rates among plant species, experimental treatments, habitats, land-management practices, environmental conditions, etc.
+* **Citizen science:** observe flower visitors, garden wildlife and other local fauna using an ordinary Android smartphone.
+* **Wildlife monitoring:** detect and track animals such as arthropods, birds, mammals or even pets using a compatible custom detection model.
+* **Activity monitoring:** record when, how often and for how long organisms appear within a selected observation area.
+* **Biodiversity documentation:** capture images of fauna occurrences or short-lived biological events using AI detection, motion triggering or time-lapse capture.
+* **Model-specific surveys:** monitor any target category represented by a compatible object-detection model.
+* **Non-biological observation:** where appropriate, use motion detection or a custom model to document other moving objects or events of interest.
+
+FaunaPulse is intended as a flexible observation platform rather than a detector restricted to a particular taxonomic group. Its usefulness therefore depends on the selected capture mode, the observation setup and, for AI-based monitoring, the capabilities of the loaded custom detection model.
 
 
 ## Build & run (Android)
@@ -54,8 +67,8 @@ iOS compatibility is planned for a later phase.
 General layout:
 
 ```text
-pollinator-monitor/
-├── lib/                     # the Pollinator Monitor app (Dart scripts)
+fauna-pulse/
+├── lib/                     # the FaunaPulse app (Dart scripts)
 ├── android/                 # app platform code
 ├── assets/                  # app assets, including assets/models/ detectors
 ├── docs/                    # app install doc, development logs / change history, etc.

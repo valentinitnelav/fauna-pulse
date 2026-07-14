@@ -1,4 +1,4 @@
-// Pollinator Monitor — a labelled numeric text box for one setting.
+// FaunaPulse — a labelled numeric text box for one setting.
 //
 // Replaces the draggable sliders that used to live in the settings sheet.
 // Sliders were unusable inside the swipeable settings tabs: a horizontal drag

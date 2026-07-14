@@ -1,4 +1,4 @@
-// Pollinator Monitor — problem description editor.
+// FaunaPulse — problem description editor.
 //
 // A full-screen editing window where the user describes, in their own words,
 // what went wrong before a diagnostic report is created. The typed text is

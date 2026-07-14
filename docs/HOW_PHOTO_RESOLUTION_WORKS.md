@@ -112,7 +112,7 @@ records**. It is computed with the same arithmetic the crop itself uses.
 All crops snap their side length to a multiple of 32 pixels (friendlier for
 vision models) and every size shown or logged is computed by the same shared
 functions (`savedSidePx`, `capSavedSidePx`, `chooseCapturePath` in
-`lib/pollinator/capture/roi_capture.dart` — unit-tested). Stills arrive from
+`lib/fauna_pulse/capture/roi_capture.dart` — unit-tested). Stills arrive from
 the camera *unrotated*; the crop is mapped into the raw orientation and only
 the small cropped square is rotated upright (`rawRectForUprightRect`) — this
 is why taking a photo no longer freezes the app.

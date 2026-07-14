@@ -1,4 +1,4 @@
-# Field Guide — Running a Pollinator Monitoring Session
+# Field Guide — Running a FaunaPulseing Session
 
 **Who this is for:** the researcher operating the app in the field. It assumes
 the app is already installed (see [INSTALL.md](INSTALL.md)) and covers the
@@ -142,7 +142,7 @@ is app-scoped external storage, which is visible over USB.
 folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
 summary → Overview tab → **Export photos to Gallery**. This copies every saved
-photo into the shared album `Pictures/PollinatorMonitor/<session-name>`, which
+photo into the shared album `Pictures/FaunaPulse/<session-name>`, which
 any gallery app shows as its own album. Notes: they are *copies* (the dialog
 shows how much extra storage they take), the data log is not exported,
 pressing the button again skips photos already exported (no duplicates), and

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/logging/device_storage.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/device_storage.dart';
 
 void main() {
   group('StorageReading', () {

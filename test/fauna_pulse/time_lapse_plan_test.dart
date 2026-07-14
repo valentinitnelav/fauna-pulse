@@ -4,7 +4,7 @@
 // and assert what the plan reports; no timers, no mocks.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/capture/time_lapse_plan.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/time_lapse_plan.dart';
 
 void main() {
   // A burst of 3 s (photos at 0/1/2/3 s), repeated every 10 s start-to-start.

@@ -1,16 +1,20 @@
-# Pollinator Monitor — Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
+# FaunaPulse (renamed from "Pollinator Monitor") — Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
 
 > **For the current state at a glance, read [`AGENT_CHANGELOG_OVERVIEW.md`](AGENT_CHANGELOG_OVERVIEW.md)
 > first** (a short living snapshot: current defaults, file map, key invariants, device
 > quirks). **This** file is the full append-only history — open it when you need the
 > round-by-round narrative or the rationale behind a past decision.
 
-This document records, transparently and in full, how the **Pollinator Monitor**
+This document records, transparently and in full, how the **FaunaPulse**
 Android application was built on top of the open-source
 [`ultralytics/yolo-flutter-app`](https://github.com/ultralytics/ultralytics-yolo-flutter)
 plugin, using **Claude Code** (Anthropic's agentic coding assistant) driven by a
 field ecologist with statistical/R/Python experience but no prior app-development
 background.
+
+Important note on app name: Initially this app was called "Pollinator Monitor" and it was
+renamed to FaunaPulse on 2026-07-14. The older name was not changed everywhere in this 
+file so that the history of changes stays unaltered.
 
 > **Path note (read before older entries):** This log predates the move to the
 > standalone `pollinator-monitor` repository (see section 10b). Entries written before
@@ -3840,4 +3844,30 @@ Field follow-up on round 98 after the first live session (session_132).
   (mm:ss → hh:mm:ss → dd:hh:mm:ss).
 - No new tunables, no log-format change. `flutter analyze` clean; full test
   suite green (171).
+
+## Round 101 (2026-07-14): app renamed Pollinator Monitor → FaunaPulse
+
+- Rationale: with swappable detectors + the AI-free capture modes (motion,
+  time-lapse) the app monitors any organism, not just pollinators. Name vetted
+  2026-07-14 (no existing app/software/company "FaunaPulse"; first pick
+  "FieldPulse" dropped — existing field-service SaaS).
+- Full rebrand INCLUDING the Android applicationId:
+  `com.pollinatormonitor.app` → `com.faunapulse.app` (new app identity on the
+  phone: old install's sessions must be adb-pulled before uninstalling; prefs
+  start fresh). Dart package `pollinator_monitor` → `fauna_pulse`;
+  `lib/pollinator/` → `lib/fauna_pulse/`; `test/pollinator/` →
+  `test/fauna_pulse/`; method channels `pollinator/*` → `faunapulse/*`
+  (Kotlin+Dart in lockstep); notification channel `faunapulse_recording`;
+  wakelock tag `FaunaPulse::RecordingWakeLock`; gallery album
+  `Pictures/FaunaPulse` (old exports stay in Pictures/PollinatorMonitor);
+  prefs keys `faunapulse_*`; android:label + UI titles "FaunaPulse";
+  `PollinatorApp` → `FaunaPulseApp`; rootProject.name "FaunaPulse".
+- Deliberately NOT renamed: Kotlin namespace/packages `com.ultralytics.yolo`
+  (vendored-plugin heritage), plugin package `ultralytics_yolo`, this
+  changelog's historical entries, existing session folders on disk,
+  `session.jsonl` format (the brand never appears in it — parsers unaffected).
+- README: title + one added sentence on organism-generic use; biological
+  "pollinator" wording and the three literature citations kept.
+- Repo renamed `valentinitnelav/pollinator-monitor` → `valentinitnelav/fauna-pulse`
+  (GitHub redirects old URLs); local folder `pollinator-monitor/` → `fauna-pulse/`.
 

@@ -1,4 +1,4 @@
-// Pollinator Monitor — Region Of Interest (ROI) model.
+// FaunaPulse — Region Of Interest (ROI) model.
 //
 // "ROI" (region of interest) = the square box the user drags over the flower.
 // We only keep insect detections whose centre falls inside this box, so that

@@ -1,4 +1,4 @@
-# Pollinator Monitor — Current-State Overview (for Claude Code)
+# FaunaPulse — Current-State Overview (for Claude Code)
 
 This file is a *current* picture of the app, meant to ground a new Claude session cheaply 
 (instead of reading the full thousands-line log history from AGENT_CHANGELOG.md).
@@ -17,7 +17,7 @@ on a clone of `ultralytics/yolo-flutter-app`.
 
 ## Where the code lives
 
-- **App (Dart):** `pollinator-monitor/lib/pollinator/` — all custom code. `lib/main.dart`
+- **App (Dart):** `fauna-pulse/lib/fauna_pulse/` — all custom code. `lib/main.dart`
   points to the home screen.
 - **Plugin:** `packages/ultralytics_yolo/` — Dart widget + native Kotlin
   (CameraX + LiteRT inference). Modified for ROI-crop inference and fast ROI capture.
@@ -27,7 +27,7 @@ on a clone of `ultralytics/yolo-flutter-app`.
   other sibling folders under `/InsectDetectApp/` are owner data and **deny-listed** — do
   not read them unless the owner points you at a specific path.
 
-## Module map (`lib/pollinator/`)
+## Module map (`lib/fauna_pulse/`)
 
 | Area | Files | Purpose |
 |------|-------|---------|
@@ -38,11 +38,11 @@ on a clone of `ultralytics/yolo-flutter-app`.
 | Session (round 73) | `session/frame_processor.dart`, `session/session_recorder.dart`, `session/camera_diagnostics_controller.dart` | Per-frame mapping/tracking + gate-idle state (unit-testable), recording lifecycle (folder/logger/photos/keep-alive/stop order), one-time camera probes + lens cycling |
 | Widgets | `widgets/roi_overlay.dart`, `widgets/track_box_painter.dart`, `widgets/preview_transform.dart`, `widgets/calibrating_banner.dart`, `widgets/session_info_dialog.dart`, `widgets/roi_size_sheet.dart` | Draggable ROI, track-id boxes, camera "cover-fit" coordinate mapping, calibration banner, setup dialog, exact-ROI-size sheet |
 | Screens | `screens/home_screen.dart`, `screens/camera_session_screen.dart`, `screens/settings_sheet.dart`, `screens/session_summary_screen.dart` | Entry/permissions, live orchestration (UI only since round 73 — logic in `session/`), settings, end-of-session dashboard |
-| Tests | `test/pollinator/*` | Unit tests for ROI math, tracker, logger, throttle, capture scheduler, frame processor |
+| Tests | `test/fauna_pulse/*` | Unit tests for ROI math, tracker, logger, throttle, capture scheduler, frame processor |
 
 ## Current defaults
 
-Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161-192`).
+Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:161-192`).
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -284,8 +284,8 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   preserved — `moveSceneRect`; four-arrow glyph at the box's top-right as the cue),
   outside redraws. Save cuts the box FROM THE ORIGINAL JPEG (never the screen;
   `capture/crop_export.dart`, background isolate) into the Gallery via MediaStore
-  (`saveImageToGallery` on the `pollinator/crop` channel →
-  Pictures/PollinatorMonitor; < Android 10 or MediaStore failure →
+  (`saveImageToGallery` on the `faunapulse/crop` channel →
+  Pictures/FaunaPulse; < Android 10 or MediaStore failure →
   `<session>/crops/`); Share opens the share sheet (Google Lens / iNaturalist).
   The crop bar shows the crop's real saved-pixel size (⚠ tiny under 100 px).
   In-app API identification (Observation.org NIA / iNaturalist upload) stays
@@ -301,9 +301,9 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   and a red confirm-guarded "Delete session" button (recursive folder delete →
   pops; home list rescans on return from a summary). r93 "Export photos to
   Gallery" (Overview button): batch-copies the session's `roi_frames/*.jpg`
-  into the shared album `Pictures/PollinatorMonitor/<session>` so the phone's
+  into the shared album `Pictures/FaunaPulse/<session>` so the phone's
   own Gallery shows each session as an album — `saveImagesToGallery` on
-  `pollinator/crop` takes file PATHS (never bytes; Kotlin reads the JPEGs
+  `faunapulse/crop` takes file PATHS (never bytes; Kotlin reads the JPEGs
   itself), Dart sends chunks of 25 (`exportPhotosToGallery` in
   `capture/crop_export.dart`) for a determinate progress bar, re-export is
   idempotent (native DISPLAY_NAME query per RELATIVE_PATH — stored WITH a
@@ -331,7 +331,7 @@ large; avoid to parse unless owner points to them; they are ignored also in `/.c
 
 ## Build / test quick reference
 
-- Analyze: `flutter analyze` — Test suite: `flutter test test/pollinator`.
+- Analyze: `flutter analyze` — Test suite: `flutter test test/fauna_pulse`.
 - Build: `flutter build apk --debug` (the app deploys as debug).
 - Pre-existing build warnings (KGP deprecation, optional `fetch_bundled_models.sh`) are
   unrelated to app logic.

@@ -5,8 +5,8 @@
 // and check the planned state and transition times at each moment.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/models/schedule_window.dart';
-import 'package:pollinator_monitor/pollinator/session/schedule_plan.dart';
+import 'package:fauna_pulse/fauna_pulse/models/schedule_window.dart';
+import 'package:fauna_pulse/fauna_pulse/session/schedule_plan.dart';
 
 void main() {
   // The owner's example: 06:00–10:00 and 15:00–20:00, for 2 days.

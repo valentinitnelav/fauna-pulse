@@ -1,4 +1,4 @@
-// Pollinator Monitor — one-time session setup reminder (moved out of the
+// FaunaPulse — one-time session setup reminder (moved out of the
 // camera screen in round 73, review item B6d; behaviour unchanged).
 
 import 'package:flutter/material.dart';

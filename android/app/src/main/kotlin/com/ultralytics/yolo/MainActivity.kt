@@ -33,17 +33,17 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterFragmentActivity() {
     // Channel name shared with the Dart side (DeviceThermal). "Thermal" here means
     // how warm/throttled the phone is during long real-time detection sessions.
-    private val thermalChannel = "pollinator/thermal"
+    private val thermalChannel = "faunapulse/thermal"
 
     // Channel for fast ROI cropping of full-resolution stills (RoiCaptureScheduler).
-    private val cropChannel = "pollinator/crop"
+    private val cropChannel = "faunapulse/crop"
 
     // Channel for diagnostics: capturing this app's recent logcat into an error report.
-    private val diagnosticsChannel = "pollinator/diagnostics"
+    private val diagnosticsChannel = "faunapulse/diagnostics"
 
     // Channel for keeping long sessions alive: start/stop the recording foreground
     // service, and check/request exemption from battery optimization (RecordingKeepAlive).
-    private val keepAliveChannel = "pollinator/keepalive"
+    private val keepAliveChannel = "faunapulse/keepalive"
     private val cropExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -106,7 +106,7 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                     // Round 91: puts an exported insect crop into the shared Gallery
-                    // (MediaStore, Pictures/PollinatorMonitor) so identification apps'
+                    // (MediaStore, Pictures/FaunaPulse) so identification apps'
                     // photo pickers can see it. Returns false below Android 10, where
                     // MediaStore inserts need the legacy storage permission — the Dart
                     // side then keeps the crop in the session folder instead.
@@ -129,7 +129,7 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                     // Round 93: batch-copy a session's saved photos into the shared
-                    // Gallery as one album (Pictures/PollinatorMonitor/<album>).
+                    // Gallery as one album (Pictures/FaunaPulse/<album>).
                     // Only file PATHS cross the channel — Kotlin reads the JPEGs from
                     // disk itself, so no image bytes are shipped between Dart and
                     // native. Sharing cropExecutor is safe: capture (its only other
@@ -347,7 +347,7 @@ class MainActivity : FlutterFragmentActivity() {
     /// (the caller returns false there without calling this).
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
     private fun saveImageToGallery(bytes: ByteArray, displayName: String): Boolean =
-        insertJpegIntoMediaStore(displayName, "Pictures/PollinatorMonitor") { it.write(bytes) }
+        insertJpegIntoMediaStore(displayName, "Pictures/FaunaPulse") { it.write(bytes) }
 
     /// Shared MediaStore insert (round 93 refactor of the round-91 crop save):
     /// creates a hidden "pending" row, streams the JPEG via [write], then
@@ -417,7 +417,7 @@ class MainActivity : FlutterFragmentActivity() {
     /// data log stays in the private session folder.
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
     private fun saveImagesToGallery(paths: List<String>, album: String): Map<String, Any> {
-        val relativePath = "Pictures/PollinatorMonitor/$album"
+        val relativePath = "Pictures/FaunaPulse/$album"
         val existing = existingDisplayNames(relativePath)
         var exported = 0
         var skipped = 0
@@ -448,7 +448,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /// Where an upright-frame rectangle lands inside the RAW (unrotated) still.
-    /// Mirror of `rawRectForUprightRect` in lib/pollinator/capture/roi_capture.dart
+    /// Mirror of `rawRectForUprightRect` in lib/fauna_pulse/capture/roi_capture.dart
     /// (which has the unit tests) — keep the two in sync.
     private fun rawRectForUprightRect(
         rot: Int,

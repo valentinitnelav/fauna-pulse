@@ -4,8 +4,8 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/models/track.dart';
-import 'package:pollinator_monitor/pollinator/tracking/byte_track.dart';
+import 'package:fauna_pulse/fauna_pulse/models/track.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
 
 Detection det(Rect box, [double conf = 0.9]) =>
     Detection(box: box, confidence: conf, classIndex: 0, className: 'bee');

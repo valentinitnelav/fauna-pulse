@@ -1,6 +1,6 @@
-// Pollinator Monitor — diagnostics bridge.
+// FaunaPulse — diagnostics bridge.
 //
-// Thin wrapper over the native `pollinator/diagnostics` channel. Right now its
+// Thin wrapper over the native `faunapulse/diagnostics` channel. Right now its
 // only job is to capture this app's own recent log output ("logcat") so it can
 // be bundled into an error report. A non-rooted Android app can only read its
 // own process logs, which is exactly what we want for debugging this app.
@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'app_error_hooks.dart';
 
 class Diagnostics {
-  static const MethodChannel _channel = MethodChannel('pollinator/diagnostics');
+  static const MethodChannel _channel = MethodChannel('faunapulse/diagnostics');
 
   /// Captures up to [maxLines] of the most recent app log lines (timestamped).
   /// Returns null on any failure (e.g. iOS, or the platform refuses the dump).

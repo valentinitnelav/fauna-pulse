@@ -1,4 +1,4 @@
-// Pollinator Monitor — exact ROI size bottom sheet (moved out of the camera
+// FaunaPulse — exact ROI size bottom sheet (moved out of the camera
 // screen in round 73, review item B6d; behaviour unchanged).
 
 import 'package:flutter/material.dart';

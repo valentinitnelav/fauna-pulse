@@ -1,4 +1,4 @@
-# Installing & testing Pollinator Monitor app
+# Installing & testing FaunaPulse app
 
 A step-by-step guide for collaborators.
 
@@ -32,7 +32,7 @@ The app usually ships **without** model files (they are shared separately — se
 [Getting the models](#getting-the-models)). Once you have one or more `.tflite` model
 files to test, load them in **either** way:
 
-- **In-app (easiest):** open **Pollinator Monitor → Settings (gear icon) → Import…**,
+- **In-app (easiest):** open **FaunaPulse → Settings (gear icon) → Import…**,
   then pick the `.tflite` file(s) you downloaded (e.g. from your **Downloads** folder).
 - **Over USB (drag-and-drop):** connect the phone to a computer; drop `.tflite` files into a folder of your choice.
 
@@ -72,10 +72,10 @@ flutter doctor --android-licenses   # accept all
 ### B1. Get the code
 
 ```bash
-git clone git@github.com:valentinitnelav/pollinator-monitor.git
+git clone git@github.com:valentinitnelav/fauna-pulse.git
 # If you don't use SSH, clone the HTTPS URL shown on the GitHub repo page instead.
 
-cd pollinator-monitor
+cd fauna-pulse
 flutter pub get           # retrieve or upgrade flutter dependencies
 ```
 
@@ -117,7 +117,7 @@ Two options:
 3. Launch the app (debug):
 
    ```bash
-   cd pollinator-monitor    # navigate to the git repository (cloned on your computer)
+   cd fauna-pulse    # navigate to the git repository (cloned on your computer)
    flutter pub get          # retrieve or upgrade flutter dependencies
    flutter run              # will run the app on the first detected smartphone
    ```
@@ -126,7 +126,7 @@ Two options:
    See above the device IDs: "2b2dc560" & "RF8T403A3AT"
    
    ```bash
-   cd pollinator-monitor    # navigate to this git repository (cloned on your computer)
+   cd fauna-pulse    # navigate to this git repository (cloned on your computer)
    flutter run -d 2b2dc560  # will run the app on mobile device id "2b2dc560"
    # -d stands for --device-id
    ```
@@ -134,7 +134,7 @@ Two options:
    Or if you want to also store the terminal outputs into a txt file (useful for diagnostics & debugging when testing the app), can get inspired from this Linux command:
 
    ```bash
-   cd pollinator-monitor # navigate to the git repository (cloned on your computer)
+   cd fauna-pulse # navigate to the git repository (cloned on your computer)
    stdbuf -oL -eL flutter run -d 2b2dc560 2>&1 | tee -a ~/InsectDetectApp/sessions/logcats/flutter_run_output_xiaomi_$(date +"%Y-%m-%d_%H:%M:%S").txt
    ```
 
@@ -143,7 +143,7 @@ Two options:
 ### B4. Or build an installable `.apk` to share
 
 ```bash
-cd pollinator-monitor           # navigate to the git repository (cloned on your computer)
+cd fauna-pulse           # navigate to the git repository (cloned on your computer)
 flutter pub get                 # retrieve or upgrade flutter dependencies
 flutter build apk --release     # or: flutter build apk --debug (but slower app run time)
 
@@ -162,7 +162,7 @@ That's exactly the file used in **Track A**. Share it via a GitHub Release or a 
 To deploy the app (the `app-release.apk`) on a smartphone:
 
 ```bash
-cd pollinator-monitor           # navigate to the git repository
+cd fauna-pulse           # navigate to the git repository
 adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
 # Performing Streamed Install
 # Success
@@ -180,7 +180,7 @@ Note that this will discard any sesssion setups and change them to their default
 Uninstall the existing package directly via ADB:
 
 ```bash
-adb -s 2b2dc560 uninstall com.pollinatormonitor.app
+adb -s 2b2dc560 uninstall com.faunapulse.app
 # Then re-run the release installation command
 # Note that this will discard any sesssion setups and change them to their defaults values.
 adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
@@ -235,7 +235,7 @@ git-ignored).
 
 Connect your Android smartphone to your computer and allow File Transfer option. On your smartphone you should get a info message where you can allow the file transfer option.
 
-Then you can see the content of the folder associated with the app on your file explorer. Note that the path on your file explorer could appear like `mtp:/<your phone name>/Internal shared storage/Android/data/com.pollinatormonitor.app/files/`. This is the usual Media Transfer Protocol (MTP).
+Then you can see the content of the folder associated with the app on your file explorer. Note that the path on your file explorer could appear like `mtp:/<your phone name>/Internal shared storage/Android/data/com.faunapulse.app/files/`. This is the usual Media Transfer Protocol (MTP).
 
 You can copy or add files and folders between your computer and the smartphone using your favorite file explorer.
 
@@ -275,9 +275,9 @@ Running on Linux 6.8.0-134-generic (x86_64)
 Example on how to pull the results of a particular recording session.
 
 Usually, on Linux, the 'adb' path to the app on the Android smartphone is something like: 
-`/sdcard/Android/data/com.pollinatormonitor.app/files/`. 
+`/sdcard/Android/data/com.faunapulse.app/files/`. 
 This path is also valid: 
-`/storage/emulated/0/Android/data/com.pollinatormonitor.app/files/`
+`/storage/emulated/0/Android/data/com.faunapulse.app/files/`
 
 There you find these:
 
@@ -294,19 +294,19 @@ cd ~/InsectDetectApp/sessions/Xiaomi/
 
 # 2) Pull all content (everything from .../files/)
 # It will also create a folder named "files" at the path above
-adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/
+adb pull -a /sdcard/Android/data/com.faunapulse.app/files/
 # -a : preserve file timestamp and mode
 # This will avoid the creation of the "files" folder locally
-adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/. ./
+adb pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
 
 # If you need to pull from a specific smartphone, use their flutter device id.
 # Check all connected devices with:
 flutter devices
 # Then pull from a specific smartphone using their id
-adb -s 2b2dc560 pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/. ./
+adb -s 2b2dc560 pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
 
 # Or pull directly into the destination folder (without `cd` command first):
-adb pull -a /sdcard/Android/data/com.pollinatormonitor.app/files/ ~/InsectDetectApp/sessions/Xiaomi/
+adb pull -a /sdcard/Android/data/com.faunapulse.app/files/ ~/InsectDetectApp/sessions/Xiaomi/
 ```
 
 #### On Windows

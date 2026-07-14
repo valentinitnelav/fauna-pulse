@@ -7,12 +7,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/logging/session_logger.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/session_logger.dart';
 
 void main() {
   late Directory tmp;
 
-  setUp(() => tmp = Directory.systemTemp.createTempSync('pollinator_log'));
+  setUp(() => tmp = Directory.systemTemp.createTempSync('faunapulse_log'));
   tearDown(() => tmp.deleteSync(recursive: true));
 
   test('writes valid JSONL with type and timestamps', () async {

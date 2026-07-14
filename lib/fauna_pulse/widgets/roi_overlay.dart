@@ -1,4 +1,4 @@
-// Pollinator Monitor — the draggable/zoomable square ROI box over the preview.
+// FaunaPulse — the draggable/zoomable square ROI box over the preview.
 //
 // Gestures (one widget handles both):
 //   * Drag with one finger  → move the box.

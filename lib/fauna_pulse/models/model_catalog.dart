@@ -1,4 +1,4 @@
-// Pollinator Monitor — the catalog of detection models the user can choose from.
+// FaunaPulse — the catalog of detection models the user can choose from.
 //
 // Three kinds of model can appear in the picker:
 //   * official  — the YOLO26 sizes the plugin can fetch/bundle (only nano ships).

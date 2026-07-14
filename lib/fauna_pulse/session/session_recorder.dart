@@ -1,4 +1,4 @@
-// Pollinator Monitor — recording-session lifecycle, extracted from the camera
+// FaunaPulse — recording-session lifecycle, extracted from the camera
 // screen (round 73, review item B6b).
 //
 // Owns everything one recording session puts on disk and keeps alive: the

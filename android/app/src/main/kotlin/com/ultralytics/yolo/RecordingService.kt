@@ -30,7 +30,7 @@ import android.os.PowerManager
  * type because the app's protected work IS a continuous camera session (and that
  * type, unlike `dataSync`, has no Android-15 daily runtime cap).
  *
- * Started/stopped from [MainActivity]'s `pollinator/keepalive` method channel when
+ * Started/stopped from [MainActivity]'s `faunapulse/keepalive` method channel when
  * a recording begins/ends.
  */
 class RecordingService : Service() {
@@ -55,7 +55,7 @@ class RecordingService : Service() {
                 // Low importance: persistent but silent (no sound/peeking).
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Shown while a pollinator-monitoring session is recording."
+                description = "Shown while a FaunaPulse session is recording."
                 setShowBadge(false)
             }
             manager.createNotificationChannel(channel)
@@ -69,8 +69,8 @@ class RecordingService : Service() {
                 Notification.Builder(this)
             }
             )
-            .setContentTitle("Pollinator Monitor — recording")
-            .setContentText("Detecting and logging insect visits. Keep the app open.")
+            .setContentTitle("FaunaPulse — recording")
+            .setContentText("Detecting and logging visits. Keep the app open.")
             .setSmallIcon(applicationInfo.icon)
             .setOngoing(true)
             .build()
@@ -117,8 +117,8 @@ class RecordingService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "pollinator_recording"
+        private const val CHANNEL_ID = "faunapulse_recording"
         private const val NOTIFICATION_ID = 4711
-        private const val WAKELOCK_TAG = "PollinatorMonitor::RecordingWakeLock"
+        private const val WAKELOCK_TAG = "FaunaPulse::RecordingWakeLock"
     }
 }

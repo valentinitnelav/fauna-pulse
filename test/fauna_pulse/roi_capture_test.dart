@@ -7,8 +7,8 @@
 // disk.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/capture/roi_capture.dart';
-import 'package:pollinator_monitor/pollinator/models/session_config.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 
 void main() {
   group('savedSidePx', () {

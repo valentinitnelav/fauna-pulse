@@ -1,4 +1,4 @@
-// Pollinator Monitor — a lightweight ByteTrack-style multi-object tracker.
+// FaunaPulse — a lightweight ByteTrack-style multi-object tracker.
 //
 // Goal: given the detector's per-frame boxes, follow each insect across frames
 // and hand it a stable "track id". This is what turns a stream of detections

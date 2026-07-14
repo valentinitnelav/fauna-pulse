@@ -1,4 +1,4 @@
-// Pollinator Monitor — the live recording screen.
+// FaunaPulse — the live recording screen.
 //
 // Ties everything together: the YOLO camera preview, the ROI box, the tracker,
 // the time-lapse photo capture, and the append-only log. The detector and the
@@ -1033,7 +1033,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// SharedPreferences key remembering that we've already shown the
   /// battery-optimization explanation, so it isn't shown before every session.
-  static const String _batteryOptPromptedKey = 'pollinator_batteryopt_prompted';
+  static const String _batteryOptPromptedKey = 'faunapulse_batteryopt_prompted';
 
   /// If the app isn't already exempt from battery optimization, explain once (per
   /// install) why that matters for long unattended field sessions and offer to open

@@ -4,7 +4,7 @@
 what the setting does, its default, and when to change it. Settings persist
 between sessions (last-used values reappear).
 
-Source of truth for defaults: `lib/pollinator/models/session_config.dart`
+Source of truth for defaults: `lib/fauna_pulse/models/session_config.dart`
 (the `SessionConfig` constructor). If a default here ever disagrees with that
 file, the file wins — please update this doc.
 

@@ -487,7 +487,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       }
       // END OF "checkModelExists" case
 
-      // Pollinator Monitor (perf review A4): user-triggered CPU-vs-GPU benchmark. Compiles the
+      // FaunaPulse (perf review A4): user-triggered CPU-vs-GPU benchmark. Compiles the
       // model once per engine configuration and times real inferences on each, so the user can
       // pick the faster engine for THIS device+model pair instead of trusting the GPU-first
       // default. Deliberately NOT run automatically at session start - compiling the model

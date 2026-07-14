@@ -3,7 +3,7 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pollinator_monitor/pollinator/models/roi.dart';
+import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 
 void main() {
   const aspect = 4 / 3; // a 4:3 frame, e.g. 1280x960

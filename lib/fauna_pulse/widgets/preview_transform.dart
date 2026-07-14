@@ -1,4 +1,4 @@
-// Pollinator Monitor — maps camera-frame coordinates onto the on-screen preview.
+// FaunaPulse — maps camera-frame coordinates onto the on-screen preview.
 //
 // Why this exists: the native camera preview (CameraX) uses "FIT_CENTER" — it
 // scales the camera frame *uniformly* (same factor in X and Y) so the WHOLE frame

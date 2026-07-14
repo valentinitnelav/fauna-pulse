@@ -195,7 +195,7 @@ class YOLOViewController {
   Future<void> tapToFocus(double x, double y) =>
       _invoke('tapToFocus', {'x': x, 'y': y});
 
-  /// Manual focus (Pollinator Monitor). [value] is 0..1, where 0 = focus at
+  /// Manual focus (FaunaPulse). [value] is 0..1, where 0 = focus at
   /// infinity (far) and 1 = the closest the lens can focus (near). Turns
   /// autofocus off and pins the lens, so the user can lock focus on the flower
   /// inside the ROI. No effect on a fixed-focus camera. Android only.
@@ -225,8 +225,8 @@ class YOLOViewController {
   Future<Uint8List?> capturePhoto({bool withOverlays = true}) =>
       _invoke<Uint8List>('capturePhoto', {'withOverlays': withOverlays});
 
-  /// Captures a still photo exactly as the camera delivers it (Pollinator
-  /// Monitor): the JPEG is NOT rotated upright. Returns (bytes, the clockwise
+  /// Captures a still photo exactly as the camera delivers it (FaunaPulse):
+  /// the JPEG is NOT rotated upright. Returns (bytes, the clockwise
   /// rotation 0/90/180/270 that would make it upright, isFrontCamera), or null
   /// on failure. Rotating a whole multi-megapixel still costs ~1.5 s of CPU
   /// per photo; callers that only need a small crop should map the crop into
@@ -264,7 +264,7 @@ class YOLOViewController {
   }
 
   /// Crops the given ROI directly from the live analysis frame and returns it as
-  /// a JPEG (Pollinator Monitor). Unlike [capturePhoto] this does NOT trigger a
+  /// a JPEG (FaunaPulse). Unlike [capturePhoto] this does NOT trigger a
   /// full-resolution still capture, so it doesn't stall the camera pipeline —
   /// ideal for time-lapse ROI photos. Resolution is the analysis frame's. Returns
   /// null if no frame is available yet. Android only.
@@ -284,7 +284,7 @@ class YOLOViewController {
     'maxPx': maxPx,
   });
 
-  /// Restricts inference to a square region of interest (Pollinator Monitor).
+  /// Restricts inference to a square region of interest (FaunaPulse).
   ///
   /// Coordinates are normalized (0..1) in the upright frame: ([cx],[cy]) is the
   /// centre and [side] is the square's side as a fraction of frame width. The
@@ -298,7 +298,7 @@ class YOLOViewController {
     required double side,
   }) => _invoke<void>('setInferenceRoi', {'cx': cx, 'cy': cy, 'side': side});
 
-  /// Enables/disables the native motion gate (Pollinator Monitor).
+  /// Enables/disables the native motion gate (FaunaPulse).
   ///
   /// While enabled, the detector runs only when something moves inside the ROI
   /// (or moved/was detected within the last [wakeSeconds]); otherwise inference
@@ -335,7 +335,7 @@ class YOLOViewController {
     'motionOnly': motionOnly,
   });
 
-  /// Enables/disables time-lapse capture mode (Pollinator Monitor, round 97).
+  /// Enables/disables time-lapse capture mode (FaunaPulse, round 97).
   ///
   /// While enabled, neither the detector nor the motion gate runs — the app
   /// triggers ROI photos on its own timer via [captureRoiFromFrame] /
@@ -350,7 +350,7 @@ class YOLOViewController {
         'sampleFps': sampleFps,
       });
 
-  /// Caps the camera's own frame rate (Pollinator Monitor, round 82).
+  /// Caps the camera's own frame rate (FaunaPulse, round 82).
   ///
   /// Different from the inference FPS cap: that one only skips frames in
   /// software after the camera already produced them, while the sensor and
@@ -364,7 +364,7 @@ class YOLOViewController {
   Future<void> setCameraFpsCap(int maxFps) =>
       _invoke<void>('setCameraFpsCap', {'maxFps': maxFps});
 
-  /// Attaches/detaches only the live camera preview (Pollinator Monitor,
+  /// Attaches/detaches only the live camera preview (FaunaPulse,
   /// round 82). With [enabled] false the detector, motion gate and photo
   /// capture keep running but the preview stream is stopped at the camera —
   /// a black overlay alone does NOT stop that work. Used by the power-save

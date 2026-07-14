@@ -3,7 +3,7 @@
 **Who this is for:** a new developer joining the project. It explains how a
 camera frame becomes a logged visit, where the native (Kotlin) and Dart sides
 meet, and which pieces must be kept in sync. For per-directory file summaries,
-see [`lib/pollinator/README.md`](../lib/pollinator/README.md); for current
+see [`lib/fauna_pulse/README.md`](../lib/fauna_pulse/README.md); for current
 defaults and invariants, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md).
 
 ---
@@ -14,7 +14,7 @@ The app is a **Flutter (Dart)** application running on top of a **vendored,
 modified Ultralytics YOLO plugin** whose performance-critical code is **native
 Android (Kotlin)**.
 
-- **App (Dart):** `lib/pollinator/` — all custom code (ROI, tracking, capture
+- **App (Dart):** `lib/fauna_pulse/` — all custom code (ROI, tracking, capture
   scheduling, logging, screens). `lib/main.dart` is the entry point.
 - **Vendored plugin:** `packages/ultralytics_yolo/` — the camera + detector.
   Dart widget (`YOLOView`) plus native Kotlin (CameraX capture + LiteRT
@@ -22,7 +22,7 @@ Android (Kotlin)**.
   ROI-crop inference and fast ROI capture.
 - **App native shell:** `android/app/src/main/kotlin/com/ultralytics/yolo/MainActivity.kt`
   — hosts the full-resolution still crop and the device/thermal/keep-alive
-  method channels. App id: `com.pollinatormonitor.app` (the Kotlin namespace
+  method channels. App id: `com.faunapulse.app` (the Kotlin namespace
   stays `com.ultralytics.yolo` for compatibility with the plugin).
 
 ## 2. Per-frame data flow
@@ -72,14 +72,14 @@ normalized boxes; timestamp; frame number; image size; ROI-active flag;
 motion-gate idle flag + score; accelerator; camera FPS). **No image bytes are
 sent per frame by default.** Consumed by `_onStreamingData`.
 
-**Method channels (request/response), app-specific (`pollinator/*`):**
+**Method channels (request/response), app-specific (`faunapulse/*`):**
 
 | Channel | Direction | Purpose |
 |---|---|---|
-| `pollinator/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution still and region-crop the ROI out of it. |
-| `pollinator/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
-| `pollinator/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive. |
-| `pollinator/diagnostics` | Dart → native | Capture logcat into the session folder. |
+| `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution still and region-crop the ROI out of it. |
+| `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
+| `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive. |
+| `faunapulse/diagnostics` | Dart → native | Capture logcat into the session folder. |
 
 The plugin also exposes ROI push, motion-gate config, lens/focus, and a fast
 live-frame ROI crop through the `YOLOView` controller.

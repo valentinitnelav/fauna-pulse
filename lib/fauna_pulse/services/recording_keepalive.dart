@@ -1,6 +1,6 @@
-// Pollinator Monitor — keep a long recording session alive on Android.
+// FaunaPulse — keep a long recording session alive on Android.
 //
-// Wraps the native `pollinator/keepalive` method channel (see MainActivity.kt /
+// Wraps the native `faunapulse/keepalive` method channel (see MainActivity.kt /
 // RecordingService.kt). Two jobs, both about surviving multi-hour / multi-day
 // field runs without the OS interfering:
 //
@@ -24,7 +24,7 @@ import '../logging/app_error_hooks.dart';
 class RecordingKeepAlive {
   RecordingKeepAlive._();
 
-  static const MethodChannel _channel = MethodChannel('pollinator/keepalive');
+  static const MethodChannel _channel = MethodChannel('faunapulse/keepalive');
 
   /// Starts the recording foreground service (persistent notification + partial
   /// wake lock). Safe to call more than once.

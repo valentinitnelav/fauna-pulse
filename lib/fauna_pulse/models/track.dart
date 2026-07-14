@@ -1,4 +1,4 @@
-// Pollinator Monitor — tracking data types.
+// FaunaPulse — tracking data types.
 //
 // "Tracking" = following one insect from frame to frame and giving it a stable
 // number (a "track id") so that the same bee seen in 30 consecutive frames is

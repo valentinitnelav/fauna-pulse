@@ -1,4 +1,4 @@
-// Pollinator Monitor — per-frame detection mapping + tracking, extracted from
+// FaunaPulse — per-frame detection mapping + tracking, extracted from
 // the camera screen (round 73, review item B6a).
 //
 // A "plain class" in Flutter terms: no widgets, no timers, no platform calls —

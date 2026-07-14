@@ -1,4 +1,4 @@
-// Pollinator Monitor — draws our own bounding boxes labelled with the track id.
+// FaunaPulse — draws our own bounding boxes labelled with the track id.
 //
 // The plugin can draw native overlays, but those show class names only. We hide
 // the native overlay (controller.setShowOverlays(false)) and paint here instead

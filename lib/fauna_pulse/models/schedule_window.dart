@@ -1,4 +1,4 @@
-// Pollinator Monitor — one daily recording window for scheduled sessions.
+// FaunaPulse — one daily recording window for scheduled sessions.
 //
 // A "window" is a start/end time of day (e.g. 06:00–10:00) during which the
 // app records; between windows a scheduled run sleeps (screen dark, camera

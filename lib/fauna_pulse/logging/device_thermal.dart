@@ -1,4 +1,4 @@
-// Pollinator Monitor — reads how warm/throttled the phone is.
+// FaunaPulse — reads how warm/throttled the phone is.
 //
 // Real-time detection + tracking keeps the GPU/CPU busy and heats the phone up,
 // which on a long field session can make Android "thermal throttle" (slow itself
@@ -87,7 +87,7 @@ class ThermalReading {
 }
 
 class DeviceThermal {
-  static const MethodChannel _channel = MethodChannel('pollinator/thermal');
+  static const MethodChannel _channel = MethodChannel('faunapulse/thermal');
 
   /// Reads the current thermal state. Returns an empty reading on any error
   /// (e.g. iOS, or a platform that doesn't expose battery temperature).

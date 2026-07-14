@@ -7,7 +7,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
-import 'package:pollinator_monitor/pollinator/capture/crop_export.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/crop_export.dart';
 
 void main() {
   group('sceneRectForDrag', () {

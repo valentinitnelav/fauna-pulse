@@ -1,4 +1,4 @@
-// Pollinator Monitor — entry / welcome screen.
+// FaunaPulse — entry / welcome screen.
 //
 // Starts a new recording session, and lists previously recorded sessions so the
 // user can re-open any of them and view its summary (stats + graphs + photos)
@@ -352,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Icon(Icons.local_florist, size: 56, color: Colors.amber),
             const SizedBox(height: 8),
             const Text(
-              'Pollinator Monitor',
+              'FaunaPulse',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),

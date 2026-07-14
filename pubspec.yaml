@@ -1,7 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-name: pollinator_monitor
-description: "Pollinator Monitor: real-time field app that detects flower-visiting insects and logs visitation rates. Built on the ultralytics_yolo plugin (vendored in packages/)."
+name: fauna_pulse
+description: "FaunaPulse: real-time field app that detects flower-visiting insects and logs visitation rates. Built on the ultralytics_yolo plugin (vendored in packages/)."
 publish_to: "none"
 version: 0.6.4+10
 
@@ -16,7 +16,7 @@ dependencies:
   image_picker: ^1.2.1
   package_info_plus: ^9.0.0
   path_provider: ^2.1.5
-  # Pollinator Monitor additions:
+  # FaunaPulse additions:
   image: ^4.3.0 # pure-Dart JPEG decode/crop/encode for ROI photo cropping
   fl_chart: ^0.69.0 # end-of-session activity graph
   battery_plus: ^6.0.0 # battery level logged at session start/stop
