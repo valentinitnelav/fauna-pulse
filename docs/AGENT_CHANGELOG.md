@@ -3915,3 +3915,31 @@ accident.
 - `flutter analyze` clean; all 171 tests pass (no new pure logic to unit-test —
   the flow is dialog UI + file I/O).
 
+## Round 104 (2026-07-14): fix delete-all-dialog teardown crash from first field test
+
+Field test of r103 (a ~30 min pollinator session, then "Delete all sessions…")
+ended in a red assertion screen: `framework.dart:6268 '_dependents.isEmpty':
+is not true`. The deletions themselves completed (sessions gone after
+restart) — only the widget teardown crashed.
+
+- **Root cause:** that assertion is `InheritedElement.debugDeactivated` — an
+  inherited widget was deactivated while widgets still depended on it. The
+  r103 confirm dialog used a `StatefulBuilder` with a caller-owned
+  `TextEditingController`; on confirm the caller disposed the controller AND
+  pushed the progress dialog in the same synchronous turn, while the confirm
+  dialog (auto-focused text field, keyboard up) was still animating out —
+  its subtree was torn down in the wrong order.
+- **Fix:** the dialog is now its own widget, `DeleteAllSessionsDialog`
+  (public, so tests can drive it), whose State owns and disposes the
+  controller — the framework controls the teardown order. Both close paths
+  also `unfocus()` the keyboard before popping.
+- **Regression tests** (`test/fauna_pulse/home_delete_all_dialog_test.dart`,
+  3 new, 174 total passing): button disabled until `delete` typed
+  (case/whitespace tolerant), Cancel path, and the exact crash sequence —
+  confirm with focus held + progress dialog pushed in the same turn, then
+  `pumpAndSettle` through the exit animation (the r103 code trips the same
+  debug-mode assertion under `flutter test`).
+- Note: the crash never reached the session log or an error report because it
+  was a Flutter framework assertion on the home screen (no recording active),
+  and the logcat capture ended at USB disconnect before the exception printed.
+

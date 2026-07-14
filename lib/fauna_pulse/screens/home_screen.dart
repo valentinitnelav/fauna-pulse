@@ -281,61 +281,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final sessions = List<_PastSession>.of(_sessions);
     if (sessions.isEmpty) return;
     final totalBytes = sessions.fold<int>(0, (sum, s) => sum + s.sizeBytes);
-    final typed = TextEditingController();
     final sure = await showDialog<bool>(
       context: context,
-      // StatefulBuilder lets just the dialog rebuild as the user types, so the
-      // Delete button can enable/disable live.
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final armed = typed.text.trim().toLowerCase() == 'delete';
-          return AlertDialog(
-            title: const Text('Delete ALL sessions?'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This permanently deletes all ${sessions.length} sessions '
-                  '(${formatBytes(totalBytes)}) from the phone — every data '
-                  'log, all metadata and every saved photo. This cannot be '
-                  'undone.',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: typed,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    labelText: 'Type "delete" to confirm',
-                  ),
-                  onChanged: (_) => setDialogState(() {}),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: armed ? () => Navigator.of(ctx).pop(true) : null,
-                child: Text(
-                  'Delete all',
-                  style: TextStyle(
-                    color: armed ? Colors.red : null,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+      builder: (_) => DeleteAllSessionsDialog(
+        count: sessions.length,
+        totalBytes: totalBytes,
       ),
     );
-    typed.dispose();
     if (sure != true || !mounted) return;
 
     // Folders with thousands of photos take a while to delete — block the UI
@@ -650,6 +602,95 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// The type-to-confirm dialog for "Delete all sessions". Pops `true` only when
+/// the user has typed `delete` and pressed the red button.
+///
+/// This is a real StatefulWidget (not a StatefulBuilder inside the caller) so
+/// the text field's controller is owned and disposed by the dialog's own
+/// State. Round 103's first field test crashed (fixed round 104) with an
+/// `InheritedElement '_dependents.isEmpty'` assertion because the caller
+/// disposed the controller — and pushed the progress dialog — while this
+/// dialog was still animating out with the keyboard focused; letting the
+/// framework drive the teardown order fixes that.
+class DeleteAllSessionsDialog extends StatefulWidget {
+  final int count;
+  final int totalBytes;
+  const DeleteAllSessionsDialog({
+    super.key,
+    required this.count,
+    required this.totalBytes,
+  });
+
+  @override
+  State<DeleteAllSessionsDialog> createState() =>
+      _DeleteAllSessionsDialogState();
+}
+
+class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
+  final _typed = TextEditingController();
+
+  @override
+  void dispose() {
+    _typed.dispose();
+    super.dispose();
+  }
+
+  void _close(bool result) {
+    // Dismiss the keyboard BEFORE popping — tearing the route down while the
+    // text field still holds focus is part of what crashed the first field
+    // test (see the class comment).
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final armed = _typed.text.trim().toLowerCase() == 'delete';
+    return AlertDialog(
+      title: const Text('Delete ALL sessions?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This permanently deletes all ${widget.count} sessions '
+            '(${formatBytes(widget.totalBytes)}) from the phone — every data '
+            'log, all metadata and every saved photo. This cannot be undone.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _typed,
+            autofocus: true,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              labelText: 'Type "delete" to confirm',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => _close(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: armed ? () => _close(true) : null,
+          child: Text(
+            'Delete all',
+            style: TextStyle(
+              color: armed ? Colors.red : null,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
