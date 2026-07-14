@@ -4,8 +4,11 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
   <background android:drawable="@color/ic_launcher_background"/>
   <foreground>
+      <!-- 27% keeps the focus-bracket corners inside the 66 dp safe circle,
+           so round launcher masks never clip them. The foreground's own
+           white fill matches ic_launcher_background, hiding its square edge. -->
       <inset
           android:drawable="@drawable/ic_launcher_foreground"
-          android:inset="16%" />
+          android:inset="27%" />
   </foreground>
 </adaptive-icon>

@@ -2,5 +2,7 @@
 <!-- Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license -->
 
 <resources>
-    <color name="ic_launcher_background">#2E7D32</color>
+    <!-- Matches the FaunaPulse icon card's fill so the adaptive-icon
+         foreground square blends invisibly under any launcher mask shape. -->
+    <color name="ic_launcher_background">#F9F9F9</color>
 </resources>

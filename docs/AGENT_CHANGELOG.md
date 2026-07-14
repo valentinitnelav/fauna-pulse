@@ -3871,3 +3871,20 @@ Field follow-up on round 98 after the first live session (session_132).
 - Repo renamed `valentinitnelav/pollinator-monitor` → `valentinitnelav/fauna-pulse`
   (GitHub redirects old URLs); local folder `pollinator-monitor/` → `fauna-pulse/`.
 
+## Round 102 (2026-07-14): new FaunaPulse app icon
+
+- Owner-provided artwork (bee inside blue camera-focus brackets on a white
+  rounded card, 1254 px) replaces the Ultralytics template icon. Master kept
+  at `android/app/src/main/ic_launcher-playstore.png` (Android Studio
+  convention); all shipped sizes are generated from it — regeneration script
+  pattern: PIL card-bounds detect → square crop → per-density resize.
+- Adaptive icon (API 26+, what the test phones show): foreground PNGs
+  (`drawable-*/ic_launcher_foreground.png`, central 78% of the card) with the
+  XML inset raised 16% → 27% so the bracket corners stay inside the 66 dp
+  safe circle (round masks never clip them); `ic_launcher_background`
+  changed #2E7D32 → #F9F9F9 = the card's own fill, so the foreground's
+  square edge is invisible under any mask shape.
+- Legacy mipmaps (`mipmap-*/ic_launcher.png`, API < 26): the card itself with
+  transparent rounded corners (radius 21%, 4× supersampled mask).
+- No code changes; debug APK builds clean.
+
