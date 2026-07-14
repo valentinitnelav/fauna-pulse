@@ -3888,3 +3888,30 @@ Field follow-up on round 98 after the first live session (session_132).
   transparent rounded corners (radius 21%, 4× supersampled mask).
 - No code changes; debug APK builds clean.
 
+## Round 103 (2026-07-14): delete-all-sessions via home-screen overflow menu
+
+Owner request: a way to free phone storage after many recordings without
+deleting sessions one by one from their summaries — but hard to trigger by
+accident.
+
+- **New ⋮ overflow menu, top-right of the home screen** (`home_screen.dart`).
+  A `PopupMenuButton<_HomeMenuAction>` floats over the corner via a `Stack`
+  (the centered title block is untouched). Deliberately a menu, not a bare
+  button: the owner wants a future home for other all-session actions
+  (filtering by name/date, bulk export, …) — add new `_HomeMenuAction` values.
+- **"Delete all sessions…"** item (red `delete_sweep` icon), disabled while the
+  list is empty.
+- **Type-to-confirm guard** (`_confirmDeleteAllSessions`): the dialog shows the
+  session count + total size (sum of the already-scanned `sizeBytes`, via
+  `formatBytes`) and the red "Delete all" button stays disabled until the user
+  types `delete`. Chosen over a plain confirm dialog: bulk-deleting field data
+  is the app's most destructive action, one stray tap must never suffice.
+- **Deletion is per recognized session folder** (`s.logFile.parent.delete(
+  recursive: true)`), NEVER the `sessions/` root — stray owner files placed
+  there over USB survive. Failures go through `logSwallowed('sessions_delete_all')`
+  + a "Could not delete N session(s)" SnackBar. A non-dismissible progress
+  dialog covers the UI while deleting (thousands of JPEGs take seconds), then
+  `_loadSessions()` rescans.
+- `flutter analyze` clean; all 171 tests pass (no new pure logic to unit-test —
+  the flow is dialog UI + file I/O).
+

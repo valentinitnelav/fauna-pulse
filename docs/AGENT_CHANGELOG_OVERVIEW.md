@@ -299,7 +299,11 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   formats) above Duration, plus a storage section (session folder size via shared
   `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free GB)
   and a red confirm-guarded "Delete session" button (recursive folder delete →
-  pops; home list rescans on return from a summary). r93 "Export photos to
+  pops; home list rescans on return from a summary). r103: the home screen has
+  a top-right ⋮ overflow menu (`_HomeMenuAction` — the intended home for future
+  all-session bulk actions) with a type-to-confirm "Delete all sessions"
+  (user must type `delete`; deletes each recognized session folder, never the
+  `sessions/` root). r93 "Export photos to
   Gallery" (Overview button): batch-copies the session's `roi_frames/*.jpg`
   into the shared album `Pictures/FaunaPulse/<session>` so the phone's
   own Gallery shows each session as an album — `saveImagesToGallery` on

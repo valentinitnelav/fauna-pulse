@@ -46,6 +46,11 @@ class _PastSession {
   });
 }
 
+/// Actions in the home screen's top-right "⋮" overflow menu. These act on ALL
+/// sessions at once (a single session is managed from its own summary screen);
+/// future bulk actions (filtering, export, …) get their own value here.
+enum _HomeMenuAction { deleteAllSessions }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -265,6 +270,112 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSessions();
   }
 
+  /// Asks for typed confirmation, then deletes EVERY listed session.
+  ///
+  /// Bulk-deleting field data is the most destructive action in the app, so a
+  /// single stray tap must never be enough: the red button only arms once the
+  /// word "delete" is typed. Each recognized session folder is deleted
+  /// individually (never the whole `sessions/` root) so anything else placed
+  /// under `sessions/` — e.g. over USB — survives.
+  Future<void> _confirmDeleteAllSessions() async {
+    final sessions = List<_PastSession>.of(_sessions);
+    if (sessions.isEmpty) return;
+    final totalBytes = sessions.fold<int>(0, (sum, s) => sum + s.sizeBytes);
+    final typed = TextEditingController();
+    final sure = await showDialog<bool>(
+      context: context,
+      // StatefulBuilder lets just the dialog rebuild as the user types, so the
+      // Delete button can enable/disable live.
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final armed = typed.text.trim().toLowerCase() == 'delete';
+          return AlertDialog(
+            title: const Text('Delete ALL sessions?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This permanently deletes all ${sessions.length} sessions '
+                  '(${formatBytes(totalBytes)}) from the phone — every data '
+                  'log, all metadata and every saved photo. This cannot be '
+                  'undone.',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: typed,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    labelText: 'Type "delete" to confirm',
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: armed ? () => Navigator.of(ctx).pop(true) : null,
+                child: Text(
+                  'Delete all',
+                  style: TextStyle(
+                    color: armed ? Colors.red : null,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    typed.dispose();
+    if (sure != true || !mounted) return;
+
+    // Folders with thousands of photos take a while to delete — block the UI
+    // behind a progress dialog so nothing races the deletes.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(child: Text('Deleting ${sessions.length} sessions…')),
+          ],
+        ),
+      ),
+    );
+    var failures = 0;
+    for (final s in sessions) {
+      try {
+        await s.logFile.parent.delete(recursive: true);
+      } catch (e) {
+        failures++;
+        logSwallowed('sessions_delete_all', e);
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(); // dismiss progress dialog
+    if (failures > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not delete $failures session${failures == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    }
+    _loadSessions();
+  }
+
   /// The calendar date, e.g. `2026-06-22`.
   String _dateOnly(DateTime d) {
     String two(int v) => v.toString().padLeft(2, '0');
@@ -342,61 +453,105 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// The top-right "⋮" menu (a PopupMenuButton — Android's standard
+  /// "more actions" button) for actions that affect all sessions at once.
+  Widget _overflowMenu() {
+    return PopupMenuButton<_HomeMenuAction>(
+      icon: const Icon(Icons.more_vert, color: Colors.white70),
+      tooltip: 'All-session actions',
+      onSelected: (action) {
+        switch (action) {
+          case _HomeMenuAction.deleteAllSessions:
+            _confirmDeleteAllSessions();
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: _HomeMenuAction.deleteAllSessions,
+          enabled: _sessions.isNotEmpty,
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_sweep,
+                size: 20,
+                color: _sessions.isNotEmpty
+                    ? Colors.red.shade300
+                    : Colors.white38,
+              ),
+              const SizedBox(width: 10),
+              const Text('Delete all sessions…'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            const SizedBox(height: 24),
-            const Icon(Icons.local_florist, size: 56, color: Colors.amber),
-            const SizedBox(height: 8),
-            const Text(
-              'FaunaPulse',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Detect and time flower-visiting insects in real time.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70),
-              ),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _starting ? null : _start,
-              icon: _starting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.videocam),
-              label: const Text('New session'),
-            ),
-            const SizedBox(height: 6),
-            // Always-available entry point so a problem can be reported even after
-            // the app restarts (e.g. following a crash) — the report still captures
-            // the recent technical log.
-            TextButton.icon(
-              onPressed: _reportProblem,
-              icon: const Icon(Icons.bug_report_outlined, size: 18),
-              label: const Text('Report a problem'),
-            ),
-            const SizedBox(height: 14),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'Previous sessions',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+            Column(
+              children: [
+                const SizedBox(height: 24),
+                const Icon(
+                  Icons.local_florist,
+                  size: 56,
+                  color: Colors.amber,
                 ),
-              ),
+                const SizedBox(height: 8),
+                const Text(
+                  'FaunaPulse',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'Detect and time flower-visiting insects in real time.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _starting ? null : _start,
+                  icon: _starting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.videocam),
+                  label: const Text('New session'),
+                ),
+                const SizedBox(height: 6),
+                // Always-available entry point so a problem can be reported even after
+                // the app restarts (e.g. following a crash) — the report still captures
+                // the recent technical log.
+                TextButton.icon(
+                  onPressed: _reportProblem,
+                  icon: const Icon(Icons.bug_report_outlined, size: 18),
+                  label: const Text('Report a problem'),
+                ),
+                const SizedBox(height: 14),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Previous sessions',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                Expanded(child: _sessionList()),
+              ],
             ),
-            Expanded(child: _sessionList()),
+            // Floats over the top-right corner (the title block stays centered).
+            Positioned(top: 0, right: 4, child: _overflowMenu()),
           ],
         ),
       ),
