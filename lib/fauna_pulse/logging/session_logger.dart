@@ -184,6 +184,16 @@ class SessionLogger {
   void logDetections(List<Map<String, dynamic>> tracks, {DateTime? at}) =>
       _append('detections', {'tracks': tracks}, at: at, flush: false);
 
+  /// One processed frame's detector boxes BEFORE tracking (round 105), for
+  /// the offline tracker replay harness (`tracking/tracker_replay.dart` —
+  /// the payload format lives there, KEEP IN SYNC). Only written while the
+  /// "Log raw detections" evaluation toggle is on. Empty frames are logged
+  /// too — deliberately: the tracker ages its tracks by *frames*, so a
+  /// faithful replay needs to know about every frame, not just the busy
+  /// ones. Not flushed per line (same hot-path rule as [logDetections]).
+  void logRawDetections(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('raw_detections', payload, at: at, flush: false);
+
   /// A motion-only-mode photo trigger: the saved JPEG's name plus the motion
   /// score that fired it. The detector never runs in that mode, so there are
   /// no tracks/boxes — the `capture` record that follows carries timing/size/

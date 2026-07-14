@@ -32,7 +32,7 @@ on a clone of `ultralytics/yolo-flutter-app`.
 | Area | Files | Purpose |
 |------|-------|---------|
 | Models | `models/roi.dart`, `models/track.dart`, `models/session_config.dart` | Square ROI math (resolution-independent), track/detection types, all user settings + persistence |
-| Tracking | `tracking/byte_track.dart` | Lightweight pure-Dart ByteTrack-style multi-object tracker (stable track ids) |
+| Tracking | `tracking/tracker.dart`, `tracking/byte_track.dart`, `tracking/c_biou_track.dart`, `tracking/tracker_replay.dart` | `InsectTracker` interface + two pure-Dart trackers (ByteTrack-style default, C-BIoU-style alternative) + offline replay harness for comparing them on recorded raw detections |
 | Logging | `logging/session_logger.dart`, `logging/device_thermal.dart` | Append-only JSONL writer; phone-temperature reader |
 | Capture | `capture/roi_capture.dart` | Time-lapse scheduler + background-isolate JPEG crop of the ROI |
 | Session (round 73) | `session/frame_processor.dart`, `session/session_recorder.dart`, `session/camera_diagnostics_controller.dart` | Per-frame mapping/tracking + gate-idle state (unit-testable), recording lifecycle (folder/logger/photos/keep-alive/stop order), one-time camera probes + lens cycling |
@@ -63,7 +63,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
-| Min hits | `0.2 s` | before a track is confirmed |
+| Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
+| Tracker algorithm | `bytetrack` | r105: AI-tab "Visit tracking" dropdown; `cbiou` = buffered-IoU alternative (search margins 0.30/0.50, own highThresh 0.5); both share the seconds-based settings above |
+| Log raw detections | off | r105 eval toggle (tracking Advanced): one `raw_detections` JSONL record per frame (pre-tracking boxes) for the offline tracker replay harness; ~1–2 MB/h |
 | Crop 1:1 lock | off | r91: forces the summary-viewer crop-export box square; viewer chip ↔ Settings → Summary switch |
 | GPU when faster | on | see GPU/CPU note below |
 | CPU threads | `0` (auto) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest |
@@ -157,8 +159,20 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   shows it as "Captured". Saved crops carry NO EXIF (all paths re-encode raw pixels);
   filename + JSONL are the capture-time ground truth. `session.jsonl` stays strict
   one-object-per-line JSON Lines — never pretty-print it.
-- **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
-  fallback that fixed track-id fragmentation (one insect → dozens of ids).
+- **Tracker.** Two pure-Dart trackers behind the `InsectTracker` interface
+  (`tracking/tracker.dart`, r105): ByteTrack-style (`byte_track.dart`, default —
+  its distance-association fallback fixed track-id fragmentation) and
+  C-BIoU-style (`c_biou_track.dart`, cascaded buffered-IoU matching for big
+  between-frame jumps). Both share visit semantics (high-score spawn rule,
+  frame-count buffers re-derived live from the user's seconds). The camera
+  screen swaps the instance only on settings close (settings are locked while
+  recording, so ids never restart mid-log); the start record's
+  `tracker_params.algorithm` says which tracker produced a session. The
+  "Log raw detections" toggle writes pre-tracking `raw_detections` records
+  that `tracking/tracker_replay.dart` replays through either tracker
+  (`flutter test test/fauna_pulse/tracker_replay_test.dart
+  --dart-define=REPLAY_SESSION=…/session.jsonl`); judge reports against a
+  hand count from the session's photos, not MOT benchmarks.
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
 - **Camera2 interop options go through ONE funnel (round 82).**
   `applyInteropOptions()` in `YOLOView.kt` is the only place

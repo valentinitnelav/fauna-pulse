@@ -26,6 +26,8 @@ import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
+import '../tracking/c_biou_track.dart';
+import '../tracking/tracker.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 
@@ -785,14 +787,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) => setState(() {
             // Keep the High-score threshold at least _highScoreBuffer above the
             // new Confidence, so the "faint detection" band is never squeezed
-            // shut when the user raises Confidence.
+            // shut when the user raises Confidence. Both trackers carry their
+            // own high threshold; the floor applies to each.
             final p = _c.trackerParams;
+            final cp = _c.cbiouParams;
             final minHigh = (v + _highScoreBuffer).clamp(0.30, 0.95);
             _c = _c.copyWith(
               confidenceThreshold: v,
               trackerParams: p.highThresh < minHigh
                   ? p.copyWith(highThresh: minHigh)
                   : p,
+              cbiouParams: cp.highThresh < minHigh
+                  ? cp.copyWith(highThresh: minHigh)
+                  : cp,
             );
           }),
         ),
@@ -865,9 +872,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
 
         const Divider(color: Colors.white24),
-        const Text(
-          'Tracker',
-          style: TextStyle(color: Colors.white70, fontSize: 16),
+        const Row(
+          children: [
+            Icon(Icons.polyline, size: 20, color: Colors.white70),
+            SizedBox(width: 8),
+            Text(
+              'Visit tracking',
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+          ],
         ),
         _trackerFields(),
         const SizedBox(height: 8),
@@ -1022,19 +1035,54 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final p = _c.trackerParams;
     void update(ByteTrackParams np) =>
         setState(() => _c = _c.copyWith(trackerParams: np));
+    final cp = _c.cbiouParams;
+    void updateC(CBiouParams np) =>
+        setState(() => _c = _c.copyWith(cbiouParams: np));
+    final isCbiou = _c.trackerAlgorithm == TrackerAlgorithm.cbiou;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _label(
           'Tracking links each insect\'s detections across frames into one '
-          '"visit" with a stable ID — the basis of the visitation rate. With '
-          'insects that land and linger, the main error is one real visit being '
-          'split into several IDs (which inflates the count), so these defaults '
-          'lean toward keeping an existing ID alive rather than starting new '
-          'ones. Two settings work together: a detection is only seen by the '
-          'tracker if it first passes the Confidence threshold (above); of '
-          'those, boxes at/above "High-score" can start a new ID, while weaker '
-          'ones can only keep an existing insect\'s ID alive.',
+          '"visit" with a stable ID — the basis of the visitation rate. The '
+          'two settings below are the ones that matter day to day; the '
+          'defaults suit insects that land and linger on a flower. '
+          'Fine-tuning and the algorithm\'s own knobs live under Advanced.',
+        ),
+        DropdownButton<TrackerAlgorithm>(
+          value: _c.trackerAlgorithm,
+          isExpanded: true,
+          dropdownColor: Colors.black87,
+          items: const [
+            DropdownMenuItem(
+              value: TrackerAlgorithm.bytetrack,
+              child: Text(
+                'ByteTrack — field-tested default',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+            DropdownMenuItem(
+              value: TrackerAlgorithm.cbiou,
+              child: Text(
+                'C-BIoU — experimental, for fast/erratic movers',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          ],
+          onChanged: (a) =>
+              setState(() => _c = _c.copyWith(trackerAlgorithm: a)),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'How detections are linked frame to frame. ByteTrack predicts '
+            'where each insect went and matches by box overlap — keep it '
+            'unless you have a reason not to. C-BIoU instead enlarges the '
+            'boxes before comparing, which can hold onto insects that jump '
+            'far between frames (fast fliers, low frame rates). Both count '
+            'visits the same way, so results stay comparable.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ),
         // Occlusion tolerance is exposed in SECONDS (intuitive); it is converted
         // to a frame count at runtime against the live detector FPS, since the
@@ -1059,7 +1107,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         // Min visit length is also exposed in SECONDS and converted to frames
         // live (like occlusion tolerance), so it stays meaningful as FPS drifts.
         NumericSettingField(
-          label: 'Min hits to confirm',
+          label: 'Minimum visit length',
           value: _c.minHitsSeconds,
           min: 0.0,
           max: 2.0,
@@ -1075,8 +1123,139 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'FPS (0–2 s; default 0.2).',
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
-        NumericSettingField(
-          label: 'Match overlap (IoU)',
+        ..._advancedTrackerSection(isCbiou, p, update, cp, updateC),
+      ],
+    );
+  }
+
+  /// The collapsed "Advanced" block of the Visit-tracking section: the
+  /// selected algorithm's own tuning knobs (only the active algorithm's are
+  /// shown, so citizen-science users are never faced with both sets at once),
+  /// a reset button, and the raw-detections evaluation toggle.
+  List<Widget> _advancedTrackerSection(
+    bool isCbiou,
+    ByteTrackParams p,
+    void Function(ByteTrackParams) update,
+    CBiouParams cp,
+    void Function(CBiouParams) updateC,
+  ) => [
+    ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      collapsedIconColor: Colors.white70,
+      iconColor: Colors.white70,
+      shape: const Border(), // no divider lines when expanded
+      collapsedShape: const Border(),
+      title: Text(
+        'Advanced (${isCbiou ? 'C-BIoU' : 'ByteTrack'} tuning)',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+      subtitle: const Text(
+        'Fine-tuning for frame-to-frame matching. The defaults suit insects '
+        'on a flower — most sessions never need these.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+      children: [
+        if (isCbiou) ..._cbiouFields(cp, updateC) else ..._byteFields(p, update),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _resetTrackingDefaults,
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('Reset tracking to defaults'),
+          ),
+        ),
+        const Text(
+          'Puts every tracking setting above back to its default (the '
+          'algorithm choice itself is kept).',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Log raw detections (evaluation)',
+            style: TextStyle(color: Colors.white),
+          ),
+          subtitle: const Text(
+            'Also writes the detector\'s unprocessed boxes for every frame '
+            'into the session file, so a recorded session can be replayed '
+            'through either tracker on a computer to compare them. Leave off '
+            'for normal use — it grows the session file by roughly 1–2 MB '
+            'per hour.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          value: _c.logRawDetections,
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(logRawDetections: v)),
+        ),
+      ],
+    ),
+  ];
+
+  /// C-BIoU's own knobs (round 105). The buffer scales are THE tuning lever
+  /// of this algorithm: how far a box is enlarged before the overlap test.
+  List<Widget> _cbiouFields(
+    CBiouParams cp,
+    void Function(CBiouParams) updateC,
+  ) => [
+    NumericSettingField(
+      label: 'Search margin — pass 1',
+      value: cp.bufferScale1,
+      min: 0.05,
+      max: 1.0,
+      decimals: 2,
+      helperText:
+          'Before comparing, every box is enlarged by this fraction of its '
+          'own size on each side (0.3 = a 10-px box is matched as 16 px). '
+          'Bigger tolerates faster movement between frames but risks mixing '
+          'up two insects sitting close together. Raising it above pass 2 '
+          'raises pass 2 with it. (0.05–1.0; default 0.30.)',
+      onChanged: (v) => updateC(
+        cp.copyWith(
+          bufferScale1: v,
+          bufferScale2: v > cp.bufferScale2 ? v : cp.bufferScale2,
+        ),
+      ),
+    ),
+    NumericSettingField(
+      label: 'Search margin — pass 2',
+      value: cp.bufferScale2,
+      min: 0.05,
+      max: 2.0,
+      decimals: 2,
+      helperText:
+          'A second, wider matching round for whatever pass 1 could not '
+          'pair — this is what catches the big between-frame jumps. Always '
+          'at least as large as pass 1. (up to 2.0; default 0.50.)',
+      onChanged: (v) => updateC(
+        cp.copyWith(bufferScale2: v < cp.bufferScale1 ? cp.bufferScale1 : v),
+      ),
+    ),
+    NumericSettingField(
+      label: 'High-score threshold',
+      // Same Confidence-coupled floor as ByteTrack's high threshold, so the
+      // "faint detection" band always exists regardless of algorithm.
+      value: cp.highThresh < _minHighScore ? _minHighScore : cp.highThresh,
+      min: _minHighScore,
+      max: 0.95,
+      decimals: 2,
+      helperText:
+          'A detection at or above this score may START a new visit ID; a '
+          'fainter one (still above the Confidence threshold) may only keep '
+          'an existing insect\'s ID alive — e.g. while it is half-hidden '
+          'under a petal. Automatically kept above Confidence so that faint '
+          'band never closes. Default 0.50.',
+      onChanged: (v) => updateC(cp.copyWith(highThresh: v)),
+    ),
+  ];
+
+  /// ByteTrack's own knobs — the pre-round-105 fields, unchanged.
+  List<Widget> _byteFields(
+    ByteTrackParams p,
+    void Function(ByteTrackParams) update,
+  ) => [
+    NumericSettingField(
+      label: 'Match overlap (IoU)',
           value: p.matchThresh,
           min: 0.05,
           max: 0.9,
@@ -1146,8 +1325,30 @@ class _SettingsSheetState extends State<SettingsSheet> {
               '(0–1; default 0.5.)',
           onChanged: (v) => update(p.copyWith(velocitySmoothing: v)),
         ),
-      ],
-    );
+  ];
+
+  /// Resets every Visit-tracking setting to its default: the shared
+  /// seconds-based controls and BOTH algorithms' advanced knobs (a knob you
+  /// can't currently see shouldn't stay silently mis-tuned). The algorithm
+  /// choice itself is deliberately kept. The high-score defaults respect the
+  /// Confidence-coupled floor so the reset can never close the faint band.
+  void _resetTrackingDefaults() {
+    const bp = ByteTrackParams();
+    const cbp = CBiouParams();
+    final minHigh = _minHighScore;
+    setState(() {
+      _c = _c.copyWith(
+        occlusionSeconds: 3.0,
+        minHitsSeconds: 0.2,
+        trackerParams: bp.copyWith(
+          highThresh: bp.highThresh < minHigh ? minHigh : bp.highThresh,
+        ),
+        cbiouParams: cbp.copyWith(
+          highThresh: cbp.highThresh < minHigh ? minHigh : cbp.highThresh,
+        ),
+        logRawDetections: false,
+      );
+    });
   }
 
   // --- Tab 3: Camera & resolution ----------------------------------------

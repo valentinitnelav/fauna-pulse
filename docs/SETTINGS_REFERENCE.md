@@ -64,17 +64,35 @@ the watching (native side, under ~1 ms/frame).
 | **Grid size** | `48` (range 16–160) | How many cells per side the ROI is shrunk to for the motion check. Raise it (e.g. 96–128) when insects are small relative to the ROI box; costs slightly more CPU. |
 | **Idle check FPS** | `5` (range 1–30) | How many frames per second are inspected *while the gate is asleep*. Higher = faster wake-up but a warmer idle phone. An arriving insect is noticed within ~1/this seconds. (This is why the FPS readout legitimately shows this low number during empty periods.) |
 
-## Tracking (AI tab)
+## Visit tracking (AI tab)
 
-These two are exposed in **seconds** but the tracker works in frames; the app
-converts them against the live frame rate as it varies during the session.
+Tracking links each insect's detections across frames into one visit with a
+stable ID. Two algorithms are available (round 105); both count visits the
+same way, so results stay comparable across sessions.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
+| **Tracker algorithm** | `ByteTrack` | How detections are linked frame to frame. **ByteTrack** (field-tested default) predicts where each insect went and matches by box overlap. **C-BIoU** (experimental) instead enlarges the boxes before comparing — worth trying when insects jump far between frames (fast fliers, low frame rates). |
 | **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low fragments one visit into several IDs; too high can merge separate visits. 3 s was tuned for bees. |
 | **Minimum visit length** | `0.2 s` | How long an insect must be continuously detected before it counts as a confirmed visit (anything briefer is treated as noise). Directly affects visitation rate for brief touchdowns: lower counts more brief visits (and more false blips); higher counts only clear landings. |
 
-*(Further tracker tuning lives under the AI tab's tracker parameters.)*
+The seconds-based settings are converted to frames against the live frame
+rate as it varies during the session.
+
+**Advanced** (collapsed; only the selected algorithm's knobs are shown):
+
+| Setting | Algorithm | Default | What it does |
+|---|---|---|---|
+| **Match overlap (IoU)** | ByteTrack | `0.1` | Overlap required to treat a detection as the same insect. Lower tolerates faster motion. |
+| **Low-score association** | ByteTrack | `0.1` | Looser second test that lets faint detections keep an existing ID. |
+| **High-score threshold** | both | `0.5` | Score at/above which a detection may *start* a new ID; fainter ones only keep IDs alive. Auto-kept above Confidence. |
+| **Velocity smoothing** | ByteTrack | `0.5` | How much the motion prediction trusts the latest movement. Low = "assume it barely moved". |
+| **Search margin — pass 1** | C-BIoU | `0.30` | Boxes are enlarged by this fraction of their own size before the overlap test. Bigger tolerates faster movement but risks mixing close neighbours. |
+| **Search margin — pass 2** | C-BIoU | `0.50` | A wider second matching round for whatever pass 1 missed — catches big between-frame jumps. Always ≥ pass 1. |
+| **Log raw detections** | both | `off` | Evaluation aid: writes the detector's pre-tracking boxes for every frame into the session file so it can be replayed through either tracker offline (`flutter test test/fauna_pulse/tracker_replay_test.dart --dart-define=REPLAY_SESSION=…/session.jsonl`). Adds ~1–2 MB/h. |
+
+A **Reset tracking to defaults** button in Advanced restores every setting in
+this section (keeping the algorithm choice).
 
 ## Camera (Camera tab)
 

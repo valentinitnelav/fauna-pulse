@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/models/schedule_window.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/tracker.dart';
 
 void main() {
   group('bee-tuned defaults', () {
@@ -104,6 +106,50 @@ void main() {
     );
     final restored = SessionConfig.fromJson(original.toJson());
     expect(restored.trackerParams.velocitySmoothing, 0.8);
+  });
+
+  test('tracker algorithm choice + C-BIoU params round-trip (round 105)', () {
+    // Defaults: field-tested ByteTrack, evaluation logging off.
+    const c = SessionConfig();
+    expect(c.trackerAlgorithm, TrackerAlgorithm.bytetrack);
+    expect(c.cbiouParams.bufferScale1, 0.3);
+    expect(c.cbiouParams.bufferScale2, 0.5);
+    expect(c.cbiouParams.highThresh, 0.5);
+    expect(c.logRawDetections, false);
+
+    final restored = SessionConfig.fromJson(
+      c
+          .copyWith(
+            trackerAlgorithm: TrackerAlgorithm.cbiou,
+            cbiouParams: const CBiouParams(
+              bufferScale1: 0.4,
+              bufferScale2: 0.8,
+              highThresh: 0.6,
+            ),
+            logRawDetections: true,
+          )
+          .toJson(),
+    );
+    expect(restored.trackerAlgorithm, TrackerAlgorithm.cbiou);
+    expect(restored.cbiouParams.bufferScale1, 0.4);
+    expect(restored.cbiouParams.bufferScale2, 0.8);
+    expect(restored.cbiouParams.highThresh, 0.6);
+    expect(restored.logRawDetections, true);
+  });
+
+  test('configs saved before round 105 load as ByteTrack', () {
+    // No trackerAlgorithm key at all, and an unknown name: both must fall
+    // back to the algorithm those sessions actually used.
+    expect(
+      SessionConfig.fromJson(const {}).trackerAlgorithm,
+      TrackerAlgorithm.bytetrack,
+    );
+    expect(
+      SessionConfig.fromJson(const {
+        'trackerAlgorithm': 'not-a-tracker',
+      }).trackerAlgorithm,
+      TrackerAlgorithm.bytetrack,
+    );
   });
 
   group('minHitsFramesFor', () {

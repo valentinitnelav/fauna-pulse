@@ -34,6 +34,8 @@ import '../session/frame_processor.dart';
 import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
 import '../tracking/byte_track.dart';
+import '../tracking/c_biou_track.dart';
+import '../tracking/tracker.dart';
 import '../widgets/calibrating_banner.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
@@ -59,7 +61,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   final YOLOViewController _controller = YOLOViewController();
 
   late SessionConfig _config;
-  late ByteTracker _tracker;
+  late InsectTracker _tracker;
 
   // Round 73 (review B6): the screen's non-UI responsibilities live in three
   // plain collaborators — [_frame] does the per-frame detection mapping +
@@ -373,7 +375,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _refreshModelInputSize();
     // The occlusion tolerance is stored in seconds; convert it to the tracker's
     // frame-based buffer using a sensible starting FPS (refined live below).
-    _tracker = ByteTracker(params: _trackerParamsForFps(_fpsVN.value));
+    _tracker = _buildTracker(_fpsVN.value);
     _frame = FrameProcessor(tracker: _tracker);
     _rebuildThrottle();
     // Sample temperature now, then on its configured interval. While recording,
@@ -768,9 +770,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // rate drifts during the session.
       final wantedBuffer = _config.occlusionFramesFor(fps);
       final wantedHits = _config.minHitsFramesFor(fps);
-      if (wantedBuffer != _tracker.params.trackBuffer ||
-          wantedHits != _tracker.params.minHitsToConfirm) {
-        _tracker.params = _tracker.params.copyWith(
+      if (wantedBuffer != _tracker.trackBuffer ||
+          wantedHits != _tracker.minHitsToConfirm) {
+        _tracker.setFrameBudgets(
           trackBuffer: wantedBuffer,
           minHitsToConfirm: wantedHits,
         );
@@ -820,6 +822,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           result.tracks,
           result.roiRect,
           result.timestampMs,
+          // Evaluation toggle (round 105): also log the pre-tracking boxes so
+          // this session can be replayed offline through either tracker.
+          rawDetections: _config.logRawDetections ? result.detections : null,
         )) {
       _flashCaptureCue();
     }
@@ -1147,7 +1152,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // are the *frame counts* derived from the user's occlusion/min-hit seconds
         // at the current FPS — not the static defaults. The seconds the user
         // actually set are in the `config` block (occlusionSeconds, minHitsSeconds).
-        'tracker_params': _tracker.params.toJson(),
+        // Includes an `algorithm` key (round 105: bytetrack or cbiou) so
+        // post-processing knows which tracker produced this session's ids.
+        'tracker_params': _tracker.effectiveParamsJson(),
         // ROI sizes are expressed against the full-resolution still that is
         // actually saved (capture dims); the smaller analysis frame fed to the
         // detector is logged separately for context.
@@ -1729,15 +1736,31 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   // --- Settings -----------------------------------------------------------
 
-  /// The tracker params with the frame-based occlusion buffer derived from the
-  /// user's occlusion-tolerance *seconds* and the given (smoothed) detector FPS.
-  /// Centralised so the init, the settings-apply, and the per-second live
-  /// refresh all compute the buffer the same way.
-  ByteTrackParams _trackerParamsForFps(double detectorFps) =>
-      _config.trackerParams.copyWith(
-        trackBuffer: _config.occlusionFramesFor(detectorFps),
-        minHitsToConfirm: _config.minHitsFramesFor(detectorFps),
-      );
+  /// Builds the configured tracker (round 105: ByteTrack or C-BIoU) with the
+  /// frame-based occlusion/min-hit buffers derived from the user's *seconds*
+  /// and the given (smoothed) detector FPS. Centralised so the init and the
+  /// settings-apply construct the tracker the same way; the per-second live
+  /// refresh only re-derives the frame budgets via [InsectTracker.setFrameBudgets].
+  InsectTracker _buildTracker(double detectorFps) {
+    final buffer = _config.occlusionFramesFor(detectorFps);
+    final hits = _config.minHitsFramesFor(detectorFps);
+    switch (_config.trackerAlgorithm) {
+      case TrackerAlgorithm.cbiou:
+        return CBiouTracker(
+          params: _config.cbiouParams.copyWith(
+            trackBuffer: buffer,
+            minHitsToConfirm: hits,
+          ),
+        );
+      case TrackerAlgorithm.bytetrack:
+        return ByteTracker(
+          params: _config.trackerParams.copyWith(
+            trackBuffer: buffer,
+            minHitsToConfirm: hits,
+          ),
+        );
+    }
+  }
 
   /// The inference-rate ceiling (fps): the user's manual cap, or a sane 15 fps
   /// when they left it uncapped (0) — used as the auto-throttle's upper bound.
@@ -1904,7 +1927,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final modelChanged = updated.modelPath != _config.modelPath;
     setState(() {
       _config = updated;
-      _tracker.params = _trackerParamsForFps(_fpsVN.value);
+      // Rebuild the tracker so an algorithm or tuning change applies. Safe:
+      // the settings button is disabled while recording, so ids can never
+      // restart mid-log; the preview tracks it drops are cosmetic.
+      _tracker = _buildTracker(_fpsVN.value);
+      _frame.tracker = _tracker;
       _rebuildThrottle();
       // Show "reading…" again while we re-probe the new model's input size.
       if (modelChanged) {

@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 
 import '../tracking/byte_track.dart';
+import '../tracking/c_biou_track.dart';
+import '../tracking/tracker.dart';
 
 import '../logging/app_error_hooks.dart';
 import 'schedule_window.dart';
@@ -356,8 +358,26 @@ class SessionConfig {
   /// actually exposes.
   final double selectedLensZoom;
 
-  /// Tracker tuning (AI Pipeline tab).
+  /// Which frame-association algorithm links detections into visits
+  /// (round 105). `bytetrack` (default) is the field-tested tracker;
+  /// `cbiou` is the buffered-overlap alternative for A/B evaluation.
+  /// Both share the seconds-based occlusion/min-visit settings above;
+  /// each has its own advanced tuning block below.
+  final TrackerAlgorithm trackerAlgorithm;
+
+  /// ByteTrack tuning (AI tab → Visit tracking → Advanced).
   final ByteTrackParams trackerParams;
+
+  /// C-BIoU tuning (AI tab → Visit tracking → Advanced). Only used when
+  /// [trackerAlgorithm] is [TrackerAlgorithm.cbiou].
+  final CBiouParams cbiouParams;
+
+  /// Debug/evaluation toggle (round 105): while recording in detector mode,
+  /// also write one `raw_detections` record per processed frame with the
+  /// detector's boxes BEFORE tracking. This is what the offline tracker
+  /// replay harness consumes to compare algorithms on real field data. Off by
+  /// default — at 10 FPS it adds roughly 1–2 MB per hour to the session log.
+  final bool logRawDetections;
 
   const SessionConfig({
     this.modelPath = 'yolo26n',
@@ -408,7 +428,10 @@ class SessionConfig {
     this.autoComputeGraphs = true,
     this.cropSquareLock = false,
     this.selectedLensZoom = 1.0,
+    this.trackerAlgorithm = TrackerAlgorithm.bytetrack,
     this.trackerParams = const ByteTrackParams(),
+    this.cbiouParams = const CBiouParams(),
+    this.logRawDetections = false,
   });
 
   /// True when the schedule can actually run: 1–3 windows, each with
@@ -500,7 +523,10 @@ class SessionConfig {
     bool? autoComputeGraphs,
     bool? cropSquareLock,
     double? selectedLensZoom,
+    TrackerAlgorithm? trackerAlgorithm,
     ByteTrackParams? trackerParams,
+    CBiouParams? cbiouParams,
+    bool? logRawDetections,
   }) => SessionConfig(
     modelPath: modelPath ?? this.modelPath,
     task: task ?? this.task,
@@ -546,7 +572,10 @@ class SessionConfig {
     autoComputeGraphs: autoComputeGraphs ?? this.autoComputeGraphs,
     cropSquareLock: cropSquareLock ?? this.cropSquareLock,
     selectedLensZoom: selectedLensZoom ?? this.selectedLensZoom,
+    trackerAlgorithm: trackerAlgorithm ?? this.trackerAlgorithm,
     trackerParams: trackerParams ?? this.trackerParams,
+    cbiouParams: cbiouParams ?? this.cbiouParams,
+    logRawDetections: logRawDetections ?? this.logRawDetections,
   );
 
   Map<String, dynamic> toJson() => {
@@ -597,7 +626,10 @@ class SessionConfig {
     'autoComputeGraphs': autoComputeGraphs,
     'cropSquareLock': cropSquareLock,
     'selectedLensZoom': selectedLensZoom,
+    'trackerAlgorithm': trackerAlgorithm.name,
     'trackerParams': trackerParams.toJson(),
+    'cbiouParams': cbiouParams.toJson(),
+    'logRawDetections': logRawDetections,
   };
 
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
@@ -654,11 +686,23 @@ class SessionConfig {
     autoComputeGraphs: j['autoComputeGraphs'] as bool? ?? true,
     cropSquareLock: j['cropSquareLock'] as bool? ?? false,
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
+    // Configs saved before round 105 carry no algorithm choice: they were
+    // all ByteTrack, which is also the fallback for an unknown name.
+    trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[j['trackerAlgorithm']
+            as String? ??
+        ''] ??
+        TrackerAlgorithm.bytetrack,
     trackerParams: j['trackerParams'] is Map
         ? ByteTrackParams.fromJson(
             (j['trackerParams'] as Map).cast<String, dynamic>(),
           )
         : const ByteTrackParams(),
+    cbiouParams: j['cbiouParams'] is Map
+        ? CBiouParams.fromJson(
+            (j['cbiouParams'] as Map).cast<String, dynamic>(),
+          )
+        : const CBiouParams(),
+    logRawDetections: j['logRawDetections'] as bool? ?? false,
   );
 
   static const String _prefsKey = 'faunapulse_session_config';

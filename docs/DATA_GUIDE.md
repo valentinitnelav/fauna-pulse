@@ -105,6 +105,21 @@ insect instead, see the note below):
 > scripts should accept both (the snippets in §4 do). The in-app summary
 > screen reads both formats too.
 
+### `raw_detections` — pre-tracking boxes (round 105, only when the evaluation toggle is on)
+
+Written only when Settings → AI → Visit tracking → Advanced → **Log raw
+detections** is enabled: one line per processed frame (empty frames included —
+the tracker ages its tracks by frames) with the detector's boxes **before**
+tracking. This is the input the offline tracker replay harness uses to compare
+association algorithms on real data
+(`flutter test test/fauna_pulse/tracker_replay_test.dart
+--dart-define=REPLAY_SESSION=…/session.jsonl`).
+
+| Field | Meaning |
+|---|---|
+| `frame_ms` | The frame's timestamp (ms since epoch) — use this, not `time_ms` (which is stamped at log-queue time). |
+| `boxes` | Array of `[left, top, right, bottom, confidence, class_index]`, boxes **frame-normalized** 0..1 (not ROI-relative like `box_in_roi`). |
+
 ### `roi_update` — when the ROI is moved/resized mid-session
 
 Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`) and `saves_px`.

@@ -14,7 +14,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../models/roi.dart';
 import '../models/track.dart';
-import '../tracking/byte_track.dart';
+import '../tracking/tracker.dart';
 
 /// What [FrameProcessor.process] hands back for one stream event: the
 /// confirmed tracks after this frame plus the values the screen needs for
@@ -27,6 +27,13 @@ class FrameResult {
   /// Confirmed tracks after feeding this frame's detections to the tracker.
   final List<Track> tracks;
 
+  /// The frame's ROI-mapped detections exactly as they were fed to the
+  /// tracker (BEFORE association) — already built for the tracker call, so
+  /// exposing them is free. The recorder logs them as `raw_detections`
+  /// records when the evaluation toggle is on, giving the offline tracker
+  /// replay harness real per-frame detector output to compare algorithms on.
+  final List<Detection> detections;
+
   /// Dart-side tracker cost for this frame (milliseconds), for the PERF log.
   final double trackMs;
 
@@ -37,6 +44,7 @@ class FrameResult {
   const FrameResult({
     required this.roiRect,
     required this.tracks,
+    required this.detections,
     required this.trackMs,
     required this.timestampMs,
   });
@@ -74,7 +82,11 @@ class FrameProcessor {
 
   /// The tracker fed by [process]. Owned here but still reachable by the
   /// screen, which resets it per session and re-derives its params live.
-  final ByteTracker tracker;
+  /// Mutable (round 105): closing the settings sheet — only possible while
+  /// NOT recording — swaps in a freshly built tracker so the user's
+  /// algorithm/tuning choice applies without rebuilding this processor
+  /// (whose gate-idle state must survive a settings visit).
+  InsectTracker tracker;
 
   /// Millisecond wall clock, injectable so tests can fake long gate sleeps.
   final int Function() _clock;
@@ -243,6 +255,7 @@ class FrameProcessor {
     return FrameResult(
       roiRect: roiRect,
       tracks: tracks,
+      detections: dets,
       trackMs: trackSw.elapsedMicroseconds / 1000.0,
       timestampMs: ts,
     );

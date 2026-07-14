@@ -22,6 +22,7 @@
 import 'dart:ui';
 
 import '../models/track.dart';
+import 'tracker.dart';
 
 /// Tunable tracker parameters, surfaced to the user in the Advanced tab.
 class ByteTrackParams {
@@ -116,7 +117,7 @@ double iou(Rect a, Rect b) {
 double _diagonal(Rect r) => Offset(r.width, r.height).distance;
 
 /// The ByteTrack-style tracker. Call [update] once per processed frame.
-class ByteTracker {
+class ByteTracker implements InsectTracker {
   ByteTrackParams params;
 
   /// Distance-association gate, as a multiple of the detection box's diagonal.
@@ -138,6 +139,7 @@ class ByteTracker {
   /// Total number of tracks that have ever reached the "confirmed" state this
   /// session — i.e. the count of distinct insects actually counted as visits.
   /// (Each id is counted once; a track returning from "lost" is not recounted.)
+  @override
   int totalConfirmed = 0;
 
   ByteTracker({
@@ -146,10 +148,38 @@ class ByteTracker {
   });
 
   /// All currently confirmed tracks (the ones worth showing/logging as visits).
+  @override
   List<Track> get confirmedTracks =>
       _tracks.where((t) => t.state == TrackState.confirmed).toList();
 
+  @override
+  String get algorithmName => TrackerAlgorithm.bytetrack.name;
+
+  @override
+  int get trackBuffer => params.trackBuffer;
+
+  @override
+  int get minHitsToConfirm => params.minHitsToConfirm;
+
+  @override
+  void setFrameBudgets({
+    required int trackBuffer,
+    required int minHitsToConfirm,
+  }) {
+    params = params.copyWith(
+      trackBuffer: trackBuffer,
+      minHitsToConfirm: minHitsToConfirm,
+    );
+  }
+
+  @override
+  Map<String, dynamic> effectiveParamsJson() => {
+    'algorithm': algorithmName,
+    ...params.toJson(),
+  };
+
   /// Resets the tracker for a new session (ids start again at 1).
+  @override
   void reset() {
     _tracks.clear();
     _nextId = 1;
@@ -163,6 +193,7 @@ class ByteTracker {
   /// the gate wakes after sleeping longer than the occlusion tolerance, so a
   /// newly arriving insect can never be re-linked to (and miscounted as) one
   /// that left before the gate closed.
+  @override
   void expireLostTracks() {
     _tracks.removeWhere((t) => t.state == TrackState.lost);
   }
@@ -172,6 +203,7 @@ class ByteTracker {
   /// [detections] are this frame's ROI-filtered boxes; [timestampMs] is the
   /// frame's wall-clock time. Returns the list of confirmed tracks after the
   /// update (stable ids, latest boxes).
+  @override
   List<Track> update(List<Detection> detections, int timestampMs) {
     // Association compares detections against each track's *predicted* box
     // (its last box shifted by its velocity); the last actual box is kept until

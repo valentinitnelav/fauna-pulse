@@ -230,8 +230,36 @@ class SessionRecorder {
   /// so post-processing can join them directly. Returns true when a photo was
   /// triggered (the screen blinks its capture cue on it). No-op unless
   /// [recording].
-  bool recordFrame(List<Track> tracks, Rect roiRect, int ts) {
+  bool recordFrame(
+    List<Track> tracks,
+    Rect roiRect,
+    int ts, {
+    List<Detection>? rawDetections,
+  }) {
     if (!_recording) return false;
+    // Evaluation toggle (round 105): the detector's pre-tracking boxes, so
+    // the offline replay harness can re-run this session through any tracker.
+    // `boxes` entries are [left, top, right, bottom, confidence, classIndex]
+    // in frame-normalized 0..1 — the exact space the tracker was fed (the
+    // parser in tracking/tracker_replay.dart is the KEEP-IN-SYNC mirror).
+    // Empty frames are logged too: track aging counts frames.
+    if (rawDetections != null) {
+      double r4(double v) => double.parse(v.toStringAsFixed(4));
+      _logger?.logRawDetections({
+        'frame_ms': ts,
+        'boxes': [
+          for (final d in rawDetections)
+            [
+              r4(d.box.left),
+              r4(d.box.top),
+              r4(d.box.right),
+              r4(d.box.bottom),
+              r4(d.confidence),
+              d.classIndex,
+            ],
+        ],
+      });
+    }
     final pending = _capture?.evaluate(tracks, ts);
     if (tracks.isNotEmpty) {
       _logger?.logDetections([

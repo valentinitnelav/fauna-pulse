@@ -3943,3 +3943,74 @@ restart) — only the widget teardown crashed.
   was a Flutter framework assertion on the home screen (no recording active),
   and the logcat capture ended at USB disconnect before the exception printed.
 
+## Round 105 (2026-07-14): selectable tracker — C-BIoU alternative + offline replay harness
+
+Follow-up to a documentation-based tracker review (ByteTrack / BoxMOT /
+Roboflow-trackers READMEs). Conclusion there: keep ByteTrack as the default;
+the one algorithm worth having as an on-device alternative is C-BIoU
+(Yang et al., WACV 2023) — buffered-IoU matching designed for exactly this
+app's hard case (small boxes, abrupt motion, 2–20 irregular FPS), needing
+only geometry + confidence (no ReID model, no Kalman). Owner asked for it as
+a selectable option with ByteTrack staying the default.
+
+- **`tracking/tracker.dart` (new):** `InsectTracker` interface (update/reset/
+  expireLostTracks/confirmedTracks/totalConfirmed/setFrameBudgets/
+  effectiveParamsJson/algorithmName) + `TrackerAlgorithm {bytetrack, cbiou}`
+  enum. `ByteTracker` implements it (no behavior change); `FrameProcessor`
+  and the camera screen now only know the interface. `FrameProcessor.tracker`
+  is mutable: settings-close (locked while recording) rebuilds the tracker via
+  `_buildTracker` and swaps it in, so an algorithm change never restarts ids
+  mid-log and the processor's gate state survives the settings visit.
+- **`tracking/c_biou_track.dart` (new):** C-BIoU-style tracker. Cascaded
+  greedy matching on buffered IoU (boxes enlarged by `bufferScale1` = 0.30,
+  then leftovers by `bufferScale2` = 0.50; pass 2 auto-clamped ≥ pass 1);
+  fixed small `_minBiou` 0.05 floor and fixed velocity-EMA 0.5 (deliberate
+  constants — buffering absorbs prediction error, that's the algorithm's
+  point). Shares ByteTrack's visit semantics: high-score spawn rule (faint
+  band only revives ids), tentative/confirmed/lost lifecycle, frame budgets
+  re-derived live from the user's seconds.
+- **Config:** `trackerAlgorithm` (default bytetrack; pre-r105 configs and
+  unknown names fall back to it), `cbiouParams`, `logRawDetections` — all in
+  copyWith/toJson/fromJson with round-trip tests. Start record logs
+  `tracker_params: {algorithm, ...}` via `effectiveParamsJson()`.
+- **Settings AI tab — "Visit tracking" section (Icons.polyline):** algorithm
+  dropdown (one-sentence plain-language contrast), the two shared seconds
+  controls stay visible ("Min hits to confirm" relabeled **"Minimum visit
+  length"**, matching SETTINGS_REFERENCE), everything else moved into a
+  collapsed **Advanced** ExpansionTile that shows ONLY the selected
+  algorithm's knobs (ByteTrack: match overlap / low-score / high-score /
+  velocity smoothing; C-BIoU: search margins pass 1+2 / high-score), plus
+  "Reset tracking to defaults" (keeps the algorithm choice; respects the
+  Confidence-coupled high-score floor, which now applies to BOTH trackers'
+  highThresh) and the raw-detections toggle. Summary Settings tab shows the
+  algorithm in the sub-header and only that algorithm's params (old sessions
+  = ByteTrack).
+- **Evaluation pipeline (the "compare on real data" plan):**
+  `logRawDetections` writes one `raw_detections` record per processed frame
+  (detector-mode only; empty frames included — frame-count aging needs them):
+  `{frame_ms, boxes: [[l,t,r,b,conf,cls], ...]}` frame-normalized, ~1–2 MB/h.
+  `FrameResult` now exposes the pre-tracking `detections` (already built).
+  `tracking/tracker_replay.dart` (new) parses those records and replays them
+  through any tracker, reproducing the live seconds→frames behavior (FPS EMA
+  with the r85 pause guard; budget re-derive ~1/s; long gap ⇒ one empty
+  update + expireLostTracks, mirroring the gate-wake rule). Reports visits +
+  per-visit durations + max concurrent — deliberately NOT MOTA/HOTA; judge
+  against a hand count from the session's photos. Run:
+  `flutter test test/fauna_pulse/tracker_replay_test.dart
+  --dart-define=REPLAY_SESSION=/abs/path/session.jsonl` (prints one summary
+  line per tracker; reads the session's own occlusion/min-visit seconds from
+  its start record).
+- **Tests:** `c_biou_track_test.dart` (buffered match holds an id across a
+  jump plain IoU loses + the knob's failure direction, cascade pass-2 rescue,
+  shared visit semantics, mis-ordered scales clamp), `tracker_replay_test.dart`
+  (parser vs the real on-disk envelope, visit counting/durations, gap-expiry),
+  config round-trips, FrameResult.detections exposure. 196 tests green,
+  analyzer clean.
+- Docs: SETTINGS_REFERENCE "Visit tracking" section rewritten (both
+  algorithms + Advanced table), DATA_GUIDE `raw_detections` record type.
+- Not done (deliberate): no benchmark-number-driven default change — MOT17/
+  SportsMOT/etc. numbers in the reviewed READMEs are pedestrians/sports at
+  ~30 FPS and don't transfer to insects-in-ROI; the replay harness on owner
+  field sessions is the decision tool. C-BIoU stays "experimental" in the UI
+  until it wins there.
+

@@ -726,6 +726,26 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return tp is Map ? tp : null;
   }
 
+  /// The C-BIoU tuning block (round 105), only present when that algorithm
+  /// was selectable when the session was recorded.
+  Map? get _cbiouParams {
+    final cfg = _startRec?['config'];
+    return (cfg is Map && cfg['cbiouParams'] is Map)
+        ? cfg['cbiouParams'] as Map
+        : null;
+  }
+
+  /// Which association algorithm produced this session's track ids:
+  /// 'bytetrack' or 'cbiou'. Sessions recorded before round 105 carry no key
+  /// — they were all ByteTrack.
+  String get _trackerAlgorithm =>
+      (_setting('trackerAlgorithm') ??
+              (_startRec?['tracker_params'] is Map
+                  ? (_startRec!['tracker_params'] as Map)['algorithm']
+                  : null) ??
+              'bytetrack')
+          .toString();
+
   /// Formats a number without a needless trailing ".0".
   String _numStr(Object? v) {
     if (v is int) return v.toString();
@@ -973,31 +993,47 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       suffix: ' s',
     );
 
-    // --- Tracking (ByteTrack) ---
+    // --- Visit tracking ---
     // Labels here mirror the AI-tab settings exactly so the same knob is never
     // called two different things. The user sets occlusion tolerance and min
-    // hits in *seconds*; the tracker uses *frames*, so we show the seconds the
-    // user chose and, where available, the derived frame count in parentheses.
-    final tp = _trackerParams;
-    rows.add(_subhead('Tracking (ByteTrack)'));
+    // visit length in *seconds*; the tracker uses *frames*, so we show the
+    // seconds the user chose and, where available, the derived frame count.
+    // Round 105: two selectable algorithms; only the one this session actually
+    // ran is shown (its name in the sub-header), so the card never lists knobs
+    // that had no effect.
+    final isCbiou = _trackerAlgorithm == 'cbiou';
+    rows.add(
+      _subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'),
+    );
     add('Occlusion tolerance', _setting('occlusionSeconds'), suffix: ' s');
-    // Min hits: prefer the seconds the user set (newer sessions); fall back to
-    // the raw frame count logged by older sessions.
+    // Min visit length: prefer the seconds the user set (newer sessions); fall
+    // back to the raw frame count logged by older sessions.
+    final tp = _trackerParams;
     final minHitsSeconds = _setting('minHitsSeconds');
     if (minHitsSeconds != null) {
-      add('Min hits to confirm', minHitsSeconds, suffix: ' s');
+      add('Minimum visit length', minHitsSeconds, suffix: ' s');
     } else if (tp != null) {
-      add('Min hits to confirm', tp['minHitsToConfirm'], suffix: ' frames');
+      add('Minimum visit length', tp['minHitsToConfirm'], suffix: ' frames');
     }
-    if (tp != null) {
+    if (isCbiou) {
+      final cbp = _cbiouParams;
+      if (cbp != null) {
+        add('Search margin — pass 1', cbp['bufferScale1']);
+        add('Search margin — pass 2', cbp['bufferScale2']);
+        add('High-score threshold', cbp['highThresh']);
+      }
+    } else if (tp != null) {
       add('Match overlap (IoU)', tp['matchThresh']);
       add('Low-score association', tp['lowMatchThresh']);
       add('Velocity smoothing', tp['velocitySmoothing']);
-      // The frame-count buffers actually used by the tracker (derived from the
-      // seconds above at the session's frame rate). High-score threshold is
-      // recorded but not user-editable in the AI tab.
+      // The frame-count buffer actually used by the tracker (derived from the
+      // seconds above at the session's frame rate).
       add('Occlusion buffer (derived)', tp['trackBuffer'], suffix: ' frames');
       add('High-score threshold', tp['highThresh']);
+    }
+    // Only worth a row when it was on (it changes what the log contains).
+    if (_setting('logRawDetections') == true) {
+      add('Log raw detections', 'on (replayable session)');
     }
 
     return [

@@ -85,6 +85,22 @@ void main() {
       expect(result.timestampMs, 1100);
     });
 
+    test('exposes the mapped pre-tracking detections (round 105: what the '
+        'raw-detections evaluation log records)', () {
+      final fp = FrameProcessor(tracker: tracker());
+      final result = run(
+        fp,
+        event(detections: [det(confidence: 0.7)], timestamp: 1000),
+      );
+      // First frame: the track is still tentative (no confirmed tracks yet)
+      // but the detection itself must already be exposed, in FRAME space.
+      expect(result.tracks, isEmpty);
+      expect(result.detections, hasLength(1));
+      expect(result.detections.single.confidence, closeTo(0.7, 1e-9));
+      expect(result.detections.single.box.left, closeTo(roiRect.left, 1e-9));
+      expect(result.detections.single.box.right, closeTo(roiRect.right, 1e-9));
+    });
+
     test('half-ROI box maps to the matching half of the ROI rectangle', () {
       final fp = FrameProcessor(tracker: tracker());
       final d = det(left: 0, top: 0, right: 0.5, bottom: 0.5);

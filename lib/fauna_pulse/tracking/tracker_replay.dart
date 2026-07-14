@@ -1,0 +1,232 @@
+// FaunaPulse — offline tracker replay harness (round 105).
+//
+// Purpose: compare frame-association algorithms (ByteTrack vs C-BIoU, or two
+// tunings of the same one) on REAL field data instead of trusting published
+// pedestrian benchmarks. A session recorded with Settings → AI → Visit
+// tracking → Advanced → "Log raw detections" carries one `raw_detections`
+// record per processed frame — the detector's boxes BEFORE tracking, in the
+// exact coordinate space the tracker was fed. This file replays those frames
+// through any [InsectTracker] and reports the numbers the app actually
+// exists to produce: how many visits, and how long each lasted.
+//
+// It runs anywhere `flutter test` runs (no device needed):
+//
+//   flutter test test/fauna_pulse/tracker_replay_test.dart \
+//       --dart-define=REPLAY_SESSION=/absolute/path/to/session.jsonl
+//
+// (Without the define, that test file just runs its synthetic unit tests.)
+//
+// Metrics are deliberately NOT MOTA/HOTA: the app's deliverable is anonymous
+// event count + duration, so the comparison is "how many visits did each
+// tracker count and for how long" — to be judged against a hand count from
+// the session's saved photos.
+
+import 'dart:convert';
+import 'dart:ui';
+
+import '../models/track.dart';
+import 'tracker.dart';
+
+/// One replayable frame: its wall-clock timestamp and the detector's boxes.
+class ReplayFrame {
+  final int timestampMs;
+  final List<Detection> detections;
+  const ReplayFrame({required this.timestampMs, required this.detections});
+}
+
+/// Parses the `raw_detections` records out of session.jsonl lines. All other
+/// record types are skipped, as are unparseable lines (a crash-truncated last
+/// line must not kill a replay).
+///
+/// Payload format (KEEP IN SYNC with `SessionRecorder.recordFrame`):
+/// `{"type":"raw_detections","frame_ms":<int>,`
+/// `"boxes":[[left,top,right,bottom,confidence,classIndex],...]}`
+/// with boxes frame-normalized 0..1.
+List<ReplayFrame> parseRawDetectionLines(Iterable<String> lines) {
+  final frames = <ReplayFrame>[];
+  for (final line in lines) {
+    if (line.trim().isEmpty) continue;
+    Map<String, dynamic> rec;
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is! Map) continue;
+      rec = decoded.cast<String, dynamic>();
+    } catch (_) {
+      continue; // truncated/corrupt line
+    }
+    if (rec['type'] != 'raw_detections') continue;
+    final ts = (rec['frame_ms'] as num?)?.toInt();
+    final boxes = rec['boxes'];
+    if (ts == null || boxes is! List) continue;
+    final dets = <Detection>[];
+    for (final b in boxes) {
+      if (b is! List || b.length < 6) continue;
+      final l = (b[0] as num).toDouble();
+      final t = (b[1] as num).toDouble();
+      final r = (b[2] as num).toDouble();
+      final bt = (b[3] as num).toDouble();
+      dets.add(
+        Detection(
+          box: Rect.fromLTRB(l, t, r, bt),
+          confidence: (b[4] as num).toDouble(),
+          classIndex: (b[5] as num).toInt(),
+          className: 'class${(b[5] as num).toInt()}',
+        ),
+      );
+    }
+    frames.add(ReplayFrame(timestampMs: ts, detections: dets));
+  }
+  frames.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+  return frames;
+}
+
+/// What one replay run produced, in visitation-rate terms.
+class TrackerReplayReport {
+  /// Which algorithm ran ([InsectTracker.algorithmName]).
+  final String algorithm;
+
+  /// Frames fed in / detections across all of them.
+  final int frames;
+  final int detections;
+
+  /// Distinct confirmed track ids — the visit count this tracker would have
+  /// reported for the session.
+  final int visits;
+
+  /// Per-visit durations in seconds (first to last matched frame), in
+  /// confirmation order. A fragmenting tracker shows up here as MORE, SHORTER
+  /// visits than the hand count; a merging one as fewer, longer.
+  final List<double> visitDurationsS;
+
+  /// Most tracks confirmed simultaneously in any single frame.
+  final int maxConcurrent;
+
+  const TrackerReplayReport({
+    required this.algorithm,
+    required this.frames,
+    required this.detections,
+    required this.visits,
+    required this.visitDurationsS,
+    required this.maxConcurrent,
+  });
+
+  double get totalVisitS =>
+      visitDurationsS.fold(0.0, (sum, d) => sum + d);
+
+  double get meanVisitS =>
+      visitDurationsS.isEmpty ? 0 : totalVisitS / visitDurationsS.length;
+
+  double get medianVisitS {
+    if (visitDurationsS.isEmpty) return 0;
+    final sorted = List<double>.from(visitDurationsS)..sort();
+    final mid = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  /// One human-readable block, for printing from the replay test.
+  String summary() =>
+      '$algorithm: $visits visit(s) over $frames frames '
+      '($detections detections), '
+      'durations mean ${meanVisitS.toStringAsFixed(1)} s / '
+      'median ${medianVisitS.toStringAsFixed(1)} s / '
+      'total ${totalVisitS.toStringAsFixed(1)} s, '
+      'max concurrent $maxConcurrent';
+}
+
+/// Replays [frames] through [tracker], reproducing the live pipeline's
+/// seconds→frames behavior:
+///
+///  * the detector-FPS estimate is an EMA of the frame gaps (pauses — gaps
+///    far above the rhythm — are skipped, mirroring the round-85 resume
+///    guard), and the tracker's frame budgets are re-derived from it about
+///    once a second, exactly like the camera screen does;
+///  * a gap longer than [occlusionSeconds] expires lost tracks first,
+///    mirroring what `FrameProcessor.setGateIdle` does on a motion-gate wake
+///    (while the gate sleeps, no `raw_detections` records were written, so
+///    the gap in timestamps IS the sleep).
+///
+/// The budget formulas mirror `SessionConfig.occlusionFramesFor` /
+/// `minHitsFramesFor` — KEEP IN SYNC.
+TrackerReplayReport replayTracker({
+  required InsectTracker tracker,
+  required List<ReplayFrame> frames,
+  double occlusionSeconds = 3.0,
+  double minHitsSeconds = 0.2,
+}) {
+  tracker.reset();
+  var fpsEma = 0.0;
+  var lastTs = 0;
+  var lastBudgetTs = 0;
+  var detections = 0;
+  var maxConcurrent = 0;
+  // id -> (firstSeenMs, lastSeenMs) of every track ever seen confirmed.
+  final firstSeen = <int, int>{};
+  final lastSeen = <int, int>{};
+  final confirmOrder = <int>[];
+
+  int framesFor(double seconds, double fps) {
+    final f = (fps.isFinite && fps > 0) ? fps : 15.0;
+    final n = (seconds * f).round().clamp(1, 600);
+    return n;
+  }
+
+  for (final frame in frames) {
+    if (lastTs > 0) {
+      final dt = frame.timestampMs - lastTs;
+      // A long stall (motion-gate sleep, throttle pause) is not a frame rate.
+      final resumeMs = fpsEma > 0
+          ? (5000.0 / fpsEma).clamp(2000.0, double.infinity)
+          : 2000.0;
+      if (dt > 0 && dt <= resumeMs) {
+        final inst = 1000.0 / dt;
+        fpsEma = fpsEma == 0 ? inst : 0.1 * inst + 0.9 * fpsEma;
+      }
+      // The live pipeline expires lost tracks when the gate wakes after
+      // sleeping longer than the occlusion tolerance. One empty update first:
+      // live, the still-but-empty frames before the gate slept would already
+      // have aged any active track to "lost"; a replayed log jumps straight
+      // from the last busy frame to the wake, so that aging must be
+      // reproduced here or a pre-gap track could survive the expiry and
+      // wrongly inherit its id across the gap.
+      if (dt > occlusionSeconds * 1000) {
+        tracker.update(const [], lastTs + 1);
+        tracker.expireLostTracks();
+      }
+    }
+    lastTs = frame.timestampMs;
+
+    if (frame.timestampMs - lastBudgetTs >= 1000) {
+      lastBudgetTs = frame.timestampMs;
+      final buffer = framesFor(occlusionSeconds, fpsEma);
+      final hits = framesFor(minHitsSeconds, fpsEma);
+      if (buffer != tracker.trackBuffer || hits != tracker.minHitsToConfirm) {
+        tracker.setFrameBudgets(trackBuffer: buffer, minHitsToConfirm: hits);
+      }
+    }
+
+    detections += frame.detections.length;
+    final tracks = tracker.update(frame.detections, frame.timestampMs);
+    if (tracks.length > maxConcurrent) maxConcurrent = tracks.length;
+    for (final t in tracks) {
+      if (!firstSeen.containsKey(t.id)) {
+        firstSeen[t.id] = t.firstSeenMs;
+        confirmOrder.add(t.id);
+      }
+      lastSeen[t.id] = t.lastSeenMs;
+    }
+  }
+
+  return TrackerReplayReport(
+    algorithm: tracker.algorithmName,
+    frames: frames.length,
+    detections: detections,
+    visits: tracker.totalConfirmed,
+    visitDurationsS: [
+      for (final id in confirmOrder)
+        ((lastSeen[id] ?? firstSeen[id]!) - firstSeen[id]!) / 1000.0,
+    ],
+    maxConcurrent: maxConcurrent,
+  );
+}
