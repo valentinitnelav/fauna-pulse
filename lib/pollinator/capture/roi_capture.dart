@@ -37,14 +37,18 @@ import '../models/track.dart';
 enum CapturePath { fast, still }
 
 /// Builds the on-disk name of one saved ROI photo, e.g.
-/// `roi_2026-07-14_153045_123_k7x2.jpg`: the capture moment [epochMs] as a
-/// fixed-width LOCAL-time stamp (date, HHmmss, milliseconds) followed by the
-/// per-session random [token] (see [RoiCaptureScheduler.sessionToken]).
+/// `roi_k7x2_2026-07-14_153045_123.jpg`: the per-session random [token] (see
+/// [RoiCaptureScheduler.sessionToken]) followed by the TRIGGER moment
+/// [epochMs] — the frame on which the photo became due, NOT the moment the
+/// JPEG finished writing — as a fixed-width LOCAL-time stamp (date, HHmmss,
+/// milliseconds).
 ///
-/// The stamp is zero-padded to a fixed width so that sorting filenames
-/// alphabetically equals sorting by capture time — the gallery export relies
-/// on this. Pattern for downstream parsing:
-/// `^roi_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})_([a-z0-9]+)\.jpg$`
+/// The token comes first so that photos from many sessions/phones pooled into
+/// one folder (post-processing, model training) sort grouped by session;
+/// within a session the token is constant and the stamp is zero-padded to a
+/// fixed width, so alphabetical order equals capture order — the gallery
+/// export relies on this. Pattern for downstream parsing:
+/// `^roi_([a-z0-9]+)_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})\.jpg$`
 String roiPhotoFileName(int epochMs, String token) {
   final t = DateTime.fromMillisecondsSinceEpoch(epochMs);
   String two(int v) => v.toString().padLeft(2, '0');
@@ -52,7 +56,7 @@ String roiPhotoFileName(int epochMs, String token) {
       '${two(t.day)}';
   final time = '${two(t.hour)}${two(t.minute)}${two(t.second)}';
   final ms = t.millisecond.toString().padLeft(3, '0');
-  return 'roi_${date}_${time}_${ms}_$token.jpg';
+  return 'roi_${token}_${date}_${time}_$ms.jpg';
 }
 
 /// A still photo exactly as the camera delivered it: JPEG bytes that are NOT
@@ -235,6 +239,13 @@ class CaptureStat {
   final String fileName;
   final List<int> trackIds;
 
+  /// The trigger moment (ms since epoch): the frame on which the photo became
+  /// due — the same instant the filename stamp encodes. The `capture` record
+  /// itself is logged AFTER the write finishes (its `time_ms` is the
+  /// saved-to-storage moment), so this field is what the summary's photo
+  /// browser shows as "Captured".
+  final int capturedAtMs;
+
   /// Wall-clock milliseconds for the whole grab (+ crop) + write.
   final double totalMs;
 
@@ -255,6 +266,7 @@ class CaptureStat {
   const CaptureStat({
     required this.fileName,
     required this.trackIds,
+    required this.capturedAtMs,
     required this.totalMs,
     required this.bytes,
     required this.path,
@@ -513,6 +525,7 @@ class RoiCaptureScheduler {
         CaptureStat(
           fileName: pending.fileName,
           trackIds: pending.trackIds,
+          capturedAtMs: pending.capturedAtMs,
           totalMs: sw.elapsedMicroseconds / 1000.0,
           bytes: finalBytes.length,
           path: path,

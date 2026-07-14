@@ -3780,3 +3780,39 @@ New format (new sessions only; old sessions keep their old names):
 - Tests: the two exact-name assertions in `roi_capture_scheduler_test.dart`
   now compare against `roiPhotoFileName(...)` (timezone-independent) and one
   locks the format with the regex above. Full suite green (172 tests).
+
+## Round 99 (2026-07-14): token-first photo names + trigger-time "Captured" stamp
+
+Field follow-up on round 98 after the first live session (session_132).
+
+- **Token moved to the front**: `roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg`
+  (e.g. `roi_elhp_2026-07-14_155813_119.jpg`), parse with
+  `^roi_([a-z0-9]+)_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})\.jpg$`. Rationale:
+  photos from many sessions/phones pooled into one folder (post-processing,
+  model training) now sort grouped by session automatically; within a session
+  the token is constant, so alphabetical order is still capture order and the
+  gallery export's path sort keeps working.
+- **The three timestamps of one photo, documented** (they looked inconsistent
+  on the Photos tab but all were correct): the FILENAME stamp is the trigger
+  moment (frame time when the scheduler declared a photo due,
+  `PendingCapture.capturedAtMs`); the `detections` record's `time_ms` is
+  ~tens of ms later (stamped when the record is enqueued, after tracking);
+  the `capture` record's `time_ms` is when the JPEG finished writing
+  (~0.8 s later for a full-res still). The Photos tab used to show the
+  detections-record time, hence the near-miss vs the filename.
+- **Fix — trigger time logged explicitly**: `CaptureStat.capturedAtMs` (new)
+  is logged as `captured_at_ms` in `capture` records, and
+  `motion_capture`/`timelapse_capture` records carry it too. The summary's
+  photo browser prefers `captured_at_ms` for the "Captured" row, so it now
+  matches the filename stamp exactly. Old logs lack the field and fall back
+  to the previous behavior.
+- **EXIF finding (no change, user opted to skip)**: saved crops carry NO EXIF
+  at all — every save path re-encodes raw pixels (native still crop uses
+  BitmapRegionDecoder which ignores EXIF; fast path encodes the RGB analysis
+  frame; Dart fallback uses package:image). Filename + JSONL are the ground
+  truth for capture time.
+- **session.jsonl stays strict JSON Lines** (one object per line): decided
+  against pretty-printing — it would break the app's own line-oriented
+  readers and standard tooling (`jq`, pandas `lines=True`). For human
+  reading: `jq . session.jsonl | less`.
+- Tests: format-locking regex updated (token-first); full suite green (172).

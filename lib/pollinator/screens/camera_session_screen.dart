@@ -1211,6 +1211,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           if (!_recording) return;
           _logger?.logCapture({
             'file': s.fileName,
+            // Trigger moment (== the filename stamp); this record's own
+            // time_ms is the later saved-to-storage moment.
+            'captured_at_ms': s.capturedAtMs,
             'track_ids': s.trackIds,
             'total_ms': s.totalMs,
             'bytes': s.bytes,

@@ -274,6 +274,9 @@ class SessionRecorder {
     if (pending == null) return false;
     _logger?.logMotionCapture({
       'jpeg': pending.fileName,
+      // Trigger moment (== the filename stamp), independent of when this
+      // record's own time_ms got stamped in the log queue.
+      'captured_at_ms': pending.capturedAtMs,
       'motion_score': motionScore,
     });
     // Fire-and-forget; the scheduler serializes its own work.
@@ -302,6 +305,7 @@ class SessionRecorder {
     if (pending == null) return false;
     _logger?.logTimeLapseCapture({
       'jpeg': pending.fileName,
+      'captured_at_ms': pending.capturedAtMs,
       'burst': burstIndex,
     });
     // Fire-and-forget; the scheduler serializes its own work.

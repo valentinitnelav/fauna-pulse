@@ -516,6 +516,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             byFileTracks[file] = <int>{};
             byFileTime[file] = (rec['time_ms'] as num?)?.toInt() ?? 0;
           }
+          // Round 99: prefer the exact trigger moment — the instant the
+          // filename stamp encodes — over the earlier-seeded record times
+          // (the detections record is stamped ~tens of ms after the frame,
+          // this capture record only after the JPEG landed on storage).
+          // Older logs lack the field and keep the seeded time.
+          final capMs = (rec['captured_at_ms'] as num?)?.toInt();
+          if (file != null && capMs != null) byFileTime[file] = capMs;
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
           continue;
         }
@@ -530,7 +537,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             order.add(jpeg);
             byFile[jpeg] = [];
             byFileTracks[jpeg] = <int>{};
-            byFileTime[jpeg] = (rec['time_ms'] as num?)?.toInt() ?? 0;
+            // Prefer the exact trigger moment (round 99, == the filename
+            // stamp) over this record's log-queue time_ms; old logs lack it.
+            byFileTime[jpeg] =
+                (rec['captured_at_ms'] as num?)?.toInt() ??
+                (rec['time_ms'] as num?)?.toInt() ??
+                0;
             if (curRoiW != null && curRoiH != null) {
               byFileRes[jpeg] = (curRoiW, curRoiH);
             }
@@ -1251,8 +1263,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       return;
     }
-    // File names start with a fixed-width capture timestamp (see
-    // roiPhotoFileName), so sorting by path puts the photos in capture order.
+    // Within one session every file shares the session token prefix and the
+    // capture timestamp is fixed-width (see roiPhotoFileName), so sorting by
+    // path puts the photos in capture order.
     files.sort((a, b) => a.path.compareTo(b.path));
     final album = galleryAlbumName(
       widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),

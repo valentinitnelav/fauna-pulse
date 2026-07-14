@@ -143,13 +143,20 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   Best-effort `catch` blocks (probes, platform calls, cleanup) must not be empty (r79, review
   B7): call `logSwallowed(site, e)` from `app_error_hooks.dart` — rate-limited debugPrint
   (reaches `logcat_end.txt`) + `app_error` JSONL line while recording.
-- **Photo filenames (round 98).** `roi_<yyyy-MM-dd>_<HHmmss>_<SSS>_<token>.jpg`
-  (e.g. `roi_2026-07-14_153045_123_k7x2.jpg`): fixed-width LOCAL-time capture stamp +
-  4-char per-session random token (`roiPhotoFileName` in `capture/roi_capture.dart`;
-  token from `session_recorder.dart`, logged as `file_token` in the start record).
-  Invariants: stamp stays fixed-width and leads the name (gallery export sorts by path
-  for capture order), token makes names unique across phones merged into one folder,
-  and track ids are never in the name (one photo can serve several tracks).
+- **Photo filenames (rounds 98–99).** `roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg`
+  (e.g. `roi_elhp_2026-07-14_155813_119.jpg`): 4-char per-session random token
+  (grouping: pooled multi-session folders sort by session), then the TRIGGER moment —
+  the frame that made the photo due, not the write-completion time — as a fixed-width
+  LOCAL-time stamp (`roiPhotoFileName` in `capture/roi_capture.dart`; token from
+  `session_recorder.dart`, logged as `file_token` in the start record). Invariants:
+  token first + fixed-width stamp (within a session, path sort == capture order —
+  gallery export relies on it); track ids never in the name (one photo can serve
+  several tracks); the same trigger moment is logged as `captured_at_ms` in
+  `capture`/`motion_capture`/`timelapse_capture` records (the records' own `time_ms`
+  is stamped later — at enqueue / after the JPEG write) and the summary's Photos tab
+  shows it as "Captured". Saved crops carry NO EXIF (all paths re-encode raw pixels);
+  filename + JSONL are the capture-time ground truth. `session.jsonl` stays strict
+  one-object-per-line JSON Lines — never pretty-print it.
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.

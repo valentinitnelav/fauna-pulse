@@ -59,11 +59,12 @@ void main() {
       expect(pending, isNotNull);
       expect(pending!.fileName, roiPhotoFileName(10000, 'S'));
       // Lock the human-readable, sort-stable pattern the gallery export and
-      // downstream analysis rely on: fixed-width local date, HHmmss,
-      // milliseconds, then the per-session token.
+      // downstream analysis rely on: the per-session token first (so pooled
+      // multi-session folders sort grouped by session), then fixed-width
+      // local date, HHmmss, milliseconds.
       expect(
         pending.fileName,
-        matches(RegExp(r'^roi_\d{4}-\d{2}-\d{2}_\d{6}_\d{3}_S\.jpg$')),
+        matches(RegExp(r'^roi_S_\d{4}-\d{2}-\d{2}_\d{6}_\d{3}\.jpg$')),
       );
       expect(pending.trackIds, [1]);
       expect(pending.capturedAtMs, 10000);
