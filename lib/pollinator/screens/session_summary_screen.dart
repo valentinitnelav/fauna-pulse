@@ -1251,8 +1251,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       return;
     }
-    // File names embed the capture time in milliseconds, so sorting by path
-    // puts the photos in capture order.
+    // File names start with a fixed-width capture timestamp (see
+    // roiPhotoFileName), so sorting by path puts the photos in capture order.
     files.sort((a, b) => a.path.compareTo(b.path));
     final album = galleryAlbumName(
       widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),

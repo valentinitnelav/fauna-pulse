@@ -9,6 +9,7 @@
 // the start-metadata values that are really screen state.
 
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:battery_plus/battery_plus.dart';
@@ -67,13 +68,23 @@ class SessionRecorder {
   Future<void> start({
     required String folderName,
     required Map<String, dynamic> Function() startMetadata,
-    required RoiCaptureScheduler Function(Directory framesDir, String sessionId)
+    required RoiCaptureScheduler Function(Directory framesDir, String fileToken)
     captureBuilder,
     required void Function(Object error) onLogWriteError,
     void Function(ThermalReading thermal, StorageReading storage)?
     onStartReadings,
   }) async {
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    // Per-session random token embedded in every photo filename (see
+    // roiPhotoFileName): two phones capturing in the same millisecond can
+    // only collide if they also drew the same 4 base-36 chars (~1 in 1.7 M).
+    // Logged as `file_token` below so photos stay traceable to their session
+    // even after folders from several phones are merged.
+    const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+    final rng = Random.secure();
+    final fileToken = String.fromCharCodes(
+      Iterable.generate(4, (_) => alphabet.codeUnitAt(rng.nextInt(36))),
+    );
 
     final dir = await _resolveSessionDir(folderName);
     final framesDir = Directory('${dir.path}/roi_frames');
@@ -109,6 +120,7 @@ class SessionRecorder {
     onStartReadings?.call(startReading, startStorage);
     logger.logStart({
       'session_id': sessionId,
+      'file_token': fileToken,
       'device': device,
       'battery_percent': battery,
       ...startStorage.toJson(),
@@ -116,7 +128,7 @@ class SessionRecorder {
       'thermal': startReading.toJson(),
     });
 
-    _capture = captureBuilder(framesDir, sessionId);
+    _capture = captureBuilder(framesDir, fileToken);
 
     await WakelockPlus.enable();
     // Keep the OS from sleeping/killing this long session: a foreground

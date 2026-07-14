@@ -36,6 +36,25 @@ import '../models/track.dart';
 /// frame (no camera stall), [still] = full-resolution still, region-cropped.
 enum CapturePath { fast, still }
 
+/// Builds the on-disk name of one saved ROI photo, e.g.
+/// `roi_2026-07-14_153045_123_k7x2.jpg`: the capture moment [epochMs] as a
+/// fixed-width LOCAL-time stamp (date, HHmmss, milliseconds) followed by the
+/// per-session random [token] (see [RoiCaptureScheduler.sessionToken]).
+///
+/// The stamp is zero-padded to a fixed width so that sorting filenames
+/// alphabetically equals sorting by capture time — the gallery export relies
+/// on this. Pattern for downstream parsing:
+/// `^roi_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})_([a-z0-9]+)\.jpg$`
+String roiPhotoFileName(int epochMs, String token) {
+  final t = DateTime.fromMillisecondsSinceEpoch(epochMs);
+  String two(int v) => v.toString().padLeft(2, '0');
+  final date = '${t.year.toString().padLeft(4, '0')}-${two(t.month)}-'
+      '${two(t.day)}';
+  final time = '${two(t.hour)}${two(t.minute)}${two(t.second)}';
+  final ms = t.millisecond.toString().padLeft(3, '0');
+  return 'roi_${date}_${time}_${ms}_$token.jpg';
+}
+
 /// A still photo exactly as the camera delivered it: JPEG bytes that are NOT
 /// yet rotated upright, plus the clockwise rotation (0/90/180/270) and the
 /// front-camera mirror flag needed to interpret them. Skipping the upfront
@@ -249,8 +268,12 @@ class RoiCaptureScheduler {
   /// Where ROI JPEGs are written (created if missing).
   final Directory framesDir;
 
-  /// Short session identifier embedded in filenames.
-  final String sessionId;
+  /// Short per-session random token embedded in every photo filename (see
+  /// [roiPhotoFileName]). Generated once per session by SessionRecorder and
+  /// logged as `file_token` in the start record, it keeps names unique even
+  /// when two phones capture in the same millisecond and their photos are
+  /// later merged into one folder.
+  final String sessionToken;
 
   /// Milliseconds between photos for a given track.
   final int stepMs;
@@ -295,7 +318,7 @@ class RoiCaptureScheduler {
 
   RoiCaptureScheduler({
     required this.framesDir,
-    required this.sessionId,
+    required this.sessionToken,
     required this.stepMs,
     required this.durationMs,
     required this.fastCaptureFn,
@@ -352,7 +375,7 @@ class RoiCaptureScheduler {
       _windows[id]?.lastCaptureMs = nowMs;
     }
     return PendingCapture(
-      fileName: 'roi_${sessionId}_$nowMs.jpg',
+      fileName: roiPhotoFileName(nowMs, sessionToken),
       trackIds: dueIds,
       capturedAtMs: nowMs,
     );
@@ -391,7 +414,7 @@ class RoiCaptureScheduler {
 
     w.lastCaptureMs = nowMs;
     return PendingCapture(
-      fileName: 'roi_${sessionId}_$nowMs.jpg',
+      fileName: roiPhotoFileName(nowMs, sessionToken),
       trackIds: const [],
       capturedAtMs: nowMs,
     );

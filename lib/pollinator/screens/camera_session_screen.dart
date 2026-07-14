@@ -1171,9 +1171,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // sessions recorded before this block existed.
         'config': _config.toJson(),
       },
-      captureBuilder: (framesDir, sessionId) => RoiCaptureScheduler(
+      captureBuilder: (framesDir, fileToken) => RoiCaptureScheduler(
         framesDir: framesDir,
-        sessionId: sessionId,
+        sessionToken: fileToken,
         stepMs: (_config.stepSeconds * 1000).round(),
         durationMs: (_config.durationSeconds * 1000).round(),
         // The scheduler picks the source PER PHOTO (chooseCapturePath): the fast

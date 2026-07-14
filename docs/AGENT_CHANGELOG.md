@@ -3749,3 +3749,34 @@ on schedule (first photo at burst start, step cadence, duration cutoff), zero
 `detections` records, `timelapse_capture` + `capture` records present, photos
 in summary + time-lapse note; motion + detector modes regress unchanged (r95
 sessions' summaries still show their motion-only rows).
+
+## Round 98 (2026-07-14): human-readable, cross-device-unique ROI photo filenames
+
+Photos used to be named `roi_<sessionStartEpochMs>_<captureEpochMs>.jpg` —
+machine-sortable but unreadable in a file browser, and two phones recording
+side by side could in principle produce the same name in the same millisecond.
+New format (new sessions only; old sessions keep their old names):
+
+`roi_2026-07-14_153045_123_k7x2.jpg`
+= `roi_<yyyy-MM-dd>_<HHmmss>_<SSS>_<token>.jpg`, parse with
+`^roi_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})_([a-z0-9]+)\.jpg$`
+
+- Timestamp is the capture moment in LOCAL device time, zero-padded fixed
+  width, so alphabetical filename order == capture order (the gallery export's
+  path sort relies on this — `session_summary_screen.dart`).
+- Token = 4 random base-36 chars drawn once per session with `Random.secure()`
+  (`session_recorder.dart`), reused on every photo and logged as `file_token`
+  in the start record. Two phones collide only on same millisecond AND same
+  token (~1 in 1.7 M), and the log ties any photo back to its session/phone
+  even after folders from several phones are merged for analysis.
+- Implementation: public `roiPhotoFileName(epochMs, token)` in
+  `capture/roi_capture.dart`; the scheduler's `sessionId` field (only ever
+  used for filenames) became `sessionToken`; `SessionRecorder.start`'s
+  `captureBuilder` callback now passes the token instead of the session id
+  (the epoch-ms `session_id` is still logged unchanged in the start record).
+- Track ids stay OUT of the filename (unchanged): one photo can serve several
+  concurrent tracks; ids live in the JSONL `capture` records.
+- Cost: a handful of string ops once per saved photo — nothing on the frame path.
+- Tests: the two exact-name assertions in `roi_capture_scheduler_test.dart`
+  now compare against `roiPhotoFileName(...)` (timezone-independent) and one
+  locks the format with the regex above. Full suite green (172 tests).

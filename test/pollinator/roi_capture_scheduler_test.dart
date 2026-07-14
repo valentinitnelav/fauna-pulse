@@ -38,7 +38,7 @@ RoiCaptureScheduler scheduler({
   Future<Uint8List?> Function()? fastCapture,
 }) => RoiCaptureScheduler(
   framesDir: Directory('${Directory.systemTemp.path}/roi_scheduler_test'),
-  sessionId: 'S',
+  sessionToken: 'S',
   stepMs: stepMs,
   durationMs: durationMs,
   mode: RoiCaptureMode.fast,
@@ -53,11 +53,18 @@ RoiCaptureScheduler scheduler({
 void main() {
   group('RoiCaptureScheduler.evaluate', () {
     test('first sight of a track takes a photo immediately, with a '
-        'deterministic session-stamped file name', () {
+        'deterministic timestamp+token file name', () {
       final s = scheduler();
       final pending = s.evaluate([track(1)], 10000);
       expect(pending, isNotNull);
-      expect(pending!.fileName, 'roi_S_10000.jpg');
+      expect(pending!.fileName, roiPhotoFileName(10000, 'S'));
+      // Lock the human-readable, sort-stable pattern the gallery export and
+      // downstream analysis rely on: fixed-width local date, HHmmss,
+      // milliseconds, then the per-session token.
+      expect(
+        pending.fileName,
+        matches(RegExp(r'^roi_\d{4}-\d{2}-\d{2}_\d{6}_\d{3}_S\.jpg$')),
+      );
       expect(pending.trackIds, [1]);
       expect(pending.capturedAtMs, 10000);
     });
@@ -158,7 +165,7 @@ void main() {
       final s = scheduler();
       final pending = s.evaluateMotion(10000);
       expect(pending, isNotNull);
-      expect(pending!.fileName, 'roi_S_10000.jpg');
+      expect(pending!.fileName, roiPhotoFileName(10000, 'S'));
       expect(pending.trackIds, isEmpty);
       expect(pending.capturedAtMs, 10000);
     });

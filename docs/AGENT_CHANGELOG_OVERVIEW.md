@@ -143,6 +143,13 @@ Source of truth: `lib/pollinator/models/session_config.dart` constructor (~`:161
   Best-effort `catch` blocks (probes, platform calls, cleanup) must not be empty (r79, review
   B7): call `logSwallowed(site, e)` from `app_error_hooks.dart` — rate-limited debugPrint
   (reaches `logcat_end.txt`) + `app_error` JSONL line while recording.
+- **Photo filenames (round 98).** `roi_<yyyy-MM-dd>_<HHmmss>_<SSS>_<token>.jpg`
+  (e.g. `roi_2026-07-14_153045_123_k7x2.jpg`): fixed-width LOCAL-time capture stamp +
+  4-char per-session random token (`roiPhotoFileName` in `capture/roi_capture.dart`;
+  token from `session_recorder.dart`, logged as `file_token` in the start record).
+  Invariants: stamp stays fixed-width and leads the name (gallery export sorts by path
+  for capture order), token makes names unique across phones merged into one folder,
+  and track ids are never in the name (one photo can serve several tracks).
 - **Tracker.** Pure-Dart ByteTrack (`tracking/byte_track.dart`) with a distance-association
   fallback that fixed track-id fragmentation (one insect → dozens of ids).
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
