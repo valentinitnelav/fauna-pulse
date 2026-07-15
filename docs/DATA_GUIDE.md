@@ -164,6 +164,15 @@ tracks share one photo), timing, byte size, whether it was a full-res still,
 the source `path`, and `saved_px`. Lets you check whether photo-saving dented
 the frame rate.
 
+Round-108 additions:
+
+| Field | Meaning |
+|---|---|
+| `grab_ms` | Time the image grab alone took; the rest of `total_ms` is crop + encode + write. |
+| `content_lag_ms` | Still path only. How much OLDER/NEWER the frame's *content* is than the capture request. **Negative = the phone's zero-shutter-lag really served a pre-request frame**; a large positive value means the photo shows the scene that long after the triggering detection (fast insects will have left). |
+| `callback_lag_ms` | Still path only. Plain request→JPEG wait. |
+| `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the still as `…_live.jpg`. Small but in sync — use it when the still misses the insect. |
+
 ### `app_error` — an error surfaced during recording
 
 `source` (e.g. `detector`, `watchdog`, `session_log`, `roi_capture`,

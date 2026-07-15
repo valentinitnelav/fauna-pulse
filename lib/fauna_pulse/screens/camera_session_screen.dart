@@ -1218,6 +1218,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           side: _roi.sideFraction,
           maxPx: _config.targetRoiSavedPx,
         ),
+        // Round 108: pair each still with the trigger-moment live crop
+        // (stills land ~0.76 s late on this phone — measured r108).
+        syncCompanion: _config.stillSyncCompanion,
         stillCaptureFn: () async {
           // Raw (unrotated) still + rotation info — the round-63 lag fix: the
           // full 12 MP frame is never rotated; only the ROI crop is.
@@ -1227,6 +1230,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               bytes: raw.$1,
               rotationDegrees: raw.$2,
               isFront: raw.$3,
+              contentLagMs: raw.contentLagMs,
+              callbackLagMs: raw.callbackLagMs,
             );
           }
           // Degraded fallback: preview-snapshot bytes are already upright.
@@ -1251,6 +1256,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             // real resolution of every file (in auto mode it varies with the ROI).
             'path': s.path.name,
             'saved_px': s.savedPx,
+            // Round 108 diagnostics: grab vs process split, and (still path)
+            // how OLD the frame content is vs the trigger — negative means
+            // zero-shutter-lag really served a past frame.
+            if (s.grabMs != null) 'grab_ms': s.grabMs,
+            if (s.contentLagMs != null) 'content_lag_ms': s.contentLagMs,
+            if (s.callbackLagMs != null) 'callback_lag_ms': s.callbackLagMs,
+            // Round 108 sync companion: the trigger-moment live crop saved
+            // beside this still, when enabled and available.
+            if (s.liveJpeg != null) 'live_jpeg': s.liveJpeg,
+            if (s.liveBytes != null) 'live_bytes': s.liveBytes,
+            if (s.liveSavedPx != null) 'live_saved_px': s.liveSavedPx,
           });
         },
         onError: (fileName, error) =>
@@ -1290,6 +1306,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     bytes: raw.$1,
                     rotationDegrees: raw.$2,
                     isFront: raw.$3,
+                    contentLagMs: raw.contentLagMs,
+                    callbackLagMs: raw.callbackLagMs,
                   );
                 }
                 final frame = await _controller.captureFrame();
@@ -1307,6 +1325,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                   'bytes': s.bytes,
                   'path': s.path.name,
                   'saved_px': s.savedPx,
+                  if (s.contentLagMs != null) 'content_lag_ms': s.contentLagMs,
                 });
               },
               onError: (fileName, error) => _logAsyncError(

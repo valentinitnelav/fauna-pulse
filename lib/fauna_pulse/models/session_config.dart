@@ -390,6 +390,14 @@ class SessionConfig {
   /// Interval between ground-truth frames, in seconds (default 5).
   final double gtFrameSeconds;
 
+  /// Round 108: when a photo takes the STILL path, also save the live-frame
+  /// fast crop of the trigger moment next to it (`<name>_live.jpg`). A still
+  /// physically lands ~0.5–1 s after the detection that scheduled it, so a
+  /// fast insect is often gone from it; the companion is small (stream
+  /// resolution) but shows the trigger moment. Default on — dataset
+  /// completeness beats the extra ~50–200 KB per still.
+  final bool stillSyncCompanion;
+
   const SessionConfig({
     this.modelPath = 'yolo26n',
     this.task = YOLOTask.detect,
@@ -445,6 +453,7 @@ class SessionConfig {
     this.logRawDetections = false,
     this.gtFramesEnabled = false,
     this.gtFrameSeconds = 5.0,
+    this.stillSyncCompanion = true,
   });
 
   /// True when the schedule can actually run: 1–3 windows, each with
@@ -542,6 +551,7 @@ class SessionConfig {
     bool? logRawDetections,
     bool? gtFramesEnabled,
     double? gtFrameSeconds,
+    bool? stillSyncCompanion,
   }) => SessionConfig(
     modelPath: modelPath ?? this.modelPath,
     task: task ?? this.task,
@@ -593,6 +603,7 @@ class SessionConfig {
     logRawDetections: logRawDetections ?? this.logRawDetections,
     gtFramesEnabled: gtFramesEnabled ?? this.gtFramesEnabled,
     gtFrameSeconds: gtFrameSeconds ?? this.gtFrameSeconds,
+    stillSyncCompanion: stillSyncCompanion ?? this.stillSyncCompanion,
   );
 
   Map<String, dynamic> toJson() => {
@@ -649,6 +660,7 @@ class SessionConfig {
     'logRawDetections': logRawDetections,
     'gtFramesEnabled': gtFramesEnabled,
     'gtFrameSeconds': gtFrameSeconds,
+    'stillSyncCompanion': stillSyncCompanion,
   };
 
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
@@ -724,6 +736,7 @@ class SessionConfig {
     logRawDetections: j['logRawDetections'] as bool? ?? false,
     gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? false,
     gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 5.0,
+    stillSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
   );
 
   static const String _prefsKey = 'faunapulse_session_config';

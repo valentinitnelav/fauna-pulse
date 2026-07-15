@@ -18,6 +18,7 @@ import android.hardware.camera2.CaptureRequest
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import android.os.Build
+import android.os.SystemClock
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.*
 import androidx.camera.core.Camera
@@ -1928,7 +1929,7 @@ class YOLOView @JvmOverloads constructor(
     fun capturePhoto(withOverlays: Boolean = true, callback: (ByteArray?) -> Unit) {
         val mainExec = ContextCompat.getMainExecutor(context)
         takeRawStill(
-            onJpeg = { jpegBytes, rotationDegrees, isFront ->
+            onJpeg = { jpegBytes, rotationDegrees, isFront, _, _ ->
                 // Runs on stillExecutor: the full-frame decode/rotate/re-encode
                 // stays off the main thread (round-63 lag fix). Rotation +
                 // front-camera mirroring are baked into the pixels so consumers
@@ -1966,13 +1967,18 @@ class YOLOView @JvmOverloads constructor(
     fun capturePhotoRaw(callback: (Map<String, Any?>?) -> Unit) {
         val mainExec = ContextCompat.getMainExecutor(context)
         takeRawStill(
-            onJpeg = { bytes, rotationDegrees, isFront ->
+            onJpeg = { bytes, rotationDegrees, isFront, contentLagMs, callbackLagMs ->
                 mainExec.execute {
                     callback(
                         mapOf(
                             "bytes" to bytes,
                             "rotationDegrees" to rotationDegrees,
                             "isFront" to isFront,
+                            // Round 108: how old the frame CONTENT is vs the
+                            // request (negative = ZSL served a past frame) and
+                            // the plain shutter-to-bytes wait. Logged per photo.
+                            "contentLagMs" to contentLagMs,
+                            "callbackLagMs" to callbackLagMs,
                         )
                     )
                 }
@@ -1988,7 +1994,7 @@ class YOLOView @JvmOverloads constructor(
      * capture/extraction fails — so callers can fall back to view-touching snapshots directly.
      */
     private fun takeRawStill(
-        onJpeg: (bytes: ByteArray, rotationDegrees: Int, isFront: Boolean) -> Unit,
+        onJpeg: (bytes: ByteArray, rotationDegrees: Int, isFront: Boolean, contentLagMs: Double?, callbackLagMs: Double?) -> Unit,
         onFail: () -> Unit,
     ) {
         val ic = imageCaptureUseCase
@@ -1997,6 +2003,15 @@ class YOLOView @JvmOverloads constructor(
             mainExec.execute(onFail)
             return
         }
+        // Round 108 (FaunaPulse): measure how OLD the delivered frame's content
+        // is relative to the takePicture() call. ImageInfo.timestamp is the
+        // sensor timestamp on the elapsedRealtime clock (on compliant HALs), so
+        // contentLagMs NEGATIVE = the frame predates the request = zero-shutter
+        // -lag is actually serving from its ring buffer; a large positive value
+        // = the "still lands after the detection" lag is real frame-content lag
+        // (fast insects will have left the box). callbackLagMs is the plain
+        // shutter-to-bytes wait.
+        val t0Nanos = SystemClock.elapsedRealtimeNanos()
         try {
             ic.takePicture(
                 stillExecutor,
@@ -2005,11 +2020,18 @@ class YOLOView @JvmOverloads constructor(
                         try {
                             val rotationDegrees = image.imageInfo.rotationDegrees
                             val isFront = lensFacing == CameraSelector.LENS_FACING_FRONT
+                            val contentLagMs = try {
+                                (image.imageInfo.timestamp - t0Nanos) / 1e6
+                            } catch (e: Exception) {
+                                null
+                            }
+                            val callbackLagMs =
+                                (SystemClock.elapsedRealtimeNanos() - t0Nanos) / 1e6
                             val jpegBytes = imageProxyToJpegBytes(image)
                             if (jpegBytes == null) {
                                 mainExec.execute(onFail)
                             } else {
-                                onJpeg(jpegBytes, rotationDegrees, isFront)
+                                onJpeg(jpegBytes, rotationDegrees, isFront, contentLagMs, callbackLagMs)
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "takeRawStill: error extracting still", e)

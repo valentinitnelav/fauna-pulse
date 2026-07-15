@@ -1465,6 +1465,25 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ],
         onChanged: (m) => setState(() => _c = _c.copyWith(captureMode: m)),
       ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Sync companion photo (stills)',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'A full-resolution still physically lands up to ~1 s after the '
+          'detection that triggered it, so a fast insect can be gone from '
+          'the photo. With this on, every still also saves a small crop of '
+          'the live frame at the trigger moment next to it '
+          '("…_live.jpg") — lower resolution, but the insect is in it. '
+          'Adds roughly 50–200 KB per still.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        value: _c.stillSyncCompanion,
+        onChanged: (v) =>
+            setState(() => _c = _c.copyWith(stillSyncCompanion: v)),
+      ),
       NumericSettingField(
         label: 'Saved photo side (px)',
         value: _c.targetRoiSavedPx.toDouble(),

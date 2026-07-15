@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart';
 import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
@@ -280,6 +281,100 @@ void main() {
       expect(s.evaluateMotion(10000), isNotNull);
       expect(s.evaluate([track(1)], 11000), isNotNull);
       expect(s.evaluateMotion(11000), isNotNull);
+    });
+  });
+
+  group('still sync companion (round 108)', () {
+    // A real (tiny) JPEG so the Dart fallback crop can decode the "still"
+    // (the native crop channel has no handler under flutter_test).
+    final stillJpeg = Uint8List.fromList(
+      img.encodeJpg(img.Image(width: 96, height: 96)),
+    );
+    final liveCrop = Uint8List.fromList([1, 2, 3, 4]); // written verbatim
+
+    RoiCaptureScheduler stillScheduler(
+      Directory dir, {
+      bool syncCompanion = true,
+      Future<RawStill?> Function()? stillFn,
+      void Function(CaptureStat)? onStat,
+    }) => RoiCaptureScheduler(
+      framesDir: dir,
+      sessionToken: 'S',
+      stepMs: 1000,
+      durationMs: 5000,
+      mode: RoiCaptureMode.still,
+      targetPx: 640,
+      syncCompanion: syncCompanion,
+      fastCaptureFn: () async => liveCrop,
+      stillCaptureFn: stillFn ??
+          () async => RawStill(
+            bytes: stillJpeg,
+            rotationDegrees: 0,
+            isFront: false,
+            contentLagMs: 750.0,
+            callbackLagMs: 760.0,
+          ),
+      roiProvider: () => Roi.defaultRoi,
+      streamDims: () => (640, 480),
+      stillDims: () => (96, 96),
+      onStat: onStat,
+    );
+
+    test('a still-path photo also writes the trigger-moment _live crop and '
+        'reports both in the stat', () async {
+      final dir = Directory.systemTemp.createTempSync('companion_test');
+      CaptureStat? stat;
+      final s = stillScheduler(dir, onStat: (v) => stat = v);
+      final pending = s.evaluate([track(1)], 10000)!;
+      await s.capture(pending);
+
+      final liveName = pending.fileName.replaceFirst('.jpg', '_live.jpg');
+      expect(File('${dir.path}/${pending.fileName}').existsSync(), isTrue);
+      expect(File('${dir.path}/$liveName').existsSync(), isTrue);
+      expect(
+        File('${dir.path}/$liveName').readAsBytesSync(),
+        equals(liveCrop),
+      );
+      expect(stat, isNotNull);
+      expect(stat!.path, CapturePath.still);
+      expect(stat!.liveJpeg, liveName);
+      expect(stat!.liveBytes, liveCrop.length);
+      expect(stat!.contentLagMs, 750.0); // ZSL diagnosis plumbed through
+      expect(stat!.grabMs, isNotNull);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('when the still itself fails the companion still lands (and is what '
+        'gets reported)', () async {
+      final dir = Directory.systemTemp.createTempSync('companion_fail_test');
+      CaptureStat? stat;
+      final s = stillScheduler(
+        dir,
+        stillFn: () async => null, // camera refused the still
+        onStat: (v) => stat = v,
+      );
+      final pending = s.evaluate([track(1)], 10000)!;
+      await s.capture(pending);
+
+      final liveName = pending.fileName.replaceFirst('.jpg', '_live.jpg');
+      expect(File('${dir.path}/${pending.fileName}').existsSync(), isFalse);
+      expect(File('${dir.path}/$liveName').existsSync(), isTrue);
+      expect(stat, isNotNull);
+      expect(stat!.fileName, liveName);
+      expect(stat!.path, CapturePath.fast);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('disabled companion writes only the still', () async {
+      final dir = Directory.systemTemp.createTempSync('companion_off_test');
+      final s = stillScheduler(dir, syncCompanion: false);
+      final pending = s.evaluate([track(1)], 10000)!;
+      await s.capture(pending);
+
+      final liveName = pending.fileName.replaceFirst('.jpg', '_live.jpg');
+      expect(File('${dir.path}/${pending.fileName}').existsSync(), isTrue);
+      expect(File('${dir.path}/$liveName').existsSync(), isFalse);
+      dir.deleteSync(recursive: true);
     });
   });
 }

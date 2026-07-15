@@ -69,10 +69,23 @@ class RawStill {
   final Uint8List bytes;
   final int rotationDegrees;
   final bool isFront;
+
+  /// Round 108: how old the frame's CONTENT is relative to the capture
+  /// request, in ms. NEGATIVE = the camera's zero-shutter-lag really served
+  /// a frame from before the request; large positive = the photo shows the
+  /// scene ~that long AFTER the detection that triggered it (a fast insect
+  /// will have left). Null on odd HALs or fallback capture paths.
+  final double? contentLagMs;
+
+  /// Round 108: plain shutter-to-bytes wait in ms (request → JPEG in hand).
+  final double? callbackLagMs;
+
   const RawStill({
     required this.bytes,
     required this.rotationDegrees,
     required this.isFront,
+    this.contentLagMs,
+    this.callbackLagMs,
   });
 }
 
@@ -259,6 +272,22 @@ class CaptureStat {
   /// [capSavedSidePx] — the same math the crops apply, so no decode needed.
   final int savedPx;
 
+  /// How long the image grab alone took (the still/fast capture function),
+  /// ms — the rest of [totalMs] is crop + encode + write (round 108).
+  final double? grabMs;
+
+  /// Still path only (round 108): content/callback lag from [RawStill] —
+  /// negative content lag = zero-shutter-lag actually worked for this photo.
+  final double? contentLagMs;
+  final double? callbackLagMs;
+
+  /// Sync companion (round 108): when a still-path photo also saved the
+  /// trigger-moment live-frame crop next to it, its filename/size. Null when
+  /// the companion is disabled, the path was fast, or the grab failed.
+  final String? liveJpeg;
+  final int? liveBytes;
+  final int? liveSavedPx;
+
   /// True for the full-resolution still path (which briefly stalls the camera),
   /// false for the fast live-frame crop.
   bool get fullRes => path == CapturePath.still;
@@ -271,6 +300,12 @@ class CaptureStat {
     required this.bytes,
     required this.path,
     required this.savedPx,
+    this.grabMs,
+    this.contentLagMs,
+    this.callbackLagMs,
+    this.liveJpeg,
+    this.liveBytes,
+    this.liveSavedPx,
   });
 }
 
@@ -328,6 +363,14 @@ class RoiCaptureScheduler {
   /// this a failed photo save would be an unhandled async error nobody sees.
   final void Function(String fileName, Object error)? onError;
 
+  /// Round 108: when a photo takes the STILL path, first save the live-frame
+  /// fast crop of the trigger moment as `<name>_live.jpg` next to it. Stills
+  /// land ~0.5–1 s after the detection that scheduled them (measured 760 ms
+  /// median on the Xiaomi even with zero-shutter-lag granted), so a fast
+  /// insect is often gone from the still; the companion is small but shows
+  /// the trigger moment. Written even when the still itself later fails.
+  final bool syncCompanion;
+
   RoiCaptureScheduler({
     required this.framesDir,
     required this.sessionToken,
@@ -340,6 +383,7 @@ class RoiCaptureScheduler {
     required this.targetPx,
     required this.streamDims,
     required this.stillDims,
+    this.syncCompanion = false,
     this.onStat,
     this.onError,
   });
@@ -465,9 +509,65 @@ class RoiCaptureScheduler {
 
       Uint8List finalBytes;
       int savedPx;
+      double? grabMs;
+      double? contentLagMs;
+      double? callbackLagMs;
+      String? liveJpeg;
+      int? liveBytes;
+      int? liveSavedPx;
       if (path == CapturePath.still) {
+        // Sync companion FIRST (round 108): the live-frame crop is a cheap
+        // memory grab of (nearly) the trigger moment — taken before the still
+        // so the ~0.5–1 s shutter wait can't age it. Best-effort: a companion
+        // failure must never cost the still.
+        if (syncCompanion) {
+          try {
+            final live = await fastCaptureFn();
+            if (live != null) {
+              final liveName = pending.fileName.replaceFirst(
+                RegExp(r'\.jpg$'),
+                '_live.jpg',
+              );
+              final liveFile = File('${framesDir.path}/$liveName');
+              liveFile.parent.createSync(recursive: true);
+              await liveFile.writeAsBytes(live, flush: true);
+              liveJpeg = liveName;
+              liveBytes = live.length;
+              liveSavedPx = capSavedSidePx(
+                savedSidePx(roi.sideFraction, streamW, streamH),
+                targetPx,
+              );
+            }
+          } catch (e) {
+            logSwallowed('sync_companion', e);
+          }
+        }
+        final grabSw = Stopwatch()..start();
         final raw = await stillCaptureFn();
-        if (raw == null) return;
+        grabSw.stop();
+        grabMs = grabSw.elapsedMicroseconds / 1000.0;
+        contentLagMs = raw?.contentLagMs;
+        callbackLagMs = raw?.callbackLagMs;
+        if (raw == null) {
+          // The still failed, but a companion may already be on disk — report
+          // it so the log (and the photo count) reflect what really saved.
+          if (liveJpeg != null) {
+            sw.stop();
+            onStat?.call(
+              CaptureStat(
+                fileName: liveJpeg,
+                trackIds: pending.trackIds,
+                capturedAtMs: pending.capturedAtMs,
+                totalMs: sw.elapsedMicroseconds / 1000.0,
+                bytes: liveBytes ?? 0,
+                path: CapturePath.fast,
+                savedPx: liveSavedPx ?? 0,
+                grabMs: grabMs,
+              ),
+            );
+          }
+          return;
+        }
         savedPx = capSavedSidePx(
           savedSidePx(roi.sideFraction, stillW, stillH),
           targetPx,
@@ -507,7 +607,10 @@ class RoiCaptureScheduler {
               ),
             );
       } else {
+        final grabSw = Stopwatch()..start();
         final bytes = await fastCaptureFn();
+        grabSw.stop();
+        grabMs = grabSw.elapsedMicroseconds / 1000.0;
         if (bytes == null) return;
         finalBytes = bytes;
         // Fast-path bytes come already cropped AND capped to the target
@@ -530,6 +633,12 @@ class RoiCaptureScheduler {
           bytes: finalBytes.length,
           path: path,
           savedPx: savedPx,
+          grabMs: grabMs,
+          contentLagMs: contentLagMs,
+          callbackLagMs: callbackLagMs,
+          liveJpeg: liveJpeg,
+          liveBytes: liveBytes,
+          liveSavedPx: liveSavedPx,
         ),
       );
     } catch (e) {

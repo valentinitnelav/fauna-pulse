@@ -61,6 +61,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Time-lapse burst interval | `30 min` | r97 "Repeat burst every" (`timeLapseIntervalSeconds`, s/min/h input): START-TO-START burst spacing; burst = photo every step for the photo duration; interval ≤ duration ⇒ continuous. Photo duration max now 24 h (unit-aware `DurationSettingField`) |
 | Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
+| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg` (stills land ~0.76 s late — measured; ZSL granted but ineffective, suspect r82 interop); companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms` |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
@@ -90,8 +91,13 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `savedSidePx` / `capSavedSidePx` in `capture/roi_capture.dart` are the single source of
   the decision + size math; the single `targetRoiSavedPx` (r63) is both threshold and
   cap. Capture records log `path` + `saved_px` per photo, ROI records log `roi_source`
-  + `saves_px`. Still-path caveat (logged, not solved): the still lands after the
-  detection that scheduled it, so `box_in_roi` may not align pixel-perfectly.
+  + `saves_px`. Still-path caveat (r108: measured ~0.76 s content lag on the Xiaomi
+  even though CameraX grants ZERO_SHUTTER_LAG — suspect the r82 interop options
+  defeat ZSL; `content_lag_ms` in every still's `capture` record now answers this
+  per photo, negative = ZSL worked): the still shows the scene AFTER the detection
+  that scheduled it, so fast insects can be gone and `box_in_roi` may not align.
+  Mitigated by the r108 sync companion (`stillSyncCompanion`, default on): the
+  trigger-moment live crop is saved as `…_live.jpg` beside every still.
 - **Stills are processed off the main thread and NEVER full-frame-rotated (round 63).**
   `capturePhotoRaw` returns the unrotated JPEG + rotation/mirror info; CameraX's
   callback runs on `stillExecutor` (handing it the main executor froze UI/preview/
@@ -177,12 +183,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   hand count from the session's `gt_frames/` photos, not MOT benchmarks.
   r107: both trackers carry INTERNAL evaluation flags (constructor-only,
   never SessionConfig): `timeAwareMotion` (velocity per second of real
-  elapsed time; helps at irregular FPS — reduced C-BIoU fragmentation on the
-  r106 screen sessions, never hurt ByteTrack) and ByteTracker's
-  `FallbackMode.bufferedIou` (over-merged on that data — bridges ~0.15
-  teleports). Adoption rule: a variant becomes default only after it wins on
-  field sessions with gt-frame hand counts (less fragmentation, no new
-  merges); until then live behavior is unchanged.
+  elapsed time) and ByteTracker's `FallbackMode.bufferedIou`. Adoption rule:
+  a variant becomes default only after it wins on sessions with hand-counted
+  ground truth (less fragmentation, no new merges); until then live behavior
+  is unchanged. r108 status, from the owner's bumblebee sessions 3–5
+  (expected ~1 visit): plain ByteTrack hit ground truth (1, 1, 2 visits);
+  C-BIoU fragmented 3–6× on identical input; dtAware didn't reliably help
+  and bIoU-fb over-merged r106 data — ByteTrack stays default, no variant
+  adopted.
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
 - **Camera2 interop options go through ONE funnel (round 82).**
   `applyInteropOptions()` in `YOLOView.kt` is the only place

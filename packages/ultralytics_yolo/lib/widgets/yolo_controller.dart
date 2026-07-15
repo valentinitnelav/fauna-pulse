@@ -232,7 +232,13 @@ class YOLOViewController {
   /// per photo; callers that only need a small crop should map the crop into
   /// raw coordinates and rotate just that square (see the app's cropRoiJpeg).
   /// Android only.
-  Future<(Uint8List, int, bool)?> capturePhotoRaw() async {
+  /// Named lag fields (round 108): [contentLagMs] is how old the delivered
+  /// frame's CONTENT is relative to the capture request — negative means the
+  /// device's zero-shutter-lag really served a past frame; a large positive
+  /// value is the "photo shows the insect already gone" lag. [callbackLagMs]
+  /// is the plain shutter-to-bytes wait. Either may be null on odd HALs.
+  Future<(Uint8List, int, bool, {double? contentLagMs, double? callbackLagMs})?>
+  capturePhotoRaw() async {
     final r = await _invoke<Map<dynamic, dynamic>>('capturePhotoRaw');
     final bytes = r?['bytes'];
     if (bytes is! Uint8List) return null;
@@ -240,6 +246,8 @@ class YOLOViewController {
       bytes,
       (r?['rotationDegrees'] as num?)?.toInt() ?? 0,
       r?['isFront'] as bool? ?? false,
+      contentLagMs: (r?['contentLagMs'] as num?)?.toDouble(),
+      callbackLagMs: (r?['callbackLagMs'] as num?)?.toDouble(),
     );
   }
 

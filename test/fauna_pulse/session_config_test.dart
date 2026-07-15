@@ -137,6 +137,17 @@ void main() {
     expect(restored.logRawDetections, true);
   });
 
+  test('still sync companion round-trips and defaults ON (round 108)', () {
+    // Default on: the companion guards dataset completeness; and a config
+    // saved before the key existed must also load as on.
+    expect(const SessionConfig().stillSyncCompanion, true);
+    expect(SessionConfig.fromJson(const {}).stillSyncCompanion, true);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(stillSyncCompanion: false).toJson(),
+    );
+    expect(restored.stillSyncCompanion, false);
+  });
+
   test('ground-truth frame dump settings round-trip (round 107)', () {
     const c = SessionConfig();
     expect(c.gtFramesEnabled, false);

@@ -4098,3 +4098,49 @@ benchmark-scoping/ReID-phrasing corrections were fair but prose-only.
 - 206 tests green (new: time-aware + buffered-fallback knob tests, degrader
   tests, gt scheduler window, gt config round-trip), analyzer clean.
 
+## Round 108 (2026-07-15): still-photo sync — content-lag instrumentation + companion live crop; tracker verdict on bumblebee sessions
+
+**Tracker verdict (sessions/Xiaomi/sessions/session_3..5 — looping bumblebee
+video, occlusion 4 s, owner expectation ~1 visit, raw logging on; replay
+matrix run on all three):** plain ByteTrack hit ground truth — 1 visit in
+session_4 and session_5, 2 in session_3 (max-concurrent 2 there ⇒ a brief
+second SIMULTANEOUS detection, not fragmentation). C-BIoU fragmented 3–6
+visits on identical input in every session. The r107 variants added nothing:
+byte was already at truth; dtAware didn't reliably help cbiou on this data
+(and its r106 promise didn't replicate); bIoU-fb changed nothing here after
+over-merging in r106. ByteTrack stays default; variants remain unadopted.
+Docs updated; no tracker code changed.
+
+**Still-photo lag (the owner's "insect gone from the photo" bug — e.g.
+session_3 roi_c7bk_2026-07-15_010515_968.jpg):** all s3/s4 photos took the
+still path (small ROI → fast crop < 1024 target) with median **760 ms**
+trigger→file; session_5 (big ROI → fast path) is ~100 ms and in sync. The
+plugin requests ZERO_SHUTTER_LAG and the Xiaomi GRANTS it (logcat), yet the
+content is late ⇒ ZSL requested but not effective — prime suspect: the r82
+Camera2 interop options (AE fps range / manual focus). Two fixes:
+
+- **Content-lag instrumentation:** `takeRawStill` (YOLOView.kt) stamps
+  `t0 = elapsedRealtimeNanos()` before takePicture and computes
+  `contentLagMs = (imageInfo.timestamp − t0)/1e6` (sensor timestamp;
+  NEGATIVE = ZSL really served a pre-request frame) + `callbackLagMs`;
+  threaded through `capturePhotoRaw` (named record fields — `.$1..$3` call
+  sites untouched) → `RawStill` → `CaptureStat` → `capture`/`gt_capture`
+  records (`content_lag_ms`, `callback_lag_ms`), plus a `grab_ms` split of
+  `total_ms` measured in the scheduler for both paths.
+- **Sync companion (`stillSyncCompanion`, default ON; Camera-tab switch under
+  the photo-source dropdown):** when a photo takes the still path, the
+  scheduler FIRST saves the trigger-moment live-frame crop as
+  `<name>_live.jpg` (cheap memory grab; `.jpg` sorts before `_live.jpg` so
+  pairs stay adjacent — filename invariant intact), then the still. Written
+  even when the still fails, and then reported as the capture (path `fast`),
+  so every trigger yields at least one in-sync image. `capture` records carry
+  `live_jpeg`/`live_bytes`/`live_saved_px`. Photos tab intentionally shows
+  only primary photos for now (companions reachable via capture records —
+  future work); gallery export naturally includes companions.
+- **Owner experiment queued:** one session with Camera frame rate cap = 0 —
+  if `content_lag_ms` goes negative, the r82 interop cap is what defeats ZSL
+  (then decide: still-aware cap vs living with the companion).
+- 210 tests green (new: companion two-file write + still-fails + disabled
+  cases, config round-trip), analyzer clean, `flutter build apk --debug` OK
+  (Kotlin change compiles).
+

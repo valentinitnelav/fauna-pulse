@@ -901,6 +901,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     add('Photo source mode', _setting('captureMode'));
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
+    // Round 108: stills get a trigger-moment live crop next to them.
+    if (_setting('stillSyncCompanion') != null) {
+      add(
+        'Sync companion (stills)',
+        _setting('stillSyncCompanion') == true ? 'on' : 'off',
+      );
+    }
     // Crop-and-export 1:1 lock (round 91) — only sessions recorded since then
     // carry the key (add() skips null).
     add('Square export crops', _setting('cropSquareLock'));
