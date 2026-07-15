@@ -51,8 +51,10 @@ a rewarding journey. It is worth noting that I use paid tools like Claude Code,
 which I recognize is a luxury that may not be accessible to everyone, 
 but it has been instrumental in bringing this project to life.
 
-So, [Claude Code](https://claude.com/product/claude-code) was used for software development.
+So, mainly [Claude Code](https://claude.com/product/claude-code) was used for software development.
 See [`./docs/AGENT_CHANGELOG_OVERVIEW.md`](./docs/AGENT_CHANGELOG_OVERVIEW.md) & the detailed [`./docs/AGENT_CHANGELOG.md`](./docs/AGENT_CHANGELOG.md) for the full development log history and pipeline configuration.
+Occasionally, I used the free versions of ChatGPT and Gemini chat bots in online sessions to double check Claude (and vice versa) when I had some doubts (suspicions of "hallucinations" of these LLMs).
+I conducted literature search on scientific topics using [Google Scholar](https://scholar.google.com), and also [Elicit](https://elicit.com/) and [Consensus](https://consensus.app/).
 
 This app is built on Ultralytics' [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app) 
 (forked from upstream commit `22b2e5d`). 
@@ -93,15 +95,15 @@ dependencies:
 
 | Doc | Audience | Purpose |
 |---|---|---|
-| [INSTALL.md](docs/INSTALL.md) | tester / collaborator | Install a ready-made APK or build from source; import models. |
+| [INSTALL.md](docs/INSTALL.md) | tester / developer | Install a ready-made APK or build from source; import models. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | field researcher | Run a session, read the live screen, troubleshoot. |
 | [SETTINGS_REFERENCE.md](docs/SETTINGS_REFERENCE.md) | field researcher | What every setting does. |
 | [DATA_GUIDE.md](docs/DATA_GUIDE.md) | researcher / analyst | `session.jsonl` data dictionary; compute visitation rates (R/Python). |
-| [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | advanced user | Why a small ROI still yields sharp photos. |
+| [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | developer | Why a small ROI still yields sharp photos. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | developer | Build/test, conventions, docs index. |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
-| [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) / [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | maintainer | Current-state snapshot / append-only development journal. |
+| [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) / [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent / maintainer | Current-state snapshot / append-only development journal. |
 
 
 ## Models
@@ -117,7 +119,7 @@ See the [Installation & Testing Guide](docs/INSTALL.md) for details.
 
 ## The app idea & scientific background
 
-The ideas, app features and motivation is rooted in my work at [UFZ](https://www.ufz.de/) & [iDiv](https://www.idiv.de/).
+The ideas, app features and motivation are rooted in my work at [UFZ](https://www.ufz.de/) & [iDiv](https://www.idiv.de/).
 
 - UFZ: Helmholtz Centre for Environmental Research
 - iDiv: German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V.
@@ -158,8 +160,10 @@ and explore with many more approaches.
 - **Stats / Analytics reporting** derived from visitation rates and classification of insects: 
 this will vary from case to case (pollination ecologists, citizen scientists, the agriculture & industry sector, etc.).
 
-Last but not least, I wanted this to be open and free for scientists, especially trying to help in this way 
-labs that are underfunded.
+Working on this app I have also realized that it can be used not only fo pollinator monitoring, but for any other project that requires detection + tracking of a moving object/subject/organism within a region of interest.
+So I hope this can be useful for citizen science projects as well by uploading custom object detectors (not just for pollinators).
+
+Last but not least, I wanted this to be open and free for scientists, especially trying to help in this way labs that are underfunded.
 
 ## License
 
