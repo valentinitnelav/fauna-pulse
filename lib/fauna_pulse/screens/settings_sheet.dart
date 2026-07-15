@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
+import '../capture/roi_capture.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
@@ -2127,32 +2128,62 @@ class _SettingsSheetState extends State<SettingsSheet> {
       return '$lo × $hi';
     }
 
+    // Round 109 "Auto": the app picks the smallest supported size whose short
+    // side reaches the saved-photo target, so fast (no-stall) ROI crops can
+    // meet it and the laggy full-res still path is needed less often. Only
+    // computable from real device probes; on the preset fallback the auto
+    // item still exists but keeps the current size until probes land.
+    final autoPick = widget.streamResolutions.isEmpty
+        ? null
+        : autoStreamResolution(widget.streamResolutions, ceilingArea: ceilArea);
+    const autoValue = 'auto';
+    final autoLabel = autoPick == null
+        ? 'Auto (device-chosen)'
+        : 'Auto — smallest with short side ≥ 1024 '
+              '(this phone: ${label('${autoPick.$1}x${autoPick.$2}')})';
+
     return DropdownButton<String>(
-      value: options.contains(current) ? current : null,
+      value: !_c.streamResolutionExplicit
+          ? autoValue
+          : (options.contains(current) ? current : null),
       isExpanded: true,
       dropdownColor: Colors.black87,
       hint: Text(
         'Device default (nearest to ${_c.streamHeight} × ${_c.streamWidth})',
         style: const TextStyle(color: Colors.white54),
       ),
-      items: options
-          .map(
-            (wh) => DropdownMenuItem(
-              value: wh,
-              child: Text(
-                label(wh),
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          )
-          .toList(),
+      items: [
+        DropdownMenuItem(
+          value: autoValue,
+          child: Text(autoLabel, style: const TextStyle(color: Colors.white)),
+        ),
+        ...options.map(
+          (wh) => DropdownMenuItem(
+            value: wh,
+            child: Text(label(wh), style: const TextStyle(color: Colors.white)),
+          ),
+        ),
+      ],
       onChanged: (v) {
         if (v == null) return;
+        if (v == autoValue) {
+          setState(
+            () => _c = _c.copyWith(
+              streamResolutionExplicit: false,
+              // Apply the computed size right away so the choice is WYSIWYG;
+              // without probes the camera screen applies it once they land.
+              streamWidth: autoPick?.$1,
+              streamHeight: autoPick?.$2,
+            ),
+          );
+          return;
+        }
         final p = v.split('x');
         setState(
           () => _c = _c.copyWith(
             streamWidth: int.parse(p[0]),
             streamHeight: int.parse(p[1]),
+            streamResolutionExplicit: true,
           ),
         );
       },
@@ -2170,6 +2201,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'detection accuracy — every frame is shrunk to the model’s own input '
           'size anyway. It only affects the sharpness of fast (live-frame) ROI '
           'photos; for the sharpest crops use “Full-resolution ROI photos” below.',
+      'Larger streams cost more per-frame processing (heat and battery). '
+          '“Auto” picks the smallest size that still lets fast crops reach the '
+          'saved-photo target; on a phone that runs hot, pick a small size '
+          'manually.',
     ];
     if (ceilArea > 0) {
       parts.add(

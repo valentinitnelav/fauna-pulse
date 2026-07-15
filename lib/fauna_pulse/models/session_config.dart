@@ -275,6 +275,14 @@ class SessionConfig {
   final int streamWidth;
   final int streamHeight;
 
+  /// Whether [streamWidth]×[streamHeight] was picked BY THE USER in Settings
+  /// (round 109). While false, the app may auto-default the stream once per
+  /// screen to the smallest device-supported size with short side ≥ 1024
+  /// ([autoStreamResolution] in roi_capture.dart) so fast ROI crops can reach
+  /// the saved-photo target without the laggy still path; a manual dropdown
+  /// choice sets this true and is never overridden.
+  final bool streamResolutionExplicit;
+
   /// ROI photo source policy — see [RoiCaptureMode]. Default [RoiCaptureMode.auto]:
   /// each photo uses the cheap fast crop when it already meets [minRoiSavedPx],
   /// and pays for a full-resolution still only when the ROI is too small in the
@@ -436,6 +444,7 @@ class SessionConfig {
     this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
     this.streamWidth = 640,
     this.streamHeight = 480,
+    this.streamResolutionExplicit = false,
     this.captureMode = RoiCaptureMode.auto,
     this.targetRoiSavedPx =
         1024, // ÷32; photos save at exactly this when possible
@@ -535,6 +544,7 @@ class SessionConfig {
     double? timeLapseIntervalSeconds,
     int? streamWidth,
     int? streamHeight,
+    bool? streamResolutionExplicit,
     RoiCaptureMode? captureMode,
     int? targetRoiSavedPx,
     double? occlusionSeconds,
@@ -587,6 +597,8 @@ class SessionConfig {
         timeLapseIntervalSeconds ?? this.timeLapseIntervalSeconds,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
+    streamResolutionExplicit:
+        streamResolutionExplicit ?? this.streamResolutionExplicit,
     captureMode: captureMode ?? this.captureMode,
     targetRoiSavedPx: targetRoiSavedPx ?? this.targetRoiSavedPx,
     occlusionSeconds: occlusionSeconds ?? this.occlusionSeconds,
@@ -642,6 +654,7 @@ class SessionConfig {
     'timeLapseIntervalSeconds': timeLapseIntervalSeconds,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
+    'streamResolutionExplicit': streamResolutionExplicit,
     'captureMode': captureMode.name,
     'targetRoiSavedPx': targetRoiSavedPx,
     // Legacy key kept one round so an older build can still read this config.
@@ -699,6 +712,12 @@ class SessionConfig {
         (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
+    // Pre-round-109 configs lack the key. A stored size that differs from the
+    // old factory default (640×480) can only mean the user once picked it in
+    // Settings — treat that as explicit so the auto default never stomps it.
+    streamResolutionExplicit: j['streamResolutionExplicit'] as bool? ??
+        (((j['streamWidth'] as num?)?.toInt() ?? 640) != 640 ||
+            ((j['streamHeight'] as num?)?.toInt() ?? 480) != 480),
     captureMode: _captureModeFromJson(j),
     // Round-62 configs stored a min/max pair; the min carries the intent
     // ("photos must be at least this"), so it becomes the target.

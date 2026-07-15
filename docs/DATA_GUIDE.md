@@ -67,6 +67,7 @@ Session-wide metadata. Notable fields:
 | `step_seconds`, `duration_seconds`, `session_minutes` | Timing config. |
 | `roi` | Starting ROI geometry (see the `roi` sub-object below). |
 | `roi_source`, `saves_px` | Which source the ROI photo comes from, and exact saved pixel side. |
+| `roi_side_stream_px` | Round 109+: the ROI side in the **stream grid** — the ÷32 number shown on screen while recording (e.g. 480). Prefer this for "how big was the box"; the `roi` block may express the same square against the full-res still (e.g. 1333 on a 3000-wide still = the same 480 box). |
 | `analysis_frame_width_px`, `analysis_frame_height_px` | Live analysis-frame size. |
 | `inference_fps`, `*_sample_seconds` | Rate cap and logging cadences. |
 | `config` | **A complete self-describing copy of every setting used** — the most reliable source for your methods section. Individual keys above are kept for older readers. |
@@ -79,6 +80,13 @@ The `roi` sub-object (also used in `roi_update`):
 | `center_x_norm`, `center_y_norm` | ROI centre as a fraction (0..1) of the frame. |
 | `width_px`, `height_px` | ROI side in pixels (square, so equal). |
 | `frame_width_px`, `frame_height_px` | The frame these are relative to. |
+
+> ⚠ `width_px` is relative to whichever frame the photos were being saved from
+> (`frame_width_px`) — on the still path that is the full-resolution still, so
+> it is usually **larger** than the box the user saw. For the on-screen ÷32
+> size use `roi_side_stream_px` (round 109+); for older logs recompute it as
+> `width_px / frame_width_px × analysis_frame_width_px`, snapped to the
+> nearest multiple of 32.
 
 ### `detections` — the core record, one per processed frame with insects
 
@@ -132,7 +140,15 @@ Deliberately a separate type: never mix these into detection-photo joins.
 
 ### `roi_update` — when the ROI is moved/resized mid-session
 
-Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`) and `saves_px`.
+Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`), `saves_px`
+and (round 109+) `roi_side_stream_px` (the on-screen ÷32 side — see the `roi`
+note above). Since round 109 these records are **debounced**: one record per
+adjustment, written once the box has sat unchanged for ~2 s (a change still
+pending when recording stops is flushed, so the session's final ROI is always
+on record; an adjustment that ends back on the previous geometry writes
+nothing). Sessions recorded before round 109 instead carry one record per drag
+tick — take the last of a burst. The summary's Settings tab lists these as
+"ROI changes during the session".
 
 ### `motion_gate` — when the detector sleeps/wakes (only if the gate is enabled)
 

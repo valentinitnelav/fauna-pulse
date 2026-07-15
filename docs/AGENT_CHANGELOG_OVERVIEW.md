@@ -59,9 +59,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
 | Capture trigger | `detector` | r97 enum `CaptureTrigger {detector, motion, timelapse}` (Setup-tab dropdown; replaces r95 `motionOnlyCapture` bool — legacy configs migrate). `motion`: photos on ROI motion, detector NEVER runs (model loads, `predict()` never called), gate forced on, gate tunables = sensitivity, logs `motion_capture` records. `timelapse`: clock-driven bursts, no AI + no gate, logs `timelapse_capture` records. Both: NO `detections` records |
 | Time-lapse burst interval | `30 min` | r97 "Repeat burst every" (`timeLapseIntervalSeconds`, s/min/h input): START-TO-START burst spacing; burst = photo every step for the photo duration; interval ≤ duration ⇒ continuous. Photo duration max now 24 h (unit-aware `DurationSettingField`) |
-| Stream resolution | `640×480` | ≈ model input; short side caps the fast ROI crop |
+| Stream resolution | auto (r109) | while `streamResolutionExplicit` false, the camera screen once-per-lifetime picks the smallest probed size with short side ≥ 1024 (`autoStreamResolution`, honours the r56 ceiling; Xiaomi → 1440×1080) so fast crops can reach the 1024 target; a manual dropdown pick sets explicit and is never overridden (pre-109 configs: stored ≠ 640×480 migrates to explicit); short side caps the fast ROI crop |
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
-| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg` (stills land ~0.76 s late — measured; ZSL granted but ineffective, suspect r82 interop); companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms` |
+| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg` (stills land ~0.7–0.8 s late; content lag measured ~0.4 s in session_6 — ZSL granted but ineffective, suspect r82 interop; the fps-cap=0 ZSL experiment is still pending); companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified working in the field (session_6); owner also saw motion-ghosting on stills that the live crops don't have |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
@@ -124,6 +124,16 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   Do NOT make the box grid follow `_activePath` again — field-tested (session_95):
   the scale-flipping readout misled the owner into shrinking the box to ~17% of the
   frame without realising it.
+- **ROI logging & history (round 109).** The logged `roi` block stays expressed
+  against the photo source (`_roiLogDims` — still-frame on the still path, hence
+  session_6's confusing "1333" for an on-screen 480), but start + `roi_update`
+  records now ALSO carry `roi_side_stream_px` (the on-screen ÷32 side; same
+  `savedSidePx` math) and the summary shows THAT ("Initial ROI", "Initial ROI
+  saves", "ROI changes during the session"; pre-109 logs recomputed via
+  `roiStreamSideFromLog` in roi_capture.dart). `roi_update` writes are debounced
+  (`logging/roi_update_debouncer.dart`: 2 s stability, skip-if-unchanged,
+  seeded at start, FLUSHED in `_stopRecording` before the logger closes) — one
+  record per settled adjustment; the box/inference ROI still update per tick.
 - **GPU vs CPU is decided by whether the GPU backend can compile the model's op graph — not
   by int8 vs fp16** (log §6; re-verified r77: `arthropod_yolov11_int8` runs on GPU). A
   2-strike GPU-crash blocklist demotes crashing models to CPU. The chosen engine is logged

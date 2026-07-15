@@ -21,6 +21,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../logging/error_reporter.dart';
+import '../logging/roi_update_debouncer.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
@@ -74,9 +75,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   late final CameraDiagnosticsController _probes = CameraDiagnosticsController(
     controller: _controller,
     onChanged: () {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      _maybeApplyAutoStreamDefault();
+      setState(() {});
     },
   );
+
+  // Round 109: settles ROI drags into one roi_update record per adjustment
+  // (the overlay fires per tick; the log wants the value the user stopped on).
+  final RoiUpdateDebouncer _roiLogDebounce = RoiUpdateDebouncer();
+
+  // Round 109: the auto stream-resolution default is evaluated at most once
+  // per screen lifetime (the resulting camera rebind re-fires probe callbacks;
+  // without the flag that would loop).
+  bool _autoStreamApplied = false;
 
   // Auto thermal-aware inference throttle. When active, it adjusts [_appliedCapFps]
   // each second from the measured inference time so the CPU keeps a cooling margin
@@ -559,6 +571,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     if (_recording) _stopRecording(normal: false);
+    // After _stopRecording's synchronous flush — drops any leftover timer.
+    _roiLogDebounce.cancel();
     WakelockPlus.disable();
     _controller.dispose();
     _tracksVN.dispose();
@@ -917,6 +931,46 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await updated.save();
   }
 
+  /// Round 109: while the user has never chosen a stream resolution
+  /// ([SessionConfig.streamResolutionExplicit] false), default it — once per
+  /// screen, as soon as BOTH probes have answered — to the smallest supported
+  /// size whose short side is ≥ 1024, so fast ROI crops can reach the default
+  /// saved-photo target instead of falling back to the laggy full-res still
+  /// (round 108: ~0.4–0.8 s behind the trigger). Runs from the probe
+  /// controller's onChanged; the guards keep it out of recordings/scheduled
+  /// runs (a stream change rebinds the camera) and stop the rebind's fresh
+  /// probe callbacks from looping it.
+  void _maybeApplyAutoStreamDefault() {
+    if (_autoStreamApplied ||
+        _config.streamResolutionExplicit ||
+        _recording ||
+        _schedule != null ||
+        _streamResolutions.isEmpty ||
+        !_probes.analysisCeilingProbed) {
+      return;
+    }
+    _autoStreamApplied = true;
+    // Same ceiling parsing as the settings sheet's dropdown annotation.
+    final recMax = (_analysisCeiling['recommendedMax'] as String?) ?? '';
+    final p = recMax.split('x');
+    final ceilArea = p.length == 2
+        ? (int.tryParse(p[0]) ?? 0) * (int.tryParse(p[1]) ?? 0)
+        : 0;
+    final pick = autoStreamResolution(_streamResolutions, ceilingArea: ceilArea);
+    if (pick == null ||
+        (pick.$1 == _config.streamWidth && pick.$2 == _config.streamHeight)) {
+      return;
+    }
+    final updated = _config.copyWith(
+      streamWidth: pick.$1,
+      streamHeight: pick.$2,
+      // Stays an AUTO choice: a future device/phone can re-derive its own.
+      streamResolutionExplicit: false,
+    );
+    setState(() => _config = updated);
+    updated.save().catchError((Object e) => logSwallowed('auto_stream_save', e));
+  }
+
   void _setManualFocus(double v) {
     _controller.setManualFocus(v);
     setState(() {
@@ -1174,6 +1228,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // Exact side of the file this box would save (crop snap + max-side cap),
         // so post-processing never has to re-derive it from the fraction.
         'saves_px': _savedSideNow,
+        // Round 109: the ROI side in the STREAM grid — the ÷32 number the user
+        // saw on screen (the `roi` block above may be a still-frame projection
+        // of the same square, which reads confusingly large; session_6).
+        'roi_side_stream_px': savedSidePx(
+          _roi.sideFraction,
+          _imageWidth,
+          _imageHeight,
+        ),
         'analysis_frame_width_px': _imageWidth,
         'analysis_frame_height_px': _imageHeight,
         'inference_fps': _config.inferenceFps,
@@ -1335,6 +1397,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             ),
     );
 
+    // The ROI just written into the start record is the debouncer's baseline:
+    // a drag that ends back on this geometry logs no roi_update.
+    _roiLogDebounce.seed(_roi);
+
     // The session-length auto-end applies to MANUAL sessions only: in a
     // scheduled run each window's end time governs (via _scheduleTick), and
     // the default 60-min length must not silently truncate a longer window.
@@ -1429,6 +1495,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
     }
+    // A ROI change still sitting in the debounce window must land before the
+    // logger closes — the session's final ROI is never lost to the timer.
+    if (_recording) _roiLogDebounce.flush(_writeRoiUpdate);
     await _recorder.stop(
       normal: normal,
       uniqueTrackCount: _tracker.totalConfirmed,
@@ -2065,17 +2134,32 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
     setState(() => _roi = clamped);
     _pushInferenceRoi();
-    if (_recording) {
-      _logger?.logRoiUpdate({
-        'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
-        // Which source the ROI dims above refer to ('fast' = analysis frame,
-        // 'still' = full-res still) — in auto mode it depends on the box size.
-        'roi_source': _activePath.name,
-        // Exact side of the file this box would save (crop snap + max-side cap),
-        // so post-processing never has to re-derive it from the fraction.
-        'saves_px': _savedSideNow,
-      });
-    }
+    // Logging is debounced (round 109): the box and the inference ROI above
+    // follow the finger immediately, but only the geometry the user SETTLES
+    // on (unchanged for ~2 s, or recording stops) becomes a roi_update record
+    // — one line per adjustment instead of one per drag tick.
+    if (_recording) _roiLogDebounce.notify(_roi, _writeRoiUpdate);
+  }
+
+  /// Writes one roi_update record for a settled ROI (debouncer callback).
+  /// [settled] equals the live [_roi] when it runs — the debouncer only fires
+  /// while the geometry is stable — so the derived fields read current state.
+  void _writeRoiUpdate(Roi settled) {
+    _logger?.logRoiUpdate({
+      'roi': settled.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
+      // Which source the ROI dims above refer to ('fast' = analysis frame,
+      // 'still' = full-res still) — in auto mode it depends on the box size.
+      'roi_source': _activePath.name,
+      // Exact side of the file this box would save (crop snap + max-side cap),
+      // so post-processing never has to re-derive it from the fraction.
+      'saves_px': _savedSideNow,
+      // The ÷32 side the user saw on screen (stream grid) — see start record.
+      'roi_side_stream_px': savedSidePx(
+        settled.sideFraction,
+        _imageWidth,
+        _imageHeight,
+      ),
+    });
   }
 
   /// Re-snaps the current ROI to the saved-crop multiple-of-32 grid once the crop

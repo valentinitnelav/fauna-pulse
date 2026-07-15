@@ -40,6 +40,12 @@ class CameraDiagnosticsController {
   /// previewBoundW/H, displayW/H. See round 56.
   Map<String, dynamic> analysisCeiling = const {};
 
+  /// True once [_fetchAnalysisCeiling] has ANSWERED (success or failure), so
+  /// the auto stream-resolution default (round 109) can tell "no ceiling on
+  /// this phone" apart from "probe still in flight" and never picks a size
+  /// the ceiling would have vetoed.
+  bool analysisCeilingProbed = false;
+
   /// Full-resolution still dimensions (the photo actually saved), learned
   /// once by probing capturePhoto(). 0 until the probe (or its analysis-frame
   /// fallback) lands; recording waits for it ("Calibrating…").
@@ -206,11 +212,15 @@ class CameraDiagnosticsController {
       final c = await controller.getAnalysisStreamCeiling();
       if (!_disposed && c.isNotEmpty) {
         analysisCeiling = c;
-        _notify();
       }
     } catch (e) {
       // Leave empty; the dropdown simply won't annotate a ceiling.
       logSwallowed('analysis_ceiling_probe', e);
+    } finally {
+      if (!_disposed) {
+        analysisCeilingProbed = true;
+        _notify();
+      }
     }
   }
 

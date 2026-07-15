@@ -1,4 +1,22 @@
-# FaunaPulse
+<p align="center">
+  <img
+    src="android/app/src/main/ic_launcher-playstore.png"
+    alt="FaunaPulse app icon"
+    width="140"
+  />
+</p>
+
+<h1 align="center">FaunaPulse</h1>
+
+<p align="center">
+  An Android field application for detecting, tracking and documenting animals using on-device artificial intelligence.
+</p>
+
+<p align="center">
+  <strong>On-device AI · Real-time tracking · Configurable models · Offline field use</strong>
+</p>
+
+## Overview
 
 FaunaPulse is an Android field application for detecting, tracking and documenting animals and other moving subjects at a fixed observation point.
 
@@ -32,12 +50,10 @@ Depending on the selected operating mode, FaunaPulse can be used for:
 
 FaunaPulse is intended as a flexible observation platform rather than a detector restricted to a particular taxonomic group. Its usefulness therefore depends on the selected capture mode, the observation setup and, for AI-based monitoring, the capabilities of the loaded custom detection model.
 
-
 ## Build & run (Android)
 
 See the step-by-step [Installation & Testing Guide](docs/INSTALL.md). 
 It covers both installing a ready-made app (no coding) and building from source.
-
 
 ## Vibe coding
 

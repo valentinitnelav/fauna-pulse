@@ -162,6 +162,44 @@ void main() {
     expect(SessionConfig.fromJson(const {}).gtFrameSeconds, 5.0);
   });
 
+  test('stream-resolution explicit flag round-trips (round 109)', () {
+    // Fresh installs are non-explicit: the app may auto-pick the stream.
+    expect(const SessionConfig().streamResolutionExplicit, false);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(streamResolutionExplicit: true).toJson(),
+    );
+    expect(restored.streamResolutionExplicit, true);
+    expect(
+      SessionConfig.fromJson(
+        const SessionConfig().toJson(),
+      ).streamResolutionExplicit,
+      false,
+    );
+  });
+
+  test('pre-109 configs: a non-default stored stream size counts as an '
+      'explicit past choice', () {
+    // No streamResolutionExplicit key. The old factory default (640×480)
+    // means the user never touched the dropdown → auto may apply...
+    expect(SessionConfig.fromJson(const {}).streamResolutionExplicit, false);
+    expect(
+      SessionConfig.fromJson(const {
+        'streamWidth': 640,
+        'streamHeight': 480,
+      }).streamResolutionExplicit,
+      false,
+    );
+    // ...but any other stored size was picked in Settings once and must
+    // never be stomped by the auto default.
+    expect(
+      SessionConfig.fromJson(const {
+        'streamWidth': 1440,
+        'streamHeight': 1080,
+      }).streamResolutionExplicit,
+      true,
+    );
+  });
+
   test('configs saved before round 105 load as ByteTrack', () {
     // No trackerAlgorithm key at all, and an unknown name: both must fall
     // back to the algorithm those sessions actually used.

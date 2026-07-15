@@ -22,6 +22,7 @@ import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 
 import '../capture/crop_export.dart';
+import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 
@@ -101,6 +102,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // True while the photo viewer is zoomed in: the TabBarView and the Photos
   // ListView freeze so their drags can't steal the user's panning (round 89).
   bool _photoViewerZoomed = false;
+
+  // --- ROI change history (round 109; full-line scan, lazy) ---
+  // One entry per settled mid-session ROI change (`roi_update` records —
+  // debounced to one per adjustment since round 109; older sessions may carry
+  // one per drag tick, all shown). Loaded the first time the Settings tab
+  // builds, so the cheap head/tail stats path stays untouched.
+  bool _roiHistoryRequested = false;
+  List<({int timeMs, int? sidePx, int? savesPx, String? source})> _roiHistory =
+      const [];
 
   // Overview storage section (round 90): the session folder's on-disk size
   // and the phone's free storage, loaded once in initState.
@@ -676,6 +686,59 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
   }
 
+  /// Stream-grid ROI side of a start/roi_update record — the ÷32 number the
+  /// user saw on screen. Round-109+ records carry it as `roi_side_stream_px`;
+  /// older ones get it recomputed from the record's `roi` block (which may be
+  /// a still-frame projection, e.g. "1333" for an on-screen 480 — session_6)
+  /// against the start record's analysis frame.
+  int? _roiStreamSideOf(Map<dynamic, dynamic> rec) {
+    final direct = (rec['roi_side_stream_px'] as num?)?.toInt();
+    if (direct != null && direct > 0) return direct;
+    final roi = rec['roi'];
+    if (roi is! Map) return null;
+    final aw = (_startRec?['analysis_frame_width_px'] as num?)?.toInt() ?? 0;
+    final ah = (_startRec?['analysis_frame_height_px'] as num?)?.toInt() ?? 0;
+    return roiStreamSideFromLog(roi, aw, ah);
+  }
+
+  /// Collects the session's settled mid-session ROI changes (`roi_update`
+  /// records) for the Settings tab's history list. Full-line scan with a
+  /// cheap contains() prefilter, same pattern as [_loadPhotos].
+  Future<void> _loadRoiHistory() async {
+    final entries =
+        <({int timeMs, int? sidePx, int? savesPx, String? source})>[];
+    try {
+      final lines = await widget.logFile.readAsLines();
+      for (final line in lines) {
+        if (!line.contains('"roi_update"')) continue;
+        final rec = _tryDecode(line);
+        if (rec == null || rec['type'] != 'roi_update') continue;
+        entries.add((
+          timeMs: (rec['time_ms'] as num?)?.toInt() ?? 0,
+          sidePx: _roiStreamSideOf(rec),
+          savesPx: (rec['saves_px'] as num?)?.toInt(),
+          source: rec['roi_source'] as String?,
+        ));
+      }
+    } catch (e) {
+      logSwallowed('roi_history_load', e);
+    }
+    if (mounted && entries.isNotEmpty) {
+      setState(() => _roiHistory = entries);
+    }
+  }
+
+  /// "+3m 41s" offset of a log timestamp from the session start (empty when
+  /// either time is unknown — the row then shows just the change itself).
+  String _offsetLabel(int timeMs) {
+    final start = _startMs;
+    if (start == null || timeMs <= 0) return '';
+    final s = ((timeMs - start) / 1000).round();
+    if (s < 0) return '';
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    return h > 0 ? '+${h}h ${m}m ${sec}s' : '+${m}m ${sec}s';
+  }
+
   String get _durationLabel {
     if (_startMs == null || _endMs == null || _endMs! < _startMs!) {
       return 'unknown (no end record — crash/forced stop)';
@@ -932,6 +995,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     add(
       'Stream resolution (requested)',
       _dims(_setting('streamWidth'), _setting('streamHeight')),
+      // Round 109: the app picked this size itself (smallest with short side
+      // ≥ 1024); pre-109 sessions lack the key and get no suffix.
+      suffix: _setting('streamResolutionExplicit') == false ? ' (auto)' : '',
     );
     add(
       'Analysis frame',
@@ -940,9 +1006,47 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _startRec?['analysis_frame_height_px'],
       ),
     );
+    // The ROI in the scale the user saw on screen (stream grid, ÷32) — round
+    // 109. The raw `roi` block may be a still-frame projection of the same
+    // square (1333 for an on-screen 480 — session_6), so it is only shown raw
+    // when the stream-grid side cannot be derived (very old logs).
     final roi = _startRec?['roi'];
-    if (roi is Map) {
+    final initialSide = _startRec == null ? null : _roiStreamSideOf(_startRec!);
+    if (initialSide != null) {
+      add('Initial ROI', '$initialSide × $initialSide px');
+    } else if (roi is Map) {
       add('Initial ROI', _dims(roi['width_px'], roi['height_px']));
+    }
+    // The saved-photo outcome of that box, separate from its on-screen size.
+    final savesPx = (_startRec?['saves_px'] as num?)?.toInt();
+    if (savesPx != null && savesPx > 0) {
+      final src = _startRec?['roi_source'];
+      add(
+        'Initial ROI saves',
+        '$savesPx px${src == 'fast'
+            ? ' via fast crop'
+            : src == 'still'
+            ? ' via still'
+            : ''}',
+      );
+    }
+    if (_roiHistory.isNotEmpty) {
+      rows.add(_subhead('ROI changes during the session'));
+      for (final e in _roiHistory) {
+        final side = e.sidePx;
+        final saves = e.savesPx;
+        add(
+          _offsetLabel(e.timeMs).isEmpty ? 'changed' : _offsetLabel(e.timeMs),
+          side == null ? 'unknown size' : '$side × $side px',
+          suffix: saves == null || saves <= 0
+              ? ''
+              : ' (saves $saves px${e.source == 'fast'
+                    ? ' via fast crop'
+                    : e.source == 'still'
+                    ? ' via still'
+                    : ''})',
+        );
+      }
     }
     final focus = _startRec?['focus_mode'];
     if (focus != null) {
@@ -1387,8 +1491,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// Every parameter the user chose at session start (from the log's config
   /// block), grouped — its own tab so the overview stays scannable.
-  Widget _settingsTab() =>
-      ListView(padding: _tabPadding, children: _settingsSection());
+  Widget _settingsTab() {
+    // Lazy one-shot scan for mid-session ROI changes (round 109): kicked off
+    // the first time this tab builds so the fast head/tail stats load is
+    // untouched; setState on completion re-renders with the history rows.
+    if (!_roiHistoryRequested) {
+      _roiHistoryRequested = true;
+      _loadRoiHistory();
+    }
+    return ListView(padding: _tabPadding, children: _settingsSection());
+  }
 
   Widget _photosTab() => ListView(
     padding: _tabPadding,

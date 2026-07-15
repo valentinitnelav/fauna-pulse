@@ -184,6 +184,64 @@ CapturePath chooseCapturePath({
   }
 }
 
+/// Stream-grid side (px) of a logged ROI block — the number the user saw on
+/// screen while recording. `roi` is the `roi` sub-object of a
+/// `start_of_session` / `roi_update` record, whose `width_px`/`frame_width_px`
+/// may be expressed against the full-resolution still (that is what made the
+/// summary show a non-÷32 "1333 × 1333" for an on-screen 480 ROI). The pair is
+/// still a valid width FRACTION, so re-projecting it onto the analysis frame
+/// with the same snap/cap math as the live readout ([savedSidePx]) recovers
+/// the on-screen value exactly. Round-109+ records carry the value directly as
+/// `roi_side_stream_px`; this is the fallback for older logs. Returns null
+/// when the block or the analysis dims are unusable.
+int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysisH) {
+  final widthPx = (roi['width_px'] as num?)?.toDouble();
+  final frameW = (roi['frame_width_px'] as num?)?.toDouble();
+  if (widthPx == null || frameW == null || widthPx <= 0 || frameW <= 0) {
+    return null;
+  }
+  if (analysisW <= 0 || analysisH <= 0) return null;
+  return savedSidePx(widthPx / frameW, analysisW, analysisH);
+}
+
+/// Picks the analysis stream size the app should default to when the user has
+/// never chosen one: the SMALLEST device-supported size whose short side is at
+/// least [minShortSide]. Rationale: [savedSidePx] caps fast live-frame crops
+/// at the stream's short side, so a short side ≥ the default saved-photo
+/// target (1024) lets auto capture mode reach the target via the fast path
+/// more often, avoiding the laggy full-res still (round 108: ~0.4–0.8 s
+/// behind the trigger on the Xiaomi). "Smallest that qualifies" keeps the
+/// per-frame conversion cost — and therefore heat — as low as the goal allows.
+///
+/// [options] are HAL-probed `"WxH"` strings (malformed entries are ignored).
+/// Candidates whose area exceeds [ceilingArea] (> 0 = the round-56 analysis
+/// ceiling: the size above which the pipeline silently delivers less than
+/// requested) are skipped. Returns null when nothing qualifies — the caller
+/// keeps the current setting.
+(int, int)? autoStreamResolution(
+  List<String> options, {
+  int ceilingArea = 0,
+  int minShortSide = 1024,
+}) {
+  (int, int)? best;
+  for (final opt in options) {
+    final parts = opt.toLowerCase().split('x');
+    if (parts.length != 2) continue;
+    final w = int.tryParse(parts[0].trim());
+    final h = int.tryParse(parts[1].trim());
+    if (w == null || h == null || w <= 0 || h <= 0) continue;
+    if (math.min(w, h) < minShortSide) continue;
+    if (ceilingArea > 0 && w * h > ceilingArea) continue;
+    if (best == null ||
+        w * h < best.$1 * best.$2 ||
+        (w * h == best.$1 * best.$2 &&
+            math.max(w, h) < math.max(best.$1, best.$2))) {
+      best = (w, h);
+    }
+  }
+  return best;
+}
+
 /// Native fast-crop channel: decodes only the ROI rectangle from the full-res
 /// JPEG (Android BitmapRegionDecoder), avoiding a whole-image decode in Dart.
 const MethodChannel _cropChannel = MethodChannel('faunapulse/crop');

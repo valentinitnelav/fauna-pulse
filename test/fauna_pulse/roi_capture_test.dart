@@ -48,6 +48,78 @@ void main() {
     });
   });
 
+  group('roiStreamSideFromLog', () {
+    test('re-projects a still-frame roi block onto the analysis frame', () {
+      // session_6: on-screen 480 ROI logged as 1333 against the 3000×4000
+      // still; analysis frame was 1080×1440 → recovers the on-screen 480.
+      const roi = {'width_px': 1333, 'frame_width_px': 3000};
+      expect(roiStreamSideFromLog(roi, 1080, 1440), 480);
+    });
+
+    test('is the identity for a block already in the stream grid', () {
+      const roi = {'width_px': 448, 'frame_width_px': 640};
+      expect(roiStreamSideFromLog(roi, 640, 480), 448);
+    });
+
+    test('returns null when the block or the analysis dims are unusable', () {
+      expect(roiStreamSideFromLog(const {}, 1080, 1440), isNull);
+      expect(
+        roiStreamSideFromLog(const {'width_px': 0, 'frame_width_px': 3000},
+            1080, 1440),
+        isNull,
+      );
+      expect(
+        roiStreamSideFromLog(
+            const {'width_px': 1333, 'frame_width_px': 3000}, 0, 0),
+        isNull,
+      );
+    });
+  });
+
+  group('autoStreamResolution', () {
+    // The Xiaomi test phone's probed analysis sizes (subset).
+    const xiaomi = [
+      '640x480',
+      '1280x960',
+      '1440x1080',
+      '1920x1440',
+      '4000x3000',
+    ];
+
+    test('picks the SMALLEST size whose short side reaches 1024', () {
+      expect(autoStreamResolution(xiaomi), (1440, 1080));
+    });
+
+    test('skips candidates above the analysis ceiling', () {
+      // Ceiling 1280×960: nothing with short side ≥ 1024 fits under it.
+      expect(
+        autoStreamResolution(xiaomi, ceilingArea: 1280 * 960),
+        isNull,
+      );
+      // Ceiling 1920×1440 admits 1440×1080 (and 1920×1440) but not 4000×3000.
+      expect(
+        autoStreamResolution(xiaomi, ceilingArea: 1920 * 1440),
+        (1440, 1080),
+      );
+    });
+
+    test('ceiling 0 means unfiltered', () {
+      expect(autoStreamResolution(['4000x3000']), (4000, 3000));
+    });
+
+    test('returns null when nothing qualifies', () {
+      expect(autoStreamResolution(['640x480', '1280x960']), isNull);
+      expect(autoStreamResolution(const []), isNull);
+    });
+
+    test('ignores malformed entries', () {
+      expect(
+        autoStreamResolution(['garbage', '1440x', 'x1080', '1440x1080']),
+        (1440, 1080),
+      );
+    });
+  });
+
   group('chooseCapturePath', () {
     // A 4000×3000 still and the default 640×480 analysis stream.
     CapturePath choose({

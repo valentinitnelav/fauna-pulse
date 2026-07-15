@@ -4144,3 +4144,51 @@ Camera2 interop options (AE fps range / manual focus). Two fixes:
   cases, config round-trip), analyzer clean, `flutter build apk --debug` OK
   (Kotlin change compiles).
 
+
+## Round 109 (2026-07-15): ROI in the user's scale, ROI history, auto stream default
+
+Owner field test session_6 (first run of the r108 companions) + follow-up review.
+
+**Session_6 findings**
+- The `_live.jpg` sync companions work: every still had its trigger-moment live
+  crop beside it (480 px — the ROI's size in the 1440×1080 stream).
+- `content_lag_ms` ≈ 380–450 ms on all 11 stills — positive, so ZSL is still
+  not effective (session ran with cameraFpsCap 15; the fps-cap=0 experiment is
+  STILL PENDING). Owner also observed motion-ghosting on stills vs sharp live
+  crops — consistent with the still pipeline's longer effective capture
+  (multi-frame processing), another reason the companion matters.
+- "Initial ROI 1333×1333" mystery SOLVED: the start record's `roi` block is
+  logged against `_roiLogDims` = the full-res still (3000×4000) on the still
+  path; 480/1080 × 3000 = 1333. Not a bug in the box — a wrong-scale display.
+
+**Changes**
+- `roi_side_stream_px` now logged in the start record and every `roi_update`:
+  the ÷32 stream-grid side the user saw (same `savedSidePx` math as the live
+  readout). The `roi` block stays as-was (append-only back-compat). Summary
+  "Initial ROI" shows it (pre-109 logs: recomputed via new pure
+  `roiStreamSideFromLog` — fraction re-projected onto the analysis frame);
+  new "Initial ROI saves" row = `saves_px via still|fast crop`.
+- `roi_update` writes are DEBOUNCED (new `logging/roi_update_debouncer.dart`,
+  2 s stability, seeded with the start ROI, skip-if-unchanged, flushed in
+  `_stopRecording` before the logger closes, cancelled on dispose). One record
+  per settled adjustment instead of one per drag tick. Box + inference ROI
+  still follow the finger immediately — only logging waits.
+- Summary Settings tab: lazy `_loadRoiHistory()` scan renders "ROI changes
+  during the session" (+offset, size, saves) from `roi_update` records.
+- Auto stream-resolution default (owner request: bias away from laggy stills):
+  new `SessionConfig.streamResolutionExplicit` (pre-109 configs migrate:
+  stored size ≠ 640×480 ⇒ explicit, never stomped). While non-explicit, the
+  camera screen once-per-lifetime applies `autoStreamResolution` (new pure fn:
+  smallest probed size with short side ≥ 1024, honouring the r56 analysis
+  ceiling via new `analysisCeilingProbed` flag) — on the Xiaomi that yields
+  1440×1080. Settings dropdown gains an "Auto — smallest with short side
+  ≥ 1024 (this phone: …)" first item; a manual pick sets explicit. Heat
+  trade-off sentence added to the note under the dropdown; summary shows
+  "(auto)" on the stream row. NOTE: what decides fast-vs-still is
+  ROI-fraction × stream short side, so auto helps but a small box on a big
+  frame can still need stills — the capture decision logic is unchanged.
+- Docs: DATA_GUIDE (`roi_side_stream_px`, roi-block scale warning, debounce
+  semantics), SETTINGS_REFERENCE (Auto option + heat), OVERVIEW refreshed.
+- 225 tests green (new: debouncer fake_async suite, autoStreamResolution +
+  roiStreamSideFromLog tables, explicit-flag round-trip/migration; fake_async
+  added to dev_dependencies), analyzer clean, debug APK builds.
