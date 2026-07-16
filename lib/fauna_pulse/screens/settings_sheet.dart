@@ -1398,9 +1398,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _streamCeilingNote(),
       const SizedBox(height: 16),
 
-      // 0 = device default (~30/s); 5..30 asks the camera hardware itself to
-      // capture slower. Different from the inference cap on the AI tab, which
-      // only skips frames in software after the camera already produced them.
+      // 0 = uncapped (the camera's own full rate, ~30/s); 5..30 asks the
+      // camera hardware itself to capture slower. Different from the
+      // inference cap on the AI tab, which only skips frames in software
+      // after the camera already produced them.
       NumericSettingField(
         label: 'Camera frame rate cap',
         value: _c.cameraFpsCap.toDouble(),
@@ -1408,16 +1409,25 @@ class _SettingsSheetState extends State<SettingsSheet> {
         max: 30,
         isInt: true,
         unitSuffix: '/s',
+        // Round 110 wording: the old text said "0 = device default" and then
+        // "Default 15", using "default" for two different things (the
+        // camera's own uncapped rate vs the app's factory setting) — the
+        // owner found it confusing in the field. Keep the two ideas in
+        // separate, differently-worded sentences.
         helperText:
-            'How many frames per second the camera itself captures. Without a '
-            'cap the sensor and image processor run at ~30/s the whole '
-            'session — even while the motion gate has the detector asleep — '
-            'which is the main reason a "sleeping" phone still warms up. '
-            'Lower = cooler phone but a less smooth preview; detection is '
-            'unaffected as long as this stays at or above the inference rate '
-            'cap. The phone only supports certain rates, so the nearest '
-            'supported one is used. Type 0 for the device default. '
-            'Default 15.',
+            'How many frames per second the camera itself captures. Enter 0 '
+            'to remove the cap — the camera then runs at its own full rate '
+            '(~30/s on most phones). Without a cap the sensor and image '
+            'processor run at that full rate the whole session, even while '
+            'the motion gate has the detector asleep — the main reason a '
+            '"sleeping" phone still warms up. Lower = cooler phone but a '
+            'less smooth preview; detection is unaffected as long as this '
+            'stays at or above the inference rate cap. The phone only '
+            'supports certain rates, so the nearest supported one is used. '
+            'The app ships set to 15/s (cooler); note that capping also '
+            'delays full-resolution stills — measured on the test phone, a '
+            'still shows the scene ~0.4 s after its trigger at 15/s vs '
+            '~0.17 s uncapped.',
         onChanged: (v) {
           final r = v.round();
           // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.

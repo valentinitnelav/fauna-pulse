@@ -9,7 +9,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  An Android field application for detecting, tracking and documenting animals using on-device artificial intelligence.
+  An Android field application for detecting, tracking and documenting pollinators and other animals using on-device artificial intelligence.
 </p>
 
 <p align="center">
@@ -49,6 +49,19 @@ Depending on the selected operating mode, FaunaPulse can be used for:
 * **Non-biological observation:** where appropriate, use motion detection or a custom model to document other moving objects or events of interest.
 
 FaunaPulse is intended as a flexible observation platform rather than a detector restricted to a particular taxonomic group. Its usefulness therefore depends on the selected capture mode, the observation setup and, for AI-based monitoring, the capabilities of the loaded custom detection model.
+
+## Fun facts
+
+> "Insects are the most diverse group of animals, with more than a million described species; they represent more than half of all animal species." "They are the largest group within the arthropod phylum."
+(source: [Wikipedia](https://en.wikipedia.org/wiki/Insect))
+
+> Domesticated honeybees (*[Apis mellifera][apis-mel-wiki]*) are often treated as the default pollinator, but they are relatively inefficient compared to Europe's native solitary bees, such as the European orchard bee - *[Osmia cornuta][osmia-cor-wiki]* (e.g.: [Vicens & Bosch, 2000][vicens-2000]). Moreover, domesticated honeybees can even be considered an environmental threat to the native bees in places like the [Americas][bees-threat-americas] and [Australia][bees-threat-au].
+
+[apis-mel-wiki]: https://en.wikipedia.org/wiki/Western_honey_bee
+[osmia-cor-wiki]: https://en.wikipedia.org/wiki/Osmia_cornuta
+[vicens-2000]: https://academic.oup.com/ee/article-abstract/29/3/413/445008
+[bees-threat-americas]: https://en.wikipedia.org/wiki/Western_honey_bee#As_an_environmental_threat_in_the_Americas
+[bees-threat-au]: https://www.landcaretas.org.au/honey_bees_2024
 
 ## Build & run (Android)
 

@@ -4192,3 +4192,34 @@ Owner field test session_6 (first run of the r108 companions) + follow-up review
 - 225 tests green (new: debouncer fake_async suite, autoStreamResolution +
   roiStreamSideFromLog tables, explicit-flag round-trip/migration; fake_async
   added to dev_dependencies), analyzer clean, debug APK builds.
+
+## Round 110 (2026-07-16): ZSL verdict from session_14 + fps-cap help-text fix
+
+Owner ran the requested experiments; analysis + one wording fix, no behavior change.
+
+**Findings (sessions 12 & 14; both: 1440×1080 stream, manual focus, still path,
+minHitsSeconds 0.5)**
+- session_12 (cameraFpsCap 15): still `content_lag_ms` median ~408 ms — matches
+  session_6. session_14 (cap 0): median ~172 ms, callback lag ~470 ms. So the
+  r82 camera fps cap WAS throttling the still pipeline (every capture stage
+  waits on sensor frames), and manual focus is exonerated (active in both).
+- But content lag never goes negative even uncapped: CameraX grants
+  ZERO_SHUTTER_LAG and the HAL still serves a post-trigger frame. ~0.17 s is
+  this phone's floor — not worth chasing further in software; the r108
+  `_live.jpg` companion IS the zero-lag capture of the trigger moment.
+- Extra latency knob identified while answering the owner's trigger question:
+  photos are scheduled from TRACKER-CONFIRMED tracks
+  (`session_recorder.dart` → `RoiCaptureScheduler.evaluate`), so "Minimum
+  visit length" (0.5 s in these sessions) also delays the FIRST photo of a
+  visit by that much. Trade-off (earlier first photo vs photos of false
+  positives) documented for the owner; no change.
+- Owner confirmed the r109 summary fix: "Initial ROI 480 × 480 px" shown.
+
+**Change**
+- Camera frame rate cap helper text (settings_sheet.dart) reworded: the old
+  text used "default" for two different things back-to-back ("0 = device
+  default" then "Default 15"). Now: 0 = removes the cap (camera's own full
+  rate, ~30/s on most phones), the app *ships set to* 15/s, and the measured
+  still-lag trade-off (~0.4 s at 15/s vs ~0.17 s uncapped) is stated.
+  SETTINGS_REFERENCE row updated to match; OVERVIEW sync-companion note
+  updated with the ZSL verdict.
