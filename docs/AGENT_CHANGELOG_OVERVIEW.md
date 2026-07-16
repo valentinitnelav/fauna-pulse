@@ -61,7 +61,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Time-lapse burst interval | `30 min` | r97 "Repeat burst every" (`timeLapseIntervalSeconds`, s/min/h input): START-TO-START burst spacing; burst = photo every step for the photo duration; interval ≤ duration ⇒ continuous. Photo duration max now 24 h (unit-aware `DurationSettingField`) |
 | Stream resolution | auto (r109) | while `streamResolutionExplicit` false, the camera screen once-per-lifetime picks the smallest probed size with short side ≥ 1024 (`autoStreamResolution`, honours the r56 ceiling; Xiaomi → 1440×1080) so fast crops can reach the 1024 target; a manual dropdown pick sets explicit and is never overridden (pre-109 configs: stored ≠ 640×480 migrates to explicit); short side caps the fast ROI crop |
 | Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
-| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg`; companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified in the field (session_6); owner also saw motion-ghosting on stills that the live crops don't have. r110 ZSL VERDICT (sessions 12/14, manual focus in both): still content lag ~0.4 s at cameraFpsCap 15 vs ~0.17 s at cap 0 — the fps cap (not manual focus) throttles the still pipeline, but lag NEVER goes negative: true ZSL doesn't engage on the Xiaomi. ~0.17 s is the device floor; don't chase it in software — the companion is the zero-lag capture. r111: the summary photo viewer's ⚡ button flips still ↔ companion (chip + "Still lag" row show `content_lag_ms`; crop/export follow the shown file) |
+| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg`; companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified in the field (session_6); owner also saw motion-ghosting on stills that the live crops don't have. r110 ZSL VERDICT (sessions 12/14, manual focus in both): still content lag ~0.4 s at cameraFpsCap 15 vs ~0.17 s at cap 0 — the fps cap (not manual focus) throttles the still pipeline, but lag NEVER goes negative: true ZSL doesn't engage on the Xiaomi. ~0.17 s is the device floor; don't chase it in software — the companion is the zero-lag capture. r111/112: the summary photo viewer shows the companion by DEFAULT (boxes match it); ⚡ flips to the high-res still; one per-view "Lag" row (`content_lag_ms` still / new `live_lag_ms` companion upper bound); crop/export follow the shown file |
 | Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
@@ -317,10 +317,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)
   stay trigger-only. r87: photo viewer has a top-right tool column — boxes on/off +
   pinch/slider zoom (per-page `TransformationController`, overlay inside the
-  transform, double-tap resets). r111: ⚡ tool button (rendered only when the
-  session saved r108 `_live` companions) flips still ↔ trigger-moment live crop;
-  boxes need no remap (ROI-normalized to the trigger frame), info panel and
-  crop-export follow the shown file, "Still lag" row = `content_lag_ms`.
+  transform, double-tap resets). r111/112: ⚡ tool button (rendered only when
+  the session saved r108 `_live` companions) flips trigger-moment live crop
+  (DEFAULT view — boxes need no remap, they're ROI-normalized to the trigger
+  frame) ↔ high-res still; "Showing" + per-view "Lag" info rows
+  (`content_lag_ms` / `live_lag_ms`); crop-export follows the shown file.
+  r112 layout invariant: NO buttons overlay the photo — tools are a row above
+  the preview (zoom slider horizontal below them), ‹ › + pan pad in rows
+  under it; only text mode-chips may sit on the image.
   r91 crop-and-export: a crop tool button enters a
   mode where a one-finger drag draws a box over the photo (drag layer ABOVE the
   InteractiveViewer, points mapped via `toScene` so it works while zoomed; ancestor

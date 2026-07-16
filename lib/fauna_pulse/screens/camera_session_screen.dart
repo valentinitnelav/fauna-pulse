@@ -1329,6 +1329,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             if (s.liveJpeg != null) 'live_jpeg': s.liveJpeg,
             if (s.liveBytes != null) 'live_bytes': s.liveBytes,
             if (s.liveSavedPx != null) 'live_saved_px': s.liveSavedPx,
+            // Round 112: the companion's own (small) lag behind the trigger,
+            // so the summary can state each shown image's honest delay.
+            if (s.liveLagMs != null) 'live_lag_ms': s.liveLagMs,
           });
         },
         onError: (fileName, error) =>

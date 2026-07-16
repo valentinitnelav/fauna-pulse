@@ -188,6 +188,7 @@ Round-108 additions:
 | `content_lag_ms` | Still path only. How much OLDER/NEWER the frame's *content* is than the capture request. **Negative = the phone's zero-shutter-lag really served a pre-request frame**; a large positive value means the photo shows the scene that long after the triggering detection (fast insects will have left). |
 | `callback_lag_ms` | Still path only. Plain request→JPEG wait. |
 | `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the still as `…_live.jpg`. Small but in sync — use it when the still misses the insect. |
+| `live_lag_ms` | Round 112. The companion's own delay behind the trigger moment, measured when its frame grab returned — an upper bound on how old its content can be (typically a few tens of ms; compare with the still's `content_lag_ms`). |
 
 ### `app_error` — an error surfaced during recording
 

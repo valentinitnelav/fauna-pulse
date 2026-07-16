@@ -346,6 +346,13 @@ class CaptureStat {
   final int? liveBytes;
   final int? liveSavedPx;
 
+  /// How long after the trigger moment the companion's frame was grabbed
+  /// (ms, round 112) — an upper bound on how much the companion's CONTENT
+  /// can lag the trigger (it serves the newest stream frame at grab time,
+  /// so typically well under one frame interval plus scheduling delay).
+  /// The still's [contentLagMs] is the number to compare it against.
+  final int? liveLagMs;
+
   /// True for the full-resolution still path (which briefly stalls the camera),
   /// false for the fast live-frame crop.
   bool get fullRes => path == CapturePath.still;
@@ -364,6 +371,7 @@ class CaptureStat {
     this.liveJpeg,
     this.liveBytes,
     this.liveSavedPx,
+    this.liveLagMs,
   });
 }
 
@@ -573,6 +581,7 @@ class RoiCaptureScheduler {
       String? liveJpeg;
       int? liveBytes;
       int? liveSavedPx;
+      int? liveLagMs;
       if (path == CapturePath.still) {
         // Sync companion FIRST (round 108): the live-frame crop is a cheap
         // memory grab of (nearly) the trigger moment — taken before the still
@@ -582,6 +591,11 @@ class RoiCaptureScheduler {
           try {
             final live = await fastCaptureFn();
             if (live != null) {
+              // Measured at grab return, BEFORE the file write (writing
+              // doesn't age the content): how far behind the trigger this
+              // companion's content can be (round 112).
+              liveLagMs =
+                  DateTime.now().millisecondsSinceEpoch - pending.capturedAtMs;
               final liveName = pending.fileName.replaceFirst(
                 RegExp(r'\.jpg$'),
                 '_live.jpg',
@@ -697,6 +711,7 @@ class RoiCaptureScheduler {
           liveJpeg: liveJpeg,
           liveBytes: liveBytes,
           liveSavedPx: liveSavedPx,
+          liveLagMs: liveLagMs,
         ),
       );
     } catch (e) {

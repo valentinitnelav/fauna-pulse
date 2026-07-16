@@ -479,6 +479,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final byFileLive = <String, String>{}; // still file -> companion file name
     final byFileLivePx = <String, int>{}; // companion saved square side (px)
     final byFileLagMs = <String, int>{}; // still content lag vs trigger (ms)
+    final byFileLiveLagMs = <String, int>{}; // companion lag vs trigger (ms)
     // The ROI pixel size is logged in the start record and again on every ROI
     // edit; carry the most-recent value forward so each photo gets the size that
     // applied when it was captured.
@@ -547,6 +548,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             byFileLive[file] = liveJpeg;
             final livePx = (rec['live_saved_px'] as num?)?.toInt();
             if (livePx != null && livePx > 0) byFileLivePx[file] = livePx;
+            final liveLag = (rec['live_lag_ms'] as num?)?.toInt();
+            if (liveLag != null) byFileLiveLagMs[file] = liveLag;
           }
           final lagMs = (rec['content_lag_ms'] as num?)?.toDouble();
           if (file != null && lagMs != null) byFileLagMs[file] = lagMs.round();
@@ -680,6 +683,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         liveName: liveExists ? liveName : null,
         livePx: byFileLivePx[name],
         contentLagMs: byFileLagMs[name],
+        liveLagMs: byFileLiveLagMs[name],
       );
     }
 
@@ -1799,13 +1803,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
-            'Photos taken on the high-resolution still path also saved a '
-            'lower-resolution "_live" companion: the same ROI cropped from '
-            'the fast camera stream at the exact trigger moment. The ⚡ '
-            'button on the photo switches between the two — the still is '
-            'sharper but shows the scene a fraction of a second LATER '
-            '(its "Still lag"), so a fast insect can have moved or left; '
-            'the companion shows where it really was.',
+            'Photos taken on the high-resolution path come as a PAIR: the '
+            'high-res photo itself, plus a lower-resolution "_live" '
+            'companion — the same ROI cropped from the fast camera stream '
+            'at the exact trigger moment. The viewer shows the companion '
+            'first (the detection boxes match the insect\'s real position '
+            'there); the ⚡ button above the photo switches to the high-res '
+            'one, which is sharper but shows the scene a fraction of a '
+            'second later (its "Lag" row), so a fast insect can have moved '
+            'or left.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2029,6 +2035,10 @@ class _PhotoSample {
   /// photos and pre-r108 logs.
   final int? contentLagMs;
 
+  /// The companion's own (small) lag behind the trigger moment (ms), from
+  /// `live_lag_ms` (r112). Null on pre-r112 logs.
+  final int? liveLagMs;
+
   const _PhotoSample({
     required this.file,
     required this.name,
@@ -2042,6 +2052,7 @@ class _PhotoSample {
     this.liveName,
     this.livePx,
     this.contentLagMs,
+    this.liveLagMs,
   });
 }
 
@@ -2074,8 +2085,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// Show each still's `_live` companion instead of the still itself
   /// (round 111, ⚡ tool button). Viewer-wide like [_showBoxes]; photos
   /// without a companion (fast-path photos are already live crops) keep
-  /// showing their own file.
-  bool _showLive = false;
+  /// showing their own file. Defaults to the companion (round 112): it is
+  /// the exact trigger moment, so the detection boxes match the insect's
+  /// position — the later, sharper still is one tap away.
+  bool _showLive = true;
 
   /// Whether the zoom slider is unfolded under the magnifier button.
   bool _zoomSliderOpen = false;
@@ -2229,15 +2242,16 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     ),
   );
 
-  /// One round translucent tool button for the viewer's top-right column;
-  /// [active] tints the icon so the state is visible at a glance.
+  /// One round translucent tool button for the tool row ABOVE the viewer
+  /// (round 112: buttons must never cover the photo); [active] tints the
+  /// icon so the state is visible at a glance.
   Widget _toolButton({
     required IconData icon,
     required String tooltip,
     required bool active,
     required VoidCallback onTap,
   }) => Container(
-    margin: const EdgeInsets.only(bottom: 4),
+    margin: const EdgeInsets.only(left: 4),
     decoration: const BoxDecoration(
       color: Colors.black54,
       shape: BoxShape.circle,
@@ -2260,17 +2274,6 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// True when the CURRENT page is really showing its live companion (the
   /// toggle may be on while this photo has none — e.g. a fast-path photo).
   bool get _liveShown => _showLive && widget.photos[_page].liveFile != null;
-
-  /// Chip text while the ⚡ toggle is on: names what is really on screen,
-  /// with the still's measured content lag when the log carries it.
-  String get _liveChipText {
-    if (!_liveShown) {
-      return 'No companion — this photo is already a live-stream crop';
-    }
-    final lag = widget.photos[_page].contentLagMs;
-    return 'LIVE companion — the trigger moment'
-        '${lag != null ? ' (still lags $lag ms)' : ''}';
-  }
 
   /// Saved square side (px) of whichever image is currently displayed for
   /// [p] — the companion's own size while it is shown. Both are square ROI
@@ -2488,6 +2491,80 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     return Column(
       children: [
         const SizedBox(height: 8),
+        // Tool row ABOVE the photo (round 112): with four tools the old
+        // top-right in-photo column reached down to the › nav button and
+        // covered the image — no button may overlap the photo again, so
+        // viewing/zooming/cropping is never obstructed.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            _toolButton(
+              icon: Icons.crop_din,
+              tooltip: 'Show/hide detection boxes',
+              active: _showBoxes,
+              onTap: () => setState(() => _showBoxes = !_showBoxes),
+            ),
+            // Round 111/112: flip between a still and its `_live` companion —
+            // only offered when this session saved any. The companion is the
+            // default view (boxes match the insect's true position).
+            if (widget.photos.any((p) => p.liveFile != null))
+              _toolButton(
+                icon: Icons.bolt,
+                tooltip:
+                    'Switch between the trigger-moment "_live" crop (shown '
+                    'by default — lower resolution, but the detection boxes '
+                    'match the insect\'s real position) and the '
+                    'high-resolution photo (sharper, but shows the scene a '
+                    'fraction of a second later).',
+                active: _showLive,
+                onTap: () => setState(() => _showLive = !_showLive),
+              ),
+            _toolButton(
+              icon: Icons.crop,
+              tooltip:
+                  'Crop & export: drag a box around an insect, '
+                  'then save it to the Gallery or share it to an '
+                  'identification app (zoom in first if needed)',
+              active: _cropMode,
+              onTap: () {
+                setState(() {
+                  _cropMode = !_cropMode;
+                  _cropDragStartScene = null;
+                  _cropMoveOriginRect = null;
+                  _cropSceneRect = null;
+                });
+                _notifyFreeze();
+              },
+            ),
+            _toolButton(
+              icon: Icons.zoom_in,
+              tooltip:
+                  'Zoom: slider here, or pinch with two fingers; '
+                  'double-tap the photo to reset',
+              active: _zoomSliderOpen,
+              onTap: () => setState(() => _zoomSliderOpen = !_zoomSliderOpen),
+            ),
+          ],
+        ),
+        // Zoom slider, horizontal and outside the photo too (round 112).
+        if (_zoomSliderOpen)
+          Row(
+            children: [
+              Text(
+                '${_scale.toStringAsFixed(1)}×',
+                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+              Expanded(
+                child: Slider(
+                  value: _scale.clamp(1.0, _maxZoom),
+                  min: 1,
+                  max: _maxZoom,
+                  onChanged: _setZoom,
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 4),
         // Capped height (not a full-width square) so the viewer doesn't dominate
         // the page or trap the vertical scroll past it.
         SizedBox(
@@ -2648,124 +2725,6 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       );
                     },
                   ),
-                  // Tool column, fixed at the viewer's top-right corner (it
-                  // does not swipe or zoom with the photo).
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _toolButton(
-                          icon: Icons.crop_din,
-                          tooltip: 'Show/hide detection boxes',
-                          active: _showBoxes,
-                          onTap: () => setState(() => _showBoxes = !_showBoxes),
-                        ),
-                        // Round 111: flip stills to their `_live` companion —
-                        // only offered when this session saved any.
-                        if (widget.photos.any((p) => p.liveFile != null))
-                          _toolButton(
-                            icon: Icons.bolt,
-                            tooltip:
-                                'Switch between the high-resolution still and '
-                                'its lower-resolution "_live" companion (the '
-                                'ROI cropped from the fast camera stream at '
-                                'the exact trigger moment). Comparing the two '
-                                'shows how far the still lags behind the '
-                                'detection.',
-                            active: _showLive,
-                            onTap: () => setState(() => _showLive = !_showLive),
-                          ),
-                        _toolButton(
-                          icon: Icons.crop,
-                          tooltip:
-                              'Crop & export: drag a box around an insect, '
-                              'then save it to the Gallery or share it to an '
-                              'identification app (zoom in first if needed)',
-                          active: _cropMode,
-                          onTap: () {
-                            setState(() {
-                              _cropMode = !_cropMode;
-                              _cropDragStartScene = null;
-                              _cropMoveOriginRect = null;
-                              _cropSceneRect = null;
-                            });
-                            _notifyFreeze();
-                          },
-                        ),
-                        _toolButton(
-                          icon: Icons.zoom_in,
-                          tooltip:
-                              'Zoom: slider here, or pinch with two fingers; '
-                              'double-tap the photo to reset',
-                          active: _zoomSliderOpen,
-                          onTap: () => setState(
-                            () => _zoomSliderOpen = !_zoomSliderOpen,
-                          ),
-                        ),
-                        if (_zoomSliderOpen)
-                          Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  '${_scale.toStringAsFixed(1)}×',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: 140,
-                                  width: 40,
-                                  child: RotatedBox(
-                                    quarterTurns: 3,
-                                    child: Slider(
-                                      value: _scale.clamp(1.0, _maxZoom),
-                                      min: 1,
-                                      max: _maxZoom,
-                                      onChanged: _setZoom,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  // ‹ › photo navigation, vertically centred on the edges.
-                  // Always present: while zoomed they are the ONLY way to
-                  // change photo (swiping then pans instead).
-                  Positioned(
-                    left: 4,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: _navButton(
-                        Icons.chevron_left,
-                        _page > 0,
-                        _page - 1,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 4,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: _navButton(
-                        Icons.chevron_right,
-                        _page < widget.photos.length - 1,
-                        _page + 1,
-                      ),
-                    ),
-                  ),
                   // Crop-mode chip (takes priority over the zoom chip: in
                   // crop mode a drag draws the box, whatever the zoom is).
                   if (_cropMode)
@@ -2819,72 +2778,6 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         ),
                       ),
                     ),
-                  // Live-companion chip (round 111): while the ⚡ toggle is
-                  // on, say what is actually on screen — the trigger-moment
-                  // companion, or (photos without one) the photo itself.
-                  if (_showLive)
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _liveChipText,
-                          style: const TextStyle(
-                            color: Color(0xFFFFC107),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                  // Pan pad (round 89): button fallback for moving the
-                  // zoomed view, so panning never depends on winning a drag
-                  // gesture against the surrounding scrollables.
-                  if (_zoomed)
-                    Positioned(
-                      bottom: 4,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _padButton(
-                              Icons.keyboard_arrow_up,
-                              () => _nudge(0, -1),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _padButton(
-                                  Icons.keyboard_arrow_left,
-                                  () => _nudge(-1, 0),
-                                ),
-                                _padButton(
-                                  Icons.keyboard_arrow_down,
-                                  () => _nudge(0, 1),
-                                ),
-                                _padButton(
-                                  Icons.keyboard_arrow_right,
-                                  () => _nudge(1, 0),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               );
             },
@@ -2892,12 +2785,51 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         ),
         const SizedBox(height: 8),
         if (_cropMode) ...[_cropBar(), const SizedBox(height: 8)],
-        Text(
-          'Photo ${_page + 1} / ${widget.photos.length}'
-          '  •  ${widget.photos[_page].boxes.length} detection'
-          '${widget.photos[_page].boxes.length == 1 ? '' : 's'}',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        // ‹ › photo navigation UNDER the preview (round 112: buttons never
+        // overlap the photo). Always present: while zoomed they are the
+        // ONLY way to change photo (swiping then pans instead).
+        Row(
+          children: [
+            _navButton(Icons.chevron_left, _page > 0, _page - 1),
+            Expanded(
+              child: Text(
+                'Photo ${_page + 1} / ${widget.photos.length}'
+                '  •  ${widget.photos[_page].boxes.length} detection'
+                '${widget.photos[_page].boxes.length == 1 ? '' : 's'}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+            _navButton(
+              Icons.chevron_right,
+              _page < widget.photos.length - 1,
+              _page + 1,
+            ),
+          ],
         ),
+        // Pan pad (round 89, moved out of the photo in round 112): button
+        // fallback for moving the zoomed view, so panning never depends on
+        // winning a drag gesture against the surrounding scrollables.
+        if (_zoomed)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _padButton(Icons.keyboard_arrow_left, () => _nudge(-1, 0)),
+                  _padButton(Icons.keyboard_arrow_up, () => _nudge(0, -1)),
+                  _padButton(Icons.keyboard_arrow_down, () => _nudge(0, 1)),
+                  _padButton(Icons.keyboard_arrow_right, () => _nudge(1, 0)),
+                ],
+              ),
+            ),
+          ),
         const SizedBox(height: 8),
         _infoPanel(widget.photos[_page]),
       ],
@@ -2911,9 +2843,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   Widget _infoPanel(_PhotoSample p) {
     final liveShown = _showLive && p.liveFile != null;
     final res = liveShown
-        ? (p.livePx != null
-              ? '${p.livePx} × ${p.livePx} px (live companion)'
-              : 'unknown (live companion)')
+        ? (p.livePx != null ? '${p.livePx} × ${p.livePx} px' : 'unknown')
         : (p.width != null && p.height != null)
         // ROI crops are square, so "short × wide" is the same number twice; we
         // still compute min/max in case a future non-square crop is logged.
@@ -2943,21 +2873,29 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Which of the photo's two files is on screen (round 112) — the
+          // row only exists when there really ARE two.
+          if (p.liveFile != null)
+            _infoRow(
+              'Showing',
+              liveShown
+                  ? 'trigger-moment live crop (⚡ for the high-res photo)'
+                  : 'high-res photo (⚡ for the trigger-moment live crop)',
+            ),
           _infoRow('Resolution', res),
           _infoRow('Track IDs', ids),
           _infoRow('Confidence', conf),
           _infoRow('Captured', _formatStamp(p.captureMs)),
           _infoRow('File', liveShown ? p.liveName! : p.name),
-          // How much older the still's content is than the trigger moment
-          // (`content_lag_ms`, r108) — the number the companion exists to
-          // compensate; shown for both views so the two can be compared.
-          if (p.contentLagMs != null)
-            _infoRow(
-              'Still lag',
-              '${p.contentLagMs} ms behind the trigger moment',
-            ),
-          if (p.liveFile != null && !liveShown)
-            _infoRow('Companion', '${p.liveName} — ⚡ button to view'),
+          // Lag of the image ON SCREEN behind the trigger moment (round
+          // 112: each view states only its OWN delay — showing the still's
+          // lag under the live crop read as if the live crop were late).
+          // The live figure is an upper bound (grab completion time), hence
+          // the ≤; the still's is the measured `content_lag_ms`.
+          if (!liveShown && p.contentLagMs != null)
+            _infoRow('Lag', '${p.contentLagMs} ms behind the trigger moment'),
+          if (liveShown && p.liveLagMs != null)
+            _infoRow('Lag', '≤ ${p.liveLagMs} ms behind the trigger moment'),
         ],
       ),
     );

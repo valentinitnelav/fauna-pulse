@@ -4256,3 +4256,36 @@ directly visible (the owner's main use: eyeballing how far stills lag).
 - No new SessionConfig field: this is a viewer-only toggle like the box
   overlay, not a capture tunable. `flutter analyze` clean, 225 tests pass.
 
+## Round 112 (2026-07-16): photo-viewer field feedback — no buttons over the photo, live view default, per-view lag
+
+Owner feedback on r111: (1) with four tool buttons the in-photo top-right
+column overlapped the › nav arrow and covered the image; (2) "Still lag"
+under the live view read as if the LIVE image were late; (3) the live
+companion should be the default view since its boxes match the insect's
+real position.
+
+- **No button may overlap the photo.** The four tool buttons (boxes, ⚡,
+  crop, zoom) moved out of the photo into a right-aligned ROW above the
+  preview; the zoom slider is now horizontal under that row; the ‹ ›
+  arrows moved into a row UNDER the preview flanking the "Photo X / Y"
+  caption; the zoomed pan pad became a horizontal strip under that. Only
+  the text-only mode chips (crop/zoom hints) still overlay the image.
+- **Live companion is the default view** (`_showLive = true`): the ⚡
+  button now switches TO the high-res photo; tooltip + Photos-tab
+  explainer reworded. The r111 amber overlay chip was dropped — a
+  "Showing" info row (only rendered when the photo has two files) states
+  which file is on screen instead.
+- **Per-view lag.** The info panel shows one "Lag" row describing only
+  the image on screen: the still's measured `content_lag_ms`, or the
+  companion's NEW `live_lag_ms` ("≤ N ms", an upper bound measured at
+  fast-grab return in roi_capture.dart — grab completion minus trigger
+  moment, before the file write). Plumbed CaptureStat.liveLagMs →
+  `live_lag_ms` in `capture` records; documented in DATA_GUIDE.md.
+  Pre-r112 logs simply lack the row in live view.
+- Crop/export continues to follow the shown file (both variants
+  croppable — the high-res one still carries more px per insect).
+- Rename of the "still"/"live" terminology discussed but NOT executed
+  this round (needs an owner decision — touches JSON keys, filenames,
+  settings and docs; options proposed in chat).
+- `flutter analyze` clean, 225 tests pass.
+
