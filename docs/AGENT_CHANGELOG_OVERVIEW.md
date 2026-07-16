@@ -325,14 +325,22 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (DEFAULT view — boxes need no remap, they're ROI-normalized to the trigger
   frame) ↔ high-res photo; "Showing" + per-view "Lag" info rows
   (`content_lag_ms` / `live_lag_ms`); crop-export follows the shown file.
-  r114: the HIGH-RES view draws TIME-MATCHED boxes — the detections record
-  nearest the photo's `content_at_ms` (matcher rules in
-  `logging/photo_box_matcher.dart`: tolerance max(250 ms, 1.5× median frame
-  interval), reject if a `roi_update` falls in trigger→content+2.5 s) — and
-  falls back to trigger boxes with a "Boxes" info row stating which/why.
-  Pre-r114 logs keep trigger boxes. Pixel-accurate boxes = re-run the
-  detector offline on the saved crops (DATA_GUIDE §5b); on-device
-  re-inference rejected (heat).
+  r114/115: the HIGH-RES view draws TIME-MATCHED boxes at the photo's
+  `content_at_ms` (matcher in `logging/photo_box_matcher.dart`). KEY FACT
+  (session_16): capturing a high-res photo PAUSES the analysis stream —
+  frame holes 0.13–1.5 s bracket every capture, exactly where the content
+  moment falls. r115 therefore INTERPOLATES each track's `box_in_roi`
+  between the nearest frames before/after the content moment
+  (`FrameBracketAccumulator` ±1.5 s window walks OUTWARD so one pause
+  spanning two photos serves both; `buildPhotoBoxes`, span cap 2 s,
+  constant-velocity like the tracker); single-side tracks keep their
+  frame's box. The tolerance max(250 ms, 1.5× median interval) only picks
+  the "Boxes" info-row TONE — NEVER rejects boxes (r114's rejection fell
+  back to trigger boxes that were FARTHER away — field bug). Trigger-box
+  fallback only for: `roi_update` in trigger→content+2.5 s (checked FIRST)
+  or no frame within ±1.5 s ("insect had likely left"). Pre-r114 logs keep
+  trigger boxes. Pixel-accurate boxes = re-run the detector offline on the
+  saved crops (DATA_GUIDE §5b); on-device re-inference rejected (heat).
   r112 layout invariant: NO buttons overlay the photo — tools are a row above
   the preview (zoom slider horizontal below them), ‹ › + pan pad in rows
   under it; only text mode-chips may sit on the image.

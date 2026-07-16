@@ -322,10 +322,19 @@ Recipe (any language):
    live_lag_ms` (approximate).
 2. Frame time per `detections` record: `frame_sensor_ms`, falling back to
    `frame_ms` (adds a systematic ~50–150 ms "frame is really older" bias).
-3. Nearest-neighbour join; reject matches beyond
-   `max(250 ms, 1.5 × median frame interval)` and any photo with a
-   `roi_update` between its trigger and content moment + 2.5 s (the boxes
-   would be relative to a different ROI).
+3. **Capturing a high-res photo pauses the analysis stream** (measured in
+   session_16: frame holes of 0.1–1.5 s bracket every capture — exactly
+   where the content moment falls). So don't just take the nearest frame:
+   for each `track_id` present in the nearest frames BEFORE and AFTER
+   `content_at_ms` (within ±1.5 s, total span ≤ 2 s), **linearly interpolate
+   `box_in_roi` at the content moment** — the same constant-velocity
+   assumption the live tracker makes. Tracks on one side only keep that
+   side's box.
+4. The tolerance `max(250 ms, 1.5 × median frame interval)` is an HONESTY
+   gate for labelling a match good vs approximate — not a reason to discard
+   it (a 300 ms-away frame still beats the ~0.5 s-away trigger frame).
+   DO reject any photo with a `roi_update` between its trigger and content
+   moment + 2.5 s: those boxes are relative to a different ROI.
 
 ```r
 # R (data.table): nearest detector frame per high-res photo
@@ -359,10 +368,13 @@ joined = pd.merge_asof(caps, fr[["t", "tracks"]],
                        direction="nearest", tolerance=tol)
 ```
 
-Error bounds by log generation: r114+ logs match to ±½ the detector frame
-interval (±50 ms at the 10 FPS cap); r108–113 add the dispatch-gap
-uncertainty (≈ `live_lag_ms`, tens of ms); older sessions have no frame
-timestamps — only the trigger-frame join applies.
+Error bounds by log generation: r114+ logs with a same-track bracket
+interpolate at the exact content moment (error bounded by how non-linear
+the insect's motion was across the ≤ 2 s bracket, not by frame cadence);
+single-side matches carry the frame's distance (up to ~1.5 s across a
+capture pause); r108–113 add the dispatch-gap uncertainty
+(≈ `live_lag_ms`, tens of ms); older sessions have no frame timestamps —
+only the trigger-frame join applies.
 
 **For pixel-accurate boxes on high-res photos, re-run the detector offline**
 on the saved ≤ 1024 px crops (GPU workstation): the files are clean

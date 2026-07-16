@@ -487,7 +487,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final byFileContentMs = <String, int>{};
     final byFileContentApprox = <String, bool>{};
     final byFileStillBoxes = <String, List<_DetBox>>{};
-    final byFileMatchDelta = <String, int>{}; // frame − content, signed ms
+    final byFileStillMeta = <String, PhotoBoxResult>{}; // r115 deltas/flags
+    final byFileStillTol = <String, bool>{}; // nearest frame within tolerance
     final byFileMatchNote = <String, String>{}; // why a photo fell back
     final roiUpdateTimes = <int>[]; // roi_update stamps (debounced, ~2 s late)
     // The ROI pixel size is logged in the start record and again on every ROI
@@ -686,7 +687,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // (no `frame_ms` in detections records) skip this entirely and keep
       // the trigger boxes.
       if (byFileContentMs.isNotEmpty) {
-        final acc = NearestFrameAccumulator(byFileContentMs);
+        final acc = FrameBracketAccumulator(byFileContentMs);
         // Consecutive frame-time deltas (bounded sample) — the adaptive
         // match tolerance derives from their median.
         final intervals = <int>[];
@@ -719,44 +720,54 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final tol = toleranceMs(intervals);
         for (final MapEntry(key: file, value: contentMs)
             in byFileContentMs.entries) {
-          final match = acc.best[file];
-          if (match == null || match.deltaMs.abs() > tol) {
-            byFileMatchNote[file] =
-                "no detector frame within $tol ms of this photo's content";
-            continue;
-          }
-          if (roiMovedInWindow(roiUpdateTimes, byFileTime[file] ?? 0,
-              contentMs)) {
+          // ROI-move check FIRST (r115): a moved ROI genuinely invalidates
+          // the coordinates, whatever frames exist.
+          if (roiMovedInWindow(
+            roiUpdateTimes,
+            byFileTime[file] ?? 0,
+            contentMs,
+          )) {
             byFileMatchNote[file] = 'the ROI was moved before the photo '
                 'landed';
             continue;
           }
-          final boxes = <_DetBox>[];
-          for (final e in match.tracks) {
-            final box = e['box_in_roi'];
-            if (box is! Map) continue;
-            final tid = (e['track_id'] as num?)?.toInt();
-            final conf = (e['confidence'] as num?)?.toDouble();
-            final confLabel = conf != null
-                ? '  ${conf.toStringAsFixed(2)}'
-                : '';
-            boxes.add(
+          final bracket = acc.bracketOf(file);
+          final result = buildPhotoBoxes(
+            before: bracket.before,
+            after: bracket.after,
+            photoFile: file,
+          );
+          if (result == null) {
+            byFileMatchNote[file] =
+                'no detector frame within $kBracketWindowMs ms — the insect '
+                "had likely left by this photo's moment";
+            continue;
+          }
+          // r115: no hard tolerance rejection any more — r114's fallback
+          // (trigger boxes ~0.5 s away) was often FARTHER than the frame it
+          // rejected. The tolerance now only picks the label tone.
+          byFileStillBoxes[file] = [
+            for (final b in result.boxes)
               _DetBox(
-                left: (box['left'] as num?)?.toDouble() ?? 0,
-                top: (box['top'] as num?)?.toDouble() ?? 0,
-                right: (box['right'] as num?)?.toDouble() ?? 0,
-                bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
-                label: '#${tid ?? '?'} ${e['class_name'] ?? ''}$confLabel'
-                    .trim(),
+                left: b.left,
+                top: b.top,
+                right: b.right,
+                bottom: b.bottom,
+                // Same label format as the trigger boxes; a trailing ≈ marks
+                // the odd single-side box inside an interpolated photo.
+                label:
+                    '#${b.trackId ?? '?'} ${b.className ?? ''}'
+                            '${b.confidence != null ? '  ${b.confidence!.toStringAsFixed(2)}' : ''}'
+                            '${result.anyInterpolated && !b.interpolated ? ' ≈' : ''}'
+                        .trim(),
                 // Matched frames rarely carry this photo's filename; boxes
                 // then render in the co-detected color — honest, they were
                 // not the trigger.
-                triggered: e['jpeg'] == file,
+                triggered: b.triggered,
               ),
-            );
-          }
-          byFileStillBoxes[file] = boxes;
-          byFileMatchDelta[file] = match.deltaMs;
+          ];
+          byFileStillMeta[file] = result;
+          byFileStillTol[file] = result.nearestAbsDeltaMs <= tol;
         }
       }
     } catch (e) {
@@ -792,7 +803,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         contentAtMs: byFileContentMs[name],
         contentAtApprox: byFileContentApprox[name] ?? false,
         stillBoxes: byFileStillBoxes[name],
-        stillMatchDeltaMs: byFileMatchDelta[name],
+        stillMatch: byFileStillMeta[name],
+        stillWithinTol: byFileStillTol[name] ?? false,
         stillMatchNote: byFileMatchNote[name],
       );
     }
@@ -1929,8 +1941,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'second later (its "Lag" row), so a fast insect can have moved '
             'or left. On the high-res view the boxes are re-matched by time '
             'to the photo\'s real content moment when the log carries the '
-            'needed timestamps (recorded from this app version on) — the '
-            '"Boxes" row states which detector frame they come from.',
+            'needed timestamps (recorded from this app version on). Taking '
+            'a high-res photo briefly pauses the detector, so there is '
+            'often no frame at the photo\'s exact moment — the app then '
+            'estimates each insect\'s position by interpolating between '
+            'the frames just before and after the pause, or shows the '
+            'nearest available frame; the "Boxes" row states exactly what '
+            'was used.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2164,12 +2181,17 @@ class _PhotoSample {
   final int? contentAtMs;
   final bool contentAtApprox;
 
-  /// Round 114: boxes of the detector frame time-matched to [contentAtMs]
-  /// (drawn on the HIGH-RES view instead of the trigger boxes), with the
-  /// signed frame−content distance. Null → fall back to the trigger boxes;
-  /// [stillMatchNote] then says why.
+  /// Round 114/115: the boxes drawn on the HIGH-RES view instead of the
+  /// trigger boxes — per-track positions interpolated at [contentAtMs]
+  /// between the bracketing detector frames, or the nearest frame's boxes.
+  /// Null → fall back to the trigger boxes; [stillMatchNote] then says why.
   final List<_DetBox>? stillBoxes;
-  final int? stillMatchDeltaMs;
+
+  /// The match metadata behind [stillBoxes] (bracket deltas, interpolation
+  /// flags) and whether the nearest frame sat within the session's match
+  /// tolerance — both drive the "Boxes" info-row wording only.
+  final PhotoBoxResult? stillMatch;
+  final bool stillWithinTol;
   final String? stillMatchNote;
 
   const _PhotoSample({
@@ -2189,7 +2211,8 @@ class _PhotoSample {
     this.contentAtMs,
     this.contentAtApprox = false,
     this.stillBoxes,
-    this.stillMatchDeltaMs,
+    this.stillMatch,
+    this.stillWithinTol = false,
     this.stillMatchNote,
   });
 }
@@ -3051,16 +3074,39 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     );
   }
 
-  /// The "Boxes" info-row text: which detector frame the drawn boxes belong
-  /// to in the CURRENT view, and — on the high-res view — how far that frame
-  /// sits from the photo's real content moment (round 114).
+  /// The "Boxes" info-row text: where the drawn boxes come from in the
+  /// CURRENT view, and — on the high-res view — how far the contributing
+  /// detector frame(s) sit from the photo's real content moment
+  /// (round 114/115).
   String _boxesSourceText(_PhotoSample p, bool liveShown) {
     if (liveShown) return 'trigger frame (matches this image)';
-    final delta = p.stillMatchDeltaMs;
-    if (p.stillBoxes != null && delta != null) {
-      final n = '${p.contentAtApprox ? '~' : ''}${delta.abs()}';
+    final m = p.stillMatch;
+    if (p.stillBoxes != null && m != null) {
+      final pre = p.contentAtApprox ? '~' : '';
+      if (m.anyInterpolated) {
+        return "estimated at this photo's moment — from detector frames "
+            '$pre${m.beforeDeltaMs!.abs()} ms before and '
+            '${m.afterDeltaMs} ms after';
+      }
+      if (m.beforeDeltaMs != null && m.afterDeltaMs != null) {
+        // Frames on both sides but no shared track to interpolate (the
+        // tracker re-assigned the id across the capture pause): each box is
+        // drawn from its own side.
+        return 'from the detector frames $pre${m.beforeDeltaMs!.abs()} ms '
+            'before and ${m.afterDeltaMs} ms after (no shared track to '
+            'merge across the capture pause)';
+      }
+      final delta = m.beforeDeltaMs ?? m.afterDeltaMs!;
+      final n = '$pre${delta.abs()}';
       final when = delta <= 0 ? 'before' : 'after';
-      return "from a detector frame $n ms $when this photo's content";
+      if (p.stillWithinTol) {
+        return "from a detector frame $n ms $when this photo's content";
+      }
+      // A distant single-side frame: still the best available — the
+      // detector pauses while a high-res photo is captured, so frames at
+      // the content moment often don't exist at all.
+      return 'nearest available frame, $n ms $when — the detector pauses '
+          'while a high-res photo is taken';
     }
     if (p.stillMatchNote != null) {
       return 'trigger frame — ${p.stillMatchNote}';

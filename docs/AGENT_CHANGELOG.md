@@ -4391,3 +4391,56 @@ Not yet field-verified: needs one high-res session on the Xiaomi to confirm
 `content_at_ms` ≈ `captured_at_ms + live_lag_ms + content_lag_ms` and an
 eyeball of a fast-insect photo.
 
+## Round 115 (2026-07-16): interpolated box placement for high-res photos (session_16 follow-up)
+
+Owner field-tested r114 (session_16, owner-provided at
+sessions/Xiaomi/sessions/session_16/) and reported misaligned boxes plus a
+confusing "no detector frame within 250 ms of this photo's content" under a
+photo whose Lag read 450 ms. Investigation findings (log + photos verified):
+
+- r114's timestamps WORK: `content_at_ms` = trigger + 424–504 ms on all 16
+  photos, consistent with live_lag + dispatch + content_lag.
+- **KEY DISCOVERY: capturing a high-res photo pauses the analysis stream**
+  (ImageCapture vs ImageAnalysis contention) — frame holes of 133–1532 ms
+  bracket every capture, exactly across the content moment. The frames the
+  matcher needs often don't exist BY CONSTRUCTION.
+- **r114 flaw:** the hard tolerance rejection fell back to TRIGGER boxes
+  (~500 ms from the content) — strictly farther than the frames it
+  rejected (−323/−390/−589 ms).
+- "N ms AFTER the content" labels are correct (first post-pause frame =
+  nearest observation); the UI just never explained the pause.
+- 13/16 photos had the SAME track on both sides of the hole.
+
+**Fix (display-time only, no wire changes):**
+- `photo_box_matcher.dart`: `NearestFrameAccumulator` →
+  `FrameBracketAccumulator` keeping the nearest frame on EACH side
+  (±`kBracketWindowMs` 1500 ms); the feed now walks OUTWARD from the
+  binary-search point instead of touching two neighbours — r114 could
+  starve the second of two photos sharing one pause of its post-hole frame.
+  New `buildPhotoBoxes`: per-track linear interpolation of `box_in_roi` at
+  the content moment when the track exists on both sides (span cap
+  `kMaxBracketGapMs` 2 s; confidence/class from the nearer frame — never
+  interpolated); one-side tracks emitted verbatim; both-null → null.
+- Summary pass 2: ROI-move rejection now FIRST; the tolerance no longer
+  rejects boxes — it only picks the "Boxes" row tone. Label matrix:
+  interpolated → "estimated at this photo's moment — from detector frames
+  X ms before and Y ms after"; both-sides-no-shared-track → both deltas +
+  "no shared track to merge across the capture pause"; distant single side
+  → "nearest available frame … the detector pauses while a high-res photo
+  is taken"; fallback notes only "ROI was moved…" / "no detector frame
+  within 1500 ms — the insect had likely left". Mixed photos mark
+  uninterpolated boxes with a trailing ≈. Photos-tab explainer mentions
+  the pause. `_PhotoSample`: `stillMatchDeltaMs` → `stillMatch`
+  (PhotoBoxResult) + `stillWithinTol`.
+- Replayed the REAL matcher over session_16 (throwaway test, deleted):
+  14/16 photos now interpolate at the exact content moment (incl. the
+  previously rejected −390/−589 cases); photo 132119_855 (track id 5→4
+  switch across the pause) degrades to both single-side candidates;
+  ZERO bare trigger-box fallbacks.
+- DATA_GUIDE §5b: interpolation recipe + pause explanation + revised error
+  bounds; tolerance documented as a labelling gate, not a discard.
+
+Follow-up idea (not built): reduce the pause itself is not possible —
+ImageCapture inherently contends; the sync companion + interpolation are
+the mitigations. 250 tests pass, analyze clean.
+
