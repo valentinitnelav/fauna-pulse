@@ -848,6 +848,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // Evaluation toggle (round 105): also log the pre-tracking boxes so
           // this session can be replayed offline through either tracker.
           rawDetections: _config.logRawDetections ? result.detections : null,
+          frameSensorMs: result.frameSensorMs,
         )) {
       _flashCaptureCue();
     }
@@ -1296,6 +1297,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               isFront: raw.$3,
               contentLagMs: raw.contentLagMs,
               callbackLagMs: raw.callbackLagMs,
+              contentAtMs: raw.contentAtEpochMs,
             );
           }
           // Degraded fallback: preview-snapshot bytes are already upright.
@@ -1334,6 +1336,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             // Round 112: the companion's own (small) lag behind the trigger,
             // so the summary can state each shown image's honest delay.
             if (s.liveLagMs != null) 'live_lag_ms': s.liveLagMs,
+            // Round 114: the high-res content's sensor moment as epoch ms —
+            // lets detections records be time-matched to this photo.
+            if (s.contentAtMs != null) 'content_at_ms': s.contentAtMs,
           });
         },
         onError: (fileName, error) =>
@@ -1375,6 +1380,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     isFront: raw.$3,
                     contentLagMs: raw.contentLagMs,
                     callbackLagMs: raw.callbackLagMs,
+                    contentAtMs: raw.contentAtEpochMs,
                   );
                 }
                 final frame = await _controller.captureFrame();
@@ -1393,6 +1399,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                   'path': s.path.wireName,
                   'saved_px': s.savedPx,
                   if (s.contentLagMs != null) 'content_lag_ms': s.contentLagMs,
+                  if (s.contentAtMs != null) 'content_at_ms': s.contentAtMs,
                 });
               },
               onError: (fileName, error) => _logAsyncError(

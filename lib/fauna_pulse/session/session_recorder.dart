@@ -253,6 +253,7 @@ class SessionRecorder {
     Rect roiRect,
     int ts, {
     List<Detection>? rawDetections,
+    int? frameSensorMs,
   }) {
     if (!_recording) return false;
     // Evaluation toggle (round 105): the detector's pre-tracking boxes, so
@@ -280,18 +281,24 @@ class SessionRecorder {
     }
     final pending = _capture?.evaluate(tracks, ts);
     if (tracks.isNotEmpty) {
-      _logger?.logDetections([
-        for (final t in tracks)
-          {
-            'track_id': t.id,
-            'class_index': t.classIndex,
-            'class_name': t.className,
-            'confidence': t.confidence,
-            'box_in_roi': _boxInRoi(t.box, roiRect),
-            if (pending != null && pending.trackIds.contains(t.id))
-              'jpeg': pending.fileName,
-          },
-      ]);
+      _logger?.logDetections(
+        [
+          for (final t in tracks)
+            {
+              'track_id': t.id,
+              'class_index': t.classIndex,
+              'class_name': t.className,
+              'confidence': t.confidence,
+              'box_in_roi': _boxInRoi(t.box, roiRect),
+              if (pending != null && pending.trackIds.contains(t.id))
+                'jpeg': pending.fileName,
+            },
+        ],
+        // Round 114: frame timestamps so photos can be time-matched to their
+        // nearest detector frame (summary viewer + offline post-processing).
+        frameMs: ts,
+        frameSensorMs: frameSensorMs,
+      );
     }
     // Ask for an fsync at most ~twice a second rather than every frame: the
     // logger's writer loop drains queued lines within the same event-loop

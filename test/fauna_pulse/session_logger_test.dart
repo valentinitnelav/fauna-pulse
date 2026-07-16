@@ -42,6 +42,34 @@ void main() {
     }
   });
 
+  test('r114 frame timestamps: written when given, omitted when null', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    // New logs carry both stamps; a HAL without sensor timestamps only
+    // frame_ms; the no-arg call (old shape) writes neither — all three must
+    // stay parseable side by side.
+    logger.logDetections([
+      {'track_id': 1},
+    ], frameMs: 1000100, frameSensorMs: 1000020);
+    logger.logDetections([
+      {'track_id': 1},
+    ], frameMs: 1000200);
+    logger.logDetections([
+      {'track_id': 1},
+    ]);
+    await logger.close();
+
+    final records = file
+        .readAsLinesSync()
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
+    expect(records[0]['frame_ms'], 1000100);
+    expect(records[0]['frame_sensor_ms'], 1000020);
+    expect(records[1]['frame_ms'], 1000200);
+    expect(records[1].containsKey('frame_sensor_ms'), isFalse);
+    expect(records[2].containsKey('frame_ms'), isFalse);
+  });
+
   test('one detections record per frame carries all concurrent tracks', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();

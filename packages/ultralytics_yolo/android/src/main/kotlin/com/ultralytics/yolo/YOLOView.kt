@@ -1929,7 +1929,7 @@ class YOLOView @JvmOverloads constructor(
     fun capturePhoto(withOverlays: Boolean = true, callback: (ByteArray?) -> Unit) {
         val mainExec = ContextCompat.getMainExecutor(context)
         takeRawStill(
-            onJpeg = { jpegBytes, rotationDegrees, isFront, _, _ ->
+            onJpeg = { jpegBytes, rotationDegrees, isFront, _, _, _ ->
                 // Runs on stillExecutor: the full-frame decode/rotate/re-encode
                 // stays off the main thread (round-63 lag fix). Rotation +
                 // front-camera mirroring are baked into the pixels so consumers
@@ -1967,7 +1967,7 @@ class YOLOView @JvmOverloads constructor(
     fun capturePhotoRaw(callback: (Map<String, Any?>?) -> Unit) {
         val mainExec = ContextCompat.getMainExecutor(context)
         takeRawStill(
-            onJpeg = { bytes, rotationDegrees, isFront, contentLagMs, callbackLagMs ->
+            onJpeg = { bytes, rotationDegrees, isFront, contentLagMs, callbackLagMs, contentAtEpochMs ->
                 mainExec.execute {
                     callback(
                         mapOf(
@@ -1979,6 +1979,10 @@ class YOLOView @JvmOverloads constructor(
                             // the plain shutter-to-bytes wait. Logged per photo.
                             "contentLagMs" to contentLagMs,
                             "callbackLagMs" to callbackLagMs,
+                            // Round 114: the content's sensor-exposure moment
+                            // as EPOCH ms — lets logged detection boxes be
+                            // time-matched to this photo. Null on odd HALs.
+                            "contentAtEpochMs" to contentAtEpochMs,
                         )
                     )
                 }
@@ -1988,13 +1992,29 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
+     * Round 114 (FaunaPulse): maps a CameraX sensor timestamp (elapsedRealtime
+     * nanos on compliant HALs) to epoch milliseconds via the current clock
+     * pair. Both clocks are read HERE (callback/emit time), so a wall-clock
+     * jump earlier in the session cannot skew the mapping — only a jump within
+     * the sub-second capture window could, which is negligible. Returns null
+     * when the result is implausible (> 10 s from now): that guards HALs whose
+     * SENSOR_INFO_TIMESTAMP_SOURCE is UNKNOWN (arbitrary base), where the
+     * mapping would be meaningless.
+     */
+    private fun sensorNanosToEpochMs(sensorNanos: Long): Double? {
+        val mapped = System.currentTimeMillis() -
+            (SystemClock.elapsedRealtimeNanos() - sensorNanos) / 1e6
+        return if (kotlin.math.abs(System.currentTimeMillis() - mapped) < 10_000) mapped else null
+    }
+
+    /**
      * Shared still-capture plumbing: grabs a JPEG from the bound ImageCapture use-case and hands it to [onJpeg] ON
      * [stillExecutor], together with the clockwise rotation that would make it upright and the front-camera flag.
      * [onFail] runs on the MAIN thread when ImageCapture is unbound (three-use-case bind failed at startup) or the
      * capture/extraction fails — so callers can fall back to view-touching snapshots directly.
      */
     private fun takeRawStill(
-        onJpeg: (bytes: ByteArray, rotationDegrees: Int, isFront: Boolean, contentLagMs: Double?, callbackLagMs: Double?) -> Unit,
+        onJpeg: (bytes: ByteArray, rotationDegrees: Int, isFront: Boolean, contentLagMs: Double?, callbackLagMs: Double?, contentAtEpochMs: Double?) -> Unit,
         onFail: () -> Unit,
     ) {
         val ic = imageCaptureUseCase
@@ -2027,11 +2047,19 @@ class YOLOView @JvmOverloads constructor(
                             }
                             val callbackLagMs =
                                 (SystemClock.elapsedRealtimeNanos() - t0Nanos) / 1e6
+                            // Round 114: the content's sensor-exposure moment on
+                            // the EPOCH clock, directly comparable to the frame
+                            // timestamps the app logs. Null on odd HALs.
+                            val contentAtEpochMs = try {
+                                sensorNanosToEpochMs(image.imageInfo.timestamp)
+                            } catch (e: Exception) {
+                                null
+                            }
                             val jpegBytes = imageProxyToJpegBytes(image)
                             if (jpegBytes == null) {
                                 mainExec.execute(onFail)
                             } else {
-                                onJpeg(jpegBytes, rotationDegrees, isFront, contentLagMs, callbackLagMs)
+                                onJpeg(jpegBytes, rotationDegrees, isFront, contentLagMs, callbackLagMs, contentAtEpochMs)
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "takeRawStill: error extracting still", e)
@@ -2557,6 +2585,19 @@ class YOLOView @JvmOverloads constructor(
                         val enhancedStreamData = convertResultToStreamData(resultWithOriginalImage)
                         // Add timestamp and frame info
                         enhancedStreamData["timestamp"] = System.currentTimeMillis()
+                        // Round 114: the frame's sensor-exposure moment on the
+                        // epoch clock, so logged boxes can be time-matched to a
+                        // high-res photo's contentAtEpochMs without the
+                        // ~50–150 ms pre+inference bias that "timestamp"
+                        // (frozen semantics: emit time) carries. Absent on odd
+                        // HALs (sensorNanosToEpochMs plausibility clamp).
+                        try {
+                            sensorNanosToEpochMs(imageProxy.imageInfo.timestamp)?.let {
+                                enhancedStreamData["frameSensorMs"] = Math.round(it)
+                            }
+                        } catch (_: Exception) {
+                            // Field simply absent; matching falls back.
+                        }
                         enhancedStreamData["frameNumber"] = frameNumberCounter++
                         // Dimensions of the upright FULL frame, so the Flutter overlay maps onto the whole preview.
                         // (With a ROI crop, result.origShape is the ROI's size and detections are normalized to the

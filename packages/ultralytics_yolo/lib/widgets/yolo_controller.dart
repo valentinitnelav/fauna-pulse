@@ -237,7 +237,19 @@ class YOLOViewController {
   /// device's zero-shutter-lag really served a past frame; a large positive
   /// value is the "photo shows the insect already gone" lag. [callbackLagMs]
   /// is the plain shutter-to-bytes wait. Either may be null on odd HALs.
-  Future<(Uint8List, int, bool, {double? contentLagMs, double? callbackLagMs})?>
+  /// [contentAtEpochMs] (round 114) is the content's sensor-exposure moment
+  /// mapped to EPOCH milliseconds — the same wall clock as the streamed frame
+  /// timestamps, so logged detections can be time-matched to this photo.
+  Future<
+    (
+      Uint8List,
+      int,
+      bool, {
+      double? contentLagMs,
+      double? callbackLagMs,
+      double? contentAtEpochMs,
+    })?
+  >
   capturePhotoRaw() async {
     final r = await _invoke<Map<dynamic, dynamic>>('capturePhotoRaw');
     final bytes = r?['bytes'];
@@ -248,6 +260,7 @@ class YOLOViewController {
       r?['isFront'] as bool? ?? false,
       contentLagMs: (r?['contentLagMs'] as num?)?.toDouble(),
       callbackLagMs: (r?['callbackLagMs'] as num?)?.toDouble(),
+      contentAtEpochMs: (r?['contentAtEpochMs'] as num?)?.toDouble(),
     );
   }
 

@@ -4338,3 +4338,56 @@ required, but the owner plans one anyway; old saved prefs load fine either way.
 
 `flutter analyze` clean, 227 tests pass.
 
+## Round 114 (2026-07-16): time-matched detection boxes for high-res photos
+
+Owner question: since high-res photos lag their trigger, can the logged
+detections be matched to each photo by timestamp instead of showing the
+trigger frame's boxes? Answer: yes — and entirely OFF the live pipeline
+(new log fields + display-time/offline matching; on-device re-inference on
+stills rejected: heat). Owner picked: replace boxes on the high-res view
+(not overlay), include the native precision change.
+
+**Tier 1 — logging (additive wire fields only):**
+- YOLOView.kt: `sensorNanosToEpochMs()` maps CameraX sensor timestamps
+  (elapsedRealtime nanos) to epoch ms at callback/emit time, with a 10 s
+  plausibility clamp for SENSOR_INFO_TIMESTAMP_SOURCE_UNKNOWN HALs.
+  `takeRawStill` now also returns `contentAtEpochMs` (the still content's
+  sensor-exposure moment as epoch — unlike `content_lag_ms`, which is
+  measured from takePicture() and misses the trigger→dispatch gap); the
+  detector stream emit adds `frameSensorMs` per frame. `"timestamp"`
+  (emit time) deliberately untouched — frozen semantics (scheduler windows,
+  tracker dt, filename stamps).
+- Dart: plumbed `contentAtEpochMs` through yolo_controller → RawHighRes →
+  CaptureStat → `content_at_ms` in `capture` + `gt_capture` records.
+  `detections` records now carry `frame_ms` (= the emit-time frame stamp,
+  SAME clock basis as the frozen `raw_detections.frame_ms` — one key name,
+  one meaning) and `frame_sensor_ms` (precise, when the HAL allows).
+  ~45 bytes per insect-bearing frame.
+
+**Tier 2 — summary viewer:** new pure module
+`logging/photo_box_matcher.dart` (`contentMomentOf` — measured
+`content_at_ms`, else the r108–113 approximation `captured_at_ms +
+content_lag_ms + live_lag_ms` flagged approx; `toleranceMs` = max(250 ms,
+1.5× median frame interval), a display heuristic deliberately NOT a
+Setting; `roiMovedInWindow` with +2.5 s for the debouncer's stamp lag;
+`NearestFrameAccumulator` — O(photos) memory, binary search).
+`_loadPhotos` runs a second pass over the already-in-memory lines (skipped
+for pre-r114 logs → behavior unchanged); the HIGH-RES view draws the
+matched frame's boxes (matched entries rarely carry the photo's `jpeg`, so
+they render in the co-detected amber — honest), the live view keeps
+trigger boxes, and a new "Boxes" info row states the source and the signed
+match delta (or the fallback reason). Caption detection count follows the
+displayed boxes.
+
+**Tier 3 — docs:** DATA_GUIDE §5b with the exact R (data.table
+roll="nearest") and Python (merge_asof) join recipes + per-generation error
+bounds, and the explicit recommendation that pixel-accurate boxes come from
+re-running the detector offline on the saved crops. OVERVIEW updated
+(logging invariant + photo-viewer bullet).
+
+Tests: 14 new (matcher rules, logger field round-trip, frame-processor
+parse, CaptureStat plumbing) — 241 pass, analyze clean, debug APK builds.
+Not yet field-verified: needs one high-res session on the Xiaomi to confirm
+`content_at_ms` ≈ `captured_at_ms + live_lag_ms + content_lag_ms` and an
+eyeball of a fast-insect photo.
+

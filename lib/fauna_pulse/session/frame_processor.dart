@@ -38,8 +38,14 @@ class FrameResult {
   final double trackMs;
 
   /// Frame timestamp (ms since epoch; the native one when the event carried
-  /// it, the wall clock otherwise).
+  /// it, the wall clock otherwise). Stamped at native stream EMIT — i.e.
+  /// ~pre+inference time AFTER the sensor exposure.
   final int timestampMs;
+
+  /// Round 114: the frame's sensor-exposure moment mapped to epoch ms
+  /// (native `frameSensorMs`) — the precise stamp for time-matching photos
+  /// to detector frames. Null on odd HALs and older native builds.
+  final int? frameSensorMs;
 
   const FrameResult({
     required this.roiRect,
@@ -47,6 +53,7 @@ class FrameResult {
     required this.detections,
     required this.trackMs,
     required this.timestampMs,
+    this.frameSensorMs,
   });
 }
 
@@ -258,6 +265,7 @@ class FrameProcessor {
       detections: dets,
       trackMs: trackSw.elapsedMicroseconds / 1000.0,
       timestampMs: ts,
+      frameSensorMs: (data['frameSensorMs'] as num?)?.toInt(),
     );
   }
 }

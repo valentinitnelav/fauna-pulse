@@ -24,6 +24,7 @@ import '../models/session_config.dart';
 import '../capture/crop_export.dart';
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import '../logging/app_error_hooks.dart';
+import '../logging/photo_box_matcher.dart';
 import '../logging/device_storage.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
@@ -481,6 +482,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final byFileLivePx = <String, int>{}; // companion saved square side (px)
     final byFileLagMs = <String, int>{}; // high-res content lag vs trigger (ms)
     final byFileLiveLagMs = <String, int>{}; // companion lag vs trigger (ms)
+    // Round 114 time-matching: each high-res photo's CONTENT moment (epoch
+    // ms), and — filled by pass 2 below — the nearest detector frame's boxes.
+    final byFileContentMs = <String, int>{};
+    final byFileContentApprox = <String, bool>{};
+    final byFileStillBoxes = <String, List<_DetBox>>{};
+    final byFileMatchDelta = <String, int>{}; // frame − content, signed ms
+    final byFileMatchNote = <String, String>{}; // why a photo fell back
+    final roiUpdateTimes = <int>[]; // roi_update stamps (debounced, ~2 s late)
     // The ROI pixel size is logged in the start record and again on every ROI
     // edit; carry the most-recent value forward so each photo gets the size that
     // applied when it was captured.
@@ -514,6 +523,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             final h = (roi['height_px'] as num?)?.toInt();
             if (w != null) curRoiW = w;
             if (h != null) curRoiH = h;
+          }
+          // Round 114: an ROI move invalidates box↔photo time-matching
+          // across it (box_in_roi is relative to the ROI of ITS frame).
+          if (rec['type'] == 'roi_update') {
+            final t = (rec['time_ms'] as num?)?.toInt();
+            if (t != null) roiUpdateTimes.add(t);
           }
           continue;
         }
@@ -554,6 +569,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           }
           final lagMs = (rec['content_lag_ms'] as num?)?.toDouble();
           if (file != null && lagMs != null) byFileLagMs[file] = lagMs.round();
+          // Round 114: when this photo's content moment is known (measured
+          // `content_at_ms`, or reconstructed from the r108 lags), pass 2
+          // below can time-match detector frames to it.
+          final moment = contentMomentOf(rec);
+          if (file != null && moment != null) {
+            byFileContentMs[file] = moment.ms;
+            byFileContentApprox[file] = moment.approx;
+          }
           continue;
         }
         if (isTriggerRecord &&
@@ -655,6 +678,87 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           addEntry(rec, timeMs);
         }
       }
+      // ---- Pass 2 (round 114): time-match detector frames to each high-res
+      // photo's CONTENT moment. A high-res photo shows the scene 0.17–0.8 s
+      // after its trigger, so the trigger frame's boxes often miss the
+      // insect; the frame nearest the content moment fits better. Pure
+      // display-time work over the already-in-memory lines — pre-r114 logs
+      // (no `frame_ms` in detections records) skip this entirely and keep
+      // the trigger boxes.
+      if (byFileContentMs.isNotEmpty) {
+        final acc = NearestFrameAccumulator(byFileContentMs);
+        // Consecutive frame-time deltas (bounded sample) — the adaptive
+        // match tolerance derives from their median.
+        final intervals = <int>[];
+        int? prevFrameMs;
+        for (final line in lines) {
+          if (!line.contains('"detections"') || !line.contains('"frame_ms"')) {
+            continue;
+          }
+          final rec = _tryDecode(line);
+          if (rec == null || rec['type'] != 'detections') continue;
+          // Prefer the sensor-exposure stamp (precise) over the emit stamp
+          // (~pre+inference later); both are epoch ms.
+          final frameMs =
+              (rec['frame_sensor_ms'] as num?)?.toInt() ??
+              (rec['frame_ms'] as num?)?.toInt();
+          if (frameMs == null) continue;
+          if (prevFrameMs != null && intervals.length < 5000) {
+            final d = frameMs - prevFrameMs;
+            if (d > 0) intervals.add(d);
+          }
+          prevFrameMs = frameMs;
+          final tracks = rec['tracks'];
+          if (tracks is List) {
+            acc.feed(frameMs, [
+              for (final e in tracks)
+                if (e is Map<String, dynamic>) e,
+            ]);
+          }
+        }
+        final tol = toleranceMs(intervals);
+        for (final MapEntry(key: file, value: contentMs)
+            in byFileContentMs.entries) {
+          final match = acc.best[file];
+          if (match == null || match.deltaMs.abs() > tol) {
+            byFileMatchNote[file] =
+                "no detector frame within $tol ms of this photo's content";
+            continue;
+          }
+          if (roiMovedInWindow(roiUpdateTimes, byFileTime[file] ?? 0,
+              contentMs)) {
+            byFileMatchNote[file] = 'the ROI was moved before the photo '
+                'landed';
+            continue;
+          }
+          final boxes = <_DetBox>[];
+          for (final e in match.tracks) {
+            final box = e['box_in_roi'];
+            if (box is! Map) continue;
+            final tid = (e['track_id'] as num?)?.toInt();
+            final conf = (e['confidence'] as num?)?.toDouble();
+            final confLabel = conf != null
+                ? '  ${conf.toStringAsFixed(2)}'
+                : '';
+            boxes.add(
+              _DetBox(
+                left: (box['left'] as num?)?.toDouble() ?? 0,
+                top: (box['top'] as num?)?.toDouble() ?? 0,
+                right: (box['right'] as num?)?.toDouble() ?? 0,
+                bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
+                label: '#${tid ?? '?'} ${e['class_name'] ?? ''}$confLabel'
+                    .trim(),
+                // Matched frames rarely carry this photo's filename; boxes
+                // then render in the co-detected color — honest, they were
+                // not the trigger.
+                triggered: e['jpeg'] == file,
+              ),
+            );
+          }
+          byFileStillBoxes[file] = boxes;
+          byFileMatchDelta[file] = match.deltaMs;
+        }
+      }
     } catch (e) {
       // Use whatever parsed.
       logSwallowed('summary_photos_scan', e);
@@ -685,6 +789,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         livePx: byFileLivePx[name],
         contentLagMs: byFileLagMs[name],
         liveLagMs: byFileLiveLagMs[name],
+        contentAtMs: byFileContentMs[name],
+        contentAtApprox: byFileContentApprox[name] ?? false,
+        stillBoxes: byFileStillBoxes[name],
+        stillMatchDeltaMs: byFileMatchDelta[name],
+        stillMatchNote: byFileMatchNote[name],
       );
     }
 
@@ -1818,7 +1927,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'there); the ⚡ button above the photo switches to the high-res '
             'one, which is sharper but shows the scene a fraction of a '
             'second later (its "Lag" row), so a fast insect can have moved '
-            'or left.',
+            'or left. On the high-res view the boxes are re-matched by time '
+            'to the photo\'s real content moment when the log carries the '
+            'needed timestamps (recorded from this app version on) — the '
+            '"Boxes" row states which detector frame they come from.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2046,6 +2158,20 @@ class _PhotoSample {
   /// `live_lag_ms` (r112). Null on pre-r112 logs.
   final int? liveLagMs;
 
+  /// Round 114: the high-res photo's CONTENT moment (epoch ms) — measured
+  /// (`content_at_ms`) or, when [contentAtApprox], reconstructed from the
+  /// r108 lags. Null for fast-path photos and pre-r108 logs.
+  final int? contentAtMs;
+  final bool contentAtApprox;
+
+  /// Round 114: boxes of the detector frame time-matched to [contentAtMs]
+  /// (drawn on the HIGH-RES view instead of the trigger boxes), with the
+  /// signed frame−content distance. Null → fall back to the trigger boxes;
+  /// [stillMatchNote] then says why.
+  final List<_DetBox>? stillBoxes;
+  final int? stillMatchDeltaMs;
+  final String? stillMatchNote;
+
   const _PhotoSample({
     required this.file,
     required this.name,
@@ -2060,6 +2186,11 @@ class _PhotoSample {
     this.livePx,
     this.contentLagMs,
     this.liveLagMs,
+    this.contentAtMs,
+    this.contentAtApprox = false,
+    this.stillBoxes,
+    this.stillMatchDeltaMs,
+    this.stillMatchNote,
   });
 }
 
@@ -2281,6 +2412,13 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// True when the CURRENT page is really showing its live companion (the
   /// toggle may be on while this photo has none — e.g. a fast-path photo).
   bool get _liveShown => _showLive && widget.photos[_page].liveFile != null;
+
+  /// The boxes to draw for [p] in the CURRENT view (round 114): trigger-frame
+  /// boxes on the live companion (it IS the trigger moment); on the high-res
+  /// photo the time-matched frame's boxes when a good match exists, else the
+  /// trigger boxes again ([_infoPanel]'s "Boxes" row says which and why).
+  List<_DetBox> _boxesFor(_PhotoSample p) =>
+      _showLive && p.liveFile != null ? p.boxes : (p.stillBoxes ?? p.boxes);
 
   /// Saved square side (px) of whichever image is currently displayed for
   /// [p] — the companion's own size while it is shown. Both are square ROI
@@ -2638,11 +2776,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      // The boxes are ROI-normalized from the
-                                      // trigger frame, so they overlay the
-                                      // live companion just as directly as
-                                      // the high-res photo (they align better:
-                                      // the companion IS the trigger moment).
+                                      // Boxes are ROI-normalized, so they
+                                      // overlay either file directly; WHICH
+                                      // frame's boxes depends on the view —
+                                      // see _boxesFor (round 114).
                                       Image.file(
                                         _fileFor(p),
                                         fit: BoxFit.contain,
@@ -2657,7 +2794,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                             // constant ON-SCREEN thickness while
                                             // the photo underneath scales up.
                                             painter: _BoxPainter(
-                                              p.boxes,
+                                              _boxesFor(p),
                                               _transformFor(
                                                 i,
                                               ).value.getMaxScaleOnAxis(),
@@ -2801,8 +2938,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             Expanded(
               child: Text(
                 'Photo ${_page + 1} / ${widget.photos.length}'
-                '  •  ${widget.photos[_page].boxes.length} detection'
-                '${widget.photos[_page].boxes.length == 1 ? '' : 's'}',
+                '  •  ${_boxesFor(widget.photos[_page]).length} detection'
+                '${_boxesFor(widget.photos[_page]).length == 1 ? '' : 's'}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
@@ -2903,9 +3040,32 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             _infoRow('Lag', '${p.contentLagMs} ms behind the trigger moment'),
           if (liveShown && p.liveLagMs != null)
             _infoRow('Lag', '≤ ${p.liveLagMs} ms behind the trigger moment'),
+          // Round 114: which frame the drawn boxes come from. On the high-res
+          // view they are time-matched to the photo's real content moment
+          // when the log allows it; otherwise the trigger frame, with the
+          // reason.
+          if (p.liveFile != null || p.contentAtMs != null)
+            _infoRow('Boxes', _boxesSourceText(p, liveShown)),
         ],
       ),
     );
+  }
+
+  /// The "Boxes" info-row text: which detector frame the drawn boxes belong
+  /// to in the CURRENT view, and — on the high-res view — how far that frame
+  /// sits from the photo's real content moment (round 114).
+  String _boxesSourceText(_PhotoSample p, bool liveShown) {
+    if (liveShown) return 'trigger frame (matches this image)';
+    final delta = p.stillMatchDeltaMs;
+    if (p.stillBoxes != null && delta != null) {
+      final n = '${p.contentAtApprox ? '~' : ''}${delta.abs()}';
+      final when = delta <= 0 ? 'before' : 'after';
+      return "from a detector frame $n ms $when this photo's content";
+    }
+    if (p.stillMatchNote != null) {
+      return 'trigger frame — ${p.stillMatchNote}';
+    }
+    return 'trigger frame';
   }
 
   Widget _infoRow(String label, String value) => Padding(

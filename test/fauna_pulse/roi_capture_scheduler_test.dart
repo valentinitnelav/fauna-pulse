@@ -313,6 +313,7 @@ void main() {
             isFront: false,
             contentLagMs: 750.0,
             callbackLagMs: 760.0,
+            contentAtMs: 10740.0,
           ),
       roiProvider: () => Roi.defaultRoi,
       streamDims: () => (640, 480),
@@ -340,6 +341,8 @@ void main() {
       expect(stat!.liveJpeg, liveName);
       expect(stat!.liveBytes, liveCrop.length);
       expect(stat!.contentLagMs, 750.0); // ZSL diagnosis plumbed through
+      // r114: the content's epoch moment surfaces (rounded) for box matching.
+      expect(stat!.contentAtMs, 10740);
       expect(stat!.grabMs, isNotNull);
       dir.deleteSync(recursive: true);
     });
@@ -362,6 +365,9 @@ void main() {
       expect(stat, isNotNull);
       expect(stat!.fileName, liveName);
       expect(stat!.path, CapturePath.fast);
+      // The companion-only fallback stat is a fast-path photo: no content
+      // moment (it IS the trigger moment).
+      expect(stat!.contentAtMs, isNull);
       dir.deleteSync(recursive: true);
     });
 

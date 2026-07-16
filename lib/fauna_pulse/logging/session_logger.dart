@@ -181,8 +181,22 @@ class SessionLogger {
   /// (Sessions from round 68 and earlier carry per-track `detection` records
   /// instead — postprocessing should accept both.)
   /// Not flushed per line; [flushNow] handles durability every ~0.5 s.
-  void logDetections(List<Map<String, dynamic>> tracks, {DateTime? at}) =>
-      _append('detections', {'tracks': tracks}, at: at, flush: false);
+  /// Round 114 timestamps, so photos can be time-matched to their nearest
+  /// detector frame: [frameMs] is the frame's emit-time epoch stamp (SAME
+  /// clock basis as `raw_detections.frame_ms` — deliberately, one key one
+  /// meaning); [frameSensorMs] is the sensor-exposure moment mapped to epoch
+  /// (the precise one, comparable to a capture record's `content_at_ms`;
+  /// absent on odd HALs). `time_ms` remains the later log-queue stamp.
+  void logDetections(
+    List<Map<String, dynamic>> tracks, {
+    int? frameMs,
+    int? frameSensorMs,
+    DateTime? at,
+  }) => _append('detections', {
+    'frame_ms': ?frameMs,
+    'frame_sensor_ms': ?frameSensorMs,
+    'tracks': tracks,
+  }, at: at, flush: false);
 
   /// One processed frame's detector boxes BEFORE tracking (round 105), for
   /// the offline tracker replay harness (`tracking/tracker_replay.dart` —

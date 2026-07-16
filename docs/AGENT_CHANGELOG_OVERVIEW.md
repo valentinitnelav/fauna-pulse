@@ -146,8 +146,11 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   model's input tensor). Logs record both requested and delivered (`analysis_w/h`).
 - **Logging.** Append-only JSONL (crash/battery-loss safe): start metadata, one
   `detections` record per frame (round 69) whose `tracks[]` entries carry track id +
-  ROI-relative `box_in_roi` (0..1) + saved filenames, ROI geometry updates, and stop
-  metadata with `ended_normally`. Sessions ≤ round 68 used per-track `detection`
+  ROI-relative `box_in_roi` (0..1) + saved filenames — plus (r114) `frame_ms`
+  (emit-clock epoch, SAME basis as `raw_detections.frame_ms`) and
+  `frame_sensor_ms` (sensor-exposure epoch via `sensorNanosToEpochMs` in
+  YOLOView.kt, absent on odd HALs; comparable to `capture.content_at_ms`) —
+  ROI geometry updates, and stop metadata with `ended_normally`. Sessions ≤ round 68 used per-track `detection`
   records — parsers (summary screen, DATA_GUIDE snippets) must accept both. Writes go
   through an in-logger queue drained by one async writer loop (I/O on the Dart VM's
   background thread pool — never sync file I/O in the frame callback); fsync every
@@ -322,6 +325,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (DEFAULT view — boxes need no remap, they're ROI-normalized to the trigger
   frame) ↔ high-res photo; "Showing" + per-view "Lag" info rows
   (`content_lag_ms` / `live_lag_ms`); crop-export follows the shown file.
+  r114: the HIGH-RES view draws TIME-MATCHED boxes — the detections record
+  nearest the photo's `content_at_ms` (matcher rules in
+  `logging/photo_box_matcher.dart`: tolerance max(250 ms, 1.5× median frame
+  interval), reject if a `roi_update` falls in trigger→content+2.5 s) — and
+  falls back to trigger boxes with a "Boxes" info row stating which/why.
+  Pre-r114 logs keep trigger boxes. Pixel-accurate boxes = re-run the
+  detector offline on the saved crops (DATA_GUIDE §5b); on-device
+  re-inference rejected (heat).
   r112 layout invariant: NO buttons overlay the photo — tools are a row above
   the preview (zoom slider horizontal below them), ‹ › + pan pad in rows
   under it; only text mode-chips may sit on the image.

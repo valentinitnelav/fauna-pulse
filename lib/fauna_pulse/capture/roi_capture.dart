@@ -96,12 +96,19 @@ class RawHighRes {
   /// Round 108: plain shutter-to-bytes wait in ms (request → JPEG in hand).
   final double? callbackLagMs;
 
+  /// Round 114: the content's sensor-exposure moment as EPOCH ms — the same
+  /// wall clock as the frame timestamps in `detections` records, so logged
+  /// boxes can be time-matched to this photo. Null on odd HALs and on the
+  /// preview-snapshot fallback path.
+  final double? contentAtMs;
+
   const RawHighRes({
     required this.bytes,
     required this.rotationDegrees,
     required this.isFront,
     this.contentLagMs,
     this.callbackLagMs,
+    this.contentAtMs,
   });
 }
 
@@ -370,6 +377,11 @@ class CaptureStat {
   /// The high-res photo's [contentLagMs] is the number to compare it against.
   final int? liveLagMs;
 
+  /// Round 114: the high-res photo's content moment as EPOCH ms (from
+  /// [RawHighRes.contentAtMs]) — what the summary/post-processing match
+  /// detection frames against. Null on the fast path and odd HALs.
+  final int? contentAtMs;
+
   /// True for the full-resolution high-res path (which briefly stalls the camera),
   /// false for the fast live-frame crop.
   bool get fullRes => path == CapturePath.highRes;
@@ -389,6 +401,7 @@ class CaptureStat {
     this.liveBytes,
     this.liveSavedPx,
     this.liveLagMs,
+    this.contentAtMs,
   });
 }
 
@@ -596,6 +609,7 @@ class RoiCaptureScheduler {
       double? grabMs;
       double? contentLagMs;
       double? callbackLagMs;
+      int? contentAtMs;
       String? liveJpeg;
       int? liveBytes;
       int? liveSavedPx;
@@ -638,6 +652,7 @@ class RoiCaptureScheduler {
         grabMs = grabSw.elapsedMicroseconds / 1000.0;
         contentLagMs = raw?.contentLagMs;
         callbackLagMs = raw?.callbackLagMs;
+        contentAtMs = raw?.contentAtMs?.round();
         if (raw == null) {
           // The high-res photo failed, but a companion may already be on
           // disk — report it so the log (and the photo count) reflect what
@@ -731,6 +746,7 @@ class RoiCaptureScheduler {
           liveBytes: liveBytes,
           liveSavedPx: liveSavedPx,
           liveLagMs: liveLagMs,
+          contentAtMs: contentAtMs,
         ),
       );
     } catch (e) {

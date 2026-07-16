@@ -102,6 +102,8 @@ insect instead, see the note below):
 | `tracks[].confidence` | Detection score (0..1). |
 | `tracks[].box_in_roi` | Bounding box **relative to the ROI**, all edges in 0..1 (`{left, top, right, bottom}`). 0 = ROI's left/top edge, 1 = right/bottom edge. |
 | `tracks[].jpeg` | Filename of the ROI photo that covered this track at this moment; **absent** when no photo was saved for it on this frame. |
+| `frame_ms` | Round 114+. The frame's epoch stamp on the **emit clock** (recorded when the native side finished inference and emitted the result — ~50–150 ms after the sensor exposure). Same clock basis as `raw_detections.frame_ms`, deliberately: one key name, one meaning. |
+| `frame_sensor_ms` | Round 114+. The frame's **sensor-exposure moment** mapped to epoch ms — the precise stamp, directly comparable to a `capture` record's `content_at_ms`. Absent on HALs without a usable sensor clock; prefer it over `frame_ms` when present. |
 
 > Note: a `detections` line is written for **every processed frame** with at
 > least one tracked insect, not once per visit. You reconstruct a visit by
@@ -189,6 +191,7 @@ Round-108 additions:
 | `callback_lag_ms` | High-res path only. Plain request→JPEG wait. |
 | `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the high-res photo as `…_live.jpg`. Small but in sync — use it when the high-res photo misses the insect. |
 | `live_lag_ms` | Round 112. The companion's own delay behind the trigger moment, measured when its frame grab returned — an upper bound on how old its content can be (typically a few tens of ms; compare with the high-res photo's `content_lag_ms`). |
+| `content_at_ms` | Round 114. High-res path only: the photo content's **sensor-exposure moment as epoch ms** — what to time-match `detections` frames against (see §5). Absent on odd HALs; reconstruct older logs as `captured_at_ms + content_lag_ms + live_lag_ms` (approximate — the lag is measured from the takePicture() call, which follows the trigger by the companion-grab gap that `live_lag_ms` brackets). Also present in `gt_capture` records. |
 
 ### `app_error` — an error surfaced during recording
 
@@ -302,3 +305,70 @@ Each track entry's `jpeg` field (in `detections.tracks[]`; top-level in legacy
 that frame. Join on it to attach images to specific tracks/moments. The exact pixel size of each saved photo is in the
 matching `capture` record's `saved_px` (photo box geometry), which is the
 authoritative size — not the ROI box geometry.
+
+### 5b. Time-matching boxes to HIGH-RES photos (round 114)
+
+The `jpeg` join above ties a photo to its **trigger frame** — correct for
+fast-path photos and `_live` companions (they show the trigger moment), but a
+high-res photo's content lags the trigger by 0.17–0.8 s, so the trigger boxes
+often miss the insect's real position on it. Better: join to the `detections`
+record whose frame time is **nearest the photo's content moment**. This is
+exactly what the in-app summary viewer does on its high-res view.
+
+Recipe (any language):
+
+1. Content moment per high-res photo: `content_at_ms` from its `capture`
+   record. Older logs (r108–113): `captured_at_ms + content_lag_ms +
+   live_lag_ms` (approximate).
+2. Frame time per `detections` record: `frame_sensor_ms`, falling back to
+   `frame_ms` (adds a systematic ~50–150 ms "frame is really older" bias).
+3. Nearest-neighbour join; reject matches beyond
+   `max(250 ms, 1.5 × median frame interval)` and any photo with a
+   `roi_update` between its trigger and content moment + 2.5 s (the boxes
+   would be relative to a different ROI).
+
+```r
+# R (data.table): nearest detector frame per high-res photo
+library(data.table)
+lines  <- jsonlite::stream_in(file("session.jsonl"))
+caps   <- as.data.table(lines[lines$type == "capture", ])
+caps   <- caps[!is.na(content_at_ms)]                 # high-res photos only
+frames <- as.data.table(lines[lines$type == "detections", ])
+frames[, t := fifelse(is.na(frame_sensor_ms), frame_ms, frame_sensor_ms)]
+frames <- frames[!is.na(t)]
+tol    <- max(250, 1.5 * median(diff(sort(frames$t))))
+setkey(frames, t); caps[, t := content_at_ms]; setkey(caps, t)
+joined <- frames[caps, roll = "nearest"]              # one frame per photo
+joined <- joined[abs(t - content_at_ms) <= tol]       # honesty gate
+# joined$tracks holds the matched boxes (box_in_roi is ROI-normalized,
+# i.e. directly drawable on the square photo).
+```
+
+```python
+# Python (pandas): same join
+import pandas as pd
+df = pd.read_json("session.jsonl", lines=True)
+caps = df[df.type.eq("capture") & df.content_at_ms.notna()].copy()
+fr = df[df.type.eq("detections")].copy()
+fr["t"] = fr.frame_sensor_ms.fillna(fr.frame_ms)
+fr = fr.dropna(subset=["t"]).sort_values("t")
+tol = max(250, 1.5 * fr.t.diff().median())
+caps = caps.sort_values("content_at_ms")
+joined = pd.merge_asof(caps, fr[["t", "tracks"]],
+                       left_on="content_at_ms", right_on="t",
+                       direction="nearest", tolerance=tol)
+```
+
+Error bounds by log generation: r114+ logs match to ±½ the detector frame
+interval (±50 ms at the 10 FPS cap); r108–113 add the dispatch-gap
+uncertainty (≈ `live_lag_ms`, tens of ms); older sessions have no frame
+timestamps — only the trigger-frame join applies.
+
+**For pixel-accurate boxes on high-res photos, re-run the detector offline**
+on the saved ≤ 1024 px crops (GPU workstation): the files are clean
+re-encoded JPEGs, and the filename + JSONL carry every timestamp needed to
+tie results back to visits. That looks at the actual pixels instead of
+estimating from clocks — the time-match above is the honest *approximation*
+for browsing and quick joins. Re-running the detector **on the phone** for
+each still was considered and rejected: heat is the app's binding
+constraint.

@@ -42,10 +42,12 @@ Map<String, dynamic> event({
   required List<Map<String, dynamic>> detections,
   bool roiActive = true,
   int? timestamp,
+  int? frameSensorMs,
 }) => {
   'detections': detections,
   'roiActive': roiActive,
   'timestamp': ?timestamp,
+  'frameSensorMs': ?frameSensorMs,
 };
 
 /// A tracker that confirms on the 2nd matched frame, with a buffer long
@@ -83,6 +85,18 @@ void main() {
       expect(box.bottom, closeTo(roiRect.bottom, 1e-9));
       expect(result.roiRect, roiRect);
       expect(result.timestampMs, 1100);
+    });
+
+    test('r114: the sensor-exposure frame stamp is parsed when present and '
+        'null when the native side omits it (odd HALs)', () {
+      final fp = FrameProcessor(tracker: tracker());
+      final withStamp = run(
+        fp,
+        event(detections: [det()], timestamp: 1100, frameSensorMs: 1040),
+      );
+      expect(withStamp.frameSensorMs, 1040);
+      final without = run(fp, event(detections: [det()], timestamp: 1200));
+      expect(without.frameSensorMs, isNull);
     });
 
     test('exposes the mapped pre-tracking detections (round 105: what the '
