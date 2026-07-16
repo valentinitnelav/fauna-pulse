@@ -4289,3 +4289,52 @@ real position.
   settings and docs; options proposed in chat).
 - `flutter analyze` clean, 225 tests pass.
 
+## Round 113 (2026-07-16): "still" → "high-res" rename (live / high-res pair), wire format frozen
+
+Owner decision (follow-up to the r112 naming discussion): the high-resolution
+photo path is no longer called "still" anywhere a person reads — the old name
+wrongly suggested crisp images, when these are the slower, motion-blur-prone
+ones. The photo pair is now **live** (trigger-moment stream crop) /
+**high-res** (full-resolution capture).
+
+**WIRE FORMAT IS FROZEN — nothing on disk changed.** Every recorded session,
+saved config and R/Python script keeps working:
+- `capture.path` and `roi_source` still log `"still"`/`"fast"` — via the new
+  `CapturePath.wireName` getter (`.name` is no longer logged anywhere).
+- config JSON `captureMode` still saves `"still"` — via `_captureModeWireName`
+  in session_config.dart; `_captureModeFromJson` accepts `still`, `highRes`
+  (defensive) and the legacy `fullResPhotos` bool.
+- JSON key `stillSyncCompanion` and the `_live.jpg` suffix are unchanged.
+- New tests pin the freeze: `session_config_test.dart` ("r112 wire freeze")
+  asserts toJson writes `still`; `roi_capture_test.dart` asserts
+  `CapturePath.highRes.wireName == 'still'`.
+- Diagnostic tags `native_still_crop` / `still_size_probe` kept (log grep
+  continuity).
+
+**Dart identifiers renamed:** `RoiCaptureMode.still` → `.highRes`,
+`CapturePath.still` → `.highRes` (+ `wireName`/`uiName` getters),
+`stillSyncCompanion` → `highResSyncCompanion`, `RawStill` → `RawHighRes`,
+`stillCaptureFn` → `highResCaptureFn`, `stillDims` → `highResDims`,
+`uprightStillDims` → `uprightHighResDims`, `stillW/H` → `highResW/H`, plus
+comment sweeps in roi_capture, camera_session_screen, settings_sheet,
+session_summary_screen, camera_diagnostics_controller, session_logger,
+crop_export, tracker_replay. On-screen "(still)" readout now says
+"(high-res)" via `CapturePath.uiName`; the summary translates logged wire
+values for display ("Photo source mode: high-res", "via high-res photo").
+
+**UI strings:** Settings photo-source label/dropdown ("Auto — high-res only
+when needed", "High-res photos always"), companion switch "Sync companion
+photo (high-res)", camera-fps help text; summary Settings rows.
+
+**Docs:** SETTINGS_REFERENCE, DATA_GUIDE, HOW_PHOTO_RESOLUTION_WORKS,
+ARCHITECTURE, OVERVIEW rewritten to the new vocabulary, each noting that
+`"still"` remains the frozen wire value. AGENT_CHANGELOG history untouched
+(append-only record).
+
+**Deliberately NOT renamed:** plugin/native Kotlin internals (`stillExecutor`,
+CameraX ImageCapture is officially "still capture" — renaming would fight the
+platform vocabulary), and all on-disk formats above. Reinstall not strictly
+required, but the owner plans one anyway; old saved prefs load fine either way.
+
+`flutter analyze` clean, 227 tests pass.
+

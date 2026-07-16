@@ -473,12 +473,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         <String, Map<int, double>>{}; // per photo: track id -> confidence
     final byFileTime = <String, int>{}; // capture time (ms since epoch)
     final byFileRes = <String, (int, int)>{}; // ROI (width_px, height_px)
-    // Round 111: the r108 sync companion — a still-path photo's trigger-moment
-    // live-stream crop (`<name>_live.jpg`), so the viewer can flip between the
-    // sharp-but-late still and the exact-moment (lower-res) companion.
-    final byFileLive = <String, String>{}; // still file -> companion file name
+    // Round 111: the r108 sync companion — a high-res-path photo's
+    // trigger-moment live-stream crop (`<name>_live.jpg`), so the viewer can
+    // flip between the late high-res photo and the exact-moment (lower-res)
+    // companion.
+    final byFileLive = <String, String>{}; // high-res file -> companion name
     final byFileLivePx = <String, int>{}; // companion saved square side (px)
-    final byFileLagMs = <String, int>{}; // still content lag vs trigger (ms)
+    final byFileLagMs = <String, int>{}; // high-res content lag vs trigger (ms)
     final byFileLiveLagMs = <String, int>{}; // companion lag vs trigger (ms)
     // The ROI pixel size is logged in the start record and again on every ROI
     // edit; carry the most-recent value forward so each photo gets the size that
@@ -541,8 +542,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           final capMs = (rec['captured_at_ms'] as num?)?.toInt();
           if (file != null && capMs != null) byFileTime[file] = capMs;
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
-          // Sync companion (r108) + content lag: only still-path records carry
-          // these; fast-path photos ARE live crops, so they have neither.
+          // Sync companion (r108) + content lag: only high-res-path records
+          // carry these; fast-path photos ARE live crops, so they have neither.
           final liveJpeg = rec['live_jpeg'] as String?;
           if (file != null && liveJpeg != null && liveJpeg.isNotEmpty) {
             byFileLive[file] = liveJpeg;
@@ -663,7 +664,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // per-photo maps gathered above).
     _PhotoSample sampleFor(String name, File file) {
       final ids = (byFileTracks[name] ?? const <int>{}).toList()..sort();
-      // Companion sits next to its still in roi_frames/; only offer the
+      // Companion sits next to its high-res photo in roi_frames/; only offer the
       // flip when the file is really on disk (best-effort save, r108).
       final liveName = byFileLive[name];
       final liveFile = liveName == null
@@ -720,7 +721,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Stream-grid ROI side of a start/roi_update record — the ÷32 number the
   /// user saw on screen. Round-109+ records carry it as `roi_side_stream_px`;
   /// older ones get it recomputed from the record's `roi` block (which may be
-  /// a still-frame projection, e.g. "1333" for an on-screen 480 — session_6)
+  /// a high-res-frame projection, e.g. "1333" for an on-screen 480 — session_6)
   /// against the start record's analysis frame.
   int? _roiStreamSideOf(Map<dynamic, dynamic> rec) {
     final direct = (rec['roi_side_stream_px'] as num?)?.toInt();
@@ -993,12 +994,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _setting('durationSeconds', 'duration_seconds'),
       suffix: ' s',
     );
-    add('Photo source mode', _setting('captureMode'));
+    // 'still' is the frozen wire value for the high-res path (r112 rename) —
+    // translate it for display only.
+    add(
+      'Photo source mode',
+      _setting('captureMode') == 'still' ? 'high-res' : _setting('captureMode'),
+    );
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
-    // Round 108: stills get a trigger-moment live crop next to them.
+    // Round 108: high-res photos get a trigger-moment live crop next to them
+    // ('stillSyncCompanion' is the setting's frozen wire key).
     if (_setting('stillSyncCompanion') != null) {
       add(
-        'Sync companion (stills)',
+        'Sync companion (high-res)',
         _setting('stillSyncCompanion') == true ? 'on' : 'off',
       );
     }
@@ -1038,7 +1045,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ),
     );
     // The ROI in the scale the user saw on screen (stream grid, ÷32) — round
-    // 109. The raw `roi` block may be a still-frame projection of the same
+    // 109. The raw `roi` block may be a high-res-frame projection of the same
     // square (1333 for an on-screen 480 — session_6), so it is only shown raw
     // when the stream-grid side cannot be derived (very old logs).
     final roi = _startRec?['roi'];
@@ -1057,7 +1064,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         '$savesPx px${src == 'fast'
             ? ' via fast crop'
             : src == 'still'
-            ? ' via still'
+            ? ' via high-res photo'
             : ''}',
       );
     }
@@ -1074,7 +1081,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               : ' (saves $saves px${e.source == 'fast'
                     ? ' via fast crop'
                     : e.source == 'still'
-                    ? ' via still'
+                    ? ' via high-res photo'
                     : ''})',
         );
       }
@@ -1794,7 +1801,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
-      // Round 111: explain the still/companion pair when this session saved
+      // Round 111: explain the high-res/companion pair when this session saved
       // any — otherwise the ⚡ button (and the second file per photo on
       // disk) is a mystery.
       if (_photosRequested &&
@@ -2021,7 +2028,7 @@ class _PhotoSample {
   final int? height;
 
   /// The r108 sync companion: the trigger-moment live-stream crop saved as
-  /// `<name>_live.jpg` beside a still-path photo. Null when this photo took
+  /// `<name>_live.jpg` beside a high-res-path photo. Null when this photo took
   /// the fast path (it already IS a live crop), the session predates r108,
   /// or the companion file is missing from disk.
   final File? liveFile;
@@ -2030,7 +2037,7 @@ class _PhotoSample {
   /// Saved square side (px) of the live companion, from the capture record.
   final int? livePx;
 
-  /// How much OLDER the still's content is than the trigger moment (ms),
+  /// How much OLDER the high-res photo's content is than the trigger moment (ms),
   /// from the capture record's `content_lag_ms` (r108). Null on fast-path
   /// photos and pre-r108 logs.
   final int? contentLagMs;
@@ -2082,12 +2089,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// Detection boxes + labels overlay on/off (round 87, top-right tool button).
   bool _showBoxes = true;
 
-  /// Show each still's `_live` companion instead of the still itself
+  /// Show each high-res photo's `_live` companion instead of the photo itself
   /// (round 111, ⚡ tool button). Viewer-wide like [_showBoxes]; photos
   /// without a companion (fast-path photos are already live crops) keep
   /// showing their own file. Defaults to the companion (round 112): it is
   /// the exact trigger moment, so the detection boxes match the insect's
-  /// position — the later, sharper still is one tap away.
+  /// position — the later high-res photo is one tap away.
   bool _showLive = true;
 
   /// Whether the zoom slider is unfolded under the magnifier button.
@@ -2356,7 +2363,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     setState(() => _cropBusy = true);
     String msg;
     try {
-      // Cut from whichever image is on screen — the still or (⚡ toggle on)
+      // Cut from whichever image is on screen — the high-res photo or (⚡ on)
       // its live companion; the export name follows the file it came from.
       final cropped = await cropJpegNormRect(_fileFor(p), norm);
       if (cropped == null) {
@@ -2504,7 +2511,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
               active: _showBoxes,
               onTap: () => setState(() => _showBoxes = !_showBoxes),
             ),
-            // Round 111/112: flip between a still and its `_live` companion —
+            // Round 111/112: flip between a high-res photo and its `_live` companion —
             // only offered when this session saved any. The companion is the
             // default view (boxes match the insect's true position).
             if (widget.photos.any((p) => p.liveFile != null))
@@ -2634,7 +2641,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                       // The boxes are ROI-normalized from the
                                       // trigger frame, so they overlay the
                                       // live companion just as directly as
-                                      // the still (in fact they align better:
+                                      // the high-res photo (they align better:
                                       // the companion IS the trigger moment).
                                       Image.file(
                                         _fileFor(p),
@@ -2888,10 +2895,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           _infoRow('Captured', _formatStamp(p.captureMs)),
           _infoRow('File', liveShown ? p.liveName! : p.name),
           // Lag of the image ON SCREEN behind the trigger moment (round
-          // 112: each view states only its OWN delay — showing the still's
-          // lag under the live crop read as if the live crop were late).
+          // 112: each view states only its OWN delay — showing the high-res
+          // photo's lag under the live crop read as if the live crop were late).
           // The live figure is an upper bound (grab completion time), hence
-          // the ≤; the still's is the measured `content_lag_ms`.
+          // the ≤; the high-res photo's is the measured `content_lag_ms`.
           if (!liveShown && p.contentLagMs != null)
             _infoRow('Lag', '${p.contentLagMs} ms behind the trigger moment'),
           if (liveShown && p.liveLagMs != null)

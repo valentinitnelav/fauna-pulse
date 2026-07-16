@@ -40,14 +40,14 @@ class SettingsSheet extends StatefulWidget {
   final List<String> streamResolutions;
 
   /// Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
-  /// phone (the [streamResolutions] above are still/preview sizes and over-promise
+  /// phone (the [streamResolutions] above are photo/preview sizes and over-promise
   /// — see round 56). Keys: `hardwareLevel`, `recommendedMax` ("WxH"),
   /// `previewBoundW`/`previewBoundH`, `displayW`/`displayH`. Used to flag sizes the
   /// device will silently shrink. Empty when unavailable.
   final Map<String, dynamic> analysisCeiling;
 
-  /// Full-resolution still size the camera can deliver (from the probe), shown to
-  /// explain what "Full-resolution ROI photos" captures. 0 when unknown.
+  /// Full-resolution photo size the camera can deliver (from the probe), shown
+  /// to explain what the high-res photo source captures. 0 when unknown.
   final int sensorWidth;
   final int sensorHeight;
 
@@ -348,7 +348,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Seconds between saved ROI photos — of the same track id (AI '
             'detector on) or within one motion/time-lapse burst (0.1–10). '
             'Default 1. Steps below ~0.5 s need the "fast" photo source: '
-            'full-resolution stills take 0.5–1.5 s each and cannot keep up. '
+            'high-res photos take 0.5–1.5 s each and cannot keep up. '
             'Fast photos are capped at the live-stream short side, so raise '
             'the stream resolution if fast bursts need bigger photos.',
         onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
@@ -1425,9 +1425,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'stays at or above the inference rate cap. The phone only '
             'supports certain rates, so the nearest supported one is used. '
             'The app ships set to 15/s (cooler); note that capping also '
-            'delays full-resolution stills — measured on the test phone, a '
-            'still shows the scene ~0.4 s after its trigger at 15/s vs '
-            '~0.17 s uncapped.',
+            'delays high-res photos — measured on the test phone, a '
+            'high-res photo shows the scene ~0.4 s after its trigger at '
+            '15/s vs ~0.17 s uncapped.',
         onChanged: (v) {
           final r = v.round();
           // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.
@@ -1441,11 +1441,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _label(
         'ROI photo source. Auto (recommended): each photo is a fast crop of '
         'the live frame when that already meets the minimum size below, and a '
-        'full-resolution still'
+        'high-res photo'
         '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
-        ' only when the ROI is too small in the stream. Stills put far more '
-        'pixels on a small flower, but each one briefly dips the frame rate '
-        'and lands a fraction of a second after the detection.',
+        ' only when the ROI is too small in the stream. High-res photos put '
+        'far more pixels on a small flower, but each one briefly dips the '
+        'frame rate and lands a fraction of a second after the detection — '
+        'a moving insect can show motion blur or be gone.',
       ),
       DropdownButton<RoiCaptureMode>(
         value: _c.captureMode,
@@ -1455,7 +1456,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           DropdownMenuItem(
             value: RoiCaptureMode.auto,
             child: Text(
-              'Auto — still only when needed (recommended)',
+              'Auto — high-res only when needed (recommended)',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
@@ -1467,9 +1468,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ),
           ),
           DropdownMenuItem(
-            value: RoiCaptureMode.still,
+            value: RoiCaptureMode.highRes,
             child: Text(
-              'Full-resolution stills always',
+              'High-res photos always (full resolution)',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
@@ -1479,21 +1480,21 @@ class _SettingsSheetState extends State<SettingsSheet> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
-          'Sync companion photo (stills)',
+          'Sync companion photo (high-res)',
           style: TextStyle(color: Colors.white),
         ),
         subtitle: const Text(
-          'A full-resolution still physically lands up to ~1 s after the '
+          'A high-res photo physically lands up to ~1 s after the '
           'detection that triggered it, so a fast insect can be gone from '
-          'the photo. With this on, every still also saves a small crop of '
-          'the live frame at the trigger moment next to it '
+          'the photo. With this on, every high-res photo also saves a small '
+          'crop of the live frame at the trigger moment next to it '
           '("…_live.jpg") — lower resolution, but the insect is in it. '
-          'Adds roughly 50–200 KB per still.',
+          'Adds roughly 50–200 KB per photo.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
-        value: _c.stillSyncCompanion,
+        value: _c.highResSyncCompanion,
         onChanged: (v) =>
-            setState(() => _c = _c.copyWith(stillSyncCompanion: v)),
+            setState(() => _c = _c.copyWith(highResSyncCompanion: v)),
       ),
       NumericSettingField(
         label: 'Saved photo side (px)',
@@ -1505,10 +1506,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'One number (round 63, replacing the earlier min/max pair): every '
             'photo saves at exactly this size whenever the ROI can supply it — '
             'larger crops are downscaled to it, and in Auto mode a photo takes '
-            'a full still when the fast crop would come out smaller. Photos '
-            'are NEVER enlarged to reach it: stretching pixels invents no '
-            'detail and would hurt later insect identification. When even a '
-            'still cannot reach it the photo saves smaller and the ROI readout '
+            'the high-res path when the fast crop would come out smaller. '
+            'Photos are NEVER enlarged to reach it: stretching pixels invents '
+            'no detail and would hurt later insect identification. When even a '
+            'high-res photo cannot reach it the photo saves smaller and the ROI readout '
             'shows a ⚠ — move the phone closer or switch lens. Snapped to a '
             'multiple of 32; default 1024 (uniform files, roomy for cropping '
             'insects out for a classifier).',
@@ -1788,7 +1789,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
     return [
       // Estimated analysis-stream ceiling for this phone (round 56): the largest
-      // size CameraX can actually feed the detector, usually below the still sizes
+      // size CameraX can actually feed the detector, usually below the photo sizes
       // the camera advertises.
       _analysisCeilingInfo(),
       // Why the list may not match the lenses you can physically count.
@@ -2140,7 +2141,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
     // Round 109 "Auto": the app picks the smallest supported size whose short
     // side reaches the saved-photo target, so fast (no-stall) ROI crops can
-    // meet it and the laggy full-res still path is needed less often. Only
+    // meet it and the laggy high-res photo path is needed less often. Only
     // computable from real device probes; on the preset fallback the auto
     // item still exists but keeps the current size until probes land.
     final autoPick = widget.streamResolutions.isEmpty
@@ -2202,7 +2203,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   // Plain-language note under the stream dropdown. Explains that the live analysis
   // stream is capped by the phone (not a bug), that this does NOT affect detection
-  // accuracy, and that sharp photos come from full-resolution stills. See round 56.
+  // accuracy, and that detailed photos come from the high-res path. See round 56.
   Widget _streamCeilingNote() {
     final (ceilArea, ceilLo, ceilHi) = _ceiling;
     final hwLevel = (widget.analysisCeiling['hardwareLevel'] as String?) ?? '';
@@ -2210,7 +2211,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
       'This is the live preview/analysis stream the AI reads. It does not change '
           'detection accuracy — every frame is shrunk to the model’s own input '
           'size anyway. It only affects the sharpness of fast (live-frame) ROI '
-          'photos; for the sharpest crops use “Full-resolution ROI photos” below.',
+          'photos; the “ROI photo source” setting below controls when a photo '
+          'pays for a full-resolution high-res capture instead.',
       'Larger streams cost more per-frame processing (heat and battery). '
           '“Auto” picks the smallest size that still lets fast crops reach the '
           'saved-photo target; on a phone that runs hot, pick a small size '
@@ -2220,7 +2222,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       parts.add(
         'Your phone can stream at most about $ceilLo×$ceilHi px to the analysis '
         'pipeline${hwLevel.isNotEmpty && hwLevel != 'unknown' ? ' (camera level: $hwLevel)' : ''}. '
-        'Larger choices are offered because the camera supports them for stills, '
+        'Larger choices are offered because the camera supports them for photo capture, '
         'but the live stream will be scaled down to this size.',
       );
     }
@@ -2268,7 +2270,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-              'The camera advertises larger sizes for stills, but when the live '
+              'The camera advertises larger sizes for photo capture, but when the live '
               'preview, the AI stream and photo capture run together it can only '
               'feed the detector up to about this size — so larger stream choices '
               'are scaled down. This does not affect detection accuracy.',

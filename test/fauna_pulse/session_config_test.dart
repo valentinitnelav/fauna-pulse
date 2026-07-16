@@ -137,15 +137,15 @@ void main() {
     expect(restored.logRawDetections, true);
   });
 
-  test('still sync companion round-trips and defaults ON (round 108)', () {
+  test('high-res sync companion round-trips and defaults ON (round 108)', () {
     // Default on: the companion guards dataset completeness; and a config
     // saved before the key existed must also load as on.
-    expect(const SessionConfig().stillSyncCompanion, true);
-    expect(SessionConfig.fromJson(const {}).stillSyncCompanion, true);
+    expect(const SessionConfig().highResSyncCompanion, true);
+    expect(SessionConfig.fromJson(const {}).highResSyncCompanion, true);
     final restored = SessionConfig.fromJson(
-      const SessionConfig().copyWith(stillSyncCompanion: false).toJson(),
+      const SessionConfig().copyWith(highResSyncCompanion: false).toJson(),
     );
-    expect(restored.stillSyncCompanion, false);
+    expect(restored.highResSyncCompanion, false);
   });
 
   test('ground-truth frame dump settings round-trip (round 107)', () {
@@ -263,11 +263,29 @@ void main() {
     test('round-trips through toJson/fromJson', () {
       final restored = SessionConfig.fromJson(
         const SessionConfig()
-            .copyWith(captureMode: RoiCaptureMode.still, targetRoiSavedPx: 512)
+            .copyWith(captureMode: RoiCaptureMode.highRes, targetRoiSavedPx: 512)
             .toJson(),
       );
-      expect(restored.captureMode, RoiCaptureMode.still);
+      expect(restored.captureMode, RoiCaptureMode.highRes);
       expect(restored.targetRoiSavedPx, 512);
+    });
+
+    test('r112 wire freeze: highRes saves as the historical "still" string', () {
+      // Every recorded session and external parser keys on "still"; the Dart
+      // rename (still → highRes) must never change the file format.
+      final json = const SessionConfig()
+          .copyWith(captureMode: RoiCaptureMode.highRes)
+          .toJson();
+      expect(json['captureMode'], 'still');
+      // Defensive: a config that somehow carries the Dart enum name loads too.
+      expect(
+        SessionConfig.fromJson(const {'captureMode': 'highRes'}).captureMode,
+        RoiCaptureMode.highRes,
+      );
+      expect(
+        SessionConfig.fromJson(const {'captureMode': 'still'}).captureMode,
+        RoiCaptureMode.highRes,
+      );
     });
 
     test('round-62 min/max configs migrate: the min becomes the target', () {
@@ -279,13 +297,13 @@ void main() {
       expect(restored.targetRoiSavedPx, 640);
     });
 
-    test('legacy fullResPhotos=true loads as still mode', () {
+    test('legacy fullResPhotos=true loads as high-res mode', () {
       final restored = SessionConfig.fromJson(const {'fullResPhotos': true});
-      expect(restored.captureMode, RoiCaptureMode.still);
+      expect(restored.captureMode, RoiCaptureMode.highRes);
     });
 
     test('legacy fullResPhotos=false keeps its fast-only behaviour', () {
-      // An old setup must not silently switch to auto (which can take stills).
+      // An old setup must not silently switch to auto (which can take high-res photos).
       final restored = SessionConfig.fromJson(const {'fullResPhotos': false});
       expect(restored.captureMode, RoiCaptureMode.fast);
     });

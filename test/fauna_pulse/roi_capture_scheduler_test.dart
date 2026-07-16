@@ -45,10 +45,10 @@ RoiCaptureScheduler scheduler({
   mode: RoiCaptureMode.fast,
   targetPx: 640,
   fastCaptureFn: fastCapture ?? () async => null,
-  stillCaptureFn: () async => null,
+  highResCaptureFn: () async => null,
   roiProvider: () => Roi.defaultRoi,
   streamDims: () => (1280, 960),
-  stillDims: () => (0, 0),
+  highResDims: () => (0, 0),
 );
 
 void main() {
@@ -284,31 +284,31 @@ void main() {
     });
   });
 
-  group('still sync companion (round 108)', () {
-    // A real (tiny) JPEG so the Dart fallback crop can decode the "still"
+  group('high-res sync companion (round 108)', () {
+    // A real (tiny) JPEG so the Dart fallback crop can decode the "high-res"
     // (the native crop channel has no handler under flutter_test).
-    final stillJpeg = Uint8List.fromList(
+    final highResJpeg = Uint8List.fromList(
       img.encodeJpg(img.Image(width: 96, height: 96)),
     );
     final liveCrop = Uint8List.fromList([1, 2, 3, 4]); // written verbatim
 
-    RoiCaptureScheduler stillScheduler(
+    RoiCaptureScheduler highResScheduler(
       Directory dir, {
       bool syncCompanion = true,
-      Future<RawStill?> Function()? stillFn,
+      Future<RawHighRes?> Function()? highResFn,
       void Function(CaptureStat)? onStat,
     }) => RoiCaptureScheduler(
       framesDir: dir,
       sessionToken: 'S',
       stepMs: 1000,
       durationMs: 5000,
-      mode: RoiCaptureMode.still,
+      mode: RoiCaptureMode.highRes,
       targetPx: 640,
       syncCompanion: syncCompanion,
       fastCaptureFn: () async => liveCrop,
-      stillCaptureFn: stillFn ??
-          () async => RawStill(
-            bytes: stillJpeg,
+      highResCaptureFn: highResFn ??
+          () async => RawHighRes(
+            bytes: highResJpeg,
             rotationDegrees: 0,
             isFront: false,
             contentLagMs: 750.0,
@@ -316,15 +316,15 @@ void main() {
           ),
       roiProvider: () => Roi.defaultRoi,
       streamDims: () => (640, 480),
-      stillDims: () => (96, 96),
+      highResDims: () => (96, 96),
       onStat: onStat,
     );
 
-    test('a still-path photo also writes the trigger-moment _live crop and '
+    test('a high-res-path photo also writes the trigger-moment _live crop and '
         'reports both in the stat', () async {
       final dir = Directory.systemTemp.createTempSync('companion_test');
       CaptureStat? stat;
-      final s = stillScheduler(dir, onStat: (v) => stat = v);
+      final s = highResScheduler(dir, onStat: (v) => stat = v);
       final pending = s.evaluate([track(1)], 10000)!;
       await s.capture(pending);
 
@@ -336,7 +336,7 @@ void main() {
         equals(liveCrop),
       );
       expect(stat, isNotNull);
-      expect(stat!.path, CapturePath.still);
+      expect(stat!.path, CapturePath.highRes);
       expect(stat!.liveJpeg, liveName);
       expect(stat!.liveBytes, liveCrop.length);
       expect(stat!.contentLagMs, 750.0); // ZSL diagnosis plumbed through
@@ -344,13 +344,13 @@ void main() {
       dir.deleteSync(recursive: true);
     });
 
-    test('when the still itself fails the companion still lands (and is what '
+    test('when the high-res photo fails the companion still lands (and is what '
         'gets reported)', () async {
       final dir = Directory.systemTemp.createTempSync('companion_fail_test');
       CaptureStat? stat;
-      final s = stillScheduler(
+      final s = highResScheduler(
         dir,
-        stillFn: () async => null, // camera refused the still
+        highResFn: () async => null, // camera refused the photo
         onStat: (v) => stat = v,
       );
       final pending = s.evaluate([track(1)], 10000)!;
@@ -365,9 +365,9 @@ void main() {
       dir.deleteSync(recursive: true);
     });
 
-    test('disabled companion writes only the still', () async {
+    test('disabled companion writes only the high-res photo', () async {
       final dir = Directory.systemTemp.createTempSync('companion_off_test');
-      final s = stillScheduler(dir, syncCompanion: false);
+      final s = highResScheduler(dir, syncCompanion: false);
       final pending = s.evaluate([track(1)], 10000)!;
       await s.capture(pending);
 

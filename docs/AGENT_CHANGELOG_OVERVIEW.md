@@ -49,7 +49,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Model | `yolo26n` | Only nano ships bundled; others need an added `.tflite` |
 | Confidence | `0.25` | min detection score |
 | IoU (NMS) | `0.7` | overlap threshold |
-| Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — stills can't keep up) |
+| Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — high-res photos can't keep up) |
 | Capture duration | `10.0 s` | per track id; must be > step |
 | Session length | `60 min` | user-editable; ignored during scheduled runs |
 | Scheduled recording | off | r94: 1–3 daily windows (default 06:00–10:00) × N days (default 1); REC starts the run; sleeps dark between windows |
@@ -60,9 +60,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Capture trigger | `detector` | r97 enum `CaptureTrigger {detector, motion, timelapse}` (Setup-tab dropdown; replaces r95 `motionOnlyCapture` bool — legacy configs migrate). `motion`: photos on ROI motion, detector NEVER runs (model loads, `predict()` never called), gate forced on, gate tunables = sensitivity, logs `motion_capture` records. `timelapse`: clock-driven bursts, no AI + no gate, logs `timelapse_capture` records. Both: NO `detections` records |
 | Time-lapse burst interval | `30 min` | r97 "Repeat burst every" (`timeLapseIntervalSeconds`, s/min/h input): START-TO-START burst spacing; burst = photo every step for the photo duration; interval ≤ duration ⇒ continuous. Photo duration max now 24 h (unit-aware `DurationSettingField`) |
 | Stream resolution | auto (r109) | while `streamResolutionExplicit` false, the camera screen once-per-lifetime picks the smallest probed size with short side ≥ 1024 (`autoStreamResolution`, honours the r56 ceiling; Xiaomi → 1440×1080) so fast crops can reach the 1024 target; a manual dropdown pick sets explicit and is never overridden (pre-109 configs: stored ≠ 640×480 migrates to explicit); short side caps the fast ROI crop |
-| Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, full-res still otherwise; `fast`/`still` force one path (legacy `fullResPhotos:true` loads as `still`, `false` as `fast`) |
-| Sync companion (stills) | on | r108 `stillSyncCompanion`: every still-path photo also saves the trigger-moment live crop as `…_live.jpg`; companion written even if the still fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified in the field (session_6); owner also saw motion-ghosting on stills that the live crops don't have. r110 ZSL VERDICT (sessions 12/14, manual focus in both): still content lag ~0.4 s at cameraFpsCap 15 vs ~0.17 s at cap 0 — the fps cap (not manual focus) throttles the still pipeline, but lag NEVER goes negative: true ZSL doesn't engage on the Xiaomi. ~0.17 s is the device floor; don't chase it in software — the companion is the zero-lag capture. r111/112: the summary photo viewer shows the companion by DEFAULT (boxes match it); ⚡ flips to the high-res still; one per-view "Lag" row (`content_lag_ms` still / new `live_lag_ms` companion upper bound); crop/export follow the shown file |
-| Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a still can't reach it |
+| Photo source mode | `auto` | r61: per-photo `chooseCapturePath` — fast live-frame crop when it meets the min target, high-res photo otherwise; `fast`/`highRes` force one path. r112 RENAME: user-facing + Dart say "high-res" (`RoiCaptureMode.highRes`, `CapturePath.highRes`), but the WIRE stays `still` (config `captureMode`, capture `path`, `roi_source` — via `wireName`/`_captureModeWireName`; legacy `fullResPhotos:true` loads as `highRes`, `false` as `fast`) |
+| Sync companion (high-res) | on | r108 (Dart field `highResSyncCompanion` since r112; JSON key frozen `stillSyncCompanion`): every high-res-path photo also saves the trigger-moment live crop as `…_live.jpg`; companion written even if the high-res photo fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified in the field (session_6); owner also saw motion-ghosting on high-res photos that the live crops don't have. r110 ZSL VERDICT (sessions 12/14, manual focus in both): high-res content lag ~0.4 s at cameraFpsCap 15 vs ~0.17 s at cap 0 — the fps cap (not manual focus) throttles the photo pipeline, but lag NEVER goes negative: true ZSL doesn't engage on the Xiaomi. ~0.17 s is the device floor; don't chase it in software — the companion is the zero-lag capture. r111/112: the summary photo viewer shows the companion by DEFAULT (boxes match it); ⚡ flips to the high-res photo; one per-view "Lag" row (`content_lag_ms` high-res / new `live_lag_ms` companion upper bound); crop/export follow the shown file |
+| Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a high-res photo can't reach it |
 | Occlusion tolerance | `3.0 s` | track buffer |
 | Min hits | `0.2 s` | before a track is confirmed (UI label now "Minimum visit length") |
 | Tracker algorithm | `bytetrack` | r105: AI-tab "Visit tracking" dropdown; `cbiou` = buffered-IoU alternative (search margins 0.30/0.50, own highThresh 0.5); both share the seconds-based settings above |
@@ -85,20 +85,20 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 - **Crop/save paths all already ÷32-snap and cap to short side** — don't "fix" them again:
   fast `ImageUtils.cropRoiFromFrame` (plugin Kotlin), full-res `MainActivity.cropRoiJpeg`
   (app Kotlin), and the Dart fallback `_cropJpeg` (`capture/roi_capture.dart`). Fast path
-  crops the live frame; the still path takes a full still then region-crops (and, above
+  crops the live frame; the high-res path takes a full photo then region-crops (and, above
   `maxRoiSavedPx`, downscales — never upscales).
 - **The photo source is chosen PER PHOTO (round 61).** `chooseCapturePath` /
   `savedSidePx` / `capSavedSidePx` in `capture/roi_capture.dart` are the single source of
   the decision + size math; the single `targetRoiSavedPx` (r63) is both threshold and
   cap. Capture records log `path` + `saved_px` per photo, ROI records log `roi_source`
-  + `saves_px`. Still-path caveat (r108: measured ~0.76 s content lag on the Xiaomi
+  + `saves_px`. High-res-path caveat (r108: measured ~0.76 s content lag on the Xiaomi
   even though CameraX grants ZERO_SHUTTER_LAG — suspect the r82 interop options
-  defeat ZSL; `content_lag_ms` in every still's `capture` record now answers this
-  per photo, negative = ZSL worked): the still shows the scene AFTER the detection
+  defeat ZSL; `content_lag_ms` in every high-res `capture` record now answers this
+  per photo, negative = ZSL worked): the high-res photo shows the scene AFTER the detection
   that scheduled it, so fast insects can be gone and `box_in_roi` may not align.
-  Mitigated by the r108 sync companion (`stillSyncCompanion`, default on): the
-  trigger-moment live crop is saved as `…_live.jpg` beside every still.
-- **Stills are processed off the main thread and NEVER full-frame-rotated (round 63).**
+  Mitigated by the r108 sync companion (`highResSyncCompanion`, default on): the
+  trigger-moment live crop is saved as `…_live.jpg` beside every high-res photo.
+- **High-res photos are processed off the main thread and NEVER full-frame-rotated (round 63).**
   `capturePhotoRaw` returns the unrotated JPEG + rotation/mirror info; CameraX's
   callback runs on `stillExecutor` (handing it the main executor froze UI/preview/
   detector ~1.5 s per photo — session_96 PerfMonitor). The ROI is mapped into raw
@@ -110,8 +110,8 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `YOLOView.onFrame` closes the rest BEFORE bitmap conversion (idle heat fix).
   Consequence: the delivered/camera FPS readout legitimately shows ~that number while
   the gate sleeps — that is the fix working, not a camera fault.
-- **Still dims from the probe must go through `uprightStillDims` (round 64).** The
-  probe's JPEG decode is EXIF-aware and may return the still already upright; a blind
+- **Photo dims from the probe must go through `uprightHighResDims` (round 64).** The
+  probe's JPEG decode is EXIF-aware and may return the photo already upright; a blind
   w/h swap for rotation 90/270 double-rotates (session_97: predicted 1024, saved 992,
   summary showed un-snapped 1304). The summary photo browser shows each file's exact
   `saved_px` from its capture record, not box geometry.
@@ -119,13 +119,13 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   + SessionConfig JSON + summary row + round-trip test, in the same round it appears.
 - **ROI box geometry lives in ONE scale: the stream grid (round 62).** The box's px
   readout, resize slider and ÷32 snapping always use the analysis frame
-  (`_roiSourceWidth` == `_imageWidth`); the still source only feeds the separate
+  (`_roiSourceWidth` == `_imageWidth`); the high-res source only feeds the separate
   "saves N×N (path)" part of the label (`_savedSideNow`) and the crops themselves.
   Do NOT make the box grid follow `_activePath` again — field-tested (session_95):
   the scale-flipping readout misled the owner into shrinking the box to ~17% of the
   frame without realising it.
 - **ROI logging & history (round 109).** The logged `roi` block stays expressed
-  against the photo source (`_roiLogDims` — still-frame on the still path, hence
+  against the photo source (`_roiLogDims` — high-res frame on that path, hence
   session_6's confusing "1333" for an on-screen 480), but start + `roi_update`
   records now ALSO carry `roi_side_stream_px` (the on-screen ÷32 side; same
   `savedSidePx` math) and the summary shows THAT ("Initial ROI", "Initial ROI
@@ -320,7 +320,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   transform, double-tap resets). r111/112: ⚡ tool button (rendered only when
   the session saved r108 `_live` companions) flips trigger-moment live crop
   (DEFAULT view — boxes need no remap, they're ROI-normalized to the trigger
-  frame) ↔ high-res still; "Showing" + per-view "Lag" info rows
+  frame) ↔ high-res photo; "Showing" + per-view "Lag" info rows
   (`content_lag_ms` / `live_lag_ms`); crop-export follows the shown file.
   r112 layout invariant: NO buttons overlay the photo — tools are a row above
   the preview (zoom slider horizontal below them), ‹ › + pan pad in rows

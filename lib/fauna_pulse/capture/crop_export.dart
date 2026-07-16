@@ -138,7 +138,7 @@ Future<CroppedImage?> cropJpegNormRect(File src, Rect norm) async {
   );
 }
 
-/// Same channel MainActivity registers for the capture-time still crop; the
+/// Same channel MainActivity registers for the capture-time high-res crop; the
 /// gallery save is just one more method on it.
 const MethodChannel _channel = MethodChannel('faunapulse/crop');
 

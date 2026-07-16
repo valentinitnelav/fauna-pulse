@@ -22,32 +22,43 @@ import 'schedule_window.dart';
 const String kHideSessionInfoPrefKey = 'faunapulse_hide_session_info';
 
 /// Where each saved ROI photo comes from. Two sources exist, with opposite
-/// trade-offs:
+/// trade-offs (round 112 renamed "still" → "high-res" everywhere the user
+/// sees it — the old name wrongly suggested those photos were the crisp
+/// ones, when they are the slower, motion-blur-prone ones):
 ///
 ///  * **fast** — crop the live analysis frame (the small video frame the
 ///    detector already sees, e.g. 640×480). No camera stall, no extra heat,
 ///    but a small ROI yields a small (low-detail) photo.
-///  * **still** — take a full-resolution photo (like pressing the shutter in
-///    the camera app, e.g. 4000×3000) and cut the ROI out of it. Far more
-///    pixels on the flower, but each still briefly stalls the camera stream
+///  * **highRes** — take a full-resolution photo (like pressing the shutter
+///    in the camera app, e.g. 4000×3000) and cut the ROI out of it. Far more
+///    pixels on the flower, but each one briefly stalls the camera stream
 ///    (the detector misses frames), lands a fraction of a second after the
-///    detection that scheduled it, and costs more heat and storage.
+///    detection that scheduled it (motion blur / a moved insect), and costs
+///    more heat and storage.
 ///  * **auto** — decide per photo: use the fast crop when it already meets the
 ///    user's minimum saved size ([SessionConfig.minRoiSavedPx]); only when the
-///    ROI is too small in the stream does that photo pay for a full still.
-enum RoiCaptureMode { fast, still, auto }
+///    ROI is too small in the stream does that photo pay for a high-res one.
+enum RoiCaptureMode { fast, highRes, auto }
 
-/// Reads the photo-source policy from a saved config, accepting both the new
-/// `captureMode` string and the legacy `fullResPhotos` boolean it replaced
-/// (old sessions saved `fullResPhotos: true` for the always-still behaviour).
+/// The FROZEN wire name each mode saves as. `highRes` still writes `"still"`:
+/// that string is in every saved config and session start record ever logged,
+/// and external parsers (R/Python, DATA_GUIDE snippets) key on it — renaming
+/// the Dart identifier must not change the file format.
+String _captureModeWireName(RoiCaptureMode m) =>
+    m == RoiCaptureMode.highRes ? 'still' : m.name;
+
+/// Reads the photo-source policy from a saved config, accepting the wire
+/// name (`still`), the Dart enum name (`highRes`, defensive) and the legacy
+/// `fullResPhotos` boolean the mode string replaced (old sessions saved
+/// `fullResPhotos: true` for the always-high-res behaviour).
 RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
   final name = j['captureMode'] as String?;
   if (name != null) {
     for (final m in RoiCaptureMode.values) {
-      if (m.name == name) return m;
+      if (m.name == name || _captureModeWireName(m) == name) return m;
     }
   }
-  if (j['fullResPhotos'] as bool? ?? false) return RoiCaptureMode.still;
+  if (j['fullResPhotos'] as bool? ?? false) return RoiCaptureMode.highRes;
   // A legacy config without the new key was fast-only; keep its behaviour
   // rather than silently switching an old setup to auto.
   if (j.containsKey('fullResPhotos')) return RoiCaptureMode.fast;
@@ -279,15 +290,15 @@ class SessionConfig {
   /// (round 109). While false, the app may auto-default the stream once per
   /// screen to the smallest device-supported size with short side ≥ 1024
   /// ([autoStreamResolution] in roi_capture.dart) so fast ROI crops can reach
-  /// the saved-photo target without the laggy still path; a manual dropdown
+  /// the saved-photo target without the laggy high-res path; a manual dropdown
   /// choice sets this true and is never overridden.
   final bool streamResolutionExplicit;
 
   /// ROI photo source policy — see [RoiCaptureMode]. Default [RoiCaptureMode.auto]:
   /// each photo uses the cheap fast crop when it already meets [minRoiSavedPx],
-  /// and pays for a full-resolution still only when the ROI is too small in the
-  /// live stream. (Replaces the old `fullResPhotos` boolean; an old saved config
-  /// with `fullResPhotos: true` loads as [RoiCaptureMode.still].)
+  /// and pays for a full-resolution high-res photo only when the ROI is too
+  /// small in the live stream. (Replaces the old `fullResPhotos` boolean; an old
+  /// saved config with `fullResPhotos: true` loads as [RoiCaptureMode.highRes].)
   final RoiCaptureMode captureMode;
 
   /// The ONE side (pixels) the user wants saved ROI photos to have (round 63,
@@ -295,13 +306,13 @@ class SessionConfig {
   /// the decision threshold and the downscale cap, so every photo saves at
   /// exactly this size whenever the ROI can physically supply it:
   ///
-  ///  * in [RoiCaptureMode.auto], a photo takes the full still when the fast
-  ///    live-frame crop would come out below this;
+  ///  * in [RoiCaptureMode.auto], a photo takes the high-res path when the
+  ///    fast live-frame crop would come out below this;
   ///  * crops larger than this are downscaled to it before saving (bounding
-  ///    storage — a big ROI cut from a full still can be 3000+ px, 1–2 MB);
+  ///    storage — a big ROI cut from a high-res photo can be 3000+ px, 1–2 MB);
   ///  * photos are **never upscaled** to reach it — enlarging pixels invents
   ///    no detail and would degrade later insect classification. When even a
-  ///    full still can't reach it, the photo saves smaller and the on-screen
+  ///    high-res photo can't reach it, the photo saves smaller and the on-screen
   ///    readout shows a ⚠ (the only fixes are physical: move the phone closer
   ///    or switch to a telephoto lens).
   ///
@@ -398,13 +409,14 @@ class SessionConfig {
   /// Interval between ground-truth frames, in seconds (default 5).
   final double gtFrameSeconds;
 
-  /// Round 108: when a photo takes the STILL path, also save the live-frame
-  /// fast crop of the trigger moment next to it (`<name>_live.jpg`). A still
-  /// physically lands ~0.5–1 s after the detection that scheduled it, so a
-  /// fast insect is often gone from it; the companion is small (stream
+  /// Round 108: when a photo takes the HIGH-RES path, also save the live-frame
+  /// fast crop of the trigger moment next to it (`<name>_live.jpg`). A high-res
+  /// photo physically lands ~0.5–1 s after the detection that scheduled it, so
+  /// a fast insect is often gone from it; the companion is small (stream
   /// resolution) but shows the trigger moment. Default on — dataset
-  /// completeness beats the extra ~50–200 KB per still.
-  final bool stillSyncCompanion;
+  /// completeness beats the extra ~50–200 KB per photo. (Saved-config/JSON key
+  /// stays `stillSyncCompanion` — frozen wire name, see [_captureModeWireName].)
+  final bool highResSyncCompanion;
 
   const SessionConfig({
     this.modelPath = 'yolo26n',
@@ -462,7 +474,7 @@ class SessionConfig {
     this.logRawDetections = false,
     this.gtFramesEnabled = false,
     this.gtFrameSeconds = 5.0,
-    this.stillSyncCompanion = true,
+    this.highResSyncCompanion = true,
   });
 
   /// True when the schedule can actually run: 1–3 windows, each with
@@ -561,7 +573,7 @@ class SessionConfig {
     bool? logRawDetections,
     bool? gtFramesEnabled,
     double? gtFrameSeconds,
-    bool? stillSyncCompanion,
+    bool? highResSyncCompanion,
   }) => SessionConfig(
     modelPath: modelPath ?? this.modelPath,
     task: task ?? this.task,
@@ -615,7 +627,7 @@ class SessionConfig {
     logRawDetections: logRawDetections ?? this.logRawDetections,
     gtFramesEnabled: gtFramesEnabled ?? this.gtFramesEnabled,
     gtFrameSeconds: gtFrameSeconds ?? this.gtFrameSeconds,
-    stillSyncCompanion: stillSyncCompanion ?? this.stillSyncCompanion,
+    highResSyncCompanion: highResSyncCompanion ?? this.highResSyncCompanion,
   );
 
   Map<String, dynamic> toJson() => {
@@ -655,10 +667,11 @@ class SessionConfig {
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'streamResolutionExplicit': streamResolutionExplicit,
-    'captureMode': captureMode.name,
+    // Frozen wire name: highRes writes "still" (see _captureModeWireName).
+    'captureMode': _captureModeWireName(captureMode),
     'targetRoiSavedPx': targetRoiSavedPx,
     // Legacy key kept one round so an older build can still read this config.
-    'fullResPhotos': captureMode == RoiCaptureMode.still,
+    'fullResPhotos': captureMode == RoiCaptureMode.highRes,
     'occlusionSeconds': occlusionSeconds,
     'minHitsSeconds': minHitsSeconds,
     'fpsSampleSeconds': fpsSampleSeconds,
@@ -673,7 +686,8 @@ class SessionConfig {
     'logRawDetections': logRawDetections,
     'gtFramesEnabled': gtFramesEnabled,
     'gtFrameSeconds': gtFrameSeconds,
-    'stillSyncCompanion': stillSyncCompanion,
+    // Frozen wire key from the r108 name; the Dart field renamed in r112.
+    'stillSyncCompanion': highResSyncCompanion,
   };
 
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
@@ -755,7 +769,7 @@ class SessionConfig {
     logRawDetections: j['logRawDetections'] as bool? ?? false,
     gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? false,
     gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 5.0,
-    stillSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
+    highResSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
   );
 
   static const String _prefsKey = 'faunapulse_session_config';

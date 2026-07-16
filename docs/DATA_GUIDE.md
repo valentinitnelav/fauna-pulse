@@ -60,14 +60,14 @@ Session-wide metadata. Notable fields:
 | `free_storage_bytes`, `total_storage_bytes` | Free/total bytes on the session's storage volume at start (round 68). |
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
 | `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models). |
-| `camera_full_width_px`, `camera_full_height_px` | Full-resolution still size. |
+| `camera_full_width_px`, `camera_full_height_px` | Full-resolution (high-res) photo size. |
 | `selected_lens_zoom`, `selected_lens_label` | Which rear lens was used. |
 | `focus_mode` (`manual`/`auto`/`fixed`), `focus_value` | Focus; `focus_value` (0..1) present only for manual. |
 | `confidence_threshold`, `iou_threshold` | Detection thresholds. |
 | `step_seconds`, `duration_seconds`, `session_minutes` | Timing config. |
 | `roi` | Starting ROI geometry (see the `roi` sub-object below). |
 | `roi_source`, `saves_px` | Which source the ROI photo comes from, and exact saved pixel side. |
-| `roi_side_stream_px` | Round 109+: the ROI side in the **stream grid** — the ÷32 number shown on screen while recording (e.g. 480). Prefer this for "how big was the box"; the `roi` block may express the same square against the full-res still (e.g. 1333 on a 3000-wide still = the same 480 box). |
+| `roi_side_stream_px` | Round 109+: the ROI side in the **stream grid** — the ÷32 number shown on screen while recording (e.g. 480). Prefer this for "how big was the box"; the `roi` block may express the same square against the full-res high-res frame (e.g. 1333 on a 3000-wide frame = the same 480 box). |
 | `analysis_frame_width_px`, `analysis_frame_height_px` | Live analysis-frame size. |
 | `inference_fps`, `*_sample_seconds` | Rate cap and logging cadences. |
 | `config` | **A complete self-describing copy of every setting used** — the most reliable source for your methods section. Individual keys above are kept for older readers. |
@@ -82,7 +82,7 @@ The `roi` sub-object (also used in `roi_update`):
 | `frame_width_px`, `frame_height_px` | The frame these are relative to. |
 
 > ⚠ `width_px` is relative to whichever frame the photos were being saved from
-> (`frame_width_px`) — on the still path that is the full-resolution still, so
+> (`frame_width_px`) — on the high-res path that is the full-resolution photo, so
 > it is usually **larger** than the box the user saw. For the on-screen ÷32
 > size use `roi_side_stream_px` (round 109+); for older logs recompute it as
 > `width_px / frame_width_px × analysis_frame_width_px`, snapped to the
@@ -140,7 +140,7 @@ Deliberately a separate type: never mix these into detection-photo joins.
 
 ### `roi_update` — when the ROI is moved/resized mid-session
 
-Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`), `saves_px`
+Carries the `roi` sub-object, plus `roi_source` (`fast`/`still`; `still` = the high-res path, frozen wire name), `saves_px`
 and (round 109+) `roi_side_stream_px` (the on-screen ÷32 side — see the `roi`
 note above). Since round 109 these records are **debounced**: one record per
 adjustment, written once the box has sat unchanged for ~2 s (a change still
@@ -176,7 +176,7 @@ make that auditable, so an empty stretch is "confirmed asleep", not "missed".
 ### `capture` — one per ROI-photo save
 
 Records `fileName`, `trackIds` (the tracks that photo covered — concurrent
-tracks share one photo), timing, byte size, whether it was a full-res still,
+tracks share one photo), timing, byte size, whether it was a high-res photo,
 the source `path`, and `saved_px`. Lets you check whether photo-saving dented
 the frame rate.
 
@@ -185,10 +185,10 @@ Round-108 additions:
 | Field | Meaning |
 |---|---|
 | `grab_ms` | Time the image grab alone took; the rest of `total_ms` is crop + encode + write. |
-| `content_lag_ms` | Still path only. How much OLDER/NEWER the frame's *content* is than the capture request. **Negative = the phone's zero-shutter-lag really served a pre-request frame**; a large positive value means the photo shows the scene that long after the triggering detection (fast insects will have left). |
-| `callback_lag_ms` | Still path only. Plain request→JPEG wait. |
-| `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the still as `…_live.jpg`. Small but in sync — use it when the still misses the insect. |
-| `live_lag_ms` | Round 112. The companion's own delay behind the trigger moment, measured when its frame grab returned — an upper bound on how old its content can be (typically a few tens of ms; compare with the still's `content_lag_ms`). |
+| `content_lag_ms` | High-res path only. How much OLDER/NEWER the frame's *content* is than the capture request. **Negative = the phone's zero-shutter-lag really served a pre-request frame**; a large positive value means the photo shows the scene that long after the triggering detection (fast insects will have left). |
+| `callback_lag_ms` | High-res path only. Plain request→JPEG wait. |
+| `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the high-res photo as `…_live.jpg`. Small but in sync — use it when the high-res photo misses the insect. |
+| `live_lag_ms` | Round 112. The companion's own delay behind the trigger moment, measured when its frame grab returned — an upper bound on how old its content can be (typically a few tens of ms; compare with the high-res photo's `content_lag_ms`). |
 
 ### `app_error` — an error surfaced during recording
 

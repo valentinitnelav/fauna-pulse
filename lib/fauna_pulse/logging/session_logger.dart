@@ -238,7 +238,7 @@ class SessionLogger {
       _append('gt_capture', payload, at: at);
 
   /// A single ROI-photo save event: how long the grab+crop+write took, the byte
-  /// size, whether it was a full-resolution still, and the track ids it covered.
+  /// size, whether it was a full-resolution high-res photo, and the track ids it covered.
   /// Lets the end-of-session diagnostics tell whether photo-saving contributes to
   /// any frame-rate dip. Off the inference path, so flushing each line is fine.
   void logCapture(Map<String, dynamic> payload, {DateTime? at}) =>

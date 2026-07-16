@@ -100,7 +100,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Roi _roi = Roi.defaultRoi;
   int _imageWidth = 0;
   int _imageHeight = 0;
-  // Full-resolution still dimensions (the photo actually saved), learned once
+  // Full-resolution high-res photo dimensions (the file actually saved), learned once
   // by probing capturePhoto() — see [CameraDiagnosticsController]. The analysis
   // frame above is much smaller, so the ROI resolution shown to the user is
   // based on these capture dimensions.
@@ -113,7 +113,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // Camera-supported analysis stream resolutions ("WxH"), for the settings menu.
   List<String> get _streamResolutions => _probes.streamResolutions;
   // Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
-  // phone (the still/preview sizes above advertise more than the analysis pipeline
+  // phone (the photo/preview sizes above advertise more than the analysis pipeline
   // can deliver). Keys: hardwareLevel, recommendedMax ("WxH"), previewBoundW/H,
   // displayW/H. Probed once and handed to the settings sheet. See round 56.
   Map<String, dynamic> get _analysisCeiling => _probes.analysisCeiling;
@@ -325,8 +325,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// The photo source the CURRENT ROI would use for its next saved photo. In
   /// auto mode this flips as the user resizes the box (a small box needs the
-  /// full still to meet the minimum saved size; a big one is fine from the live
-  /// frame); fast/still modes are constant. All WYSIWYG readouts, grid snapping
+  /// high-res photo to meet the minimum saved size; a big one is fine from the
+  /// live frame); fast/high-res modes are constant. All WYSIWYG readouts, grid snapping
   /// and ROI logging derive from it so the box on screen always describes the
   /// file that will actually be written.
   CapturePath get _activePath => chooseCapturePath(
@@ -335,15 +335,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     roiSideFraction: _roi.sideFraction,
     streamW: _imageWidth,
     streamH: _imageHeight,
-    stillW: _captureWidth,
-    stillH: _captureHeight,
+    highResW: _captureWidth,
+    highResH: _captureHeight,
   );
 
   /// Width (px) of the grid the ROI BOX is measured and snapped in: ALWAYS the
-  /// live analysis frame. Round 62: the geometry used to switch to the still's
-  /// grid whenever the still path was active, so the same physical box jumped
-  /// scales mid-drag (e.g. "992 px" → "2464 px") and the resize slider ran to
-  /// the still's short side — field-tested as thoroughly confusing, and it led
+  /// live analysis frame. Round 62: the geometry used to switch to the
+  /// high-res frame's grid whenever that path was active, so the same physical
+  /// box jumped scales mid-drag (e.g. "992 px" → "2464 px") and the resize
+  /// slider ran to its short side — field-tested as thoroughly confusing, and it led
   /// the owner to shrink the box far below the intended size. The box now
   /// lives in ONE scale (the stream the user is looking at, monotonic while
   /// dragging); what the chosen source turns that box into is shown separately
@@ -354,11 +354,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// Side (px) of the file the CURRENT box would save right now: the crop math
   /// of the active path's source ([savedSidePx] mirrors the native snapping
-  /// exactly), then the user's max-side cap. On the still path this is usually
-  /// LARGER than the box's stream-pixel size — that is the whole point of
-  /// taking a still for a small box.
+  /// exactly), then the user's max-side cap. On the high-res path this is
+  /// usually LARGER than the box's stream-pixel size — that is the whole point
+  /// of paying for a high-res photo for a small box.
   int get _savedSideNow {
-    final (w, h) = _activePath == CapturePath.still
+    final (w, h) = _activePath == CapturePath.highRes
         ? (_captureWidth, _captureHeight)
         : (_imageWidth, _imageHeight);
     return capSavedSidePx(
@@ -379,7 +379,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// Dimensions the ROI is logged against — kept consistent with the saved crop
   /// source so the logged pixel size matches the files.
-  (int, int) get _roiLogDims => _activePath == CapturePath.still
+  (int, int) get _roiLogDims => _activePath == CapturePath.highRes
       ? (_captureWidth, _captureHeight)
       : (_imageWidth, _imageHeight);
 
@@ -688,7 +688,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         });
       }
       // Same one-time bootstrap as the detector path below: these maps carry
-      // the analysis dims precisely so the ROI push + still-size probe can
+      // the analysis dims precisely so the ROI push + photo-size probe can
       // run when the app starts straight into motion-only mode.
       if (!_captureProbeStarted && w > 0 && h > 0) {
         _captureProbeStarted = true;
@@ -871,7 +871,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       });
     }
 
-    // Once the camera is delivering frames, probe the full-resolution still size
+    // Once the camera is delivering frames, probe the full-resolution photo size
     // a single time so the ROI resolution readout reflects the saved photo, and
     // (re)assert the inference ROI now the native pipeline is certainly live.
     if (!_captureProbeStarted && w > 0 && h > 0) {
@@ -935,7 +935,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// ([SessionConfig.streamResolutionExplicit] false), default it — once per
   /// screen, as soon as BOTH probes have answered — to the smallest supported
   /// size whose short side is ≥ 1024, so fast ROI crops can reach the default
-  /// saved-photo target instead of falling back to the laggy full-res still
+  /// saved-photo target instead of falling back to the laggy high-res path
   /// (round 108: ~0.4–0.8 s behind the trigger). Runs from the probe
   /// controller's onChanged; the guards keep it out of recordings/scheduled
   /// runs (a stream change rebinds the camera) and stop the rebind's fresh
@@ -1218,19 +1218,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // Includes an `algorithm` key (round 105: bytetrack or cbiou) so
         // post-processing knows which tracker produced this session's ids.
         'tracker_params': _tracker.effectiveParamsJson(),
-        // ROI sizes are expressed against the full-resolution still that is
+        // ROI sizes are expressed against the full-resolution photo that is
         // actually saved (capture dims); the smaller analysis frame fed to the
         // detector is logged separately for context.
         'roi': _roi.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
-        // Which source the ROI dims above refer to ('fast' = analysis frame,
-        // 'still' = full-res still) — in auto mode it depends on the box size.
-        'roi_source': _activePath.name,
+        // Which source the ROI dims above refer to ('fast' = analysis
+        // frame, 'still' = high-res photo; frozen wire names) — in auto
+        // mode it depends on the box size.
+        'roi_source': _activePath.wireName,
         // Exact side of the file this box would save (crop snap + max-side cap),
         // so post-processing never has to re-derive it from the fraction.
         'saves_px': _savedSideNow,
         // Round 109: the ROI side in the STREAM grid — the ÷32 number the user
-        // saw on screen (the `roi` block above may be a still-frame projection
-        // of the same square, which reads confusingly large; session_6).
+        // saw on screen (the `roi` block above may be a high-res-frame
+        // projection of the same square, which reads confusingly large;
+        // session_6).
         'roi_side_stream_px': savedSidePx(
           _roi.sideFraction,
           _imageWidth,
@@ -1269,26 +1271,26 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         durationMs: (_config.durationSeconds * 1000).round(),
         // The scheduler picks the source PER PHOTO (chooseCapturePath): the fast
         // live-frame crop when it meets the minimum saved size, otherwise a
-        // full-resolution still (briefly stalls the camera).
+        // full-resolution high-res photo (briefly stalls the camera).
         mode: _config.captureMode,
         targetPx: _config.targetRoiSavedPx,
         streamDims: () => (_imageWidth, _imageHeight),
-        stillDims: () => (_captureWidth, _captureHeight),
+        highResDims: () => (_captureWidth, _captureHeight),
         fastCaptureFn: () => _controller.captureRoiFromFrame(
           cx: _roi.centerX,
           cy: _roi.centerY,
           side: _roi.sideFraction,
           maxPx: _config.targetRoiSavedPx,
         ),
-        // Round 108: pair each still with the trigger-moment live crop
-        // (stills land ~0.76 s late on this phone — measured r108).
-        syncCompanion: _config.stillSyncCompanion,
-        stillCaptureFn: () async {
-          // Raw (unrotated) still + rotation info — the round-63 lag fix: the
+        // Round 108: pair each high-res photo with the trigger-moment live
+        // crop (they land ~0.76 s late on this phone — measured r108).
+        syncCompanion: _config.highResSyncCompanion,
+        highResCaptureFn: () async {
+          // Raw (unrotated) photo + rotation info — the round-63 lag fix: the
           // full 12 MP frame is never rotated; only the ROI crop is.
           final raw = await _controller.capturePhotoRaw();
           if (raw != null) {
-            return RawStill(
+            return RawHighRes(
               bytes: raw.$1,
               rotationDegrees: raw.$2,
               isFront: raw.$3,
@@ -1300,7 +1302,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           final frame = await _controller.captureFrame();
           return frame == null
               ? null
-              : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
+              : RawHighRes(bytes: frame, rotationDegrees: 0, isFront: false);
         },
         roiProvider: () => _roi,
         onStat: (s) {
@@ -1316,16 +1318,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             'full_res': s.fullRes,
             // Per-photo source + saved square side, so post-processing knows the
             // real resolution of every file (in auto mode it varies with the ROI).
-            'path': s.path.name,
+            'path': s.path.wireName,
             'saved_px': s.savedPx,
-            // Round 108 diagnostics: grab vs process split, and (still path)
-            // how OLD the frame content is vs the trigger — negative means
+            // Round 108 diagnostics: grab vs process split, and (high-res
+            // path) how OLD the frame content is vs the trigger — negative means
             // zero-shutter-lag really served a past frame.
             if (s.grabMs != null) 'grab_ms': s.grabMs,
             if (s.contentLagMs != null) 'content_lag_ms': s.contentLagMs,
             if (s.callbackLagMs != null) 'callback_lag_ms': s.callbackLagMs,
             // Round 108 sync companion: the trigger-moment live crop saved
-            // beside this still, when enabled and available.
+            // beside this high-res photo, when enabled and available.
             if (s.liveJpeg != null) 'live_jpeg': s.liveJpeg,
             if (s.liveBytes != null) 'live_bytes': s.liveBytes,
             if (s.liveSavedPx != null) 'live_saved_px': s.liveSavedPx,
@@ -1357,17 +1359,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               mode: _config.captureMode,
               targetPx: _config.targetRoiSavedPx,
               streamDims: () => (_imageWidth, _imageHeight),
-              stillDims: () => (_captureWidth, _captureHeight),
+              highResDims: () => (_captureWidth, _captureHeight),
               fastCaptureFn: () => _controller.captureRoiFromFrame(
                 cx: _roi.centerX,
                 cy: _roi.centerY,
                 side: _roi.sideFraction,
                 maxPx: _config.targetRoiSavedPx,
               ),
-              stillCaptureFn: () async {
+              highResCaptureFn: () async {
                 final raw = await _controller.capturePhotoRaw();
                 if (raw != null) {
-                  return RawStill(
+                  return RawHighRes(
                     bytes: raw.$1,
                     rotationDegrees: raw.$2,
                     isFront: raw.$3,
@@ -1378,7 +1380,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 final frame = await _controller.captureFrame();
                 return frame == null
                     ? null
-                    : RawStill(bytes: frame, rotationDegrees: 0, isFront: false);
+                    : RawHighRes(bytes: frame, rotationDegrees: 0, isFront: false);
               },
               roiProvider: () => _roi,
               onStat: (s) {
@@ -1388,7 +1390,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                   'captured_at_ms': s.capturedAtMs,
                   'total_ms': s.totalMs,
                   'bytes': s.bytes,
-                  'path': s.path.name,
+                  'path': s.path.wireName,
                   'saved_px': s.savedPx,
                   if (s.contentLagMs != null) 'content_lag_ms': s.contentLagMs,
                 });
@@ -1659,7 +1661,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   }
 
   /// Scheduled sleep = the real between-windows power save: the camera is
-  /// FULLY unbound (analysis + still capture + preview — `pause()` is the
+  /// FULLY unbound (analysis + photo capture + preview — `pause()` is the
   /// same call the summary/settings cool-down uses), and the blackout cover
   /// goes up with the sleep-status variant (tap shows status, never wakes).
   Future<void> _enterScheduledSleep() async {
@@ -2150,9 +2152,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void _writeRoiUpdate(Roi settled) {
     _logger?.logRoiUpdate({
       'roi': settled.toLogJson(_roiLogDims.$1, _roiLogDims.$2),
-      // Which source the ROI dims above refer to ('fast' = analysis frame,
-      // 'still' = full-res still) — in auto mode it depends on the box size.
-      'roi_source': _activePath.name,
+      // Which source the ROI dims above refer to ('fast' = analysis
+      // frame, 'still' = high-res photo; frozen wire names) — in auto
+      // mode it depends on the box size.
+      'roi_source': _activePath.wireName,
       // Exact side of the file this box would save (crop snap + max-side cap),
       // so post-processing never has to re-derive it from the fraction.
       'saves_px': _savedSideNow,
@@ -2342,14 +2345,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   @override
   Widget build(BuildContext context) {
     // Show the ROI side at the resolution of the saved photo, snapped to the
-    // multiple of 32 the crop actually uses. The full-resolution still size is
+    // multiple of 32 the crop actually uses. The full-resolution photo size is
     // learned by a one-time probe right after the camera starts; until it
     // returns we show "measuring…" rather than flashing a placeholder number.
     // Two separate numbers, deliberately (round 62): the BOX size in stream
     // pixels (one scale, goes down monotonically as the user shrinks it) and
     // the FILE size the active source would save from it ("saves N×N"). On the
-    // still path the file is usually larger than the box's stream-pixel size —
-    // that's the point of taking a still for a small box.
+    // high-res path the file is usually larger than the box's stream-pixel size —
+    // that's the point of paying for a high-res photo for a small box.
     final bool haveRoiDim = _roiSourceWidth > 0;
     final int roiSidePx = haveRoiDim
         ? snapToMultipleOf32(
@@ -2366,8 +2369,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final String roiLabel = !haveRoiDim
         ? 'ROI: measuring…'
         : (savedPxNow != roiSidePx
-              ? 'ROI: $roiSidePx×$roiSidePx px → saves $savedPxNow×$savedPxNow (${_activePath.name})$warnTag'
-              : 'ROI: $roiSidePx×$roiSidePx px (${_activePath.name})$warnTag');
+              ? 'ROI: $roiSidePx×$roiSidePx px → saves $savedPxNow×$savedPxNow (${_activePath.uiName})$warnTag'
+              : 'ROI: $roiSidePx×$roiSidePx px (${_activePath.uiName})$warnTag');
     // Live analysis-stream size (its short side caps the fast ROI crop). Shows a
     // "measuring…" placeholder until the first frame arrives (like ROI), so the
     // line is always present rather than appearing late. If the phone delivered a
@@ -2393,8 +2396,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
     // Calibration = the one-time full-res probe; recording waits for it.
     final bool haveCaptureDims = _captureWidth > 0;
-    // (Full-sensor still size is shown in Settings, next to "Full-resolution ROI
-    // photos", rather than cluttering the live preview.)
+    // (Full-sensor photo size is shown in Settings, next to the ROI photo
+    // source, rather than cluttering the live preview.)
     // Engine/Model/Input are always shown, with a clear waiting/unknown state
     // instead of a blank line, so the overlay layout doesn't shift as they load.
     final String engineLabel = _accelerator.isEmpty

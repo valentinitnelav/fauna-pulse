@@ -94,7 +94,7 @@ List<ReplayFrame> keepEveryNth(List<ReplayFrame> frames, int n) => [
 
 /// Periodically removes whole blocks of frames: every [everySeconds] of
 /// stream time, the frames inside the next [gapSeconds] are dropped —
-/// isolated 0.5–2 s stalls, like a camera hiccup or a burst of stills.
+/// isolated 0.5–2 s stalls, like a camera hiccup or a burst of high-res photos.
 List<ReplayFrame> injectGaps(
   List<ReplayFrame> frames, {
   required double gapSeconds,

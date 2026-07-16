@@ -21,7 +21,7 @@ Android (Kotlin)**.
   inference). Forked from upstream commit `22b2e5d` and modified for
   ROI-crop inference and fast ROI capture.
 - **App native shell:** `android/app/src/main/kotlin/com/ultralytics/yolo/MainActivity.kt`
-  — hosts the full-resolution still crop and the device/thermal/keep-alive
+  — hosts the full-resolution high-res photo crop and the device/thermal/keep-alive
   method channels. App id: `com.faunapulse.app` (the Kotlin namespace
   stays `com.ultralytics.yolo` for compatibility with the plugin).
 
@@ -76,7 +76,7 @@ sent per frame by default.** Consumed by `_onStreamingData`.
 
 | Channel | Direction | Purpose |
 |---|---|---|
-| `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution still and region-crop the ROI out of it. |
+| `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution high-res photo and region-crop the ROI out of it. |
 | `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
 | `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive. |
 | `faunapulse/diagnostics` | Dart → native | Capture logcat into the session folder. |
@@ -92,18 +92,18 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
 
 - **ROI ÷32 snapping.** Three crop paths must all snap the side to a multiple
   of 32 and cap it to the source's short side: the fast live-frame crop
-  (`ImageUtils.cropRoiFromFrame`, plugin Kotlin), the full-res still crop
+  (`ImageUtils.cropRoiFromFrame`, plugin Kotlin), the high-res photo crop
   (`MainActivity.cropRoiJpeg`, app Kotlin), and the Dart fallback `_cropJpeg`
   (`capture/roi_capture.dart`). The shared math lives in
   `models/roi.dart` (`Roi.snapSideToGrid`, `snapToMultipleOf32`). Don't
   "fix" snapping in one place only.
 - **Rotation/mirror of the saved crop.** Only the small ROI square is rotated,
-  not the full frame — the Dart side (`rawRectForUpright` / `uprightStillDims`
+  not the full frame — the Dart side (`rawRectForUpright` / `uprightHighResDims`
   in `roi_capture.dart`) and the Kotlin mirror in `MainActivity.kt` must
   agree. Do **not** reintroduce full-frame `normalizeJpegOrientation`.
 - **ROI box geometry lives in one scale** (the analysis/stream grid). The
   on-screen size readout, resize snapping, and inference ROI all use the
-  analysis frame; the still source only feeds the separate "saves N×N" label.
+  analysis frame; the high-res source only feeds the separate "saves N×N" label.
   See the invariants in AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
 
 ## 5. What the plugin fork changed vs upstream

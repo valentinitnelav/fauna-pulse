@@ -12,10 +12,10 @@
 //
 // Each photo comes from one of two sources (see [RoiCaptureMode] in
 // session_config.dart): a cheap crop of the live analysis frame, or a
-// full-resolution still (CameraX ImageCapture via the plugin's capturePhoto)
-// cropped to the ROI square. In auto mode the choice is made per photo by
-// [chooseCapturePath]: pay for a still only when the ROI is too small in the
-// stream to meet the user's minimum saved size. Cropping a still decodes JPEG
+// full-resolution high-res photo (CameraX ImageCapture via the plugin's
+// capturePhoto) cropped to the ROI square. In auto mode the choice is made per
+// photo by [chooseCapturePath]: pay for a high-res photo only when the ROI is
+// too small in the stream to meet the user's minimum saved size. Cropping one decodes JPEG
 // data, so it is done natively off the platform thread (with a background-
 // isolate Dart fallback) to keep the camera preview smooth.
 
@@ -33,8 +33,24 @@ import '../models/session_config.dart';
 import '../models/track.dart';
 
 /// The source a given photo is taken from: [fast] = crop of the live analysis
-/// frame (no camera stall), [still] = full-resolution still, region-cropped.
-enum CapturePath { fast, still }
+/// frame (no camera stall), [highRes] = full-resolution photo, region-cropped
+/// (renamed from "still" in round 112 — the old name wrongly suggested crisp
+/// images; these are the slower, motion-blur-prone ones).
+enum CapturePath {
+  fast,
+  highRes;
+
+  /// The FROZEN wire name logged as `path` in every `capture` record:
+  /// [highRes] still writes `"still"` — that value is in every session ever
+  /// recorded and external parsers key on it, so the Dart rename must not
+  /// change the log format. Mirrors `_captureModeWireName` in
+  /// session_config.dart.
+  String get wireName => this == CapturePath.highRes ? 'still' : name;
+
+  /// The user-facing name (round 112 rename): what on-screen readouts and
+  /// the summary display — never what goes into the log.
+  String get uiName => this == CapturePath.highRes ? 'high-res' : 'fast';
+}
 
 /// Builds the on-disk name of one saved ROI photo, e.g.
 /// `roi_k7x2_2026-07-14_153045_123.jpg`: the per-session random [token] (see
@@ -59,13 +75,13 @@ String roiPhotoFileName(int epochMs, String token) {
   return 'roi_${token}_${date}_${time}_$ms.jpg';
 }
 
-/// A still photo exactly as the camera delivered it: JPEG bytes that are NOT
+/// A high-res photo exactly as the camera delivered it: JPEG bytes that are NOT
 /// yet rotated upright, plus the clockwise rotation (0/90/180/270) and the
 /// front-camera mirror flag needed to interpret them. Skipping the upfront
 /// full-frame rotation is the round-63 lag fix: rotating the whole 12 MP
 /// photo took ~1.5 s per photo ON THE MAIN THREAD (freezing preview and
 /// detector); now only the small cropped square is rotated.
-class RawStill {
+class RawHighRes {
   final Uint8List bytes;
   final int rotationDegrees;
   final bool isFront;
@@ -80,7 +96,7 @@ class RawStill {
   /// Round 108: plain shutter-to-bytes wait in ms (request → JPEG in hand).
   final double? callbackLagMs;
 
-  const RawStill({
+  const RawHighRes({
     required this.bytes,
     required this.rotationDegrees,
     required this.isFront,
@@ -90,7 +106,7 @@ class RawStill {
 }
 
 /// Where an upright-frame rectangle lands inside the RAW (not yet rotated)
-/// still. Android hands stills over "as the sensor sees them" plus the
+/// high-res photo. Android hands photos over "as the sensor sees them" plus the
 /// clockwise rotation that would make them upright; instead of rotating the
 /// full photo we map the crop rectangle into raw coordinates, cut there, and
 /// rotate only the small square afterwards. Edges are exclusive on the
@@ -135,7 +151,7 @@ class RawStill {
 /// Side (pixels) an ROI crop of [sideFraction] has when cut from a `w`×`h`
 /// source: the nearest multiple of 32, capped at the largest multiple of 32
 /// that fits the source's short side. This is the SAME math every crop path
-/// (native fast crop, native still crop, Dart fallback) applies, so callers
+/// (native fast crop, native high-res crop, Dart fallback) applies, so callers
 /// can predict the saved size without decoding anything. Returns 0 when the
 /// source size is not yet known.
 int savedSidePx(double sideFraction, int w, int h) {
@@ -156,38 +172,39 @@ int capSavedSidePx(int sidePx, int maxPx) {
 /// Decides, for one photo, which source to use. Pure function so the decision
 /// table is unit-testable without a camera:
 ///
-///  * fast mode  → always the live-frame crop;
-///  * still mode → the full still, unless its size is unknown (the one-time
-///    probe failed), in which case degrade to fast rather than save nothing;
-///  * auto mode  → the live-frame crop when it already meets [targetPx],
-///    otherwise the full still (same probe-failure fallback).
+///  * fast mode     → always the live-frame crop;
+///  * high-res mode → the full high-res photo, unless its size is unknown (the
+///    one-time probe failed), in which case degrade to fast rather than save
+///    nothing;
+///  * auto mode     → the live-frame crop when it already meets [targetPx],
+///    otherwise the high-res photo (same probe-failure fallback).
 CapturePath chooseCapturePath({
   required RoiCaptureMode mode,
   required int targetPx,
   required double roiSideFraction,
   required int streamW,
   required int streamH,
-  required int stillW,
-  required int stillH,
+  required int highResW,
+  required int highResH,
 }) {
-  final stillKnown = stillW > 0 && stillH > 0;
+  final highResKnown = highResW > 0 && highResH > 0;
   switch (mode) {
     case RoiCaptureMode.fast:
       return CapturePath.fast;
-    case RoiCaptureMode.still:
-      return stillKnown ? CapturePath.still : CapturePath.fast;
+    case RoiCaptureMode.highRes:
+      return highResKnown ? CapturePath.highRes : CapturePath.fast;
     case RoiCaptureMode.auto:
       if (savedSidePx(roiSideFraction, streamW, streamH) >= targetPx) {
         return CapturePath.fast;
       }
-      return stillKnown ? CapturePath.still : CapturePath.fast;
+      return highResKnown ? CapturePath.highRes : CapturePath.fast;
   }
 }
 
 /// Stream-grid side (px) of a logged ROI block — the number the user saw on
 /// screen while recording. `roi` is the `roi` sub-object of a
 /// `start_of_session` / `roi_update` record, whose `width_px`/`frame_width_px`
-/// may be expressed against the full-resolution still (that is what made the
+/// may be expressed against the full-resolution photo frame (that is what made the
 /// summary show a non-÷32 "1333 × 1333" for an on-screen 480 ROI). The pair is
 /// still a valid width FRACTION, so re-projecting it onto the analysis frame
 /// with the same snap/cap math as the live readout ([savedSidePx]) recovers
@@ -209,7 +226,7 @@ int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysis
 /// least [minShortSide]. Rationale: [savedSidePx] caps fast live-frame crops
 /// at the stream's short side, so a short side ≥ the default saved-photo
 /// target (1024) lets auto capture mode reach the target via the fast path
-/// more often, avoiding the laggy full-res still (round 108: ~0.4–0.8 s
+/// more often, avoiding the laggy high-res path (round 108: ~0.4–0.8 s
 /// behind the trigger on the Xiaomi). "Smallest that qualifies" keeps the
 /// per-frame conversion cost — and therefore heat — as low as the goal allows.
 ///
@@ -247,7 +264,7 @@ int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysis
 const MethodChannel _cropChannel = MethodChannel('faunapulse/crop');
 
 /// Reads only a JPEG's pixel dimensions (width, height) on a background isolate.
-/// Upright (as-displayed) dimensions of a still that was delivered with
+/// Upright (as-displayed) dimensions of a high-res photo that was delivered with
 /// [rotationDegrees], given the (w, h) a JPEG decoder reported for it.
 ///
 /// Round 64 bug fix: some JPEG decoders honour the EXIF orientation tag and
@@ -258,18 +275,18 @@ const MethodChannel _cropChannel = MethodChannel('faunapulse/crop');
 /// that is really 3000 px wide upright). The phone is held portrait in this
 /// app, so for a sideways rotation the upright frame must be portrait: swap
 /// only when the reported dims are still landscape.
-(int, int) uprightStillDims(int rotationDegrees, int w, int h) {
+(int, int) uprightHighResDims(int rotationDegrees, int w, int h) {
   final rot = ((rotationDegrees.remainder(360)) + 360) % 360;
   final sideways = rot == 90 || rot == 270;
   if (sideways && w > h) return (h, w);
   return (w, h);
 }
 
-/// Used once at startup to learn the full-resolution still size so the UI can
+/// Used once at startup to learn the full-resolution photo size so the UI can
 /// show the true ROI resolution (the analysis frame fed to the model is much
 /// smaller than the saved photo). Returns null if the bytes can't be decoded.
 /// NOTE: the decode is EXIF-aware, so the reported size may already be
-/// upright — always interpret it through [uprightStillDims].
+/// upright — always interpret it through [uprightHighResDims].
 Future<(int, int)?> probeJpegSize(Uint8List bytes) async {
   final wh = await compute(_jpegSize, bytes);
   if (wh == null) return null;
@@ -330,16 +347,16 @@ class CaptureStat {
   /// [capSavedSidePx] — the same math the crops apply, so no decode needed.
   final int savedPx;
 
-  /// How long the image grab alone took (the still/fast capture function),
+  /// How long the image grab alone took (the high-res/fast capture function),
   /// ms — the rest of [totalMs] is crop + encode + write (round 108).
   final double? grabMs;
 
-  /// Still path only (round 108): content/callback lag from [RawStill] —
+  /// High-res path only (round 108): content/callback lag from [RawHighRes] —
   /// negative content lag = zero-shutter-lag actually worked for this photo.
   final double? contentLagMs;
   final double? callbackLagMs;
 
-  /// Sync companion (round 108): when a still-path photo also saved the
+  /// Sync companion (round 108): when a high-res-path photo also saved the
   /// trigger-moment live-frame crop next to it, its filename/size. Null when
   /// the companion is disabled, the path was fast, or the grab failed.
   final String? liveJpeg;
@@ -350,12 +367,12 @@ class CaptureStat {
   /// (ms, round 112) — an upper bound on how much the companion's CONTENT
   /// can lag the trigger (it serves the newest stream frame at grab time,
   /// so typically well under one frame interval plus scheduling delay).
-  /// The still's [contentLagMs] is the number to compare it against.
+  /// The high-res photo's [contentLagMs] is the number to compare it against.
   final int? liveLagMs;
 
-  /// True for the full-resolution still path (which briefly stalls the camera),
+  /// True for the full-resolution high-res path (which briefly stalls the camera),
   /// false for the fast live-frame crop.
-  bool get fullRes => path == CapturePath.still;
+  bool get fullRes => path == CapturePath.highRes;
 
   const CaptureStat({
     required this.fileName,
@@ -398,15 +415,15 @@ class RoiCaptureScheduler {
   /// already capped to [targetPx] natively. Returns null if unavailable.
   final Future<Uint8List?> Function() fastCaptureFn;
 
-  /// Grabs a full-resolution still (still path) as the camera delivered it
-  /// (unrotated + rotation info; see [RawStill]). The bytes are a FULL frame
+  /// Grabs a full-resolution photo (high-res path) as the camera delivered it
+  /// (unrotated + rotation info; see [RawHighRes]). The bytes are a FULL frame
   /// that this scheduler then crops to the ROI. Returns null if unavailable.
-  final Future<RawStill?> Function() stillCaptureFn;
+  final Future<RawHighRes?> Function() highResCaptureFn;
 
   /// Current ROI (may change if the user adjusts it mid-session).
   final Roi Function() roiProvider;
 
-  /// Photo source policy (fast / still / auto) — see [RoiCaptureMode].
+  /// Photo source policy (fast / high-res / auto) — see [RoiCaptureMode].
   final RoiCaptureMode mode;
 
   /// The single saved-side setting (px): auto-decision threshold AND downscale
@@ -416,9 +433,9 @@ class RoiCaptureScheduler {
   /// Live analysis-frame size (w, h) — the fast path's crop source.
   final (int, int) Function() streamDims;
 
-  /// Full-resolution still size (w, h) learned by the one-time probe; (0, 0)
-  /// when the probe hasn't succeeded (the still path then degrades to fast).
-  final (int, int) Function() stillDims;
+  /// Full-resolution photo size (w, h) learned by the one-time probe; (0, 0)
+  /// when the probe hasn't succeeded (the high-res path then degrades to fast).
+  final (int, int) Function() highResDims;
 
   /// Optional sink for per-photo timing/size, called after each successful write.
   /// Used to log a `capture` diagnostics record; never affects capture itself.
@@ -429,12 +446,13 @@ class RoiCaptureScheduler {
   /// this a failed photo save would be an unhandled async error nobody sees.
   final void Function(String fileName, Object error)? onError;
 
-  /// Round 108: when a photo takes the STILL path, first save the live-frame
-  /// fast crop of the trigger moment as `<name>_live.jpg` next to it. Stills
-  /// land ~0.5–1 s after the detection that scheduled them (measured 760 ms
-  /// median on the Xiaomi even with zero-shutter-lag granted), so a fast
-  /// insect is often gone from the still; the companion is small but shows
-  /// the trigger moment. Written even when the still itself later fails.
+  /// Round 108: when a photo takes the HIGH-RES path, first save the
+  /// live-frame fast crop of the trigger moment as `<name>_live.jpg` next to
+  /// it. High-res photos land ~0.5–1 s after the detection that scheduled
+  /// them (measured 760 ms median on the Xiaomi even with zero-shutter-lag
+  /// granted), so a fast insect is often gone from them; the companion is
+  /// small but shows the trigger moment. Written even when the high-res
+  /// photo itself later fails.
   final bool syncCompanion;
 
   RoiCaptureScheduler({
@@ -443,12 +461,12 @@ class RoiCaptureScheduler {
     required this.stepMs,
     required this.durationMs,
     required this.fastCaptureFn,
-    required this.stillCaptureFn,
+    required this.highResCaptureFn,
     required this.roiProvider,
     required this.mode,
     required this.targetPx,
     required this.streamDims,
-    required this.stillDims,
+    required this.highResDims,
     this.syncCompanion = false,
     this.onStat,
     this.onError,
@@ -552,7 +570,7 @@ class RoiCaptureScheduler {
   /// Grabs the image and writes [pending.fileName]. Safe to fire-and-forget;
   /// overlapping calls are skipped via the busy flag. The photo source is
   /// chosen HERE, per photo (see [chooseCapturePath]): fast-path bytes arrive
-  /// already cropped to the ROI; still-path bytes are a full still that is
+  /// already cropped to the ROI; high-res-path bytes are a full frame that is
   /// cropped (and, above [maxPx], downscaled) here — native region-decode,
   /// with a pure-Dart fallback.
   Future<void> capture(PendingCapture pending) async {
@@ -562,15 +580,15 @@ class RoiCaptureScheduler {
     try {
       final roi = roiProvider();
       final (streamW, streamH) = streamDims();
-      final (stillW, stillH) = stillDims();
+      final (highResW, highResH) = highResDims();
       final path = chooseCapturePath(
         mode: mode,
         targetPx: targetPx,
         roiSideFraction: roi.sideFraction,
         streamW: streamW,
         streamH: streamH,
-        stillW: stillW,
-        stillH: stillH,
+        highResW: highResW,
+        highResH: highResH,
       );
 
       Uint8List finalBytes;
@@ -582,11 +600,11 @@ class RoiCaptureScheduler {
       int? liveBytes;
       int? liveSavedPx;
       int? liveLagMs;
-      if (path == CapturePath.still) {
+      if (path == CapturePath.highRes) {
         // Sync companion FIRST (round 108): the live-frame crop is a cheap
-        // memory grab of (nearly) the trigger moment — taken before the still
-        // so the ~0.5–1 s shutter wait can't age it. Best-effort: a companion
-        // failure must never cost the still.
+        // memory grab of (nearly) the trigger moment — taken before the
+        // high-res photo so the ~0.5–1 s shutter wait can't age it.
+        // Best-effort: a companion failure must never cost the photo.
         if (syncCompanion) {
           try {
             final live = await fastCaptureFn();
@@ -615,14 +633,15 @@ class RoiCaptureScheduler {
           }
         }
         final grabSw = Stopwatch()..start();
-        final raw = await stillCaptureFn();
+        final raw = await highResCaptureFn();
         grabSw.stop();
         grabMs = grabSw.elapsedMicroseconds / 1000.0;
         contentLagMs = raw?.contentLagMs;
         callbackLagMs = raw?.callbackLagMs;
         if (raw == null) {
-          // The still failed, but a companion may already be on disk — report
-          // it so the log (and the photo count) reflect what really saved.
+          // The high-res photo failed, but a companion may already be on
+          // disk — report it so the log (and the photo count) reflect what
+          // really saved.
           if (liveJpeg != null) {
             sw.stop();
             onStat?.call(
@@ -641,7 +660,7 @@ class RoiCaptureScheduler {
           return;
         }
         savedPx = capSavedSidePx(
-          savedSidePx(roi.sideFraction, stillW, stillH),
+          savedSidePx(roi.sideFraction, highResW, highResH),
           targetPx,
         );
         Uint8List? native;
@@ -653,9 +672,9 @@ class RoiCaptureScheduler {
             'side': roi.sideFraction,
             'quality': 90,
             'maxPx': targetPx,
-            // The still is NOT rotated upright (round-63 lag fix); the native
-            // crop maps the ROI into raw coordinates and rotates only the
-            // small square.
+            // The high-res photo is NOT rotated upright (round-63 lag fix);
+            // the native crop maps the ROI into raw coordinates and rotates
+            // only the small square.
             'rotationDegrees': raw.rotationDegrees,
             'isFront': raw.isFront,
           });
@@ -759,7 +778,7 @@ class _CropArgs {
 /// the JPEG, crop a SQUARE centred on the ROI, downscale if it exceeds the
 /// user's target side, rotate the small square upright, re-encode JPEG. The
 /// ROI is defined on the UPRIGHT frame; the bytes may be unrotated (see
-/// [RawStill]), so the crop rectangle is mapped into raw coordinates with
+/// [RawHighRes]), so the crop rectangle is mapped into raw coordinates with
 /// [rawRectForUprightRect]. Falls back to the original bytes if decoding fails.
 Uint8List _cropJpeg(_CropArgs args) {
   final decoded = img.decodeJpg(args.bytes);

@@ -22,14 +22,14 @@ The current implementation allows the phone camera to produce two image "feeds",
    Big video frames (e.g. 3000x4000, 12 MP) would only overheat the phone 
    (heat is a significant limit in the field).
 
-2. **The full-resolution still** — the same thing that happens when you press
+2. **The high-res photo** (full resolution) — the same thing that happens when you press
    the shutter in the normal camera app - e.g. a single 12-megapixel photo
    (3000×4000). It takes ~1 second and briefly costs some processing,
    so it can't run 30×/s.
    Because this is slower, it should be avoided. This gets activated in two ways:
-   Session settings > Camera > ROI photo source ... > Auto ... or Full-resolution stills always options.
+   Session settings > Camera > ROI photo source ... > Auto ... or High-res photos always options.
    On Auto, whenever the ROI is under the desired threshold (e.g. < 1024x1024 px),
-   the app will default to capturing a higher resolution still (at the desired threshold of 1024x1024 px),
+   the app will default to capturing a high-res photo (at the desired threshold of 1024x1024 px),
    cropped with the ROI relative coordinates.
    So, try to adjust the distance between the flower so that the ROI square stays within the desired resolution
    within the live analysis stream.
@@ -39,7 +39,7 @@ stored relative to the frame. The same fraction can be cut out of either stream
 resulting is saving images (ROI cropped) at different resolutions.
 
 ```
-      live analysis stream                full-resolution still
+      live analysis stream                high-res photo (full resolution)
       (the preview / on screen)           (slower to crop & store ~ 1 sec)
       1080 × 1440 px                       3000 × 4000 px
       ┌──────────────┐                    ┌────────────────────┐
@@ -61,28 +61,28 @@ live frame meet the user's target size (e.g. 1024 px)?*
 
 - **Yes** (the ROI box is large on screen) → cut from the live frame. Little costs, 
   so no significant camera interruption.
-- **No** (the ROI box is small — a small flower) → take a full still and cut the
+- **No** (the ROI box is small — a small flower) → take a high-res photo and cut the
   box out of that instead. Costs ~1 s and a brief frame-rate dip, but the
   photo meets the target.
 
 Photos larger than the target are shrunk to exactly the target (storage
 control). Photos are not enlarged: stretching a small image invents no
 detail, it only makes a blurry image with more pixels, which would actively
-mislead the insect classifier later. If even the full still can't reach the
+mislead the insect classifier later. If even the high-res photo can't reach the
 target (the box is a very small fraction of the frame), the app saves the
 best it can and shows **⚠ below N px** — the only real fixes are physical:
 move the phone closer or switch to the telephoto lens.
 
 ## Reading the on-screen label
 
-`ROI: 416×416 px → saves 1024×1024 (still)`
+`ROI: 416×416 px → saves 1024×1024 (high-res)`
 
 - **416×416** — the box's size measured on the live stream (the picture you
   are looking at). This number moves smoothly as you drag, and its scale
   never changes.
 - **saves 1024×1024** — the size of the JPEG that will actually be written.
-- **(still)** or **(fast)** — which stream the photo will be cut from.
-- **⚠ below 1024 px** — appears when even the still can't reach the target.
+- **(high-res)** or **(fast)** — which source the photo will be cut from.
+- **⚠ below 1024 px** — appears when even the high-res photo can't reach the target.
 
 ## Where each number lands in the session file (`session.jsonl`)
 
@@ -90,21 +90,21 @@ move the phone closer or switch to the telephoto lens.
 |---|---|---|
 | `targetRoiSavedPx` | `start_of_session` → `config` | The user's target side (e.g. 1024) |
 | `saved_px` | each `capture` | Exact side of that JPEG|
-| `path` | each `capture` | `"still"` or `"fast"` - which stream it was cut from |
+| `path` | each `capture` | `"still"` or `"fast"` - which source it was cut from (`"still"` is the FROZEN log name of the high-res path — kept for compatibility with all previously recorded sessions after the round-112 rename) |
 | `roi` + `roi_source` + `saves_px` | `start_of_session`, `roi_update` | Box geometry, the stream it refers to, and the predicted file side |
 | `camera_full_*` / `analysis_frame_*` | `start_of_session` | The two stream sizes, upright |
 
 For any analysis of image resolution, **trust `saved_px` in the capture
 records**. It is computed with the same arithmetic the crop itself uses.
 
-## Two honest costs of the "still" path (logged, not hidden)
+## Two honest costs of the high-res path (logged, not hidden)
 
-1. **Timing**: a still lands a fraction of a second after the detection that
+1. **Timing**: a high-res photo lands a fraction of a second after the detection that
    requested it, so a fast-moving insect may have shifted slightly relative
    to the logged bounding box. Each capture record's `total_ms` documents the
    delay.
 2. **Frame-rate dip**: the detector briefly sees fewer frames around each
-   still. Visitation statistics are unaffected (they come from detections,
+   photo. Visitation statistics are unaffected (they come from detections,
    not photos).
 
 ## Technical footnote
@@ -112,7 +112,7 @@ records**. It is computed with the same arithmetic the crop itself uses.
 All crops snap their side length to a multiple of 32 pixels (friendlier for
 vision models) and every size shown or logged is computed by the same shared
 functions (`savedSidePx`, `capSavedSidePx`, `chooseCapturePath` in
-`lib/fauna_pulse/capture/roi_capture.dart` — unit-tested). Stills arrive from
+`lib/fauna_pulse/capture/roi_capture.dart` — unit-tested). High-res photos arrive from
 the camera *unrotated*; the crop is mapped into the raw orientation and only
 the small cropped square is rotated upright (`rawRectForUprightRect`) — this
 is why taking a photo no longer freezes the app.

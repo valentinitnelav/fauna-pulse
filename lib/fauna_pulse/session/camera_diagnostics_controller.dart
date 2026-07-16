@@ -3,7 +3,7 @@
 //
 // Once the camera delivers its first frame, the app asks it a batch of
 // questions whose answers never change during a session: the true size of a
-// full-resolution still (for the ROI resolution readout), whether the lens
+// full-resolution photo (for the ROI resolution readout), whether the lens
 // can focus manually, which analysis-stream resolutions exist, the realistic
 // analysis ceiling, the available rear lenses, and the per-camera
 // diagnostics for the settings sheet. This class owns those probes and their
@@ -35,7 +35,7 @@ class CameraDiagnosticsController {
   List<String> streamResolutions = const [];
 
   /// Estimated ceiling for what CameraX ImageAnalysis can actually stream on
-  /// this phone (the still/preview sizes advertise more than the analysis
+  /// this phone (the photo/preview sizes advertise more than the analysis
   /// pipeline can deliver). Keys: hardwareLevel, recommendedMax ("WxH"),
   /// previewBoundW/H, displayW/H. See round 56.
   Map<String, dynamic> analysisCeiling = const {};
@@ -46,7 +46,7 @@ class CameraDiagnosticsController {
   /// the ceiling would have vetoed.
   bool analysisCeilingProbed = false;
 
-  /// Full-resolution still dimensions (the photo actually saved), learned
+  /// Full-resolution high-res photo dimensions (the file actually saved), learned
   /// once by probing capturePhoto(). 0 until the probe (or its analysis-frame
   /// fallback) lands; recording waits for it ("Calibrating…").
   int captureWidth = 0;
@@ -83,7 +83,7 @@ class CameraDiagnosticsController {
   /// Fires all one-time probes (each is fire-and-forget and swallows its own
   /// failures). Call once, as soon as the camera is delivering frames.
   ///
-  /// [analysisDims] supplies the live analysis-frame size — the still-probe's
+  /// [analysisDims] supplies the live analysis-frame size — the photo-probe's
   /// fallback when every capture attempt fails. [preferredLensZoom] is the
   /// persisted lens choice to re-apply ([SessionConfig.selectedLensZoom]).
   void begin({
@@ -123,10 +123,10 @@ class CameraDiagnosticsController {
         : '${z.toStringAsFixed(z == z.roundToDouble() ? 0 : 1)}×';
   }
 
-  /// Grabs one full-resolution still, reads its pixel size, and stores it so
+  /// Grabs one full-resolution photo, reads its pixel size, and stores it so
   /// the UI can show the true ROI resolution. Retries a few times because the
   /// very first capture right after the camera starts often fails (the
-  /// still-capture use-case isn't bound yet). If it never succeeds (e.g. a
+  /// photo-capture use-case isn't bound yet). If it never succeeds (e.g. a
   /// model that stalls the pipeline), it falls back to the analysis-frame
   /// size and marks the reading approximate, so the "Calibrating…" banner
   /// never hangs forever.
@@ -146,14 +146,14 @@ class CameraDiagnosticsController {
           final size = await probeJpegSize(raw.$1);
           if (size != null && !_disposed) {
             // Store UPRIGHT dimensions so all downstream math keeps one frame
-            // of reference. uprightStillDims (round 64) handles the decoder
+            // of reference. uprightHighResDims (round 64) handles the decoder
             // having possibly applied the EXIF rotation already — a blind
             // swap here double-rotated in session_97.
-            final up = uprightStillDims(raw.$2, size.$1, size.$2);
+            final up = uprightHighResDims(raw.$2, size.$1, size.$2);
             captureWidth = up.$1;
             captureHeight = up.$2;
             // The box's grid is the stream (round 62), so no re-snap here —
-            // the still size only feeds the "saves N×N" readout and crops.
+            // the photo size only feeds the "saves N×N" readout and crops.
             _notify();
             return;
           }
@@ -164,7 +164,7 @@ class CameraDiagnosticsController {
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
     }
-    // Gave up on a real still: fall back to the analysis frame so the UI
+    // Gave up on a real high-res photo: fall back to the analysis frame so the UI
     // stops showing "Calibrating…".
     final (analysisW, analysisH) = analysisDims();
     if (!_disposed && captureWidth == 0 && analysisW > 0) {
@@ -205,7 +205,7 @@ class CameraDiagnosticsController {
   }
 
   /// Asks the camera for the realistic analysis-stream ceiling (what CameraX
-  /// can actually deliver, usually smaller than the still/preview sizes), so
+  /// can actually deliver, usually smaller than the photo/preview sizes), so
   /// the settings sheet can flag sizes the phone will silently shrink.
   Future<void> _fetchAnalysisCeiling() async {
     try {

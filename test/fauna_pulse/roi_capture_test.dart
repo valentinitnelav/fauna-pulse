@@ -126,68 +126,75 @@ void main() {
       RoiCaptureMode mode = RoiCaptureMode.auto,
       int targetPx = 640,
       double side = 0.5,
-      int stillW = 4000,
-      int stillH = 3000,
+      int highResW = 4000,
+      int highResH = 3000,
     }) => chooseCapturePath(
       mode: mode,
       targetPx: targetPx,
       roiSideFraction: side,
       streamW: 640,
       streamH: 480,
-      stillW: stillW,
-      stillH: stillH,
+      highResW: highResW,
+      highResH: highResH,
     );
 
     test('fast mode always uses the live-frame crop', () {
       expect(choose(mode: RoiCaptureMode.fast, side: 0.05), CapturePath.fast);
     });
 
-    test('still mode always uses the still when its size is known', () {
-      expect(choose(mode: RoiCaptureMode.still, side: 1.0), CapturePath.still);
+    test('high-res mode always uses the high-res path when its size is known', () {
+      expect(choose(mode: RoiCaptureMode.highRes, side: 1.0), CapturePath.highRes);
     });
 
-    test('still mode degrades to fast when the size probe failed', () {
+    test('high-res mode degrades to fast when the size probe failed', () {
       // Saving a small photo beats saving none.
       expect(
-        choose(mode: RoiCaptureMode.still, stillW: 0, stillH: 0),
+        choose(mode: RoiCaptureMode.highRes, highResW: 0, highResH: 0),
         CapturePath.fast,
       );
     });
 
-    test('auto takes a still when the fast crop misses the target', () {
-      // 0.5 × 640 = 320 px < 640 target → pay for the still.
-      expect(choose(side: 0.5), CapturePath.still);
+    test('auto takes a high-res photo when the fast crop misses the target', () {
+      // 0.5 × 640 = 320 px < 640 target → pay for the high-res photo.
+      expect(choose(side: 0.5), CapturePath.highRes);
     });
 
     test('auto stays fast when the live-frame crop already suffices', () {
-      // 0.5 × 640 = 320 px ≥ a 320 target → no still needed.
+      // 0.5 × 640 = 320 px ≥ a 320 target → no high-res photo needed.
       expect(choose(side: 0.5, targetPx: 320), CapturePath.fast);
     });
 
-    test('auto degrades to fast when the still probe failed', () {
-      expect(choose(side: 0.1, stillW: 0, stillH: 0), CapturePath.fast);
+    test('auto degrades to fast when the high-res probe failed', () {
+      expect(choose(side: 0.1, highResW: 0, highResH: 0), CapturePath.fast);
+    });
+
+    test('r112 wire freeze: highRes logs as the historical "still"', () {
+      // The `path` value in capture records is frozen — every recorded
+      // session and external parser keys on "still"/"fast".
+      expect(CapturePath.highRes.wireName, 'still');
+      expect(CapturePath.fast.wireName, 'fast');
     });
   });
 
-  group('uprightStillDims', () {
+  group('uprightHighResDims', () {
     // Session_97 bug: the probe decoder had ALREADY applied the EXIF rotation
     // (returned 3000×4000 upright) and the old code swapped it again to
     // 4000×3000, so every size prediction ran against the wrong width
     // (predicted 1024, files were 992). The helper must handle both decoder
     // behaviours.
     test('EXIF-blind decoder (raw landscape) gets swapped for 90/270', () {
-      expect(uprightStillDims(90, 4000, 3000), (3000, 4000));
-      expect(uprightStillDims(270, 4000, 3000), (3000, 4000));
+      expect(uprightHighResDims(90, 4000, 3000), (3000, 4000));
+      expect(uprightHighResDims(270, 4000, 3000), (3000, 4000));
     });
 
     test('EXIF-aware decoder (already portrait) is NOT swapped again', () {
-      expect(uprightStillDims(90, 3000, 4000), (3000, 4000));
-      expect(uprightStillDims(270, 3000, 4000), (3000, 4000));
+      expect(uprightHighResDims(90, 3000, 4000), (3000, 4000));
+      expect(uprightHighResDims(270, 3000, 4000), (3000, 4000));
     });
 
     test('rotation 0/180 keeps dims as reported', () {
-      expect(uprightStillDims(0, 4000, 3000), (4000, 3000));
-      expect(uprightStillDims(180, 4000, 3000), (4000, 3000));
+      expect(uprightHighResDims(0, 4000, 3000), (4000, 3000));
+      expect(uprightHighResDims(180, 4000, 3000), (4000, 3000));
     });
   });
 
