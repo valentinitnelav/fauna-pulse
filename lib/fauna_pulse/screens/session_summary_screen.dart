@@ -473,6 +473,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         <String, Map<int, double>>{}; // per photo: track id -> confidence
     final byFileTime = <String, int>{}; // capture time (ms since epoch)
     final byFileRes = <String, (int, int)>{}; // ROI (width_px, height_px)
+    // Round 111: the r108 sync companion — a still-path photo's trigger-moment
+    // live-stream crop (`<name>_live.jpg`), so the viewer can flip between the
+    // sharp-but-late still and the exact-moment (lower-res) companion.
+    final byFileLive = <String, String>{}; // still file -> companion file name
+    final byFileLivePx = <String, int>{}; // companion saved square side (px)
+    final byFileLagMs = <String, int>{}; // still content lag vs trigger (ms)
     // The ROI pixel size is logged in the start record and again on every ROI
     // edit; carry the most-recent value forward so each photo gets the size that
     // applied when it was captured.
@@ -534,6 +540,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           final capMs = (rec['captured_at_ms'] as num?)?.toInt();
           if (file != null && capMs != null) byFileTime[file] = capMs;
           if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
+          // Sync companion (r108) + content lag: only still-path records carry
+          // these; fast-path photos ARE live crops, so they have neither.
+          final liveJpeg = rec['live_jpeg'] as String?;
+          if (file != null && liveJpeg != null && liveJpeg.isNotEmpty) {
+            byFileLive[file] = liveJpeg;
+            final livePx = (rec['live_saved_px'] as num?)?.toInt();
+            if (livePx != null && livePx > 0) byFileLivePx[file] = livePx;
+          }
+          final lagMs = (rec['content_lag_ms'] as num?)?.toDouble();
+          if (file != null && lagMs != null) byFileLagMs[file] = lagMs.round();
           continue;
         }
         if (isTriggerRecord &&
@@ -644,6 +660,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // per-photo maps gathered above).
     _PhotoSample sampleFor(String name, File file) {
       final ids = (byFileTracks[name] ?? const <int>{}).toList()..sort();
+      // Companion sits next to its still in roi_frames/; only offer the
+      // flip when the file is really on disk (best-effort save, r108).
+      final liveName = byFileLive[name];
+      final liveFile = liveName == null
+          ? null
+          : File('${file.parent.path}/$liveName');
+      final liveExists = liveFile != null && liveFile.existsSync();
       return _PhotoSample(
         file: file,
         name: name,
@@ -653,6 +676,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         captureMs: byFileTime[name] ?? 0,
         width: byFileRes[name]?.$1,
         height: byFileRes[name]?.$2,
+        liveFile: liveExists ? liveFile : null,
+        liveName: liveExists ? liveName : null,
+        livePx: byFileLivePx[name],
+        contentLagMs: byFileLagMs[name],
       );
     }
 
@@ -1763,6 +1790,25 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
+      // Round 111: explain the still/companion pair when this session saved
+      // any — otherwise the ⚡ button (and the second file per photo on
+      // disk) is a mystery.
+      if (_photosRequested &&
+          !_photosLoading &&
+          _photos.any((p) => p.liveFile != null))
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'Photos taken on the high-resolution still path also saved a '
+            'lower-resolution "_live" companion: the same ROI cropped from '
+            'the fast camera stream at the exact trigger moment. The ⚡ '
+            'button on the photo switches between the two — the still is '
+            'sharper but shows the scene a fraction of a second LATER '
+            '(its "Still lag"), so a fast insect can have moved or left; '
+            'the companion shows where it really was.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
       if (_photosLoading)
         const Padding(
           padding: EdgeInsets.all(24),
@@ -1968,6 +2014,21 @@ class _PhotoSample {
   final int? width;
   final int? height;
 
+  /// The r108 sync companion: the trigger-moment live-stream crop saved as
+  /// `<name>_live.jpg` beside a still-path photo. Null when this photo took
+  /// the fast path (it already IS a live crop), the session predates r108,
+  /// or the companion file is missing from disk.
+  final File? liveFile;
+  final String? liveName;
+
+  /// Saved square side (px) of the live companion, from the capture record.
+  final int? livePx;
+
+  /// How much OLDER the still's content is than the trigger moment (ms),
+  /// from the capture record's `content_lag_ms` (r108). Null on fast-path
+  /// photos and pre-r108 logs.
+  final int? contentLagMs;
+
   const _PhotoSample({
     required this.file,
     required this.name,
@@ -1977,6 +2038,10 @@ class _PhotoSample {
     required this.captureMs,
     required this.width,
     required this.height,
+    this.liveFile,
+    this.liveName,
+    this.livePx,
+    this.contentLagMs,
   });
 }
 
@@ -2005,6 +2070,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 
   /// Detection boxes + labels overlay on/off (round 87, top-right tool button).
   bool _showBoxes = true;
+
+  /// Show each still's `_live` companion instead of the still itself
+  /// (round 111, ⚡ tool button). Viewer-wide like [_showBoxes]; photos
+  /// without a companion (fast-path photos are already live crops) keep
+  /// showing their own file.
+  bool _showLive = false;
 
   /// Whether the zoom slider is unfolded under the magnifier button.
   bool _zoomSliderOpen = false;
@@ -2181,6 +2252,35 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     ),
   );
 
+  /// The image file to display (and crop from) for photo [p]: the `_live`
+  /// companion while the ⚡ toggle is on and one exists, else the photo itself.
+  File _fileFor(_PhotoSample p) =>
+      _showLive && p.liveFile != null ? p.liveFile! : p.file;
+
+  /// True when the CURRENT page is really showing its live companion (the
+  /// toggle may be on while this photo has none — e.g. a fast-path photo).
+  bool get _liveShown => _showLive && widget.photos[_page].liveFile != null;
+
+  /// Chip text while the ⚡ toggle is on: names what is really on screen,
+  /// with the still's measured content lag when the log carries it.
+  String get _liveChipText {
+    if (!_liveShown) {
+      return 'No companion — this photo is already a live-stream crop';
+    }
+    final lag = widget.photos[_page].contentLagMs;
+    return 'LIVE companion — the trigger moment'
+        '${lag != null ? ' (still lags $lag ms)' : ''}';
+  }
+
+  /// Saved square side (px) of whichever image is currently displayed for
+  /// [p] — the companion's own size while it is shown. Both are square ROI
+  /// crops, so one side describes them.
+  int? _shownSidePx(_PhotoSample p) {
+    if (_showLive && p.liveFile != null) return p.livePx;
+    if (p.width == null || p.height == null) return null;
+    return min(p.width!, p.height!);
+  }
+
   /// Normalized (0..1) form of the current crop rectangle, or null.
   Rect? get _cropNormRect => _cropSceneRect == null
       ? null
@@ -2190,9 +2290,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// or null when the photo's size isn't in the log.
   (int, int)? _cropPxSize() {
     final norm = _cropNormRect;
-    final p = widget.photos[_page];
-    if (norm == null || p.width == null || p.height == null) return null;
-    return ((norm.width * p.width!).round(), (norm.height * p.height!).round());
+    final side = _shownSidePx(widget.photos[_page]);
+    if (norm == null || side == null) return null;
+    return ((norm.width * side).round(), (norm.height * side).round());
   }
 
   /// The crop rectangle mapped from scene to on-screen (viewport) coordinates
@@ -2221,8 +2321,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     _cropMoveOriginRect = null;
     final r = _cropSceneRect;
     if (r == null) return;
-    final p = widget.photos[_page];
-    final px = min(p.width ?? 1024, p.height ?? 1024);
+    final px = _shownSidePx(widget.photos[_page]) ?? 1024;
     if (r.width / _viewerSide * px < kMinCropSidePx ||
         r.height / _viewerSide * px < kMinCropSidePx) {
       setState(() => _cropSceneRect = null);
@@ -2254,13 +2353,15 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     setState(() => _cropBusy = true);
     String msg;
     try {
-      final cropped = await cropJpegNormRect(p.file, norm);
+      // Cut from whichever image is on screen — the still or (⚡ toggle on)
+      // its live companion; the export name follows the file it came from.
+      final cropped = await cropJpegNormRect(_fileFor(p), norm);
       if (cropped == null) {
         msg =
             'Crop failed — the box is too small (under $kMinCropSidePx px) '
             'or the photo could not be read.';
       } else {
-        final name = cropExportName(p.name);
+        final name = cropExportName(_liveShown ? p.liveName! : p.name);
         if (share) {
           await shareCrop(cropped.jpeg, name);
           msg =
@@ -2453,8 +2554,13 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
+                                      // The boxes are ROI-normalized from the
+                                      // trigger frame, so they overlay the
+                                      // live companion just as directly as
+                                      // the still (in fact they align better:
+                                      // the companion IS the trigger moment).
                                       Image.file(
-                                        p.file,
+                                        _fileFor(p),
                                         fit: BoxFit.contain,
                                         gaplessPlayback: true,
                                       ),
@@ -2556,6 +2662,21 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                           active: _showBoxes,
                           onTap: () => setState(() => _showBoxes = !_showBoxes),
                         ),
+                        // Round 111: flip stills to their `_live` companion —
+                        // only offered when this session saved any.
+                        if (widget.photos.any((p) => p.liveFile != null))
+                          _toolButton(
+                            icon: Icons.bolt,
+                            tooltip:
+                                'Switch between the high-resolution still and '
+                                'its lower-resolution "_live" companion (the '
+                                'ROI cropped from the fast camera stream at '
+                                'the exact trigger moment). Comparing the two '
+                                'shows how far the still lags behind the '
+                                'detection.',
+                            active: _showLive,
+                            onTap: () => setState(() => _showLive = !_showLive),
+                          ),
                         _toolButton(
                           icon: Icons.crop,
                           tooltip:
@@ -2698,6 +2819,31 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         ),
                       ),
                     ),
+                  // Live-companion chip (round 111): while the ⚡ toggle is
+                  // on, say what is actually on screen — the trigger-moment
+                  // companion, or (photos without one) the photo itself.
+                  if (_showLive)
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _liveChipText,
+                          style: const TextStyle(
+                            color: Color(0xFFFFC107),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
                   // Pan pad (round 89): button fallback for moving the
                   // zoomed view, so panning never depends on winning a drag
                   // gesture against the surrounding scrollables.
@@ -2759,9 +2905,16 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   }
 
   /// Per-photo metadata read from the session log: resolution, the track ids
-  /// visible in it, the capture time, and the file name.
+  /// visible in it, the capture time, and the file name. Follows the ⚡
+  /// toggle: while the live companion is shown, resolution and file name
+  /// describe THAT file, so the numbers always match the pixels on screen.
   Widget _infoPanel(_PhotoSample p) {
-    final res = (p.width != null && p.height != null)
+    final liveShown = _showLive && p.liveFile != null;
+    final res = liveShown
+        ? (p.livePx != null
+              ? '${p.livePx} × ${p.livePx} px (live companion)'
+              : 'unknown (live companion)')
+        : (p.width != null && p.height != null)
         // ROI crops are square, so "short × wide" is the same number twice; we
         // still compute min/max in case a future non-square crop is logged.
         ? '${p.width! < p.height! ? p.width : p.height} × '
@@ -2794,7 +2947,17 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           _infoRow('Track IDs', ids),
           _infoRow('Confidence', conf),
           _infoRow('Captured', _formatStamp(p.captureMs)),
-          _infoRow('File', p.name),
+          _infoRow('File', liveShown ? p.liveName! : p.name),
+          // How much older the still's content is than the trigger moment
+          // (`content_lag_ms`, r108) — the number the companion exists to
+          // compensate; shown for both views so the two can be compared.
+          if (p.contentLagMs != null)
+            _infoRow(
+              'Still lag',
+              '${p.contentLagMs} ms behind the trigger moment',
+            ),
+          if (p.liveFile != null && !liveShown)
+            _infoRow('Companion', '${p.liveName} — ⚡ button to view'),
         ],
       ),
     );

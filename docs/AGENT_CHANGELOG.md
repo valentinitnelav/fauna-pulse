@@ -4223,3 +4223,36 @@ minHitsSeconds 0.5)**
   still-lag trade-off (~0.4 s at 15/s vs ~0.17 s uncapped) is stated.
   SETTINGS_REFERENCE row updated to match; OVERVIEW sync-companion note
   updated with the ZSL verdict.
+## Round 111 (2026-07-16): view `_live` companions in the summary photo browser
+
+Owner request: the r108 sync companions (`<name>_live.jpg`, the trigger-moment
+live-stream crop saved beside every still-path photo) were on disk and in the
+log but invisible in the app — the summary Photos tab only showed the stills.
+Seeing both matters: the companion shows where the insect really was at the
+trigger moment, so flipping between the two makes the still's content lag
+directly visible (the owner's main use: eyeballing how far stills lag).
+
+- `_loadPhotos` (summary screen) now also reads `live_jpeg`, `live_saved_px`
+  and `content_lag_ms` from `capture` records; `_PhotoSample` carries
+  `liveFile`/`liveName`/`livePx`/`contentLagMs` (companion only offered when
+  the file really exists — it is saved best-effort).
+- New ⚡ tool button in the photo viewer (only rendered when the loaded photos
+  have any companion) toggles still ↔ companion, viewer-wide like the boxes
+  toggle. Photos without a companion (fast-path photos ARE live crops) keep
+  showing their own file; an amber bottom-left chip says which image is on
+  screen, including the still's measured lag ("still lags N ms").
+- Detection boxes need no remap: they are ROI-normalized from the trigger
+  frame, so they overlay the companion directly (and align better there).
+- Crop & export follows the toggle: the box size readout uses the shown
+  image's real saved px (`_shownSidePx`), and Save/Share cut from the file on
+  screen with its own export name.
+- Info panel follows too (Resolution "(live companion)", File shows the
+  `_live` name) and gains two rows: "Still lag" (`content_lag_ms`, shown in
+  both views) and "Companion" (name + pointer to the ⚡ button when the still
+  is shown).
+- Photos tab shows a short explainer paragraph when companions exist: still =
+  sharper but a fraction of a second late; companion = lower-res but the exact
+  trigger moment.
+- No new SessionConfig field: this is a viewer-only toggle like the box
+  overlay, not a capture tunable. `flutter analyze` clean, 225 tests pass.
+
