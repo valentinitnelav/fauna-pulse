@@ -1208,6 +1208,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'accelerator': _accelerator,
         'camera_full_width_px': _captureWidth,
         'camera_full_height_px': _captureHeight,
+        // Round 121: the dims above load instantly from the persistent
+        // calibration cache; this flags a recording that started before the
+        // live test photo confirmed them (near-certainly identical, but the
+        // science log says where the number came from).
+        if (_probes.captureDimsFromCache) 'capture_dims_from_cache': true,
         // Which rear lens was in use for this session. zoom factor 1.0 = the main
         // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
         // human-readable lens name shown on the switch button.

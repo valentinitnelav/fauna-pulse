@@ -16,6 +16,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
 
 import '../capture/roi_capture.dart';
+import 'capture_calibration_cache.dart';
 
 /// Fires the one-time camera probes and holds their results.
 class CameraDiagnosticsController {
@@ -51,6 +52,13 @@ class CameraDiagnosticsController {
   /// fallback) lands; recording waits for it ("Calibrating…").
   int captureWidth = 0;
   int captureHeight = 0;
+
+  /// True while [captureWidth]/[captureHeight] came from the persistent
+  /// cache and the live test photo hasn't confirmed (or corrected) them yet
+  /// (round 121). The session start record carries this as
+  /// `capture_dims_from_cache` so a recording started in that window is
+  /// honest about where its photo size came from.
+  bool captureDimsFromCache = false;
 
   /// The lens's largest focus distance (in dioptres, 1/metres), read once
   /// from the camera; > 0 means the lens supports manual focus, so the
@@ -90,7 +98,7 @@ class CameraDiagnosticsController {
     required (int, int) Function() analysisDims,
     required double preferredLensZoom,
   }) {
-    _probeCaptureResolution(analysisDims);
+    _probeCaptureResolution(analysisDims, preferredLensZoom);
     _probeFocusSupport();
     _fetchStreamResolutions();
     _fetchAnalysisCeiling();
@@ -130,14 +138,27 @@ class CameraDiagnosticsController {
   /// model that stalls the pipeline), it falls back to the analysis-frame
   /// size and marks the reading approximate, so the "Calibrating…" banner
   /// never hangs forever.
+  ///
+  /// Round 121 — stale-while-revalidate: the size measured last time is
+  /// applied instantly from [CaptureCalibrationCache] (it is a hardware fact,
+  /// so waiting several seconds to re-measure it on every "New session" press
+  /// was pure friction), and the real test photo below then confirms or
+  /// corrects it and refreshes the cache. Only real measurements are cached —
+  /// never the analysis-frame fallback.
   Future<void> _probeCaptureResolution(
     (int, int) Function() analysisDims,
+    double lensZoom,
   ) async {
-    for (
-      var attempt = 0;
-      attempt < 6 && !_disposed && captureWidth == 0;
-      attempt++
-    ) {
+    final cacheKey = await CaptureCalibrationCache.key(lensZoom);
+    final cached = await CaptureCalibrationCache.load(cacheKey);
+    if (cached != null && !_disposed && captureWidth == 0) {
+      captureWidth = cached.$1;
+      captureHeight = cached.$2;
+      captureDimsFromCache = true;
+      _notify();
+    }
+    var confirmed = false;
+    for (var attempt = 0; attempt < 6 && !_disposed && !confirmed; attempt++) {
       try {
         final raw = await controller.capturePhotoRaw().timeout(
           const Duration(seconds: 4),
@@ -150,11 +171,14 @@ class CameraDiagnosticsController {
             // having possibly applied the EXIF rotation already — a blind
             // swap here double-rotated in session_97.
             final up = uprightHighResDims(raw.$2, size.$1, size.$2);
+            confirmed = true;
             captureWidth = up.$1;
             captureHeight = up.$2;
+            captureDimsFromCache = false;
             // The box's grid is the stream (round 62), so no re-snap here —
             // the photo size only feeds the "saves N×N" readout and crops.
             _notify();
+            await CaptureCalibrationCache.save(cacheKey, up.$1, up.$2);
             return;
           }
         }
@@ -164,8 +188,10 @@ class CameraDiagnosticsController {
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
     }
-    // Gave up on a real high-res photo: fall back to the analysis frame so the UI
-    // stops showing "Calibrating…".
+    // Gave up on a real high-res photo: fall back to the analysis frame so
+    // the UI stops showing "Calibrating…". A cached size from a previous run
+    // beats this approximation, so the fallback only fires when NOTHING
+    // landed ([captureDimsFromCache] then stays true for the cached case).
     final (analysisW, analysisH) = analysisDims();
     if (!_disposed && captureWidth == 0 && analysisW > 0) {
       captureWidth = analysisW;

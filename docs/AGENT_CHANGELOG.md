@@ -4640,3 +4640,30 @@ analyze clean.
   = session settings, home ⋮ = app/data actions.
 - `flutter analyze` clean; all 275 tests pass.
 
+## Round 121 (2026-07-17): persistent calibration cache (fast New-session start)
+
+- **Why:** every "New session" press re-ran the full calibration; almost all of the wait
+  was the full-res photo-size probe (up to 6 attempts × 4 s timeout). The photo size is
+  a hardware fact of the phone — re-measuring it each time was pure friction.
+- **New `session/capture_calibration_cache.dart`:** stores the last measured upright
+  photo size in shared_preferences (NOT SessionConfig — it's a measurement, not a user
+  setting). Key = device manufacturer+model + app version + lens zoom
+  (`buildKey` is pure for tests; `key()` degrades to "unknown" parts if platform
+  lookups fail). `save()` drops entries from other device/version stems (app updates
+  don't accumulate stale keys) but keeps sibling-lens entries.
+- **Stale-while-revalidate in `_probeCaptureResolution`** (controller now also takes
+  `preferredLensZoom`): cached dims apply instantly (`captureDimsFromCache = true`,
+  controls unlock ~1 s after the first frame), the real test photo still runs and
+  confirms/corrects + re-saves the cache. Loop condition changed from
+  `captureWidth == 0` to a local `confirmed` flag so revalidation runs even on a cache
+  hit. The analysis-frame FALLBACK is never cached, and with a cache hit the fallback
+  never overwrites the cached value (only fires when nothing landed).
+- **Science-log honesty:** start record gains `capture_dims_from_cache: true` when a
+  recording starts before the live probe confirmed the cached dims (near-certainly
+  identical; the flag says where `camera_full_width/height_px` came from). If the probe
+  never succeeds in a session, the flag simply stays true. (DATA_GUIDE.md not yet
+  updated with this key — add on next docs pass.)
+- Tests: `capture_calibration_cache_test.dart` (keying, round-trip, malformed-value
+  rejection, stale-stem cleanup preserving sibling lenses + unrelated prefs).
+  `flutter analyze` clean; all 279 tests pass.
+
