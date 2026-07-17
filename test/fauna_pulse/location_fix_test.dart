@@ -100,6 +100,9 @@ void main() {
       );
       expect(back.exif.gpsIfd['GPSLatitudeRef'].toString(), 'N');
       expect(back.exif.gpsIfd['GPSLongitudeRef'].toString(), 'W');
+      // Round 127 hardening: version + datum for strict mobile parsers.
+      expect(back.exif.gpsIfd['GPSVersionID'], isNotNull);
+      expect(back.exif.gpsIfd['GPSMapDatum'].toString(), 'WGS-84');
       // 47.5° = 47° 30' 0"; -8.25° = 8° 15' 0" W.
       expect(back.exif.gpsIfd['GPSLatitude'].toString(), contains('47'));
       expect(back.exif.gpsIfd['GPSLongitude'].toString(), contains('15'));

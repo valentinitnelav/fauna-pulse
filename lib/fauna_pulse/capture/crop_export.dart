@@ -163,10 +163,16 @@ void applyCropExif(img.Image im, CropExifInfo info) {
   final lat = info.latitude, lon = info.longitude;
   if (lat != null && lon != null) {
     final gps = im.exif.gpsIfd;
+    // Round 127: version + datum first — exiftool/PIL don't need them, but
+    // stricter mobile parsers expect GPSVersionID to head the GPS IFD.
+    gps['GPSVersionID'] = img.IfdByteValue.list(
+      Uint8List.fromList([2, 3, 0, 0]),
+    );
     gps['GPSLatitudeRef'] = img.IfdValueAscii(lat >= 0 ? 'N' : 'S');
     gps['GPSLatitude'] = exifDmsRational(lat.abs());
     gps['GPSLongitudeRef'] = img.IfdValueAscii(lon >= 0 ? 'E' : 'W');
     gps['GPSLongitude'] = exifDmsRational(lon.abs());
+    gps['GPSMapDatum'] = img.IfdValueAscii('WGS-84');
   }
 }
 

@@ -4793,3 +4793,24 @@ analyze clean.
   `capture_dims_from_cache` row; FIELD_GUIDE gains the get-fix-before-flight-mode
   recipe. Phase 2 (not built): EXIF on batch gallery export, map picker.
 
+## Round 127 (2026-07-17): ObsIdentify "no location" investigated — not our file; GPS block hardened
+
+- Owner fed a session_23 crop to ObsIdentify → "location cannot be determined".
+  Investigated: session_23's start record HAS a gps fix (51.3182, 12.3962, ±11.5 m),
+  and a crop reproduced with the exact same stamping code was read correctly by TWO
+  independent parsers (exiftool: full GPSPosition composite; PIL: linked GPS IFD via
+  the GPSInfo pointer, exact DMS values, DateTimeOriginal). Our EXIF is
+  standards-compliant — the stamping is NOT the bug.
+- **Root-cause hypothesis (Android, not us):** since Android 10 the OS REDACTS
+  location EXIF when another app reads an image from MediaStore without
+  ACCESS_MEDIA_LOCATION, and images obtained via the system photo picker have
+  location stripped BY DESIGN. A gallery-picked copy of our crop can therefore lose
+  its GPS in transit. Workaround for the owner: use FaunaPulse's SHARE button and pick
+  ObsIdentify directly in the share sheet — share_plus serves our own cache file
+  verbatim (no MediaStore redaction path). Verify the Gallery file itself with Google
+  Photos → details (Photos holds the media-location permission and shows a map).
+- **Hardening anyway:** `applyCropExif` now writes `GPSVersionID` (2.3.0.0) and
+  `GPSMapDatum` ("WGS-84") — exiftool/PIL don't need them, but stricter mobile
+  parsers expect GPSVersionID to head the GPS IFD. Unit test asserts both.
+- `flutter analyze` clean; all 290 tests pass.
+
