@@ -4731,3 +4731,27 @@ analyze clean.
 - `flutter analyze` clean; all 280 tests pass. Field-verify: rotate phone (app must
   stay portrait), tap the ▸/▾ line, kill + reopen app (state remembered).
 
+## Round 125 (2026-07-17): landscape-held photo verdict + detector fps in collapsed line
+
+- **VERDICT — landscape-held recording is data-safe (no code change).** Owner recorded
+  session_22 (Xiaomi) holding the phone sideways at a YouTube pollinator video and asked
+  whether the "rotated" photos endanger annotation/YOLO training. Verified on the files:
+  the saved crops carry **NO EXIF at all** (r98/99 invariant — every path re-encodes raw
+  pixels), so the classic annotator-honors-EXIF / trainer-ignores-EXIF box-offset bug
+  CANNOT occur; `box_in_roi` is normalized to the same pixels stored in the JPEG, so
+  boxes align regardless of hold. The only effect is that the scene CONTENT is rotated
+  90° inside the pixels — for training that is plain rotation augmentation. Advice
+  recorded: YOLO isn't rotation-invariant, so keep holding-orientation roughly
+  consistent per dataset (or use rotation augmentation); nothing in the log records how
+  the phone was physically held (future idea, not built: log device tilt in the start
+  record).
+- **Collapsed info line: detector fps instead of camera fps** ("det 9.8 fps"; reads 0
+  while the gate sleeps — honest per r77, the chip beside it says SLEEPING). In the
+  no-AI modes (motion-only / time-lapse) it falls back to "cam 15 fps" — the label
+  changes with the unit, never silently (r62 one-scale rule).
+- **REC-banner overlap fixed structurally:** the state chip and the ▸/▾ toggle now share
+  ONE Row as the strip's first child. The REC banner's `top: 52` padding was sized to
+  clear the chip, so keeping the whole header at chip height guarantees no overlap in
+  any mode; the expanded list still flows below the banner as the full panel always has.
+- `flutter analyze` clean; all 280 tests pass.
+

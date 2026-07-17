@@ -122,9 +122,12 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (`SystemChrome.setPreferredOrientations`): the crop/rotation math assumes an upright
   phone (`uprightHighResDims`, `rawRectForUprightRect` Dart+Kotlin pair) and the
   overlays overflow in landscape. Lift both locks together only with a full
-  orientation-aware audit. Same round: the on-screen stats list is collapsible
-  (default = one "▸ fps · temp" line; state in shared_preferences
-  `stats_panel_expanded`, NOT SessionConfig); the gate/time-lapse chip always shows.
+  orientation-aware audit. Same round (+125): the on-screen stats list is collapsible
+  (default = one "▸ det fps · temp" line — cam fps in the no-AI modes; state in
+  shared_preferences `stats_panel_expanded`, NOT SessionConfig); the gate/time-lapse
+  chip shares ONE row with the toggle line so the header always clears the REC banner
+  (its `top: 52` was sized to the chip). r125 verdict: landscape-HELD recording is
+  data-safe — crops have no EXIF, boxes are pixel-space; content is just rotated 90°.
 - **Start-up calibration is ONE cycle (round 120) and CACHED (round 121).**
   `_calibrating` in `camera_session_screen.dart` (first analysis frame + full-res photo
   probe + analysis-ceiling probe; every term terminates) gates the controls row

@@ -2604,23 +2604,34 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       // nothing is moving in the ROI. Bigger and color-coded so
                       // it reads from arm's length in the field. Time-lapse
                       // mode has its own chip (burst state + countdown).
-                      if (_config.timeLapseCapture)
-                        _timeLapseChip()
-                      else if ((_config.motionGateEnabled &&
-                              _config.detectorEnabled) ||
-                          _config.motionOnlyCapture)
-                        _gateStateChip(),
-                      // Round 124: the stats list is collapsible so it doesn't
-                      // sit on top of the ROI. Collapsed, one tappable line
-                      // keeps the field essentials (camera fps + phone
-                      // temperature) visible; tap toggles, and the choice is
-                      // remembered. The state chip above stays either way.
-                      GestureDetector(
-                        onTap: _toggleStatsExpanded,
-                        child: ValueListenableBuilder<List<double>>(
-                          valueListenable: _fpsTrioVN,
-                          builder: (_, f, _) =>
-                              ValueListenableBuilder<ThermalReading>(
+                      //
+                      // Round 124/125: the chip and the collapsible-stats
+                      // toggle share ONE row so the whole header stays above
+                      // the REC banner (its top padding was sized to clear
+                      // the chip; a line BELOW the chip would sit under the
+                      // banner). Collapsed, the line keeps the field
+                      // essentials visible — detector fps (camera fps in the
+                      // no-AI modes, labelled so the unit change is never
+                      // silent) + phone temperature; tap toggles, and the
+                      // choice is remembered.
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (_config.timeLapseCapture ||
+                              (_config.motionGateEnabled &&
+                                  _config.detectorEnabled) ||
+                              _config.motionOnlyCapture) ...[
+                            _config.timeLapseCapture
+                                ? _timeLapseChip()
+                                : _gateStateChip(),
+                            const SizedBox(width: 8),
+                          ],
+                          GestureDetector(
+                            onTap: _toggleStatsExpanded,
+                            child: ValueListenableBuilder<List<double>>(
+                              valueListenable: _fpsTrioVN,
+                              builder: (_, f, _) => ValueListenableBuilder<ThermalReading>(
                                 valueListenable: _thermalVN,
                                 builder: (_, thermal, _) {
                                   if (_statsExpanded) {
@@ -2628,7 +2639,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                   }
                                   final parts = <String>[
                                     if (_config.showFps)
-                                      '${f[0].toStringAsFixed(0)} fps',
+                                      _config.detectorEnabled
+                                          ? 'det ${f[1].toStringAsFixed(1)} fps'
+                                          : 'cam ${f[0].toStringAsFixed(0)} fps',
                                     if (thermal.batteryTempC != null)
                                       thermal.shortLabel,
                                   ];
@@ -2637,7 +2650,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                   );
                                 },
                               ),
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
                       if (_statsExpanded) ...[
                         if (_config.showFps)
