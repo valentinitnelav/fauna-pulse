@@ -382,7 +382,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final choice = await showDialog<ReportSendChoice>(
       context: context,
-      builder: (_) => ReportSavedDialog(report: saved, initialEmail: knownEmail),
+      builder: (_) =>
+          ReportSavedDialog(report: saved, initialEmail: knownEmail),
     );
     if (choice == null || !mounted) return;
     if (choice.viaEmail) {
@@ -447,17 +448,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.emoji_nature,
-                      size: 56,
-                      color: Colors.amber,
-                    ),
-                    SizedBox(width: 16), // Adds horizontal space between the two icons
-                    Icon(
-                      Icons.local_see,
-                      size: 56,
-                      color: Colors.amber,
-                    ),
+                    Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
+                    SizedBox(
+                      width: 16,
+                    ), // Adds horizontal space between the two icons
+                    Icon(Icons.local_see, size: 56, color: Colors.amber),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -683,10 +678,7 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => _close(false),
-          child: const Text('Cancel'),
-        ),
+        TextButton(onPressed: () => _close(false), child: const Text('Cancel')),
         TextButton(
           onPressed: armed ? () => _close(true) : null,
           child: Text(
@@ -780,10 +772,7 @@ class _ReportSavedDialogState extends State<ReportSavedDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => _close(null),
-          child: const Text('Done'),
-        ),
+        TextButton(onPressed: () => _close(null), child: const Text('Done')),
         TextButton(
           onPressed: _emailPlausible
               ? () => _close(ReportSendChoice.email(_email.text.trim()))

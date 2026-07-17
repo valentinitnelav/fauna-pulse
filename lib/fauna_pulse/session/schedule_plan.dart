@@ -74,10 +74,12 @@ class SchedulePlan {
 
   /// Wall-clock start of [slot]. Built from calendar components so day
   /// arithmetic follows the local calendar (see file header).
-  DateTime startOf(ScheduleSlot slot) => _at(slot.day, windows[slot.windowIndex].startMinute);
+  DateTime startOf(ScheduleSlot slot) =>
+      _at(slot.day, windows[slot.windowIndex].startMinute);
 
   /// Wall-clock end of [slot] (exclusive — recording stops at this moment).
-  DateTime endOf(ScheduleSlot slot) => _at(slot.day, windows[slot.windowIndex].endMinute);
+  DateTime endOf(ScheduleSlot slot) =>
+      _at(slot.day, windows[slot.windowIndex].endMinute);
 
   DateTime _at(int day, int minuteOfDay) => DateTime(
     startedAt.year,

@@ -335,26 +335,23 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ),
       ),
-      Text(
-        switch (_c.captureTrigger) {
-          CaptureTrigger.detector =>
-            'The full pipeline: on-device detection + tracking, photos per '
-            'track id, visitation data in the log.',
-          CaptureTrigger.motion =>
-            'Photos whenever something moves in the ROI; the AI model loads '
-            'but never runs (big energy saver). No species/track data — the '
-            'motion gate on the Camera tab is the trigger (forced on) and '
-            'its sensitivity settings apply. Wind/shadows produce junk '
-            'photos instead of wasted computation.',
-          CaptureTrigger.timelapse =>
-            'Photos on a pure clock — no AI, no motion check: the cheapest '
-            'mode. Each burst takes a photo every "Photo step" for "Photo '
-            'duration", and bursts repeat per "Repeat burst every" below. '
-            'Set the repeat ≤ the duration for a continuous time-lapse. '
-            'Meant for running a detector on the photos afterwards.',
-        },
-        style: const TextStyle(color: Colors.white54, fontSize: 12),
-      ),
+      Text(switch (_c.captureTrigger) {
+        CaptureTrigger.detector =>
+          'The full pipeline: on-device detection + tracking, photos per '
+              'track id, visitation data in the log.',
+        CaptureTrigger.motion =>
+          'Photos whenever something moves in the ROI; the AI model loads '
+              'but never runs (big energy saver). No species/track data — the '
+              'motion gate on the Camera tab is the trigger (forced on) and '
+              'its sensitivity settings apply. Wind/shadows produce junk '
+              'photos instead of wasted computation.',
+        CaptureTrigger.timelapse =>
+          'Photos on a pure clock — no AI, no motion check: the cheapest '
+              'mode. Each burst takes a photo every "Photo step" for "Photo '
+              'duration", and bursts repeat per "Repeat burst every" below. '
+              'Set the repeat ≤ the duration for a continuous time-lapse. '
+              'Meant for running a detector on the photos afterwards.',
+      }, style: const TextStyle(color: Colors.white54, fontSize: 12)),
       const SizedBox(height: 12),
 
       NumericSettingField(
@@ -396,9 +393,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'next (so "every 30 min" stays every 30 min regardless of the '
               'burst length). Set it ≤ the photo duration for a continuous '
               'time-lapse. Default 30 min.',
-          onChanged: (v) => setState(
-            () => _c = _c.copyWith(timeLapseIntervalSeconds: v),
-          ),
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(timeLapseIntervalSeconds: v)),
         ),
       if (!_c.isTimeLapseValid)
         const Padding(
@@ -1179,7 +1175,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         style: TextStyle(color: Colors.white54, fontSize: 12),
       ),
       children: [
-        if (isCbiou) ..._cbiouFields(cp, updateC) else ..._byteFields(p, update),
+        if (isCbiou)
+          ..._cbiouFields(cp, updateC)
+        else
+          ..._byteFields(p, update),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
@@ -1312,75 +1311,75 @@ class _SettingsSheetState extends State<SettingsSheet> {
   ) => [
     NumericSettingField(
       label: 'Match overlap (IoU)',
-          value: p.matchThresh,
-          min: 0.05,
-          max: 0.9,
-          decimals: 2,
-          helperText:
-              'How much a new detection box must overlap a track\'s predicted '
-              'box to be treated as the same insect. This is your "movement '
-              'tolerance", inverted: LOWER tolerates faster motion (a bee that '
-              'jumped across the frame still matches); HIGHER is stricter. For '
-              'small fast insects keep it low (0.1–0.2). The range stops at '
-              '0.05–0.90 on purpose: 0 would match unrelated boxes anywhere on '
-              'screen (id chaos), and 1.0 would demand pixel-identical boxes so '
-              'every frame would mint a new id.',
-          onChanged: (v) => update(p.copyWith(matchThresh: v)),
-        ),
-        NumericSettingField(
-          label: 'Low-score association',
-          value: p.lowMatchThresh,
-          min: 0.02,
-          max: 0.8,
-          decimals: 2,
-          helperText:
-              'A second, looser overlap test used to re-link faint detections '
-              '(a half-hidden or blurred insect that briefly drops in '
-              'confidence) so it keeps its track id. Normally set at or below '
-              'Match overlap. The 0.02 floor stops a real track grabbing a '
-              'random noise box; set it too high and faint insects are no '
-              'longer recovered (0.02–0.80).',
-          onChanged: (v) => update(p.copyWith(lowMatchThresh: v)),
-        ),
-        NumericSettingField(
-          label: 'High-score threshold',
-          // Floor follows the Confidence threshold so a "faint detection" band
-          // always exists; the value never displays below that floor.
-          value: p.highThresh < _minHighScore ? _minHighScore : p.highThresh,
-          min: _minHighScore,
-          max: 0.95,
-          decimals: 2,
-          helperText:
-              'The score that separates a "strong" detection from a "faint" '
-              'one. A box at or above this is a clear sighting and may START a '
-              'new track ID. A box below it — but still above the Confidence '
-              'threshold — is a faint sighting that may ONLY keep an '
-              'already-existing insect\'s ID alive, never start a new one. That '
-              'faint band (between Confidence and High-score) is exactly what '
-              'holds onto a bee whose score dips while it is half-hidden under a '
-              'petal, so it is not counted twice. Higher = more cautious about '
-              'starting new IDs (fewer false visitors); lower = quicker to '
-              'register a new visitor. It is automatically kept at least '
-              '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
-              'rises with it) so the faint band never closes. Default 0.50.',
-          onChanged: (v) => update(p.copyWith(highThresh: v)),
-        ),
-        NumericSettingField(
-          label: 'Velocity smoothing',
-          value: p.velocitySmoothing,
-          min: 0.0,
-          max: 1.0,
-          decimals: 2,
-          helperText:
-              'While an insect is briefly hidden, the tracker guesses where it '
-              'went by continuing its recent motion. This sets how much it '
-              'trusts the very latest movement. Low (≈0.2) = "assume it barely '
-              'moved" — steadier, best for insects that land and sit still '
-              '(the usual case here). High (≈0.8) = follow the latest motion '
-              'closely — better for fast, darting insects but jumpier. '
-              '(0–1; default 0.5.)',
-          onChanged: (v) => update(p.copyWith(velocitySmoothing: v)),
-        ),
+      value: p.matchThresh,
+      min: 0.05,
+      max: 0.9,
+      decimals: 2,
+      helperText:
+          'How much a new detection box must overlap a track\'s predicted '
+          'box to be treated as the same insect. This is your "movement '
+          'tolerance", inverted: LOWER tolerates faster motion (a bee that '
+          'jumped across the frame still matches); HIGHER is stricter. For '
+          'small fast insects keep it low (0.1–0.2). The range stops at '
+          '0.05–0.90 on purpose: 0 would match unrelated boxes anywhere on '
+          'screen (id chaos), and 1.0 would demand pixel-identical boxes so '
+          'every frame would mint a new id.',
+      onChanged: (v) => update(p.copyWith(matchThresh: v)),
+    ),
+    NumericSettingField(
+      label: 'Low-score association',
+      value: p.lowMatchThresh,
+      min: 0.02,
+      max: 0.8,
+      decimals: 2,
+      helperText:
+          'A second, looser overlap test used to re-link faint detections '
+          '(a half-hidden or blurred insect that briefly drops in '
+          'confidence) so it keeps its track id. Normally set at or below '
+          'Match overlap. The 0.02 floor stops a real track grabbing a '
+          'random noise box; set it too high and faint insects are no '
+          'longer recovered (0.02–0.80).',
+      onChanged: (v) => update(p.copyWith(lowMatchThresh: v)),
+    ),
+    NumericSettingField(
+      label: 'High-score threshold',
+      // Floor follows the Confidence threshold so a "faint detection" band
+      // always exists; the value never displays below that floor.
+      value: p.highThresh < _minHighScore ? _minHighScore : p.highThresh,
+      min: _minHighScore,
+      max: 0.95,
+      decimals: 2,
+      helperText:
+          'The score that separates a "strong" detection from a "faint" '
+          'one. A box at or above this is a clear sighting and may START a '
+          'new track ID. A box below it — but still above the Confidence '
+          'threshold — is a faint sighting that may ONLY keep an '
+          'already-existing insect\'s ID alive, never start a new one. That '
+          'faint band (between Confidence and High-score) is exactly what '
+          'holds onto a bee whose score dips while it is half-hidden under a '
+          'petal, so it is not counted twice. Higher = more cautious about '
+          'starting new IDs (fewer false visitors); lower = quicker to '
+          'register a new visitor. It is automatically kept at least '
+          '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
+          'rises with it) so the faint band never closes. Default 0.50.',
+      onChanged: (v) => update(p.copyWith(highThresh: v)),
+    ),
+    NumericSettingField(
+      label: 'Velocity smoothing',
+      value: p.velocitySmoothing,
+      min: 0.0,
+      max: 1.0,
+      decimals: 2,
+      helperText:
+          'While an insect is briefly hidden, the tracker guesses where it '
+          'went by continuing its recent motion. This sets how much it '
+          'trusts the very latest movement. Low (≈0.2) = "assume it barely '
+          'moved" — steadier, best for insects that land and sit still '
+          '(the usual case here). High (≈0.8) = follow the latest motion '
+          'closely — better for fast, darting insects but jumpier. '
+          '(0–1; default 0.5.)',
+      onChanged: (v) => update(p.copyWith(velocitySmoothing: v)),
+    ),
   ];
 
   /// Resets every Visit-tracking setting to its default: the shared
@@ -2479,7 +2478,10 @@ class _DownloadModelDialogState extends State<_DownloadModelDialog> {
               padding: const EdgeInsets.only(top: 10),
               child: Text(
                 '⚠ $_error',
-                style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+                style: const TextStyle(
+                  color: Colors.orangeAccent,
+                  fontSize: 13,
+                ),
               ),
             ),
         ],

@@ -76,9 +76,7 @@ class ModelCatalog {
   /// sizes used to be listed as "(add file)" placeholders, but a dropdown
   /// entry with no file behind it only invited a pick that silently kept
   /// running nano — larger models are now added via Download…/Import instead.
-  static const officialModels = {
-    'yolo26n': 'YOLO26 nano — fastest (bundled)',
-  };
+  static const officialModels = {'yolo26n': 'YOLO26 nano — fastest (bundled)'};
 
   // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load as nano —
   // the migration set lives in SessionConfig.fromJson.

@@ -133,4 +133,23 @@ void main() {
       expect(await CrashStore.recent(), isEmpty);
     });
   });
+
+  group('redactLocation (round 126)', () {
+    test('strips the location block from a start record line', () {
+      const line =
+          '{"type":"start_of_session","location":{"lat":47.5,"lon":8.2,'
+          '"accuracy_m":9.0,"fix_time_ms":1,"source":"gps"},"model_path":"m"}';
+      final out = redactLocation(line);
+      expect(out, isNot(contains('47.5')));
+      expect(out, contains('"location":"[redacted]"'));
+      expect(out, contains('"model_path":"m"'));
+    });
+
+    test('passes through lines without location or unparsable ones', () {
+      const plain = '{"type":"detections","tracks":[]}';
+      expect(redactLocation(plain), plain);
+      const broken = 'not json but mentions "location" anyway';
+      expect(redactLocation(broken), broken);
+    });
+  });
 }

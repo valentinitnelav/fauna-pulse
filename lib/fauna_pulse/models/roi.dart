@@ -186,10 +186,7 @@ class Roi {
     final snappedFraction = snappedPx / sourceWidth;
     // copyClamped re-clamps the centre so the (possibly smaller) square stays
     // fully inside the frame.
-    return copyClamped(
-      sideFraction: snappedFraction,
-      frameAspect: frameAspect,
-    );
+    return copyClamped(sideFraction: snappedFraction, frameAspect: frameAspect);
   }
 
   /// Log representation per CLAUDE.md: pixel width/height plus the normalized

@@ -267,9 +267,13 @@ class ErrorReporter {
   /// A head + tail sample of [file] (so a big session log doesn't bloat the
   /// report): the first lines carry the start-record metadata, the last ones
   /// the failure-time context. Reads the whole file but keeps only the sample.
+  /// The session's GPS `location` (round 126) is stripped from the sample —
+  /// field-site coordinates (possibly of protected species) must never ride
+  /// along in a report shared by email.
   static Future<String> _sampledLog(File file, int head, int tail) async {
     try {
-      return headTailSample(await file.readAsLines(), head: head, tail: tail);
+      final lines = (await file.readAsLines()).map(redactLocation).toList();
+      return headTailSample(lines, head: head, tail: tail);
     } catch (e) {
       return '(could not read session log: $e)';
     }
@@ -282,6 +286,24 @@ class ErrorReporter {
     } catch (e) {
       return '(could not read crash file: $e)';
     }
+  }
+}
+
+/// Replaces the `location` block of a start_of_session JSONL line with a
+/// `"location":"[redacted]"` marker (round 126). Lines without one — or that
+/// fail to parse — pass through unchanged; a redaction failure must never
+/// break a problem report.
+String redactLocation(String line) {
+  if (!line.contains('"location"')) return line;
+  try {
+    final obj = jsonDecode(line);
+    if (obj is! Map<String, dynamic> || !obj.containsKey('location')) {
+      return line;
+    }
+    obj['location'] = '[redacted]';
+    return jsonEncode(obj);
+  } catch (_) {
+    return line;
   }
 }
 

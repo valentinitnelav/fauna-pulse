@@ -64,13 +64,19 @@ void main() {
     test('returns null when the block or the analysis dims are unusable', () {
       expect(roiStreamSideFromLog(const {}, 1080, 1440), isNull);
       expect(
-        roiStreamSideFromLog(const {'width_px': 0, 'frame_width_px': 3000},
-            1080, 1440),
+        roiStreamSideFromLog(
+          const {'width_px': 0, 'frame_width_px': 3000},
+          1080,
+          1440,
+        ),
         isNull,
       );
       expect(
         roiStreamSideFromLog(
-            const {'width_px': 1333, 'frame_width_px': 3000}, 0, 0),
+          const {'width_px': 1333, 'frame_width_px': 3000},
+          0,
+          0,
+        ),
         isNull,
       );
     });
@@ -93,15 +99,15 @@ void main() {
     test('skips candidates above the analysis ceiling', () {
       // Ceiling 1280×960: nothing with short side ≥ 1024 fits under it, so
       // the round-122 fallback picks the largest size under the ceiling.
-      expect(
-        autoStreamResolution(xiaomi, ceilingArea: 1280 * 960),
-        (1280, 960),
-      );
+      expect(autoStreamResolution(xiaomi, ceilingArea: 1280 * 960), (
+        1280,
+        960,
+      ));
       // Ceiling 1920×1440 admits 1440×1080 (and 1920×1440) but not 4000×3000.
-      expect(
-        autoStreamResolution(xiaomi, ceilingArea: 1920 * 1440),
-        (1440, 1080),
-      );
+      expect(autoStreamResolution(xiaomi, ceilingArea: 1920 * 1440), (
+        1440,
+        1080,
+      ));
     });
 
     test('ceiling 0 means unfiltered', () {
@@ -122,10 +128,10 @@ void main() {
     });
 
     test('ignores malformed entries', () {
-      expect(
-        autoStreamResolution(['garbage', '1440x', 'x1080', '1440x1080']),
-        (1440, 1080),
-      );
+      expect(autoStreamResolution(['garbage', '1440x', 'x1080', '1440x1080']), (
+        1440,
+        1080,
+      ));
     });
   });
 
@@ -151,9 +157,15 @@ void main() {
       expect(choose(mode: RoiCaptureMode.fast, side: 0.05), CapturePath.fast);
     });
 
-    test('high-res mode always uses the high-res path when its size is known', () {
-      expect(choose(mode: RoiCaptureMode.highRes, side: 1.0), CapturePath.highRes);
-    });
+    test(
+      'high-res mode always uses the high-res path when its size is known',
+      () {
+        expect(
+          choose(mode: RoiCaptureMode.highRes, side: 1.0),
+          CapturePath.highRes,
+        );
+      },
+    );
 
     test('high-res mode degrades to fast when the size probe failed', () {
       // Saving a small photo beats saving none.
@@ -163,10 +175,13 @@ void main() {
       );
     });
 
-    test('auto takes a high-res photo when the fast crop misses the target', () {
-      // 0.5 × 640 = 320 px < 640 target → pay for the high-res photo.
-      expect(choose(side: 0.5), CapturePath.highRes);
-    });
+    test(
+      'auto takes a high-res photo when the fast crop misses the target',
+      () {
+        // 0.5 × 640 = 320 px < 640 target → pay for the high-res photo.
+        expect(choose(side: 0.5), CapturePath.highRes);
+      },
+    );
 
     test('auto stays fast when the live-frame crop already suffices', () {
       // 0.5 × 640 = 320 px ≥ a 320 target → no high-res photo needed.
@@ -288,12 +303,20 @@ void main() {
       for (final rot in [90, 270]) {
         final rr = map(rot, 0, 500, 3000, 3500);
         expect(rr.left >= 0 && rr.top >= 0, isTrue, reason: 'rot $rot');
-        expect(rr.right <= rawW && rr.bottom <= rawH, isTrue, reason: 'rot $rot');
+        expect(
+          rr.right <= rawW && rr.bottom <= rawH,
+          isTrue,
+          reason: 'rot $rot',
+        );
       }
       for (final rot in [0, 180]) {
         final rr = map(rot, 500, 0, 3500, 3000);
         expect(rr.left >= 0 && rr.top >= 0, isTrue, reason: 'rot $rot');
-        expect(rr.right <= rawW && rr.bottom <= rawH, isTrue, reason: 'rot $rot');
+        expect(
+          rr.right <= rawW && rr.bottom <= rawH,
+          isTrue,
+          reason: 'rot $rot',
+        );
       }
     });
   });

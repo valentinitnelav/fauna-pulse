@@ -92,11 +92,94 @@ class CroppedImage {
   const CroppedImage(this.jpeg, this.width, this.height);
 }
 
-/// Decodes [bytes], cuts the normalized rectangle out and re-encodes it.
-/// Returns null when the image can't be decoded or the rectangle comes out
-/// smaller than [kMinCropSidePx] on either side. Pure and synchronous so it is
+/// Metadata stamped into an exported crop's EXIF (round 126): the photo's
+/// trigger moment as DateTimeOriginal and, when the session recorded one, the
+/// GPS position — so identification apps (ObsIdentify, iNaturalist, Google
+/// Lens) read where-and-when straight from the file. Deliberately ONLY on
+/// user-exported crops: the capture pipeline itself stays EXIF-free (round
+/// 98 invariant — that is what keeps training data orientation-safe), and no
+/// orientation tag is ever written here either.
+class CropExifInfo {
+  /// The crop's source-photo trigger moment (epoch ms; rendered in LOCAL
+  /// time, which is what EXIF DateTimeOriginal means by convention).
+  final int? capturedAtMs;
+  final double? latitude;
+  final double? longitude;
+  const CropExifInfo({this.capturedAtMs, this.latitude, this.longitude});
+
+  bool get isEmpty =>
+      capturedAtMs == null && (latitude == null || longitude == null);
+}
+
+/// One coordinate as the EXIF degrees/minutes/seconds triplet (all EXIF GPS
+/// values are unsigned rationals; the hemisphere goes in the *Ref tag).
+img.IfdValueRational exifDmsRational(double absDegrees) {
+  final deg = absDegrees.floor();
+  final minutesFull = (absDegrees - deg) * 60;
+  final minutes = minutesFull.floor();
+  // Seconds ×100 as the denominator keeps ~0.3 m precision in integers.
+  final sec100 = ((minutesFull - minutes) * 60 * 100).round();
+  // The image package doesn't export its Rational type, so the three
+  // (numerator, denominator) pairs are fed to the public
+  // IfdValueRational.data constructor as big-endian uint32s.
+  final bytes = <int>[];
+  void u32(int v) => bytes.addAll([
+    (v >> 24) & 0xFF,
+    (v >> 16) & 0xFF,
+    (v >> 8) & 0xFF,
+    v & 0xFF,
+  ]);
+  u32(deg);
+  u32(1);
+  u32(minutes);
+  u32(1);
+  u32(sec100);
+  u32(100);
+  return img.IfdValueRational.data(
+    img.InputBuffer(Uint8List.fromList(bytes), bigEndian: true),
+    3,
+  );
+}
+
+/// EXIF datetime string ("YYYY:MM:DD hh:mm:ss", local time) for [epochMs].
+String exifDateTime(int epochMs) {
+  final t = DateTime.fromMillisecondsSinceEpoch(epochMs);
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year.toString().padLeft(4, '0')}:${two(t.month)}:${two(t.day)} '
+      '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+}
+
+/// Writes [info] into [im]'s EXIF block (encodeJpg emits it). Kept pure so a
+/// unit test can round-trip encode→decode and read the tags back.
+void applyCropExif(img.Image im, CropExifInfo info) {
+  // Explicit IfdValue objects throughout: the directory setter only
+  // auto-converts plain values for tags whose type it knows, and the GPS
+  // tags carry no type in the package's tables.
+  final at = info.capturedAtMs;
+  if (at != null) {
+    im.exif.exifIfd['DateTimeOriginal'] = img.IfdValueAscii(exifDateTime(at));
+    im.exif.imageIfd['DateTime'] = img.IfdValueAscii(exifDateTime(at));
+  }
+  final lat = info.latitude, lon = info.longitude;
+  if (lat != null && lon != null) {
+    final gps = im.exif.gpsIfd;
+    gps['GPSLatitudeRef'] = img.IfdValueAscii(lat >= 0 ? 'N' : 'S');
+    gps['GPSLatitude'] = exifDmsRational(lat.abs());
+    gps['GPSLongitudeRef'] = img.IfdValueAscii(lon >= 0 ? 'E' : 'W');
+    gps['GPSLongitude'] = exifDmsRational(lon.abs());
+  }
+}
+
+/// Decodes [bytes], cuts the normalized rectangle out and re-encodes it,
+/// stamping [exif] (when given) into the crop on the way. Returns null when
+/// the image can't be decoded or the rectangle comes out smaller than
+/// [kMinCropSidePx] on either side. Pure and synchronous so it is
 /// unit-testable; the viewer calls it through [cropJpegNormRect] (isolate).
-CroppedImage? cropJpegRectSync(Uint8List bytes, Rect norm) {
+CroppedImage? cropJpegRectSync(
+  Uint8List bytes,
+  Rect norm, {
+  CropExifInfo? exif,
+}) {
   img.Image? decoded;
   try {
     decoded = img.decodeImage(bytes);
@@ -111,6 +194,7 @@ CroppedImage? cropJpegRectSync(Uint8List bytes, Rect norm) {
   final w = r - l, h = b - t;
   if (w < kMinCropSidePx || h < kMinCropSidePx) return null;
   final crop = img.copyCrop(decoded, x: l, y: t, width: w, height: h);
+  if (exif != null && !exif.isEmpty) applyCropExif(crop, exif);
   return CroppedImage(
     Uint8List.fromList(img.encodeJpg(crop, quality: 90)),
     w,
@@ -121,19 +205,50 @@ CroppedImage? cropJpegRectSync(Uint8List bytes, Rect norm) {
 class _CropRectArgs {
   final Uint8List bytes;
   final double left, top, right, bottom;
-  const _CropRectArgs(this.bytes, this.left, this.top, this.right, this.bottom);
+  final int? capturedAtMs;
+  final double? lat, lon;
+  const _CropRectArgs(
+    this.bytes,
+    this.left,
+    this.top,
+    this.right,
+    this.bottom,
+    this.capturedAtMs,
+    this.lat,
+    this.lon,
+  );
 }
 
-CroppedImage? _cropRectWorker(_CropRectArgs a) =>
-    cropJpegRectSync(a.bytes, Rect.fromLTRB(a.left, a.top, a.right, a.bottom));
+CroppedImage? _cropRectWorker(_CropRectArgs a) => cropJpegRectSync(
+  a.bytes,
+  Rect.fromLTRB(a.left, a.top, a.right, a.bottom),
+  exif: CropExifInfo(
+    capturedAtMs: a.capturedAtMs,
+    latitude: a.lat,
+    longitude: a.lon,
+  ),
+);
 
 /// Crops the normalized rectangle [norm] (0..1) out of the saved JPEG [src]
-/// on a background isolate.
-Future<CroppedImage?> cropJpegNormRect(File src, Rect norm) async {
+/// on a background isolate, stamping [exif] into the result when given.
+Future<CroppedImage?> cropJpegNormRect(
+  File src,
+  Rect norm, {
+  CropExifInfo? exif,
+}) async {
   final bytes = await src.readAsBytes();
   return compute(
     _cropRectWorker,
-    _CropRectArgs(bytes, norm.left, norm.top, norm.right, norm.bottom),
+    _CropRectArgs(
+      bytes,
+      norm.left,
+      norm.top,
+      norm.right,
+      norm.bottom,
+      exif?.capturedAtMs,
+      exif?.latitude,
+      exif?.longitude,
+    ),
     debugLabel: 'cropExport',
   );
 }

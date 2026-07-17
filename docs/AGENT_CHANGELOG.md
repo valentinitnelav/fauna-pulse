@@ -4755,3 +4755,41 @@ analyze clean.
   any mode; the expanded list still flows below the banner as the full panel always has.
 - `flutter analyze` clean; all 280 tests pass.
 
+## Round 126 (2026-07-17): one GPS fix per session + EXIF where-and-when on exported crops
+
+- **Why:** ObsIdentify/iNaturalist-style apps read location+time from a photo's EXIF;
+  the owner wants that on the crops they export after a session — WITHOUT touching the
+  capture pipeline (r98 invariant: session photos stay EXIF-free; that is what keeps
+  training data orientation-safe) and without continuous GPS (battery; tripod phone).
+- **`session/location_fix.dart`:** `SessionLocation` (lat/lon/accuracy_m/fix_time_ms/
+  `source`: gps|manual|previous, JSON round-trip), pure `LocationFixTracker` (keeps the
+  most accurate fix; done at ≤15 m accuracy or 60 s with any fix) and `SessionLocator`
+  (geolocator stream wrapper; silent start only proceeds when permission pre-granted —
+  no surprise prompts; hard timeout backstop; `stop()` releases the app's entire GPS
+  load — Android apps cannot toggle the system GPS itself). New dep `geolocator`,
+  manifest gains ACCESS_FINE/COARSE_LOCATION (no FOREGROUND_SERVICE_LOCATION — the
+  read is foreground-only, once).
+- **Camera screen:** location pin button in the controls row (green = set, amber =
+  searching, dim = none; locked while recording). Tap → `widgets/location_dialog.dart`
+  — deliberately MAP-FREE (offline/flight-mode friendly): live fix readout, "Search
+  GPS" (prompting path), one-tap "use last session's" (prefs `last_session_location`,
+  persisted at REC), manual decimal-degree entry, Remove. Start record gains
+  `location` (only when set); summary Overview shows a Location row.
+- **EXIF stamping (`capture/crop_export.dart`):** `CropExifInfo` + `applyCropExif` set
+  DateTimeOriginal/DateTime (photo's `captured_at_ms`, local time) and the GPS IFD
+  (DMS rationals via public `IfdValueRational.data` — the image package doesn't export
+  its Rational type; explicit IfdValue objects because GPS tags carry no type in the
+  package tables). Stamped inside the existing isolate encode in `cropJpegRectSync` —
+  zero native code, works identically for Gallery save, share sheet, and the crops/
+  fallback. NO orientation tag is ever written. `_exportCrop` passes `p.captureMs` +
+  the start record's location through a new `_PhotoViewer.location` param.
+- **Privacy:** `redactLocation` in error_reporter.dart replaces the start record's
+  `location` with `"[redacted]"` in problem-report log samples — field-site
+  coordinates (possibly protected species) never ride along in shared reports.
+- Tests: `location_fix_test.dart` (tracker stability/accuracy rules, JSON round-trip,
+  and an EXIF encode→decode round-trip proving the tags land in the real JPEG) +
+  redaction tests. All 290 pass; `flutter analyze` clean; debug APK builds.
+- Docs: DATA_GUIDE start-record table gains `location` + the pending r121
+  `capture_dims_from_cache` row; FIELD_GUIDE gains the get-fix-before-flight-mode
+  recipe. Phase 2 (not built): EXIF on batch gallery export, map picker.
+

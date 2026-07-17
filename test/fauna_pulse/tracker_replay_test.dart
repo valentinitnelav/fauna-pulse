@@ -54,8 +54,10 @@ void main() {
       expect(frames, hasLength(2));
       expect(frames.first.timestampMs, 1000);
       expect(frames.first.detections, hasLength(2));
-      expect(frames.first.detections[0].box,
-          const Rect.fromLTRB(0.40, 0.40, 0.50, 0.50));
+      expect(
+        frames.first.detections[0].box,
+        const Rect.fromLTRB(0.40, 0.40, 0.50, 0.50),
+      );
       expect(frames.first.detections[1].confidence, closeTo(0.4, 1e-9));
       expect(frames.first.detections[1].classIndex, 2);
       expect(frames.last.detections, isEmpty);
@@ -137,8 +139,10 @@ void main() {
         gapped.any((f) => f.timestampMs >= 5000 && f.timestampMs < 6000),
         isFalse,
       );
-      expect(gapped.any((f) => f.timestampMs >= 1000 && f.timestampMs < 5000),
-          isTrue);
+      expect(
+        gapped.any((f) => f.timestampMs >= 1000 && f.timestampMs < 5000),
+        isTrue,
+      );
     });
 
     test('staircaseFps thins each segment to its cap', () {
@@ -173,24 +177,28 @@ void main() {
 
     test('ByteTracker: per-frame velocity splits the id across the gap', () {
       expect(
-        confirmedAfterGap(ByteTracker(
-          params: const ByteTrackParams(
-            minHitsToConfirm: 2,
-            velocitySmoothing: 0.8,
+        confirmedAfterGap(
+          ByteTracker(
+            params: const ByteTrackParams(
+              minHitsToConfirm: 2,
+              velocitySmoothing: 0.8,
+            ),
           ),
-        )),
+        ),
         2,
       );
     });
     test('ByteTracker: time-aware velocity holds the id across the gap', () {
       expect(
-        confirmedAfterGap(ByteTracker(
-          params: const ByteTrackParams(
-            minHitsToConfirm: 2,
-            velocitySmoothing: 0.8,
+        confirmedAfterGap(
+          ByteTracker(
+            params: const ByteTrackParams(
+              minHitsToConfirm: 2,
+              velocitySmoothing: 0.8,
+            ),
+            timeAwareMotion: true,
           ),
-          timeAwareMotion: true,
-        )),
+        ),
         1,
       );
     });
@@ -245,72 +253,79 @@ void main() {
   // on the full stream and on one throttle-like degraded stream); judge the
   // counts against a hand count of visits from the session's photos.
   const sessionPath = String.fromEnvironment('REPLAY_SESSION');
-  test('replay a recorded session through both trackers', () {
-    final lines = File(sessionPath).readAsLinesSync();
-    final frames = parseRawDetectionLines(lines);
-    expect(
-      frames,
-      isNotEmpty,
-      reason:
-          'No raw_detections records in $sessionPath — was the session '
-          'recorded with Settings → AI → Visit tracking → Advanced → '
-          '"Log raw detections" enabled?',
-    );
-    // Read the seconds the session actually used from its start record, so
-    // the replay matches the field run.
-    var occlusionS = 3.0;
-    var minHitsS = 0.2;
-    for (final line in lines) {
-      try {
-        final rec = jsonDecode(line);
-        if (rec is Map && rec['type'] == 'start_of_session') {
-          final cfg = rec['config'];
-          if (cfg is Map) {
-            occlusionS =
-                (cfg['occlusionSeconds'] as num?)?.toDouble() ?? occlusionS;
-            minHitsS = (cfg['minHitsSeconds'] as num?)?.toDouble() ?? minHitsS;
+  test(
+    'replay a recorded session through both trackers',
+    () {
+      final lines = File(sessionPath).readAsLinesSync();
+      final frames = parseRawDetectionLines(lines);
+      expect(
+        frames,
+        isNotEmpty,
+        reason:
+            'No raw_detections records in $sessionPath — was the session '
+            'recorded with Settings → AI → Visit tracking → Advanced → '
+            '"Log raw detections" enabled?',
+      );
+      // Read the seconds the session actually used from its start record, so
+      // the replay matches the field run.
+      var occlusionS = 3.0;
+      var minHitsS = 0.2;
+      for (final line in lines) {
+        try {
+          final rec = jsonDecode(line);
+          if (rec is Map && rec['type'] == 'start_of_session') {
+            final cfg = rec['config'];
+            if (cfg is Map) {
+              occlusionS =
+                  (cfg['occlusionSeconds'] as num?)?.toDouble() ?? occlusionS;
+              minHitsS =
+                  (cfg['minHitsSeconds'] as num?)?.toDouble() ?? minHitsS;
+            }
+            break;
           }
-          break;
-        }
-      } catch (_) {}
-    }
-    // ignore: avoid_print
-    print('Replaying ${frames.length} frames from $sessionPath '
-        '(occlusion $occlusionS s, min visit $minHitsS s):');
-    // The round-107 variant matrix. Factories, not instances: each run
-    // needs a fresh tracker, and the degraded pass must not share state
-    // with the full-stream pass.
-    final variants = <String, InsectTracker Function()>{
-      'byte': () => ByteTracker(),
-      'byte dtAware': () => ByteTracker(timeAwareMotion: true),
-      'byte bIoU-fb': () =>
-          ByteTracker(fallbackMode: FallbackMode.bufferedIou),
-      'byte dt+bIoU': () => ByteTracker(
-        timeAwareMotion: true,
-        fallbackMode: FallbackMode.bufferedIou,
-      ),
-      'cbiou': () => CBiouTracker(),
-      'cbiou dtAware': () => CBiouTracker(timeAwareMotion: true),
-    };
-    // One throttle-like stress stream: the same detections delivered at a
-    // 15 → 3 → 10 fps staircase (10 s segments).
-    final degraded = staircaseFps(frames, [15, 3, 10]);
-    for (final (label, stream) in [
-      ('full stream', frames),
-      ('staircase 15/3/10 fps (${degraded.length} frames)', degraded),
-    ]) {
-      // ignore: avoid_print
-      print('--- $label ---');
-      for (final e in variants.entries) {
-        final report = replayTracker(
-          tracker: e.value(),
-          frames: stream,
-          occlusionSeconds: occlusionS,
-          minHitsSeconds: minHitsS,
-        );
-        // ignore: avoid_print
-        print('  ${e.key.padRight(13)} -> ${report.summary()}');
+        } catch (_) {}
       }
-    }
-  }, skip: sessionPath.isEmpty ? 'no REPLAY_SESSION defined' : false);
+      // ignore: avoid_print
+      print(
+        'Replaying ${frames.length} frames from $sessionPath '
+        '(occlusion $occlusionS s, min visit $minHitsS s):',
+      );
+      // The round-107 variant matrix. Factories, not instances: each run
+      // needs a fresh tracker, and the degraded pass must not share state
+      // with the full-stream pass.
+      final variants = <String, InsectTracker Function()>{
+        'byte': () => ByteTracker(),
+        'byte dtAware': () => ByteTracker(timeAwareMotion: true),
+        'byte bIoU-fb': () =>
+            ByteTracker(fallbackMode: FallbackMode.bufferedIou),
+        'byte dt+bIoU': () => ByteTracker(
+          timeAwareMotion: true,
+          fallbackMode: FallbackMode.bufferedIou,
+        ),
+        'cbiou': () => CBiouTracker(),
+        'cbiou dtAware': () => CBiouTracker(timeAwareMotion: true),
+      };
+      // One throttle-like stress stream: the same detections delivered at a
+      // 15 → 3 → 10 fps staircase (10 s segments).
+      final degraded = staircaseFps(frames, [15, 3, 10]);
+      for (final (label, stream) in [
+        ('full stream', frames),
+        ('staircase 15/3/10 fps (${degraded.length} frames)', degraded),
+      ]) {
+        // ignore: avoid_print
+        print('--- $label ---');
+        for (final e in variants.entries) {
+          final report = replayTracker(
+            tracker: e.value(),
+            frames: stream,
+            occlusionSeconds: occlusionS,
+            minHitsSeconds: minHitsS,
+          );
+          // ignore: avoid_print
+          print('  ${e.key.padRight(13)} -> ${report.summary()}');
+        }
+      }
+    },
+    skip: sessionPath.isEmpty ? 'no REPLAY_SESSION defined' : false,
+  );
 }

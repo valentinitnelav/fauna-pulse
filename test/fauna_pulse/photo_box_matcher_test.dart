@@ -178,12 +178,14 @@ void main() {
 
     test('same track on both sides interpolates each edge (midpoint)', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: -200, tracks: [
-          entry(4, 0.2, 0.2, 0.4, 0.4),
-        ]),
-        after: MatchedFrame(deltaMs: 200, tracks: [
-          entry(4, 0.4, 0.4, 0.6, 0.6),
-        ]),
+        before: MatchedFrame(
+          deltaMs: -200,
+          tracks: [entry(4, 0.2, 0.2, 0.4, 0.4)],
+        ),
+        after: MatchedFrame(
+          deltaMs: 200,
+          tracks: [entry(4, 0.4, 0.4, 0.6, 0.6)],
+        ),
         photoFile: 'p.jpg',
       );
       final box = res!.boxes.single;
@@ -201,12 +203,14 @@ void main() {
 
     test('asymmetric bracket weights by time (−100/+300 → w = 0.25)', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: -100, tracks: [
-          entry(4, 0.0, 0.0, 0.2, 0.2),
-        ]),
-        after: MatchedFrame(deltaMs: 300, tracks: [
-          entry(4, 0.4, 0.4, 0.6, 0.6),
-        ]),
+        before: MatchedFrame(
+          deltaMs: -100,
+          tracks: [entry(4, 0.0, 0.0, 0.2, 0.2)],
+        ),
+        after: MatchedFrame(
+          deltaMs: 300,
+          tracks: [entry(4, 0.4, 0.4, 0.6, 0.6)],
+        ),
         photoFile: 'p.jpg',
       );
       final box = res!.boxes.single;
@@ -217,12 +221,14 @@ void main() {
 
     test('a before frame at delta 0 yields exactly its own box', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: 0, tracks: [
-          entry(4, 0.2, 0.2, 0.4, 0.4),
-        ]),
-        after: MatchedFrame(deltaMs: 400, tracks: [
-          entry(4, 0.8, 0.8, 0.9, 0.9),
-        ]),
+        before: MatchedFrame(
+          deltaMs: 0,
+          tracks: [entry(4, 0.2, 0.2, 0.4, 0.4)],
+        ),
+        after: MatchedFrame(
+          deltaMs: 400,
+          tracks: [entry(4, 0.8, 0.8, 0.9, 0.9)],
+        ),
         photoFile: 'p.jpg',
       );
       expect(res!.boxes.single.left, closeTo(0.2, 1e-9));
@@ -231,13 +237,17 @@ void main() {
     test('a track on one side only is emitted verbatim, uninterpolated — '
         'even from the farther frame', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: -100, tracks: [
-          entry(4, 0.2, 0.2, 0.4, 0.4),
-        ]),
-        after: MatchedFrame(deltaMs: 300, tracks: [
-          entry(4, 0.4, 0.4, 0.6, 0.6),
-          entry(9, 0.7, 0.7, 0.9, 0.9), // only in the farther (after) frame
-        ]),
+        before: MatchedFrame(
+          deltaMs: -100,
+          tracks: [entry(4, 0.2, 0.2, 0.4, 0.4)],
+        ),
+        after: MatchedFrame(
+          deltaMs: 300,
+          tracks: [
+            entry(4, 0.4, 0.4, 0.6, 0.6),
+            entry(9, 0.7, 0.7, 0.9, 0.9), // only in the farther (after) frame
+          ],
+        ),
         photoFile: 'p.jpg',
       );
       expect(res!.boxes, hasLength(2));
@@ -252,12 +262,14 @@ void main() {
 
     test('bracket span beyond the gap cap degrades to the nearer frame', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: -1400, tracks: [
-          entry(4, 0.2, 0.2, 0.4, 0.4),
-        ]),
-        after: MatchedFrame(deltaMs: 1400, tracks: [
-          entry(4, 0.6, 0.6, 0.8, 0.8),
-        ]),
+        before: MatchedFrame(
+          deltaMs: -1400,
+          tracks: [entry(4, 0.2, 0.2, 0.4, 0.4)],
+        ),
+        after: MatchedFrame(
+          deltaMs: 1400,
+          tracks: [entry(4, 0.6, 0.6, 0.8, 0.8)],
+        ),
         photoFile: 'p.jpg',
         maxTotalGapMs: 2000,
       );
@@ -271,25 +283,30 @@ void main() {
     test('single-side brackets work and both-null returns null', () {
       final only = buildPhotoBoxes(
         before: null,
-        after: MatchedFrame(deltaMs: 410, tracks: [
-          entry(4, 0.4, 0.4, 0.6, 0.6),
-        ]),
+        after: MatchedFrame(
+          deltaMs: 410,
+          tracks: [entry(4, 0.4, 0.4, 0.6, 0.6)],
+        ),
         photoFile: 'p.jpg',
       );
       expect(only!.boxes.single.afterDeltaMs, 410);
       expect(only.nearestAbsDeltaMs, 410);
-      expect(buildPhotoBoxes(before: null, after: null, photoFile: 'p.jpg'),
-          isNull);
+      expect(
+        buildPhotoBoxes(before: null, after: null, photoFile: 'p.jpg'),
+        isNull,
+      );
     });
 
     test('triggered propagates from EITHER contributing entry', () {
       final res = buildPhotoBoxes(
-        before: MatchedFrame(deltaMs: -100, tracks: [
-          entry(4, 0.2, 0.2, 0.4, 0.4, jpeg: 'p.jpg'),
-        ]),
-        after: MatchedFrame(deltaMs: 100, tracks: [
-          entry(4, 0.4, 0.4, 0.6, 0.6),
-        ]),
+        before: MatchedFrame(
+          deltaMs: -100,
+          tracks: [entry(4, 0.2, 0.2, 0.4, 0.4, jpeg: 'p.jpg')],
+        ),
+        after: MatchedFrame(
+          deltaMs: 100,
+          tracks: [entry(4, 0.4, 0.4, 0.6, 0.6)],
+        ),
         photoFile: 'p.jpg',
       );
       expect(res!.boxes.single.triggered, isTrue);

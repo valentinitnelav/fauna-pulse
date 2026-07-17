@@ -55,7 +55,10 @@ abstract class InsectTracker {
   int get minHitsToConfirm;
 
   /// Applies freshly FPS-derived frame budgets (see [trackBuffer]).
-  void setFrameBudgets({required int trackBuffer, required int minHitsToConfirm});
+  void setFrameBudgets({
+    required int trackBuffer,
+    required int minHitsToConfirm,
+  });
 
   /// The [TrackerAlgorithm] name, for logs and the settings round-trip.
   String get algorithmName;

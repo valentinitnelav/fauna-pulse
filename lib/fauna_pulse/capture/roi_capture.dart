@@ -68,7 +68,8 @@ enum CapturePath {
 String roiPhotoFileName(int epochMs, String token) {
   final t = DateTime.fromMillisecondsSinceEpoch(epochMs);
   String two(int v) => v.toString().padLeft(2, '0');
-  final date = '${t.year.toString().padLeft(4, '0')}-${two(t.month)}-'
+  final date =
+      '${t.year.toString().padLeft(4, '0')}-${two(t.month)}-'
       '${two(t.day)}';
   final time = '${two(t.hour)}${two(t.minute)}${two(t.second)}';
   final ms = t.millisecond.toString().padLeft(3, '0');
@@ -130,12 +131,7 @@ class RawHighRes {
 }) {
   switch (rotationDegrees.remainder(360)) {
     case 90: // upright = raw rotated 90° clockwise (portrait back camera)
-      return (
-        left: top,
-        top: rawH - right,
-        right: bottom,
-        bottom: rawH - left,
-      );
+      return (left: top, top: rawH - right, right: bottom, bottom: rawH - left);
     case 180:
       return (
         left: rawW - right,
@@ -144,12 +140,7 @@ class RawHighRes {
         bottom: rawH - top,
       );
     case 270:
-      return (
-        left: rawW - bottom,
-        top: left,
-        right: rawW - top,
-        bottom: right,
-      );
+      return (left: rawW - bottom, top: left, right: rawW - top, bottom: right);
     default:
       return (left: left, top: top, right: right, bottom: bottom);
   }
@@ -218,7 +209,11 @@ CapturePath chooseCapturePath({
 /// the on-screen value exactly. Round-109+ records carry the value directly as
 /// `roi_side_stream_px`; this is the fallback for older logs. Returns null
 /// when the block or the analysis dims are unusable.
-int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysisH) {
+int? roiStreamSideFromLog(
+  Map<dynamic, dynamic> roi,
+  int analysisW,
+  int analysisH,
+) {
   final widthPx = (roi['width_px'] as num?)?.toDouble();
   final frameW = (roi['frame_width_px'] as num?)?.toDouble();
   if (widthPx == null || frameW == null || widthPx <= 0 || frameW <= 0) {

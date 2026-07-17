@@ -42,55 +42,65 @@ void main() {
     }
   });
 
-  test('r114 frame timestamps: written when given, omitted when null', () async {
-    final file = File('${tmp.path}/session.jsonl');
-    final logger = SessionLogger(file)..open();
-    // New logs carry both stamps; a HAL without sensor timestamps only
-    // frame_ms; the no-arg call (old shape) writes neither — all three must
-    // stay parseable side by side.
-    logger.logDetections([
-      {'track_id': 1},
-    ], frameMs: 1000100, frameSensorMs: 1000020);
-    logger.logDetections([
-      {'track_id': 1},
-    ], frameMs: 1000200);
-    logger.logDetections([
-      {'track_id': 1},
-    ]);
-    await logger.close();
+  test(
+    'r114 frame timestamps: written when given, omitted when null',
+    () async {
+      final file = File('${tmp.path}/session.jsonl');
+      final logger = SessionLogger(file)..open();
+      // New logs carry both stamps; a HAL without sensor timestamps only
+      // frame_ms; the no-arg call (old shape) writes neither — all three must
+      // stay parseable side by side.
+      logger.logDetections(
+        [
+          {'track_id': 1},
+        ],
+        frameMs: 1000100,
+        frameSensorMs: 1000020,
+      );
+      logger.logDetections([
+        {'track_id': 1},
+      ], frameMs: 1000200);
+      logger.logDetections([
+        {'track_id': 1},
+      ]);
+      await logger.close();
 
-    final records = file
-        .readAsLinesSync()
-        .map((l) => jsonDecode(l) as Map<String, dynamic>)
-        .toList();
-    expect(records[0]['frame_ms'], 1000100);
-    expect(records[0]['frame_sensor_ms'], 1000020);
-    expect(records[1]['frame_ms'], 1000200);
-    expect(records[1].containsKey('frame_sensor_ms'), isFalse);
-    expect(records[2].containsKey('frame_ms'), isFalse);
-  });
+      final records = file
+          .readAsLinesSync()
+          .map((l) => jsonDecode(l) as Map<String, dynamic>)
+          .toList();
+      expect(records[0]['frame_ms'], 1000100);
+      expect(records[0]['frame_sensor_ms'], 1000020);
+      expect(records[1]['frame_ms'], 1000200);
+      expect(records[1].containsKey('frame_sensor_ms'), isFalse);
+      expect(records[2].containsKey('frame_ms'), isFalse);
+    },
+  );
 
-  test('one detections record per frame carries all concurrent tracks', () async {
-    final file = File('${tmp.path}/session.jsonl');
-    final logger = SessionLogger(file)..open();
-    // Three insects tracked in the same frame: one line, three entries, and
-    // only the photo-covered tracks carry the jpeg filename.
-    logger.logDetections([
-      {'track_id': 1, 'confidence': 0.9, 'jpeg': 'roi_1.jpg'},
-      {'track_id': 2, 'confidence': 0.8, 'jpeg': 'roi_1.jpg'},
-      {'track_id': 5, 'confidence': 0.7},
-    ]);
-    await logger.close();
+  test(
+    'one detections record per frame carries all concurrent tracks',
+    () async {
+      final file = File('${tmp.path}/session.jsonl');
+      final logger = SessionLogger(file)..open();
+      // Three insects tracked in the same frame: one line, three entries, and
+      // only the photo-covered tracks carry the jpeg filename.
+      logger.logDetections([
+        {'track_id': 1, 'confidence': 0.9, 'jpeg': 'roi_1.jpg'},
+        {'track_id': 2, 'confidence': 0.8, 'jpeg': 'roi_1.jpg'},
+        {'track_id': 5, 'confidence': 0.7},
+      ]);
+      await logger.close();
 
-    final rec =
-        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
-    expect(rec['type'], 'detections');
-    final tracks = rec['tracks'] as List;
-    expect(tracks, hasLength(3));
-    expect(tracks[0]['jpeg'], 'roi_1.jpg');
-    expect(tracks[2]['track_id'], 5);
-    expect((tracks[2] as Map).containsKey('jpeg'), isFalse);
-  });
+      final rec =
+          jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+      expect(rec['type'], 'detections');
+      final tracks = rec['tracks'] as List;
+      expect(tracks, hasLength(3));
+      expect(tracks[0]['jpeg'], 'roi_1.jpg');
+      expect(tracks[2]['track_id'], 5);
+      expect((tracks[2] as Map).containsKey('jpeg'), isFalse);
+    },
+  );
 
   test('logTrackEvent writes a track_event line with the lifecycle fields '
       '(round 116)', () async {
@@ -273,18 +283,21 @@ void main() {
     expect(calls, 1);
   });
 
-  test('logging after close is a silent no-op (late platform events)', () async {
-    final file = File('${tmp.path}/session.jsonl');
-    final logger = SessionLogger(file)..open();
-    logger.logStart({'session_id': 'abc'});
-    logger.logEnd({'ended_normally': true});
-    await logger.close();
-    // A straggler (late detector error, watchdog tick racing the stop
-    // sequence) must not throw or reopen anything.
-    logger.logAppError({'source': 'detector', 'message': 'late'});
-    await logger.flushNow();
-    expect(file.readAsLinesSync(), hasLength(2));
-  });
+  test(
+    'logging after close is a silent no-op (late platform events)',
+    () async {
+      final file = File('${tmp.path}/session.jsonl');
+      final logger = SessionLogger(file)..open();
+      logger.logStart({'session_id': 'abc'});
+      logger.logEnd({'ended_normally': true});
+      await logger.close();
+      // A straggler (late detector error, watchdog tick racing the stop
+      // sequence) must not throw or reopen anything.
+      logger.logAppError({'source': 'detector', 'message': 'late'});
+      await logger.flushNow();
+      expect(file.readAsLinesSync(), hasLength(2));
+    },
+  );
 
   test('isoWithOffset has millisecond precision and an offset', () {
     final s = isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123));

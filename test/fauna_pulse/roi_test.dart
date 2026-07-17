@@ -39,7 +39,11 @@ void main() {
 
   test('copyClamped keeps the square fully inside the frame', () {
     const roi = Roi(centerX: 0.5, centerY: 0.5, sideFraction: 0.6);
-    final moved = roi.copyClamped(centerX: 5.0, centerY: -5.0, frameAspect: aspect);
+    final moved = roi.copyClamped(
+      centerX: 5.0,
+      centerY: -5.0,
+      frameAspect: aspect,
+    );
     final r = moved.normalizedRect(aspect);
     expect(r.left, greaterThanOrEqualTo(-1e-9));
     expect(r.top, greaterThanOrEqualTo(-1e-9));

@@ -750,7 +750,8 @@ class SessionConfig {
     // Pre-round-109 configs lack the key. A stored size that differs from the
     // old factory default (640×480) can only mean the user once picked it in
     // Settings — treat that as explicit so the auto default never stomps it.
-    streamResolutionExplicit: j['streamResolutionExplicit'] as bool? ??
+    streamResolutionExplicit:
+        j['streamResolutionExplicit'] as bool? ??
         (((j['streamWidth'] as num?)?.toInt() ?? 640) != 640 ||
             ((j['streamHeight'] as num?)?.toInt() ?? 480) != 480),
     captureMode: _captureModeFromJson(j),
@@ -773,9 +774,9 @@ class SessionConfig {
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
     // Configs saved before round 105 carry no algorithm choice: they were
     // all ByteTrack, which is also the fallback for an unknown name.
-    trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[j['trackerAlgorithm']
-            as String? ??
-        ''] ??
+    trackerAlgorithm:
+        TrackerAlgorithm.values.asNameMap()[j['trackerAlgorithm'] as String? ??
+            ''] ??
         TrackerAlgorithm.bytetrack,
     trackerParams: j['trackerParams'] is Map
         ? ByteTrackParams.fromJson(

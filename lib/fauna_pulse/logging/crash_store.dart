@@ -83,7 +83,9 @@ class CrashStore {
           dir
               .listSync()
               .whereType<File>()
-              .where((f) => _isCrashFile(f) && _fileName(f).compareTo(cutoff) >= 0)
+              .where(
+                (f) => _isCrashFile(f) && _fileName(f).compareTo(cutoff) >= 0,
+              )
               .toList()
             ..sort((a, b) => _fileName(b).compareTo(_fileName(a)));
       return files.take(limit).toList();
@@ -113,9 +115,8 @@ class CrashStore {
 
   /// Deletes everything past the newest [maxFiles] crash files.
   static Future<void> _prune(Directory dir) async {
-    final files =
-        dir.listSync().whereType<File>().where(_isCrashFile).toList()
-          ..sort((a, b) => _fileName(b).compareTo(_fileName(a)));
+    final files = dir.listSync().whereType<File>().where(_isCrashFile).toList()
+      ..sort((a, b) => _fileName(b).compareTo(_fileName(a)));
     for (final f in files.skip(maxFiles)) {
       try {
         await f.delete();

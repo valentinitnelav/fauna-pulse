@@ -179,8 +179,7 @@ class TrackerReplayReport {
     required this.p95TrackMs,
   });
 
-  double get totalVisitS =>
-      visitDurationsS.fold(0.0, (sum, d) => sum + d);
+  double get totalVisitS => visitDurationsS.fold(0.0, (sum, d) => sum + d);
 
   double get meanVisitS =>
       visitDurationsS.isEmpty ? 0 : totalVisitS / visitDurationsS.length;

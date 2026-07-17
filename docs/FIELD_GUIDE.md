@@ -26,6 +26,14 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 > distance from the flower so the ROI meets your target photo resolution, and
 > lighting/glare tips. Fill in from field experience.
 
+- **Location & flight mode (round 126).** The app takes ONE GPS fix per session
+  (pin button on the camera screen; green = set). The GPS receiver still works in
+  flight mode, but assisted-GPS data cannot download there, so a cold fix can take
+  minutes: **get the fix first, then enable flight mode.** If GPS fails entirely, the
+  pin dialog lets you type coordinates. The fix is written to the session log and
+  stamped (with the capture time) into crops you export from the summary screen, so
+  identification apps like ObsIdentify read where-and-when directly from the file.
+
 ## 2. Starting a session
 
 1. **Open the app.** The home screen asks for camera permission (and, on first

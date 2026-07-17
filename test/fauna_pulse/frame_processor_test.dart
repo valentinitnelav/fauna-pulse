@@ -29,12 +29,7 @@ Map<String, dynamic> det({
   'classIndex': 0,
   'className': 'bee',
   'confidence': confidence,
-  'normalizedBox': {
-    'left': left,
-    'top': top,
-    'right': right,
-    'bottom': bottom,
-  },
+  'normalizedBox': {'left': left, 'top': top, 'right': right, 'bottom': bottom},
 };
 
 /// One native stream event (analysis frame 1280×960 unless overridden).
@@ -154,20 +149,24 @@ void main() {
       expect(run(fp, event(detections: [])).timestampMs, 43000);
     });
 
-    test('drains the tracker lifecycle events into FrameResult (round 116)',
-        () {
-      final fp = FrameProcessor(tracker: tracker());
-      // 1st frame: tentative — no events. 2nd: confirmed — one "created".
-      // 3rd (empty): one "lost". Each drain leaves the buffer empty, so an
-      // event surfaces on exactly one FrameResult (one log line each).
-      expect(run(fp, event(detections: [det()], timestamp: 1000)).events,
-          isEmpty);
-      final confirmed = run(fp, event(detections: [det()], timestamp: 1100));
-      expect(confirmed.events.map((e) => e.kind), [TrackEventKind.created]);
-      final lost = run(fp, event(detections: [], timestamp: 1200));
-      expect(lost.events.map((e) => e.kind), [TrackEventKind.lost]);
-      expect(lost.events.single.trackId, confirmed.events.single.trackId);
-    });
+    test(
+      'drains the tracker lifecycle events into FrameResult (round 116)',
+      () {
+        final fp = FrameProcessor(tracker: tracker());
+        // 1st frame: tentative — no events. 2nd: confirmed — one "created".
+        // 3rd (empty): one "lost". Each drain leaves the buffer empty, so an
+        // event surfaces on exactly one FrameResult (one log line each).
+        expect(
+          run(fp, event(detections: [det()], timestamp: 1000)).events,
+          isEmpty,
+        );
+        final confirmed = run(fp, event(detections: [det()], timestamp: 1100));
+        expect(confirmed.events.map((e) => e.kind), [TrackEventKind.created]);
+        final lost = run(fp, event(detections: [], timestamp: 1200));
+        expect(lost.events.map((e) => e.kind), [TrackEventKind.lost]);
+        expect(lost.events.single.trackId, confirmed.events.single.trackId);
+      },
+    );
   });
 
   group('FrameProcessor.setGateIdle', () {
@@ -283,10 +282,7 @@ void main() {
       expect(fp.updatePipelineFps(now), closeTo(steady, 1e-9));
       // …and the estimator keeps tracking normally afterwards.
       now += 100;
-      expect(
-        fp.updatePipelineFps(now),
-        closeTo(0.1 * 10 + 0.9 * steady, 1e-9),
-      );
+      expect(fp.updatePipelineFps(now), closeTo(0.1 * 10 + 0.9 * steady, 1e-9));
     });
 
     test('slow-but-steady rhythms below the 2 s floor still blend', () {

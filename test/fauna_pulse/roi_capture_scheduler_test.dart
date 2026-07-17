@@ -306,7 +306,8 @@ void main() {
       targetPx: 640,
       syncCompanion: syncCompanion,
       fastCaptureFn: () async => liveCrop,
-      highResCaptureFn: highResFn ??
+      highResCaptureFn:
+          highResFn ??
           () async => RawHighRes(
             bytes: highResJpeg,
             rotationDegrees: 0,
@@ -332,10 +333,7 @@ void main() {
       final liveName = pending.fileName.replaceFirst('.jpg', '_live.jpg');
       expect(File('${dir.path}/${pending.fileName}').existsSync(), isTrue);
       expect(File('${dir.path}/$liveName').existsSync(), isTrue);
-      expect(
-        File('${dir.path}/$liveName').readAsBytesSync(),
-        equals(liveCrop),
-      );
+      expect(File('${dir.path}/$liveName').readAsBytesSync(), equals(liveCrop));
       expect(stat, isNotNull);
       expect(stat!.path, CapturePath.highRes);
       expect(stat!.liveJpeg, liveName);

@@ -117,6 +117,15 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `saved_px` from its capture record, not box geometry.
 - **Owner rule: every new tunable parameter ships user-adjustable** — Settings control
   + SessionConfig JSON + summary row + round-trip test, in the same round it appears.
+- **Session location (round 126).** ONE GPS fix per session, never continuous:
+  `session/location_fix.dart` (pure `LocationFixTracker`: best fix, done at ≤15 m or
+  60 s) + map-free pin-button dialog (offline/flight-mode friendly; manual entry +
+  "use last session's" from prefs `last_session_location`). Start record gains
+  `location` {lat, lon, accuracy_m, fix_time_ms, source gps|manual|previous};
+  `redactLocation` (error_reporter.dart) strips it from problem-report samples
+  (protected-species sites). Silent screen-open acquire only when permission was
+  already granted; the dialog is the prompting path. Dep: geolocator; manifest:
+  ACCESS_FINE/COARSE_LOCATION.
 - **Portrait-only (round 124).** Locked in BOTH the manifest
   (`android:screenOrientation="portrait"`) and `main()`
   (`SystemChrome.setPreferredOrientations`): the crop/rotation math assumes an upright
@@ -210,7 +219,10 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `session_recorder.dart`, logged as `file_token` in the start record). Invariants:
   token first + fixed-width stamp (within a session, path sort == capture order —
   gallery export relies on it); track ids never in the name (one photo can serve
-  several tracks); the same trigger moment is logged as `captured_at_ms` in
+  several tracks); r126 EXCEPTION: user-exported CROPS (and only crops) get EXIF
+  DateTimeOriginal + GPS stamped at export time (`CropExifInfo`/`applyCropExif` in
+  crop_export.dart) — session photos stay EXIF-free, and no orientation tag is ever
+  written; the same trigger moment is logged as `captured_at_ms` in
   `capture`/`motion_capture`/`timelapse_capture` records (the records' own `time_ms`
   is stamped later — at enqueue / after the JPEG write) and the summary's Photos tab
   shows it as "Captured". Saved crops carry NO EXIF (all paths re-encode raw pixels);

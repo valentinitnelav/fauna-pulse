@@ -23,6 +23,7 @@ import '../models/session_config.dart';
 
 import '../capture/crop_export.dart';
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
+import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
 import '../logging/device_storage.dart';
@@ -727,7 +728,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             byFileTime[file] ?? 0,
             contentMs,
           )) {
-            byFileMatchNote[file] = 'the ROI was moved before the photo '
+            byFileMatchNote[file] =
+                'the ROI was moved before the photo '
                 'landed';
             continue;
           }
@@ -1272,9 +1274,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // ran is shown (its name in the sub-header), so the card never lists knobs
     // that had no effect.
     final isCbiou = _trackerAlgorithm == 'cbiou';
-    rows.add(
-      _subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'),
-    );
+    rows.add(_subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'));
     add('Occlusion tolerance', _setting('occlusionSeconds'), suffix: ' s');
     // Min visit length: prefer the seconds the user set (newer sessions); fall
     // back to the raw frame count logged by older sessions.
@@ -1408,6 +1408,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
         _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
         _stat('End time', endLabel),
+        // Round 126: the session's single location fix, when one was set.
+        if (SessionLocation.fromJson(
+              (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
+            )
+            case final SessionLocation loc)
+          _stat('Location', '${loc.label} (${loc.source})'),
         _stat('Session duration', _durationLabel),
         _stat('Model', _model ?? 'unknown'),
         if (_accelerator != null && _accelerator!.isNotEmpty)
@@ -1643,9 +1649,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               'Pictures/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
               '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// Every parameter the user chose at session start (from the log's config
@@ -1967,6 +1971,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       else if (_photos.isNotEmpty)
         _PhotoViewer(
           photos: _photos,
+          location: SessionLocation.fromJson(
+            (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
+          ),
           onZoomChanged: (z) {
             if (mounted && z != _photoViewerZoomed) {
               setState(() => _photoViewerZoomed = z);
@@ -2230,7 +2237,15 @@ class _PhotoViewer extends StatefulWidget {
   /// which is why zoomed panning felt broken even after round 88 froze the
   /// inner PageView.
   final ValueChanged<bool> onZoomChanged;
-  const _PhotoViewer({required this.photos, required this.onZoomChanged});
+
+  /// The session's single location fix (round 126), stamped into exported
+  /// crops' EXIF; null when the session recorded none.
+  final SessionLocation? location;
+  const _PhotoViewer({
+    required this.photos,
+    required this.onZoomChanged,
+    this.location,
+  });
 
   @override
   State<_PhotoViewer> createState() => _PhotoViewerState();
@@ -2526,7 +2541,20 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     try {
       // Cut from whichever image is on screen — the high-res photo or (⚡ on)
       // its live companion; the export name follows the file it came from.
-      final cropped = await cropJpegNormRect(_fileFor(p), norm);
+      // Round 126: the export gets EXIF where-and-when — the photo's trigger
+      // moment plus the session's location fix (when one was recorded) — so
+      // identification apps (ObsIdentify, iNaturalist) read both from the
+      // file. Only exports carry EXIF; the session photos stay EXIF-free.
+      final loc = widget.location;
+      final cropped = await cropJpegNormRect(
+        _fileFor(p),
+        norm,
+        exif: CropExifInfo(
+          capturedAtMs: p.captureMs,
+          latitude: loc?.latitude,
+          longitude: loc?.longitude,
+        ),
+      );
       if (cropped == null) {
         msg =
             'Crop failed — the box is too small (under $kMinCropSidePx px) '

@@ -192,11 +192,12 @@ class SessionLogger {
     int? frameMs,
     int? frameSensorMs,
     DateTime? at,
-  }) => _append('detections', {
-    'frame_ms': ?frameMs,
-    'frame_sensor_ms': ?frameSensorMs,
-    'tracks': tracks,
-  }, at: at, flush: false);
+  }) => _append(
+    'detections',
+    {'frame_ms': ?frameMs, 'frame_sensor_ms': ?frameSensorMs, 'tracks': tracks},
+    at: at,
+    flush: false,
+  );
 
   /// One processed frame's detector boxes BEFORE tracking (round 105), for
   /// the offline tracker replay harness (`tracking/tracker_replay.dart` —

@@ -11,22 +11,24 @@ import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 void main() {
   Roi roi(double side) => Roi(centerX: 0.5, centerY: 0.5, sideFraction: side);
 
-  test('a burst of ticks writes once, with the LAST value, after the delay',
-      () {
-    fakeAsync((async) {
-      final d = RoiUpdateDebouncer();
-      final written = <Roi>[];
-      d.seed(roi(0.45));
-      for (var i = 10; i <= 30; i++) {
-        d.notify(roi(i / 100), written.add);
-        async.elapse(const Duration(milliseconds: 100));
-      }
-      expect(written, isEmpty); // still mid-drag: every tick reset the timer
-      async.elapse(const Duration(seconds: 2));
-      expect(written, hasLength(1));
-      expect(written.single.sideFraction, closeTo(0.30, 1e-9));
-    });
-  });
+  test(
+    'a burst of ticks writes once, with the LAST value, after the delay',
+    () {
+      fakeAsync((async) {
+        final d = RoiUpdateDebouncer();
+        final written = <Roi>[];
+        d.seed(roi(0.45));
+        for (var i = 10; i <= 30; i++) {
+          d.notify(roi(i / 100), written.add);
+          async.elapse(const Duration(milliseconds: 100));
+        }
+        expect(written, isEmpty); // still mid-drag: every tick reset the timer
+        async.elapse(const Duration(seconds: 2));
+        expect(written, hasLength(1));
+        expect(written.single.sideFraction, closeTo(0.30, 1e-9));
+      });
+    },
+  );
 
   test('a drag that settles back on the last logged value writes nothing', () {
     fakeAsync((async) {

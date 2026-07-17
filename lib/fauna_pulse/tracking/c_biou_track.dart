@@ -152,7 +152,10 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
   @override
   int totalConfirmed = 0;
 
-  CBiouTracker({this.params = const CBiouParams(), this.timeAwareMotion = false});
+  CBiouTracker({
+    this.params = const CBiouParams(),
+    this.timeAwareMotion = false,
+  });
 
   Rect _predictedOf(Track t) =>
       timeAwareMotion ? t.predictedBoxAfter(_frameDtS) : t.predictedBox;
@@ -354,16 +357,22 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
       // Units/second from the last true observation (see ByteTracker).
       final dtS = (timestampMs - t.lastSeenMs) / 1000.0;
       if (dtS > 0) {
-        t.vx = _motionSmoothing * ((newCenter.dx - t.lastObservedCenter.dx) / dtS) +
+        t.vx =
+            _motionSmoothing *
+                ((newCenter.dx - t.lastObservedCenter.dx) / dtS) +
             (1 - _motionSmoothing) * t.vx;
-        t.vy = _motionSmoothing * ((newCenter.dy - t.lastObservedCenter.dy) / dtS) +
+        t.vy =
+            _motionSmoothing *
+                ((newCenter.dy - t.lastObservedCenter.dy) / dtS) +
             (1 - _motionSmoothing) * t.vy;
       }
     } else {
       final oldCenter = t.box.center;
-      t.vx = _motionSmoothing * (newCenter.dx - oldCenter.dx) +
+      t.vx =
+          _motionSmoothing * (newCenter.dx - oldCenter.dx) +
           (1 - _motionSmoothing) * t.vx;
-      t.vy = _motionSmoothing * (newCenter.dy - oldCenter.dy) +
+      t.vy =
+          _motionSmoothing * (newCenter.dy - oldCenter.dy) +
           (1 - _motionSmoothing) * t.vy;
     }
 

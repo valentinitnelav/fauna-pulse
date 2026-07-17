@@ -6,6 +6,7 @@
 // results here and never touch raw camera pixels on the hot path.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,12 +33,14 @@ import '../models/track.dart';
 import '../perf/adaptive_inference_throttle.dart';
 import '../session/camera_diagnostics_controller.dart';
 import '../session/frame_processor.dart';
+import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
 import '../widgets/calibrating_banner.dart';
+import '../widgets/location_dialog.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
@@ -131,6 +134,66 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       await prefs.setBool(_statsExpandedKey, _statsExpanded);
     } catch (e) {
       logSwallowed('stats_expanded_save', e);
+    }
+  }
+
+  // Session location (round 126): ONE stable GPS read per session — acquired
+  // silently on screen open when the permission already exists, or via the
+  // pin button's dialog (which may prompt). Notifiers (not plain fields) so
+  // the open dialog keeps receiving fixes live. `_locationManuallySet` stops
+  // a late GPS fix from overwriting a manual/previous/cleared choice.
+  static const String _lastLocationKey = 'last_session_location';
+  final ValueNotifier<SessionLocation?> _locationVN = ValueNotifier(null);
+  final ValueNotifier<bool> _locSearchingVN = ValueNotifier(false);
+  SessionLocator? _locator;
+  SessionLocation? _previousLocation;
+  bool _locationManuallySet = false;
+
+  void _onLocationUpdate(SessionLocation? best, bool searching) {
+    if (!mounted) return;
+    _locSearchingVN.value = searching;
+    if (!_locationManuallySet && best != null) _locationVN.value = best;
+    setState(() {}); // pin button color
+  }
+
+  Future<void> _openLocationDialog() async {
+    final res = await showDialog<LocationDialogResult>(
+      context: context,
+      builder: (_) => LocationDialog(
+        current: _locationVN,
+        searching: _locSearchingVN,
+        previous: _previousLocation,
+        onSearchAgain: () async {
+          _locationManuallySet = false;
+          return await _locator?.start(requestPermission: true) ?? false;
+        },
+      ),
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      if (res.location == null) {
+        // Removed on purpose: also stop searching so a late fix can't refill.
+        _locator?.stop();
+        _locSearchingVN.value = false;
+        _locationManuallySet = true;
+      } else {
+        _locationManuallySet = res.location!.source != 'gps';
+      }
+      _locationVN.value = res.location;
+    });
+  }
+
+  /// Remembers the location a recording actually used, so the next session
+  /// can offer it as a one-tap "use last session's" default.
+  Future<void> _persistSessionLocation() async {
+    final loc = _locationVN.value;
+    if (loc == null) return;
+    _previousLocation = loc;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_lastLocationKey, jsonEncode(loc.toJson()));
+    } catch (e) {
+      logSwallowed('location_save', e);
     }
   }
 
@@ -428,6 +491,26 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         .catchError((Object e) {
           logSwallowed('stats_expanded_load', e);
         });
+    // Session location (round 126): silent auto-acquire — only proceeds when
+    // the location permission was granted before, so no surprise prompt; the
+    // pin button's dialog is the prompting path. Also restore the previous
+    // session's location as a one-tap default.
+    _locator = SessionLocator(onUpdate: _onLocationUpdate);
+    _locator!.start().catchError((Object e) {
+      logSwallowed('gps_autostart', e);
+      return false;
+    });
+    SharedPreferences.getInstance()
+        .then((p) {
+          final raw = p.getString(_lastLocationKey);
+          if (raw == null || !mounted) return;
+          _previousLocation = SessionLocation.fromJson(
+            (jsonDecode(raw) as Map).cast<String, dynamic>(),
+          );
+        })
+        .catchError((Object e) {
+          logSwallowed('location_load', e);
+        });
     // Read the model's input resolution for the status overlay (async; updates
     // the chip from "reading…" once the metadata probe returns).
     _refreshModelInputSize();
@@ -591,6 +674,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _gtFrameTimer?.cancel();
     _errorSub?.cancel();
     _blackoutHintTimer?.cancel();
+    _locator?.stop();
+    _locationVN.dispose();
+    _locSearchingVN.dispose();
     // A scheduled run disposed while *sleeping* holds the keep-alive service
     // without a recording (the recording path releases it via _stopRecording
     // below). Best-effort, unawaited — the screen is going away.
@@ -1099,6 +1185,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
       return;
     }
+    // Round 126: remember the location this recording uses (fire-and-forget)
+    // so the next session can offer it as a one-tap default.
+    if (!_recording) unawaited(_persistSessionLocation());
     if (_recording) {
       await _stopAndShowSummary();
     } else if (_config.scheduleEnabled) {
@@ -1248,6 +1337,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // live test photo confirmed them (near-certainly identical, but the
         // science log says where the number came from).
         if (_probes.captureDimsFromCache) 'capture_dims_from_cache': true,
+        // Round 126: the session's single location fix ('source' says gps /
+        // manual / previous). Stripped from problem-report log samples.
+        if (_locationVN.value != null) 'location': _locationVN.value!.toJson(),
         // Which rear lens was in use for this session. zoom factor 1.0 = the main
         // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
         // human-readable lens name shown on the switch button.
@@ -2938,6 +3030,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                     () => _showFocusSlider = !_showFocusSlider,
                                   )
                                 : null,
+                          ),
+                          const SizedBox(width: 16),
+                          // Session location pin (round 126): green = set,
+                          // amber = GPS searching, dim = none. Locked while
+                          // recording — the start record is already written.
+                          IconButton(
+                            iconSize: 32,
+                            color: _locationVN.value != null
+                                ? Colors.lightGreenAccent
+                                : _locSearchingVN.value
+                                ? Colors.amber
+                                : Colors.white24,
+                            icon: const Icon(Icons.location_on),
+                            tooltip:
+                                'Session location (saved to the log and '
+                                'exported crops)',
+                            onPressed: _recording ? null : _openLocationDialog,
                           ),
                         ],
                       ),

@@ -61,6 +61,8 @@ Session-wide metadata. Notable fields:
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
 | `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models). |
 | `camera_full_width_px`, `camera_full_height_px` | Full-resolution (high-res) photo size. |
+| `capture_dims_from_cache` | Present (`true`) when recording started before the live photo probe confirmed the cached photo size (round 121) — the dims above came from the previous measurement. |
+| `location` | The session's single location fix (round 126): `lat`, `lon` (decimal degrees), `accuracy_m` (GPS only), `fix_time_ms`, `source` (`gps` / `manual` / `previous`). Absent when no location was set. Stripped from problem-report samples. |
 | `selected_lens_zoom`, `selected_lens_label` | Which rear lens was used. |
 | `focus_mode` (`manual`/`auto`/`fixed`), `focus_value` | Focus; `focus_value` (0..1) present only for manual. |
 | `confidence_threshold`, `iou_threshold` | Detection thresholds. |

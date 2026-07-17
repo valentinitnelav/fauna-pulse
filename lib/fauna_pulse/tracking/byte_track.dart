@@ -505,7 +505,10 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
           width: t.box.width,
           height: t.box.height,
         );
-        final score = iou(_bufferedWithFloor(anchor), _bufferedWithFloor(d.box));
+        final score = iou(
+          _bufferedWithFloor(anchor),
+          _bufferedWithFloor(d.box),
+        );
         return score >= _minFallbackBiou ? score : null;
     }
   }
