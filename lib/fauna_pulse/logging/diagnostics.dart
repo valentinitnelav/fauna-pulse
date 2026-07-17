@@ -1,9 +1,10 @@
 // FaunaPulse — diagnostics bridge.
 //
-// Thin wrapper over the native `faunapulse/diagnostics` channel. Right now its
-// only job is to capture this app's own recent log output ("logcat") so it can
-// be bundled into an error report. A non-rooted Android app can only read its
-// own process logs, which is exactly what we want for debugging this app.
+// Thin wrapper over the native `faunapulse/diagnostics` channel: captures
+// this app's own recent log output ("logcat") for error reports, and opens
+// an email app with a report file attached. A non-rooted Android app can
+// only read its own process logs, which is exactly what we want for
+// debugging this app.
 
 import 'package:flutter/services.dart';
 
@@ -22,6 +23,29 @@ class Diagnostics {
     } catch (e) {
       logSwallowed('logcat_capture', e);
       return null;
+    }
+  }
+
+  /// Opens an email app with [to], [subject] and the file at [path] already
+  /// attached. Needed because the share sheet cannot pre-fill a recipient.
+  /// Returns false when no email app could be opened.
+  static Future<bool> sendEmail({
+    required String path,
+    required String to,
+    required String subject,
+    required String body,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('sendEmail', {
+            'path': path,
+            'to': to,
+            'subject': subject,
+            'body': body,
+          }) ??
+          false;
+    } catch (e) {
+      logSwallowed('report_send_email', e);
+      return false;
     }
   }
 }

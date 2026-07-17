@@ -52,6 +52,18 @@
             android:name=".RecordingService"
             android:exported="false"
             android:foregroundServiceType="camera" />
+        <!-- FileProvider: lets MainActivity.sendFileByEmail hand ONE saved error
+             report to an email app without exposing the rest of the app's storage.
+             The paths it may serve are whitelisted in res/xml/report_file_paths.xml. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.reports.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/report_file_paths" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

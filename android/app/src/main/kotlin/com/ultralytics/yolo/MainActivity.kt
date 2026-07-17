@@ -56,6 +56,46 @@ class MainActivity : FlutterFragmentActivity() {
             navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        installCrashFileHandler()
+    }
+
+    /// Persists any uncaught Java/Kotlin exception as a timestamped file under
+    /// `crashes/` (same folder + format as the Dart side's crash_store.dart —
+    /// keep the two in sync) BEFORE the process dies, so the next "Report a
+    /// problem" can embed it. Chains to the previous handler (Flutter's /
+    /// Android's), which shows the crash dialog and kills the process as
+    /// usual. Native C++ signal crashes (e.g. a GPU delegate segfault) bypass
+    /// JVM handlers entirely and are NOT captured here.
+    private fun installCrashFileHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            try {
+                writeCrashFile(e, thread.name)
+            } catch (_: Exception) {
+                // Never let crash capture cause a second crash.
+            }
+            previous?.uncaughtException(thread, e)
+        }
+    }
+
+    private fun writeCrashFile(e: Throwable, threadName: String) {
+        val base = getExternalFilesDir(null) ?: filesDir
+        val dir = java.io.File(base, "crashes").apply { mkdirs() }
+        val now = java.util.Date()
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HHmmss", java.util.Locale.US).format(now)
+        val iso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US).format(now)
+        val stack = java.io.StringWriter().also { e.printStackTrace(java.io.PrintWriter(it)) }
+        java.io.File(dir, "crash_$stamp.txt").writeText(
+            "Crash captured: $iso (local time)\n" +
+                "Source: kotlin_uncaught (thread $threadName)\n" +
+                "Error: $e\n" +
+                "Stack:\n$stack",
+        )
+        // Keep only the newest 20 files (matches CrashStore.maxFiles).
+        dir.listFiles { f -> f.name.startsWith("crash_") && f.name.endsWith(".txt") }
+            ?.sortedByDescending { it.name }
+            ?.drop(20)
+            ?.forEach { it.delete() }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -185,6 +225,21 @@ class MainActivity : FlutterFragmentActivity() {
                             mainHandler.post { result.success(log) }
                         }
                     }
+                    // Opens an email app with recipient + subject + the report
+                    // file attached (the share sheet cannot pre-fill a recipient).
+                    "sendEmail" -> {
+                        val ok = try {
+                            sendFileByEmail(
+                                call.argument<String>("path"),
+                                call.argument<String>("to"),
+                                call.argument<String>("subject") ?: "",
+                                call.argument<String>("body") ?: "",
+                            )
+                        } catch (e: Exception) {
+                            false
+                        }
+                        result.success(ok)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -241,6 +296,35 @@ class MainActivity : FlutterFragmentActivity() {
             } catch (e2: Exception) {
                 false
             }
+        }
+    }
+
+    /// Opens the user's email app with [to], [subject] and the file at [path]
+    /// attached. The file (a saved error report under the app's external files
+    /// dir) is handed over through a FileProvider — Android's mechanism for
+    /// granting another app read access to ONE file without exposing the whole
+    /// storage (declared in AndroidManifest.xml + res/xml/report_file_paths.xml).
+    /// Returns false when the file is missing or no email app exists.
+    private fun sendFileByEmail(path: String?, to: String?, subject: String, body: String): Boolean {
+        if (path.isNullOrBlank() || to.isNullOrBlank()) return false
+        val file = java.io.File(path)
+        if (!file.exists()) return false
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this, "$packageName.reports.fileprovider", file,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "message/rfc822" // MIME type for email — filters the app list to mail apps
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return try {
+            startActivity(Intent.createChooser(intent, "Send report by email"))
+            true
+        } catch (e: Exception) {
+            false // no app can handle it (ActivityNotFoundException)
         }
     }
 

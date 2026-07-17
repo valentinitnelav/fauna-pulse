@@ -13,6 +13,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'crash_store.dart';
+
 /// Where uncaught errors are reported while a session is recording.
 /// Set by the camera session screen (to `SessionLogger.logAppError`) when
 /// recording starts; reset to null when it stops. Null = no active session.
@@ -90,16 +92,25 @@ String _headLines(String text, int maxLines) {
 ///   including errors from `async` code nobody awaited. Returning true tells
 ///   Flutter the error was handled, so one background hiccup (e.g. a failed
 ///   photo save) can no longer bring down a running session.
+/// Both hooks ALSO persist the error as a timestamped file under `crashes/`
+/// (crash_store.dart, own rate limit), so an error report made after a
+/// restart — when no session log holds the trace — can still embed it.
 void installGlobalErrorHooks() {
   final previousFlutterHandler = FlutterError.onError;
   FlutterError.onError = (details) {
     // Keep the default console dump for `flutter run` debugging.
     previousFlutterHandler?.call(details);
     _report('flutter_framework', details.exceptionAsString(), details.stack);
+    CrashStore.record(
+      source: 'flutter_framework',
+      error: details.exceptionAsString(),
+      stack: details.stack,
+    );
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('Uncaught async error: $error\n$stack');
     _report('uncaught_async', '$error', stack);
+    CrashStore.record(source: 'uncaught_async', error: error, stack: stack);
     return true;
   };
 }

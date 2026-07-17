@@ -376,33 +376,28 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final saved = report;
-    await showDialog<void>(
+    // The developer's address is handed out privately and typed once; it is
+    // remembered app-wide (never in SessionConfig — see ErrorReporter).
+    final knownEmail = await ErrorReporter.loadRecipientEmail();
+    if (!mounted) return;
+    final choice = await showDialog<ReportSendChoice>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Report saved'),
-        content: Text(
-          'Saved a ${saved.humanSize} report to:\n\n${saved.file.path}\n\n'
-          'You can send it now, or find it later over USB.',
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Done'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ErrorReporter.share(saved);
-            },
-            child: const Text(
-              'Send…',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
+      builder: (_) => ReportSavedDialog(report: saved, initialEmail: knownEmail),
     );
+    if (choice == null || !mounted) return;
+    if (choice.viaEmail) {
+      await ErrorReporter.saveRecipientEmail(choice.email);
+      final opened = await ErrorReporter.emailTo(saved, choice.email);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No email app found — use Share instead.'),
+          ),
+        );
+      }
+    } else {
+      await ErrorReporter.share(saved);
+    }
   }
 
   /// The top-right "⋮" menu (a PopupMenuButton — Android's standard
@@ -688,6 +683,106 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
               color: armed ? Colors.red : null,
               fontWeight: FontWeight.bold,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// What the user chose in [ReportSavedDialog]. [viaEmail] sends to [email]
+/// (a non-empty address); otherwise the generic OS share sheet opens.
+/// The dialog pops null for "Done" (keep the file, send nothing).
+class ReportSendChoice {
+  final String email;
+  const ReportSendChoice.share() : email = '';
+  const ReportSendChoice.email(this.email);
+  bool get viaEmail => email.isNotEmpty;
+}
+
+/// Shown after a problem report is written to disk: where it landed, an
+/// optional developer email (typed once, remembered) and the two ways to
+/// send it. A real StatefulWidget for the same teardown-order reason as
+/// [DeleteAllSessionsDialog] (its class comment has the crash story).
+class ReportSavedDialog extends StatefulWidget {
+  final ErrorReport report;
+  final String initialEmail;
+  const ReportSavedDialog({
+    super.key,
+    required this.report,
+    required this.initialEmail,
+  });
+
+  @override
+  State<ReportSavedDialog> createState() => _ReportSavedDialogState();
+}
+
+class _ReportSavedDialogState extends State<ReportSavedDialog> {
+  late final TextEditingController _email = TextEditingController(
+    text: widget.initialEmail,
+  );
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  /// Loose "looks like an address" check — just enough to keep the Email
+  /// button disabled on obvious typos; the email app validates for real.
+  bool get _emailPlausible =>
+      RegExp(r'^\S+@\S+\.\S+$').hasMatch(_email.text.trim());
+
+  void _close(ReportSendChoice? result) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Report saved'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Saved a ${widget.report.humanSize} report to:\n\n'
+            '${widget.report.file.path}\n\n'
+            'You can send it now, or find it later over USB.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              labelText: 'Developer email (optional)',
+              helperText: 'Ask the developer for it — remembered next time.',
+              helperMaxLines: 2,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => _close(null),
+          child: const Text('Done'),
+        ),
+        TextButton(
+          onPressed: _emailPlausible
+              ? () => _close(ReportSendChoice.email(_email.text.trim()))
+              : null,
+          child: const Text('Email…'),
+        ),
+        TextButton(
+          onPressed: () => _close(const ReportSendChoice.share()),
+          child: const Text(
+            'Share…',
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
       ],

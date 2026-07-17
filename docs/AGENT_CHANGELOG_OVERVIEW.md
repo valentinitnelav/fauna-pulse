@@ -33,7 +33,7 @@ on a clone of `ultralytics/yolo-flutter-app`.
 |------|-------|---------|
 | Models | `models/roi.dart`, `models/track.dart`, `models/session_config.dart` | Square ROI math (resolution-independent), track/detection types, all user settings + persistence |
 | Tracking | `tracking/tracker.dart`, `tracking/byte_track.dart`, `tracking/c_biou_track.dart`, `tracking/tracker_replay.dart` | `InsectTracker` interface + two pure-Dart trackers (ByteTrack-style default, C-BIoU-style alternative) + offline replay harness for comparing them on recorded raw detections |
-| Logging | `logging/session_logger.dart`, `logging/device_thermal.dart` | Append-only JSONL writer; phone-temperature reader |
+| Logging | `logging/session_logger.dart`, `logging/device_thermal.dart`, `logging/error_reporter.dart`, `logging/crash_store.dart` | Append-only JSONL writer; phone-temperature reader; problem-report builder/sender; persistent crash files |
 | Capture | `capture/roi_capture.dart` | Time-lapse scheduler + background-isolate JPEG crop of the ROI |
 | Session (round 73) | `session/frame_processor.dart`, `session/session_recorder.dart`, `session/camera_diagnostics_controller.dart` | Per-frame mapping/tracking + gate-idle state (unit-testable), recording lifecycle (folder/logger/photos/keep-alive/stop order), one-time camera probes + lens cycling |
 | Widgets | `widgets/roi_overlay.dart`, `widgets/track_box_painter.dart`, `widgets/preview_transform.dart`, `widgets/calibrating_banner.dart`, `widgets/session_info_dialog.dart`, `widgets/roi_size_sheet.dart` | Draggable ROI, track-id boxes, camera "cover-fit" coordinate mapping, calibration banner, setup dialog, exact-ROI-size sheet |
@@ -215,6 +215,20 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   C-BIoU fragmented 3–6× on identical input; dtAware didn't reliably help
   and bIoU-fb over-merged r106 data — ByteTrack stays default, no variant
   adopted.
+- **Problem reports & crash files (round 118).** "Report a problem" (home screen) builds a
+  `.txt` into `error_reports/`: app/device info, user text, up to 3 recent crash files,
+  settings, a HEAD+TAIL sample of the latest session.jsonl (30 + 200 lines, lines capped
+  2000 chars — `headTailSample` in `error_reporter.dart`), last 2000 logcat lines. Send =
+  share sheet OR "Email…" (recipient typed once, persisted in shared_preferences
+  `report_recipient_email` — NEVER SessionConfig/JSONL; native `sendFileByEmail` via the
+  `<appId>.reports.fileprovider` FileProvider, which serves ONLY `error_reports/`).
+  Uncaught errors persist as `crashes/crash_<yyyy-MM-dd>_<HHmmss>.txt` (newest 20 kept):
+  Dart `crash_store.dart` (both global hooks) + Kotlin uncaught-handler in `MainActivity`
+  (KEEP `writeCrashFile` ↔ `crashFileBody` IN SYNC); C++ signal crashes aren't captured.
+  `ErrorReporter.githubIssuesUrl` is the empty placeholder to fill at public release.
+- **Versioning:** pubspec `version:` (now `0.6.4+10`) is the single source of truth
+  (Gradle + package_info_plus derive from it). Bump the build number for every tester APK;
+  tag releases `v<version>`.
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
 - **Camera2 interop options go through ONE funnel (round 82).**
   `applyInteropOptions()` in `YOLOView.kt` is the only place

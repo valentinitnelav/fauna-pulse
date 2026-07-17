@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths the report FileProvider may serve (see AndroidManifest.xml). Only the
+     error_reports/ folder under the app's external files dir — the session data
+     folders are deliberately NOT shareable this way. -->
+<paths>
+    <external-files-path name="error_reports" path="error_reports/" />
+</paths>

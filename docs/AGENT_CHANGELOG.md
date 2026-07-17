@@ -4542,3 +4542,38 @@ and stop treating high-res photos as the recommended baseline.
 
 Tests: default assertion updated + empty-config fallback covered. 257 pass,
 analyze clean.
+## Round 118 (2026-07-17): report sending (email), log sampling, persistent crash files
+
+- **Report log sampling**: the error report now embeds a HEAD + TAIL sample of the latest
+  `session.jsonl` (first 30 + last 200 lines, `… N lines omitted …` marker) instead of the
+  last 300 — the first lines carry the start-record metadata, the last the failure-time
+  context. Single lines are capped at 2000 chars (`raw_detections` can be huge). Live logcat
+  embed reduced 3000 → 2000 lines. Pure helper `headTailSample` in `error_reporter.dart`
+  (unit-tested in `error_reporter_test.dart`).
+- **Email send option**: the "Report saved" dialog (home screen) gained an email text field
+  (EMPTY by default — the developer's address is handed to testers privately, never shipped)
+  plus an "Email…" button; the address persists in shared_preferences
+  (`report_recipient_email`) — deliberately NOT SessionConfig, so it can never land in a
+  shared session.jsonl. Mechanism: `sendEmail` on the `faunapulse/diagnostics` channel →
+  Kotlin `sendFileByEmail` (`ACTION_SEND`, `message/rfc822`, `EXTRA_EMAIL`, FileProvider) —
+  share_plus can't pre-fill a recipient and `mailto:` can't attach files. New FileProvider
+  (`<applicationId>.reports.fileprovider`) in the manifest serves ONLY `error_reports/`
+  (`res/xml/report_file_paths.xml`). "Share…" (OS share sheet — WhatsApp etc.) unchanged.
+  Report footer prints the configured address when set; `githubIssuesUrl` stays the empty
+  placeholder to fill at public-release time.
+- **Persistent crash files**: uncaught errors now also land as timestamped files
+  `crashes/crash_<yyyy-MM-dd>_<HHmmss>.txt` (first line ISO-8601 with ms) under the external
+  files dir, surviving restarts. Dart side: `logging/crash_store.dart` (rate limit 1/10 s,
+  prune to newest 20) called from both global hooks in `app_error_hooks.dart` (session-JSONL
+  routing unchanged). Kotlin side: `Thread.setDefaultUncaughtExceptionHandler` in
+  `MainActivity` writes the SAME format/folder (keep `writeCrashFile` ↔ `crashFileBody` in
+  sync) before chaining to the previous handler, so Java/Kotlin crashes that kill the process
+  are captured too. KNOWN LIMIT: native C++ signal crashes (GPU delegate segfaults) bypass
+  JVM handlers — not captured (the GPU blocklist covers the known case). The report embeds
+  up to the 3 newest crash files from the last 7 days (each capped 200 lines) automatically —
+  the user never attaches anything by hand.
+- **Versioning note (owner Q)**: pubspec `version: 0.6.4+10` is the single source of truth
+  (Gradle `versionName`/`versionCode` and the report's package_info_plus readout all derive
+  from it). Convention adopted: bump the build number for every APK handed to a tester; at
+  the eventual public release, tag GitHub `v<version>` matching pubspec. No code change.
+
