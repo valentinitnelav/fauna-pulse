@@ -4577,3 +4577,35 @@ analyze clean.
   from it). Convention adopted: bump the build number for every APK handed to a tester; at
   the eventual public release, tag GitHub `v<version>` matching pubspec. No code change.
 
+## Round 119 (2026-07-17): model dropdown cleanup + download model from URL
+
+- **Dropdown trimmed**: `ModelCatalog.officialModels` now lists ONLY the bundled `yolo26n`.
+  The yolo26 s/m/l/x "(add file)" placeholder entries are gone — picking one only produced a
+  long warning while detection silently kept running nano. Pre-r119 configs that saved a
+  placeholder id migrate to `yolo26n` in `SessionConfig.fromJson` (`_migrateModelPath`,
+  frozen set — never extend; round-trip tested). Larger/custom models are added via the new
+  Download… or the existing Import… instead.
+- **Unused bundled assets deleted**: `assets/models/yolo26n-{cls,obb,pose,seg,sem}_int8.tflite`
+  (13.6 MB) were referenced nowhere (app or plugin Dart) and never appeared in the picker —
+  removed; APK shrinks accordingly. Kept: `yolo26n_int8.tflite` + `assets/models/custom/`.
+- **Warning shortened + generalized** (`settings_sheet.dart`): the old official-id-specific
+  banner is replaced by a one-liner shown whenever the SELECTED model isn't in the scanned
+  list — which now also covers an imported model whose file was deleted (previously silent:
+  just the 'Custom / other' hint). Text points at Download…/Import….
+- **Download model from URL**: new `Download…` button beside `Import…` (AI tab) opens
+  `_DownloadModelDialog`: paste a direct link to a `.tflite` (helper text points to
+  github.com/valentinitnelav/fauna-pulse/releases), progress bar (MB counts;
+  indeterminate when the server sends no length), inline error, cancellable (checked
+  between chunks; 30 s between-chunk stall timeout). Engine:
+  `ModelCatalog.downloadModel` — dart:io HttpClient (no new dependency; the INTERNET
+  permission finally earns its manifest comment), streams to `<name>.part` in the
+  imported-models folder, renames on success, deletes the partial on ANY failure. URL
+  validation via pure `modelFileNameFromUrl` (http/https + `.tflite`, query ignored;
+  unit-tested in `model_catalog_test.dart`). On success the model is auto-selected like a
+  dropdown pick (modelPath + task from its scanned entry).
+- **GitHub asset guidance (owner Q)**: release-asset URLs are stable per tag
+  (`…/releases/download/<tag>/<file>`); recommend publishing models in a DEDICATED release
+  (e.g. tag `models-v1`) decoupled from app releases so model links never move;
+  `releases/latest/download/…` shifts with each release — avoid for models. Future idea
+  (not built): a `models.json` manifest in the repo for a one-tap in-app catalog.
+

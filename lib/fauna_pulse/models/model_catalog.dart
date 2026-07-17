@@ -72,15 +72,16 @@ class ModelEntry {
 }
 
 class ModelCatalog {
-  /// Official YOLO26 sizes. Only nano is actually shipped in the app; the others
-  /// need their .tflite added (or a custom model imported) to take effect.
+  /// Official entries: ONLY the bundled nano (round 119). The other YOLO26
+  /// sizes used to be listed as "(add file)" placeholders, but a dropdown
+  /// entry with no file behind it only invited a pick that silently kept
+  /// running nano — larger models are now added via Download…/Import instead.
   static const officialModels = {
     'yolo26n': 'YOLO26 nano — fastest (bundled)',
-    'yolo26s': 'YOLO26 small (add file)',
-    'yolo26m': 'YOLO26 medium (add file)',
-    'yolo26l': 'YOLO26 large (add file)',
-    'yolo26x': 'YOLO26 x-large — most accurate (add file)',
   };
+
+  // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load as nano —
+  // the migration set lives in SessionConfig.fromJson.
 
   static const bundledIds = {'yolo26n'};
 
@@ -228,6 +229,73 @@ class ModelCatalog {
     return imported;
   }
 
+  /// Downloads a .tflite model from [url] into the imported-models folder, so
+  /// models published as GitHub release assets can be added without a cable.
+  /// Streams into a temporary `<name>.part` file and renames only on success,
+  /// so a dropped connection never leaves a half model in the picker. Reports
+  /// progress via [onProgress] (total is null when the server doesn't say);
+  /// [isCancelled] is checked between chunks so the dialog's Cancel button
+  /// can abandon a stalled download (the partial file is deleted).
+  /// Returns the saved file's path; throws with a plain-language message on
+  /// any failure (the dialog shows it verbatim).
+  static Future<String> downloadModel(
+    String url, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final name = modelFileNameFromUrl(url);
+    if (name == null) {
+      throw Exception('The link must point to a .tflite file.');
+    }
+    final dir = await modelsDir();
+    final partFile = File('${dir.path}/$name.part');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
+    try {
+      // GitHub asset links redirect to the real file host; HttpClient follows
+      // redirects on GET by default.
+      final request = await client.getUrl(Uri.parse(url));
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw Exception('Download failed (HTTP ${response.statusCode}).');
+      }
+      final total = response.contentLength > 0 ? response.contentLength : null;
+      var received = 0;
+      final sink = partFile.openWrite();
+      try {
+        // The timeout is BETWEEN chunks: a dead connection errors out (and a
+        // stalled stream would otherwise also never reach the cancel check).
+        final data = response.timeout(
+          const Duration(seconds: 30),
+          onTimeout: (s) =>
+              s.addError(Exception('Connection stalled — try again.')),
+        );
+        await for (final chunk in data) {
+          if (isCancelled?.call() ?? false) {
+            throw Exception('Download cancelled.');
+          }
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress?.call(received, total);
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+      final saved = await partFile.rename('${dir.path}/$name');
+      return saved.path;
+    } catch (e) {
+      try {
+        if (await partFile.exists()) await partFile.delete();
+      } catch (e2) {
+        logSwallowed('model_download_cleanup', e2);
+      }
+      rethrow;
+    } finally {
+      client.close();
+    }
+  }
+
   /// Deletes an imported model file (only imported models can be removed).
   static Future<void> deleteImported(String filePath) async {
     try {
@@ -283,4 +351,17 @@ class ModelCatalog {
     if (n.contains('float32') || n.contains('fp32')) return 'fp32';
     return null;
   }
+}
+
+/// The model file name a download URL points at (query string ignored), or
+/// null when the link is not an http(s) URL ending in `.tflite`.
+String? modelFileNameFromUrl(String url) {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
+    return null;
+  }
+  if (uri.pathSegments.isEmpty) return null;
+  final name = uri.pathSegments.last;
+  if (!name.toLowerCase().endsWith('.tflite')) return null;
+  return name;
 }

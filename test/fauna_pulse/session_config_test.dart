@@ -317,6 +317,23 @@ void main() {
     test('configs without either key get the fast default (r117)', () {
       expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.fast);
     });
+
+    test('pre-r119 placeholder model ids load as the nano that really ran', () {
+      for (final id in ['yolo26s', 'yolo26m', 'yolo26l', 'yolo26x']) {
+        expect(SessionConfig.fromJson({'modelPath': id}).modelPath, 'yolo26n');
+      }
+    });
+
+    test('real model paths are NOT touched by the r119 migration', () {
+      const kept = [
+        'yolo26n',
+        'assets/models/custom/arthropod_yolov11_int8.tflite',
+        '/storage/emulated/0/Android/data/x/files/models/my_yolo26s.tflite',
+      ];
+      for (final path in kept) {
+        expect(SessionConfig.fromJson({'modelPath': path}).modelPath, path);
+      }
+    });
   });
 
   test('camera fps cap: default 15, 0 survives, missing key falls back', () {

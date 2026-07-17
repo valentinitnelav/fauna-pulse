@@ -698,8 +698,21 @@ class SessionConfig {
     'stillSyncCompanion': highResSyncCompanion,
   };
 
+  /// Pre-r119 configs could hold a YOLO26 size that was only ever a dropdown
+  /// placeholder — no file existed, detection silently ran nano. r119 removed
+  /// those entries from the picker (ModelCatalog.officialModels), so such a
+  /// stored id now loads as the nano that was actually running. Frozen
+  /// historical set — never extend it.
+  static String _migrateModelPath(String? stored) {
+    const legacyPlaceholderIds = {'yolo26s', 'yolo26m', 'yolo26l', 'yolo26x'};
+    if (stored == null || legacyPlaceholderIds.contains(stored)) {
+      return 'yolo26n';
+    }
+    return stored;
+  }
+
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
-    modelPath: j['modelPath'] as String? ?? 'yolo26n',
+    modelPath: _migrateModelPath(j['modelPath'] as String?),
     task: YOLOTaskParsing.tryParse(j['task'] as String?) ?? YOLOTask.detect,
     confidenceThreshold: (j['confidenceThreshold'] as num?)?.toDouble() ?? 0.25,
     iouThreshold: (j['iouThreshold'] as num?)?.toDouble() ?? 0.7,

@@ -46,7 +46,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 | Setting | Default | Notes |
 |---|---|---|
-| Model | `yolo26n` | Only nano ships bundled; others need an added `.tflite` |
+| Model | `yolo26n` | r119: picker = bundled nano + bundled custom (`assets/models/custom/`) + imported files ONLY (the yolo26 s/m/l/x placeholders are gone; saved ones migrate to nano). Models are added via Download… (URL → `ModelCatalog.downloadModel`, e.g. GitHub release assets) or Import… (file picker). Unused `yolo26n-*` task-variant assets deleted (−13.6 MB APK) |
 | Confidence | `0.25` | min detection score |
 | IoU (NMS) | `0.7` | overlap threshold |
 | Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — high-res photos can't keep up) |

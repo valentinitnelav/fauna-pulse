@@ -159,13 +159,33 @@ class _SettingsSheetState extends State<SettingsSheet> {
     await _reloadModels();
   }
 
-  /// Whether the currently-selected model id is one we know is actually present
-  /// (a bundled/imported file, or the bundled nano). Used to warn when an
-  /// official size is picked whose file isn't on the device.
-  bool get _selectedIsAvailable {
-    final id = _c.modelPath;
-    if (ModelCatalog.bundledIds.contains(id)) return true;
-    return _models.any((m) => m.id == id && m.source != ModelSource.official);
+  /// Asks for a URL (e.g. a GitHub release asset link), downloads the .tflite
+  /// into the imported-models folder, then selects it like a dropdown pick.
+  Future<void> _downloadModel() async {
+    final savedPath = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _DownloadModelDialog(),
+    );
+    if (savedPath == null || !mounted) return;
+    final name = savedPath.split('/').last;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Downloaded $name.')));
+    await _reloadModels();
+    if (!mounted) return;
+    // Auto-select the new model (same as picking it in the dropdown).
+    for (final m in _models) {
+      if (m.id == savedPath) {
+        setState(() {
+          _c = _c.copyWith(
+            modelPath: m.id,
+            task: YOLOTaskParsing.tryParse(m.task) ?? _c.task,
+          );
+        });
+        break;
+      }
+    }
   }
 
   /// The currently-selected model entry (for showing its input resolution), or
@@ -655,6 +675,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
           children: [
             Expanded(child: _label('Detection model')),
             TextButton.icon(
+              onPressed: _modelsLoading ? null : _downloadModel,
+              icon: const Icon(Icons.cloud_download_outlined, size: 18),
+              label: const Text('Download…'),
+            ),
+            TextButton.icon(
               onPressed: _modelsLoading ? null : _importModels,
               icon: const Icon(Icons.file_upload, size: 18),
               label: const Text('Import…'),
@@ -747,16 +772,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
               style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ),
-        if (!_modelsLoading &&
-            ModelCatalog.officialModels.containsKey(_c.modelPath) &&
-            !_selectedIsAvailable)
+        // Covers a pre-r119 placeholder id AND an imported model whose file was
+        // deleted from the phone — anything selected that isn't on the device.
+        if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
           const Padding(
             padding: EdgeInsets.only(top: 6),
             child: Text(
-              '⚠ Only the nano model ships with the app. Until the '
-              'selected size is added (or a custom model is imported), '
-              'detection keeps running nano — so the frame rate will not '
-              'change.',
+              '⚠ This model isn\'t on the device — the bundled nano runs '
+              'instead. Use Download… or Import… above to add it.',
               style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
             ),
           ),
@@ -2290,4 +2313,145 @@ class _SettingsSheetState extends State<SettingsSheet> {
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Text(text, style: const TextStyle(color: Colors.white70)),
   );
+}
+
+/// Asks for a direct link to a .tflite model (e.g. a GitHub release asset),
+/// downloads it with a progress bar and pops the saved file path — or null on
+/// cancel. Errors show inline so the URL can be corrected without retyping.
+class _DownloadModelDialog extends StatefulWidget {
+  const _DownloadModelDialog();
+
+  @override
+  State<_DownloadModelDialog> createState() => _DownloadModelDialogState();
+}
+
+class _DownloadModelDialogState extends State<_DownloadModelDialog> {
+  final _url = TextEditingController();
+  bool _downloading = false;
+  bool _cancelRequested = false;
+  String? _error;
+  int _received = 0;
+  int? _total;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _downloading = true;
+      _cancelRequested = false;
+      _error = null;
+      _received = 0;
+      _total = null;
+    });
+    try {
+      final path = await ModelCatalog.downloadModel(
+        _url.text,
+        onProgress: (received, total) {
+          if (!mounted) return;
+          setState(() {
+            _received = received;
+            _total = total;
+          });
+        },
+        isCancelled: () => _cancelRequested,
+      );
+      if (mounted) Navigator.of(context).pop(path);
+    } catch (e) {
+      if (!mounted) return;
+      if (_cancelRequested) {
+        Navigator.of(context).pop(); // user cancelled; partial file cleaned up
+        return;
+      }
+      setState(() {
+        _downloading = false;
+        // Exception.toString() prefixes "Exception: " — drop it for the UI.
+        _error = '$e'.replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  String get _progressLabel {
+    String mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+    final total = _total;
+    return total != null
+        ? 'Downloading… ${mb(_received)} of ${mb(total)} MB'
+        : 'Downloading… ${mb(_received)} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final validUrl = modelFileNameFromUrl(_url.text) != null;
+    return AlertDialog(
+      title: const Text('Download model'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _url,
+            enabled: !_downloading,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              labelText: 'Link to a .tflite model file',
+              helperText:
+                  'Model links are published at\n'
+                  'github.com/valentinitnelav/fauna-pulse/releases',
+              helperMaxLines: 3,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (_downloading) ...[
+            const SizedBox(height: 14),
+            LinearProgressIndicator(
+              value: _total != null && _total! > 0 ? _received / _total! : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _progressLabel,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '⚠ $_error',
+                style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          // While downloading, Cancel signals downloadModel between chunks;
+          // its cleanup deletes the partial file, then _start pops the dialog.
+          onPressed: _downloading && _cancelRequested
+              ? null
+              : () {
+                  if (_downloading) {
+                    setState(() => _cancelRequested = true);
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _downloading || !validUrl ? null : _start,
+          child: const Text(
+            'Download',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
 }
