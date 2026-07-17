@@ -92,6 +92,36 @@ void main() {
     expect((tracks[2] as Map).containsKey('jpeg'), isFalse);
   });
 
+  test('logTrackEvent writes a track_event line with the lifecycle fields '
+      '(round 116)', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logTrackEvent({
+      'event': 'recovered',
+      'track_id': 4,
+      'frame_ms': 1000300,
+      'box_in_roi': {'left': 0.1, 'top': 0.2, 'right': 0.3, 'bottom': 0.4},
+      'hits': 12,
+      'first_seen_ms': 1000000,
+      'last_seen_ms': 1000100,
+      'frames_missed': 2,
+    });
+    await logger.close();
+
+    final rec =
+        jsonDecode(file.readAsLinesSync().single) as Map<String, dynamic>;
+    expect(rec['type'], 'track_event');
+    expect(rec['event'], 'recovered');
+    expect(rec['track_id'], 4);
+    // frame_ms is the transition's frame stamp; last_seen_ms the pre-gap
+    // observation — their difference is the gap the id survived.
+    expect(rec['frame_ms'], 1000300);
+    expect(rec['last_seen_ms'], 1000100);
+    expect(rec['frames_missed'], 2);
+    expect(rec['time_ms'], isA<int>());
+    expect(rec['time_iso'], isA<String>());
+  });
+
   test('a crash (no end record) is detectable', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();

@@ -205,4 +205,48 @@ void main() {
     expect(tracks, hasLength(1));
     expect(tracks.single.id, 1);
   });
+
+  test('track lifecycle events match ByteTrack semantics (round 116): '
+      'created → lost → recovered → removed', () {
+    // Both trackers share the TrackEventBuffer mixin; this proves the C-BIoU
+    // update loop calls it at the same transitions, so a `track_event` log
+    // line means one thing regardless of the algorithm choice.
+    final tracker = CBiouTracker(
+      params: const CBiouParams(minHitsToConfirm: 2, trackBuffer: 2),
+    );
+    const box = Rect.fromLTWH(0.45, 0.45, 0.10, 0.10);
+
+    tracker.update([det(box)], 0);
+    tracker.update([det(box)], 100); // confirmed
+    var events = tracker.drainEvents();
+    expect(events.map((e) => e.kind), [TrackEventKind.created]);
+    final id = events.single.trackId;
+
+    tracker.update(const [], 200); // first unmatched frame
+    events = tracker.drainEvents();
+    expect(events.map((e) => e.kind), [TrackEventKind.lost]);
+
+    tracker.update([det(box)], 300); // matched again, same id
+    events = tracker.drainEvents();
+    expect(events.map((e) => e.kind), [TrackEventKind.recovered]);
+    expect(events.single.lastSeenMs, 100); // pre-gap observation
+    expect(events.single.framesMissed, 1);
+
+    tracker.update(const [], 400);
+    tracker.update(const [], 500);
+    tracker.update(const [], 600); // timeSinceUpdate 3 > buffer 2
+    events = tracker.drainEvents();
+    expect(events.first.kind, TrackEventKind.lost);
+    expect(events.last.kind, TrackEventKind.removed);
+    expect(events.last.trackId, id);
+    expect(events.last.reason, 'aged_out');
+
+    // Gate-expiry removals (see the ByteTrack test for the full contract).
+    tracker.update([det(box)], 700);
+    tracker.update([det(box)], 800);
+    tracker.update(const [], 900);
+    tracker.drainEvents();
+    tracker.expireLostTracks();
+    expect(tracker.drainEvents().single.reason, 'gate_expired');
+  });
 }

@@ -283,6 +283,9 @@ TrackerReplayReport replayTracker({
     final sw = Stopwatch()..start();
     final tracks = tracker.update(frame.detections, frame.timestampMs);
     sw.stop();
+    // The replay scores counts/durations only; drain the lifecycle events
+    // (round 116) so they can't pile up across thousands of frames.
+    tracker.drainEvents();
     trackMsSamples.add(sw.elapsedMicroseconds / 1000.0);
     if (tracks.length > maxConcurrent) maxConcurrent = tracks.length;
     if (tracker.activeTrackCount > peakActive) {

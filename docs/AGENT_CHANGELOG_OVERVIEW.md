@@ -151,7 +151,18 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `frame_sensor_ms` (sensor-exposure epoch via `sensorNanosToEpochMs` in
   YOLOView.kt, absent on odd HALs; comparable to `capture.content_at_ms`) —
   ROI geometry updates, and stop metadata with `ended_normally`. Sessions ≤ round 68 used per-track `detection`
-  records — parsers (summary screen, DATA_GUIDE snippets) must accept both. Writes go
+  records — parsers (summary screen, DATA_GUIDE snippets) must accept both.
+  r116 **track lifecycle is explicit**: both trackers emit `track_event` lines
+  (`event`: `created`/`lost`/`recovered`/`removed`, + `track_id`, `frame_ms`,
+  `box_in_roi`, `hits`, `first_seen_ms`, `last_seen_ms`, `frames_missed`,
+  `reason` `aged_out`|`gate_expired`) via the `TrackEventBuffer` mixin
+  (`tracking/tracker.dart`) → drained per frame by `FrameProcessor` →
+  `SessionRecorder.recordFrame`. Invariant made explicit the same round:
+  `detections[].tracks[]` boxes are ALWAYS detector-observed (unmatched tracks
+  go `lost`, which `update()` never returns) — a `coasted:true` guard key
+  would flag any future tracker that returns predicted boxes. Post-processing
+  can now tell temporary track loss / id churn apart from analysis pauses
+  (e.g. the r115 high-res capture holes) without inferring from gaps. Writes go
   through an in-logger queue drained by one async writer loop (I/O on the Dart VM's
   background thread pool — never sync file I/O in the frame callback); fsync every
   ~0.5 s; `close()` is async and must be awaited so `end_of_session` lands.

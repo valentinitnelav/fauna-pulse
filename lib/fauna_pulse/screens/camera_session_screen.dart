@@ -849,6 +849,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // this session can be replayed offline through either tracker.
           rawDetections: _config.logRawDetections ? result.detections : null,
           frameSensorMs: result.frameSensorMs,
+          // Round 116: explicit lifecycle lines (created/lost/recovered/
+          // removed) so post-processing can stitch fragmented track ids.
+          trackEvents: result.events,
         )) {
       _flashCaptureCue();
     }

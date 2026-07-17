@@ -64,4 +64,56 @@ abstract class InsectTracker {
   /// record — always includes an `algorithm` key so post-processing can tell
   /// which tracker produced a session's ids.
   Map<String, dynamic> effectiveParamsJson();
+
+  /// Track-lifecycle transitions accumulated since the last drain (round
+  /// 116): created / lost / recovered / removed. The frame processor drains
+  /// this once per processed frame and the recorder writes each one as a
+  /// `track_event` line. See [TrackEventBuffer].
+  List<TrackEvent> drainEvents();
+}
+
+/// Shared lifecycle-event buffer for the trackers (round 116). Both mix this
+/// in so a `track_event` log line means one thing regardless of the algorithm
+/// choice. Events pile up during [InsectTracker.update] (and
+/// [InsectTracker.expireLostTracks], which runs between frames on a
+/// motion-gate wake) until [drainEvents] hands them to the frame processor.
+mixin TrackEventBuffer {
+  final List<TrackEvent> _events = [];
+
+  List<TrackEvent> drainEvents() {
+    if (_events.isEmpty) return const [];
+    final out = List<TrackEvent>.of(_events);
+    _events.clear();
+    return out;
+  }
+
+  /// Forgets buffered events (tracker reset for a new session).
+  void clearEvents() => _events.clear();
+
+  /// Builds one event from the track's current fields and buffers it.
+  /// [lastSeenMs] overrides the track's value for "recovered": by emission
+  /// time the match has already stamped this frame onto the track, but the
+  /// event must carry the last observation BEFORE the gap.
+  void emitTrackEvent(
+    TrackEventKind kind,
+    Track t,
+    int atMs, {
+    int? lastSeenMs,
+    int framesMissed = 0,
+    String? reason,
+  }) {
+    _events.add(
+      TrackEvent(
+        kind: kind,
+        trackId: t.id,
+        atMs: atMs,
+        box: t.box,
+        hits: t.hits,
+        firstSeenMs: t.firstSeenMs,
+        lastSeenMs: lastSeenMs ?? t.lastSeenMs,
+        framesMissed: framesMissed,
+        reason: reason,
+      ),
+    );
+  }
 }

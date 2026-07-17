@@ -129,7 +129,7 @@ double _diagonal(Rect r) => Offset(r.width, r.height).distance;
 enum FallbackMode { distance, bufferedIou }
 
 /// The ByteTrack-style tracker. Call [update] once per processed frame.
-class ByteTracker implements InsectTracker {
+class ByteTracker with TrackEventBuffer implements InsectTracker {
   ByteTrackParams params;
 
   /// Distance-association gate, as a multiple of the detection box's diagonal.
@@ -235,6 +235,7 @@ class ByteTracker implements InsectTracker {
     totalConfirmed = 0;
     _lastFrameTs = 0;
     _frameDtS = 0;
+    clearEvents();
   }
 
   /// Elapsed seconds since the previous processed frame (this frame's
@@ -257,6 +258,20 @@ class ByteTracker implements InsectTracker {
   /// that left before the gate closed.
   @override
   void expireLostTracks() {
+    for (final t in _tracks) {
+      if (t.state == TrackState.lost) {
+        // Stamped with the LAST processed frame: no frames arrive while the
+        // motion gate sleeps, so that frame is the last moment the track
+        // existed. The log line's own time_ms carries the wake moment.
+        emitTrackEvent(
+          TrackEventKind.removed,
+          t,
+          _lastFrameTs,
+          framesMissed: t.timeSinceUpdate,
+          reason: 'gate_expired',
+        );
+      }
+    }
     _tracks.removeWhere((t) => t.state == TrackState.lost);
   }
 
@@ -320,6 +335,11 @@ class ByteTracker implements InsectTracker {
     final survivors = <Track>[];
     for (final t in _tracks) {
       if (unmatchedTracks.contains(t)) {
+        // Report a confirmed track's first unmatched frame BEFORE the box
+        // starts coasting, so the event carries the last observed box.
+        if (t.state == TrackState.confirmed) {
+          emitTrackEvent(TrackEventKind.lost, t, timestampMs);
+        }
         t.timeSinceUpdate += 1;
         // Keep coasting the box along the last known velocity so prediction
         // continues to track the insect through a multi-frame occlusion.
@@ -330,9 +350,18 @@ class ByteTracker implements InsectTracker {
         if (t.timeSinceUpdate <= params.trackBuffer &&
             t.state != TrackState.tentative) {
           survivors.add(t);
+        } else if (t.state == TrackState.lost) {
+          // Aged past the occlusion tolerance: this visit is over for good.
+          emitTrackEvent(
+            TrackEventKind.removed,
+            t,
+            timestampMs,
+            framesMissed: t.timeSinceUpdate,
+            reason: 'aged_out',
+          );
         }
         // Tentative tracks that miss a frame are discarded immediately
-        // (they were never confirmed as a real insect).
+        // (they were never confirmed as a real insect — no event either).
       } else {
         survivors.add(t);
       }
@@ -495,6 +524,11 @@ class ByteTracker implements InsectTracker {
   }
 
   void _applyMatch(Track t, Detection d, int timestampMs) {
+    // Pre-match values for the lifecycle events below: a "recovered" event
+    // must carry when the track was REALLY last observed and how many frames
+    // it missed, which the match is about to overwrite.
+    final prevLastSeenMs = t.lastSeenMs;
+    final missedFrames = t.timeSinceUpdate;
     // Update velocity from the centre shift before overwriting the box.
     final newCenter = d.box.center;
     final s = params.velocitySmoothing;
@@ -528,8 +562,16 @@ class ByteTracker implements InsectTracker {
     if (t.state == TrackState.tentative && t.hits >= params.minHitsToConfirm) {
       t.state = TrackState.confirmed;
       totalConfirmed += 1; // first time this id is confirmed
+      emitTrackEvent(TrackEventKind.created, t, timestampMs);
     } else if (t.state == TrackState.lost) {
       t.state = TrackState.confirmed; // re-activation; already counted
+      emitTrackEvent(
+        TrackEventKind.recovered,
+        t,
+        timestampMs,
+        lastSeenMs: prevLastSeenMs,
+        framesMissed: missedFrames,
+      );
     }
   }
 }

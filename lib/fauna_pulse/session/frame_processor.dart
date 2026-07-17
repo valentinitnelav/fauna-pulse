@@ -47,6 +47,13 @@ class FrameResult {
   /// to detector frames. Null on odd HALs and older native builds.
   final int? frameSensorMs;
 
+  /// Track-lifecycle transitions this frame surfaced (round 116): created /
+  /// lost / recovered / removed, logged as `track_event` lines. Drained from
+  /// the tracker after its update — removals from a motion-gate wake
+  /// ([InsectTracker.expireLostTracks] runs between frames) ride along with
+  /// the NEXT processed frame.
+  final List<TrackEvent> events;
+
   const FrameResult({
     required this.roiRect,
     required this.tracks,
@@ -54,6 +61,7 @@ class FrameResult {
     required this.trackMs,
     required this.timestampMs,
     this.frameSensorMs,
+    this.events = const [],
   });
 }
 
@@ -266,6 +274,7 @@ class FrameProcessor {
       trackMs: trackSw.elapsedMicroseconds / 1000.0,
       timestampMs: ts,
       frameSensorMs: (data['frameSensorMs'] as num?)?.toInt(),
+      events: tracker.drainEvents(),
     );
   }
 }

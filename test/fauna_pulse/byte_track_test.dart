@@ -238,4 +238,77 @@ void main() {
 
     expect(predictedLeft(0.8), greaterThan(predictedLeft(0.2)));
   });
+
+  // --- Track-lifecycle events (round 116): the explicit created/lost/
+  // recovered/removed lines that let post-processing stitch fragmented ids
+  // and tell a temporary loss apart from an analysis pause.
+
+  group('track lifecycle events', () {
+    const box = Rect.fromLTWH(0.45, 0.45, 0.10, 0.10);
+
+    test('created → lost → recovered → removed, with the gap bookkeeping', () {
+      final tracker = ByteTracker(
+        params: const ByteTrackParams(minHitsToConfirm: 2, trackBuffer: 2),
+      );
+
+      tracker.update([det(box)], 0);
+      tracker.update([det(box)], 100); // 2nd match -> confirmed
+      var events = tracker.drainEvents();
+      expect(events.map((e) => e.kind), [TrackEventKind.created]);
+      final id = events.single.trackId;
+      expect(events.single.atMs, 100);
+      expect(events.single.firstSeenMs, 0); // visit start = tentative start
+
+      tracker.update(const [], 200); // first unmatched frame
+      events = tracker.drainEvents();
+      expect(events.map((e) => e.kind), [TrackEventKind.lost]);
+      expect(events.single.trackId, id);
+      expect(events.single.lastSeenMs, 100); // last real observation
+
+      tracker.update([det(box)], 300); // matched again, same id
+      events = tracker.drainEvents();
+      expect(events.map((e) => e.kind), [TrackEventKind.recovered]);
+      // The event carries the pre-gap observation, so atMs - lastSeenMs IS
+      // the gap the id survived.
+      expect(events.single.lastSeenMs, 100);
+      expect(events.single.framesMissed, 1);
+
+      // Unmatched past the 2-frame buffer: lost again, then gone for good.
+      tracker.update(const [], 400);
+      tracker.update(const [], 500);
+      tracker.update(const [], 600); // timeSinceUpdate 3 > buffer 2
+      events = tracker.drainEvents();
+      expect(events.first.kind, TrackEventKind.lost);
+      expect(events.last.kind, TrackEventKind.removed);
+      expect(events.last.trackId, id);
+      expect(events.last.reason, 'aged_out');
+      expect(events.last.framesMissed, 3);
+    });
+
+    test('expireLostTracks reports gate_expired removals, stamped with the '
+        'last processed frame', () {
+      final tracker = ByteTracker(
+        params: const ByteTrackParams(minHitsToConfirm: 2, trackBuffer: 30),
+      );
+      tracker.update([det(box)], 0);
+      tracker.update([det(box)], 100);
+      tracker.update(const [], 200); // lost, stays buffered
+      tracker.drainEvents(); // created + lost, not under test here
+
+      tracker.expireLostTracks(); // motion-gate wake after a long sleep
+      final events = tracker.drainEvents();
+      expect(events.single.kind, TrackEventKind.removed);
+      expect(events.single.reason, 'gate_expired');
+      expect(events.single.atMs, 200);
+    });
+
+    test('tentative tracks come and go without events (never a visit)', () {
+      final tracker = ByteTracker(
+        params: const ByteTrackParams(minHitsToConfirm: 3),
+      );
+      tracker.update([det(box)], 0); // tentative
+      tracker.update(const [], 100); // discarded before ever confirming
+      expect(tracker.drainEvents(), isEmpty);
+    });
+  });
 }

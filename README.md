@@ -9,7 +9,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  An Android field application for detecting, tracking and documenting pollinators (and other animals) using on-device artificial intelligence.
+  An Android field application for detecting, tracking and documenting pollinators (and other moving objects) using on-device artificial intelligence.
 </p>
 
 <p align="center">
@@ -18,11 +18,13 @@
 
 ## Overview
 
-FaunaPulse is an Android field application for detecting, tracking and documenting animals and other moving subjects at a fixed observation point.
+**The first and primary scientific use case of FaunaPulse is estimating *visitation rates* in pollination studies: how often pollinators visit a flower or inflorescence and how long each visit lasts.**
 
-Its first and primary scientific use case is monitoring flower-visiting insects. In pollination studies, FaunaPulse can measure **visitation rate**: how often insects visit a flower or inflorescence and how long each visit lasts.
+Detection, tracking and image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so an internet connection is not required in the field. End-users place a draggable square **region of interest (ROI)** over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves cropped JPEG images together with detailed session metadata. At the end of the recording session, it outputs a dashboard screen with info and graphs about the visitation rates and the captured images with the tracked objects for preview an check.
 
-Detection, tracking and image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so an internet connection is not required in the field. End-users place a draggable square **region of interest (ROI)** over a flower, feeding site, nest entrance, animal path or another observation area. FaunaPulse then records activity within that region and saves cropped JPEG images together with detailed session metadata.
+For interested end-users, saved ROI images can also be reviewed and cropped within FaunaPulse. Organism crops can then be shared directly on device with or imported into identification apps such as [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. This allows FaunaPulse to remain focused on detection, tracking and documentation while end-users choose the identification service best suited to their needs. Note that at the time of releasing this repository, these apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. FaunaPulse is designed mostly with offline usage in mind.
+
+Saved images and session metadata can be later transferred to a computer for further post-processing and bulk classification of the detected organisms using R or Python-based scripts and mega-classifiers like [BioCLIP][bioclip]. If there is interest, a future software will be developed and provided to the scientific community.
 
 Depending on the selected mode, FaunaPulse supports:
 
@@ -30,21 +32,17 @@ Depending on the selected mode, FaunaPulse supports:
 - **motion-triggered image capture**;
 - scheduled **time-lapse photography**.
 
-Saved images and session metadata can be later transferred to a computer for further post-processing and bulk classification of the detected organisms using R or Python-based scripts and mega-classifiers like [BioCLIP][bioclip]. If there is interest, a future software will be developed and provided to the scientific community.
-
-FaunaPulse is not restricted to pollinators. With a suitable object-detection model, it can be adapted to arthropods, birds, mammals, even pets or other targets. Its usefulness depends on the observation setup, selected capture mode and, for AI-based monitoring, the capabilities of the loaded model.
-
-For interested end-users, saved ROI images can also be reviewed and cropped within FaunaPulse. Organism crops can then be shared directly on device with or imported into identification apps such as [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. This allows FaunaPulse to remain focused on detection, tracking and documentation while end-users choose the identification service best suited to their needs. Note that at the time of releasing this repository, these apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. FaunaPulse is designed mostly with offline usage in mind.
+FaunaPulse is not restricted to pollinators. With a suitable object-detection model, it can be adapted to arthropods, birds, mammals, even pets or other moving subjects. Its usefulness depends on the observation setup, selected capture mode and, for AI-based monitoring, the capabilities of the loaded model.
 
 ## Intended usage
 
-- **Pollination research:** measure and compare flower-visitation rates among plant species, treatments, habitats, land-management practices or environmental conditions.
+- **Pollination research:** measure and compare flower-visitation rates among plant species, (e.g., across habitats, land-management practices, environmental conditions / gradients, research treatments, etc.).
 - **Citizen science:** observe flower visitors, garden wildlife and other local fauna using an ordinary Android smartphone.
 - **Wildlife and activity monitoring:** record when, how often and for how long organisms appear within a selected observation area.
-- **Biodiversity documentation:** capture fauna occurrences or short-lived biological events using AI detection, motion triggering or time-lapse capture.
-- **Custom-model surveys:** monitor any target category represented by a compatible object-detection model.
+- **Biodiversity documentation:** capture fauna occurrences or events using AI detection, motion triggering or time-lapse capture.
+- **Custom-model surveys:** monitor any moving subject represented by a compatible object-detection model.
 
-FaunaPulse is intended as a flexible observation platform rather than a detector limited to one taxonomic group. It may also be useful for non-biological observation tasks where motion detection or a compatible custom model is appropriate.
+FaunaPulse can also be used as a flexible biodiversity observation platform rather than a detector limited to one taxonomic group. It may also be useful for any observation task where motion detection or a compatible custom model is appropriate.
 
 ## Project status
 
@@ -92,15 +90,15 @@ It covers both installing a ready-made app without coding and building FaunaPuls
 
 ## Why I built FaunaPulse
 
-The idea for FaunaPulse grew from my research at the [Helmholtz Centre for Environmental Research (UFZ)](https://www.ufz.de/) and the [German Centre for Integrative Biodiversity Research (iDiv)](https://www.idiv.de/).
+The idea for FaunaPulse grew from my research at the [Helmholtz Centre for Environmental Research (UFZ)][ufz] and the [German Centre for Integrative Biodiversity Research (iDiv)][idiv].
 
-During my PhD and research, we collected large image datasets of flower-visiting insects using affordable smartphones and time-lapse photography. The approach worked, but it also produced far more images than could be used efficiently. A selective camera trigger was therefore an obvious next step.
+During my PhD and research, we collected large image datasets of flower-visiting arthropods using affordable smartphones and time-lapse photography. The approach worked, but it also produced far more images than could be used efficiently. A selective camera trigger was therefore an obvious next step.
 
 Conventional motion detection is easily activated by wind, moving vegetation and changes in light. Insects are also difficult to distinguish using heat-based sensors because their body temperature may be close to that of their surroundings. On-device AI object detection offered a promising way to capture images only when relevant organisms were present.
 
-The square ROI reflects both the ecological question and the computer-vision pipeline: it concentrates observation on a target flower, reduces distracting background information and matches the square input commonly used by object-detection models.
+The square ROI reflects both the ecological question and the computer-vision pipeline: it concentrates observation on a target flower (or area of interest), reduces distracting background information and matches the square input commonly used by object-detection models.
 
-Although FaunaPulse began as a pollinator-monitoring tool, I gradually realised that the same detection, tracking and capture workflow could support many other organisms and observation tasks. I am releasing it as free and open-source software in the hope that it will also be useful to citizen scientists and research groups with limited funding.
+Although FaunaPulse began as a pollinator-monitoring tool, I gradually realised that the same detection, tracking and capture workflow could support many other organisms and observation tasks. I am releasing it as free and open-source software in the hope that it will also be useful to citizen scientists and research groups with limited funding. Moreover, smartphones are basically powerful micro-computers, usually always available on almost any market world-wide (at relatively affordable prices), so every scientist or citizen-scientist can use it as a field tool for contributing to measuring local biodiversity. 
 
 ## AI-assisted development and transparency
 
@@ -156,7 +154,7 @@ dependencies:
 
 ## Related research
 
-FaunaPulse builds on research conducted with colleagues at UFZ and iDiv on smartphone-based pollinator monitoring, object detection and insect classification:
+FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv][idiv] on smartphone-based pollinator monitoring, object detection and insect classification:
 
 - Stark, T., Ștefan, V., Wurm, M., Spanier, R., Taubenböck, H., & Knight, T. M. (2023). **YOLO object detection models can locate and classify broad groups of flower-visiting arthropods in images.** *Scientific Reports*, 13, 16364. [https://doi.org/10.1038/s41598-023-43482-3](https://doi.org/10.1038/s41598-023-43482-3)
 - Ștefan, V., Workman, A., Cobain, J. C., Rakosy, D., & Knight, T. M. (2025). **Utilising affordable smartphones and open-source time-lapse photography for pollinator image collection and annotation.** *Journal of Pollination Ecology*, 38, 1–21. [https://doi.org/10.26786/1920-7603(2025)778](https://doi.org/10.26786/1920-7603(2025)778)
@@ -165,10 +163,18 @@ FaunaPulse builds on research conducted with colleagues at UFZ and iDiv on smart
 
 Future work may include (on-device or computer / server) taxonomic identification using classification models, including vision foundation models such as [BioCLIP][bioclip], and further analytical reporting derived from visitation and classification data.
 
-[bioclip]: https://imageomics.github.io/bioclip-ecosystem/index.html
-
 ## License
 
 This repository is licensed under **AGPL-3.0**. See [`LICENSE`](LICENSE) for details.
 
 The modified `ultralytics_yolo` plugin retained in this repository remains subject to its own license terms.
+
+<!-- 
+Reference links: [id]: URL
+
+These are links used throughout this file
+-->
+
+[ufz]: https://www.ufz.de/
+[idiv]: https://www.idiv.de/
+[bioclip]: https://imageomics.github.io/bioclip-ecosystem/index.html

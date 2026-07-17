@@ -120,7 +120,7 @@ double biou(Rect a, Rect b, double scale) {
 }
 
 /// The C-BIoU-style tracker. Call [update] once per processed frame.
-class CBiouTracker implements InsectTracker {
+class CBiouTracker with TrackEventBuffer implements InsectTracker {
   CBiouParams params;
 
   /// Minimum buffered overlap to accept a match. A small fixed floor (not
@@ -197,10 +197,25 @@ class CBiouTracker implements InsectTracker {
     totalConfirmed = 0;
     _lastFrameTs = 0;
     _frameDtS = 0;
+    clearEvents();
   }
 
   @override
   void expireLostTracks() {
+    for (final t in _tracks) {
+      if (t.state == TrackState.lost) {
+        // Stamped with the LAST processed frame: no frames arrive while the
+        // motion gate sleeps, so that frame is the last moment the track
+        // existed. The log line's own time_ms carries the wake moment.
+        emitTrackEvent(
+          TrackEventKind.removed,
+          t,
+          _lastFrameTs,
+          framesMissed: t.timeSinceUpdate,
+          reason: 'gate_expired',
+        );
+      }
+    }
     _tracks.removeWhere((t) => t.state == TrackState.lost);
   }
 
@@ -233,6 +248,11 @@ class CBiouTracker implements InsectTracker {
     final survivors = <Track>[];
     for (final t in _tracks) {
       if (unmatchedTracks.contains(t)) {
+        // Report a confirmed track's first unmatched frame BEFORE the box
+        // starts coasting, so the event carries the last observed box.
+        if (t.state == TrackState.confirmed) {
+          emitTrackEvent(TrackEventKind.lost, t, timestampMs);
+        }
         t.timeSinceUpdate += 1;
         // Coast along the last known velocity so a moving insect can still be
         // caught by the buffered match when it reappears.
@@ -243,6 +263,15 @@ class CBiouTracker implements InsectTracker {
         if (t.timeSinceUpdate <= params.trackBuffer &&
             t.state != TrackState.tentative) {
           survivors.add(t);
+        } else if (t.state == TrackState.lost) {
+          // Aged past the occlusion tolerance: this visit is over for good.
+          emitTrackEvent(
+            TrackEventKind.removed,
+            t,
+            timestampMs,
+            framesMissed: t.timeSinceUpdate,
+            reason: 'aged_out',
+          );
         }
       } else {
         survivors.add(t);
@@ -315,6 +344,11 @@ class CBiouTracker implements InsectTracker {
   }
 
   void _applyMatch(Track t, Detection d, int timestampMs) {
+    // Pre-match values for the lifecycle events below: a "recovered" event
+    // must carry when the track was REALLY last observed and how many frames
+    // it missed, which the match is about to overwrite.
+    final prevLastSeenMs = t.lastSeenMs;
+    final missedFrames = t.timeSinceUpdate;
     final newCenter = d.box.center;
     if (timeAwareMotion) {
       // Units/second from the last true observation (see ByteTracker).
@@ -344,8 +378,16 @@ class CBiouTracker implements InsectTracker {
     if (t.state == TrackState.tentative && t.hits >= params.minHitsToConfirm) {
       t.state = TrackState.confirmed;
       totalConfirmed += 1;
+      emitTrackEvent(TrackEventKind.created, t, timestampMs);
     } else if (t.state == TrackState.lost) {
       t.state = TrackState.confirmed;
+      emitTrackEvent(
+        TrackEventKind.recovered,
+        t,
+        timestampMs,
+        lastSeenMs: prevLastSeenMs,
+        framesMissed: missedFrames,
+      );
     }
   }
 }

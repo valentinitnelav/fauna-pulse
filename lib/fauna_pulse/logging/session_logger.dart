@@ -208,6 +208,18 @@ class SessionLogger {
   void logRawDetections(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('raw_detections', payload, at: at, flush: false);
 
+  /// One track-lifecycle transition (round 116): a track id became a
+  /// confirmed visit ("created"), went unmatched ("lost"), was matched again
+  /// ("recovered"), or was dropped for good ("removed" — `reason` says
+  /// whether it aged out or a motion-gate wake expired it). The only EXPLICIT
+  /// lifecycle record: `detections` lines carry matched tracks only, so a
+  /// temporary loss is otherwise just a gap in a track id's appearances —
+  /// ambiguous with an analysis pause (e.g. a high-res photo grab). Written
+  /// from the frame path, so not flushed per line; [flushNow] handles
+  /// durability every ~0.5 s.
+  void logTrackEvent(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('track_event', payload, at: at, flush: false);
+
   /// A motion-only-mode photo trigger: the saved JPEG's name plus the motion
   /// score that fired it. The detector never runs in that mode, so there are
   /// no tracks/boxes — the `capture` record that follows carries timing/size/

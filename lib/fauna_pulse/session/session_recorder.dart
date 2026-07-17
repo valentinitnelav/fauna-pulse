@@ -245,15 +245,17 @@ class SessionRecorder {
   /// Logs every confirmed track this frame — as ONE `detections` record with
   /// a `tracks` array (round 69) — and triggers a shared ROI photo when one
   /// is due. The photo filename is written into the covered tracks' entries
-  /// so post-processing can join them directly. Returns true when a photo was
-  /// triggered (the screen blinks its capture cue on it). No-op unless
-  /// [recording].
+  /// so post-processing can join them directly. [trackEvents] (round 116) are
+  /// the tracker's lifecycle transitions this frame, written as one
+  /// `track_event` line each. Returns true when a photo was triggered (the
+  /// screen blinks its capture cue on it). No-op unless [recording].
   bool recordFrame(
     List<Track> tracks,
     Rect roiRect,
     int ts, {
     List<Detection>? rawDetections,
     int? frameSensorMs,
+    List<TrackEvent> trackEvents = const [],
   }) {
     if (!_recording) return false;
     // Evaluation toggle (round 105): the detector's pre-tracking boxes, so
@@ -290,6 +292,12 @@ class SessionRecorder {
               'class_name': t.className,
               'confidence': t.confidence,
               'box_in_roi': _boxInRoi(t.box, roiRect),
+              // Both trackers only return tracks matched to a detection THIS
+              // frame, so every box logged here is detector-observed. If a
+              // future tracker ever returns a velocity-coasted box, this
+              // marks it instead of letting a predicted position pass as an
+              // observation (round 116).
+              if (t.timeSinceUpdate > 0) 'coasted': true,
               if (pending != null && pending.trackIds.contains(t.id))
                 'jpeg': pending.fileName,
             },
@@ -300,11 +308,31 @@ class SessionRecorder {
         frameSensorMs: frameSensorMs,
       );
     }
+    // Track-lifecycle lines (round 116): sparse — a handful per visit — and
+    // the only EXPLICIT record of a visit starting, briefly vanishing,
+    // returning, or ending. `detections` lines never contain unmatched
+    // tracks, so without these a track id disappearing is ambiguous:
+    // occluded, gone for good, or no frames analyzed at all (a high-res
+    // photo grab pauses the analysis stream).
+    for (final e in trackEvents) {
+      _logger?.logTrackEvent({
+        'event': e.kind.name,
+        'track_id': e.trackId,
+        'frame_ms': e.atMs,
+        'box_in_roi': _boxInRoi(e.box, roiRect),
+        'hits': e.hits,
+        'first_seen_ms': e.firstSeenMs,
+        'last_seen_ms': e.lastSeenMs,
+        if (e.framesMissed > 0) 'frames_missed': e.framesMissed,
+        if (e.reason != null) 'reason': e.reason,
+      });
+    }
     // Ask for an fsync at most ~twice a second rather than every frame: the
     // logger's writer loop drains queued lines within the same event-loop
     // turn, so this bounds what a sudden power/battery loss could drop to
     // ~0.5 s without paying a disk sync per frame.
-    if (tracks.isNotEmpty && ts - _lastFlushMs >= 500) {
+    if ((tracks.isNotEmpty || trackEvents.isNotEmpty) &&
+        ts - _lastFlushMs >= 500) {
       _logger?.flushNow();
       _lastFlushMs = ts;
     }

@@ -4444,3 +4444,65 @@ Follow-up idea (not built): reduce the pause itself is not possible —
 ImageCapture inherently contends; the sync companion + interpolation are
 the mitigations. 250 tests pass, analyze clean.
 
+
+## Round 116 (2026-07-17): explicit track lifecycle in session.jsonl (track_event lines)
+
+Owner priority shift: reliable downstream analysis from session.jsonl over
+the image-preview overlay. Review of the r114/115 work surfaced the real
+logging gap — and corrected a wrong assumption along the way.
+
+**Key verified fact (invariant, now documented in code):** the logged
+`detections[].tracks[]` boxes are ALWAYS detector-observed. Both trackers
+demote an unmatched confirmed track to `lost` in the same frame, and
+`update()` only returns `confirmed` tracks — so velocity-coasted (predicted)
+boxes never reach the log at all. (An earlier code-exploration report claimed
+coasted boxes were logged unflagged; that was false.) Consequence: a track
+temporarily vanishing from `detections` records was AMBIGUOUS — occluded?
+gone for good? or simply no frames analyzed (r115: a high-res photo grab
+pauses the analysis stream 0.13–1.5 s)? Nothing in the log said which.
+
+**Change — additive, backward compatible:**
+
+* New `track_event` record type (`SessionLogger.logTrackEvent`, flush:false
+  like the other hot-path lines): one line per lifecycle transition.
+  Fields: `event` (`created` = confirmed as a visit / `lost` = first
+  unmatched frame / `recovered` = matched again, same id / `removed` =
+  dropped for good), `track_id`, `frame_ms` (the transition's frame stamp),
+  `box_in_roi` (for `lost`: the last OBSERVED box, captured before coasting
+  starts), `hits`, `first_seen_ms` (tentative start = real visit start),
+  `last_seen_ms` (for `recovered`: the pre-gap observation, so
+  `frame_ms − last_seen_ms` IS the survived gap), `frames_missed` (when >0),
+  `reason` (`aged_out` | `gate_expired`, removals only). Gate-expiry
+  removals are stamped with the last processed frame (no frames arrive while
+  the gate sleeps); the line's own `time_ms` carries the wake moment.
+* Emission lives in a shared `TrackEventBuffer` mixin (`tracking/tracker.dart`)
+  + `drainEvents()` on the `InsectTracker` interface, so a `track_event`
+  line means one thing regardless of algorithm. Both trackers emit at the
+  same four transitions (byte_track.dart / c_biou_track.dart); tentative
+  tracks that die unconfirmed emit nothing (they were never a visit).
+* Wiring: `FrameProcessor.process` drains the tracker into
+  `FrameResult.events` (gate-wake expiry events ride with the NEXT processed
+  frame) → `camera_session_screen` passes them to
+  `SessionRecorder.recordFrame` → one `track_event` line each; the ~0.5 s
+  fsync cadence now also triggers on event-only frames. The replay harness
+  (`tracker_replay.dart`) drains-and-discards per frame so events can't pile
+  up over thousands of frames.
+* Defensive `coasted:true` key on `detections[].tracks[]` entries, emitted
+  only when `timeSinceUpdate > 0` — never fires with the current trackers
+  (see invariant above); it exists so a future tracker that returns
+  predicted boxes can't silently pass them off as observations.
+
+**Why it matters downstream:** visit stitching (merging fragmented ids into
+one ROI event) and loss-vs-pause classification become deterministic joins
+on `track_event` lines instead of heuristics over gaps in `detections`
+timestamps. Cost: a handful of lines per visit, zero per-frame overhead.
+
+Not built this round (agreed follow-ups): `analysis_gap` records (pause
+detection without the raw-detections toggle), `trigger_frame_ms` on
+`capture` records (exact photo↔frame join), live-crop-by-default capture
+path decision, offline stitching helper script in `helper_scripts/`.
+
+Tests: lifecycle sequences for both trackers (created→lost→recovered→
+removed incl. `aged_out`/`gate_expired` + gap bookkeeping), FrameProcessor
+drain wiring, logger schema line. 257 tests pass, analyze clean. Summary
+screen ignores unknown record types, so old parsers are unaffected.

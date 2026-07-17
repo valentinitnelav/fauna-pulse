@@ -153,6 +153,21 @@ void main() {
       now = 43000;
       expect(run(fp, event(detections: [])).timestampMs, 43000);
     });
+
+    test('drains the tracker lifecycle events into FrameResult (round 116)',
+        () {
+      final fp = FrameProcessor(tracker: tracker());
+      // 1st frame: tentative — no events. 2nd: confirmed — one "created".
+      // 3rd (empty): one "lost". Each drain leaves the buffer empty, so an
+      // event surfaces on exactly one FrameResult (one log line each).
+      expect(run(fp, event(detections: [det()], timestamp: 1000)).events,
+          isEmpty);
+      final confirmed = run(fp, event(detections: [det()], timestamp: 1100));
+      expect(confirmed.events.map((e) => e.kind), [TrackEventKind.created]);
+      final lost = run(fp, event(detections: [], timestamp: 1200));
+      expect(lost.events.map((e) => e.kind), [TrackEventKind.lost]);
+      expect(lost.events.single.trackId, confirmed.events.single.trackId);
+    });
   });
 
   group('FrameProcessor.setGateIdle', () {
