@@ -443,10 +443,22 @@ class _HomeScreenState extends State<HomeScreen> {
             Column(
               children: [
                 const SizedBox(height: 24),
-                const Icon(
-                  Icons.local_florist,
-                  size: 56,
-                  color: Colors.amber,
+                // Wrap the two icons in a Row to arrange them horizontally
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.emoji_nature,
+                      size: 56,
+                      color: Colors.amber,
+                    ),
+                    SizedBox(width: 16), // Adds horizontal space between the two icons
+                    Icon(
+                      Icons.local_see,
+                      size: 56,
+                      color: Colors.amber,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 const Text(
