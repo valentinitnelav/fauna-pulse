@@ -104,6 +104,7 @@ insect instead, see the note below):
 | `tracks[].jpeg` | Filename of the ROI photo that covered this track at this moment; **absent** when no photo was saved for it on this frame. |
 | `frame_ms` | Round 114+. The frame's epoch stamp on the **emit clock** (recorded when the native side finished inference and emitted the result — ~50–150 ms after the sensor exposure). Same clock basis as `raw_detections.frame_ms`, deliberately: one key name, one meaning. |
 | `frame_sensor_ms` | Round 114+. The frame's **sensor-exposure moment** mapped to epoch ms — the precise stamp, directly comparable to a `capture` record's `content_at_ms`. Absent on HALs without a usable sensor clock; prefer it over `frame_ms` when present. |
+| `tracks[].coasted` | Round 116+ safety flag, normally **absent**: every box in a `detections` record is detector-observed (the tracker never logs its velocity-predicted positions). It would read `true` only if a future tracker version logged a predicted box — treat such an entry as an estimate, not an observation. |
 
 > Note: a `detections` line is written for **every processed frame** with at
 > least one tracked insect, not once per visit. You reconstruct a visit by
@@ -114,6 +115,49 @@ insect instead, see the note below):
 > the top level and `jpeg: null` when no photo was saved. Same information —
 > scripts should accept both (the snippets in §4 do). The in-app summary
 > screen reads both formats too.
+
+### `track_event` — track lifecycle transitions (round 116+)
+
+One line every time a track id changes life stage. Sessions recorded before
+round 116 don't have these lines — there, a track id simply stops appearing in
+`detections` records and you cannot tell *why*: briefly hidden insect, insect
+gone for good, or simply no frames analyzed at all (a high-res photo pauses
+the analysis stream for 0.13–1.5 s, see §5b). These records make the four
+cases explicit:
+
+| `event` | Meaning |
+|---|---|
+| `created` | The track was matched in enough frames to count as a visit — its id starts appearing in `detections` records from here. |
+| `lost` | The first frame the track was **not** matched (occlusion, missed detection, or the insect left). The id stays buffered for the occlusion tolerance in case it comes back. |
+| `recovered` | The lost track was matched again: same id, the same visit continues. |
+| `removed` | The id is gone for good. `reason` says why: `aged_out` (unmatched longer than the occlusion tolerance) or `gate_expired` (the motion gate slept longer than the tolerance, so the stale id must not be revived by a newly arriving insect). |
+
+Fields on every `track_event` line:
+
+| Field | Meaning |
+|---|---|
+| `track_id` | Which track the transition belongs to. |
+| `frame_ms` | The transition's frame timestamp (ms since epoch). For `gate_expired` removals it is the **last processed frame before the gate slept**; the line's own `time_ms` carries the wake moment. |
+| `box_in_roi` | The track's box at the transition, ROI-relative 0..1 like in `detections`. For `lost` it is the last box that was actually observed. |
+| `hits` | Total matched frames for this track so far. |
+| `first_seen_ms` | When the track's very first detection was seen — the **real visit start** (it precedes `created` by the confirmation lag, default 0.2 s). |
+| `last_seen_ms` | The last real observation. On a `recovered` line this is the pre-gap moment, so `frame_ms − last_seen_ms` = the gap the id survived. |
+| `frames_missed` | Unmatched frames at the transition (only written when > 0). |
+| `reason` | Removals only: `aged_out` / `gate_expired`. |
+
+How to use them:
+
+* **Visit boundaries without per-frame grouping:** a visit runs from
+  `first_seen_ms` (on its `created` line) to `last_seen_ms` (on its `removed`
+  line). The §4 snippets that group `detections` frames still work and give
+  the same answer — these lines are just the direct route.
+* **Temporary loss vs analysis pause:** a `lost` → `recovered` pair brackets a
+  real tracking gap; a hole in `detections` timestamps with **no** `lost`
+  line in it is an analysis pause (photo grab, throttle), not a lost insect.
+* **Stitching fragmented ids:** when the tracker splits one insect into
+  several ids, you'll see a `removed` and a `created` close together in time
+  (`frame_ms`) and space (`box_in_roi`) — your cue to consider merging those
+  ids into one visit during analysis.
 
 ### `raw_detections` — pre-tracking boxes (round 105, only when the evaluation toggle is on)
 

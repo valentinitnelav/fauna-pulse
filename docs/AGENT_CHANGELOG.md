@@ -4506,3 +4506,39 @@ Tests: lifecycle sequences for both trackers (created→lost→recovered→
 removed incl. `aged_out`/`gate_expired` + gap bookkeeping), FrameProcessor
 drain wiring, logger schema line. 257 tests pass, analyze clean. Summary
 screen ignores unknown record types, so old parsers are unaffected.
+
+## Round 117 (2026-07-17): fast crops default + track_event in DATA_GUIDE + companion clarity
+
+Owner decisions after r116: document the new record type for practitioners,
+and stop treating high-res photos as the recommended baseline.
+
+* **Capture-mode default: `auto` → `fast`** (`SessionConfig` constructor +
+  the no-key `fromJson` fallback; configs with an explicit `captureMode`
+  are untouched, legacy `fullResPhotos` migrations unchanged). Rationale
+  (owner + r115/session_16 measurements): each high-res photo pauses the
+  AI pipeline 0.13–1.5 s (worse on older phones), shows the scene after
+  the trigger, and often carries motion blur — blur destroys exactly the
+  detail the extra pixels were meant to add, so a smaller crisp live crop
+  is usually MORE informative for downstream classification. High-res
+  stays available (auto / always) as a deliberate opt-in.
+* **"(recommended)" removed everywhere** for the capture mode: Camera-tab
+  dropdown (fast now listed first) + info text (rewritten around the
+  pause/lag/blur trade-off), SETTINGS_REFERENCE.md row,
+  HOW_PHOTO_RESOLUTION_WORKS.md section (retitled from "auto mode" to the
+  photo-source setting, with a "why fast is the default" paragraph).
+* **Sync companion wording clarified** (owner found it ambiguous): the
+  companion is ALWAYS the fast live-frame crop saved beside a HIGH-RES
+  photo — never a second high-res photo — and the toggle does nothing on
+  the fast path (a fast photo IS the live crop). Settings subtitle +
+  SETTINGS_REFERENCE row now say so explicitly.
+* **DATA_GUIDE.md §3: new `track_event` section** (r116 record): event
+  meanings table (created/lost/recovered/removed + reasons), field table,
+  and three usage recipes — visit boundaries without per-frame grouping,
+  telling temporary track loss apart from analysis pauses (no `lost` line
+  inside a frame-timestamp hole = pause, not a lost insect), and spotting
+  id fragmentation for stitching (removed+created close in time/space).
+  Also added the `tracks[].coasted` guard-flag row to the `detections`
+  table (normally absent; every logged box is detector-observed).
+
+Tests: default assertion updated + empty-config fallback covered. 257 pass,
+analyze clean.

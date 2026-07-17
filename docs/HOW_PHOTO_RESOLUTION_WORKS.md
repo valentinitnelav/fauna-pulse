@@ -54,16 +54,30 @@ resulting is saving images (ROI cropped) at different resolutions.
 See also:
 - https://developer.android.com/media/camera/camera2/multiple-camera-streams-simultaneously
 
-## What the app does with this ("auto" mode)
+## What the app does with this (the photo-source setting)
 
-For every scheduled photo the app asks: *would cutting the ROI box out of the
-live frame meet the user's target size (e.g. 1024 px)?*
+The photo source is chosen in Session settings → Camera. Since round 117 the
+default is **fast crops**: every photo is cut from the live frame, so nothing
+stalls and the photo shows the exact trigger moment.
+
+**Auto** mode instead asks, for every scheduled photo: *would cutting the ROI
+box out of the live frame meet the user's target size (e.g. 1024 px)?*
 
 - **Yes** (the ROI box is large on screen) → cut from the live frame. Little costs, 
   so no significant camera interruption.
 - **No** (the ROI box is small — a small flower) → take a high-res photo and cut the
   box out of that instead. Costs ~1 s and a brief frame-rate dip, but the
   photo meets the target.
+
+**Why fast is the default.** A high-res photo is not free: taking one pauses
+the AI detection stream for 0.13–1.5 s (longer on older phones), the photo
+shows the scene a fraction of a second *after* the trigger, and it frequently
+carries motion blur. Blur destroys exactly the fine structure the extra
+pixels were supposed to capture — a blurred 1024 px photo holds less real
+detail than a crisp lower-resolution crop, so for downstream classification
+"more pixels" is not automatically better. Choose auto or always-high-res
+deliberately, when the flower is tiny in the frame and the visitors are
+mostly stationary.
 
 Photos larger than the target are shrunk to exactly the target (storage
 control). Photos are not enlarged: stretching a small image invents no

@@ -254,10 +254,16 @@ void main() {
   });
 
   group('capture mode & saved-size target', () {
-    test('defaults: auto, target 1024', () {
+    test('defaults: fast crops (round 117), target 1024', () {
+      // Fast is the default: a high-res photo pauses the analysis stream up
+      // to ~1.5 s and often blurs, so it is opt-in, not the baseline.
       const c = SessionConfig();
-      expect(c.captureMode, RoiCaptureMode.auto);
+      expect(c.captureMode, RoiCaptureMode.fast);
       expect(c.targetRoiSavedPx, 1024);
+      expect(
+        SessionConfig.fromJson(const {}).captureMode,
+        RoiCaptureMode.fast,
+      );
     });
 
     test('round-trips through toJson/fromJson', () {
@@ -308,8 +314,8 @@ void main() {
       expect(restored.captureMode, RoiCaptureMode.fast);
     });
 
-    test('configs without either key get the new auto default', () {
-      expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.auto);
+    test('configs without either key get the fast default (r117)', () {
+      expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.fast);
     });
   });
 

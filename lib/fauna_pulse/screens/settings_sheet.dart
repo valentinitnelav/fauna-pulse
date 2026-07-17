@@ -1439,14 +1439,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
       const Divider(color: Colors.white24),
 
       _label(
-        'ROI photo source. Auto (recommended): each photo is a fast crop of '
-        'the live frame when that already meets the minimum size below, and a '
-        'high-res photo'
+        'ROI photo source. Fast crops (the default) cut each photo out of the '
+        'live video frame: no camera stall and the photo shows the exact '
+        'trigger moment. High-res photos'
         '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
-        ' only when the ROI is too small in the stream. High-res photos put '
-        'far more pixels on a small flower, but each one briefly dips the '
-        'frame rate and lands a fraction of a second after the detection — '
-        'a moving insect can show motion blur or be gone.',
+        ' put more pixels on a small flower, but each one pauses the AI '
+        'pipeline for up to ~1.5 s (more on older phones), lands a fraction '
+        'of a second after the detection, and often shows motion blur — a '
+        'blurred high-res photo carries LESS usable detail than a smaller '
+        'crisp crop, so more pixels are not automatically better for later '
+        'classification. Auto: per photo, fast crop when it meets the '
+        'minimum size below, high-res otherwise.',
       ),
       DropdownButton<RoiCaptureMode>(
         value: _c.captureMode,
@@ -1454,16 +1457,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
         dropdownColor: Colors.black87,
         items: const [
           DropdownMenuItem(
-            value: RoiCaptureMode.auto,
+            value: RoiCaptureMode.fast,
             child: Text(
-              'Auto — high-res only when needed (recommended)',
+              'Fast crops only (live frame)',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
           DropdownMenuItem(
-            value: RoiCaptureMode.fast,
+            value: RoiCaptureMode.auto,
             child: Text(
-              'Fast crops only (live frame)',
+              'Auto — high-res only when needed',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
@@ -1484,11 +1487,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
           style: TextStyle(color: Colors.white),
         ),
         subtitle: const Text(
-          'A high-res photo physically lands up to ~1 s after the '
-          'detection that triggered it, so a fast insect can be gone from '
-          'the photo. With this on, every high-res photo also saves a small '
-          'crop of the live frame at the trigger moment next to it '
-          '("…_live.jpg") — lower resolution, but the insect is in it. '
+          'Only applies when a photo takes the HIGH-RES path (never in fast '
+          'mode). The companion is always the fast live-frame crop: a '
+          'high-res photo lands up to ~1 s after the detection that '
+          'triggered it, so a fast insect can be gone from it — with this '
+          'on, the trigger-moment live crop is saved next to the high-res '
+          'photo ("…_live.jpg"), lower resolution but the insect is in it. '
           'Adds roughly 50–200 KB per photo.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),

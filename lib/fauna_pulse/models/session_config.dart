@@ -62,7 +62,9 @@ RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
   // A legacy config without the new key was fast-only; keep its behaviour
   // rather than silently switching an old setup to auto.
   if (j.containsKey('fullResPhotos')) return RoiCaptureMode.fast;
-  return RoiCaptureMode.auto;
+  // No capture key at all: the constructor default (fast since round 117 —
+  // a config that ever saw the settings sheet carries an explicit value).
+  return RoiCaptureMode.fast;
 }
 
 /// What causes photos (and detections) during a session — the session's
@@ -294,11 +296,17 @@ class SessionConfig {
   /// choice sets this true and is never overridden.
   final bool streamResolutionExplicit;
 
-  /// ROI photo source policy — see [RoiCaptureMode]. Default [RoiCaptureMode.auto]:
-  /// each photo uses the cheap fast crop when it already meets [minRoiSavedPx],
-  /// and pays for a full-resolution high-res photo only when the ROI is too
-  /// small in the live stream. (Replaces the old `fullResPhotos` boolean; an old
-  /// saved config with `fullResPhotos: true` loads as [RoiCaptureMode.highRes].)
+  /// ROI photo source policy — see [RoiCaptureMode]. Default
+  /// [RoiCaptureMode.fast] (round 117, previously auto): every photo is a
+  /// crop of the live analysis frame. High-res photos sound desirable but
+  /// each one pauses the analysis stream 0.13–1.5 s (measured, session_16),
+  /// lands a fraction of a second after its trigger, and often shows motion
+  /// blur — a smaller but crisp live crop usually carries MORE usable detail
+  /// for later classification, especially on older phones. [RoiCaptureMode.auto]
+  /// takes the high-res path per photo when the fast crop would come out
+  /// below [targetRoiSavedPx]. (Replaces the old `fullResPhotos` boolean; an
+  /// old saved config with `fullResPhotos: true` loads as
+  /// [RoiCaptureMode.highRes].)
   final RoiCaptureMode captureMode;
 
   /// The ONE side (pixels) the user wants saved ROI photos to have (round 63,
@@ -457,7 +465,7 @@ class SessionConfig {
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
-    this.captureMode = RoiCaptureMode.auto,
+    this.captureMode = RoiCaptureMode.fast,
     this.targetRoiSavedPx =
         1024, // ÷32; photos save at exactly this when possible
     this.occlusionSeconds = 3.0,
