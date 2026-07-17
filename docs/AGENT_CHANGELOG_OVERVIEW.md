@@ -117,6 +117,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `saved_px` from its capture record, not box geometry.
 - **Owner rule: every new tunable parameter ships user-adjustable** — Settings control
   + SessionConfig JSON + summary row + round-trip test, in the same round it appears.
+- **Start-up calibration is ONE cycle (round 120).** `_calibrating` in
+  `camera_session_screen.dart` (first analysis frame + full-res photo probe + analysis-
+  ceiling probe; every term terminates) gates the controls row (settings gear, blackout,
+  lens switch, focus, REC) and both calibrating indicators, so half-probed settings
+  (e.g. the incomplete stream-resolution list) can never be opened. The settings sheet
+  background is fully opaque (`Color(0xFF141414)` — black87 let the preview bleed
+  through). Placement convention: session settings stay on the camera screen (they need
+  the live camera); future app-level settings go in the home screen's ⋮ menu.
 - **ROI box geometry lives in ONE scale: the stream grid (round 62).** The box's px
   readout, resize slider and ÷32 snapping always use the analysis frame
   (`_roiSourceWidth` == `_imageWidth`); the high-res source only feeds the separate

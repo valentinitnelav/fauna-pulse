@@ -4609,3 +4609,34 @@ analyze clean.
   `releases/latest/download/…` shifts with each release — avoid for models. Future idea
   (not built): a `models.json` manifest in the repo for a one-tap in-app catalog.
 
+## Round 120 (2026-07-17): opaque settings sheet + one calibration cycle
+
+- **Opaque session-settings sheet.** The sheet opened with `backgroundColor:
+  Colors.black87` (~87% opaque), so the paused camera preview bled through and made
+  the settings hard to read over bright/whitish scenes. Now a fully opaque near-black
+  (`Color(0xFF141414)`) in `_openSettings` (`camera_session_screen.dart`).
+- **One `_calibrating` flag for the whole start-up cycle.** Previously two sequential
+  indicators ran on two different probes: the big `CalibratingBanner` cleared on the
+  first analysis frame (`_imageWidth > 0`), then the bottom pill kept saying
+  "Calibrating — please wait…" until the slow full-res photo probe landed
+  (`_captureWidth > 0`). Meanwhile the settings gear was tappable, and opening the
+  Camera tab mid-probe showed only the 3-item fallback "Live stream resolution" list
+  (the probed list was still empty). New getter
+  `_calibrating = _imageWidth <= 0 || _captureWidth <= 0 || !_probes.analysisCeilingProbed`
+  — every term terminates (photo probe falls back to the analysis frame; ceiling probe
+  sets its flag in a `finally`), so it can never hang.
+- **Gated on it:** big banner now shows for the WHOLE cycle (banner + bottom pill clear
+  at the same instant — one visible calibration phase, not two), settings gear, blackout
+  (would hide the banner), lens switch (a lens change rebinds the camera and would
+  invalidate the in-flight probe), manual-focus button, REC button ready-state, and the
+  `_toggleRecording` guard (was `_captureWidth <= 0`). ROI dragging stays enabled —
+  harmless and useful while waiting.
+- Banner subtitle now sets expectations: "Measuring camera & photo resolution — this
+  takes a few moments".
+- **UI-placement decision (owner):** session settings STAY on the camera screen (the
+  sheet needs the live camera: stream-resolution ground truth, engine benchmark, gate
+  tuning); they are already locked during recording, so "fixed per session" holds.
+  Future app-level settings go behind the home screen's ⋮ overflow menu — camera gear
+  = session settings, home ⋮ = app/data actions.
+- `flutter analyze` clean; all 275 tests pass.
+

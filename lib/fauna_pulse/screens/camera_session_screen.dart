@@ -107,6 +107,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   int get _captureWidth => _probes.captureWidth;
   int get _captureHeight => _probes.captureHeight;
   bool _captureProbeStarted = false;
+  // ONE flag for the whole start-up calibration cycle (round 120): the first
+  // analysis frame (ROI/stream "measuring…"), the one-time full-res photo
+  // probe (the slow part — it retries), and the analysis-ceiling probe the
+  // settings sheet needs to list realistic stream resolutions. Every part
+  // terminates (the photo probe falls back to the analysis frame; the ceiling
+  // probe flags itself in a finally), so this always clears. The controls row
+  // and recording stay disabled while true, so the user can never open
+  // half-probed settings (e.g. an incomplete resolution list) mid-calibration.
+  bool get _calibrating =>
+      _imageWidth <= 0 || _captureWidth <= 0 || !_probes.analysisCeilingProbed;
   // Which processor actually runs inference ("GPU"/"CPU"/"NPU"), reported by the
   // native side. Note: GPU can't run int8-quantized models and falls back to CPU.
   String _accelerator = '';
@@ -1043,7 +1053,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Don't allow recording to start until calibration (the one-time full-res
     // probe that establishes the true ROI resolution) has finished. Before that
     // the ROI pixel size — logged at session start — isn't known yet.
-    if (!_recording && _captureWidth <= 0) {
+    if (!_recording && _calibrating) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2090,7 +2100,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final updated = await showModalBottomSheet<SessionConfig>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black87,
+      // Fully opaque: black87 let the frozen preview bleed through, making
+      // the sheet hard to read over bright scenes. Near-black (not pure
+      // black) keeps a subtle sheet-vs-scrim distinction.
+      backgroundColor: const Color(0xFF141414),
       builder: (_) => SettingsSheet(
         config: _config,
         streamResolutions: _streamResolutions,
@@ -2404,8 +2417,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ? 'Stream: $_imageWidth×$_imageHeight px (asked $reqLo×$reqHi — device max)'
           : 'Stream: $_imageWidth×$_imageHeight px';
     }
-    // Calibration = the one-time full-res probe; recording waits for it.
-    final bool haveCaptureDims = _captureWidth > 0;
+    // Calibration = the whole start-up probe cycle (see _calibrating);
+    // recording and the controls row wait for it.
+    final bool calibrationDone = !_calibrating;
     // (Full-sensor photo size is shown in Settings, next to the ROI photo
     // source, rather than cluttering the live preview.)
     // Engine/Model/Input are always shown, with a clear waiting/unknown state
@@ -2747,8 +2761,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ),
           ],
-          // Big "Calibrating…" banner until the ROI resolution is known.
-          if (!haveRoiDim)
+          // Big "Calibrating…" banner for the WHOLE start-up cycle (first
+          // frame + full-res probe + ceiling probe), so the user sees one
+          // calibration phase, not two sequential indicators.
+          if (_calibrating)
             const IgnorePointer(child: Center(child: CalibratingBanner())),
           // Error banner: a broken session log (storage full) outranks a
           // detector error — the watchdog auto-clears _inferenceError once
@@ -2789,9 +2805,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             iconSize: 32,
                             color: Colors.white,
                             icon: const Icon(Icons.settings),
-                            // Also locked during a scheduled run's sleep phase:
-                            // settings changes mid-run would desync the plan.
-                            onPressed: (_recording || _schedule != null)
+                            // Locked while calibrating (the sheet would show
+                            // half-probed data, e.g. an incomplete stream-
+                            // resolution list), during recording, and during
+                            // a scheduled run's sleep phase: settings changes
+                            // mid-run would desync the plan.
+                            onPressed:
+                                (_calibrating ||
+                                    _recording ||
+                                    _schedule != null)
                                 ? null
                                 : _openSettings,
                           ),
@@ -2802,7 +2824,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             icon: const Icon(Icons.dark_mode),
                             tooltip:
                                 'Screen off (save power) — tap screen to wake',
-                            onPressed: _enterBlackout,
+                            // Blackout would hide the calibrating banner.
+                            onPressed: _calibrating ? null : _enterBlackout,
                           ),
                           const SizedBox(width: 16),
                           _recordButton(),
@@ -2813,7 +2836,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                           const SizedBox(width: 16),
                           IconButton(
                             iconSize: 32,
-                            color: _minFocusDistance > 0
+                            color: (_minFocusDistance > 0 && !_calibrating)
                                 ? (_showFocusSlider
                                       ? Colors.amber
                                       : Colors.white)
@@ -2824,7 +2847,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                   : Icons.center_focus_weak,
                             ),
                             tooltip: 'Manual focus',
-                            onPressed: _minFocusDistance > 0
+                            onPressed: (_minFocusDistance > 0 && !_calibrating)
                                 ? () => setState(
                                     () => _showFocusSlider = !_showFocusSlider,
                                   )
@@ -2850,7 +2873,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                   : 'Scheduled run active')
                             : _recording
                             ? 'Recording — tap to stop'
-                            : haveCaptureDims
+                            : calibrationDone
                             ? (_config.scheduleEnabled
                                   ? 'Tap ● to start scheduled run '
                                         '(${_config.scheduleWindows.length} '
@@ -2863,7 +2886,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                         style: TextStyle(
                           color: _recording
                               ? Colors.redAccent
-                              : haveCaptureDims
+                              : calibrationDone
                               ? Colors.white
                               : Colors.white54,
                           fontWeight: FontWeight.w600,
@@ -3293,7 +3316,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   Widget _recordButton() {
     // Greyed out until calibration completes (recording is blocked before then).
-    final bool ready = _recording || _captureWidth > 0;
+    final bool ready = _recording || !_calibrating;
     // While a scheduled run is active (recording or sleeping) the button is a
     // stop-square; when idle with scheduling enabled it carries a clock badge
     // so the different tap behaviour (launches the whole run) is visible.
@@ -3335,7 +3358,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// "2×"). Disabled while recording (a lens change rebinds the camera and shifts
   /// the field of view) and on phones that expose only one usable lens.
   Widget _lensSwitchButton() {
-    final bool enabled = !_recording && _lenses.length >= 2;
+    // Also locked while calibrating: a lens change rebinds the camera and
+    // would invalidate the in-flight full-res probe.
+    final bool enabled = !_recording && !_calibrating && _lenses.length >= 2;
     final Color tint = enabled ? Colors.white : Colors.white24;
     return Tooltip(
       message: _lenses.length < 2

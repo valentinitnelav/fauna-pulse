@@ -3,8 +3,10 @@
 
 import 'package:flutter/material.dart';
 
-/// A prominent centred banner shown while the ROI resolution is being measured
-/// from the first full-resolution still, so the user knows the app is busy.
+/// A prominent centred banner shown for the whole start-up calibration cycle
+/// (first camera frame, full-resolution photo probe, stream-ceiling probe —
+/// round 120: ONE cycle, the controls unlock when it clears), so the user
+/// knows the app is busy.
 class CalibratingBanner extends StatelessWidget {
   const CalibratingBanner({super.key});
 
@@ -38,7 +40,8 @@ class CalibratingBanner extends StatelessWidget {
           ),
           SizedBox(height: 4),
           Text(
-            'Measuring ROI resolution',
+            'Measuring camera & photo resolution —\nthis takes a few moments',
+            textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
         ],
