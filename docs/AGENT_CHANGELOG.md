@@ -4813,4 +4813,12 @@ analyze clean.
   `GPSMapDatum` ("WGS-84") — exiftool/PIL don't need them, but stricter mobile
   parsers expect GPSVersionID to head the GPS IFD. Unit test asserts both.
 - `flutter analyze` clean; all 290 tests pass.
+- **Field verification (owner, same day) — hypothesis CORRECTED:** Google Photos
+  shows the crop's map (file good), gallery-pick INTO ObsIdentify reads the location
+  (so no OS redaction for that app — it holds the media-location permission), but
+  Share → ObsIdentify loses it. Conclusion: ObsIdentify's share-receive handler
+  doesn't read EXIF location from shared-in files (their side; identical bytes work
+  via the picker). RESOLVED WORKFLOW, not a code fix: for ObsIdentify use
+  "Save crop to Gallery" then pick it inside ObsIdentify; direct Share stays for
+  apps that honor EXIF on shared files. FIELD_GUIDE updated accordingly.
 

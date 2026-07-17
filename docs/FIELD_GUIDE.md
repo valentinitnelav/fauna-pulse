@@ -33,6 +33,9 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   pin dialog lets you type coordinates. The fix is written to the session log and
   stamped (with the capture time) into crops you export from the summary screen, so
   identification apps like ObsIdentify read where-and-when directly from the file.
+  **ObsIdentify tip (verified in the field):** save the crop to the Gallery and then
+  pick it *inside* ObsIdentify — its share-import ignores photo location, so the
+  direct Share button won't carry the coordinates into that particular app.
 
 ## 2. Starting a session
 
