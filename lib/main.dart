@@ -5,10 +5,18 @@
 // reference but are no longer the launch route.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/app_error_hooks.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Portrait only (round 124, with android:screenOrientation in the
+  // manifest): the capture/rotation math assumes an upright phone
+  // (uprightHighResDims, rawRectForUprightRect and its Kotlin mirror), and
+  // the preview overlays overflow in landscape. Lift both locks together if
+  // landscape support is ever built.
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   // Route uncaught errors into the active session's JSONL (and keep the app
   // alive on uncaught async errors) — a field crash must always leave a trace.
   installGlobalErrorHooks();

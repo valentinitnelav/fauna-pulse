@@ -117,6 +117,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // half-probed settings (e.g. an incomplete resolution list) mid-calibration.
   bool get _calibrating =>
       _imageWidth <= 0 || _captureWidth <= 0 || !_probes.analysisCeilingProbed;
+  // On-screen info panel expansion (round 124). Collapsed = one tappable
+  // "▸ fps · temp" line so the stats never cover the ROI; expanded = the full
+  // list. Remembered across screens in shared_preferences (a viewing
+  // preference, not a session parameter — deliberately not in SessionConfig).
+  static const String _statsExpandedKey = 'stats_panel_expanded';
+  bool _statsExpanded = false;
+
+  Future<void> _toggleStatsExpanded() async {
+    setState(() => _statsExpanded = !_statsExpanded);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_statsExpandedKey, _statsExpanded);
+    } catch (e) {
+      logSwallowed('stats_expanded_save', e);
+    }
+  }
+
   // Which processor actually runs inference ("GPU"/"CPU"/"NPU"), reported by the
   // native side. Note: GPU can't run int8-quantized models and falls back to CPU.
   String _accelerator = '';
@@ -400,6 +417,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // app returns to the foreground mid-session (belt-and-suspenders for long runs).
     WidgetsBinding.instance.addObserver(this);
     _config = widget.initialConfig;
+    // Restore the info-panel expansion preference (round 124).
+    SharedPreferences.getInstance()
+        .then((p) {
+          final v = p.getBool(_statsExpandedKey) ?? false;
+          if (mounted && v != _statsExpanded) {
+            setState(() => _statsExpanded = v);
+          }
+        })
+        .catchError((Object e) {
+          logSwallowed('stats_expanded_load', e);
+        });
     // Read the model's input resolution for the status overlay (async; updates
     // the chip from "reading…" once the metadata probe returns).
     _refreshModelInputSize();
@@ -987,7 +1015,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       streamResolutionExplicit: false,
     );
     setState(() => _config = updated);
-    updated.save().catchError((Object e) => logSwallowed('auto_stream_save', e));
+    updated.save().catchError(
+      (Object e) => logSwallowed('auto_stream_save', e),
+    );
   }
 
   void _setManualFocus(double v) {
@@ -1278,8 +1308,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             'windows_per_day': _schedule!.windows.length,
             'window_start':
                 _schedule!.windows[scheduleSlot.windowIndex].startLabel,
-            'window_end':
-                _schedule!.windows[scheduleSlot.windowIndex].endLabel,
+            'window_end': _schedule!.windows[scheduleSlot.windowIndex].endLabel,
           },
         // Full user configuration as one self-describing block, so the end-of-session
         // summary can list *every* setting the user chose (and any setting added in
@@ -1409,7 +1438,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 final frame = await _controller.captureFrame();
                 return frame == null
                     ? null
-                    : RawHighRes(bytes: frame, rotationDegrees: 0, isFront: false);
+                    : RawHighRes(
+                        bytes: frame,
+                        rotationDegrees: 0,
+                        isFront: false,
+                      );
               },
               roiProvider: () => _roi,
               onStat: (s) {
@@ -1744,10 +1777,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _scheduleSleeping = false;
         _sleepStatusVisible = false;
       });
-      await _startRecording(
-        focusMode: _focusModeForLog(),
-        scheduleSlot: slot,
-      );
+      await _startRecording(focusMode: _focusModeForLog(), scheduleSlot: slot);
       // The cover never came down: put the display + preview back into the
       // measured power-save state now that the camera is running again. (If
       // the cover happens to be down — user was watching — recording proceeds
@@ -1911,9 +1941,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _sleepStatusTimer = Timer(const Duration(seconds: 8), () {
       if (!mounted || !_scheduleSleeping) return;
       setState(() => _sleepStatusVisible = false);
-      ScreenBrightness().setApplicationScreenBrightness(0.0).catchError(
-        (Object e) => logSwallowed('sleep_status_dim', e),
-      );
+      ScreenBrightness()
+          .setApplicationScreenBrightness(0.0)
+          .catchError((Object e) => logSwallowed('sleep_status_dim', e));
     });
   }
 
@@ -2580,123 +2610,154 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                               _config.detectorEnabled) ||
                           _config.motionOnlyCapture)
                         _gateStateChip(),
-                      if (_config.showFps)
-                        ValueListenableBuilder<List<double>>(
+                      // Round 124: the stats list is collapsible so it doesn't
+                      // sit on top of the ROI. Collapsed, one tappable line
+                      // keeps the field essentials (camera fps + phone
+                      // temperature) visible; tap toggles, and the choice is
+                      // remembered. The state chip above stays either way.
+                      GestureDetector(
+                        onTap: _toggleStatsExpanded,
+                        child: ValueListenableBuilder<List<double>>(
                           valueListenable: _fpsTrioVN,
-                          builder: (_, f, _) => Column(
+                          builder: (_, f, _) =>
+                              ValueListenableBuilder<ThermalReading>(
+                                valueListenable: _thermalVN,
+                                builder: (_, thermal, _) {
+                                  if (_statsExpanded) {
+                                    return _statLine('▾ hide info');
+                                  }
+                                  final parts = <String>[
+                                    if (_config.showFps)
+                                      '${f[0].toStringAsFixed(0)} fps',
+                                    if (thermal.batteryTempC != null)
+                                      thermal.shortLabel,
+                                  ];
+                                  return _statLine(
+                                    '▸ ${parts.isEmpty ? 'info' : parts.join(' · ')}',
+                                  );
+                                },
+                              ),
+                        ),
+                      ),
+                      if (_statsExpanded) ...[
+                        if (_config.showFps)
+                          ValueListenableBuilder<List<double>>(
+                            valueListenable: _fpsTrioVN,
+                            builder: (_, f, _) => Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _statLine(
+                                  'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
+                                ),
+                                // Detector/pipeline rates are meaningless while
+                                // the detector never runs (motion-only and
+                                // time-lapse modes).
+                                if (_config.detectorEnabled) ...[
+                                  _statLine(
+                                    'Detector: ${f[1].toStringAsFixed(1)} fps '
+                                    '(pre+inf+NMS)',
+                                  ),
+                                  _statLine(
+                                    'Pipeline: ${f[2].toStringAsFixed(1)} fps '
+                                    '(+track/overlay)',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        if (_config.showFps && _config.detectorEnabled)
+                          ValueListenableBuilder<List<double>>(
+                            valueListenable: _perfVN,
+                            builder: (_, p, _) => _statLine(
+                              'pre ${p[0].toStringAsFixed(0)} · '
+                              'inf ${p[1].toStringAsFixed(0)} · '
+                              'post ${p[2].toStringAsFixed(0)} ms',
+                            ),
+                          ),
+                        // Motion gate status: "idle" means the detector is
+                        // deliberately asleep (nothing moving in the ROI) — the
+                        // 0-fps Detector line above is expected, not a fault. The
+                        // live motion % helps tune the trigger-area setting.
+                        if ((_config.motionGateEnabled &&
+                                _config.detectorEnabled) ||
+                            _config.motionOnlyCapture)
+                          ValueListenableBuilder<double>(
+                            valueListenable: _motionScoreVN,
+                            builder: (_, score, _) => _statLine(
+                              _gateIdle
+                                  ? 'Gate: idle (detector asleep) · '
+                                        'motion ${(score * 100).toStringAsFixed(2)}%'
+                                  : 'Gate: awake · '
+                                        'motion ${(score * 100).toStringAsFixed(2)}%',
+                            ),
+                          ),
+                        // Engine first (just under the perf line), then the Model
+                        // line, which carries the input resolution in brackets.
+                        // Detector-off modes replace the Engine line: no engine
+                        // is doing any work (the model loaded but never runs).
+                        _statLine(
+                          _config.motionOnlyCapture
+                              ? 'Mode: motion-only capture (detector off)'
+                              : _config.timeLapseCapture
+                              ? 'Mode: time-lapse (detector off)'
+                              : engineLabel,
+                        ),
+                        _statLine(modelLabel),
+                        _statLine(streamLabel),
+                        // Tappable: opens the exact-size slider when we know the
+                        // capture resolution.
+                        GestureDetector(
+                          onTap: haveRoiDim ? _editRoiSize : null,
+                          child: _statLine(
+                            haveRoiDim ? '$roiLabel  ✎' : roiLabel,
+                          ),
+                        ),
+                        ValueListenableBuilder<ThermalReading>(
+                          valueListenable: _thermalVN,
+                          builder: (_, thermal, _) {
+                            final label = thermal.shortLabel;
+                            if (label.isEmpty) return const SizedBox.shrink();
+                            // Label it as the battery sensor only when it really is
+                            // a temperature; a bare thermal-status string is left
+                            // unprefixed.
+                            return _statLine(
+                              thermal.batteryTempC != null
+                                  ? 'Battery temp.: $label'
+                                  : label,
+                            );
+                          },
+                        ),
+                        // Free storage on the session volume — hours of JPEGs can
+                        // fill a phone, so the user sees when to clean up before
+                        // mounting it. Refreshed on the thermal cadence.
+                        ValueListenableBuilder<StorageReading>(
+                          valueListenable: _storageVN,
+                          builder: (_, storage, _) {
+                            final label = storage.label;
+                            if (label.isEmpty) return const SizedBox.shrink();
+                            return _statLine(label);
+                          },
+                        ),
+                        // Live count of insects currently on the flower, plus the
+                        // running total of unique insects confirmed so far this
+                        // session (same figure as the summary's "Unique insects").
+                        // Both sit in one per-frame builder, so the total stays live
+                        // without a separate notifier.
+                        ValueListenableBuilder<List<Track>>(
+                          valueListenable: _tracksVN,
+                          builder: (_, tracks, _) => Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              _statLine('Current tracks: ${tracks.length}'),
                               _statLine(
-                                'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
+                                'Total tracks: ${_tracker.totalConfirmed}',
                               ),
-                              // Detector/pipeline rates are meaningless while
-                              // the detector never runs (motion-only and
-                              // time-lapse modes).
-                              if (_config.detectorEnabled) ...[
-                                _statLine(
-                                  'Detector: ${f[1].toStringAsFixed(1)} fps '
-                                  '(pre+inf+NMS)',
-                                ),
-                                _statLine(
-                                  'Pipeline: ${f[2].toStringAsFixed(1)} fps '
-                                  '(+track/overlay)',
-                                ),
-                              ],
                             ],
                           ),
                         ),
-                      if (_config.showFps && _config.detectorEnabled)
-                        ValueListenableBuilder<List<double>>(
-                          valueListenable: _perfVN,
-                          builder: (_, p, _) => _statLine(
-                            'pre ${p[0].toStringAsFixed(0)} · '
-                            'inf ${p[1].toStringAsFixed(0)} · '
-                            'post ${p[2].toStringAsFixed(0)} ms',
-                          ),
-                        ),
-                      // Motion gate status: "idle" means the detector is
-                      // deliberately asleep (nothing moving in the ROI) — the
-                      // 0-fps Detector line above is expected, not a fault. The
-                      // live motion % helps tune the trigger-area setting.
-                      if ((_config.motionGateEnabled &&
-                              _config.detectorEnabled) ||
-                          _config.motionOnlyCapture)
-                        ValueListenableBuilder<double>(
-                          valueListenable: _motionScoreVN,
-                          builder: (_, score, _) => _statLine(
-                            _gateIdle
-                                ? 'Gate: idle (detector asleep) · '
-                                      'motion ${(score * 100).toStringAsFixed(2)}%'
-                                : 'Gate: awake · '
-                                      'motion ${(score * 100).toStringAsFixed(2)}%',
-                          ),
-                        ),
-                      // Engine first (just under the perf line), then the Model
-                      // line, which carries the input resolution in brackets.
-                      // Detector-off modes replace the Engine line: no engine
-                      // is doing any work (the model loaded but never runs).
-                      _statLine(
-                        _config.motionOnlyCapture
-                            ? 'Mode: motion-only capture (detector off)'
-                            : _config.timeLapseCapture
-                            ? 'Mode: time-lapse (detector off)'
-                            : engineLabel,
-                      ),
-                      _statLine(modelLabel),
-                      _statLine(streamLabel),
-                      // Tappable: opens the exact-size slider when we know the
-                      // capture resolution.
-                      GestureDetector(
-                        onTap: haveRoiDim ? _editRoiSize : null,
-                        child: _statLine(
-                          haveRoiDim ? '$roiLabel  ✎' : roiLabel,
-                        ),
-                      ),
-                      ValueListenableBuilder<ThermalReading>(
-                        valueListenable: _thermalVN,
-                        builder: (_, thermal, _) {
-                          final label = thermal.shortLabel;
-                          if (label.isEmpty) return const SizedBox.shrink();
-                          // Label it as the battery sensor only when it really is
-                          // a temperature; a bare thermal-status string is left
-                          // unprefixed.
-                          return _statLine(
-                            thermal.batteryTempC != null
-                                ? 'Battery temp.: $label'
-                                : label,
-                          );
-                        },
-                      ),
-                      // Free storage on the session volume — hours of JPEGs can
-                      // fill a phone, so the user sees when to clean up before
-                      // mounting it. Refreshed on the thermal cadence.
-                      ValueListenableBuilder<StorageReading>(
-                        valueListenable: _storageVN,
-                        builder: (_, storage, _) {
-                          final label = storage.label;
-                          if (label.isEmpty) return const SizedBox.shrink();
-                          return _statLine(label);
-                        },
-                      ),
-                      // Live count of insects currently on the flower, plus the
-                      // running total of unique insects confirmed so far this
-                      // session (same figure as the summary's "Unique insects").
-                      // Both sit in one per-frame builder, so the total stays live
-                      // without a separate notifier.
-                      ValueListenableBuilder<List<Track>>(
-                        valueListenable: _tracksVN,
-                        builder: (_, tracks, _) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _statLine('Current tracks: ${tracks.length}'),
-                            _statLine(
-                              'Total tracks: ${_tracker.totalConfirmed}',
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -3044,8 +3105,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           label = 'TIME-LAPSE (starts with REC)';
           active = false;
         } else {
-          final t =
-              DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
+          final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
           active = plan.inBurstAt(t);
           if (active) {
             label = 'TIME-LAPSE: CAPTURING';

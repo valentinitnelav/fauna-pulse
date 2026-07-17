@@ -4708,3 +4708,26 @@ analyze clean.
   ground truth (the ceiling is still an estimate).
 - `flutter analyze` clean; all 280 tests pass.
 
+## Round 124 (2026-07-17): portrait lock + collapsible info panel
+
+- **Portrait-only, locked twice.** Owner unlocked their phone's rotation and found the
+  preview overlay truncated with Flutter's yellow/black overflow stripes. Deeper issue:
+  NOTHING ever locked orientation, yet the capture/rotation math explicitly assumes an
+  upright phone (`uprightHighResDims` — "The phone is held portrait in this app";
+  `rawRectForUprightRect` Dart + Kotlin mirror), so landscape risked silently wrong
+  crops/geometry, not just bad layout. Locked in the manifest
+  (`android:screenOrientation="portrait"`) AND `main()`
+  (`SystemChrome.setPreferredOrientations([portraitUp])`). Lift BOTH together if
+  landscape support is ever built (it would need an orientation-aware audit of the
+  keep-in-sync crop pair + preview mapping).
+- **Collapsible on-screen stats (owner request: too much text over the ROI).** The
+  top-left list now defaults to ONE tappable line "▸ <camera fps> · <battery temp>"
+  (the two field essentials; parts respect `showFps`/thermal availability). Tapping
+  expands the full list ("▾ hide info" collapses); the choice persists in
+  shared_preferences `stats_panel_expanded` (viewing preference — deliberately NOT
+  SessionConfig). The gate/time-lapse state chip stays visible in both states; the
+  existing Settings toggle (`showOverlayInfo`) still removes the strip entirely. Note:
+  the ROI size line (✎ → exact-size sheet) is inside the expanded section.
+- `flutter analyze` clean; all 280 tests pass. Field-verify: rotate phone (app must
+  stay portrait), tap the ▸/▾ line, kill + reopen app (state remembered).
+
