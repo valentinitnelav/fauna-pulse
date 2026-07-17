@@ -4692,3 +4692,19 @@ analyze clean.
   and that the Auto stream size follows this number.
 - `flutter analyze` clean; all 280 tests pass.
 
+## Round 123 (2026-07-17): hide above-ceiling stream resolutions
+
+- Samsung field test: the dropdown listed "1080 × 1440 (may cap to 720×960)" while the
+  note below said the phone streams at most ~720×960 — offering a size the phone will
+  shrink anyway just annoys (owner). Above-ceiling sizes are now FILTERED OUT of the
+  "Live stream resolution" dropdown.
+- Exceptions/safety: the user's already-saved explicit choice stays listed even if
+  above the ceiling (annotated "phone will shrink it to LO×HI") so an old config stays
+  visible and re-selectable; if filtering would empty the list, the unfiltered list is
+  kept. The ceiling note now ends "…so they are not listed" instead of explaining why
+  they were offered.
+- Softens the r56 "dropdown can over-promise" stance: the dropdown no longer lists
+  what the ceiling says can't be delivered; the live "Stream: W×H" readout stays the
+  ground truth (the ceiling is still an estimate).
+- `flutter analyze` clean; all 280 tests pass.
+

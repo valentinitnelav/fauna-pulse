@@ -153,7 +153,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   and shown on screen. Engine choice is user-informed via the benchmark (r76:
   `benchmarkAccelerators` in `YOLOPlugin.kt`, noise input at the model's own resolution,
   3 warm-up + 20 timed runs per config; deliberately never run automatically).
-- **Stream resolution honesty (round 56).** The settings dropdown can over-promise; the
+- **Stream resolution honesty (round 56; tightened r123).** The dropdown now HIDES
+  sizes above the probed analysis ceiling (they'd be silently shrunk; only a legacy
+  saved choice above the ceiling stays listed, annotated). The
   live "Stream: W×H" readout is ground truth (CameraX may cap the analysis stream). Stream
   size only affects fast-crop sharpness, **not** detection (every frame is downscaled to the
   model's input tensor). Logs record both requested and delivered (`analysis_w/h`).

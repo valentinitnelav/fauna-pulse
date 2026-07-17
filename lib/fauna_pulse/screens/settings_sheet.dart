@@ -2168,20 +2168,38 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   Widget _streamResolutionDropdown() {
-    final options = widget.streamResolutions.isNotEmpty
+    final all = widget.streamResolutions.isNotEmpty
         ? widget.streamResolutions
         : const ['640x480', '1280x960', '1600x1200'];
     final current = '${_c.streamWidth}x${_c.streamHeight}';
     final (ceilArea, ceilLo, ceilHi) = _ceiling;
+    int area(String wh) {
+      final p = wh.split('x');
+      return (int.tryParse(p[0]) ?? 0) *
+          (int.tryParse(p.length > 1 ? p[1] : '0') ?? 0);
+    }
+
+    // Round 123 (Samsung field test): sizes above the analysis ceiling used
+    // to be listed with a "(may cap to …)" tag — offering a size the phone
+    // will shrink anyway just annoys. They are now filtered OUT, with one
+    // exception: the user's already-saved choice stays listed (annotated) so
+    // an old config remains visible and re-selectable. If the ceiling would
+    // remove everything, the unfiltered list is kept.
+    var options = all;
+    if (ceilArea > 0) {
+      final within = all
+          .where((wh) => area(wh) <= ceilArea || wh == current)
+          .toList();
+      if (within.isNotEmpty) options = within;
+    }
     String label(String wh) {
       final p = wh.split('x');
       final w = int.tryParse(p[0]) ?? 0,
           h = int.tryParse(p.length > 1 ? p[1] : '0') ?? 0;
       final lo = w < h ? w : h, hi = w < h ? h : w;
-      // Flag sizes the analysis pipeline can't actually stream on this phone — it
-      // would silently shrink them to the ceiling (round 56). Still selectable.
+      // Only reachable for the kept legacy choice above the ceiling.
       if (ceilArea > 0 && w * h > ceilArea) {
-        return '$lo × $hi  (may cap to $ceilLo×$ceilHi)';
+        return '$lo × $hi  (phone will shrink it to $ceilLo×$ceilHi)';
       }
       return '$lo × $hi';
     }
@@ -2286,8 +2304,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
       parts.add(
         'Your phone can stream at most about $ceilLo×$ceilHi px to the analysis '
         'pipeline${hwLevel.isNotEmpty && hwLevel != 'unknown' ? ' (camera level: $hwLevel)' : ''}. '
-        'Larger choices are offered because the camera supports them for photo capture, '
-        'but the live stream will be scaled down to this size.',
+        'The camera supports larger sizes for photo capture, but the live '
+        'stream would be shrunk to this size anyway, so they are not listed.',
       );
     }
     return Padding(
