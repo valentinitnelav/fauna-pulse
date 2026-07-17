@@ -240,22 +240,29 @@ int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysis
 /// [options] are HAL-probed `"WxH"` strings (malformed entries are ignored).
 /// Candidates whose area exceeds [ceilingArea] (> 0 = the round-56 analysis
 /// ceiling: the size above which the pipeline silently delivers less than
-/// requested) are skipped. Returns null when nothing qualifies — the caller
-/// keeps the current setting.
+/// requested) are skipped. Round 122: when NO size reaches [minShortSide]
+/// (a phone weaker than the target), the largest size under the ceiling is
+/// returned instead — the best fast crops that phone can produce. Returns
+/// null only when nothing is usable at all — the caller keeps the current
+/// setting.
 (int, int)? autoStreamResolution(
   List<String> options, {
   int ceilingArea = 0,
   int minShortSide = 1024,
 }) {
   (int, int)? best;
+  (int, int)? largest;
   for (final opt in options) {
     final parts = opt.toLowerCase().split('x');
     if (parts.length != 2) continue;
     final w = int.tryParse(parts[0].trim());
     final h = int.tryParse(parts[1].trim());
     if (w == null || h == null || w <= 0 || h <= 0) continue;
-    if (math.min(w, h) < minShortSide) continue;
     if (ceilingArea > 0 && w * h > ceilingArea) continue;
+    if (largest == null || w * h > largest.$1 * largest.$2) {
+      largest = (w, h);
+    }
+    if (math.min(w, h) < minShortSide) continue;
     if (best == null ||
         w * h < best.$1 * best.$2 ||
         (w * h == best.$1 * best.$2 &&
@@ -263,7 +270,7 @@ int? roiStreamSideFromLog(Map<dynamic, dynamic> roi, int analysisW, int analysis
       best = (w, h);
     }
   }
-  return best;
+  return best ?? largest;
 }
 
 /// Native fast-crop channel: decodes only the ROI rectangle from the full-res

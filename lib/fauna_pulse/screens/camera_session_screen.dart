@@ -948,8 +948,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// Round 109: while the user has never chosen a stream resolution
   /// ([SessionConfig.streamResolutionExplicit] false), default it — once per
   /// screen, as soon as BOTH probes have answered — to the smallest supported
-  /// size whose short side is ≥ 1024, so fast ROI crops can reach the default
-  /// saved-photo target instead of falling back to the laggy high-res path
+  /// size whose short side is ≥ the user's saved-photo target (round 122;
+  /// was a fixed 1024, the target's default), so fast ROI crops can reach the
+  /// target instead of falling back to the laggy high-res path
   /// (round 108: ~0.4–0.8 s behind the trigger). Runs from the probe
   /// controller's onChanged; the guards keep it out of recordings/scheduled
   /// runs (a stream change rebinds the camera) and stop the rebind's fresh
@@ -970,7 +971,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final ceilArea = p.length == 2
         ? (int.tryParse(p[0]) ?? 0) * (int.tryParse(p[1]) ?? 0)
         : 0;
-    final pick = autoStreamResolution(_streamResolutions, ceilingArea: ceilArea);
+    final pick = autoStreamResolution(
+      _streamResolutions,
+      ceilingArea: ceilArea,
+      minShortSide: _config.targetRoiSavedPx,
+    );
     if (pick == null ||
         (pick.$1 == _config.streamWidth && pick.$2 == _config.streamHeight)) {
       return;

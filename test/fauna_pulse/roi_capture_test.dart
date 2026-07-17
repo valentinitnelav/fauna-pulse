@@ -91,10 +91,11 @@ void main() {
     });
 
     test('skips candidates above the analysis ceiling', () {
-      // Ceiling 1280×960: nothing with short side ≥ 1024 fits under it.
+      // Ceiling 1280×960: nothing with short side ≥ 1024 fits under it, so
+      // the round-122 fallback picks the largest size under the ceiling.
       expect(
         autoStreamResolution(xiaomi, ceilingArea: 1280 * 960),
-        isNull,
+        (1280, 960),
       );
       // Ceiling 1920×1440 admits 1440×1080 (and 1920×1440) but not 4000×3000.
       expect(
@@ -107,8 +108,16 @@ void main() {
       expect(autoStreamResolution(['4000x3000']), (4000, 3000));
     });
 
-    test('returns null when nothing qualifies', () {
-      expect(autoStreamResolution(['640x480', '1280x960']), isNull);
+    test('follows the saved-photo target (round 122)', () {
+      // A lower target admits smaller streams; a higher one climbs.
+      expect(autoStreamResolution(xiaomi, minShortSide: 960), (1280, 960));
+      expect(autoStreamResolution(xiaomi, minShortSide: 1440), (1920, 1440));
+    });
+
+    test('falls back to the largest size when the target is unreachable', () {
+      // Round 122: a phone weaker than the target gets its best stream
+      // instead of keeping a small preset.
+      expect(autoStreamResolution(['640x480', '1280x960']), (1280, 960));
       expect(autoStreamResolution(const []), isNull);
     });
 

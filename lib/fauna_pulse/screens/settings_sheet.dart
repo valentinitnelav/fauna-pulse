@@ -1419,6 +1419,47 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       _streamResolutionDropdown(),
       _streamCeilingNote(),
+      // Directly under the stream dropdown (round 122, owner request): the
+      // two settings are coupled — "Auto" above picks the smallest stream
+      // that can supply this many pixels to a fast crop.
+      NumericSettingField(
+        label: 'Saved photo side (px)',
+        value: _c.targetRoiSavedPx.toDouble(),
+        min: 128,
+        max: 2048,
+        isInt: true,
+        helperText:
+            'The image resolution you want saved photos to have (side length '
+            'of the square photo, in pixels). Bigger crops are scaled down to '
+            'exactly this size so files stay uniform; photos are NEVER '
+            'enlarged to reach it — stretching pixels adds no real detail. '
+            'With fast crops (the default) the photo is cut from the live '
+            'stream above, so it can only reach this size when the ROI covers '
+            'that many stream pixels. If not, the "ROI photo source" setting '
+            'below can force it with slower full-resolution photos ("Auto" '
+            'does that per photo, only when needed). When even a '
+            'full-resolution photo cannot supply it, the photo saves smaller '
+            'and the ROI readout on the camera screen shows ⚠ — move the '
+            'phone closer or switch lens. Values snap to a multiple of 32. '
+            'The app ships set to 1024, and the "Auto" stream size above '
+            'follows whatever you enter here.',
+        onChanged: (v) => setState(() {
+          _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v));
+          // The Auto stream pick follows this target (round 122): keep the
+          // stored size in step so the dropdown stays WYSIWYG while on Auto.
+          if (!_c.streamResolutionExplicit &&
+              widget.streamResolutions.isNotEmpty) {
+            final pick = autoStreamResolution(
+              widget.streamResolutions,
+              ceilingArea: _ceiling.$1,
+              minShortSide: _c.targetRoiSavedPx,
+            );
+            if (pick != null) {
+              _c = _c.copyWith(streamWidth: pick.$1, streamHeight: pick.$2);
+            }
+          }
+        }),
+      ),
       const SizedBox(height: 16),
 
       // 0 = uncapped (the camera's own full rate, ~30/s); 5..30 asks the
@@ -1472,7 +1513,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         'blurred high-res photo carries LESS usable detail than a smaller '
         'crisp crop, so more pixels are not automatically better for later '
         'classification. Auto: per photo, fast crop when it meets the '
-        'minimum size below, high-res otherwise.',
+        '"Saved photo side" set above, high-res otherwise.',
       ),
       DropdownButton<RoiCaptureMode>(
         value: _c.captureMode,
@@ -1522,27 +1563,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
         value: _c.highResSyncCompanion,
         onChanged: (v) =>
             setState(() => _c = _c.copyWith(highResSyncCompanion: v)),
-      ),
-      NumericSettingField(
-        label: 'Saved photo side (px)',
-        value: _c.targetRoiSavedPx.toDouble(),
-        min: 128,
-        max: 2048,
-        isInt: true,
-        helperText:
-            'One number (round 63, replacing the earlier min/max pair): every '
-            'photo saves at exactly this size whenever the ROI can supply it — '
-            'larger crops are downscaled to it, and in Auto mode a photo takes '
-            'the high-res path when the fast crop would come out smaller. '
-            'Photos are NEVER enlarged to reach it: stretching pixels invents '
-            'no detail and would hurt later insect identification. When even a '
-            'high-res photo cannot reach it the photo saves smaller and the ROI readout '
-            'shows a ⚠ — move the phone closer or switch lens. Snapped to a '
-            'multiple of 32; default 1024 (uniform files, roomy for cropping '
-            'insects out for a classifier).',
-        onChanged: (v) => setState(
-          () => _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v)),
-        ),
       ),
       const Divider(color: Colors.white24),
 
@@ -2167,18 +2187,35 @@ class _SettingsSheetState extends State<SettingsSheet> {
     }
 
     // Round 109 "Auto": the app picks the smallest supported size whose short
-    // side reaches the saved-photo target, so fast (no-stall) ROI crops can
-    // meet it and the laggy high-res photo path is needed less often. Only
-    // computable from real device probes; on the preset fallback the auto
-    // item still exists but keeps the current size until probes land.
+    // side reaches the saved-photo target (round 122: the user's actual
+    // "Saved photo side" value, not a fixed 1024), so fast (no-stall) ROI
+    // crops can meet it and the laggy high-res photo path is needed less
+    // often. On a phone that can't reach the target at all, the pick is the
+    // largest size the phone streams. Only computable from real device
+    // probes; on the preset fallback the auto item still exists but keeps
+    // the current size until probes land.
+    final target = _c.targetRoiSavedPx;
     final autoPick = widget.streamResolutions.isEmpty
         ? null
-        : autoStreamResolution(widget.streamResolutions, ceilingArea: ceilArea);
+        : autoStreamResolution(
+            widget.streamResolutions,
+            ceilingArea: ceilArea,
+            minShortSide: target,
+          );
     const autoValue = 'auto';
-    final autoLabel = autoPick == null
-        ? 'Auto (device-chosen)'
-        : 'Auto — smallest with short side ≥ 1024 '
-              '(this phone: ${label('${autoPick.$1}x${autoPick.$2}')})';
+    final String autoLabel;
+    if (autoPick == null) {
+      autoLabel = 'Auto (device-chosen)';
+    } else if ((autoPick.$1 < autoPick.$2 ? autoPick.$1 : autoPick.$2) >=
+        target) {
+      autoLabel =
+          'Auto — matches Saved photo side ($target px): '
+          '${label('${autoPick.$1}x${autoPick.$2}')}';
+    } else {
+      autoLabel =
+          'Auto — largest this phone streams '
+          '(${label('${autoPick.$1}x${autoPick.$2}')}, below $target px)';
+    }
 
     return DropdownButton<String>(
       value: !_c.streamResolutionExplicit

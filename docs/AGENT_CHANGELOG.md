@@ -4667,3 +4667,28 @@ analyze clean.
   rejection, stale-stem cleanup preserving sibling lenses + unrelated prefs).
   `flutter analyze` clean; all 279 tests pass.
 
+## Round 122 (2026-07-17): Auto stream follows Saved photo side + Camera tab cleanup
+
+- **Auto stream resolution now follows the user's "Saved photo side" target** instead of
+  a hard-coded 1024: `autoStreamResolution` gets `minShortSide: targetRoiSavedPx` from
+  both callers (`_maybeApplyAutoStreamDefault` in the camera screen and the settings
+  dropdown). The two settings were already conceptually coupled (the 1024 literal WAS
+  the target's default) — now changing the target moves the Auto pick with it.
+- **Weak-phone fallback in `autoStreamResolution`:** when NO probed size reaches the
+  target (under the analysis ceiling), the pick is now the LARGEST size under the
+  ceiling — the best fast crops that phone can produce — instead of returning null and
+  silently keeping a small preset. Slight heat cost on weak phones, accepted by owner
+  (better photos win). Tests updated + new cases (target-follows, largest-fallback).
+- **Dropdown Auto label is self-explaining:** "Auto — matches Saved photo side
+  (N px): W × H" or, on a phone that can't reach it, "Auto — largest this phone
+  streams (W × H, below N px)". Editing Saved photo side while on Auto re-picks and
+  re-stores the stream size in the sheet (WYSIWYG).
+- **Camera tab layout (owner request):** "Saved photo side (px)" moved directly under
+  the stream-resolution dropdown + ceiling note (they're coupled); the ROI photo source
+  label now says "meets the 'Saved photo side' set above" (was "below").
+- **Helper text rewritten in plain language** (the old one cited "round 63" and the
+  min/max-pair history — meaningless to app users): what the number means, how fast
+  crops vs Auto vs high-res reach it, never-upscaled rule, ⚠ readout, snap to 32,
+  and that the Auto stream size follows this number.
+- `flutter analyze` clean; all 280 tests pass.
+
