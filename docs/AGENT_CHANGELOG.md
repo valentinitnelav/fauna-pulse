@@ -4873,3 +4873,29 @@ analyze clean.
 - Verified: `flutter build apk --debug` builds clean. Field check pending:
   det FPS should read ~10.0 at cap 10 + camera 15 (was ~7.5); uncapped
   behaviour unchanged.
+
+## Round 130 (2026-07-18): C1 field-verified, C3 measured, C5 opened (docs only)
+
+- Owner ran sessions 26 (640×480) and 27 (1440×1080). IMPORTANT for reading
+  the numbers: the LOGGED config in both was the DEFAULTS (inference cap 10,
+  camera cap 15, auto-throttle on, gate on) — not the parity settings the
+  owner intended to set. That accident made session_26 the exact C1
+  verification run.
+- **C1 verified:** detector FPS 9.9–10.2 for 230 s straight at cap 10 +
+  camera 15 (mean 9.97, median 10.01) — pre-fix this config was locked at
+  7.5. Ticked with numbers in the review doc.
+- **C3 measured + ticked:** toBitmapMs 0.2–0.3 ms @640×480 vs 4.3–4.5 ms
+  @1440×1080 (under the 10 ms action rule → guidance only, no mechanism).
+  Real cost of the big stream is camera/ISP heat: session_27's collapse at
+  41 °C was the CAMERA delivery (1.6–3.0 fps) while inf_ms stayed 21–25 ms
+  (brief 45–154 ms spikes); auto-throttle stepped the cap 10→6→7→8 and the
+  system recovered by t≈200 s — the owner's observed "sharp rise back to 8"
+  is the designed recovery. Session_26 only dipped once at the very end
+  (camera 7.4 at 40 °C). Caveat noted: 27 started 2 °C warmer.
+- **C5 opened (small, not yet implemented):** on-screen pipeline FPS reads
+  ~11 next to an honest detector 10 — Dart `updatePipelineFps` EMAs
+  instantaneous rates (1000/dt), which over-weights the short gap of C1's
+  alternating 66.7/133.3 ms cadence (Jensen bias: (15+7.5)/2 = 11.25). Fix =
+  EMA the interval and invert, mirroring native `finishTiming` t4; few lines
+  in `frame_processor.dart` + test.
+- No code changes this round.

@@ -509,8 +509,14 @@ slow inference) re-anchors it at `now + interval` so there is never a
 catch-up burst. Reset to 0 ("run immediately") in
 `setupThrottlingFromConfig()` whenever the cap changes. The r68/A1 invariant
 holds — the check still runs BEFORE bitmap conversion on the gate-off path,
-and both gate-on/off paths share the one function. Field verification
-pending: expect ~10.0 det FPS at cap 10 + camera 15 (was ~7.5).
+and both gate-on/off paths share the one function.
+
+**Field-verified (round 130, session_26 2026-07-18):** at the default cap 10
++ camera 15 (640×480), detector FPS held 9.9–10.2 for 230 straight seconds —
+mean 9.97, median 10.01 over the session (pre-fix this exact configuration
+was locked at 7.5). Side effect worth knowing: the on-screen *pipeline* FPS
+now reads ~11 next to a detector 10.0 — that is a display bias, not extra
+speed; see C5.
 
 ### C2. [x] Parity benchmark against the Ultralytics demo (no code — owner-run)
 
@@ -555,7 +561,7 @@ strategy (they spend the heat budget on purpose instead of letting MIUI
 spend it), and C1 makes the capped rate honest. Field sessions add charging
 heat (power-bank invariant), so expect the wall sooner than in this test.
 
-### C3. [ ] Measure per-frame conversion cost vs stream size (measure first, then decide)
+### C3. [x] Measure per-frame conversion cost vs stream size (measure first, then decide)
 
 Our auto stream resolution picks 1440×1080 on the Xiaomi (for 1024 px photo
 sharpness, r109/r122) vs the demo's 640×480 — ~5× the pixels through the
@@ -573,6 +579,29 @@ becomes the next ceiling once C1 lands or caps are raised.
   Settings help text explaining the FPS ↔ photo-sharpness trade-off (stream
   size is already user-controllable). No new code path.
 
+**Measured (round 130, sessions 26/27 — same defaults, only the stream size
+differs; caveat: 27 started 2 °C warmer, 38 vs 36 °C battery):**
+
+- FRAMEPERF `toBitmapMs`: **0.2–0.3 ms at 640×480 vs 4.3–4.5 ms at
+  1440×1080.** Under the 10 ms action rule → no mechanism change; keep the
+  guidance-only plan.
+- The REAL cost of the big stream is **camera/ISP heat**, not CPU
+  milliseconds. Per-second `fps` records show the collapse is the CAMERA
+  delivery, not the model: in session_27 `camera_fps` already sagged to
+  ~9–10 by t≈120 s and crashed to **1.6–3.0 fps** at 41 °C (t≈175–195 s)
+  while `inf_ms` stayed 21–25 ms apart from brief 45–154 ms spikes; the
+  auto-throttle stepped `applied_cap_fps` 10→6→7→8 and everything recovered
+  by t≈200 s (the "sharp rise back to ~8" the owner saw = governor easing +
+  auto-throttle recovering, both working as designed). At 640×480
+  (session_26) the whole run held det 9.9–10.2 with a single end-of-session
+  camera dip to 7.4 at 40 °C. MIUI's thermal governor hits the camera HAL
+  hardest — consistent with the r78/r82 finding that the camera is the
+  standing heat cost.
+- **Practical guidance:** 1440×1080 is fine while the phone stays under
+  ~40 °C; expect deeper FPS dips beyond it. If a session doesn't need
+  1024 px photos, lowering "Saved photo side" lets the auto stream pick a
+  smaller size — less ISP heat, later/shallower throttle.
+
 ### C4. [ ] Optional upstream micro-ports (low priority — likely skip)
 
 Two upstream 0.6.8 tweaks we don't have, recorded so they aren't
@@ -586,3 +615,29 @@ re-discovered later:
   packing for `litert`-format (torch-exported) models. Only matters if we
   ever switch to NCHW model exports; our current models are NHWC. Skip
   unless the export pipeline changes.
+
+### C5. [ ] Pipeline-FPS readout biased high next to an honest detector FPS (display fix, small)
+
+Found while verifying C1 (session_26): the screen shows pipeline ~11.0–11.9
+beside detector 10.0. The pipeline number is computed in Dart
+(`updatePipelineFps`, `lib/fauna_pulse/session/frame_processor.dart`
+~:133-149) as an EMA of the *instantaneous rate* `1000/dt`. C1's deadline
+scheduler produces alternating frame gaps (66.7/133.3 ms on the 15 fps
+camera): the average of the two instantaneous rates is (15 + 7.5)/2 ≈ 11.25
+even though the true throughput is exactly 10. Averaging rates over-weights
+the short gaps (Jensen's inequality); the native detector FPS avoids this by
+EMA-ing the *interval* and inverting once (`Predictor.finishTiming` `t4`).
+
+- **Fix:** make the Dart side mirror the native math — EMA the interval `dt`,
+  display `1000/emaDt`. Same file/function; keep the r85 resume-gap guard
+  (threshold logic unchanged — it already works on `dt`) and the
+  "KEEP IN SYNC" comment pair with the native EMA. Update the
+  `frame_processor` unit test expectations.
+- **Why bother:** owner rule — on-screen numbers must not mislead
+  (`ui-numbers-one-scale`); today "pipeline 11 > cap 10" suggests
+  the pipeline outruns the cap, which is impossible. Historical logs are
+  unaffected (raw per-second records store what was shown; the summary graph
+  reads `pipeline_fps ?? fps`, so post-fix sessions just plot the corrected
+  number).
+- **Cost:** a few lines of Dart + test update. No native change, no schema
+  change.
