@@ -4899,3 +4899,28 @@ analyze clean.
   EMA the interval and invert, mirroring native `finishTiming` t4; few lines
   in `frame_processor.dart` + test.
 - No code changes this round.
+## Round 131 (2026-07-19): pipeline-FPS readout fixed to interval EMA (review C5)
+
+- **What:** `FrameProcessor.updatePipelineFps` (`lib/fauna_pulse/session/frame_processor.dart`)
+  now smooths the *interval between frame callbacks* and inverts it once for
+  display, instead of smoothing the instantaneous rate `1000/dt`.
+- **Why:** the r129 deadline-scheduler cap legitimately alternates 66.7/133.3 ms
+  frame gaps (cap 10 on the 15 fps camera). Averaging the two instantaneous
+  rates gives (15 + 7.5)/2 ≈ 11.25 even though true throughput is exactly 10
+  (short gaps get over-weighted — Jensen's inequality), so the screen showed
+  "pipeline ~11" beside an honest detector 10.0 (seen in session_26, r130) —
+  violating the owner rule that on-screen numbers must not mislead. The native
+  detector FPS (`Predictor.finishTiming` `t4`) already EMAs the interval; both
+  numbers now use the same math.
+- **How:** field renamed `_pipelineFpsEma` → `_pipelineIntervalEmaMs`; getter
+  `pipelineFpsEma` returns `1000/interval` (0 while unset). EMA weights
+  unchanged (0.1 new / 0.9 old). The r85 resume-gap guard behaves identically —
+  "skip gaps > max(2 s, 5× smoothed interval)" is now expressed directly on the
+  interval instead of `5000/fps`. Gate-idle reset (r77) clears the interval
+  field. No native change, no log-schema change; historical logs unaffected
+  (per-second records store what was shown; summary graph reads
+  `pipeline_fps ?? fps`).
+- **Tests:** `frame_processor_test.dart` expectations moved to interval
+  semantics; new test: 100 alternating 67/133 ms gaps settle at ~10.0 fps
+  (old math: ~11.2). Full suite 291 passing, analyzer clean.
+

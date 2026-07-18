@@ -256,13 +256,30 @@ void main() {
   });
 
   group('FrameProcessor.updatePipelineFps', () {
-    test('smooths the callback rate; first call establishes the baseline', () {
+    test('smooths the callback interval; first call establishes the baseline', () {
       final fp = FrameProcessor(tracker: tracker());
       expect(fp.updatePipelineFps(1000), 0); // no previous callback yet
       expect(fp.updatePipelineFps(1100), closeTo(10.0, 1e-9)); // 100 ms gap
-      // EMA: 0.1 × instant + 0.9 × previous.
-      expect(fp.updatePipelineFps(1150), closeTo(0.1 * 20 + 0.9 * 10, 1e-9));
-      expect(fp.pipelineFpsEma, closeTo(11.0, 1e-9));
+      // The EMA runs on the interval (round 131, review C5):
+      // 0.1 × 50 ms + 0.9 × 100 ms = 95 ms, displayed as 1000/95 fps.
+      expect(fp.updatePipelineFps(1150), closeTo(1000.0 / 95.0, 1e-9));
+      expect(fp.pipelineFpsEma, closeTo(1000.0 / 95.0, 1e-9));
+    });
+
+    test('alternating gaps read the true throughput, not the rate average '
+        '(round 131, review C5)', () {
+      final fp = FrameProcessor(tracker: tracker());
+      // The r129 deadline scheduler on a 15 fps camera with a 10-cap delivers
+      // alternating 67/133 ms gaps — exactly 10 frames/s. EMA-ing the
+      // instantaneous rates showed ~11.2 (short gaps over-weighted); the
+      // interval EMA must settle at ~10.
+      var now = 1000;
+      fp.updatePipelineFps(now);
+      for (var i = 0; i < 100; i++) {
+        now += i.isEven ? 67 : 133;
+        fp.updatePipelineFps(now);
+      }
+      expect(fp.pipelineFpsEma, closeTo(10.0, 0.2));
     });
 
     test('a long pause (gate sleep) is skipped, not blended in (round 85)', () {
@@ -277,12 +294,13 @@ void main() {
       final steady = fp.pipelineFpsEma;
       expect(steady, closeTo(10.0, 0.01));
       // 30 s gate sleep: the resume callback must NOT dip the estimate
-      // (blending 1/30 fps into the EMA would report ~9 fps for no reason).
+      // (blending a 30 s interval into the EMA would report ~0.3 fps).
       now += 30000;
       expect(fp.updatePipelineFps(now), closeTo(steady, 1e-9));
-      // …and the estimator keeps tracking normally afterwards.
-      now += 100;
-      expect(fp.updatePipelineFps(now), closeTo(0.1 * 10 + 0.9 * steady, 1e-9));
+      // …and the estimator keeps tracking normally afterwards: a 50 ms gap
+      // blends into the interval EMA (0.1 × 50 + 0.9 × 100 = 95 ms).
+      now += 50;
+      expect(fp.updatePipelineFps(now), closeTo(1000.0 / 95.0, 1e-9));
     });
 
     test('slow-but-steady rhythms below the 2 s floor still blend', () {

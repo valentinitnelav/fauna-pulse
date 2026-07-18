@@ -115,13 +115,25 @@ class FrameProcessor {
   int _gateIdleSinceMs = 0;
 
   /// Smoothed rate at which the app fully handles inferred frames (the frame
-  /// callback runs ROI mapping + tracking + overlay update).
-  double get pipelineFpsEma => _pipelineFpsEma;
-  double _pipelineFpsEma = 0;
+  /// callback runs ROI mapping + tracking + overlay update). Derived from the
+  /// smoothed inter-frame interval, never smoothed as a rate — see
+  /// [updatePipelineFps].
+  double get pipelineFpsEma =>
+      _pipelineIntervalEmaMs > 0 ? 1000.0 / _pipelineIntervalEmaMs : 0;
+  double _pipelineIntervalEmaMs = 0;
   int _lastCallbackMs = 0;
 
   /// Updates the pipeline-FPS estimate for a frame callback arriving at
   /// [nowMs] and returns the new smoothed value.
+  ///
+  /// The EMA runs on the *interval* between callbacks and is inverted once
+  /// for display (round 131, review C5). Averaging the instantaneous rates
+  /// `1000/dt` instead over-weights the short gaps: the r129 deadline
+  /// scheduler legitimately alternates 66.7/133.3 ms gaps on a 15 fps camera,
+  /// whose rate-average is ~11.25 even though true throughput is exactly 10 —
+  /// the readout showed "pipeline 11" beside an honest detector 10. The
+  /// native detector FPS already EMAs the interval (`t4`), so both numbers
+  /// now use the same math.
   ///
   /// A gap far above the current rhythm is a *pause* (motion-gate sleep, the
   /// settings sheet pausing the camera, the summary screen) — not a slow frame
@@ -132,20 +144,19 @@ class FrameProcessor {
   /// the native `Predictor.finishTiming` — KEEP IN SYNC.
   double updatePipelineFps(int nowMs) {
     if (_lastCallbackMs > 0) {
-      final dt = nowMs - _lastCallbackMs;
-      // 5000/ema ms = 5× the smoothed inter-frame interval.
-      final resumeMs = _pipelineFpsEma > 0
-          ? math.max(2000.0, 5000.0 / _pipelineFpsEma)
+      final dt = (nowMs - _lastCallbackMs).toDouble();
+      // 5× the smoothed inter-frame interval.
+      final resumeMs = _pipelineIntervalEmaMs > 0
+          ? math.max(2000.0, 5.0 * _pipelineIntervalEmaMs)
           : 2000.0;
       if (dt > 0 && dt <= resumeMs) {
-        final inst = 1000.0 / dt;
-        _pipelineFpsEma = _pipelineFpsEma == 0
-            ? inst
-            : 0.1 * inst + 0.9 * _pipelineFpsEma;
+        _pipelineIntervalEmaMs = _pipelineIntervalEmaMs == 0
+            ? dt
+            : 0.1 * dt + 0.9 * _pipelineIntervalEmaMs;
       }
     }
     _lastCallbackMs = nowMs;
-    return _pipelineFpsEma;
+    return pipelineFpsEma;
   }
 
   /// Applies a motion-gate state change reported by the native side and —
@@ -169,7 +180,7 @@ class FrameProcessor {
       // estimate must not linger at its last awake value (it used to freeze
       // on screen and in the fps log — round 77). Clearing the timestamp also
       // stops the first post-wake frame from averaging across the sleep gap.
-      _pipelineFpsEma = 0;
+      _pipelineIntervalEmaMs = 0;
       _lastCallbackMs = 0;
     } else if (_gateIdleSinceMs > 0) {
       idleS = (nowMs - _gateIdleSinceMs) / 1000.0;

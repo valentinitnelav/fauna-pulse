@@ -616,7 +616,7 @@ re-discovered later:
   ever switch to NCHW model exports; our current models are NHWC. Skip
   unless the export pipeline changes.
 
-### C5. [ ] Pipeline-FPS readout biased high next to an honest detector FPS (display fix, small)
+### C5. [x] Pipeline-FPS readout biased high next to an honest detector FPS (display fix, small)
 
 Found while verifying C1 (session_26): the screen shows pipeline ~11.0–11.9
 beside detector 10.0. The pipeline number is computed in Dart
@@ -641,3 +641,12 @@ EMA-ing the *interval* and inverting once (`Predictor.finishTiming` `t4`).
   number).
 - **Cost:** a few lines of Dart + test update. No native change, no schema
   change.
+
+**Done (round 131):** `updatePipelineFps` now EMAs the inter-frame interval
+(`_pipelineIntervalEmaMs`, same 0.1/0.9 weights as before) and
+`pipelineFpsEma` inverts it once for display — the same math as the native
+`t4`. The r85 resume-gap guard is unchanged in behaviour (`5×` the smoothed
+interval, now expressed directly on the interval instead of `5000/fps`), and
+the KEEP IN SYNC comment pair with `Predictor.finishTiming` stands. Tests
+updated for interval semantics + a new test proving the alternating
+67/133 ms cadence reads ~10.0 (the old rate-EMA read ~11.2).
