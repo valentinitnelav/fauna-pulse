@@ -427,3 +427,122 @@ once-a-second PERF debug line still reports the previous frame's tracker cost
 6. **A5/A6/B7/B9** opportunistically.
     - A5/A6 ✔ **Done** (rounds 74-75)
     - B7/B9 ✔ **Done** (round 77, 79)
+
+---
+
+## Part C — Round 128 review against upstream Ultralytics plugin v0.6.10 (2026-07-18)
+
+Trigger: the owner measured the new Ultralytics demo app at **11–12 FPS**
+(yolo26n, Xiaomi 2107113SG) while FaunaPulse shows **7–8 FPS** (detector and
+pipeline) on the same phone. A fresh upstream copy sits at
+`/InsectDetectApp/yolo-flutter-app-main` and was compared file-by-file
+against our vendored plugin.
+
+### C0. Verdict of the comparison — nothing big to port (recorded so we never redo this)
+
+Our vendored plugin is the **same generation** as upstream v0.6.10. Every
+load-bearing upstream performance feature is already present in our fork:
+
+| Feature | Upstream v0.6.10 | Our vendored plugin |
+|---|---|---|
+| RGBA_8888 camera output (no YUV→JPEG round-trip) | `YOLOView.kt:786` | `YOLOView.kt:987-992` |
+| LiteRT 2.x `CompiledModel`, GPU-first + CPU fallback | `LiteRtModel.kt` | same (plus our crash-guard blocklist) |
+| LiteRT artifact version | `litert:2.1.5` | `litert:2.1.5` (identical) |
+| GPU program disk cache (skip OpenCL recompile) | 0.6.3 feature | present (`LiteRtModel.kt:186-194`) |
+| Reused bitmaps / int / float buffers per frame | `ObjectDetector.kt:74-78` | present (+ our `BitmapFrameBuffer`, A3) |
+| Flat-output decode + native C++ NMS via JNI | `native-lib.cpp` | identical |
+| Small boxes-only event payload, no annotated bitmaps | default | identical (+ our fire-and-forget slot, A2) |
+
+Both apps also compute the on-screen FPS **the same way**
+(`BasePredictor.finishTiming`: exponentially smoothed start-to-start interval
+between consecutive detector runs), so 7–8 vs 11–12 is a real difference in
+detector cadence, not a bookkeeping difference. Our extra per-frame work
+(motion-gate thumbnail <1 ms, frame-cache pointer swap, one orientation read)
+does not explain it either.
+
+**The gap is caused by FaunaPulse's own deliberate heat caps interacting
+badly — see C1.** Files that diverge from upstream (checked here so a future
+upstream sync knows where to look): `YOLOView.kt`, `MotionGate.kt`,
+`ImageUtils.kt`, `LiteRtModel.kt`, `Predictor.kt`, `ObjectDetector.kt`.
+
+### C1. [ ] Phase-aligned inference FPS cap (the real fix — recommended)
+
+**Problem (plain language).** Two of our defaults collide: the camera
+hardware cap (r82) delivers a frame every 66.7 ms (15 fps), and the inference
+FPS cap (r58) demands ≥100 ms between detector starts (10 fps). The cap gate
+(`shouldRunInference()`, plugin `YOLOView.kt` ~:3058) uses an *elapsed-time*
+rule: "skip unless ≥100 ms passed since the last allowed start". After a run
+at t=0 the frame at 66.7 ms is skipped (too early) and the next chance is
+133.3 ms — every time. The detector locks to one frame in two:
+**exactly 7.5 FPS**, which is the 7–8 the owner sees. The Ultralytics demo
+runs uncapped on a ~30 fps camera, so it shows the phone's natural yolo26n
+loop rate (11–12). We are not slower than upstream — we are throttled below
+our own configured budget.
+
+**Fix.** Make the gate a *deadline scheduler*: keep a `nextAllowedStartNs`
+that advances by `interval` on every allowed run (clamped up to `now` when
+we fall behind, so missed deadlines don't accumulate). A frame arriving at or
+after the deadline runs. On a 15 fps camera with a 10-cap this alternates
+66.7/133.3 ms intervals and averages a true 10 FPS.
+
+- **Files:** `packages/ultralytics_yolo/.../YOLOView.kt` only —
+  `shouldRunInference()` (~:3058-3087), the `lastInferenceGateTime` field
+  (~:176, becomes `nextAllowedStartNs`), reset in
+  `setupThrottlingFromConfig()` (~:3050). The gate is shared by the gate-off
+  (~:2333) and gate-on (~:2504) paths, so one change covers both. Keep the
+  r68/A1 invariant: the check stays BEFORE bitmap conversion on the gate-off
+  path. Update the comment block above the field (~:174) that documents the
+  start-to-start semantics.
+- **Benefit:** ~+33% detections/s (7.5 → 10) at the heat budget the user
+  already configured. Better visitation-rate resolution for free.
+- **Cost:** ~15 lines of Kotlin. Slightly more heat than today's accidental
+  7.5 — but 10 was the *chosen* budget, and auto-throttle still rules above
+  it. The beat effect exists for any cap/camera pair that isn't an integer
+  divisor; the fix removes the whole class, not just 10-on-15.
+- **Verify:** with cap 10 + camera 15, on-screen det FPS and per-second `fps`
+  records read ~10.0 (today: ~7.5). Uncapped behaviour unchanged.
+
+### C2. [ ] Parity benchmark against the Ultralytics demo (no code — owner-run)
+
+To compare our app to the demo apples-to-apples, reproduce its conditions in
+FaunaPulse settings: **inference cap 0** (uncapped benchmark mode), **camera
+cap 0** (device default ~30 fps), **stream 640×480** (explicit pick),
+**motion gate off**, engine **GPU**. Expected: ≈11–12 FPS, same as the demo.
+Record the measured number here afterwards. If it matches, the "gap" is fully
+explained by C1 + C3 and no pipeline work is owed. If it falls clearly short
+(say ≤9), reopen this part — that residue would point at our divergent frame
+path (frame cache, gate plumbing) and would justify per-stage timing.
+
+- Result (fill in): ____ FPS at parity settings, date ____.
+
+### C3. [ ] Measure per-frame conversion cost vs stream size (measure first, then decide)
+
+Our auto stream resolution picks 1440×1080 on the Xiaomi (for 1024 px photo
+sharpness, r109/r122) vs the demo's 640×480 — ~5× the pixels through the
+per-frame RGBA buffer copy, frame cache and ROI raster, all on the single
+camera thread. This is invisible today (the C1 cadence lock dominates) but
+becomes the next ceiling once C1 lands or caps are raised.
+
+- **How:** the instrumentation already exists — `perfToBitmapNs` /
+  FRAMEPERF per-second logcat lines (plugin `YOLOView.kt` ~:2301-2320,
+  ~:2340-2347). Run one short session at 1440×1080 and one at 640×480,
+  compare the toBitmap ms and achieved FPS from `logcat_*.txt` in the
+  session folder.
+- **Decision rule:** only if conversion costs >~10 ms/frame at 1440×1080 is
+  any action worth it — and the action is guidance, not mechanism: a line of
+  Settings help text explaining the FPS ↔ photo-sharpness trade-off (stream
+  size is already user-controllable). No new code path.
+
+### C4. [ ] Optional upstream micro-ports (low priority — likely skip)
+
+Two upstream 0.6.8 tweaks we don't have, recorded so they aren't
+re-discovered later:
+
+- **Pad-only letterbox clearing** (`clearLetterboxPadding`): upstream paints
+  only the padding rectangles black instead of the whole model-input bitmap.
+  Our ROI inference path has **zero padding** (square ROI → square input), so
+  this saves nothing where FaunaPulse actually runs. Near-zero benefit.
+- **Planar-CHW float packing**: upstream writes NCHW directly during RGB
+  packing for `litert`-format (torch-exported) models. Only matters if we
+  ever switch to NCHW model exports; our current models are NHWC. Skip
+  unless the export pipeline changes.

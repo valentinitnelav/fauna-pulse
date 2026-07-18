@@ -4822,3 +4822,30 @@ analyze clean.
   "Save crop to Gallery" then pick it inside ObsIdentify; direct Share stays for
   apps that honor EXIF on shared files. FIELD_GUIDE updated accordingly.
 
+
+## Round 128 (2026-07-18): FPS-gap review vs upstream plugin v0.6.10 — docs only
+
+- Owner question: Ultralytics demo app shows 11–12 FPS (yolo26n, Xiaomi) vs
+  FaunaPulse's 7–8 — what can we port from the fresh upstream copy at
+  `/InsectDetectApp/yolo-flutter-app-main`?
+- Comparison verdict: **nothing big to port.** The vendored plugin is the same
+  generation as upstream 0.6.10 — RGBA_8888 camera path, LiteRT 2.x
+  `CompiledModel` (identical `litert:2.1.5`), GPU program cache, buffer reuse,
+  flat-output decode + JNI C++ NMS, boxes-only payload. Both apps compute FPS
+  identically (EMA of start-to-start detector interval), so the numbers are
+  comparable.
+- Root cause of the gap: **cadence beat between our own caps.** Inference cap
+  10 (100 ms elapsed-time gate in `shouldRunInference`) on a 15 fps camera
+  (frame every 66.7 ms) can only fire every second frame → locked 7.5 FPS =
+  the observed 7–8. The demo runs uncapped at ~30 fps / 640×480 → 11–12 is
+  the phone's natural loop rate. Secondary factor: our auto stream 1440×1080
+  vs demo 640×480 (~5× pixels per frame conversion).
+- Added **Part C** to `PERF_AND_ROBUSTNESS_REVIEW.md`: C0 parity verdict
+  (+ divergent-file list for future upstream syncs), C1 phase-aligned
+  deadline-scheduler cap fix (recommended; ~+33% detections/s at the same
+  configured budget, ~15 lines in `YOLOView.kt`), C2 owner-run parity
+  benchmark recipe (cap 0 / camera cap 0 / 640×480 / gate off / GPU →
+  expect ≈11–12), C3 measure conversion cost vs stream size via existing
+  FRAMEPERF, C4 optional upstream micro-ports (pad-only clear, planar-CHW —
+  likely skip).
+- No code changes this round.
