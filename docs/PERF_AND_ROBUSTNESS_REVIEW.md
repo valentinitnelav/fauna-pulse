@@ -436,7 +436,7 @@ Trigger: the owner measured the new Ultralytics demo app at **11–12 FPS**
 (yolo26n, Xiaomi 2107113SG) while FaunaPulse shows **7–8 FPS** (detector and
 pipeline) on the same phone. A fresh upstream copy sits at
 `/InsectDetectApp/yolo-flutter-app-main` and was compared file-by-file
-against our vendored plugin.
+against the vendored Ultralytics plugin (`./fauna-pulse/packages/ultralytics_yolo`).
 
 ### C0. Verdict of the comparison — nothing big to port (recorded so we never redo this)
 
@@ -513,7 +513,25 @@ explained by C1 + C3 and no pipeline work is owed. If it falls clearly short
 (say ≤9), reopen this part — that residue would point at our divergent frame
 path (frame cache, gate plumbing) and would justify per-stage timing.
 
-- Result (fill in): ____ FPS at parity settings, date ____.
+- Results (at parity settings), date 2026-18-07, 08:22, "session_25"
+  
+  I adjusted the FaunaPulse settings: "Session settings" > "Camera" tab:
+
+    - "Live stream resolution ..." : 480 x 640
+    - "Camera frame rate cap": 0
+    - "Auto-adjust inference rate (prevents overheating)": off
+    - "Detector rate cap": 0
+    - "Motion gate ..." : off
+  
+  The "Detector FPS over the session" graph showed higher FPS values decreasing 
+  from ~16 to ~10 FPS within the first ~70-75 seconds from the start of the recording, 
+  while the reported temperature increased from 37 C to 39 C. When that 39 C temp was
+  reached, FPS rate had an abrupt drop to around 6.5 FPS and stayed around that value
+  until the end of the session (total recording time 2m 48s). The average FPS reported
+  under the graph was 9.4 (median 7.2 fps) min 5.9 fps, max 16.1 fps.
+  While the phone was still warm, I opened the Ultralytics YOLO app and I have seen
+  FPS values even lower than in FaunaPulse, at around 4-5 FPS.
+  It looks like **overheating** is our main challenge on both apps. 
 
 ### C3. [ ] Measure per-frame conversion cost vs stream size (measure first, then decide)
 
