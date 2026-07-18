@@ -1773,7 +1773,7 @@ Section 10a proposed a *fork-style single repo* that kept the upstream layout
 — is the main thing, which is clearer for ecologists and future maintainers.
 
 **New repository: `pollinator-monitor`** (private; built at
-`/home/vs66tavy/InsectDetectApp/pollinator-monitor/`, non-destructively copied from
+`~/InsectDetectApp/pollinator-monitor/`, non-destructively copied from
 `yolo-flutter-app/`, which is left intact as a fallback).
 
 Layout (app at root, plugin):
@@ -4849,3 +4849,27 @@ analyze clean.
   FRAMEPERF, C4 optional upstream micro-ports (pad-only clear, planar-CHW —
   likely skip).
 - No code changes this round.
+
+## Round 129 (2026-07-18): phase-aligned inference cap (C1) + parity benchmark verdict (C2)
+
+- Owner ran the C2 parity benchmark (session_25, 640×480, all caps 0, gate
+  off): cool phone ~16 FPS (ABOVE the demo's 11–12), thermal governor kicked
+  in at ~39 °C reported temp ~70-75 s in → abrupt drop to ~6.5 FPS sustained.
+  The demo app on the same warm phone showed 4–5 FPS. Verdict: pipeline at
+  parity or better; **thermal throttling is the binding constraint on both
+  apps**, so the deliberate caps + auto-throttle remain the right field
+  strategy. C2 ticked with results + verdict in PERF_AND_ROBUSTNESS_REVIEW.md.
+- **C1 implemented** (plugin `YOLOView.kt` only): the inference-rate cap gate
+  in `shouldRunInference()` is now a deadline scheduler.
+  `lastInferenceGateTime` → `nextAllowedInferenceNs`; an allowed start
+  advances the deadline by exactly one interval (average rate = configured
+  cap regardless of camera cadence — kills the beat that locked cap 10 on a
+  15 fps camera to 7.5 FPS); a stall > 1 interval re-anchors at now+interval
+  (no catch-up burst; composes with the r85 EMA resume guards, which key off
+  real gaps, untouched); reset to 0 in `setupThrottlingFromConfig()` so a new
+  cap takes effect on the next frame. A1 invariant kept: check still precedes
+  bitmap conversion on the gate-off path; gate-on path shares the same
+  function.
+- Verified: `flutter build apk --debug` builds clean. Field check pending:
+  det FPS should read ~10.0 at cap 10 + camera 15 (was ~7.5); uncapped
+  behaviour unchanged.

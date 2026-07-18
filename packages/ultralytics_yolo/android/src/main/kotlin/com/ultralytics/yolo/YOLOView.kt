@@ -170,10 +170,12 @@ class YOLOView @JvmOverloads constructor(
     
     // Throttling variables for performance control
     private var lastInferenceTime: Long = 0
-    // Separate gate timestamp for the inference-rate cap, set when an inference is
-    // *allowed to start* (see shouldRunInference), so the cap reflects the true
-    // start-to-start interval rather than including each inference's duration.
-    private var lastInferenceGateTime: Long = 0
+    // Deadline (nanoTime) before which the inference-rate cap rejects frames.
+    // A deadline SCHEDULER, not an elapsed-time check: each allowed start
+    // advances it by exactly one interval (see shouldRunInference), so the
+    // average rate honours the configured cap even when camera frame arrivals
+    // don't line up with it. 0 = run immediately (reset on config change).
+    private var nextAllowedInferenceNs: Long = 0
     private var targetFrameInterval: Long? = null // in nanoseconds
     private var throttleInterval: Long? = null // in nanoseconds
     
@@ -3049,6 +3051,8 @@ class YOLOView @JvmOverloads constructor(
 
             // Initialize timing
             lastInferenceTime = System.nanoTime()
+            // New cap takes effect on the very next frame (0 = no deadline yet).
+            nextAllowedInferenceNs = 0L
         }
     }
     
@@ -3071,17 +3075,24 @@ class YOLOView @JvmOverloads constructor(
             }
         }
         
-        // Inference frequency control (time-based). The gate is measured from the
-        // START of the previous inference (its own dedicated timestamp), not from
-        // when results were last sent to Flutter — otherwise the interval would
-        // effectively include the whole inference duration, capping the real rate
-        // far below the configured value (e.g. a "15/s" cap yielding ~6/s).
+        // Inference frequency control (time-based). This is a DEADLINE
+        // scheduler: each allowed start advances the deadline by exactly one
+        // interval, so the average rate equals the configured cap even when
+        // camera frames don't line up with it. The previous elapsed-time rule
+        // ("skip unless >= interval since the last allowed start") beat against
+        // the camera cadence — a 10/s cap on a 15 fps camera could only fire
+        // every SECOND frame, a locked 7.5/s (perf review C1, round 129).
+        // After a stall longer than one interval (gate sleep, settings pause,
+        // slow inference) the schedule re-anchors at now + interval instead of
+        // bursting to catch up.
         inferenceFrameInterval?.let { interval ->
-            if (now - lastInferenceGateTime < interval) {
+            if (now < nextAllowedInferenceNs) {
                 return false
             }
+            nextAllowedInferenceNs =
+                if (now - nextAllowedInferenceNs >= interval) now + interval
+                else nextAllowedInferenceNs + interval
         }
-        lastInferenceGateTime = now
 
         return true
     }

@@ -53,7 +53,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Capture duration | `10.0 s` | per track id; must be > step |
 | Session length | `60 min` | user-editable; ignored during scheduled runs |
 | Scheduled recording | off | r94: 1–3 daily windows (default 06:00–10:00) × N days (default 1); REC starts the run; sleeps dark between windows |
-| Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload |
+| Inference FPS cap | `10` | deliberate heat cap (r58); `0` = uncapped benchmark mode; explicitly saved `0` survives reload; r129: gate is a deadline scheduler, so cap 10 on a 15 fps camera delivers a true ~10 (pre-r129 elapsed-time gate beat to 7.5) |
 | Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range) — the standing sensor/ISP load the gate can't touch; `0` = device default (~30); explicitly saved `0` survives reload |
 | Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
 | Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
@@ -457,7 +457,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 - **Full history & rationale:** `AGENT_CHANGELOG.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
 - **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
-- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; Parts A/B complete as of r79; **Part C (r128) open** — vs-upstream-0.6.10 verdict: plugin at parity, 7–8 FPS gap = own caps' cadence beat; C1 deadline-scheduler cap fix pending).
+- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; Parts A/B complete r79; Part C (r128) vs upstream 0.6.10: plugin at parity — C1 deadline-scheduler cap DONE r129 (cap 10 now yields true 10, not 7.5), C2 benchmark confirmed thermal governor ~39 °C is the binding limit on BOTH apps; C3 (stream-size cost) + C4 (micro-ports, likely skip) open).
 - **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
 - **Archived selected Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
 large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).

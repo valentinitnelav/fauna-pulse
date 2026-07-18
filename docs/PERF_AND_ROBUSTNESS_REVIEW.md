@@ -2,8 +2,8 @@
 
 Opened with round 66, 2026-07-04.
 
-**Who this is for:** the project owner deciding what to improve next, and any
-collaborator implementing one of these items.
+**Who this is for:** the code agent + project owner deciding what to improve next, 
+and any collaborator implementing one of these items.
 
 This is a code review, not a change log. 
 Each item is a checkbox so finished work can be ticked off in later rounds.
@@ -465,7 +465,7 @@ badly — see C1.** Files that diverge from upstream (checked here so a future
 upstream sync knows where to look): `YOLOView.kt`, `MotionGate.kt`,
 `ImageUtils.kt`, `LiteRtModel.kt`, `Predictor.kt`, `ObjectDetector.kt`.
 
-### C1. [ ] Phase-aligned inference FPS cap (the real fix — recommended)
+### C1. [x] Phase-aligned inference FPS cap (the real fix — recommended)
 
 **Problem (plain language).** Two of our defaults collide: the camera
 hardware cap (r82) delivers a frame every 66.7 ms (15 fps), and the inference
@@ -502,7 +502,17 @@ after the deadline runs. On a 15 fps camera with a 10-cap this alternates
 - **Verify:** with cap 10 + camera 15, on-screen det FPS and per-second `fps`
   records read ~10.0 (today: ~7.5). Uncapped behaviour unchanged.
 
-### C2. [ ] Parity benchmark against the Ultralytics demo (no code — owner-run)
+**Done (round 129):** the gate field is now `nextAllowedInferenceNs` (a
+deadline, not a last-start timestamp). An allowed start advances it by exactly
+one interval; a stall longer than one interval (gate sleep, settings pause,
+slow inference) re-anchors it at `now + interval` so there is never a
+catch-up burst. Reset to 0 ("run immediately") in
+`setupThrottlingFromConfig()` whenever the cap changes. The r68/A1 invariant
+holds — the check still runs BEFORE bitmap conversion on the gate-off path,
+and both gate-on/off paths share the one function. Field verification
+pending: expect ~10.0 det FPS at cap 10 + camera 15 (was ~7.5).
+
+### C2. [x] Parity benchmark against the Ultralytics demo (no code — owner-run)
 
 To compare our app to the demo apples-to-apples, reproduce its conditions in
 FaunaPulse settings: **inference cap 0** (uncapped benchmark mode), **camera
@@ -532,6 +542,18 @@ path (frame cache, gate plumbing) and would justify per-stage timing.
   While the phone was still warm, I opened the Ultralytics YOLO app and I have seen
   FPS values even lower than in FaunaPulse, at around 4-5 FPS.
   It looks like **overheating** is our main challenge on both apps. 
+  
+  Note: I run the FaunaPulse app in debug mode via USB using `flutter run`. This
+  might be running slower than the release apk.
+
+**Verdict (round 129):** parity confirmed — better than expected. No pipeline
+work is owed to upstream. The abrupt 10→6.5 drop at ~39 °C reported temp is
+the Xiaomi's thermal governor (the known invisible SoC throttle), and it
+binds BOTH apps — uncapped running just sprints into that wall ~70 s in.
+Consequence: the deliberate caps + auto-throttle are the correct field
+strategy (they spend the heat budget on purpose instead of letting MIUI
+spend it), and C1 makes the capped rate honest. Field sessions add charging
+heat (power-bank invariant), so expect the wall sooner than in this test.
 
 ### C3. [ ] Measure per-frame conversion cost vs stream size (measure first, then decide)
 
