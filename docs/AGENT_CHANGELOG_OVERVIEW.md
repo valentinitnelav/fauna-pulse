@@ -228,6 +228,11 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   shows it as "Captured". Saved crops carry NO EXIF (all paths re-encode raw pixels);
   filename + JSONL are the capture-time ground truth. `session.jsonl` stays strict
   one-object-per-line JSON Lines — never pretty-print it.
+  r132 comparability records: start carries `app_version`/`app_build`/`build_mode`
+  (never compare perf across mixed binaries) and `blackout_at_start`; `blackout`
+  records log every screen-cover toggle; `focus_change` records log settled
+  mid-recording focus moves (debounced via `SettledUpdateDebouncer<T>`, the
+  generalized `RoiUpdateDebouncer` base in `logging/roi_update_debouncer.dart`).
 - **Tracker.** Two pure-Dart trackers behind the `InsectTracker` interface
   (`tracking/tracker.dart`, r105): ByteTrack-style (`byte_track.dart`, default —
   its distance-association fallback fixed track-id fragmentation) and
@@ -450,8 +455,13 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 ## Device quirks (test phones)
 
 - **Xiaomi `2107113SG`** (adb `2b2dc560`): primary test device. Deploy **debug build only**,
-  Install via USB, MIUI quirk.
-- **Samsung `RF8T403A3AT`** (Galaxy M12-class): secondary test device
+  Install via USB, MIUI quirk. Thermal character (r132, session_28): fast but hot —
+  camera-first throttle at ~41–42 °C, auto-throttle then holds ~6 fps to ≥46 °C;
+  MIUI `thermal_status` claims "none" throughout.
+- **Samsung `RF8T403A3AT`** (Galaxy M12-class, SM-M127F): secondary test device.
+  Thermal character (r132, 5×1 h): never passed ~32 °C — compute-limited, not
+  heat-limited (yolo26n ~260 ms ⇒ ~2.8 fps; int8 arthropod 65 ms ⇒ ~7 fps).
+  Its `battery_current_ua` is broken (µA-scale) — use battery-% drop, not power_w.
 
 ## Pointers
 

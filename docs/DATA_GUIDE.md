@@ -56,6 +56,9 @@ Session-wide metadata. Notable fields:
 |---|---|
 | `session_id` | Unique id for this recording. |
 | `device` | Device descriptor (model/id). |
+| `app_version`, `app_build` | Round 132+: which app binary recorded the session (pubspec version + build number). Needed when comparing performance across sessions — behaviour changes between versions. |
+| `build_mode` | Round 132+: `release`, `profile` or `debug`. A `flutter run` debug build performs measurably worse than the release APK, so performance comparisons must not mix modes. |
+| `blackout_at_start` | Round 132+: present (`true`) when recording started with the screen-off cover already up (scheduled runs). Screen state changes thereafter are `blackout` records. |
 | `battery_percent` | Battery level at start. |
 | `free_storage_bytes`, `total_storage_bytes` | Free/total bytes on the session's storage volume at start (round 68). |
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
@@ -208,6 +211,26 @@ tick — take the last of a burst. The summary's Settings tab lists these as
 
 Gated (idle) periods carry **no** `detection` lines by design — these records
 make that auditable, so an empty stretch is "confirmed asleep", not "missed".
+
+### `blackout` — screen-off power save toggled mid-session (round 132+)
+
+One field: `on` (`true` = the black cover went up and the screen dimmed to
+minimum, `false` = the user tapped to wake). The screen is a major heat and
+power source (round 82 measured ~10 °C skin-temperature difference), so
+thermal/battery comparisons between sessions need to know the screen state.
+Screen state at any moment = the last `blackout` record before it (before the
+first one: `blackout_at_start` in the start record, absent = screen on).
+Sessions recorded before round 132 carry no screen-state information.
+
+### `focus_change` — camera focus changed mid-session (round 132+)
+
+Same fields as the start record's focus pair: `focus_mode`
+(`manual`/`auto`) and, for manual, `focus_value` (0..1, 0 = far/infinity).
+Debounced like `roi_update`: one record per adjustment, written once the
+slider has sat unchanged for ~2 s (flushed at stop; a change that ends back
+on the previous state writes nothing). Focus affects sharpness and therefore
+detections — treat a `focus_change` like a small protocol change when
+comparing periods within a session.
 
 ### `thermal`, `fps`, `power` — periodic samples for the summary graphs
 

@@ -132,6 +132,29 @@ void main() {
     expect(rec['time_iso'], isA<String>());
   });
 
+  test('blackout and focus_change records round-trip (round 132)', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logBlackout({'on': true});
+    logger.logBlackout({'on': false});
+    logger.logFocusChange({'focus_mode': 'manual', 'focus_value': 0.42});
+    logger.logFocusChange({'focus_mode': 'auto'});
+    await logger.close();
+
+    final records = file
+        .readAsLinesSync()
+        .map((l) => jsonDecode(l) as Map<String, dynamic>)
+        .toList();
+    expect(records[0]['type'], 'blackout');
+    expect(records[0]['on'], true);
+    expect(records[1]['on'], false);
+    expect(records[2]['type'], 'focus_change');
+    expect(records[2]['focus_mode'], 'manual');
+    expect(records[2]['focus_value'], closeTo(0.42, 1e-9));
+    expect(records[3]['focus_mode'], 'auto');
+    expect(records[3].containsKey('focus_value'), isFalse);
+  });
+
   test('a crash (no end record) is detectable', () async {
     final file = File('${tmp.path}/session.jsonl');
     final logger = SessionLogger(file)..open();

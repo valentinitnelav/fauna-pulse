@@ -4924,3 +4924,50 @@ analyze clean.
   semantics; new test: 100 alternating 67/133 ms gaps settle at ~10.0 fps
   (old math: ~11.2). Full suite 291 passing, analyzer clean.
 
+## Round 132 (2026-07-19): heat findings documented + session-comparability logging gaps closed
+
+**Data analysis (owner-pointed sessions; drove everything below):**
+- Samsung SM-M127F, five 1-h sessions, never charging: battery temp never
+  exceeded 31.5 °C, `thermal_status` "none", headroom ≤0.78 — heat is a
+  non-issue on this device; compute is the limit (yolo26n ~260 ms/inference →
+  auto-throttle cap 3, flat ~2.8 fps; arthropod int8 65 ms → steady ~7 fps;
+  model choice ≈2.5× fps). Battery 7–12 %/h unplugged. Its
+  `battery_current_ua` reporting is broken (µA-scale values → power_w ~0);
+  use battery-% drop instead.
+- Xiaomi session_28 (12 min, charging, 1440×1080 explicit, started 39 °C):
+  39→46 °C; camera-first throttle confirmed again at ~41–42 °C (camera_fps
+  min 1.4 while inf_ms stayed ~24); auto-throttle stabilized ~6 fps mean at
+  43–46 °C. MIUI `thermal_status` read "none" even at 46 °C.
+- Verdict passed to owner: skip a factorial test matrix; do ONE realistic
+  field-config session (Xiaomi, 1 h, power bank + blackout + gate + auto
+  stream — no existing session matches the real end-user config); defer
+  cooler hardware until that shows whether the wall is even hit.
+
+**Docs:**
+- `FIELD_GUIDE.md` §8 "Heat: what to expect and what helps": plain-language
+  throttling explanation, the two measured device narratives, mitigation
+  ladder (shade → blackout → gate → smaller photo target → charging costs
+  headroom → faster model), honest untested-gadget note on Peltier clip-on
+  coolers; cross-links from §4 and a new §7 troubleshooting entry.
+
+**Code (comparability gaps found during the analysis — all logging-only, no
+new tunables):**
+- `blackout` JSONL records (`{on: true/false}`) from `_enterBlackout` /
+  `_exitBlackout` via `SessionLogger.logBlackout`; start record gains
+  `blackout_at_start: true` when a scheduled wake starts under the cover.
+  (The five Samsung sessions could not be told apart by screen state — this
+  was the gap.)
+- Start record gains `app_version`, `app_build` (package_info_plus, already a
+  dep) and `build_mode` (release/profile/debug) — debug `flutter run`
+  sessions perform measurably worse (C2 note) and behaviour changes between
+  versions (e.g. r129), so perf comparisons must not mix binaries.
+- `focus_change` records: the manual-focus slider is usable WHILE recording
+  but only the start record carried focus — mid-session changes were
+  invisible. `RoiUpdateDebouncer` generalized to `SettledUpdateDebouncer<T>`
+  (same file; Roi subclass keeps the old name/API, default equality = `==`
+  so Dart records work); the screen debounces focus like ROI (seed at start,
+  notify on slider/reset, flush at stop, cancel in dispose).
+- `DATA_GUIDE.md`: new start fields + `blackout` + `focus_change` sections.
+- Tests: logger round-trip for both new records; generic-debouncer test with
+  a record type. Suite 293 passing, analyzer clean.
+

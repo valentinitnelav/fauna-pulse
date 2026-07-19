@@ -88,6 +88,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // (the overlay fires per tick; the log wants the value the user stopped on).
   final RoiUpdateDebouncer _roiLogDebounce = RoiUpdateDebouncer();
 
+  // Round 132: same for mid-recording focus changes — the slider fires per
+  // tick, the log wants one focus_change record with the value the user
+  // settled on (the start record only carries the initial focus).
+  final SettledUpdateDebouncer<({bool manual, double value})>
+  _focusLogDebounce = SettledUpdateDebouncer();
+
   // Round 109: the auto stream-resolution default is evaluated at most once
   // per screen lifetime (the resulting camera rebind re-fires probe callbacks;
   // without the flag that would loop).
@@ -697,6 +703,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (_recording) _stopRecording(normal: false);
     // After _stopRecording's synchronous flush — drops any leftover timer.
     _roiLogDebounce.cancel();
+    _focusLogDebounce.cancel();
     WakelockPlus.disable();
     _controller.dispose();
     _tracksVN.dispose();
@@ -1112,11 +1119,26 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _focusManual = true;
       _focusValue = v;
     });
+    if (_recording) {
+      _focusLogDebounce.notify((manual: true, value: v), _writeFocusChange);
+    }
   }
 
   void _resetAutoFocus() {
     _controller.setAutoFocus();
     setState(() => _focusManual = false);
+    if (_recording) {
+      _focusLogDebounce.notify((manual: false, value: 0), _writeFocusChange);
+    }
+  }
+
+  /// Writes one focus_change record for a settled focus adjustment
+  /// (debouncer callback). Same shape as the start record's focus fields.
+  void _writeFocusChange(({bool manual, double value}) settled) {
+    _logger?.logFocusChange({
+      'focus_mode': settled.manual ? 'manual' : 'auto',
+      if (settled.manual) 'focus_value': settled.value,
+    });
   }
 
   /// Camera-delivery watchdog (B4), run from the 1 s recording ticker: if no
@@ -1352,6 +1374,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // locked focus we also log the 0..1 distance (0 = far/infinity, 1 = near).
         'focus_mode': focusMode,
         if (focusMode == 'manual') 'focus_value': _focusValue,
+        // A scheduled wake starts recording underneath a blackout cover that
+        // is already up; without this flag such a session would look
+        // screen-on until the first blackout toggle record (round 132).
+        if (_blackout) 'blackout_at_start': true,
         'confidence_threshold': _config.confidenceThreshold,
         'iou_threshold': _config.iouThreshold,
         'step_seconds': _config.stepSeconds,
@@ -1560,6 +1586,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // The ROI just written into the start record is the debouncer's baseline:
     // a drag that ends back on this geometry logs no roi_update.
     _roiLogDebounce.seed(_roi);
+    // Same for focus: the start record carries the initial focus mode/value.
+    _focusLogDebounce.seed((
+      manual: _focusManual,
+      value: _focusManual ? _focusValue : 0,
+    ));
 
     // The session-length auto-end applies to MANUAL sessions only: in a
     // scheduled run each window's end time governs (via _scheduleTick), and
@@ -1658,6 +1689,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // A ROI change still sitting in the debounce window must land before the
     // logger closes — the session's final ROI is never lost to the timer.
     if (_recording) _roiLogDebounce.flush(_writeRoiUpdate);
+    if (_recording) _focusLogDebounce.flush(_writeFocusChange);
     await _recorder.stop(
       normal: normal,
       uniqueTrackCount: _tracker.totalConfirmed,
@@ -2145,6 +2177,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _blackout = true;
       _blackoutHint = true; // starts fully visible…
     });
+    // Screen state is a major heat/power variable (round 82): log the toggle
+    // so recorded sessions can be compared thermally afterwards (round 132).
+    _logger?.logBlackout({'on': true});
     // Hide Android's status bar (clock/battery) and navigation bar (the 3 buttons)
     // so the whole screen is truly black. A swipe from an edge briefly reveals them
     // then they auto-hide; tapping to wake restores them in [_exitBlackout].
@@ -2210,6 +2245,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _blackoutHint = false;
       _sleepStatusVisible = false;
     });
+    _logger?.logBlackout({'on': false});
     // Bring back the status/navigation bars (edge-to-edge matches the Activity's
     // default) and the screen brightness.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

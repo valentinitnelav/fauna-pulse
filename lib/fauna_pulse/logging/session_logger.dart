@@ -173,6 +173,22 @@ class SessionLogger {
   void logMotionGate(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('motion_gate', payload, at: at);
 
+  /// Blackout (screen-off power save) toggled mid-session (round 132):
+  /// `{on: true/false}`. Screen state changes the phone's heat budget
+  /// substantially (round 82 measured ~10 °C skin temp), so sessions can't be
+  /// compared thermally without knowing it — this was found missing when five
+  /// otherwise-identical field tests could not be told apart afterwards.
+  void logBlackout(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('blackout', payload, at: at);
+
+  /// Camera focus changed mid-session (round 132): the settled
+  /// `{focus_mode, focus_value?}` after the user adjusted the focus slider
+  /// while recording (the start record only carries the initial focus).
+  /// Focus affects sharpness and therefore detections — a mid-session change
+  /// must leave a trace for anyone comparing sessions.
+  void logFocusChange(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('focus_change', payload, at: at);
+
   /// All active detections of one processed frame, as a single record with a
   /// `tracks` array — one entry per tracked insect (track id, class, box
   /// relative to the ROI, and any JPEG saved for it at this moment). One

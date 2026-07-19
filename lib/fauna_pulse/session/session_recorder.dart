@@ -15,6 +15,7 @@ import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -120,6 +121,7 @@ class SessionRecorder {
 
     final battery = await _safeBatteryLevel();
     final device = await _safeDeviceDescriptor();
+    final appInfo = await _safeAppInfo();
     // Fresh battery/power reading so the start `thermal` block carries an
     // accurate baseline charge counter + voltage (the start↔end
     // charge-counter drop is the ground-truth for the session-total energy
@@ -133,6 +135,16 @@ class SessionRecorder {
       'session_id': sessionId,
       'file_token': fileToken,
       'device': device,
+      ...appInfo,
+      // Round 132: a `flutter run` debug build performs measurably worse than
+      // the release APK (owner observation, review C2), and behaviour changes
+      // between app versions (e.g. the r129 FPS-cap fix) — sessions can't be
+      // compared without knowing which binary recorded them.
+      'build_mode': kReleaseMode
+          ? 'release'
+          : kProfileMode
+          ? 'profile'
+          : 'debug',
       'battery_percent': battery,
       ...startStorage.toJson(),
       ...startMetadata(),
@@ -466,6 +478,16 @@ class SessionRecorder {
     } catch (e) {
       logSwallowed('battery_level', e);
       return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> _safeAppInfo() async {
+    try {
+      final p = await PackageInfo.fromPlatform();
+      return {'app_version': p.version, 'app_build': p.buildNumber};
+    } catch (e) {
+      logSwallowed('app_info', e);
+      return const {};
     }
   }
 

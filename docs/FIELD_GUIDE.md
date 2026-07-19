@@ -112,6 +112,10 @@ camera frame-rate cap are re-applied automatically.
 (Recording only runs while the app is open — blackout is *not* the same as
 locking the phone. Don't press the hardware lock button; use blackout.)
 
+Blackout is also the app's biggest built-in *cooling* measure — see §8 on
+heat. Since round 132 every blackout on/off toggle is written to the session
+log, so you can tell afterwards whether a session ran screen-on or dark.
+
 ## 5. Stopping and the summary
 
 Press stop (or let the session timer expire). The app writes a final
@@ -203,3 +207,73 @@ silent for 10+ seconds — typically another app took it over, or the phone's
 camera service failed. The event is written to the session log with its
 timestamp, so the gap is visible in your data afterwards. Stop and restart the
 session (or reopen the app); the banner clears by itself if frames resume.
+
+**FPS dropped sharply after the phone warmed up.** That is the phone
+protecting itself from heat, not an app fault — the session keeps recording
+at a reduced rate and recovers as the phone cools. See §8 for what to expect
+and what helps (shade first).
+
+## 8. Heat: what to expect and what helps
+
+Phones protect themselves from overheating by silently slowing down —
+**"thermal throttling"**. There is no warning: the operating system just
+reduces what the hardware is allowed to do, and on the phones we tested it
+slows the **camera** first, not the AI model. What you see on screen is the
+detector FPS dipping (sometimes sharply), then the app's auto-adjust finding
+a lower rate that the warm phone can sustain. **A hot session degrades — it
+does not die.** Every temperature and FPS sample is in the session log, so
+you can always see afterwards exactly when and how hard a session throttled.
+
+### What we measured (your phone will differ)
+
+These are two real devices from development — they bracket the range you
+should expect, and they show that the limiting factor depends on the phone:
+
+- **A budget phone with a slow chip (Samsung Galaxy M12).** Never passed
+  ~32 °C battery temperature in five one-hour indoor sessions — heat is a
+  non-issue. Its limit is speed: the standard model ran at ~3 FPS flat, and a
+  smaller/quantized model at ~7 FPS. Battery use was 7–12 %/h unplugged
+  (roughly 8–10 h on its own battery). On phones like this, **model choice
+  matters far more than heat** (2.5× FPS difference between models).
+- **A faster phone with an aggressive thermal governor (Xiaomi, Snapdragon
+  class).** Runs ~10 FPS cool, but while charging it reached 46 °C within
+  12 minutes; at ~41–42 °C the system throttled the camera hard (frames
+  briefly dropped to 1–2 per second) before the app's auto-adjust settled it
+  at ~6 FPS, which it then held even as the temperature kept rising. On
+  phones like this, **the heat budget is the limit, and charging + sun eat
+  into it**.
+
+Neither phone's own "thermal status" API admitted anything was happening —
+the session log's temperature and FPS records are the only honest witnesses.
+
+### What helps, in order of payoff
+
+1. **Keep the phone out of direct sun.** Sunlight adds several watts of heat
+   that no software setting can remove — it is the single biggest factor.
+   Mount in shade, or shade the phone (a white/reflective cover or a simple
+   sunshade over the mount). A dark phone body in summer sun can exceed the
+   throttle threshold before recording even starts.
+2. **Use blackout mode (§4).** The screen is one of the phone's biggest
+   heaters; the measured difference with the cover up was about 10 °C of
+   case temperature on our hot test device.
+3. **Motion gate on** for scenes that are mostly still: the detector sleeps
+   between visits instead of heating the phone around the clock.
+4. **Lower "Saved photo side" if you don't need large photos.** A smaller
+   target lets the app pick a smaller camera stream — less load on the
+   camera hardware, which is exactly the part the phone throttles first.
+5. **Expect charging to cost headroom.** A power bank keeps a long session
+   alive but adds charging heat; the throttle point arrives sooner. That
+   trade is usually worth it — just plan for it.
+6. **On slow phones, pick the faster model** (Settings → AI, and the
+   benchmark button tells you which engine is faster on your device).
+
+### Active cooling gadgets (untested by us — read before buying)
+
+Clip-on phone coolers ("semiconductor" / Peltier coolers sold as gaming
+accessories, roughly €15–40) can genuinely lower the back of the phone by
+several degrees, but: they draw 2–5 W (your power bank drains much faster),
+they attach where mounts often clamp, and chilling a phone below the dew
+point on a humid morning can condense moisture on it. A plain small fan is
+gentler (no condensation) but also weaker. If you try one, the app itself is
+the test instrument: record two sessions at the same spot, cooler on and
+off, and compare the temperature and FPS graphs in the session summaries.

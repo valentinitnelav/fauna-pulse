@@ -87,4 +87,30 @@ void main() {
       expect(written, isEmpty);
     });
   });
+
+  // Round 132: the generic base class with the default `==` equality, as the
+  // camera screen uses it for focus changes (a Dart record type — structural
+  // equality makes seed/no-op detection work without a custom comparator).
+  test('SettledUpdateDebouncer settles record values with == equality', () {
+    fakeAsync((async) {
+      final d = SettledUpdateDebouncer<({bool manual, double value})>();
+      final written = <({bool manual, double value})>[];
+      d.seed((manual: false, value: 0));
+      // Slider drag: many ticks, one settled write of the last value.
+      for (var i = 1; i <= 5; i++) {
+        d.notify((manual: true, value: i / 10), written.add);
+        async.elapse(const Duration(milliseconds: 100));
+      }
+      async.elapse(const Duration(seconds: 2));
+      expect(written, [(manual: true, value: 0.5)]);
+      // Reset back to the seeded auto state: writes the change…
+      d.notify((manual: false, value: 0), written.add);
+      async.elapse(const Duration(seconds: 2));
+      expect(written, hasLength(2));
+      // …but notifying the SAME state again is a no-op.
+      d.notify((manual: false, value: 0), written.add);
+      async.elapse(const Duration(seconds: 2));
+      expect(written, hasLength(2));
+    });
+  });
 }
