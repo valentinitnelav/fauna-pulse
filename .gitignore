@@ -56,6 +56,13 @@ app.*.map.json
 **/.flutter-plugins-dependencies
 **/Pods/
 
+# --- Release signing: keystore and credentials are NEVER committed ---
+# android/.gitignore already covers these under android/; repeated here so a
+# keystore or key.properties dropped anywhere else in the tree stays untracked.
+key.properties
+*.keystore
+*.jks
+
 # --- FaunaPulse: model weights are NEVER committed ---
 # Privacy: some detectors belong to collaborators and must not be redistributed via
 # this repo. ALL model binaries are git-ignored, everywhere in the tree. Distribute

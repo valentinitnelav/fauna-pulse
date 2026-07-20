@@ -4971,3 +4971,19 @@ new tunables):**
 - Tests: logger round-trip for both new records; generic-debouncer test with
   a record type. Suite 293 passing, analyzer clean.
 
+## Round 133 (2026-07-20): no debug-key fallback for release builds
+
+- `android/app/build.gradle`: release builds now always use `signingConfigs.release`;
+  the silent fallback to the debug key is removed. A guard on `preReleaseBuild`
+  (release-only, runs before any compilation) throws a GradleException with setup
+  instructions when signing is unconfigured. Debug/profile builds unaffected
+  (verified: `:app:preDebugBuild` passes, `:app:preReleaseBuild` fails with the
+  clear message).
+- Keystore path can now also come from the `ANDROID_STORE_FILE` env var, matching
+  the existing `ANDROID_KEY_ALIAS`/`ANDROID_KEY_PASSWORD`/`ANDROID_STORE_PASSWORD`
+  fallbacks; `android/key.properties` remains the primary (git-ignored) config.
+- Root `.gitignore` now also ignores `key.properties`, `*.jks`, `*.keystore`
+  (android/.gitignore already did, this covers the rest of the tree).
+- No keystore was generated or committed; create one with `keytool` per the
+  error message before shipping a release APK.
+

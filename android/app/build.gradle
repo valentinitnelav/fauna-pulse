@@ -10,7 +10,7 @@ def keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
-def hasReleaseSigning = keystoreProperties["storeFile"] &&
+def hasReleaseSigning = (keystoreProperties["storeFile"] ?: System.getenv("ANDROID_STORE_FILE")) &&
     (keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")) &&
     (keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")) &&
     (keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD"))
@@ -50,19 +50,22 @@ android {
         release {
             keyAlias = keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")
             keyPassword = keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")
-            storeFile = keystoreProperties["storeFile"] ? rootProject.file(keystoreProperties["storeFile"]) : null
+            // Keystore path from key.properties (relative paths resolve against
+            // android/) or the ANDROID_STORE_FILE environment variable.
+            def storeFilePath = keystoreProperties["storeFile"] ?: System.getenv("ANDROID_STORE_FILE")
+            storeFile = storeFilePath ? rootProject.file(storeFilePath) : null
             storePassword = keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD")
         }
     }
 
     buildTypes {
         release {
-            // Use a real release keystore when configured; otherwise fall back to
-            // the auto-generated debug key so `--release` still produces an
-            // installable, *non-debuggable* APK (ART then optimises the native
-            // code, unlike debug/profile which run "verify"/interpreted). This
-            // fallback is for testing only — ship with a real key.
-            signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            // Release builds are always signed with the real release keystore,
+            // configured via android/key.properties or ANDROID_* environment
+            // variables (both kept out of git). There is deliberately no debug-key
+            // fallback: an unconfigured release build fails fast (see the
+            // preReleaseBuild guard below) instead of shipping a debug-signed APK.
+            signingConfig = signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -76,6 +79,31 @@ android {
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+}
+
+// Fail fast — before any compilation — when a release build is requested without
+// release signing. Attached to preReleaseBuild (an early step that only runs for
+// release variants), so debug and profile builds are completely unaffected.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (!hasReleaseSigning) {
+            throw new GradleException(
+                "Release signing is not configured, refusing to build a release APK " +
+                "with the debug key.\n\n" +
+                "Create android/key.properties (git-ignored, never commit it) with:\n\n" +
+                "    storeFile=/absolute/path/to/faunapulse-release.jks\n" +
+                "    storePassword=<keystore password>\n" +
+                "    keyAlias=<key alias>\n" +
+                "    keyPassword=<key password>\n\n" +
+                "or set the ANDROID_STORE_FILE, ANDROID_STORE_PASSWORD, " +
+                "ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD environment variables.\n\n" +
+                "To create a keystore (one-time):\n" +
+                "    keytool -genkey -v -keystore ~/faunapulse-release.jks " +
+                "-keyalg RSA -keysize 2048 -validity 10000 -alias faunapulse\n\n" +
+                "Debug builds (flutter run / flutter build apk --debug) are unaffected."
+            )
         }
     }
 }
