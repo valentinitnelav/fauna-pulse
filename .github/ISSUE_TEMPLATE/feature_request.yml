@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an improvement or new capability for FaunaPulse.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do, and what makes it hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like FaunaPulse to do? Sketch the behaviour or setting you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Field-work context
+      description: >-
+        How would this help your monitoring? Mention the organisms, setup or
+        study design if relevant — it helps us judge scope and priority.
+    validations:
+      required: false

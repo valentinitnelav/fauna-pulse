@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use FaunaPulse in your research, please cite it using these metadata."
+title: "FaunaPulse: an Android field application for on-device detection, tracking and documentation of flower-visiting insects"
+abstract: >-
+  FaunaPulse is an offline Android field application that detects, tracks and
+  documents flower-visiting insects (and other moving organisms) in real time
+  using on-device object detection, and logs each visit to estimate visitation
+  rates. It supports configurable detection models, a user-defined region of
+  interest, motion-triggered capture and time-lapse capture.
+type: software
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/valentinitnelav/fauna-pulse"
+url: "https://github.com/valentinitnelav/fauna-pulse"
+# TODO: update `version` and `date-released` to match each tagged release.
+version: "0.6.4"
+date-released: "2026-07-20"
+keywords:
+  - pollinators
+  - visitation rate
+  - pollination ecology
+  - on-device AI
+  - object detection
+  - insect monitoring
+  - camera trap
+  - Android
+authors:
+  # TODO: replace the placeholder(s) below with the full author list before the
+  # first public release. Add one block per author. `orcid` and `affiliation`
+  # are optional but recommended for a scientific citation.
+  - family-names: "Ștefan"
+    given-names: "Valentin"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
+    orcid: "https://orcid.org/0000-0002-4757-8008"
+  - family-names: "Sittinger"
+    given-names: "Maximilian"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
+    orcid: "https://orcid.org/0000-0002-4096-8556"
+  - family-names: "Knight"
+    given-names: "Tiffany"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany & Martin Luther University, Halle, Germany & National Tropical Botanical Garden, Kalāheo, US"
+    orcid: "https://orcid.org/0000-0003-0318-1567"
+# TODO: after the first release is archived on Zenodo, add the versioned DOI:
+# doi: "10.5281/zenodo.XXXXXXX"

@@ -47,10 +47,10 @@ class ErrorReport {
 }
 
 class ErrorReporter {
-  /// A public issue tracker link, shown in the report footer once a repository
-  /// exists. Leave empty until then.
+  /// A public issue tracker link, shown in the report footer. Leave empty to
+  /// omit the "Or open a GitHub issue" line from generated reports.
   static const String githubIssuesUrl =
-      ''; // e.g. https://github.com/<you>/<repo>/issues
+      'https://github.com/valentinitnelav/fauna-pulse/issues';
 
   /// Where the "Email…" button sends reports. Deliberately empty by default —
   /// the address is handed to testers privately, never shipped in the app —

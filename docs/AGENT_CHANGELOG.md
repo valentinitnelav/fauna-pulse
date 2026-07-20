@@ -4987,3 +4987,27 @@ new tunables):**
 - No keystore was generated or committed; create one with `keytool` per the
   error message before shipping a release APK.
 
+## Round 134 (2026-07-20): public-release scaffolding
+
+Prep for the first public alpha (no version bump yet; still 0.6.4+10 per user).
+
+- `lib/fauna_pulse/logging/error_reporter.dart`: `githubIssuesUrl` now points to
+  `https://github.com/valentinitnelav/fauna-pulse/issues` (was empty placeholder).
+  The report footer's "Or open a GitHub issue" line activates via the existing
+  `.isNotEmpty` guard; no test touched it.
+- New `CITATION.cff` at repo root (GitHub "Cite this repository" + Zenodo pickup).
+  Authors/affiliation/ORCID and the Zenodo DOI are TODO placeholders; `version`
+  and `date-released` must track each tag.
+- New `.github/ISSUE_TEMPLATE/`: `bug_report.yml` (asks for phone+Android/MIUI,
+  app version, capture mode, model, and to attach the in-app "Report a problem"
+  file), `feature_request.yml`, `config.yml` (blank issues still allowed).
+- `README.md`: added a `## Getting started` numbered quick-path (install → perms →
+  model → ROI → test session → inspect session.jsonl → known limitations),
+  expanded `## Project status` into an explicit alpha disclaimer (missed/duplicate/
+  split tracks, per-device variance, heat/throttle/battery, review outputs before
+  conclusions), and added a `## Citation` section before `## License`.
+- `docs/AGENT_CHANGELOG_OVERVIEW.md`: updated the stale "empty placeholder" note.
+- Deliberately skipped: root CONTRIBUTING.md (GitHub surfaces docs/CONTRIBUTING.md),
+  new AI-disclosure (README already has one), CODE_OF_CONDUCT.md (optional for a
+  small preview). Keystore creation + release build/install handled by the owner.
+

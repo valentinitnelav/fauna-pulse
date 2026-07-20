@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a problem, crash or unexpected behaviour in FaunaPulse.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve FaunaPulse. FaunaPulse is an early research
+        preview, so field reports are especially valuable.
+
+        **Tip:** the app has a built-in **Settings → Report a problem** flow that
+        generates a `.txt` report bundling device info, recent crash files,
+        your settings and session-log excerpts. Attaching that file (drag it
+        into the "Diagnostic report" field below) gives us far more to work with.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, in order, leading up to the problem?
+      placeholder: |
+        1. Opened a new session with model ...
+        2. Set capture mode to ...
+        3. After ~N minutes ...
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the app's Settings / About screen (e.g. 0.6.4+10).
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone model and Android version
+      description: e.g. "Xiaomi 2107113SG, Android 13 / MIUI 14" or "Samsung Galaxy A54, Android 14".
+    validations:
+      required: true
+  - type: dropdown
+    id: capture-mode
+    attributes:
+      label: Capture mode in use
+      options:
+        - AI detection (detector)
+        - Motion-triggered
+        - Time-lapse
+        - Not sure / not applicable
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Detection model in use
+      description: Which model was selected (e.g. yolo26n, a custom .tflite)? Leave blank for motion/time-lapse.
+    validations:
+      required: false
+  - type: textarea
+    id: diagnostic-report
+    attributes:
+      label: Diagnostic report / logs
+      description: >-
+        Attach the file produced by the in-app "Report a problem" flow if you
+        can, and any screenshots. You can drag files directly into this box.
+    validations:
+      required: false

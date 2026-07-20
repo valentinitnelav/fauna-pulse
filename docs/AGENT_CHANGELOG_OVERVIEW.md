@@ -268,7 +268,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   Uncaught errors persist as `crashes/crash_<yyyy-MM-dd>_<HHmmss>.txt` (newest 20 kept):
   Dart `crash_store.dart` (both global hooks) + Kotlin uncaught-handler in `MainActivity`
   (KEEP `writeCrashFile` ↔ `crashFileBody` IN SYNC); C++ signal crashes aren't captured.
-  `ErrorReporter.githubIssuesUrl` is the empty placeholder to fill at public release.
+  `ErrorReporter.githubIssuesUrl` is set to the public repo's Issues page (r134).
 - **Versioning:** pubspec `version:` (now `0.6.4+10`) is the single source of truth
   (Gradle + package_info_plus derive from it). Bump the build number for every tester APK;
   tag releases `v<version>`.
