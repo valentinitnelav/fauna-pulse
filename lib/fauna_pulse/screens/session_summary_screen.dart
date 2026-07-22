@@ -153,6 +153,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Set<String> _postKeep = const {};
   double _postGapSeconds = 2.0;
   Map<String, List<_DetBox>> _postBoxesByName = const {};
+  Map<String, KeepDecision> _postDecisions = const {};
   Set<String> _postDeleteMarked = const {};
   bool _postDeleting = false;
 
@@ -173,7 +174,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ).existsSync(),
           )
           .toList();
-      final keep = keepNames(outcomes, (gap * 1000).round());
+      final decisions = keepDecisions(outcomes, (gap * 1000).round());
+      final keep = decisions.keys.toSet();
       final boxes = <String, List<_DetBox>>{};
       for (final o in outcomes) {
         if (o.boxes.isEmpty) continue;
@@ -196,6 +198,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _postKeep = keep;
         _postGapSeconds = gap;
         _postBoxesByName = boxes;
+        _postDecisions = decisions;
         _postDeleteMarked = {
           for (final o in outcomes)
             if (!keep.contains(o.name)) o.name,
@@ -2054,6 +2057,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
           postBoxes: _postBoxesByName,
           deleteMarked: _postDeleteMarked,
+          keepDecisions: _postDecisions,
           onZoomChanged: (z) {
             if (mounted && z != _photoViewerZoomed) {
               setState(() => _photoViewerZoomed = z);
@@ -2071,6 +2075,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (outcomes == null || outcomes.isEmpty) return const [];
     final withBoxes = outcomes.where((o) => o.hasBoxes == true).length;
     final plan = planCleanup(widget.logFile.parent, outcomes, _postKeep);
+    final kept = _postKeep.length;
+    final deleted = outcomes.length - kept;
+    // Integer percents that provably sum to 100: one rounded, one complement.
+    final keptPct = outcomes.isEmpty
+        ? 0
+        : (kept * 100 / outcomes.length).round();
+    final deletedPct = 100 - keptPct;
     return [
       Padding(
         padding: const EdgeInsets.only(top: 10),
@@ -2086,9 +2097,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               Text(
                 'Post-hoc analysis: $withBoxes of ${outcomes.length} analyzed '
                 'photos contain a detection (green boxes in the viewer). '
-                'Keeping detections + neighbours within '
-                '${_postGapSeconds.toStringAsFixed(1)} s — photos marked with '
-                'a red ✕ below have no detection nearby and can be deleted.',
+                'Keep window ${formatKeepWindow(_postGapSeconds)} (set on the '
+                'analysis screen): $kept kept ($keptPct%), $deleted to delete '
+                '($deletedPct%). Photos marked with a red ✕ below have no '
+                'detection nearby; photos kept only because of a nearby '
+                'detection say so under the image.',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -2437,12 +2450,19 @@ class _PhotoViewer extends StatefulWidget {
   /// deleting.
   final Set<String> deleteMarked;
 
+  /// WHY each kept photo is kept (round 138): photos without an own detection
+  /// that survive only via a nearby detection / their pair member get a chip
+  /// + an info row naming the decisive photo, so "kept but no box" is never
+  /// confusing.
+  final Map<String, KeepDecision> keepDecisions;
+
   const _PhotoViewer({
     required this.photos,
     required this.onZoomChanged,
     this.location,
     this.postBoxes = const {},
     this.deleteMarked = const {},
+    this.keepDecisions = const {},
   });
 
   @override
@@ -2649,6 +2669,19 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// deletion-mark maps, which are per file (both pair members are analyzed).
   String _shownNameFor(_PhotoSample p) =>
       _showLive && p.liveFile != null ? (p.liveName ?? p.name) : p.name;
+
+  /// Chip text for a photo kept WITHOUT an own detection (round 138), or null
+  /// when no chip is needed (own detection, or not analyzed at all).
+  String? _keptChipTextFor(_PhotoSample p) {
+    final d = widget.keepDecisions[_shownNameFor(p)];
+    if (d == null) return null;
+    return switch (d.reason) {
+      KeepReason.detected => null,
+      KeepReason.bridged => 'kept — detection ${formatKeepDelta(d.deltaMs!)}',
+      KeepReason.pair => 'kept — pair photo has the detection',
+      KeepReason.failed => 'kept — analysis failed',
+    };
+  }
 
   /// True when the CURRENT page is really showing its live companion (the
   /// toggle may be on while this photo has none — e.g. a fast-path photo).
@@ -3120,7 +3153,42 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                             ),
                                           ),
                                         ),
-                                      ],
+                                      ]
+                                      // Kept WITHOUT an own detection (round
+                                      // 138) — say why right on the image, so
+                                      // "no box but not marked" is clear.
+                                      else if (_keptChipTextFor(p)
+                                          case final chip?)
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          bottom: 8,
+                                          child: IgnorePointer(
+                                            child: Center(
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber
+                                                      .withValues(alpha: 0.55),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  chip,
+                                                  style: const TextStyle(
+                                                    color: Colors.black,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -3351,6 +3419,24 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           _infoRow('Confidence', conf),
           _infoRow('Captured', _formatStamp(p.captureMs)),
           _infoRow('File', liveShown ? p.liveName! : p.name),
+          // Post-hoc cleanup verdict for the shown file (round 138): a photo
+          // kept without an own detection names the photo that saved it.
+          if (widget.keepDecisions[_shownNameFor(p)] case final d?) ...[
+            if (d.reason == KeepReason.bridged)
+              _infoRow(
+                'Kept',
+                'decisive detection ${formatKeepDelta(d.deltaMs!)} '
+                    'in ${d.decisiveName}',
+              ),
+            if (d.reason == KeepReason.pair)
+              _infoRow('Kept', 'pair photo ${d.decisiveName} has the detection'),
+            if (d.reason == KeepReason.failed)
+              _infoRow('Kept', 'analysis failed on this photo — kept to be safe'),
+          ] else if (widget.deleteMarked.contains(_shownNameFor(p)))
+            _infoRow(
+              'Cleanup',
+              'marked for deletion — no detection within the keep window',
+            ),
           // Lag of the image ON SCREEN behind the trigger moment (round
           // 112: each view states only its OWN delay — showing the high-res
           // photo's lag under the live crop read as if the live crop were late).

@@ -121,6 +121,64 @@ void main() {
     expect(pairBase('roi_a.jpg'), 'roi_a.jpg');
   });
 
+  group('keepDecisions (round 138: keep reasons for the review UI)', () {
+    test('bridged photos name the NEAREST decisive detection, signed delta',
+        () {
+      final decisions = keepDecisions([
+        o('hit_early.jpg', 0, true),
+        o('miss.jpg', 1500, false), // 1.5 s after early hit, 2.5 s before late
+        o('hit_late.jpg', 4000, true),
+      ], 3000);
+      final d = decisions['miss.jpg']!;
+      expect(d.reason, KeepReason.bridged);
+      expect(d.decisiveName, 'hit_early.jpg');
+      expect(d.deltaMs, -1500); // decisive detection is EARLIER
+    });
+
+    test('prefers the closer detection when both sides are in the window', () {
+      final decisions = keepDecisions([
+        o('hit_early.jpg', 0, true),
+        o('miss.jpg', 2600, false),
+        o('hit_late.jpg', 4000, true), // 1.4 s away vs 2.6 s
+      ], 3000);
+      final d = decisions['miss.jpg']!;
+      expect(d.decisiveName, 'hit_late.jpg');
+      expect(d.deltaMs, 1400); // decisive detection is LATER
+    });
+
+    test('pair members kept via sibling carry the sibling name', () {
+      final decisions = keepDecisions([
+        o('roi_a.jpg', 0, false),
+        o('roi_a_live.jpg', 0, true),
+      ], 0);
+      expect(decisions['roi_a_live.jpg']!.reason, KeepReason.detected);
+      final d = decisions['roi_a.jpg']!;
+      expect(d.reason, KeepReason.pair);
+      expect(d.decisiveName, 'roi_a_live.jpg');
+    });
+
+    test('deleted photos are simply absent from the map', () {
+      final decisions = keepDecisions([
+        o('hit.jpg', 0, true),
+        o('far.jpg', 60000, false),
+      ], 2000);
+      expect(decisions.containsKey('far.jpg'), isFalse);
+      expect(keepNames([o('hit.jpg', 0, true), o('far.jpg', 60000, false)], 2000),
+          {'hit.jpg'});
+    });
+  });
+
+  test('formatKeepWindow / formatKeepDelta', () {
+    expect(formatKeepWindow(2), '2 s');
+    expect(formatKeepWindow(2.5), '2.5 s');
+    expect(formatKeepWindow(90), '90 s');
+    expect(formatKeepWindow(300), '5 min');
+    expect(formatKeepWindow(3600), '1 h');
+    expect(formatKeepDelta(3000), '3 s later');
+    expect(formatKeepDelta(-90000), '90 s earlier');
+    expect(formatKeepDelta(-120000), '2 min earlier');
+  });
+
   group('planCleanup + runCleanup', () {
     late Directory sessionDir;
 

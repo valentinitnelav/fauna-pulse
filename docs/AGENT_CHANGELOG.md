@@ -5039,3 +5039,11 @@ Owner feedback on r136: pairs should be analyzed on both members ("_live" compan
 - **Analysis screen**: body wrapped in SafeArea + bottom padding 32 — the closing hint text sat under the system gesture bar and could never scroll into view (owner-reported on the Xiaomi).
 - **Tests**: pair-selection expectations updated; new pair-keep, boxes-parse, `pairBase` tests. Suite 320 passing; analyze clean; debug APK builds.
 
+## Round 138 (2026-07-22): typed keep-window input + keep-reason marks in the review
+
+- **Keep window is now a typed input**, not a slider: the analysis screen reuses `DurationSettingField` (r97 unit-aware number field) — type the number, pick s/min (h also available), stored as seconds in `analysis_keep_gap`, validated 0 s–60 min. Rationale: users may need windows far beyond the old 10 s slider max.
+- **Live kept/deleted percentages**: analysis screen + summary post-hoc panel now show "$kept kept (P%), $deleted deleted (Q%)" recomputed on every input change. P is rounded, Q = 100 − P (complement, never two independent roundings), so they always sum to 100 without misrepresenting.
+- **Keep reasons surfaced (photo_keep.dart)**: new `keepDecisions(outcomes, gapMs)` → `Map<name, KeepDecision{reason: detected|failed|bridged|pair, decisiveName, deltaMs}>` is now THE single source of the keep rule (`keepNames` wraps it). Bridged photos name the NEAREST decisive detection with a signed delta; pair-kept photos name the decisive sibling. New `formatKeepWindow`/`formatKeepDelta` helpers ("2 s", "5 min", "3 s later").
+- **Photos tab clarity (r138 UI)**: a kept photo WITHOUT an own detection now shows an amber chip on the image — "kept — detection 3 s later" / "kept — pair photo has the detection" / "kept — analysis failed" — and the info panel gains a "Kept" row naming the decisive photo file (e.g. "decisive detection 3 s later in roi_xxxx_….jpg"). Delete-marked photos get a "Cleanup: marked for deletion" info row. Red-✕ and amber chips are mutually exclusive by construction.
+- Tests: keepDecisions (nearest/signed delta, closer-side preference, pair decisive name, absence = delete) + format helpers. Suite 325 passing; analyze clean; debug APK builds.
+

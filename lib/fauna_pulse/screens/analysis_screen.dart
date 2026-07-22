@@ -28,6 +28,7 @@ import '../models/model_catalog.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart';
+import '../widgets/duration_setting_field.dart';
 import 'session_summary_screen.dart';
 
 /// One analyzable session folder: its name, folder, how many photos it holds
@@ -536,6 +537,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final keep = keepNames(outcomes, (_keepGap * 1000).round());
     final plan = planCleanup(session.dir, outcomes, keep);
     final withBoxes = outcomes.where((o) => o.hasBoxes == true).length;
+    final kept = keep.length;
+    final deleted = outcomes.length - kept;
+    // Integer percents that provably sum to 100: one is rounded, the other
+    // is its complement (never two independent roundings).
+    final keptPct = outcomes.isEmpty ? 0 : (kept * 100 / outcomes.length).round();
+    final deletedPct = 100 - keptPct;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -546,28 +553,26 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         const SizedBox(height: 6),
         Text(
           'Of ${outcomes.length} analyzed photos, $withBoxes contain a '
-          'detection; keeping those plus neighbours within '
-          '${_keepGap.toStringAsFixed(1)} s = ${plan.keepCount} photos kept.',
+          'detection. With a ${formatKeepWindow(_keepGap)} keep window: '
+          '$kept kept ($keptPct%), $deleted deleted ($deletedPct%).',
           style: const TextStyle(fontSize: 13),
         ),
-        Slider(
-          value: _keepGap,
-          min: 0,
-          max: 10,
-          divisions: 20,
-          label: '${_keepGap.toStringAsFixed(1)} s',
-          onChanged: _cleanupBusy
-              ? null
-              : (v) => setState(() => _keepGap = v),
-          onChangeEnd: (v) async {
+        const SizedBox(height: 8),
+        DurationSettingField(
+          label: 'Keep window around a detection',
+          valueSeconds: _keepGap,
+          minSeconds: 0,
+          maxSeconds: 3600,
+          helperText:
+              'Photos within this time of a detection are kept too — bridges '
+              'photos where the detector missed an insect that is still '
+              'there. Up to 60 minutes; type the number, pick s/min.',
+          onChanged: (v) async {
+            if (_cleanupBusy) return;
+            setState(() => _keepGap = v);
             final prefs = await SharedPreferences.getInstance();
             await prefs.setDouble(_prefKeepGap, v);
           },
-        ),
-        const Text(
-          'Keep neighbours within this many seconds of a detection — bridges '
-          'photos where the detector missed an insect that is still there.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
         const SizedBox(height: 10),
         // Review before deleting: the summary's Photos tab draws the post-hoc

@@ -90,36 +90,81 @@ List<PhotoOutcome> photoOutcomesFromJsonl(String jsonlContent) {
   return latest.values.toList()..sort((a, b) => a.name.compareTo(b.name));
 }
 
-/// The photo names to KEEP: detections, their time-neighbours within
-/// [gapMs] milliseconds, and failed analyses (see the file comment).
-Set<String> keepNames(List<PhotoOutcome> outcomes, int gapMs) {
-  final keep = <String>{};
-  final detectedTimes = <int>[];
+/// Why a photo is kept (round 138 — surfaced in the summary's Photos tab so
+/// a kept photo without a visible box is not confusing).
+enum KeepReason {
+  /// The photo has at least one detection of its own.
+  detected,
+
+  /// Its analysis failed — "no result" is not "no insect".
+  failed,
+
+  /// No own detection, but a detected photo lies within the keep window.
+  bridged,
+
+  /// Kept because the other member of its high-res/`_live` pair is kept.
+  pair,
+}
+
+/// One kept photo's decision. For [KeepReason.bridged], [decisiveName] is the
+/// detected photo that saved this one and [deltaMs] the signed time distance
+/// (positive = that detection is LATER than this photo). For
+/// [KeepReason.pair], [decisiveName] is the decisive sibling.
+class KeepDecision {
+  final KeepReason reason;
+  final String? decisiveName;
+  final int? deltaMs;
+  const KeepDecision(this.reason, [this.decisiveName, this.deltaMs]);
+}
+
+/// Decides, for every photo of [outcomes], whether it is kept and WHY.
+/// Photos absent from the returned map are delete candidates. This is the
+/// single source of the keep rule; [keepNames] wraps it.
+Map<String, KeepDecision> keepDecisions(
+  List<PhotoOutcome> outcomes,
+  int gapMs,
+) {
+  final decisions = <String, KeepDecision>{};
+  // Detected photos, sorted by time, for the neighbour search.
+  final detected = <(int, String)>[];
   for (final o in outcomes) {
-    if (o.hasBoxes == null || o.hasBoxes == true) keep.add(o.name);
-    if (o.hasBoxes == true && o.capturedAtMs != null) {
-      detectedTimes.add(o.capturedAtMs!);
+    if (o.hasBoxes == true) {
+      decisions[o.name] = const KeepDecision(KeepReason.detected);
+      if (o.capturedAtMs != null) detected.add((o.capturedAtMs!, o.name));
+    } else if (o.hasBoxes == null) {
+      decisions[o.name] = const KeepDecision(KeepReason.failed);
     }
   }
-  if (detectedTimes.isNotEmpty && gapMs > 0) {
-    detectedTimes.sort();
+  if (detected.isNotEmpty && gapMs > 0) {
+    detected.sort((a, b) => a.$1.compareTo(b.$1));
     for (final o in outcomes) {
       final t = o.capturedAtMs;
-      if (t == null || keep.contains(o.name)) continue;
+      if (t == null || decisions.containsKey(o.name)) continue;
       // Binary search for the nearest detection time around t.
-      var lo = 0, hi = detectedTimes.length;
+      var lo = 0, hi = detected.length;
       while (lo < hi) {
         final mid = (lo + hi) >> 1;
-        if (detectedTimes[mid] < t) {
+        if (detected[mid].$1 < t) {
           lo = mid + 1;
         } else {
           hi = mid;
         }
       }
-      final nearBefore = lo > 0 && t - detectedTimes[lo - 1] <= gapMs;
-      final nearAfter =
-          lo < detectedTimes.length && detectedTimes[lo] - t <= gapMs;
-      if (nearBefore || nearAfter) keep.add(o.name);
+      (int, String)? best;
+      if (lo > 0 && t - detected[lo - 1].$1 <= gapMs) best = detected[lo - 1];
+      if (lo < detected.length && detected[lo].$1 - t <= gapMs) {
+        final after = detected[lo];
+        if (best == null || (after.$1 - t).abs() < (t - best.$1).abs()) {
+          best = after;
+        }
+      }
+      if (best != null) {
+        decisions[o.name] = KeepDecision(
+          KeepReason.bridged,
+          best.$2,
+          best.$1 - t,
+        );
+      }
     }
   }
   // Pair rule (round 137): a high-res photo and its `_live` companion stand
@@ -128,11 +173,41 @@ Set<String> keepNames(List<PhotoOutcome> outcomes, int gapMs) {
   for (final o in outcomes) {
     byBase.putIfAbsent(pairBase(o.name), () => []).add(o.name);
   }
-  for (final name in keep.toList()) {
-    final siblings = byBase[pairBase(name)];
-    if (siblings != null) keep.addAll(siblings);
+  for (final name in decisions.keys.toList()) {
+    for (final sibling in byBase[pairBase(name)] ?? const <String>[]) {
+      decisions.putIfAbsent(
+        sibling,
+        () => KeepDecision(KeepReason.pair, name),
+      );
+    }
   }
-  return keep;
+  return decisions;
+}
+
+/// The photo names to KEEP — see [keepDecisions] for the rule.
+Set<String> keepNames(List<PhotoOutcome> outcomes, int gapMs) =>
+    keepDecisions(outcomes, gapMs).keys.toSet();
+
+/// Human-readable keep window, e.g. "2 s", "2.5 s", "5 min", "1 h".
+String formatKeepWindow(double seconds) {
+  if (seconds >= 3600 && seconds % 3600 == 0) {
+    return '${(seconds / 3600).round()} h';
+  }
+  if (seconds >= 60 && seconds % 60 == 0) {
+    return '${(seconds / 60).round()} min';
+  }
+  final s = seconds == seconds.roundToDouble()
+      ? '${seconds.round()}'
+      : seconds.toStringAsFixed(1);
+  return '$s s';
+}
+
+/// Human-readable signed distance to the decisive detection, e.g.
+/// "3 s later", "1.5 min earlier" (positive [deltaMs] = detection later).
+String formatKeepDelta(int deltaMs) {
+  final side = deltaMs >= 0 ? 'later' : 'earlier';
+  final s = deltaMs.abs() / 1000;
+  return '${formatKeepWindow(s)} $side';
 }
 
 /// What a cleanup preview / run affects.
