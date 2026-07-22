@@ -2835,6 +2835,19 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                         _fileFor(p),
                                         fit: BoxFit.contain,
                                         gaplessPlayback: true,
+                                        // The analysis screen's photo cleanup
+                                        // (round 136) can delete photos the
+                                        // log still references — show a plain
+                                        // note instead of an error box.
+                                        errorBuilder: (_, _, _) => const Center(
+                                          child: Text(
+                                            'Photo deleted\n(analysis cleanup)',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: Colors.white54,
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                       if (_showBoxes)
                                         Positioned.fill(

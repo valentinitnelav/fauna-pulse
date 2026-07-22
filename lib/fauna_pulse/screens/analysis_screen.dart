@@ -12,6 +12,7 @@
 // holds a wakelock (keeps the screen on) for the duration; long runs are best
 // done indoors with the phone charging.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -22,19 +23,37 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../logging/device_storage.dart';
 import '../models/model_catalog.dart';
 import '../models/session_config.dart';
+import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart';
 
 /// One analyzable session folder: its name, folder, how many photos it holds
-/// (companion `_live.jpg` duplicates already excluded) and how many of those
-/// an earlier run has already processed.
+/// (companion `_live.jpg` duplicates already excluded), how many of those an
+/// earlier run has already processed, and how the session captured its photos
+/// ([live] — AI-free motion/time-lapse sessions are this screen's real target).
 class _AnalyzableSession {
   final String name;
   final Directory dir;
   final int photoCount;
   final int doneCount;
-  const _AnalyzableSession(this.name, this.dir, this.photoCount, this.doneCount);
+  final LiveSessionInfo? live;
+  const _AnalyzableSession(
+    this.name,
+    this.dir,
+    this.photoCount,
+    this.doneCount,
+    this.live,
+  );
+
+  /// Short capture-mode tag for the session dropdown.
+  String get modeTag => switch (live?.captureTrigger) {
+    'motion' => 'motion',
+    'timelapse' => 'time-lapse',
+    'detector' => 'AI live',
+    _ => '?',
+  };
 }
 
 class AnalysisScreen extends StatefulWidget {
@@ -53,6 +72,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   static const _prefModel = 'analysis_model';
   static const _prefConf = 'analysis_confidence';
   static const _prefIou = 'analysis_iou';
+  static const _prefKeepGap = 'analysis_keep_gap';
 
   bool _loading = true;
   List<_AnalyzableSession> _sessions = const [];
@@ -61,6 +81,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   ModelEntry? _model;
   double _confidence = 0.25;
   double _iou = 0.7;
+
+  /// Cleanup: "keep neighbours within this many seconds of a detection".
+  double _keepGap = 2.0;
+  List<PhotoOutcome>? _outcomes;
+  bool _cleanupBusy = false;
 
   // Run state. [_cancelRequested] is polled between photos by the driver.
   bool _running = false;
@@ -94,6 +119,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _models = models;
       _confidence = prefs.getDouble(_prefConf) ?? 0.25;
       _iou = prefs.getDouble(_prefIou) ?? 0.7;
+      _keepGap = prefs.getDouble(_prefKeepGap) ?? 2.0;
       _model = models.where((m) => m.id == savedModel).firstOrNull ??
           models.firstOrNull;
       _session = widget.initialSessionPath != null
@@ -103,6 +129,35 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           : null;
       _loading = false;
     });
+    _loadOutcomes();
+  }
+
+  /// (Re)parses the selected session's post_detections.jsonl so the cleanup
+  /// section can size keep/delete counts. Null when there are no results yet.
+  Future<void> _loadOutcomes() async {
+    final session = _session;
+    if (session == null || session.doneCount == 0) {
+      setState(() => _outcomes = null);
+      return;
+    }
+    List<PhotoOutcome>? outcomes;
+    try {
+      final f = File('${session.dir.path}/${PostDetector.outputFileName}');
+      if (f.existsSync()) {
+        // Only photos still on disk count — a previous cleanup's deleted
+        // photos keep their records but must not skew the numbers.
+        outcomes = photoOutcomesFromJsonl(await f.readAsString())
+            .where(
+              (o) => File(
+                '${session.dir.path}/roi_frames/${o.name}',
+              ).existsSync(),
+            )
+            .toList();
+      }
+    } catch (e) {
+      logSwallowed('analysis_outcomes_load', e);
+    }
+    if (mounted) setState(() => _outcomes = outcomes);
   }
 
   /// Same sessions folder the home screen lists, but with photo counts.
@@ -132,12 +187,28 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         final done = outFile.existsSync()
             ? processedNamesFromJsonl(await outFile.readAsString())
             : const <String>{};
+        // The start record's config says how the photos were triggered and
+        // which model the session had — only the log's head is read (cheap),
+        // same trick as the home list.
+        LiveSessionInfo? live;
+        try {
+          final raf = File('${entity.path}/session.jsonl').openSync();
+          final head = utf8.decode(
+            raf.readSync(8192),
+            allowMalformed: true,
+          );
+          raf.closeSync();
+          live = liveSessionInfoFromLogHead(head);
+        } catch (e) {
+          logSwallowed('analysis_session_head', e);
+        }
         found.add(
           _AnalyzableSession(
             entity.path.split('/').last,
             entity,
             photos.length,
             photos.where(done.contains).length,
+            live,
           ),
         );
       }
@@ -241,6 +312,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             .where((s) => s.dir.path == session.dir.path)
             .firstOrNull;
       });
+      await _loadOutcomes();
     }
   }
 
@@ -271,6 +343,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ),
                 const SizedBox(height: 16),
                 _sessionPicker(),
+                if (_detectorSessionNotice() case final notice?) ...[
+                  const SizedBox(height: 10),
+                  notice,
+                ],
                 const SizedBox(height: 12),
                 _modelPicker(),
                 const SizedBox(height: 12),
@@ -288,6 +364,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ),
                 const SizedBox(height: 16),
                 if (_running) _progressPanel() else _startButton(),
+                if (!_running && _outcomes != null) ...[
+                  const SizedBox(height: 20),
+                  _cleanupSection(),
+                ],
                 const SizedBox(height: 12),
                 const Text(
                   'Long runs: keep the phone charging and set it aside — '
@@ -319,13 +399,42 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           DropdownMenuItem(
             value: s,
             child: Text(
-              '${s.name} — ${s.photoCount} photos'
+              '${s.name} [${s.modeTag}] — ${s.photoCount} photos'
               '${s.doneCount > 0 ? ' (${s.doneCount} analyzed)' : ''}',
               overflow: TextOverflow.ellipsis,
             ),
           ),
       ],
-      onChanged: _running ? null : (s) => setState(() => _session = s),
+      onChanged: _running
+          ? null
+          : (s) {
+              setState(() => _session = s);
+              _loadOutcomes();
+            },
+    );
+  }
+
+  /// Shown for sessions that already ran the detector live: re-analysis with
+  /// the SAME model would only repeat what the session did, and better models
+  /// are easier to run on a computer after copying the photos over USB.
+  Widget? _detectorSessionNotice() {
+    final live = _session?.live;
+    if (live == null || !live.usedDetectorLive) return null;
+    final sameModel = _model != null && _model!.id == live.modelPath;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'This session already ran AI live (model: '
+        '${(live.modelPath ?? 'unknown').split('/').last}). Analyzing saved '
+        'photos mainly helps motion / time-lapse sessions, where no AI ran '
+        'during capture.'
+        '${sameModel ? '\n\nRe-analysis with the SAME model is disabled — it would only repeat the live result. Pick a different model, or copy the photos to a computer for heavier processing.' : ''}',
+        style: const TextStyle(fontSize: 12.5, color: Colors.white70),
+      ),
     );
   }
 
@@ -380,11 +489,19 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         ? 0
         : session.photoCount - session.doneCount;
     final nothingToDo = session != null && pending == 0;
+    // An AI-live session must not be re-run with the very model it already
+    // used — that can only reproduce the live result.
+    final sameModelAsLive =
+        session != null &&
+        (session.live?.usedDetectorLive ?? false) &&
+        _model != null &&
+        _model!.id == session.live!.modelPath;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: (session == null || _model == null || nothingToDo)
+          onPressed:
+              (session == null || _model == null || nothingToDo || sameModelAsLive)
               ? null
               : _start,
           icon: const Icon(Icons.play_arrow),
@@ -393,11 +510,130 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ? 'Pick a session to analyze'
                 : nothingToDo
                 ? 'All photos already analyzed'
+                : sameModelAsLive
+                ? 'Same model as the live session — pick another'
                 : 'Analyze $pending photos',
           ),
         ),
       ],
     );
+  }
+
+  /// Storage triage over the analysis results: keep photos with a detection
+  /// (plus their close-in-time neighbours — a missed detection between two
+  /// hits is most likely the same insect) and offer to delete the rest.
+  Widget _cleanupSection() {
+    final session = _session;
+    final outcomes = _outcomes;
+    if (session == null || outcomes == null || outcomes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final keep = keepNames(outcomes, (_keepGap * 1000).round());
+    final plan = planCleanup(session.dir, outcomes, keep);
+    final withBoxes = outcomes.where((o) => o.hasBoxes == true).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Photo cleanup',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Of ${outcomes.length} analyzed photos, $withBoxes contain a '
+          'detection; keeping those plus neighbours within '
+          '${_keepGap.toStringAsFixed(1)} s = ${plan.keepCount} photos kept.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        Slider(
+          value: _keepGap,
+          min: 0,
+          max: 10,
+          divisions: 20,
+          label: '${_keepGap.toStringAsFixed(1)} s',
+          onChanged: _cleanupBusy
+              ? null
+              : (v) => setState(() => _keepGap = v),
+          onChangeEnd: (v) async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setDouble(_prefKeepGap, v);
+          },
+        ),
+        const Text(
+          'Keep neighbours within this many seconds of a detection — bridges '
+          'photos where the detector missed an insect that is still there.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade300),
+          onPressed: (plan.deleteNames.isEmpty || _cleanupBusy)
+              ? null
+              : () => _confirmCleanup(session, plan),
+          icon: const Icon(Icons.delete_outline),
+          label: Text(
+            plan.deleteNames.isEmpty
+                ? 'Nothing to delete'
+                : 'Delete ${plan.deleteNames.length} photos '
+                      '(${formatBytes(plan.deleteBytes)})…',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmCleanup(
+    _AnalyzableSession session,
+    CleanupPlan plan,
+  ) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete photos without detections?'),
+        content: Text(
+          'This permanently deletes ${plan.deleteNames.length} photos '
+          '(${formatBytes(plan.deleteBytes)}) from "${session.name}" — the '
+          'ones with no detection and no detection nearby. '
+          '${plan.keepCount} photos stay. The session log keeps its records; '
+          'this cannot be undone.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Delete ${plan.deleteNames.length}',
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _cleanupBusy = true);
+    final deleted = await runCleanup(session.dir, plan, gapSeconds: _keepGap);
+    if (!mounted) return;
+    setState(() => _cleanupBusy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Deleted $deleted photos.')),
+    );
+    // Photo counts changed; rescan and re-derive the cleanup numbers.
+    final sessions = await _scanSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+      _session = sessions
+          .where((s) => s.dir.path == session.dir.path)
+          .firstOrNull;
+    });
+    await _loadOutcomes();
   }
 
   Widget _progressPanel() {
