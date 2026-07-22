@@ -176,12 +176,17 @@ class PostRunConfig {
   final double iou;
   final bool useGpu;
 
+  /// Tiling parameters of a SAHI run (round 139, `SahiOptions.toJson`), or
+  /// null for a plain run. Echoed into the header record only.
+  final Map<String, dynamic>? sahi;
+
   const PostRunConfig({
     required this.modelPath,
     required this.modelName,
     required this.confidence,
     required this.iou,
     required this.useGpu,
+    this.sahi,
   });
 }
 
@@ -194,7 +199,10 @@ class PostDetector {
 
   PostDetector({required this.predict});
 
-  /// Processes every not-yet-processed photo of [sessionDir]'s `roi_frames/`.
+  /// Processes every not-yet-processed photo of [sessionDir]'s `roi_frames/`
+  /// — or EVERY photo when [force] is set (round 139: re-analyze with a
+  /// different model or tiling settings; `photoOutcomesFromJsonl` takes the
+  /// last record per photo, so the newest run wins everywhere downstream).
   ///
   /// Calls [onProgress] after every photo; checks [isCancelled] between photos
   /// so a cancel takes effect within one inference. Never throws for a single
@@ -205,6 +213,7 @@ class PostDetector {
     PostProgressFn? onProgress,
     bool Function()? isCancelled,
     String appVersion = '',
+    bool force = false,
   }) async {
     final started = DateTime.now();
     final framesDir = Directory('${sessionDir.path}/roi_frames');
@@ -222,7 +231,9 @@ class PostDetector {
     final done = outFile.existsSync()
         ? processedNamesFromJsonl(await outFile.readAsString())
         : <String>{};
-    final pending = candidates.where((n) => !done.contains(n)).toList();
+    final pending = force
+        ? candidates
+        : candidates.where((n) => !done.contains(n)).toList();
 
     final sink = outFile.openWrite(mode: FileMode.append);
     void writeRecord(Map<String, dynamic> record) {
@@ -246,6 +257,8 @@ class PostDetector {
       'use_gpu': config.useGpu,
       'photos_total': candidates.length,
       'photos_pending': pending.length,
+      if (force) 'reanalyzed_all': true,
+      if (config.sahi != null) 'sahi': config.sahi,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
@@ -291,11 +304,12 @@ class PostDetector {
       );
     }
 
+    final skippedDone = force ? 0 : done.length;
     writeRecord({
       '_type': 'post_end',
       'processed': processed,
       'failed': failed,
-      'skipped_done': done.length,
+      'skipped_done': skippedDone,
       'ended_normally': !cancelled,
       if (cancelled) 'reason': 'cancelled',
     });
@@ -305,7 +319,7 @@ class PostDetector {
     return PostRunResult(
       processed: processed,
       failed: failed,
-      skippedDone: done.length,
+      skippedDone: skippedDone,
       elapsed: DateTime.now().difference(started),
       cancelled: cancelled,
     );

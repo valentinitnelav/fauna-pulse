@@ -14,6 +14,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -22,13 +23,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../capture/roi_capture.dart' show probeJpegSize;
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../models/model_catalog.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart';
+import '../postprocess/sahi.dart';
 import '../widgets/duration_setting_field.dart';
+import '../widgets/numeric_setting_field.dart';
 import 'session_summary_screen.dart';
 
 /// One analyzable session folder: its name, folder, how many photos it holds
@@ -75,6 +79,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   static const _prefConf = 'analysis_confidence';
   static const _prefIou = 'analysis_iou';
   static const _prefKeepGap = 'analysis_keep_gap';
+  static const _prefSahiEnabled = 'analysis_sahi_enabled';
+  static const _prefSahiTilePx = 'analysis_sahi_tile_px';
+  static const _prefSahiOverlapPct = 'analysis_sahi_overlap_pct';
+  static const _prefSahiFullPass = 'analysis_sahi_full_pass';
+  static const _prefSahiMergeIou = 'analysis_sahi_merge_iou';
 
   bool _loading = true;
   List<_AnalyzableSession> _sessions = const [];
@@ -88,6 +97,22 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   double _keepGap = 2.0;
   List<PhotoOutcome>? _outcomes;
   bool _cleanupBusy = false;
+
+  // SAHI tiling (round 139) — all persisted except the per-run force flag.
+  bool _sahiEnabled = false;
+  int _sahiTilePx = 0; // 0 = auto (the model's own input size)
+  double _sahiOverlapPct = 25;
+  bool _sahiFullPass = true;
+  double _sahiMergeIou = 0.5;
+
+  /// Per-run choice (deliberately not persisted): process photos that were
+  /// already analyzed, so a session can be re-run with a different model or
+  /// tiling settings — the newest record per photo wins downstream.
+  bool _forceReanalyze = false;
+
+  /// First-photo pixel size of the selected session (cached per folder) —
+  /// feeds the tiling preview ("2×2 tiles + full frame = 5 passes").
+  final Map<String, (int, int)?> _photoDimsCache = {};
 
   // Run state. [_cancelRequested] is polled between photos by the driver.
   bool _running = false;
@@ -122,6 +147,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _confidence = prefs.getDouble(_prefConf) ?? 0.25;
       _iou = prefs.getDouble(_prefIou) ?? 0.7;
       _keepGap = prefs.getDouble(_prefKeepGap) ?? 2.0;
+      _sahiEnabled = prefs.getBool(_prefSahiEnabled) ?? false;
+      _sahiTilePx = prefs.getInt(_prefSahiTilePx) ?? 0;
+      _sahiOverlapPct = prefs.getDouble(_prefSahiOverlapPct) ?? 25;
+      _sahiFullPass = prefs.getBool(_prefSahiFullPass) ?? true;
+      _sahiMergeIou = prefs.getDouble(_prefSahiMergeIou) ?? 0.5;
       _model = models.where((m) => m.id == savedModel).firstOrNull ??
           models.firstOrNull;
       _session = widget.initialSessionPath != null
@@ -132,7 +162,48 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _loading = false;
     });
     _loadOutcomes();
+    _loadPhotoDims();
   }
+
+  /// Reads the selected session's first photo size (background isolate; the
+  /// result is cached per folder) for the tiling preview line.
+  Future<void> _loadPhotoDims() async {
+    final session = _session;
+    if (session == null || _photoDimsCache.containsKey(session.dir.path)) {
+      if (mounted) setState(() {});
+      return;
+    }
+    (int, int)? dims;
+    try {
+      final framesDir = Directory('${session.dir.path}/roi_frames');
+      final first = framesDir.existsSync()
+          ? framesDir
+                .listSync()
+                .whereType<File>()
+                .where((f) => f.path.toLowerCase().endsWith('.jpg'))
+                .fold<File?>(
+                  null,
+                  (best, f) =>
+                      best == null || f.path.compareTo(best.path) < 0 ? f : best,
+                )
+          : null;
+      if (first != null) {
+        dims = await probeJpegSize(await first.readAsBytes());
+      }
+    } catch (e) {
+      logSwallowed('analysis_photo_dims', e);
+    }
+    _photoDimsCache[session.dir.path] = dims;
+    if (mounted) setState(() {});
+  }
+
+  SahiOptions get _sahiOptions => SahiOptions(
+    enabled: _sahiEnabled,
+    tileSidePx: _sahiTilePx,
+    overlapFrac: _sahiOverlapPct / 100,
+    fullImagePass: _sahiFullPass,
+    mergeIou: _sahiMergeIou,
+  );
 
   /// (Re)parses the selected session's post_detections.jsonl so the cleanup
   /// section can size keep/delete counts. Null when there are no results yet.
@@ -242,7 +313,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _running = true;
       _cancelRequested = false;
       _done = 0;
-      _total = session.photoCount - session.doneCount;
+      _total = _forceReanalyze
+          ? session.photoCount
+          : session.photoCount - session.doneCount;
       _avgMs = 0;
     });
     await WakelockPlus.enable();
@@ -256,12 +329,19 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     try {
       await yolo.loadModel();
       final info = await PackageInfo.fromPlatform();
+      Future<Map<String, dynamic>> base(Uint8List bytes) =>
+          yolo.predict(bytes, confidenceThreshold: _confidence, iouThreshold: _iou);
+      // SAHI (round 139): tiling is a pure wrapper around the plain
+      // predictor — the driver and all downstream logic see merged boxes.
+      final modelInputPx = model.inputSize ?? 640;
       final detector = PostDetector(
-        predict: (bytes) => yolo.predict(
-          bytes,
-          confidenceThreshold: _confidence,
-          iouThreshold: _iou,
-        ),
+        predict: _sahiEnabled
+            ? sahiPredictFn(
+                base: base,
+                options: _sahiOptions,
+                modelInputPx: modelInputPx,
+              )
+            : base,
       );
       result = await detector.run(
         session.dir,
@@ -271,7 +351,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           confidence: _confidence,
           iou: _iou,
           useGpu: appConfig.useGpu,
+          sahi: _sahiEnabled ? _sahiOptions.toJson(modelInputPx) : null,
         ),
+        force: _forceReanalyze,
         appVersion: '${info.version}+${info.buildNumber}',
         isCancelled: () => _cancelRequested,
         onProgress: (done, total, avgMs) {
@@ -367,6 +449,27 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   value: _iou,
                   onChanged: (v) => setState(() => _iou = v),
                 ),
+                _sahiSection(),
+                if (_session != null && _session!.doneCount > 0)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: _forceReanalyze,
+                    onChanged: _running
+                        ? null
+                        : (v) =>
+                              setState(() => _forceReanalyze = v ?? false),
+                    title: const Text(
+                      'Re-analyze photos already done',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    subtitle: const Text(
+                      'Run every photo again — for trying another model or '
+                      'tiling settings. The newest result per photo wins.',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 if (_running) _progressPanel() else _startButton(),
                 if (!_running && _outcomes != null) ...[
@@ -416,6 +519,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           : (s) {
               setState(() => _session = s);
               _loadOutcomes();
+              _loadPhotoDims();
             },
     );
   }
@@ -489,10 +593,156 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     );
   }
 
+  /// Advanced tiled-analysis (SAHI) section: master switch + every tiling
+  /// parameter, with a live preview of the grid/cost for the selected
+  /// session's photos. Persisted via `analysis_sahi_*` prefs.
+  Widget _sahiSection() {
+    Future<void> save() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefSahiEnabled, _sahiEnabled);
+      await prefs.setInt(_prefSahiTilePx, _sahiTilePx);
+      await prefs.setDouble(_prefSahiOverlapPct, _sahiOverlapPct);
+      await prefs.setBool(_prefSahiFullPass, _sahiFullPass);
+      await prefs.setDouble(_prefSahiMergeIou, _sahiMergeIou);
+    }
+
+    final modelPx = _model?.inputSize ?? 640;
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text(
+        'Small-insect tiling (SAHI)${_sahiEnabled ? ' — ON' : ''}',
+        style: const TextStyle(fontSize: 14),
+      ),
+      subtitle: const Text(
+        'Cuts each photo into overlapping tiles at model scale so tiny '
+        'insects are not shrunk away. Slower; worth trying when the model '
+        'input is much smaller than the photos.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+      children: [
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          value: _sahiEnabled,
+          onChanged: _running
+              ? null
+              : (v) async {
+                  setState(() => _sahiEnabled = v);
+                  await save();
+                },
+          title: const Text(
+            'Use tiled analysis',
+            style: TextStyle(fontSize: 14),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            _sahiPreviewText(),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+        NumericSettingField(
+          label: 'Tile size',
+          value: _sahiTilePx.toDouble(),
+          min: 0,
+          max: 2048,
+          isInt: true,
+          unitSuffix: 'px',
+          helperText:
+              '0 = automatic: the model\'s own input size (now $modelPx px). '
+              'Larger tiles = fewer passes but more downscaling per tile.',
+          onChanged: (v) async {
+            setState(() => _sahiTilePx = v.round());
+            await save();
+          },
+        ),
+        const SizedBox(height: 8),
+        NumericSettingField(
+          label: 'Tile overlap',
+          value: _sahiOverlapPct,
+          min: 0,
+          max: 50,
+          isInt: true,
+          unitSuffix: '%',
+          helperText:
+              'Neighbouring tiles share this much, so an insect on a tile '
+              'border appears whole in one of them.',
+          onChanged: (v) async {
+            setState(() => _sahiOverlapPct = v);
+            await save();
+          },
+        ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          value: _sahiFullPass,
+          onChanged: _running
+              ? null
+              : (v) async {
+                  setState(() => _sahiFullPass = v);
+                  await save();
+                },
+          title: const Text(
+            'Also run the whole-photo pass',
+            style: TextStyle(fontSize: 14),
+          ),
+          subtitle: const Text(
+            'Catches insects larger than one tile (one extra inference).',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ),
+        NumericSettingField(
+          label: 'Duplicate-merge IoU',
+          value: _sahiMergeIou,
+          min: 0.1,
+          max: 0.9,
+          decimals: 2,
+          helperText:
+              'Overlap level at which boxes from different tiles count as '
+              'the SAME insect and merge. 0.5 is the standard.',
+          onChanged: (v) async {
+            setState(() => _sahiMergeIou = v);
+            await save();
+          },
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// "1024×1024 px photos, 640 px tiles, 25% overlap → 2×2 tiles + full
+  /// frame = 5 passes" — recomputed from the selected session's first photo.
+  String _sahiPreviewText() {
+    final session = _session;
+    final dims = session == null ? null : _photoDimsCache[session.dir.path];
+    final tile = _sahiOptions.effectiveTileSide(_model?.inputSize ?? 640);
+    if (dims == null) {
+      return 'Photo size not read yet — the tile grid adapts to each photo '
+          'automatically.';
+    }
+    final tiles = planTiles(dims.$1, dims.$2, tile, _sahiOverlapPct / 100);
+    if (tiles.length <= 1) {
+      return '${dims.$1}×${dims.$2} px photos fit in one $tile px tile — '
+          'tiling adds nothing here; only the whole-photo pass would run.';
+    }
+    final cols = tiles.map((t) => t.left).toSet().length;
+    final rows = tiles.map((t) => t.top).toSet().length;
+    final passes = tiles.length + (_sahiFullPass ? 1 : 0);
+    return '${dims.$1}×${dims.$2} px photos, $tile px tiles, '
+        '${_sahiOverlapPct.round()}% overlap → $cols×$rows tiles'
+        '${_sahiFullPass ? ' + whole photo' : ''} = $passes passes '
+        '≈ $passes× processing time. Expect a few extra kept photos '
+        '(better recall, slightly more false alarms — the safe direction '
+        'for cleanup).';
+  }
+
   Widget _startButton() {
     final session = _session;
     final pending = session == null
         ? 0
+        : _forceReanalyze
+        ? session.photoCount
         : session.photoCount - session.doneCount;
     final nothingToDo = session != null && pending == 0;
     // An AI-live session must not be re-run with the very model it already
@@ -515,9 +765,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             session == null
                 ? 'Pick a session to analyze'
                 : nothingToDo
-                ? 'All photos already analyzed'
+                ? 'All photos already analyzed (tick re-analyze to redo)'
                 : sameModelAsLive
                 ? 'Same model as the live session — pick another'
+                : _forceReanalyze
+                ? 'Re-analyze $pending photos'
                 : 'Analyze $pending photos',
           ),
         ),
