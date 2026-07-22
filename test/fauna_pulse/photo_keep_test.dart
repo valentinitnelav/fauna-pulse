@@ -57,6 +57,18 @@ void main() {
       ];
       expect(keepNames(outcomes, 5000), {'hit.jpg'});
     });
+
+    test('pair rule: a hit on EITHER member keeps both (round 137)', () {
+      // Companion detected, high-res main missed (or vice versa) — the pair
+      // stands together. An unrelated distant pair is dropped whole.
+      final outcomes = [
+        o('roi_a.jpg', 0, false),
+        o('roi_a_live.jpg', 0, true),
+        o('roi_b.jpg', 60000, false),
+        o('roi_b_live.jpg', 60000, false),
+      ];
+      expect(keepNames(outcomes, 2000), {'roi_a.jpg', 'roi_a_live.jpg'});
+    });
   });
 
   test('photoOutcomesFromJsonl: last record per photo wins, error → null', () {
@@ -87,6 +99,26 @@ void main() {
     expect(outcomes, hasLength(2));
     expect(outcomes.firstWhere((x) => x.name == 'a.jpg').hasBoxes, isFalse);
     expect(outcomes.firstWhere((x) => x.name == 'b.jpg').hasBoxes, isNull);
+  });
+
+  test('photoOutcomesFromJsonl parses boxes for the viewer overlay', () {
+    final content = jsonEncode({
+      'type': 'post_detection',
+      'jpeg': 'a.jpg',
+      'captured_at_ms': 5,
+      'boxes': [
+        {'class_name': 'bee', 'conf': 0.83, 'box': [0.1, 0.2, 0.3, 0.4]},
+      ],
+    });
+    final box = photoOutcomesFromJsonl(content).single.boxes.single;
+    expect(box.className, 'bee');
+    expect(box.confidence, 0.83);
+    expect([box.left, box.top, box.right, box.bottom], [0.1, 0.2, 0.3, 0.4]);
+  });
+
+  test('pairBase strips the _live suffix', () {
+    expect(pairBase('roi_a_live.jpg'), 'roi_a.jpg');
+    expect(pairBase('roi_a.jpg'), 'roi_a.jpg');
   });
 
   group('planCleanup + runCleanup', () {

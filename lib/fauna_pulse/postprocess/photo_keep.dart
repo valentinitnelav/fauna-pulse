@@ -11,7 +11,10 @@
 //     same individual, so the neighbour survives (this simple time rule covers
 //     what a tracker would, without needing one at 1-photo-per-second cadence);
 //   * a photo whose analysis FAILED (unreadable, inference error) is kept —
-//     "no result" is not "no insect".
+//     "no result" is not "no insect";
+//   * a high-res photo and its `_live.jpg` companion count as ONE pair
+//     (round 137): both members are analyzed — the companion is sharper, the
+//     main photo higher-resolution — and a detection on either keeps both.
 //
 // Deletion appends a `post_cleanup` record to post_detections.jsonl so the
 // file stays the audit trail of what happened to the session's photos.
@@ -23,13 +26,27 @@ import '../logging/app_error_hooks.dart';
 import 'post_detector.dart';
 
 /// One photo's analysis outcome, parsed back out of post_detections.jsonl.
-/// [hasBoxes] is null when the record carries an `error` instead of results.
+/// [hasBoxes] is null when the record carries an `error` instead of results;
+/// [boxes] then stays empty. [boxes] carries the actual detections so the
+/// summary's photo viewer can draw them (round 137).
 class PhotoOutcome {
   final String name;
   final int? capturedAtMs;
   final bool? hasBoxes;
-  const PhotoOutcome(this.name, this.capturedAtMs, this.hasBoxes);
+  final List<PostBox> boxes;
+  const PhotoOutcome(
+    this.name,
+    this.capturedAtMs,
+    this.hasBoxes, [
+    this.boxes = const [],
+  ]);
 }
+
+/// The pair key of a photo name: a high-res photo and its `_live.jpg`
+/// companion share one base name and are kept/deleted together.
+String pairBase(String name) => name.endsWith('_live.jpg')
+    ? '${name.substring(0, name.length - '_live.jpg'.length)}.jpg'
+    : name;
 
 /// Parses every `post_detection` record of [jsonlContent]; when a photo was
 /// recorded more than once (a re-run with another model), the LAST record wins.
@@ -41,11 +58,30 @@ List<PhotoOutcome> photoOutcomesFromJsonl(String jsonlContent) {
       final rec = jsonDecode(line) as Map<String, dynamic>;
       if (rec['type'] != 'post_detection' || rec['jpeg'] is! String) continue;
       final name = rec['jpeg'] as String;
-      final boxes = rec['boxes'];
+      final failed = rec['error'] != null;
+      final boxes = <PostBox>[];
+      if (!failed && rec['boxes'] is List) {
+        for (final b in rec['boxes'] as List) {
+          if (b is! Map) continue;
+          final edges = b['box'];
+          if (edges is! List || edges.length != 4) continue;
+          boxes.add(
+            PostBox(
+              className: (b['class_name'] as String?) ?? '',
+              confidence: (b['conf'] as num?)?.toDouble() ?? 0,
+              left: (edges[0] as num).toDouble(),
+              top: (edges[1] as num).toDouble(),
+              right: (edges[2] as num).toDouble(),
+              bottom: (edges[3] as num).toDouble(),
+            ),
+          );
+        }
+      }
       latest[name] = PhotoOutcome(
         name,
         (rec['captured_at_ms'] as num?)?.toInt(),
-        rec['error'] != null ? null : boxes is List && boxes.isNotEmpty,
+        failed ? null : boxes.isNotEmpty,
+        boxes,
       );
     } catch (_) {
       // Truncated lines are expected in an append-only file.
@@ -86,6 +122,16 @@ Set<String> keepNames(List<PhotoOutcome> outcomes, int gapMs) {
       if (nearBefore || nearAfter) keep.add(o.name);
     }
   }
+  // Pair rule (round 137): a high-res photo and its `_live` companion stand
+  // or fall together — a detection on EITHER member keeps both.
+  final byBase = <String, List<String>>{};
+  for (final o in outcomes) {
+    byBase.putIfAbsent(pairBase(o.name), () => []).add(o.name);
+  }
+  for (final name in keep.toList()) {
+    final siblings = byBase[pairBase(name)];
+    if (siblings != null) keep.addAll(siblings);
+  }
   return keep;
 }
 
@@ -111,9 +157,10 @@ CleanupPlan planCleanup(
   Set<String> keep,
 ) {
   final framesPath = '${sessionDir.path}/roi_frames';
-  final deleteNames = <String>[];
+  final deleteNames = <String>{};
   var bytes = 0;
   void addIfExists(String name) {
+    if (deleteNames.contains(name)) return;
     final f = File('$framesPath/$name');
     if (!f.existsSync()) return;
     deleteNames.add(name);
@@ -124,11 +171,13 @@ CleanupPlan planCleanup(
     if (keep.contains(o.name)) continue;
     addIfExists(o.name);
     if (o.name.toLowerCase().endsWith('.jpg') && !o.name.endsWith('_live.jpg')) {
+      // A companion that was never analyzed itself (e.g. results predating
+      // round 137's both-members policy) goes with its unkept main photo.
       addIfExists('${o.name.substring(0, o.name.length - 4)}_live.jpg');
     }
   }
   return CleanupPlan(
-    deleteNames: deleteNames,
+    deleteNames: deleteNames.toList()..sort(),
     keepCount: keep.length,
     deleteBytes: bytes,
   );

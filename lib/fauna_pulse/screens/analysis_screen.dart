@@ -28,6 +28,7 @@ import '../models/model_catalog.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart';
+import 'session_summary_screen.dart';
 
 /// One analyzable session folder: its name, folder, how many photos it holds
 /// (companion `_live.jpg` duplicates already excluded), how many of those an
@@ -330,11 +331,14 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Analyze saved photos')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
+      // SafeArea: without it the list's last lines sit under the system
+      // navigation/gesture bar and can never be scrolled into view.
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
                 const Text(
                   'Runs a detector over the photos a finished session saved — '
                   'no camera involved. A bigger model than the live one can be '
@@ -377,6 +381,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 
@@ -565,6 +570,27 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
         const SizedBox(height: 10),
+        // Review before deleting: the summary's Photos tab draws the post-hoc
+        // boxes and marks the photos this cleanup would remove.
+        OutlinedButton.icon(
+          onPressed: _cleanupBusy
+              ? null
+              : () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SessionSummaryScreen(
+                        logFile: File('${session.dir.path}/session.jsonl'),
+                        initialTabIndex: 2, // Photos tab
+                      ),
+                    ),
+                  );
+                  // Photos can be deleted from the summary too — re-derive.
+                  await _loadOutcomes();
+                },
+          icon: const Icon(Icons.photo_library_outlined),
+          label: const Text('Review photos before deleting'),
+        ),
+        const SizedBox(height: 6),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade300),
           onPressed: (plan.deleteNames.isEmpty || _cleanupBusy)

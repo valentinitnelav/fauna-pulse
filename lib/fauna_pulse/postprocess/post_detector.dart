@@ -85,21 +85,14 @@ int? capturedAtMsFromPhotoName(String name) {
 /// (which equals capture order within a session).
 ///
 /// High-res photos save a trigger-moment companion crop as `<name>_live.jpg`
-/// (round 108). Processing both would count the same moment twice, so the
-/// companion is skipped whenever its main photo exists; a companion WITHOUT a
-/// main photo (the high-res write failed) is kept — it is the only image of
-/// that moment.
+/// (round 108). BOTH members of such a pair are analyzed (round 137): the
+/// companion is lower-resolution but exactly the trigger moment and often
+/// sharper (no capture lag / motion ghosting), so it can catch an insect the
+/// high-res photo missed — and vice versa. The keep/cleanup logic treats the
+/// pair as one unit (photo_keep.dart), so a hit on either member keeps both.
 List<String> selectPhotoNames(Iterable<String> allJpegNames) {
-  final names = allJpegNames.toList()..sort();
-  final nameSet = names.toSet();
-  return names.where((n) {
-    if (!n.toLowerCase().endsWith('.jpg')) return false;
-    if (n.endsWith('_live.jpg')) {
-      final main = '${n.substring(0, n.length - '_live.jpg'.length)}.jpg';
-      return !nameSet.contains(main);
-    }
-    return true;
-  }).toList();
+  return allJpegNames.where((n) => n.toLowerCase().endsWith('.jpg')).toList()
+    ..sort();
 }
 
 /// File names already carrying a `post_detection` record in an existing

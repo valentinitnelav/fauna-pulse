@@ -17,6 +17,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
@@ -27,11 +28,21 @@ import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
 import '../logging/device_storage.dart';
+import '../postprocess/photo_keep.dart';
+import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
 
-  const SessionSummaryScreen({super.key, required this.logFile});
+  /// Tab shown first (0 Overview … 2 Photos): the analysis screen's "Review
+  /// photos before deleting" jumps straight to the Photos tab (round 137).
+  final int initialTabIndex;
+
+  const SessionSummaryScreen({
+    super.key,
+    required this.logFile,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<SessionSummaryScreen> createState() => _SessionSummaryScreenState();
@@ -132,6 +143,67 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _scroll.addListener(_updateTimelineInView);
     _init();
     _loadStorageInfo();
+    _loadPostHoc();
+  }
+
+  // Post-hoc analysis results for this session (round 137): outcomes parsed
+  // from post_detections.jsonl, the keep set at the analysis screen's saved
+  // gap, and the ready-made box overlays / deletion marks for the Photos tab.
+  List<PhotoOutcome>? _postOutcomes;
+  Set<String> _postKeep = const {};
+  double _postGapSeconds = 2.0;
+  Map<String, List<_DetBox>> _postBoxesByName = const {};
+  Set<String> _postDeleteMarked = const {};
+  bool _postDeleting = false;
+
+  /// Loads (or reloads after a cleanup) the post-hoc analysis results, if any.
+  Future<void> _loadPostHoc() async {
+    try {
+      final f = File(
+        '${widget.logFile.parent.path}/${PostDetector.outputFileName}',
+      );
+      if (!f.existsSync()) return;
+      final prefs = await SharedPreferences.getInstance();
+      final gap = prefs.getDouble('analysis_keep_gap') ?? 2.0;
+      // Only photos still on disk — earlier cleanups keep their records.
+      final outcomes = photoOutcomesFromJsonl(await f.readAsString())
+          .where(
+            (o) => File(
+              '${widget.logFile.parent.path}/roi_frames/${o.name}',
+            ).existsSync(),
+          )
+          .toList();
+      final keep = keepNames(outcomes, (gap * 1000).round());
+      final boxes = <String, List<_DetBox>>{};
+      for (final o in outcomes) {
+        if (o.boxes.isEmpty) continue;
+        boxes[o.name] = [
+          for (final PostBox b in o.boxes)
+            _DetBox(
+              left: b.left,
+              top: b.top,
+              right: b.right,
+              bottom: b.bottom,
+              label: '${b.className} ${(b.confidence * 100).round()}%',
+              triggered: false,
+              postHoc: true,
+            ),
+        ];
+      }
+      if (!mounted) return;
+      setState(() {
+        _postOutcomes = outcomes;
+        _postKeep = keep;
+        _postGapSeconds = gap;
+        _postBoxesByName = boxes;
+        _postDeleteMarked = {
+          for (final o in outcomes)
+            if (!keep.contains(o.name)) o.name,
+        };
+      });
+    } catch (e) {
+      logSwallowed('summary_posthoc_load', e);
+    }
   }
 
   /// Loads the Overview's storage section: the session folder's total size
@@ -1343,6 +1415,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // own page instead of one very long scroll.
     return DefaultTabController(
       length: 4,
+      initialIndex: widget.initialTabIndex.clamp(0, 3),
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Session summary'),
@@ -1926,6 +1999,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
+      // Post-hoc analysis results (round 137): counts, what the cleanup would
+      // delete, and the delete action itself — so the user can review the
+      // green post-hoc boxes / red deletion marks in the viewer below and
+      // delete right here.
+      ..._postHocSection(),
       // Round 111: explain the high-res/companion pair when this session saved
       // any — otherwise the ⚡ button (and the second file per photo on
       // disk) is a mystery.
@@ -1974,6 +2052,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           location: SessionLocation.fromJson(
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
           ),
+          postBoxes: _postBoxesByName,
+          deleteMarked: _postDeleteMarked,
           onZoomChanged: (z) {
             if (mounted && z != _photoViewerZoomed) {
               setState(() => _photoViewerZoomed = z);
@@ -1981,6 +2061,106 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           },
         ),
     ];
+  }
+
+  /// The Photos tab's post-hoc block: shown only when this session has
+  /// post_detections.jsonl results. Mirrors the analysis screen's cleanup
+  /// (same keep rule and saved gap), so the numbers match across screens.
+  List<Widget> _postHocSection() {
+    final outcomes = _postOutcomes;
+    if (outcomes == null || outcomes.isEmpty) return const [];
+    final withBoxes = outcomes.where((o) => o.hasBoxes == true).length;
+    final plan = planCleanup(widget.logFile.parent, outcomes, _postKeep);
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.blueGrey.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Post-hoc analysis: $withBoxes of ${outcomes.length} analyzed '
+                'photos contain a detection (green boxes in the viewer). '
+                'Keeping detections + neighbours within '
+                '${_postGapSeconds.toStringAsFixed(1)} s — photos marked with '
+                'a red ✕ below have no detection nearby and can be deleted.',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade300,
+                ),
+                onPressed: (plan.deleteNames.isEmpty || _postDeleting)
+                    ? null
+                    : () => _confirmPostHocDelete(plan),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: Text(
+                  plan.deleteNames.isEmpty
+                      ? 'Nothing to delete'
+                      : 'Delete ${plan.deleteNames.length} marked photos '
+                            '(${formatBytes(plan.deleteBytes)})…',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _confirmPostHocDelete(CleanupPlan plan) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete photos without detections?'),
+        content: Text(
+          'This permanently deletes ${plan.deleteNames.length} photos '
+          '(${formatBytes(plan.deleteBytes)}) — the ones marked with a red ✕. '
+          '${plan.keepCount} photos stay. The session log keeps its records; '
+          'this cannot be undone.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Delete ${plan.deleteNames.length}',
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _postDeleting = true);
+    final deleted = await runCleanup(
+      widget.logFile.parent,
+      plan,
+      gapSeconds: _postGapSeconds,
+    );
+    if (!mounted) return;
+    setState(() => _postDeleting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Deleted $deleted photos.')),
+    );
+    await _loadPostHoc();
+    // The photo list still points at deleted files; reload it and the
+    // Overview's storage numbers.
+    if (_photosRequested) await _loadPhotos();
+    await _loadStorageInfo();
   }
 
   Widget _timeline() {
@@ -2132,6 +2312,11 @@ class _DetBox {
   /// True when this insect's time-lapse schedule is what triggered the photo;
   /// false for insects that simply happened to be detected in the same frame.
   final bool triggered;
+
+  /// True for boxes found by the post-hoc analysis run (round 137) — drawn
+  /// green to tell them apart from the session's live detections.
+  final bool postHoc;
+
   const _DetBox({
     required this.left,
     required this.top,
@@ -2139,6 +2324,7 @@ class _DetBox {
     required this.bottom,
     required this.label,
     required this.triggered,
+    this.postHoc = false,
   });
 }
 
@@ -2241,10 +2427,22 @@ class _PhotoViewer extends StatefulWidget {
   /// The session's single location fix (round 126), stamped into exported
   /// crops' EXIF; null when the session recorded none.
   final SessionLocation? location;
+
+  /// Post-hoc analysis boxes per FILE name (round 137) — drawn green on top
+  /// of the live boxes when the named file is the one being shown.
+  final Map<String, List<_DetBox>> postBoxes;
+
+  /// File names the post-hoc cleanup would delete (no detection nearby) —
+  /// shown with a translucent red ✕ + note so the user can review before
+  /// deleting.
+  final Set<String> deleteMarked;
+
   const _PhotoViewer({
     required this.photos,
     required this.onZoomChanged,
     this.location,
+    this.postBoxes = const {},
+    this.deleteMarked = const {},
   });
 
   @override
@@ -2446,6 +2644,11 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// companion while the ⚡ toggle is on and one exists, else the photo itself.
   File _fileFor(_PhotoSample p) =>
       _showLive && p.liveFile != null ? p.liveFile! : p.file;
+
+  /// The file NAME currently shown for [p] — the key into the post-hoc box /
+  /// deletion-mark maps, which are per file (both pair members are analyzed).
+  String _shownNameFor(_PhotoSample p) =>
+      _showLive && p.liveFile != null ? (p.liveName ?? p.name) : p.name;
 
   /// True when the CURRENT page is really showing its live companion (the
   /// toggle may be on while this photo has none — e.g. a fast-path photo).
@@ -2858,13 +3061,66 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                             // constant ON-SCREEN thickness while
                                             // the photo underneath scales up.
                                             painter: _BoxPainter(
-                                              _boxesFor(p),
+                                              [
+                                                ..._boxesFor(p),
+                                                // Post-hoc boxes (green) are
+                                                // normalized to the shown file
+                                                // itself, so they overlay 1:1.
+                                                ...?widget
+                                                    .postBoxes[_shownNameFor(p)],
+                                              ],
                                               _transformFor(
                                                 i,
                                               ).value.getMaxScaleOnAxis(),
                                             ),
                                           ),
                                         ),
+                                      // Cleanup preview (round 137): photos
+                                      // the post-hoc cleanup would delete get
+                                      // a translucent red ✕ (a marker, not a
+                                      // button — r112 allows only text chips
+                                      // and passive marks on the photo).
+                                      if (widget.deleteMarked
+                                          .contains(_shownNameFor(p))) ...[
+                                        Positioned.fill(
+                                          child: IgnorePointer(
+                                            child: CustomPaint(
+                                              painter: _DeleteMarkPainter(),
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          bottom: 8,
+                                          child: IgnorePointer(
+                                            child: Center(
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.withValues(
+                                                    alpha: 0.55,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: const Text(
+                                                  'no detection — cleanup '
+                                                  'will delete',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -3207,10 +3463,17 @@ class _BoxPainter extends CustomPainter {
   /// trigger the photo themselves.
   static const coDetectedColor = Color(0xFFFFC107);
 
+  /// Box color of post-hoc analysis detections (round 137).
+  static const postHocColor = Color(0xFF76FF03);
+
   @override
   void paint(Canvas canvas, Size size) {
     for (final b in boxes) {
-      final color = b.triggered ? triggerColor : coDetectedColor;
+      final color = b.postHoc
+          ? postHocColor
+          : b.triggered
+          ? triggerColor
+          : coDetectedColor;
       final stroke = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
@@ -3245,6 +3508,23 @@ class _BoxPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BoxPainter old) =>
       old.boxes != boxes || old.zoom != zoom;
+}
+
+/// Translucent red corner-to-corner ✕ over photos the post-hoc cleanup would
+/// delete (round 137) — a passive review mark, drawn under IgnorePointer.
+class _DeleteMarkPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = const Color(0x59FF1744) // ~35% red
+      ..strokeWidth = size.shortestSide * 0.04
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset.zero, Offset(size.width, size.height), stroke);
+    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DeleteMarkPainter old) => false;
 }
 
 /// Draws the crop-export rectangle. It paints in VIEWPORT coordinates (the

@@ -27,12 +27,15 @@ void main() {
   });
 
   group('selectPhotoNames', () {
-    test('skips a _live companion when its main photo exists', () {
+    test('analyzes BOTH members of a high-res/_live pair (round 137)', () {
       final picked = selectPhotoNames([
         'roi_a_2026-07-14_120000_000.jpg',
         'roi_a_2026-07-14_120000_000_live.jpg',
       ]);
-      expect(picked, ['roi_a_2026-07-14_120000_000.jpg']);
+      expect(picked, [
+        'roi_a_2026-07-14_120000_000.jpg',
+        'roi_a_2026-07-14_120000_000_live.jpg',
+      ]);
     });
 
     test('keeps an orphan _live companion (failed high-res write)', () {
