@@ -16,6 +16,8 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/error_reporter.dart';
 import '../models/session_config.dart';
+import '../postprocess/post_detector.dart';
+import 'analysis_screen.dart';
 import 'camera_session_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_summary_screen.dart';
@@ -35,6 +37,11 @@ class _PastSession {
   final Duration? duration;
   final bool endedNormally;
   final int sizeBytes;
+
+  /// Whether a post-hoc analysis output (post_detections.jsonl) exists for
+  /// this session (round 135) — shown as a small badge on the row.
+  final bool hasAnalysis;
+
   const _PastSession(
     this.name,
     this.logFile,
@@ -43,6 +50,7 @@ class _PastSession {
     this.duration,
     this.endedNormally = false,
     this.sizeBytes = 0,
+    this.hasAnalysis = false,
   });
 }
 
@@ -109,6 +117,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 duration: dur,
                 endedNormally: span.endedNormally,
                 sizeBytes: sizeBytes,
+                hasAnalysis: File(
+                  '${entity.path}/${PostDetector.outputFileName}',
+                ).existsSync(),
               ),
             );
           }
@@ -256,6 +267,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     // A new session may have been recorded; refresh the list on return.
+    _loadSessions();
+  }
+
+  /// Opens the analysis screen, optionally preselecting [sessionDirPath]
+  /// (a long-press on a session row). Rescans on return — a finished run
+  /// adds the row's "analyzed" badge.
+  Future<void> _openAnalysis([String? sessionDirPath]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AnalysisScreen(initialSessionPath: sessionDirPath),
+      ),
+    );
     _loadSessions();
   }
 
@@ -482,6 +505,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('New session'),
                 ),
                 const SizedBox(height: 6),
+                // Post-hoc analysis (round 135): run a (bigger) detector over a
+                // finished session's saved photos — no camera, no time limit.
+                OutlinedButton.icon(
+                  onPressed: _openAnalysis,
+                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                  label: const Text('Analyze saved photos'),
+                ),
+                const SizedBox(height: 6),
                 // Always-available entry point so a problem can be reported even after
                 // the app restarts (e.g. following a crash) — the report still captures
                 // the recent technical log.
@@ -537,7 +568,23 @@ class _HomeScreenState extends State<HomeScreen> {
           final s = _sessions[i];
           return ListTile(
             leading: const Icon(Icons.bar_chart, color: Colors.amber),
-            title: Text(s.name),
+            title: Row(
+              children: [
+                Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
+                if (s.hasAnalysis)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Tooltip(
+                      message: 'Post-hoc analysis results exist',
+                      child: Icon(
+                        Icons.auto_awesome,
+                        size: 14,
+                        color: Colors.lightBlueAccent,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             // Two compact lines under the name: the calendar date with the
             // folder's storage size on the right, then the start→end clock
             // times on the left with a colour-coded duration pill on the right.
@@ -601,6 +648,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _openSession(s),
+            // Long-press = analyze THIS session (same screen the "Analyze
+            // saved photos" button opens, with the session preselected).
+            onLongPress: () => _openAnalysis(s.logFile.parent.path),
           );
         },
       ),
