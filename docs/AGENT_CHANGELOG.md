@@ -5170,3 +5170,30 @@ diagnostics and now opt-in — both for sampling and for display.
 - Analyze clean; suite 344 passing. Old sessions, gate-idle/no-AI sparse fps records, and
   the charging-invalidates-power guard all unaffected (graph code already tolerates
   missing series — "Not enough samples." / conditional sections).
+
+## Round 149 (2026-07-23): always log diagnostics; keep only the display opt-in
+
+Owner decision after on-device testing of r148: the diagnostic *sampling* costs
+essentially nothing — the thermal reading is taken anyway for the on-screen
+temperature/storage readouts, fps is maintained every frame, and power is one cheap
+platform call per interval (~2–3 MB of log per 8 h in total). So the r148 logging
+gate is reverted: `fps`/`thermal`/`power` records are ALWAYS written while recording,
+and only the *display* stays opt-in via the summary's collapsed "Extra graphs" section.
+
+- **`SessionConfig`**: `diagnosticsEnabled` REMOVED (lived exactly one round; the stale
+  JSON key in saved configs is ignored on load).
+- **Settings sheet, Graphs tab**: "Record diagnostics" switch removed; the three
+  sample-interval fields are always visible again (pre-r148 layout, label now mentions
+  they feed the summary's "Extra graphs").
+- **Camera screen**: all `diagnosticsEnabled` guards removed — `_rebuildSamplingTimers()`
+  always creates the fps + power timers and `_sampleThermal` always logs while recording.
+  The r148 improvement stays: the helper is re-called after the settings sheet closes,
+  so interval changes apply live.
+- **Summary**: unchanged structurally (timeline always computed, Extra graphs collapse
+  persisted as `extra_graphs_expanded`). The `_diagnosticsOffSession` branch is KEPT as
+  backward compat for sessions recorded with the r148 build (`diagnosticsEnabled:false`
+  in their config block, no diagnostic records): its note now explains the app-version
+  history instead of pointing to the (removed) setting; their interval rows stay hidden
+  in the Settings tab. All other sessions render normally.
+- Docs (SETTINGS_REFERENCE, DATA_GUIDE, FIELD_GUIDE, overview) updated to "always
+  logged, display opt-in". Analyze clean; suite 344 passing.

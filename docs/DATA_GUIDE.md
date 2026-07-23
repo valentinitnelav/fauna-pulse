@@ -235,11 +235,12 @@ comparing periods within a session.
 
 ### `thermal`, `fps`, `power` — periodic samples for the summary graphs
 
-Since round 148 these three record types are only written when the session was
-recorded with **Record diagnostics** on (config `diagnosticsEnabled`; check the
-start record's `config` block). Sessions recorded before round 148 always
-contain them. Their absence is the setting, not a logging failure — the
-detection-derived records (and therefore the visit timeline) are unaffected.
+These three record types are always written while recording. One exception:
+sessions recorded with the short-lived round-148 build made them opt-in
+(config `diagnosticsEnabled: false` in the start record's `config` block ⇒
+none present); round 149 reverted to always-on. Their absence there is that
+setting, not a logging failure — the detection-derived records (and therefore
+the visit timeline) are unaffected either way.
 
 - `thermal`: `battery_temp_c`, `thermal_status`, `battery_current_ua`,
   `battery_voltage_mv`, `charge_counter_uah`, `is_charging`,

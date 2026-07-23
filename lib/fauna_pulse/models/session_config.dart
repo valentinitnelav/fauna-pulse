@@ -394,15 +394,6 @@ class SessionConfig {
   /// hardcoded value). Directly affects the visitation rate for short visits.
   final double minHitsSeconds;
 
-  /// Master switch for the technical "diagnostics" streams (round 148): frame
-  /// rate, phone temperature and battery power sampled into the session log for
-  /// the summary's "Extra graphs". The visit timeline never depends on this —
-  /// it is built from the detection records themselves. Off by default: a
-  /// general user gets the visitation-rate deliverable with a leaner log, while
-  /// advanced users opt in via Session settings → Graphs (which also reveals
-  /// the three sampling-interval fields below).
-  final bool diagnosticsEnabled;
-
   /// How often (seconds) the frame-rate is sampled into the log for the
   /// end-of-session FPS graph. The FPS value is already maintained every frame,
   /// so each sample is just a cheap log line — but a small interval keeps the log
@@ -521,7 +512,6 @@ class SessionConfig {
         1024, // ÷32; photos save at exactly this when possible
     this.occlusionSeconds = 3.0,
     this.minHitsSeconds = 0.2,
-    this.diagnosticsEnabled = false,
     this.fpsSampleSeconds = 5,
     this.thermalSampleSeconds = 10,
     this.powerSampleSeconds = 10,
@@ -620,7 +610,6 @@ class SessionConfig {
     int? targetRoiSavedPx,
     double? occlusionSeconds,
     double? minHitsSeconds,
-    bool? diagnosticsEnabled,
     int? fpsSampleSeconds,
     int? thermalSampleSeconds,
     int? powerSampleSeconds,
@@ -674,7 +663,6 @@ class SessionConfig {
     targetRoiSavedPx: targetRoiSavedPx ?? this.targetRoiSavedPx,
     occlusionSeconds: occlusionSeconds ?? this.occlusionSeconds,
     minHitsSeconds: minHitsSeconds ?? this.minHitsSeconds,
-    diagnosticsEnabled: diagnosticsEnabled ?? this.diagnosticsEnabled,
     fpsSampleSeconds: fpsSampleSeconds ?? this.fpsSampleSeconds,
     thermalSampleSeconds: thermalSampleSeconds ?? this.thermalSampleSeconds,
     powerSampleSeconds: powerSampleSeconds ?? this.powerSampleSeconds,
@@ -733,7 +721,6 @@ class SessionConfig {
     'fullResPhotos': captureMode == RoiCaptureMode.highRes,
     'occlusionSeconds': occlusionSeconds,
     'minHitsSeconds': minHitsSeconds,
-    'diagnosticsEnabled': diagnosticsEnabled,
     'fpsSampleSeconds': fpsSampleSeconds,
     'thermalSampleSeconds': thermalSampleSeconds,
     'powerSampleSeconds': powerSampleSeconds,
@@ -817,7 +804,6 @@ class SessionConfig {
     // old 1.0 that silently fragments tracks.
     occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 3.0,
     minHitsSeconds: (j['minHitsSeconds'] as num?)?.toDouble() ?? 0.2,
-    diagnosticsEnabled: j['diagnosticsEnabled'] as bool? ?? false,
     fpsSampleSeconds: (j['fpsSampleSeconds'] as num?)?.toInt() ?? 5,
     thermalSampleSeconds: (j['thermalSampleSeconds'] as num?)?.toInt() ?? 10,
     powerSampleSeconds: (j['powerSampleSeconds'] as num?)?.toInt() ?? 10,

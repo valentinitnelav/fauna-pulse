@@ -124,9 +124,14 @@ this section (keeping the algorithm choice).
 
 ## Graphs & logging cadence (Graphs tab)
 
+Frame rate, phone temperature and battery power are always logged while
+recording (the readings are taken for the live preview anyway, so logging them
+is free — roughly 2–3 MB per 8-hour session). In the session summary they
+appear under a collapsed **"Extra graphs"** section, so the visit timeline —
+the main result — stays front and centre.
+
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Record diagnostics (FPS, temperature, power)** | `off` | Also log frame rate, phone temperature and battery power while recording, and show them under "Extra graphs" in the session summary. The visit timeline — the main result — is always recorded regardless. Turn on when troubleshooting performance, heat or battery life; off keeps the session log leaner. The three interval settings below only appear while this is on. |
 | **FPS sample interval** | `5 s` | How often the frame rate is logged for the FPS graph. |
 | **Temperature sample interval** | `10 s` | How often phone temperature is logged (heat changes slowly). |
 | **Power sample interval** | `10 s` | How often battery power/charge is logged for the energy graphs. |

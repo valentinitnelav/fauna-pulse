@@ -1027,11 +1027,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// detector, no motion check.
   bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
-  /// True for sessions recorded with diagnostics explicitly off (round 148):
-  /// no temperature/FPS/power records exist by design, so the Extra graphs
-  /// section shows a pointer to the setting instead of empty charts. Sessions
-  /// from before the toggle existed return false here (the key is absent, not
-  /// `false`) and render their diagnostic graphs as always.
+  /// True only for sessions recorded with the short-lived round-148 build,
+  /// where diagnostic logging was opt-in and off by default: those logs have
+  /// no temperature/FPS/power records by design, so the Extra graphs section
+  /// explains that instead of showing empty charts. Round 149 made the
+  /// streams always-logged again and removed the toggle (only their display
+  /// is opt-in, via this collapsed section), so every other session — older
+  /// or newer — lacks the key (or has it `true`) and renders normally.
   bool get _diagnosticsOffSession => _setting('diagnosticsEnabled') == false;
 
   /// The tracker (ByteTrack) tuning block, from the `config` block or the
@@ -1393,12 +1395,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             '(${sched['window_start']}–${sched['window_end']})',
       );
     }
+    // Only round-148-build sessions carry this key (add() skips it otherwise);
+    // for those with diagnostics off, the sampling intervals had no effect and
+    // are not listed (round 105 principle: never list inert knobs).
     add('Record diagnostics', _setting('diagnosticsEnabled'));
-    // Sampling intervals only had an effect when diagnostics were recorded —
-    // that is, this-round sessions with the toggle on, or older sessions from
-    // before the toggle existed (key absent → not explicitly false). A
-    // diagnostics-off session never sampled, so its intervals are not listed
-    // (round 105 principle: never list knobs that had no effect).
     if (!_diagnosticsOffSession) {
       add(
         'FPS sample interval',
@@ -1918,9 +1918,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Padding(
         padding: EdgeInsets.only(top: 4),
         child: Text(
-          'No diagnostics were recorded for this session. Turn on "Record '
-          'diagnostics" in Session settings → Graphs before recording to '
-          'collect temperature, FPS and power data.',
+          'No temperature, FPS or power data in this session: it was recorded '
+          'with an app version where diagnostics were opt-in (and off). '
+          'Current versions always record them.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       )

@@ -69,7 +69,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 | Tracker algorithm | `bytetrack` | r105: AI-tab "Visit tracking" dropdown; `cbiou` = buffered-IoU alternative (search margins 0.30/0.50, own highThresh 0.5); both share the seconds-based settings above |
 | Log raw detections | off | r105 eval toggle (tracking Advanced): one `raw_detections` JSONL record per frame (pre-tracking boxes) for the offline tracker replay harness; ~1–2 MB/h |
 | Ground-truth frames | off / every `5 s` | r107 eval toggle (tracking Advanced): periodic ROI photo → `gt_frames/` + `gt_capture` records, independent of detections (hand-count ground truth); interval 1 s–1 h; size follows `targetRoiSavedPx`; second RoiCaptureScheduler driven by a 1 s screen timer via `SessionRecorder.recordGtFrame` |
-| Record diagnostics | off | r148 `diagnosticsEnabled` (Graphs tab master switch): opt-in logging of `fps`/`thermal`/`power` records; the three sample-interval fields (FPS `5 s`, temperature `10 s`, power `10 s`) are hidden until it's on. Off = no diagnostic records (thermal timer still runs for the on-screen temp/storage readouts — only the log write is gated); the visit timeline is independent (detection records) and always available. Replaces r-era `autoComputeGraphs` (removed; summary now always parses graphs on tab open) |
+| Diagnostic sampling | always on | `fps`/`thermal`/`power` records are ALWAYS logged while recording (r149 owner decision: the readings exist anyway — thermal feeds the on-screen temp/storage, fps is maintained per frame — so a log line is free; ~2–3 MB per 8 h). Only their DISPLAY is opt-in (summary "Extra graphs" collapse, below). Sample intervals: FPS `5 s`, temperature `10 s`, power `10 s` (Graphs tab; applied live via `_rebuildSamplingTimers` since r148). History: r148 briefly made logging opt-in via `diagnosticsEnabled` (default off) and removed `autoComputeGraphs` (summary now always parses graphs on tab open); r149 removed the toggle again — the summary keeps a note branch for the few r148-window sessions whose config block says `diagnosticsEnabled:false` |
 | Crop 1:1 lock | off | r91: forces the summary-viewer crop-export box square; viewer chip ↔ Settings → Summary switch |
 | GPU when faster | on | see GPU/CPU note below |
 | CPU threads | `0` (auto) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest |
@@ -396,13 +396,13 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
   flags as fallback for older logs) — battery-terminal current measures charging, not
   consumption, while plugged in, so a note replaces the graph. Raw `power` records are
-  logged whenever diagnostics are on (r148; pre-r148 sessions always have them).
+  still always logged (r149; only r148-window sessions may lack them).
   r148: the Graphs tab always parses on open (no "Generate graphs" button); the visit
   timeline renders at top and everything else (temperature, headroom, FPS, inference,
   power) sits behind a ▸/▾ "Extra graphs" disclosure (pref `extra_graphs_expanded`,
   collapsed by default — mirrors the r125 stats-panel pattern). Sessions recorded with
-  `diagnosticsEnabled:false` show a pointer note there instead of empty charts, and
-  their sample-interval rows are dropped from the Settings tab. r86: the Photos tab draws EVERY insect of the photo's trigger
+  the r148 build's `diagnosticsEnabled:false` show an explanatory note there instead
+  of empty charts, and their sample-interval rows are dropped from the Settings tab. r86: the Photos tab draws EVERY insect of the photo's trigger
   frame (the `jpeg` filename is shared across the record's entries at parse time —
   only due tracks carry it in the log): cyan box = triggered the photo, amber =
   co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)

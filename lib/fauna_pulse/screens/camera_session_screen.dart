@@ -572,12 +572,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// (Re)creates the periodic sampling timers from the current config. Called
   /// at screen start and again after the settings sheet closes, so an interval
-  /// or diagnostics change applies without leaving the screen. The thermal
-  /// timer always runs — it feeds the on-screen temperature and free-storage
-  /// readouts — but the FPS and power timers exist purely to write diagnostic
-  /// log records, so they are not created at all when diagnostics are off
-  /// (round 148). Safe to rebuild mid-screen: the settings button is disabled
-  /// while recording.
+  /// change applies without leaving the screen (round 148). All three streams
+  /// are always sampled and logged (owner decision, round 149): the readings
+  /// are taken — or maintained per frame — for the live preview anyway, so a
+  /// log line costs nothing; only their *display* is opt-in (the summary's
+  /// collapsed "Extra graphs"). Safe to rebuild mid-screen: the settings
+  /// button is disabled while recording.
   void _rebuildSamplingTimers() {
     _thermalTimer?.cancel();
     _fpsLogTimer?.cancel();
@@ -586,11 +586,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       Duration(seconds: _config.thermalSampleSeconds.clamp(1, 600)),
       (_) => _sampleThermal(),
     );
-    if (!_config.diagnosticsEnabled) {
-      _fpsLogTimer = null;
-      _powerTimer = null;
-      return;
-    }
     // Separate, usually faster timer that logs the frame rate for the FPS graph.
     _fpsLogTimer = Timer.periodic(
       Duration(seconds: _config.fpsSampleSeconds.clamp(1, 600)),
@@ -612,10 +607,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (!mounted) return;
     _thermalVN.value = reading;
     _storageVN.value = storage;
-    // While recording with diagnostics on, log the temperature so heat can be
-    // reviewed afterwards (plus free storage, so fill rate is visible in the
-    // session data). The on-screen readouts above stay live either way.
-    if (_recording && _config.diagnosticsEnabled) {
+    // While recording, log the temperature so heat can be reviewed afterwards
+    // (plus free storage, so fill rate is visible in the session data).
+    if (_recording) {
       _logger?.logThermal({...reading.toJson(), ...storage.toJson()});
     }
   }
@@ -624,9 +618,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// only writes while recording; the value itself is maintained every frame, so
   /// this adds no work to the inference pipeline.
   void _sampleFps() {
-    // Belt-and-braces: the timer only exists with diagnostics on, but guard
-    // anyway so a stale timer tick can never write after a mid-screen toggle.
-    if (!_recording || !_config.diagnosticsEnabled) return;
+    if (!_recording) return;
     // Full per-second perf fingerprint, so an *uncoupled* run still captures the
     // throttle signature (inference time climbing while temperature stays flat).
     // All values are already maintained every frame, so this adds no pipeline
@@ -677,8 +669,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// `power_w` is the instantaneous draw; `charge_counter_uah` lets the summary
   /// cross-check the total energy against how much the battery actually drained.
   Future<void> _samplePower() async {
-    // Belt-and-braces guard, mirroring _sampleFps.
-    if (!_recording || !_config.diagnosticsEnabled) return;
+    if (!_recording) return;
     final reading = await DeviceThermal.read();
     if (!_recording) return;
     _logger?.logPower({
@@ -2339,7 +2330,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     });
     if (modelChanged) _refreshModelInputSize();
-    // Apply a diagnostics toggle or sampling-interval change immediately.
+    // Apply a sampling-interval change immediately.
     _rebuildSamplingTimers();
     await _controller.setThresholds(
       confidenceThreshold: updated.confidenceThreshold,
