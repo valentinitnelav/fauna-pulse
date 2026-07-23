@@ -92,15 +92,17 @@ It covers both installing a ready-made app without coding and building FaunaPuls
 
 ## Why I built FaunaPulse
 
-The idea for FaunaPulse grew from my research at the [Helmholtz Centre for Environmental Research (UFZ)][ufz] and the [German Centre for Integrative Biodiversity Research (iDiv)][idiv].
+The idea for FaunaPulse grew from my research at the Helmholtz Centre for Environmental Research [(UFZ)][ufz] and the German Centre for Integrative Biodiversity Research [(iDiv)][idiv].
 
-During my PhD and research, we collected large image datasets of flower-visiting arthropods using affordable smartphones and time-lapse photography. The approach worked, but it also produced far more images than could be used efficiently. A selective camera trigger was therefore an obvious next step.
+During my [PhD][phd-stef] and research, we collected large image datasets of flower-visiting arthropods using affordable smartphones and time-lapse photography. The approach worked, but it also produced far more images than could be used efficiently. A selective camera trigger was therefore an obvious next step.
 
 Conventional motion detection is easily activated by wind, moving vegetation and changes in light. Insects are also difficult to distinguish using heat-based sensors because their body temperature may be close to that of their surroundings. On-device AI object detection offered a promising way to capture images only when relevant organisms were present.
 
-It was also clear that a Region of Interest (ROI) needed implementation as well. The square ROI reflects both the ecological question and the computer-vision pipeline: it concentrates observation on a target flower (or area of interest), reduces distracting background information and matches the square input commonly used by object-detection models.
+It was also clear early-on that a Region of Interest (ROI) needed implementation as well (proposed in [Ștefan et al. 2025][stefan-2025-a]). The square ROI reflects both the ecological question and the computer-vision pipeline: it concentrates observation on a target flower (or area of interest), reduces distracting background information and matches the square input commonly used by object-detection models.
 
-Although FaunaPulse began as a pollinator-monitoring tool, I gradually realised that the same detection, tracking and capture workflow could support other organisms and observation tasks. I am releasing it as free and open-source software in the hope that it will also be useful to citizen scientists and research groups with limited funding. Moreover, smartphones are basically powerful micro-computers, usually always available on almost any market world-wide (at relatively affordable prices), so every scientist or citizen-scientist can use it as a field tool for contributing to measuring local biodiversity. 
+Although FaunaPulse began as a pollinator-monitoring tool, I gradually realised that the same detection, tracking and capture workflow could support other organisms and observation tasks. I am releasing it as free and open-source software in the hope that it will also be useful to citizen scientists and research groups with limited funding. Moreover, smartphones are basically powerful micro-computers, usually always available on almost any market world-wide (at relatively affordable prices), so every scientist or citizen-scientist can use it as a field tool for contributing to measuring local biodiversity.
+
+[phd-stef]: https://repo.bibliothek.uni-halle.de/handle/1981185920/125596
 
 ## AI-assisted development and transparency
 
