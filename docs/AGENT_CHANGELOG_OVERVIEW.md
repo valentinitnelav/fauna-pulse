@@ -134,9 +134,16 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   overlays overflow in landscape. Lift both locks together only with a full
   orientation-aware audit. Same round (+125): the on-screen stats list is collapsible
   (default = one "▸ det fps · temp" line — cam fps in the no-AI modes; state in
-  shared_preferences `stats_panel_expanded`, NOT SessionConfig); the gate/time-lapse
+  shared_preferences `stats_panel_expanded`, NOT SessionConfig); the mode
   chip shares ONE row with the toggle line so the header always clears the REC banner
-  (its `top: 52` was sized to the chip). r125 verdict: landscape-HELD recording is
+  (its `top: 52` was sized to the chip). r145: the chip is ALWAYS shown (one
+  `_modeChip()` for all three capture modes, labels mode-prefixed, e.g.
+  "MOTION: WAITING", "TIME-LAPSE: press REC") and sits in a Flexible with
+  ellipsis so long labels can never right-overflow the header; the expanded
+  panel gets a ~75%-black backdrop and, while expanded, the REC banner
+  (`recBanner` local, ValueKey'd, two mutually exclusive Stack slots) drops
+  BELOW the strip so the panel is readable — collapse restores today's
+  banner-on-top look. r125 verdict: landscape-HELD recording is
   data-safe — crops have no EXIF, boxes are pixel-space; content is just rotated 90°.
 - **Start-up calibration is ONE cycle (round 120) and CACHED (round 121).**
   `_calibrating` in `camera_session_screen.dart` (first analysis frame + full-res photo
@@ -325,7 +332,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `FrameProcessor.updatePipelineFps` (Dart) share a resume guard (gap > max(2 s, 5×
   interval) → skip blend; KEEP IN SYNC), and the summary FPS graph plots
   `pipeline_fps ?? fps` so pre-r85 sessions read honestly too.
-  Don't gate in Dart — frames never leave the native layer. UI (r59): green "DETECTOR ON" / grey "SLEEPING" chip
+  Don't gate in Dart — frames never leave the native layer. UI (r59, labels r145): green "DETECTOR ON" / grey "DETECTOR SLEEPING" chip
   atop the status strip + ROI border turns grey while idle (priority: capture flash >
   gate-idle grey > recording red > yellow).
   r95 **motion-only capture**: a `motionOnlyMode` branch in `onFrame` sits BEFORE
@@ -357,7 +364,8 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   burst, 1 fps between) + ~1 Hz `{timeLapse:true, dims…}` heartbeats emitted
   BEFORE `predictor?.let` — predict() never runs; the Dart branch returns before
   the 0-FPS watchdog. Gate forced OFF natively in this mode. Chip: green
-  "TIME-LAPSE: CAPTURING" / grey "NEXT BURST in mm:ss". `recordFrame` is gated
+  "TIME-LAPSE: CAPTURING" / grey "NEXT BURST in mm:ss" (pre-REC: "TIME-LAPSE:
+  press REC", r145). `recordFrame` is gated
   on `detectorEnabled` (startup race guard for both no-AI modes). Scheduled
   windows compose (each window anchors its own plan); session length applies.
   Future (not built): camera full-unbind between long bursts via the r94 pause
@@ -366,7 +374,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   records). `fps` records omit inference fields even while awake + carry
   `motion_only:true` (r77 rule). Summary: `motion_capture` records (and, backstop,
   `capture` records) seed the Photos list; timeline/unique-insects show a
-  motion-only note. Chip reads "CAPTURING"/"WAITING FOR MOTION". Handheld shake keeps the gate awake by
+  motion-only note. Chip reads "MOTION: CAPTURING"/"MOTION: WAITING" (r145). Handheld shake keeps the gate awake by
   design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
   and box-averaged (bilinear minification is point-sampling; without this, coarse grids
   were NOISIER than fine ones — session_89 observation). r74 (review A5): on frames that

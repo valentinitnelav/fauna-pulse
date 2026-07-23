@@ -2615,6 +2615,80 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         ? 'Model: loading… $inputSuffix'
         : 'Model: ${_wrappable(_loadedModel)} $inputSuffix';
 
+    // REC banner, built once and slotted into the Stack at one of two depths
+    // (round 145): normally ABOVE the status strip (today's look), but BELOW
+    // it while the info panel is expanded, so every stat line stays readable —
+    // the red ROI border still signals recording, and collapsing the panel
+    // brings the banner back on top. The ValueKey lets Flutter MOVE the live
+    // countdown widget between the two slots on toggle instead of tearing it
+    // down and rebuilding it (widgets are matched by key across rebuilds).
+    final Widget? recBanner = !_recording
+        ? null
+        : SafeArea(
+            key: const ValueKey('rec-banner'),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 52),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _recordElapsedVN,
+                  builder: (_, secs, _) {
+                    final leftSecs = _recordEndAt
+                        ?.difference(DateTime.now())
+                        .inSeconds;
+                    final left = leftSecs == null
+                        ? null
+                        : (leftSecs < 0 ? 0 : leftSecs);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.fiber_manual_record,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'REC  ${_formatElapsed(secs)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              if (left != null)
+                                Text(
+                                  '${_formatElapsed(left)} left'
+                                  '${_recordSlotLabel == null ? '' : '  ·  $_recordSlotLabel'}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -2720,12 +2794,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 borderWidth: flashing ? 4.0 : 2.5,
               ),
             ),
+          // While the info panel is expanded, the REC banner slots in HERE —
+          // under the status strip that follows — so the expanded panel stays
+          // readable on top of it (round 145).
+          if (recBanner != null && _statsExpanded) recBanner,
           // Top-left status strip: one chip per line, top to bottom. It may sit
           // over the ROI if the ROI is large — that's fine. Hidden entirely when
           // the user turns the on-screen info panel off (removes those periodic
-          // chip rebuilds, leaving only the ROI box and controls).
+          // chip rebuilds, leaving only the ROI box and controls). Keyed so the
+          // REC banner's slot swap around it can never make Flutter mistake the
+          // strip for the banner (both are SafeArea widgets).
           if (!_blackout && _config.showOverlayInfo)
             SafeArea(
+              key: const ValueKey('status-strip'),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Align(
@@ -2734,34 +2815,32 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Detector state at a glance (motion gate only): green =
-                      // detector running, grey = deliberately asleep because
-                      // nothing is moving in the ROI. Bigger and color-coded so
-                      // it reads from arm's length in the field. Time-lapse
-                      // mode has its own chip (burst state + countdown).
+                      // Capture-mode badge — round 145: shown in EVERY mode
+                      // (previously plain AI mode had no chip at all). Green =
+                      // photos happening/possible right now, grey = waiting.
+                      // Big and color-coded so it reads from arm's length in
+                      // the field.
                       //
                       // Round 124/125: the chip and the collapsible-stats
                       // toggle share ONE row so the whole header stays above
                       // the REC banner (its top padding was sized to clear
                       // the chip; a line BELOW the chip would sit under the
-                      // banner). Collapsed, the line keeps the field
-                      // essentials visible — detector fps (camera fps in the
-                      // no-AI modes, labelled so the unit change is never
-                      // silent) + phone temperature; tap toggles, and the
-                      // choice is remembered.
+                      // banner). Round 145: the chip sits in a Flexible, so a
+                      // long label shrinks to "…" instead of pushing the tap
+                      // target off-screen (the old right-overflow stripes).
+                      // This relies on the row having a bounded width from
+                      // SafeArea+Padding — don't wrap this header in a
+                      // horizontally unbounded scroller. Collapsed, the line
+                      // keeps the field essentials visible — detector fps
+                      // (camera fps in the no-AI modes, labelled so the unit
+                      // change is never silent) + phone temperature; tap
+                      // toggles, and the choice is remembered.
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          if (_config.timeLapseCapture ||
-                              (_config.motionGateEnabled &&
-                                  _config.detectorEnabled) ||
-                              _config.motionOnlyCapture) ...[
-                            _config.timeLapseCapture
-                                ? _timeLapseChip()
-                                : _gateStateChip(),
-                            const SizedBox(width: 8),
-                          ],
+                          Flexible(child: _modeChip()),
+                          const SizedBox(width: 8),
                           GestureDetector(
                             onTap: _toggleStatsExpanded,
                             child: ValueListenableBuilder<List<double>>(
@@ -2789,128 +2868,152 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                           ),
                         ],
                       ),
-                      if (_statsExpanded) ...[
-                        if (_config.showFps)
-                          ValueListenableBuilder<List<double>>(
-                            valueListenable: _fpsTrioVN,
-                            builder: (_, f, _) => Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _statLine(
-                                  'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
-                                ),
-                                // Detector/pipeline rates are meaningless while
-                                // the detector never runs (motion-only and
-                                // time-lapse modes).
-                                if (_config.detectorEnabled) ...[
-                                  _statLine(
-                                    'Detector: ${f[1].toStringAsFixed(1)} fps '
-                                    '(pre+inf+NMS)',
+                      if (_statsExpanded)
+                        // One shared ~75%-black backdrop behind all the stat
+                        // lines so they stay readable even when this panel is
+                        // drawn over the red REC banner (see the Stack-order
+                        // note at the REC banner slots below).
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xC0000000),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_config.showFps)
+                                ValueListenableBuilder<List<double>>(
+                                  valueListenable: _fpsTrioVN,
+                                  builder: (_, f, _) => Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _statLine(
+                                        'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
+                                      ),
+                                      // Detector/pipeline rates are meaningless while
+                                      // the detector never runs (motion-only and
+                                      // time-lapse modes).
+                                      if (_config.detectorEnabled) ...[
+                                        _statLine(
+                                          'Detector: ${f[1].toStringAsFixed(1)} fps '
+                                          '(pre+inf+NMS)',
+                                        ),
+                                        _statLine(
+                                          'Pipeline: ${f[2].toStringAsFixed(1)} fps '
+                                          '(+track/overlay)',
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                  _statLine(
-                                    'Pipeline: ${f[2].toStringAsFixed(1)} fps '
-                                    '(+track/overlay)',
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        if (_config.showFps && _config.detectorEnabled)
-                          ValueListenableBuilder<List<double>>(
-                            valueListenable: _perfVN,
-                            builder: (_, p, _) => _statLine(
-                              'pre ${p[0].toStringAsFixed(0)} · '
-                              'inf ${p[1].toStringAsFixed(0)} · '
-                              'post ${p[2].toStringAsFixed(0)} ms',
-                            ),
-                          ),
-                        // Motion gate status: "idle" means the detector is
-                        // deliberately asleep (nothing moving in the ROI) — the
-                        // 0-fps Detector line above is expected, not a fault. The
-                        // live motion % helps tune the trigger-area setting.
-                        if ((_config.motionGateEnabled &&
-                                _config.detectorEnabled) ||
-                            _config.motionOnlyCapture)
-                          ValueListenableBuilder<double>(
-                            valueListenable: _motionScoreVN,
-                            builder: (_, score, _) => _statLine(
-                              _gateIdle
-                                  ? 'Gate: idle (detector asleep) · '
-                                        'motion ${(score * 100).toStringAsFixed(2)}%'
-                                  : 'Gate: awake · '
-                                        'motion ${(score * 100).toStringAsFixed(2)}%',
-                            ),
-                          ),
-                        // Engine first (just under the perf line), then the Model
-                        // line, which carries the input resolution in brackets.
-                        // Detector-off modes replace the Engine line: no engine
-                        // is doing any work (the model loaded but never runs).
-                        _statLine(
-                          _config.motionOnlyCapture
-                              ? 'Mode: motion-only capture (detector off)'
-                              : _config.timeLapseCapture
-                              ? 'Mode: time-lapse (detector off)'
-                              : engineLabel,
-                        ),
-                        _statLine(modelLabel),
-                        _statLine(streamLabel),
-                        // Tappable: opens the exact-size slider when we know the
-                        // capture resolution.
-                        GestureDetector(
-                          onTap: haveRoiDim ? _editRoiSize : null,
-                          child: _statLine(
-                            haveRoiDim ? '$roiLabel  ✎' : roiLabel,
-                          ),
-                        ),
-                        ValueListenableBuilder<ThermalReading>(
-                          valueListenable: _thermalVN,
-                          builder: (_, thermal, _) {
-                            final label = thermal.shortLabel;
-                            if (label.isEmpty) return const SizedBox.shrink();
-                            // Label it as the battery sensor only when it really is
-                            // a temperature; a bare thermal-status string is left
-                            // unprefixed.
-                            return _statLine(
-                              thermal.batteryTempC != null
-                                  ? 'Battery temp.: $label'
-                                  : label,
-                            );
-                          },
-                        ),
-                        // Free storage on the session volume — hours of JPEGs can
-                        // fill a phone, so the user sees when to clean up before
-                        // mounting it. Refreshed on the thermal cadence.
-                        ValueListenableBuilder<StorageReading>(
-                          valueListenable: _storageVN,
-                          builder: (_, storage, _) {
-                            final label = storage.label;
-                            if (label.isEmpty) return const SizedBox.shrink();
-                            return _statLine(label);
-                          },
-                        ),
-                        // Live count of insects currently on the flower, plus the
-                        // running total of unique insects confirmed so far this
-                        // session (same figure as the summary's "Unique insects").
-                        // Both sit in one per-frame builder, so the total stays live
-                        // without a separate notifier. Hidden in the no-AI modes,
-                        // same as the detector/pipeline fps lines above — no
-                        // tracker runs there, so the numbers could only be stale.
-                        if (_config.detectorEnabled)
-                          ValueListenableBuilder<List<Track>>(
-                            valueListenable: _tracksVN,
-                            builder: (_, tracks, _) => Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _statLine('Current tracks: ${tracks.length}'),
-                                _statLine(
-                                  'Total tracks: ${_tracker.totalConfirmed}',
                                 ),
-                              ],
-                            ),
+                              if (_config.showFps && _config.detectorEnabled)
+                                ValueListenableBuilder<List<double>>(
+                                  valueListenable: _perfVN,
+                                  builder: (_, p, _) => _statLine(
+                                    'pre ${p[0].toStringAsFixed(0)} · '
+                                    'inf ${p[1].toStringAsFixed(0)} · '
+                                    'post ${p[2].toStringAsFixed(0)} ms',
+                                  ),
+                                ),
+                              // Motion gate status: "idle" means the detector is
+                              // deliberately asleep (nothing moving in the ROI) — the
+                              // 0-fps Detector line above is expected, not a fault. The
+                              // live motion % helps tune the trigger-area setting.
+                              if ((_config.motionGateEnabled &&
+                                      _config.detectorEnabled) ||
+                                  _config.motionOnlyCapture)
+                                ValueListenableBuilder<double>(
+                                  valueListenable: _motionScoreVN,
+                                  builder: (_, score, _) => _statLine(
+                                    _gateIdle
+                                        ? 'Gate: idle (detector asleep) · '
+                                              'motion ${(score * 100).toStringAsFixed(2)}%'
+                                        : 'Gate: awake · '
+                                              'motion ${(score * 100).toStringAsFixed(2)}%',
+                                  ),
+                                ),
+                              // Engine first (just under the perf line), then the Model
+                              // line, which carries the input resolution in brackets.
+                              // Detector-off modes replace the Engine line: no engine
+                              // is doing any work (the model loaded but never runs).
+                              _statLine(
+                                _config.motionOnlyCapture
+                                    ? 'Mode: motion-only capture (detector off)'
+                                    : _config.timeLapseCapture
+                                    ? 'Mode: time-lapse (detector off)'
+                                    : engineLabel,
+                              ),
+                              _statLine(modelLabel),
+                              _statLine(streamLabel),
+                              // Tappable: opens the exact-size slider when we know the
+                              // capture resolution.
+                              GestureDetector(
+                                onTap: haveRoiDim ? _editRoiSize : null,
+                                child: _statLine(
+                                  haveRoiDim ? '$roiLabel  ✎' : roiLabel,
+                                ),
+                              ),
+                              ValueListenableBuilder<ThermalReading>(
+                                valueListenable: _thermalVN,
+                                builder: (_, thermal, _) {
+                                  final label = thermal.shortLabel;
+                                  if (label.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  // Label it as the battery sensor only when it really is
+                                  // a temperature; a bare thermal-status string is left
+                                  // unprefixed.
+                                  return _statLine(
+                                    thermal.batteryTempC != null
+                                        ? 'Battery temp.: $label'
+                                        : label,
+                                  );
+                                },
+                              ),
+                              // Free storage on the session volume — hours of JPEGs can
+                              // fill a phone, so the user sees when to clean up before
+                              // mounting it. Refreshed on the thermal cadence.
+                              ValueListenableBuilder<StorageReading>(
+                                valueListenable: _storageVN,
+                                builder: (_, storage, _) {
+                                  final label = storage.label;
+                                  if (label.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return _statLine(label);
+                                },
+                              ),
+                              // Live count of insects currently on the flower, plus the
+                              // running total of unique insects confirmed so far this
+                              // session (same figure as the summary's "Unique insects").
+                              // Both sit in one per-frame builder, so the total stays live
+                              // without a separate notifier. Hidden in the no-AI modes,
+                              // same as the detector/pipeline fps lines above — no
+                              // tracker runs there, so the numbers could only be stale.
+                              if (_config.detectorEnabled)
+                                ValueListenableBuilder<List<Track>>(
+                                  valueListenable: _tracksVN,
+                                  builder: (_, tracks, _) => Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _statLine(
+                                        'Current tracks: ${tracks.length}',
+                                      ),
+                                      _statLine(
+                                        'Total tracks: ${_tracker.totalConfirmed}',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ),
-                      ],
+                        ),
                     ],
                   ),
                 ),
@@ -2919,72 +3022,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // REC banner makes it unmistakable that a session is live. Second
           // line: countdown to the auto-stop (manual: session length;
           // scheduled: this window's end) and, in a scheduled run, which
-          // session of the planned bundle this is.
-          if (_recording) ...[
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 52),
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: _recordElapsedVN,
-                    builder: (_, secs, _) {
-                      final leftSecs = _recordEndAt
-                          ?.difference(DateTime.now())
-                          .inSeconds;
-                      final left = leftSecs == null
-                          ? null
-                          : (leftSecs < 0 ? 0 : leftSecs);
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.fiber_manual_record,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'REC  ${_formatElapsed(secs)}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                                if (left != null)
-                                  Text(
-                                    '${_formatElapsed(left)} left'
-                                    '${_recordSlotLabel == null ? '' : '  ·  $_recordSlotLabel'}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
+          // session of the planned bundle this is. This slot (above the
+          // strip) is used only while the info panel is collapsed; the
+          // expanded panel takes the top spot instead (see recBanner above).
+          // The two slots are mutually exclusive — never render both.
+          if (recBanner != null && !_statsExpanded) recBanner,
           // Big "Calibrating…" banner for the WHOLE start-up cycle (first
           // frame + full-res probe + ceiling probe), so the user sees one
           // calibration phase, not two sequential indicators.
@@ -3215,19 +3257,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Widget _statLine(String text) =>
       Padding(padding: const EdgeInsets.only(bottom: 6), child: _chip(text));
 
-  /// Prominent detector on/off chip, shown only while the motion gate is
-  /// enabled: green "DETECTOR ON" while inference runs, grey "SLEEPING" while
-  /// the gate keeps it idle (nothing moving in the ROI — expected on a mounted
-  /// phone over an empty flower, and NOT a fault). In motion-only capture mode
-  /// the same states read "CAPTURING" / "WAITING FOR MOTION" — no detector
-  /// exists to be on.
-  Widget _gateStateChip() {
-    const awakeColor = Color(0xFF00E676); // vivid green
-    const idleColor = Color(0xFFB0BEC5); // blue-grey
-    final color = _gateIdle ? idleColor : awakeColor;
-    final label = _config.motionOnlyCapture
-        ? (_gateIdle ? 'WAITING FOR MOTION' : 'CAPTURING')
-        : (_gateIdle ? 'SLEEPING' : 'DETECTOR ON');
+  // Mode-chip colors: green = photos are happening (or can happen right
+  // now), grey = waiting. One pair of constants for every chip state.
+  static const Color _chipActiveColor = Color(0xFF00E676); // vivid green
+  static const Color _chipWaitingColor = Color(0xFFB0BEC5); // blue-grey
+
+  /// The visual shell every mode-chip state shares: a dark rounded badge with
+  /// a colored dot and a bold label. The label sits in a Flexible and is
+  /// ellipsized, so on a narrow screen (or with a huge system font) the chip
+  /// shortens itself with "…" instead of overflowing the header row (the
+  /// pre-round-145 yellow/black overflow stripes).
+  Widget _modeChipShell({required Color color, required String label}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Container(
@@ -3242,13 +3282,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           children: [
             Icon(Icons.circle, size: 12, color: color),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
@@ -3257,65 +3301,61 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     );
   }
 
-  /// Time-lapse mode chip: green "CAPTURING" during a burst, grey countdown
-  /// to the next burst between them (ticks via [_recordElapsedVN], which the
-  /// 1 s record ticker already updates), grey "starts with REC" before
-  /// recording. Mirrors the gate chip's look so the field glance stays the
-  /// same: green = photos happening now.
-  Widget _timeLapseChip() {
-    const awakeColor = Color(0xFF00E676); // vivid green
-    const idleColor = Color(0xFFB0BEC5); // blue-grey
-    return ValueListenableBuilder<int>(
-      valueListenable: _recordElapsedVN,
-      builder: (_, _, _) {
-        String label;
-        bool active;
-        final plan = _timeLapsePlan;
-        if (!_recording || plan == null) {
-          label = 'TIME-LAPSE (starts with REC)';
-          active = false;
-        } else {
-          final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
-          active = plan.inBurstAt(t);
-          if (active) {
-            label = 'TIME-LAPSE: CAPTURING';
+  /// One badge that always says which capture mode this session runs in and
+  /// whether photos can happen right now (round 145 — previously plain AI
+  /// mode showed no chip at all). Exactly one mode is active at a time
+  /// (CaptureTrigger is a single enum), so the dispatch below is exhaustive:
+  /// - AI detector: "DETECTOR ON"; with the motion gate, "DETECTOR SLEEPING"
+  ///   while nothing moves in the ROI (expected on a mounted phone over an
+  ///   empty flower, NOT a fault — the finer motion % lives on the expanded
+  ///   panel's "Gate:" line).
+  /// - Motion-trigger: "MOTION: CAPTURING" / "MOTION: WAITING".
+  /// - Time-lapse: burst state + countdown to the next burst (ticks via
+  ///   [_recordElapsedVN], which the 1 s record ticker already updates).
+  Widget _modeChip() {
+    if (_config.timeLapseCapture) {
+      return ValueListenableBuilder<int>(
+        valueListenable: _recordElapsedVN,
+        builder: (_, _, _) {
+          String label;
+          bool active;
+          final plan = _timeLapsePlan;
+          if (!_recording || plan == null) {
+            label = 'TIME-LAPSE: press REC';
+            active = false;
           } else {
-            final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
-            final mm = (waitS ~/ 60).toString().padLeft(2, '0');
-            final ss = (waitS % 60).toString().padLeft(2, '0');
-            label = 'NEXT BURST in $mm:$ss';
+            final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
+            active = plan.inBurstAt(t);
+            if (active) {
+              label = 'TIME-LAPSE: CAPTURING';
+            } else {
+              final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
+              final mm = (waitS ~/ 60).toString().padLeft(2, '0');
+              final ss = (waitS % 60).toString().padLeft(2, '0');
+              label = 'NEXT BURST in $mm:$ss';
+            }
           }
-        }
-        final color = active ? awakeColor : idleColor;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color, width: 1.5),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.circle, size: 12, color: color),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+          return _modeChipShell(
+            color: active ? _chipActiveColor : _chipWaitingColor,
+            label: label,
+          );
+        },
+      );
+    }
+    if (_config.motionOnlyCapture) {
+      return _modeChipShell(
+        color: _gateIdle ? _chipWaitingColor : _chipActiveColor,
+        label: _gateIdle ? 'MOTION: WAITING' : 'MOTION: CAPTURING',
+      );
+    }
+    if (_config.motionGateEnabled) {
+      return _modeChipShell(
+        color: _gateIdle ? _chipWaitingColor : _chipActiveColor,
+        label: _gateIdle ? 'DETECTOR SLEEPING' : 'DETECTOR ON',
+      );
+    }
+    // Plain AI mode (no gate): the detector runs on every frame.
+    return _modeChipShell(color: _chipActiveColor, label: 'DETECTOR ON');
   }
 
   Widget _chip(String text) => Container(

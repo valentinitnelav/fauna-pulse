@@ -79,12 +79,24 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   the same insect keeps the same number across frames. (You can turn box
   drawing off in Settings; detection and tracking still run — only the drawing
   stops.)
-- **DETECTOR ON / SLEEPING chip** — only appears when the **motion gate** is
-  enabled (off by default). Green "DETECTOR ON" means the model is running;
-  grey "SLEEPING" means nothing is moving in the ROI so the detector is resting
-  to save heat and battery. **Sleeping is normal and correct** on an empty
-  flower — it is not a fault. The ROI border also turns grey while sleeping.
-  See §5 for how this affects the FPS number.
+- **Mode chip** — always shown at the top left, so you can tell at a glance
+  which capture mode is running: **green = photos happening/possible right
+  now, grey = waiting.**
+  - AI detector: "DETECTOR ON"; with the motion gate enabled, grey
+    "DETECTOR SLEEPING" means nothing is moving in the ROI so the detector is
+    resting to save heat and battery. **Sleeping is normal and correct** on an
+    empty flower — it is not a fault. The ROI border also turns grey while
+    sleeping. See §5 for how this affects the FPS number.
+  - Motion-trigger: "MOTION: CAPTURING" / "MOTION: WAITING".
+  - Time-lapse: "TIME-LAPSE: press REC" before recording, then
+    "TIME-LAPSE: CAPTURING" during a burst or "NEXT BURST in mm:ss" between
+    bursts.
+  On a narrow screen a long label may shorten itself with "…" — that is
+  deliberate, so the info toggle next to it always stays reachable.
+- **Info panel over the REC banner** — while recording, expanding the "▸"
+  info panel draws it on a dark backdrop **on top of** the red REC banner so
+  every line is readable; collapse it ("▾ hide info") to see the banner
+  again. The red ROI border still shows that recording is running.
 - **ROI border colour** tells you what's happening at a glance:
   - **grey** — motion gate is idle (detector sleeping),
   - **red** — recording,
