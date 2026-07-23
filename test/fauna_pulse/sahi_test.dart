@@ -77,6 +77,48 @@ void main() {
       );
       expect(merged, hasLength(2));
     });
+
+    // The round-141 fix for the "many small boxes" artifact: a partial
+    // insect at a tile border yields a small box INSIDE the full-insect box.
+    // Its IoU is only the area ratio (~0.06 here, far under any threshold),
+    // so the r139 IoU merge kept both; the IoS merge scores containment ~1.
+    test('small same-class box contained in a big one merges (IoS)', () {
+      final big = PostBox(
+        className: 'bee', confidence: 0.9,
+        left: 0.1, top: 0.1, right: 0.5, bottom: 0.5,
+      );
+      final contained = PostBox(
+        className: 'bee', confidence: 0.6,
+        left: 0.35, top: 0.35, right: 0.45, bottom: 0.45,
+      );
+      expect(boxIou(big, contained), lessThan(0.1));
+      expect(boxIos(big, contained), closeTo(1.0, 1e-9));
+      final merged = mergePostBoxes([big, contained], 0.5);
+      expect(merged, hasLength(1));
+      expect(merged.single.confidence, 0.9);
+    });
+
+    test('contained box of a DIFFERENT class still survives', () {
+      final big = PostBox(
+        className: 'bee', confidence: 0.9,
+        left: 0.1, top: 0.1, right: 0.5, bottom: 0.5,
+      );
+      final contained = PostBox(
+        className: 'fly', confidence: 0.6,
+        left: 0.35, top: 0.35, right: 0.45, bottom: 0.45,
+      );
+      expect(mergePostBoxes([big, contained], 0.5), hasLength(2));
+    });
+  });
+
+  group('SahiOptions', () {
+    test('toJson records the merge metric and speck filter (r141)', () {
+      const opts = SahiOptions(enabled: true, minBoxFrac: 0.02);
+      final json = opts.toJson(640);
+      expect(json['merge_metric'], 'ios');
+      expect(json['min_box_frac'], 0.02);
+      expect(json['merge_iou'], 0.5);
+    });
   });
 
   group('sahiPredictFn', () {
@@ -189,6 +231,31 @@ void main() {
       expect(boxes, hasLength(1));
       expect(boxes.single.left, closeTo(0.375, 0.01));
       expect(boxes.single.bottom, closeTo(0.625, 0.01));
+    });
+
+    test('speck filter drops tiny TILE boxes but never full-pass boxes', () async {
+      // Every tile reports a speck (tile-normalized side 0.04 → photo side
+      // 0.04·48/64 = 0.03, under the 5% floor); the full pass reports a
+      // normal insect elsewhere. Without the filter this returns 5 boxes.
+      var call = 0;
+      final predict = sahiPredictFn(
+        base: (bytes) async {
+          final i = call++;
+          return i < 4
+              ? detectionAt(0.10, 0.10, 0.14, 0.14) // tile speck
+              : detectionAt(0.60, 0.60, 0.85, 0.85); // full pass
+        },
+        options: const SahiOptions(
+          enabled: true,
+          fullImagePass: true,
+          minBoxFrac: 0.05,
+        ),
+        modelInputPx: 48, // 64 px photo → 2×2 tiles + full pass
+      );
+      final boxes = boxesFromPredictResult(await predict(photo64));
+      expect(call, 5);
+      expect(boxes, hasLength(1));
+      expect(boxes.single.left, closeTo(0.60, 0.01));
     });
   });
 }

@@ -150,9 +150,9 @@ Hyper Inference" idea (`lib/fauna_pulse/postprocess/sahi.dart`) — no external
 SAHI library is used (none exists for Android/Flutter). For the concept, see
 the [original SAHI project](https://github.com/obss/sahi) and
 [Ultralytics' SAHI guide](https://docs.ultralytics.com/guides/sahi-tiled-inference/).
-Those describe *their* implementations, which differ in details — most
-notably they merge duplicates by intersection-over-smaller-box, FaunaPulse
-by plain IoU (see the note below the table).
+Those describe *their* implementations; since round 141 FaunaPulse merges
+duplicates by the same criterion they use (intersection-over-smaller-box —
+rounds 139–140 used plain IoU, see the note below the table).
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
@@ -160,17 +160,17 @@ by plain IoU (see the note below the table).
 | **Tile size** | `0 px` (auto) | Tile side in pixels. 0 = automatic: the selected model's own input size, so each tile is analyzed at native model scale — the standard choice. Larger tiles = fewer passes but more downscaling per tile. A photo that fits inside one tile skips tiling entirely (only the whole-photo pass runs; the preview says so). |
 | **Tile overlap** | `25 %` | How much neighbouring tiles share, so an insect sitting on a tile border appears whole in at least one tile. |
 | **Also run the whole-photo pass** | `on` | Adds the plain letterboxed pass on top of the tiles — catches insects larger than one tile, at the cost of one extra inference. |
-| **Duplicate-merge IoU** | `0.5` | The overlap level (intersection-over-union) at which two same-class boxes from different passes count as the *same* insect and merge into one (the higher-confidence box wins). |
+| **Duplicate-merge overlap** | `0.5` | The overlap level at which two same-class boxes from different passes count as the *same* insect and merge into one (the higher-confidence box wins). Since round 141 overlap is measured against the **smaller** box ("IoS"), so a partial box sitting inside a bigger one merges away — rounds 139–140 measured plain IoU, which kept such contained boxes as extra small boxes. |
+| **Ignore tiny tile boxes** | `0 %` (off) | Round 141. Drops tile detections smaller than this fraction of the photo side in *both* directions — background specks that only clear the confidence threshold at native tile scale. It never removes whole-photo-pass boxes, so it can only trim what tiling added, never fall below a plain run. Careful: SAHI's whole purpose is finding small insects, so start low (~1–2%) and check the review boxes before trusting it. |
 
-**Expect extra small boxes when tiling.** Tiling trades precision for
-recall: a partial insect at a tile border can survive as a small extra box
-(a small box *inside* a big one has low IoU — roughly the ratio of their
-areas — so the IoU merge keeps both), and each tile shows fine background
-detail at near-native scale, so tiny specks clear the confidence threshold
-more often than in the letterboxed pass. Treat the boxes as triage evidence
-("this photo contains a pollinator"), not as tight annotations — that
-matches the feature's stated goal (recall for keep/delete triage). Raising
-the analysis confidence threshold trims the speck boxes.
+**Extra small boxes when tiling** — mostly fixed in round 141. Two causes:
+partial insects at tile borders (small boxes *inside* the full-insect box —
+merged away since round 141 by the smaller-box overlap above) and fine
+background specks that each tile sees at near-native scale (trim with
+"Ignore tiny tile boxes" and/or a higher confidence threshold). Either way,
+treat the boxes as triage evidence ("this photo contains a pollinator"),
+not as tight annotations — that matches the feature's stated goal (recall
+for keep/delete triage).
 
 Also on this screen: **Re-analyze photos already done** (per-run checkbox,
 deliberately not persisted) — reruns photos that already have a result, so

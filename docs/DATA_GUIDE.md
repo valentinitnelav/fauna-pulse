@@ -470,8 +470,13 @@ Every record carries `time_ms`/`time_iso` (when it was written). Types:
   full rerun. When small-insect tiling (SAHI) was on, a `sahi` map records
   the tiling parameters: `tile_px` (resolved tile side — "auto" is already
   resolved to the model's input size here), `overlap` (fraction, e.g.
-  `0.25`), `full_pass` (whole-photo pass on/off), `merge_iou`. No `sahi`
-  key = plain single-pass run.
+  `0.25`), `full_pass` (whole-photo pass on/off), `merge_iou` (the
+  duplicate-merge threshold), and since round 141 `merge_metric` (`"ios"` —
+  overlap measured against the smaller box; a `sahi` map *without*
+  `merge_metric` is an r139–140 run that merged by plain IoU and can carry
+  extra small contained boxes) plus `min_box_frac` (tile boxes smaller than
+  this fraction of the photo side in both directions were dropped; `0` =
+  filter off). No `sahi` key = plain single-pass run.
 * `post_detection` — one per analyzed photo: `jpeg` (filename in
   `roi_frames/`, joinable exactly like §5), `captured_at_ms` (parsed from
   the filename), `infer_ms`, and `boxes` — each with `class_name`, `conf`,
@@ -490,12 +495,14 @@ match it to its run by reading backwards to the nearest preceding
 `post_start`.
 
 **Reading SAHI runs:** the boxes come from overlapping tiles plus (by
-default) a whole-photo pass, merged by same-class IoU-NMS. Expect extra
-small boxes — a partial insect at a tile border merges poorly with the
-full-insect box (a small box inside a big one has low IoU), and each tile
-sees fine background detail at near-native scale. Treat the boxes as triage
-evidence, not tight annotations; for publication-grade boxes re-run offline
-(§5b). The tiling is FaunaPulse's own pure-Dart implementation
+default) a whole-photo pass, merged by same-class greedy NMS. In r139–140
+runs (no `merge_metric` in the `sahi` map) the merge used plain IoU, so
+expect extra small boxes: a partial insect at a tile border merges poorly
+with the full-insect box (a small box inside a big one has low IoU). Since
+r141 (`merge_metric: "ios"`) such contained boxes merge away, and the
+optional `min_box_frac` filter drops speck-sized tile boxes. Either way,
+treat the boxes as triage evidence, not tight annotations; for
+publication-grade boxes re-run offline (§5b). The tiling is FaunaPulse's own pure-Dart implementation
 (`lib/fauna_pulse/postprocess/sahi.dart`), not an external library — concept
 background and per-setting docs are in
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).

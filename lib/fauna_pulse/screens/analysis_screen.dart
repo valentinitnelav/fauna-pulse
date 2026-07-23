@@ -84,6 +84,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   static const _prefSahiOverlapPct = 'analysis_sahi_overlap_pct';
   static const _prefSahiFullPass = 'analysis_sahi_full_pass';
   static const _prefSahiMergeIou = 'analysis_sahi_merge_iou';
+  static const _prefSahiMinBoxPct = 'analysis_sahi_min_box_pct';
 
   bool _loading = true;
   List<_AnalyzableSession> _sessions = const [];
@@ -104,6 +105,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   double _sahiOverlapPct = 25;
   bool _sahiFullPass = true;
   double _sahiMergeIou = 0.5;
+  double _sahiMinBoxPct = 0; // 0 = off; % of photo side, tile boxes only (r141)
 
   /// Per-run choice (deliberately not persisted): process photos that were
   /// already analyzed, so a session can be re-run with a different model or
@@ -152,6 +154,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _sahiOverlapPct = prefs.getDouble(_prefSahiOverlapPct) ?? 25;
       _sahiFullPass = prefs.getBool(_prefSahiFullPass) ?? true;
       _sahiMergeIou = prefs.getDouble(_prefSahiMergeIou) ?? 0.5;
+    _sahiMinBoxPct = prefs.getDouble(_prefSahiMinBoxPct) ?? 0;
       _model = models.where((m) => m.id == savedModel).firstOrNull ??
           models.firstOrNull;
       _session = widget.initialSessionPath != null
@@ -203,6 +206,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     overlapFrac: _sahiOverlapPct / 100,
     fullImagePass: _sahiFullPass,
     mergeIou: _sahiMergeIou,
+    minBoxFrac: _sahiMinBoxPct / 100,
   );
 
   /// (Re)parses the selected session's post_detections.jsonl so the cleanup
@@ -604,6 +608,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       await prefs.setDouble(_prefSahiOverlapPct, _sahiOverlapPct);
       await prefs.setBool(_prefSahiFullPass, _sahiFullPass);
       await prefs.setDouble(_prefSahiMergeIou, _sahiMergeIou);
+      await prefs.setDouble(_prefSahiMinBoxPct, _sahiMinBoxPct);
     }
 
     final modelPx = _model?.inputSize ?? 640;
@@ -693,16 +698,36 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           ),
         ),
         NumericSettingField(
-          label: 'Duplicate-merge IoU',
+          label: 'Duplicate-merge overlap',
           value: _sahiMergeIou,
           min: 0.1,
           max: 0.9,
           decimals: 2,
           helperText:
               'Overlap level at which boxes from different tiles count as '
-              'the SAME insect and merge. 0.5 is the standard.',
+              'the SAME insect and merge. Measured against the smaller box, '
+              'so a partial box sitting inside a bigger one merges away. '
+              '0.5 is the standard.',
           onChanged: (v) async {
             setState(() => _sahiMergeIou = v);
+            await save();
+          },
+        ),
+        const SizedBox(height: 8),
+        NumericSettingField(
+          label: 'Ignore tiny tile boxes',
+          value: _sahiMinBoxPct,
+          min: 0,
+          max: 20,
+          decimals: 1,
+          unitSuffix: '% of photo',
+          helperText:
+              '0 = off. Drops tile detections smaller than this in both '
+              'directions — background specks that only show up at tile '
+              'scale. Never removes whole-photo-pass boxes, so it can only '
+              'trim what tiling added.',
+          onChanged: (v) async {
+            setState(() => _sahiMinBoxPct = v);
             await save();
           },
         ),

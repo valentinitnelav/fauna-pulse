@@ -40,9 +40,20 @@ class SahiOptions {
   /// tile, at the cost of one extra inference.
   final bool fullImagePass;
 
-  /// Overlap level (IoU) at which two same-class boxes from different passes
-  /// count as the same insect and merge into one.
+  /// Overlap level at which two same-class boxes from different passes count
+  /// as the same insect and merge into one. Since round 141 the overlap is
+  /// measured as IoS — intersection over the SMALLER box's area — not IoU:
+  /// a partial insect detected at a tile border sits inside the full-insect
+  /// box with high IoS but low IoU, so IoU-NMS kept both (the "many small
+  /// boxes" artifact) while IoS merges them. Same criterion as obss/sahi.
   final double mergeIou;
+
+  /// Drop TILE detections whose box is smaller than this fraction of the
+  /// photo side in both dimensions (0 = off). Trims background specks that
+  /// only clear the confidence threshold at native tile scale. Applied to
+  /// tile-derived boxes only, never to the whole-photo pass — so the filter
+  /// can only trim tiling's additions, never fall below the plain run.
+  final double minBoxFrac;
 
   const SahiOptions({
     this.enabled = false,
@@ -50,17 +61,22 @@ class SahiOptions {
     this.overlapFrac = 0.25,
     this.fullImagePass = true,
     this.mergeIou = 0.5,
+    this.minBoxFrac = 0,
   });
 
   int effectiveTileSide(int modelInputPx) =>
       tileSidePx > 0 ? tileSidePx : modelInputPx;
 
   /// Echoed into the run's `post_start` record so results stay interpretable.
+  /// `merge_metric` marks round-141+ runs (IoS); records without it are
+  /// r139–140 runs that merged by plain IoU.
   Map<String, dynamic> toJson(int modelInputPx) => {
     'tile_px': effectiveTileSide(modelInputPx),
     'overlap': overlapFrac,
     'full_pass': fullImagePass,
     'merge_iou': mergeIou,
+    'merge_metric': 'ios',
+    'min_box_frac': minBoxFrac,
   };
 }
 
@@ -94,28 +110,43 @@ List<TileRect> planTiles(int w, int h, int tileSide, double overlapFrac) {
   ];
 }
 
-/// Intersection-over-union of two normalized boxes.
-double boxIou(PostBox a, PostBox b) {
+double _intersection(PostBox a, PostBox b) {
   final il = max(a.left, b.left), it = max(a.top, b.top);
   final ir = min(a.right, b.right), ib = min(a.bottom, b.bottom);
-  final iw = max(0.0, ir - il), ih = max(0.0, ib - it);
-  final inter = iw * ih;
+  return max(0.0, ir - il) * max(0.0, ib - it);
+}
+
+double _area(PostBox a) => (a.right - a.left) * (a.bottom - a.top);
+
+/// Intersection-over-union of two normalized boxes.
+double boxIou(PostBox a, PostBox b) {
+  final inter = _intersection(a, b);
   if (inter <= 0) return 0;
-  final areaA = (a.right - a.left) * (a.bottom - a.top);
-  final areaB = (b.right - b.left) * (b.bottom - b.top);
-  return inter / (areaA + areaB - inter);
+  return inter / (_area(a) + _area(b) - inter);
+}
+
+/// Intersection over the SMALLER box's area ("IoS"). A small box fully
+/// inside a big one scores ~1.0 here but only area-ratio IoU, which is why
+/// IoS is the right duplicate test for tiled inference (obss/sahi's default
+/// too): the partial insect a tile sees at its border must merge into the
+/// full-insect box from the neighbouring tile or the whole-photo pass.
+double boxIos(PostBox a, PostBox b) {
+  final inter = _intersection(a, b);
+  if (inter <= 0) return 0;
+  return inter / min(_area(a), _area(b));
 }
 
 /// Greedy same-class NMS: the highest-confidence box wins; any same-class
-/// box overlapping a winner by ≥ [iouThresh] is a duplicate (the same insect
-/// seen from two overlapping passes) and is dropped.
-List<PostBox> mergePostBoxes(List<PostBox> boxes, double iouThresh) {
+/// box overlapping a winner by ≥ [overlapThresh] is a duplicate (the same
+/// insect seen from two overlapping passes) and is dropped. Overlap is IoS
+/// since round 141 (was IoU in r139–140) — see [boxIos] for why.
+List<PostBox> mergePostBoxes(List<PostBox> boxes, double overlapThresh) {
   final sorted = [...boxes]
     ..sort((a, b) => b.confidence.compareTo(a.confidence));
   final kept = <PostBox>[];
   for (final b in sorted) {
     final duplicate = kept.any(
-      (k) => k.className == b.className && boxIou(k, b) >= iouThresh,
+      (k) => k.className == b.className && boxIos(k, b) >= overlapThresh,
     );
     if (!duplicate) kept.add(b);
   }
@@ -178,16 +209,21 @@ PredictFn sahiPredictFn({
         final (tl, tt, tw, th) = rects[i];
         for (final b in boxesFromPredictResult(await base(jpegs[i]))) {
           // Tile-normalized → whole-photo-normalized coordinates.
-          all.add(
-            PostBox(
-              className: b.className,
-              confidence: b.confidence,
-              left: (tl + b.left * tw) / imgW,
-              top: (tt + b.top * th) / imgH,
-              right: (tl + b.right * tw) / imgW,
-              bottom: (tt + b.bottom * th) / imgH,
-            ),
+          final mapped = PostBox(
+            className: b.className,
+            confidence: b.confidence,
+            left: (tl + b.left * tw) / imgW,
+            top: (tt + b.top * th) / imgH,
+            right: (tl + b.right * tw) / imgW,
+            bottom: (tt + b.bottom * th) / imgH,
           );
+          // Optional speck filter — tile boxes only (see SahiOptions).
+          if (options.minBoxFrac > 0 &&
+              max(mapped.right - mapped.left, mapped.bottom - mapped.top) <
+                  options.minBoxFrac) {
+            continue;
+          }
+          all.add(mapped);
         }
       }
     }

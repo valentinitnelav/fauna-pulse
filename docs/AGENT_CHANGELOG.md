@@ -5066,3 +5066,14 @@ Owner asked whether r139's SAHI used a library and how to document it for users.
 - **Not done (deliberate)**: the small-box artifact fix itself. Owner observed many small boxes on tiled runs — diagnosis: IoU merge keeps contained partial-insect boxes at tile borders; obss/sahi solves this with IoS matching. If wanted later: switch/augment `mergePostBoxes` to IoS (containment ≈ 1) and/or add a min-box-size filter — small change, tests exist.
 - No code touched; suite/build state unchanged from r139.
 
+## Round 141 (2026-07-23): SAHI small-box artifact fix (IoS merge + speck filter)
+
+Owner approved the r140 follow-up: fewer spurious small boxes on tiled runs.
+
+- **`sahi.dart` merge switched IoU → IoS** (intersection over the SMALLER box's area — obss/sahi's criterion). Rationale: a partial insect at a tile border yields a small box INSIDE the full-insect box; IoU ≈ area ratio (~0.06 in the test case) never reached the 0.5 threshold so both survived — IoS scores containment ≈ 1 and merges them. `boxIos` added, `boxIou` kept (shared `_intersection`/`_area` helpers); `mergePostBoxes` signature unchanged (param renamed `overlapThresh`). Same-class-only merging unchanged, so a genuinely different-class insect inside another's box still survives. Threshold setting, pref key `analysis_sahi_merge_iou` and JSONL key `merge_iou` all keep their names/values; UI label is now "Duplicate-merge overlap".
+- **New speck filter** `SahiOptions.minBoxFrac` (default 0 = off; UI "Ignore tiny tile boxes", 0–20% of photo side, pref `analysis_sahi_min_box_pct`): drops TILE-derived boxes smaller than the floor in BOTH dimensions, applied pre-merge and NEVER to whole-photo-pass boxes — invariant: the filter can only trim tiling's additions, a SAHI run never returns less than the plain run would. Default off because SAHI's whole point is small insects; helper text suggests ~1–2%.
+- **Provenance in JSONL**: `sahi` map gains `merge_metric: "ios"` (absent ⇒ r139–140 IoU run) and `min_box_frac` — old runs stay interpretable.
+- **Docs synced** (they were r140-fresh and described IoU): SETTINGS_REFERENCE merge row + new filter row + "extra small boxes — mostly fixed in r141" note; DATA_GUIDE §6 `sahi`-map keys + reading-SAHI-runs caveat now split by log generation.
+- **Tests** (+4 → suite 341 passing, analyze clean): contained same-class box merges under IoS (asserts IoU < 0.1 AND IoS ≈ 1 for the same pair), contained different-class box survives, end-to-end speck filter (4 tile specks dropped, full-pass box kept, 5 passes still run), `toJson` records `merge_metric`/`min_box_frac`.
+- Field expectation: re-analyze an affected session with "Re-analyze photos already done" — the newest records win; compare small-box counts before/after.
+
