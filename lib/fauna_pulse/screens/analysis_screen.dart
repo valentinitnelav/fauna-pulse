@@ -720,12 +720,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           min: 0,
           max: 20,
           decimals: 1,
-          unitSuffix: '% of photo',
+          unitSuffix: '%',
           helperText:
-              '0 = off. Drops tile detections smaller than this in both '
-              'directions — background specks that only show up at tile '
-              'scale. Never removes whole-photo-pass boxes, so it can only '
-              'trim what tiling added.',
+              '0 = off. Drops tile detections smaller than this percentage '
+              'of the photo side in both directions — background specks '
+              'that only show up at tile scale. Never removes '
+              'whole-photo-pass boxes, so it can only trim what tiling '
+              'added.',
           onChanged: (v) async {
             setState(() => _sahiMinBoxPct = v);
             await save();
@@ -836,7 +837,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         ),
         const SizedBox(height: 8),
         DurationSettingField(
-          label: 'Keep window around a detection',
+          label: 'Keep time-window around a detection',
           valueSeconds: _keepGap,
           minSeconds: 0,
           maxSeconds: 3600,

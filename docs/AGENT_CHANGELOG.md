@@ -5077,3 +5077,9 @@ Owner approved the r140 follow-up: fewer spurious small boxes on tiled runs.
 - **Tests** (+4 → suite 341 passing, analyze clean): contained same-class box merges under IoS (asserts IoU < 0.1 AND IoS ≈ 1 for the same pair), contained different-class box survives, end-to-end speck filter (4 tile specks dropped, full-pass box kept, 5 passes still run), `toJson` records `merge_metric`/`min_box_frac`.
 - Field expectation: re-analyze an affected session with "Re-analyze photos already done" — the newest records win; compare small-box counts before/after.
 
+## Round 142 (2026-07-23): analysis-screen label fixes (owner-reported)
+
+- **"Ignore tiny tile boxes" number was invisible**: the r141 `unitSuffix: '% of photo'` was long enough to push the typed value out of the `NumericSettingField` box. Suffix is now just `'%'`; "of the photo side" moved into the helper text. Lesson for future fields: keep `unitSuffix` to a few characters — it renders INSIDE the input box next to the number.
+- **"Keep window around a detection" → "Keep time-window around a detection"** (analysis screen) and the matching summary-Photos-tab info line ("Keep time-window Xs …") — "window" alone reads as a spatial window next to SAHI's tiling on the same page.
+- UI strings only; suite 341 passing, analyze clean.
+

@@ -2097,7 +2097,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               Text(
                 'Post-hoc analysis: $withBoxes of ${outcomes.length} analyzed '
                 'photos contain a detection (green boxes in the viewer). '
-                'Keep window ${formatKeepWindow(_postGapSeconds)} (set on the '
+                'Keep time-window ${formatKeepWindow(_postGapSeconds)} (set on the '
                 'analysis screen): $kept kept ($keptPct%), $deleted to delete '
                 '($deletedPct%). Photos marked with a red ✕ below have no '
                 'detection nearby; photos kept only because of a nearby '
