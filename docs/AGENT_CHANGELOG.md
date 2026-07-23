@@ -5132,3 +5132,41 @@ Owner: with motion/time-lapse capture selected, AI-only controls stayed active a
 - **Log format (additive)**: start record gains `config_not_applicable` — the list of `config` keys inert under the session's trigger, from the new pure `notApplicableConfigKeys(CaptureTrigger)` in `session_config.dart`. Values are NEVER replaced with "n/a"/null (would flip pandas dtypes); the config block still always carries every field. Two new tests: every listed key exists in `toJson()` (drift guard) + per-mode expectations. DATA_GUIDE start-record table documents it; SETTINGS_REFERENCE gains the mode-aware note + motion-mode wake meaning.
 - Analyze clean; suite 343 passing (+1 skipped). Manual on-device check: switch trigger with the sheet open → all gating reacts live; values survive mode round-trips.
 
+
+## Round 148 (2026-07-23): diagnostics opt-in + collapsible extra graphs
+
+Owner-requested UX split of the summary graphs: the visit timeline is the promised
+deliverable for a general (citizen-science) user; FPS/temperature/power are advanced
+diagnostics and now opt-in — both for sampling and for display.
+
+- **`SessionConfig` (`session_config.dart`)**: new `diagnosticsEnabled` (default OFF) —
+  master switch for logging `fps`/`thermal`/`power` records. `autoComputeGraphs` REMOVED
+  (fields absent from old saved configs are simply ignored on load; the timeline is now
+  always computed, see below). Flows into the start record's `config` block automatically.
+- **Settings sheet, Graphs tab (`settings_sheet.dart`)**: "Compute graphs automatically"
+  switch removed; new "Record diagnostics (FPS, temperature, power)" switch. The three
+  sample-interval fields (Frame-rate/Temperature/Power sample) are only rendered while
+  the switch is on (progressive disclosure — same direction as r125/r147).
+- **Camera screen (`camera_session_screen.dart`)**: timer setup extracted into
+  `_rebuildSamplingTimers()`, called at init AND after the settings sheet closes (so a
+  toggle or interval change now applies without leaving the screen — previously intervals
+  only applied on re-entry). The thermal timer ALWAYS runs (it feeds the on-screen
+  temp + free-storage readouts); only its `logThermal` write is gated on
+  `diagnosticsEnabled`. The FPS and power timers are log-only, so with diagnostics off
+  they are not created at all (plus belt-and-braces guards in `_sampleFps`/`_samplePower`).
+  Auto-throttle is per-frame and untouched.
+- **Summary Graphs tab (`session_summary_screen.dart`)**: always parses the log on open
+  ("Generate graphs" button removed; `_graphsRequested` is now just the re-entry guard).
+  Visit timeline renders at top as before (its own show/hide + floating button untouched).
+  Temperature/headroom/FPS/inference/power moved behind a tappable
+  "▸/▾ Extra graphs — temperature, FPS, power" header (`_extraGraphsExpanded`, persisted
+  as SharedPreferences `extra_graphs_expanded`, collapsed by default — the r125
+  stats-panel pattern; a viewing preference, deliberately NOT SessionConfig). Sessions
+  with `diagnosticsEnabled:false` in their config block show a pointer note
+  ("turn on Record diagnostics in Session settings → Graphs") instead of empty charts
+  (`_diagnosticsOffSession`; pre-r148 sessions lack the key → graphs render as always).
+- **Summary Settings tab**: new "Record diagnostics" row; the three sample-interval rows
+  are skipped for diagnostics-off sessions (r105 "never list knobs that had no effect").
+- Analyze clean; suite 344 passing. Old sessions, gate-idle/no-AI sparse fps records, and
+  the charging-invalidates-power guard all unaffected (graph code already tolerates
+  missing series — "Not enough samples." / conditional sections).

@@ -394,6 +394,15 @@ class SessionConfig {
   /// hardcoded value). Directly affects the visitation rate for short visits.
   final double minHitsSeconds;
 
+  /// Master switch for the technical "diagnostics" streams (round 148): frame
+  /// rate, phone temperature and battery power sampled into the session log for
+  /// the summary's "Extra graphs". The visit timeline never depends on this —
+  /// it is built from the detection records themselves. Off by default: a
+  /// general user gets the visitation-rate deliverable with a leaner log, while
+  /// advanced users opt in via Session settings → Graphs (which also reveals
+  /// the three sampling-interval fields below).
+  final bool diagnosticsEnabled;
+
   /// How often (seconds) the frame-rate is sampled into the log for the
   /// end-of-session FPS graph. The FPS value is already maintained every frame,
   /// so each sample is just a cheap log line — but a small interval keeps the log
@@ -410,13 +419,6 @@ class SessionConfig {
   /// sample is a platform call, so it is kept coarse; power changes slowly.
   /// Default 10 s.
   final int powerSampleSeconds;
-
-  /// Whether the end-of-session summary computes its graphs (visit timeline,
-  /// temperature, FPS, power) automatically when it opens. When false the user
-  /// taps a "Generate graphs" button instead — useful for very long sessions
-  /// where the full-log parse takes a moment. Applies both at the end of a
-  /// session and when re-opening any past session. Default true.
-  final bool autoComputeGraphs;
 
   /// Whether the crop-and-export tool in the summary photo viewer forces the
   /// dragged rectangle to a square (1:1). Free aspect (default) hugs the
@@ -519,10 +521,10 @@ class SessionConfig {
         1024, // ÷32; photos save at exactly this when possible
     this.occlusionSeconds = 3.0,
     this.minHitsSeconds = 0.2,
+    this.diagnosticsEnabled = false,
     this.fpsSampleSeconds = 5,
     this.thermalSampleSeconds = 10,
     this.powerSampleSeconds = 10,
-    this.autoComputeGraphs = true,
     this.cropSquareLock = false,
     this.selectedLensZoom = 1.0,
     this.trackerAlgorithm = TrackerAlgorithm.bytetrack,
@@ -618,10 +620,10 @@ class SessionConfig {
     int? targetRoiSavedPx,
     double? occlusionSeconds,
     double? minHitsSeconds,
+    bool? diagnosticsEnabled,
     int? fpsSampleSeconds,
     int? thermalSampleSeconds,
     int? powerSampleSeconds,
-    bool? autoComputeGraphs,
     bool? cropSquareLock,
     double? selectedLensZoom,
     TrackerAlgorithm? trackerAlgorithm,
@@ -672,10 +674,10 @@ class SessionConfig {
     targetRoiSavedPx: targetRoiSavedPx ?? this.targetRoiSavedPx,
     occlusionSeconds: occlusionSeconds ?? this.occlusionSeconds,
     minHitsSeconds: minHitsSeconds ?? this.minHitsSeconds,
+    diagnosticsEnabled: diagnosticsEnabled ?? this.diagnosticsEnabled,
     fpsSampleSeconds: fpsSampleSeconds ?? this.fpsSampleSeconds,
     thermalSampleSeconds: thermalSampleSeconds ?? this.thermalSampleSeconds,
     powerSampleSeconds: powerSampleSeconds ?? this.powerSampleSeconds,
-    autoComputeGraphs: autoComputeGraphs ?? this.autoComputeGraphs,
     cropSquareLock: cropSquareLock ?? this.cropSquareLock,
     selectedLensZoom: selectedLensZoom ?? this.selectedLensZoom,
     trackerAlgorithm: trackerAlgorithm ?? this.trackerAlgorithm,
@@ -731,10 +733,10 @@ class SessionConfig {
     'fullResPhotos': captureMode == RoiCaptureMode.highRes,
     'occlusionSeconds': occlusionSeconds,
     'minHitsSeconds': minHitsSeconds,
+    'diagnosticsEnabled': diagnosticsEnabled,
     'fpsSampleSeconds': fpsSampleSeconds,
     'thermalSampleSeconds': thermalSampleSeconds,
     'powerSampleSeconds': powerSampleSeconds,
-    'autoComputeGraphs': autoComputeGraphs,
     'cropSquareLock': cropSquareLock,
     'selectedLensZoom': selectedLensZoom,
     'trackerAlgorithm': trackerAlgorithm.name,
@@ -815,10 +817,10 @@ class SessionConfig {
     // old 1.0 that silently fragments tracks.
     occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 3.0,
     minHitsSeconds: (j['minHitsSeconds'] as num?)?.toDouble() ?? 0.2,
+    diagnosticsEnabled: j['diagnosticsEnabled'] as bool? ?? false,
     fpsSampleSeconds: (j['fpsSampleSeconds'] as num?)?.toInt() ?? 5,
     thermalSampleSeconds: (j['thermalSampleSeconds'] as num?)?.toInt() ?? 10,
     powerSampleSeconds: (j['powerSampleSeconds'] as num?)?.toInt() ?? 10,
-    autoComputeGraphs: j['autoComputeGraphs'] as bool? ?? true,
     cropSquareLock: j['cropSquareLock'] as bool? ?? false,
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
     // Configs saved before round 105 carry no algorithm choice: they were

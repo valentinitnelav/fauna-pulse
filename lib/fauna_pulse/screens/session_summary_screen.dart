@@ -4,13 +4,13 @@
 //  1. Headline numbers shown immediately — unique insect count, session length,
 //     model used, and where the data was saved. These are read cheaply from just
 //     the first and last lines of the log (the session start/end records).
-//  2. Graphs: a Gantt/phenology-style visit timeline (one lane per track id),
-//     phone temperature, frames-per-second and power over time, each with its
-//     average/median/min/max printed underneath. These require reading the whole
-//     log, so they compute automatically only when the "Compute graphs
-//     automatically" setting is on (default); otherwise the user taps a
-//     "Generate graphs" button. Either way the stats are derived live from the
-//     per-sample records already in the log, so they work for past sessions too.
+//  2. Graphs: a Gantt/phenology-style visit timeline (one lane per track id)
+//     rendered up front, plus — behind a tap-to-expand "Extra graphs" section
+//     (round 148) — phone temperature, frames-per-second and power over time,
+//     each with its average/median/min/max printed underneath. One full-log
+//     parse fills all of them when the Graphs tab opens; the stats are derived
+//     live from the per-sample records already in the log, so they work for
+//     past sessions too.
 
 import 'dart:convert';
 import 'dart:io';
@@ -56,6 +56,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   final GlobalKey _timelineKey = GlobalKey();
   bool _showTimeline = true;
   bool _timelineInView = false;
+
+  // "Extra graphs" disclosure (round 148): the diagnostic graphs (temperature,
+  // FPS, inference time, power) sit behind a tap-to-expand header so the visit
+  // timeline — the main deliverable — is all a general user sees. Mirrors the
+  // camera screen's collapsible stats panel: a viewing preference persisted in
+  // SharedPreferences (not SessionConfig), collapsed by default.
+  static const String _extraGraphsExpandedKey = 'extra_graphs_expanded';
+  bool _extraGraphsExpanded = false;
+
+  void _toggleExtraGraphs() {
+    setState(() => _extraGraphsExpanded = !_extraGraphsExpanded);
+    SharedPreferences.getInstance().then(
+      (p) => p.setBool(_extraGraphsExpandedKey, _extraGraphsExpanded),
+    );
+  }
 
   // --- Stage 1: cheap headline stats (from first/last log lines) ---
   bool _loadingStats = true;
@@ -251,16 +266,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
   }
 
-  /// Loads the cheap headline stats first, then — if the user's "Compute graphs
-  /// automatically" setting is on — kicks off the full graph computation so the
-  /// graphs appear without a button press.
+  /// Loads the cheap headline stats first, then kicks off the full graph
+  /// computation so the visit timeline appears without a button press (round
+  /// 148: always — the timeline is the main deliverable, and the same single
+  /// log parse also fills whatever diagnostic series the session recorded).
+  /// Also restores the "Extra graphs" expanded/collapsed viewing preference.
   Future<void> _init() async {
+    SharedPreferences.getInstance().then((p) {
+      final expanded = p.getBool(_extraGraphsExpandedKey) ?? false;
+      if (mounted && expanded != _extraGraphsExpanded) {
+        setState(() => _extraGraphsExpanded = expanded);
+      }
+    });
     await _loadStats();
-    if (!mounted) return;
-    final cfg = await SessionConfig.load();
-    if (mounted && cfg.autoComputeGraphs && !_graphsRequested) {
-      _loadGraphs();
-    }
+    if (mounted && !_graphsRequested) _loadGraphs();
   }
 
   /// Reads only the head and tail of the file to get the start/end records,
@@ -1008,6 +1027,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// detector, no motion check.
   bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
+  /// True for sessions recorded with diagnostics explicitly off (round 148):
+  /// no temperature/FPS/power records exist by design, so the Extra graphs
+  /// section shows a pointer to the setting instead of empty charts. Sessions
+  /// from before the toggle existed return false here (the key is absent, not
+  /// `false`) and render their diagnostic graphs as always.
+  bool get _diagnosticsOffSession => _setting('diagnosticsEnabled') == false;
+
   /// The tracker (ByteTrack) tuning block, from the `config` block or the
   /// top-level `tracker_params` (older sessions).
   Map? get _trackerParams {
@@ -1367,21 +1393,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             '(${sched['window_start']}–${sched['window_end']})',
       );
     }
-    add(
-      'FPS sample interval',
-      _setting('fpsSampleSeconds', 'fps_sample_seconds'),
-      suffix: ' s',
-    );
-    add(
-      'Temperature sample interval',
-      _setting('thermalSampleSeconds', 'thermal_sample_seconds'),
-      suffix: ' s',
-    );
-    add(
-      'Power sample interval',
-      _setting('powerSampleSeconds', 'power_sample_seconds'),
-      suffix: ' s',
-    );
+    add('Record diagnostics', _setting('diagnosticsEnabled'));
+    // Sampling intervals only had an effect when diagnostics were recorded —
+    // that is, this-round sessions with the toggle on, or older sessions from
+    // before the toggle existed (key absent → not explicitly false). A
+    // diagnostics-off session never sampled, so its intervals are not listed
+    // (round 105 principle: never list knobs that had no effect).
+    if (!_diagnosticsOffSession) {
+      add(
+        'FPS sample interval',
+        _setting('fpsSampleSeconds', 'fps_sample_seconds'),
+        suffix: ' s',
+      );
+      add(
+        'Temperature sample interval',
+        _setting('thermalSampleSeconds', 'thermal_sample_seconds'),
+        suffix: ' s',
+      );
+      add(
+        'Power sample interval',
+        _setting('powerSampleSeconds', 'power_sample_seconds'),
+        suffix: ' s',
+      );
+    }
 
     // --- Visit tracking ---
     // Labels here mirror the AI-tab settings exactly so the same knob is never
@@ -1818,15 +1852,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           controller: _scroll,
           padding: _tabPadding,
           children: [
-            if (!_graphsRequested)
-              Center(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.insights),
-                  label: const Text('Generate graphs'),
-                  onPressed: _loadGraphs,
-                ),
-              )
-            else if (_graphsLoading)
+            if (!_graphsRequested || _graphsLoading)
               const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
@@ -1872,96 +1898,125 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     const SizedBox(height: 12),
     _timeline(),
     const SizedBox(height: 28),
-    const Text(
-      'Phone temperature over the session (°C)',
-      style: TextStyle(fontWeight: FontWeight.bold),
-    ),
-    const SizedBox(height: 12),
-    _series(_temps, const Color(0xFFFF7043), '°'),
-    _statsText(_temps, decimals: 1, unit: '°C'),
-    if (_headroom.length >= 2) ...[
-      const SizedBox(height: 28),
-      const Text(
-        'Thermal headroom (0 = cool → 1 = throttling)',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        'How close the phone is to slowing itself down to cool off, from the '
-        'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
-        '1). When this nears 1 the phone throttles and the FPS drops — a faster, '
-        'more comparable signal than battery temperature.',
-        style: TextStyle(color: Colors.white70, fontSize: 12),
-      ),
-      const SizedBox(height: 12),
-      _series(_headroom, const Color(0xFFEF5350), ''),
-    ] else ...[
-      const SizedBox(height: 12),
-      const Text(
-        'Thermal headroom: not reported by this phone (common on many devices — '
-        'e.g. the Xiaomi here). This is not a bug. Use the Temperature and '
-        'Inference-time graphs as the throttle indicators on this device.',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
-      ),
-    ],
-    const SizedBox(height: 28),
-    const Text(
-      'Detector FPS over the session',
-      style: TextStyle(fontWeight: FontWeight.bold),
-    ),
-    const SizedBox(height: 12),
-    _series(_fps, const Color(0xFF66BB6A), ''),
-    _statsText(_fps, decimals: 1, unit: ' fps'),
-    if (_infMs.length >= 2) ...[
-      const SizedBox(height: 28),
-      const Text(
-        'Inference time over the session (ms) — throttle signal',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        'Milliseconds the model takes per frame. It climbs when the chip slows '
-        'itself to cool off (thermal throttling) — often before battery '
-        'temperature moves — which is what makes the FPS above drop. Read it '
-        'against the FPS and temperature graphs on the same left→right time axis.',
-        style: TextStyle(color: Colors.white70, fontSize: 12),
-      ),
-      const SizedBox(height: 12),
-      _series(_infMs, const Color(0xFF42A5F5), ' ms'),
-      _statsText(_infMs, decimals: 1, unit: ' ms'),
-    ],
-    const SizedBox(height: 28),
-    const Text(
-      'Power draw over the session (W)',
-      style: TextStyle(fontWeight: FontWeight.bold),
-    ),
-    const SizedBox(height: 4),
-    if (_chargingDuringSession)
-      const Text(
-        'Not shown: the phone was plugged in during (part of) this session. '
-        'The battery sensor then measures charging current — not what the '
-        'phone consumes — so a power or energy estimate would be wrong. '
-        'Record a full session on battery to see this graph.',
-        style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
-      )
-    else ...[
-      const Text(
-        'Watts (W) = how fast energy is being used right now '
-        '(battery current × voltage). Higher = more drain.',
-        style: TextStyle(color: Colors.white70, fontSize: 12),
-      ),
-      const SizedBox(height: 12),
-      _series(_power, const Color(0xFFFFCA28), 'W'),
-      if (_powerAvg != null) ...[
-        const SizedBox(height: 8),
-        Text(
-          'Average power ${_powerAvg!.toStringAsFixed(2)} W '
-          '(median ${_powerMedian!.toStringAsFixed(2)} W; '
-          'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
-          'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
-          '(= average power × duration); battery level dropped $_batteryUsedLabel.',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+    // Everything below is diagnostics (round 148): hidden behind a
+    // tap-to-expand header so the visitation-rate deliverable above stays
+    // front and centre. Same ▸/▾ disclosure as the camera screen's stats
+    // panel; the expanded state persists across summaries.
+    InkWell(
+      onTap: _toggleExtraGraphs,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          _extraGraphsExpanded
+              ? '▾ Extra graphs — temperature, FPS, power'
+              : '▸ Extra graphs — temperature, FPS, power (tap to show)',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+      ),
+    ),
+    if (_extraGraphsExpanded && _diagnosticsOffSession)
+      const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Text(
+          'No diagnostics were recorded for this session. Turn on "Record '
+          'diagnostics" in Session settings → Graphs before recording to '
+          'collect temperature, FPS and power data.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      )
+    else if (_extraGraphsExpanded) ...[
+      const SizedBox(height: 12),
+      const Text(
+        'Phone temperature over the session (°C)',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 12),
+      _series(_temps, const Color(0xFFFF7043), '°'),
+      _statsText(_temps, decimals: 1, unit: '°C'),
+      if (_headroom.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text(
+          'Thermal headroom (0 = cool → 1 = throttling)',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'How close the phone is to slowing itself down to cool off, from the '
+          'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
+          '1). When this nears 1 the phone throttles and the FPS drops — a faster, '
+          'more comparable signal than battery temperature.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        _series(_headroom, const Color(0xFFEF5350), ''),
+      ] else ...[
+        const SizedBox(height: 12),
+        const Text(
+          'Thermal headroom: not reported by this phone (common on many devices — '
+          'e.g. the Xiaomi here). This is not a bug. Use the Temperature and '
+          'Inference-time graphs as the throttle indicators on this device.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ],
+      const SizedBox(height: 28),
+      const Text(
+        'Detector FPS over the session',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 12),
+      _series(_fps, const Color(0xFF66BB6A), ''),
+      _statsText(_fps, decimals: 1, unit: ' fps'),
+      if (_infMs.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text(
+          'Inference time over the session (ms) — throttle signal',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Milliseconds the model takes per frame. It climbs when the chip slows '
+          'itself to cool off (thermal throttling) — often before battery '
+          'temperature moves — which is what makes the FPS above drop. Read it '
+          'against the FPS and temperature graphs on the same left→right time axis.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        _series(_infMs, const Color(0xFF42A5F5), ' ms'),
+        _statsText(_infMs, decimals: 1, unit: ' ms'),
+      ],
+      const SizedBox(height: 28),
+      const Text(
+        'Power draw over the session (W)',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      if (_chargingDuringSession)
+        const Text(
+          'Not shown: the phone was plugged in during (part of) this session. '
+          'The battery sensor then measures charging current — not what the '
+          'phone consumes — so a power or energy estimate would be wrong. '
+          'Record a full session on battery to see this graph.',
+          style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+        )
+      else ...[
+        const Text(
+          'Watts (W) = how fast energy is being used right now '
+          '(battery current × voltage). Higher = more drain.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        _series(_power, const Color(0xFFFFCA28), 'W'),
+        if (_powerAvg != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Average power ${_powerAvg!.toStringAsFixed(2)} W '
+            '(median ${_powerMedian!.toStringAsFixed(2)} W; '
+            'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
+            'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
+            '(= average power × duration); battery level dropped $_batteryUsedLabel.',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
       ],
     ],
   ];

@@ -126,7 +126,7 @@ this section (keeping the algorithm choice).
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Auto-compute graphs** | `on` | Generate the summary graphs automatically when the summary opens. On very long sessions, turn off so a full-log parse happens only when you tap "Generate graphs". |
+| **Record diagnostics (FPS, temperature, power)** | `off` | Also log frame rate, phone temperature and battery power while recording, and show them under "Extra graphs" in the session summary. The visit timeline — the main result — is always recorded regardless. Turn on when troubleshooting performance, heat or battery life; off keeps the session log leaner. The three interval settings below only appear while this is on. |
 | **FPS sample interval** | `5 s` | How often the frame rate is logged for the FPS graph. |
 | **Temperature sample interval** | `10 s` | How often phone temperature is logged (heat changes slowly). |
 | **Power sample interval** | `10 s` | How often battery power/charge is logged for the energy graphs. |

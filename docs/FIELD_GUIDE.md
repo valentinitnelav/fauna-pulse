@@ -139,9 +139,11 @@ tabs:
   methods write-up).
 - **Photos** — browse the saved ROI JPEGs; each shows its exact saved pixel
   size.
-- **Graphs** — visit timeline, temperature, FPS and battery/power over the
-  session. On long sessions these can be set to generate on a button press
-  instead of automatically (Settings → Graphs).
+- **Graphs** — the visit timeline (your visitation-rate result), shown
+  automatically. Temperature, FPS and battery/power sit under a tap-to-expand
+  "Extra graphs" section, and only contain data if "Record diagnostics" was on
+  in Session settings → Graphs when the session was recorded (it is off by
+  default).
 
 If you open a past session and the summary flags it as ended abnormally, that
 means the `end_of_session` line is missing — the app was killed or crashed. The
@@ -295,5 +297,6 @@ several degrees, but: they draw 2–5 W (your power bank drains much faster),
 they attach where mounts often clamp, and chilling a phone below the dew
 point on a humid morning can condense moisture on it. A plain small fan is
 gentler (no condensation) but also weaker. If you try one, the app itself is
-the test instrument: record two sessions at the same spot, cooler on and
-off, and compare the temperature and FPS graphs in the session summaries.
+the test instrument: turn on "Record diagnostics" (Session settings →
+Graphs), record two sessions at the same spot, cooler on and off, and
+compare the temperature and FPS graphs in the session summaries.

@@ -2142,26 +2142,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
-          'Compute graphs automatically',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'Build the end-of-session graphs (visit timeline, temperature, FPS, '
-          'power) as soon as the summary opens. Turn off to compute them only '
-          'when you tap "Generate graphs" — handy for very long sessions where '
-          'the full-log parse takes a moment. Also applies when re-opening a '
-          'past session.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.autoComputeGraphs,
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(autoComputeGraphs: v)),
-      ),
-      const Divider(color: Colors.white24),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
           'Square (1:1) export crops',
           style: TextStyle(color: Colors.white),
         ),
@@ -2176,61 +2156,85 @@ class _SettingsSheetState extends State<SettingsSheet> {
         onChanged: (v) => setState(() => _c = _c.copyWith(cropSquareLock: v)),
       ),
       const Divider(color: Colors.white24),
-      _label(
-        'How often the end-of-session graphs are sampled while recording. '
-        'Lower values give finer graphs but measure more often; the defaults are '
-        'deliberately light so the detection pipeline is not slowed down.',
-      ),
-      const SizedBox(height: 12),
-
-      NumericSettingField(
-        label: 'Frame-rate sample',
-        value: _c.fpsSampleSeconds.toDouble(),
-        min: 1,
-        max: 60,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–60 s) the frame rate is sampled for the '
-            'graph. Already computed every frame, so a sample is essentially '
-            'free. Default 5 s.',
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Record diagnostics (FPS, temperature, power)',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'Also log the frame rate, phone temperature and battery power while '
+          'recording, and show them as extra graphs in the session summary. '
+          'The visit timeline is always recorded regardless. Mainly for '
+          'advanced users troubleshooting performance or battery life; off '
+          'keeps the session log leaner.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.diagnosticsEnabled,
         onChanged: (v) =>
-            setState(() => _c = _c.copyWith(fpsSampleSeconds: v.round())),
+            setState(() => _c = _c.copyWith(diagnosticsEnabled: v)),
       ),
+      // The sampling cadences only matter while diagnostics are being
+      // recorded, so they stay hidden until the switch above is on.
+      if (_c.diagnosticsEnabled) ...[
+        const Divider(color: Colors.white24),
+        _label(
+          'How often the diagnostic graphs are sampled while recording. '
+          'Lower values give finer graphs but measure more often; the defaults '
+          'are deliberately light so the detection pipeline is not slowed down.',
+        ),
+        const SizedBox(height: 12),
 
-      const Divider(color: Colors.white24),
+        NumericSettingField(
+          label: 'Frame-rate sample',
+          value: _c.fpsSampleSeconds.toDouble(),
+          min: 1,
+          max: 60,
+          isInt: true,
+          unitSuffix: 's',
+          helperText:
+              'How often (1–60 s) the frame rate is sampled for the '
+              'graph. Already computed every frame, so a sample is essentially '
+              'free. Default 5 s.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(fpsSampleSeconds: v.round())),
+        ),
 
-      NumericSettingField(
-        label: 'Temperature sample',
-        value: _c.thermalSampleSeconds.toDouble(),
-        min: 1,
-        max: 120,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–120 s) the phone temperature is sampled. '
-            'A system call, so kept coarser — heat changes slowly. Default '
-            '10 s.',
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(thermalSampleSeconds: v.round())),
-      ),
+        const Divider(color: Colors.white24),
 
-      const Divider(color: Colors.white24),
+        NumericSettingField(
+          label: 'Temperature sample',
+          value: _c.thermalSampleSeconds.toDouble(),
+          min: 1,
+          max: 120,
+          isInt: true,
+          unitSuffix: 's',
+          helperText:
+              'How often (1–120 s) the phone temperature is sampled. '
+              'A system call, so kept coarser — heat changes slowly. Default '
+              '10 s.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(thermalSampleSeconds: v.round())),
+        ),
 
-      NumericSettingField(
-        label: 'Power sample',
-        value: _c.powerSampleSeconds.toDouble(),
-        min: 1,
-        max: 120,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–120 s) battery power (current × voltage) and remaining '
-            'charge are sampled for the energy graphs. A system call, so kept '
-            'coarse — power changes slowly. Default 10 s.',
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(powerSampleSeconds: v.round())),
-      ),
+        const Divider(color: Colors.white24),
+
+        NumericSettingField(
+          label: 'Power sample',
+          value: _c.powerSampleSeconds.toDouble(),
+          min: 1,
+          max: 120,
+          isInt: true,
+          unitSuffix: 's',
+          helperText:
+              'How often (1–120 s) battery power (current × voltage) and '
+              'remaining charge are sampled for the energy graphs. A system '
+              'call, so kept coarse — power changes slowly. Default 10 s.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(powerSampleSeconds: v.round())),
+        ),
+      ],
     ],
   );
 

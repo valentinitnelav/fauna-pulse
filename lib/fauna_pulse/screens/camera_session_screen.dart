@@ -525,24 +525,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _tracker = _buildTracker(_fpsVN.value);
     _frame = FrameProcessor(tracker: _tracker);
     _rebuildThrottle();
-    // Sample temperature now, then on its configured interval. While recording,
-    // each sample is also written to the log so heat can be reviewed afterwards.
+    // Sample temperature now, then start the sampling timers.
     _sampleThermal();
-    _thermalTimer = Timer.periodic(
-      Duration(seconds: _config.thermalSampleSeconds.clamp(1, 600)),
-      (_) => _sampleThermal(),
-    );
-    // Separate, usually faster timer that logs the frame rate for the FPS graph.
-    _fpsLogTimer = Timer.periodic(
-      Duration(seconds: _config.fpsSampleSeconds.clamp(1, 600)),
-      (_) => _sampleFps(),
-    );
-    // Separate timer that logs battery power (watts) + remaining charge for the
-    // end-of-session energy graphs. Its own cadence (default 10 s).
-    _powerTimer = Timer.periodic(
-      Duration(seconds: _config.powerSampleSeconds.clamp(1, 600)),
-      (_) => _samplePower(),
-    );
+    _rebuildSamplingTimers();
     // Surface native inference errors (e.g. an incompatible model failing on every
     // frame) as a dismissible banner the user can turn into an error report.
     _errorSub = _controller.errorEvents.listen((message) {
@@ -585,6 +570,40 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     return _focusManual ? 'manual' : 'auto';
   }
 
+  /// (Re)creates the periodic sampling timers from the current config. Called
+  /// at screen start and again after the settings sheet closes, so an interval
+  /// or diagnostics change applies without leaving the screen. The thermal
+  /// timer always runs — it feeds the on-screen temperature and free-storage
+  /// readouts — but the FPS and power timers exist purely to write diagnostic
+  /// log records, so they are not created at all when diagnostics are off
+  /// (round 148). Safe to rebuild mid-screen: the settings button is disabled
+  /// while recording.
+  void _rebuildSamplingTimers() {
+    _thermalTimer?.cancel();
+    _fpsLogTimer?.cancel();
+    _powerTimer?.cancel();
+    _thermalTimer = Timer.periodic(
+      Duration(seconds: _config.thermalSampleSeconds.clamp(1, 600)),
+      (_) => _sampleThermal(),
+    );
+    if (!_config.diagnosticsEnabled) {
+      _fpsLogTimer = null;
+      _powerTimer = null;
+      return;
+    }
+    // Separate, usually faster timer that logs the frame rate for the FPS graph.
+    _fpsLogTimer = Timer.periodic(
+      Duration(seconds: _config.fpsSampleSeconds.clamp(1, 600)),
+      (_) => _sampleFps(),
+    );
+    // Separate timer that logs battery power (watts) + remaining charge for the
+    // end-of-session energy graphs. Its own cadence (default 10 s).
+    _powerTimer = Timer.periodic(
+      Duration(seconds: _config.powerSampleSeconds.clamp(1, 600)),
+      (_) => _samplePower(),
+    );
+  }
+
   Future<void> _sampleThermal() async {
     final reading = await DeviceThermal.read();
     // Free storage rides along on the thermal cadence: it changes on the same
@@ -593,9 +612,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (!mounted) return;
     _thermalVN.value = reading;
     _storageVN.value = storage;
-    // While recording, log the temperature so heat can be reviewed afterwards
-    // (plus free storage, so fill rate is visible in the session data).
-    if (_recording) {
+    // While recording with diagnostics on, log the temperature so heat can be
+    // reviewed afterwards (plus free storage, so fill rate is visible in the
+    // session data). The on-screen readouts above stay live either way.
+    if (_recording && _config.diagnosticsEnabled) {
       _logger?.logThermal({...reading.toJson(), ...storage.toJson()});
     }
   }
@@ -604,7 +624,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// only writes while recording; the value itself is maintained every frame, so
   /// this adds no work to the inference pipeline.
   void _sampleFps() {
-    if (!_recording) return;
+    // Belt-and-braces: the timer only exists with diagnostics on, but guard
+    // anyway so a stale timer tick can never write after a mid-screen toggle.
+    if (!_recording || !_config.diagnosticsEnabled) return;
     // Full per-second perf fingerprint, so an *uncoupled* run still captures the
     // throttle signature (inference time climbing while temperature stays flat).
     // All values are already maintained every frame, so this adds no pipeline
@@ -655,7 +677,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// `power_w` is the instantaneous draw; `charge_counter_uah` lets the summary
   /// cross-check the total energy against how much the battery actually drained.
   Future<void> _samplePower() async {
-    if (!_recording) return;
+    // Belt-and-braces guard, mirroring _sampleFps.
+    if (!_recording || !_config.diagnosticsEnabled) return;
     final reading = await DeviceThermal.read();
     if (!_recording) return;
     _logger?.logPower({
@@ -2316,6 +2339,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     });
     if (modelChanged) _refreshModelInputSize();
+    // Apply a diagnostics toggle or sampling-interval change immediately.
+    _rebuildSamplingTimers();
     await _controller.setThresholds(
       confidenceThreshold: updated.confidenceThreshold,
       iouThreshold: updated.iouThreshold,
