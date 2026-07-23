@@ -124,6 +124,60 @@ this section (keeping the algorithm choice).
 | **Temperature sample interval** | `10 s` | How often phone temperature is logged (heat changes slowly). |
 | **Power sample interval** | `10 s` | How often battery power/charge is logged for the energy graphs. |
 
+## Photo analysis (Analysis screen)
+
+These settings live on the **Analysis** screen (long-press a session), not
+the Settings sheet, and persist in app preferences (`analysis_sahi_*`) — they
+control how saved photos are re-examined *after* a session, so they are not
+part of `SessionConfig`.
+
+### Small-insect tiling (SAHI) — advanced
+
+Normally the whole photo is shrunk down to the model's input size before
+detection ("letterboxing" — a 1024 px photo fed to a 640 px model loses about
+40% of its linear resolution, and a tiny insect can shrink below
+detectability). Tiling instead cuts the photo into overlapping tiles of
+roughly the model's own input size, runs the detector once per tile at
+near-native pixel scale, maps the per-tile boxes back into whole-photo
+coordinates, and merges duplicates. An optional extra whole-photo pass
+catches insects larger than one tile. It is slower (one inference per pass —
+the screen shows a live cost preview like "1024×1024 px photos, 640 px tiles,
+25% overlap → 2×2 tiles + whole photo = 5 passes ≈ 5× time"), and worth
+trying when the model input is much smaller than your photos.
+
+This is FaunaPulse's own pure-Dart implementation of the "Slicing Aided
+Hyper Inference" idea (`lib/fauna_pulse/postprocess/sahi.dart`) — no external
+SAHI library is used (none exists for Android/Flutter). For the concept, see
+the [original SAHI project](https://github.com/obss/sahi) and
+[Ultralytics' SAHI guide](https://docs.ultralytics.com/guides/sahi-tiled-inference/).
+Those describe *their* implementations, which differ in details — most
+notably they merge duplicates by intersection-over-smaller-box, FaunaPulse
+by plain IoU (see the note below the table).
+
+| Setting | Default | What it does / when to change |
+|---|---|---|
+| **Use tiled analysis** | `off` | Master switch. Off = each photo gets the single plain pass, exactly as before round 139. |
+| **Tile size** | `0 px` (auto) | Tile side in pixels. 0 = automatic: the selected model's own input size, so each tile is analyzed at native model scale — the standard choice. Larger tiles = fewer passes but more downscaling per tile. A photo that fits inside one tile skips tiling entirely (only the whole-photo pass runs; the preview says so). |
+| **Tile overlap** | `25 %` | How much neighbouring tiles share, so an insect sitting on a tile border appears whole in at least one tile. |
+| **Also run the whole-photo pass** | `on` | Adds the plain letterboxed pass on top of the tiles — catches insects larger than one tile, at the cost of one extra inference. |
+| **Duplicate-merge IoU** | `0.5` | The overlap level (intersection-over-union) at which two same-class boxes from different passes count as the *same* insect and merge into one (the higher-confidence box wins). |
+
+**Expect extra small boxes when tiling.** Tiling trades precision for
+recall: a partial insect at a tile border can survive as a small extra box
+(a small box *inside* a big one has low IoU — roughly the ratio of their
+areas — so the IoU merge keeps both), and each tile shows fine background
+detail at near-native scale, so tiny specks clear the confidence threshold
+more often than in the letterboxed pass. Treat the boxes as triage evidence
+("this photo contains a pollinator"), not as tight annotations — that
+matches the feature's stated goal (recall for keep/delete triage). Raising
+the analysis confidence threshold trims the speck boxes.
+
+Also on this screen: **Re-analyze photos already done** (per-run checkbox,
+deliberately not persisted) — reruns photos that already have a result, so
+you can try a different model or different tiling settings on a finished
+session. The newest result per photo wins downstream (see
+[DATA_GUIDE.md §6](DATA_GUIDE.md)).
+
 ---
 
 **Note for developers:** by project rule, every new tunable ships with a

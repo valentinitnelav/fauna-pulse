@@ -5057,3 +5057,12 @@ Goal (owner): flag photos with/without pollinators as accurately as possible in 
 - **Auto grid** directly implements the owner's example: 320 px model on 1024 px crops → 4×4 tiles; 640 px model → 2×2; photos ≤ tile → tiling no-op, stated in the preview.
 - **Tests** (`sahi_test.dart`, 11): grids (2×2/4×4/no-op/non-square, flush edges), NMS (same-class merge/cross-class keep/distance), pass counts, tile→photo coordinate mapping, one-insect-in-all-passes merges to exactly one, smaller-than-tile fallback. Suite 336 passing; analyze clean; debug APK builds.
 
+## Round 140 (2026-07-23): user-facing SAHI docs (docs-only)
+
+Owner asked whether r139's SAHI used a library and how to document it for users. Answer: no library — `postprocess/sahi.dart` is a self-contained pure-Dart implementation (only dep: the `image` package); neither obss/sahi (Python-only) nor Ultralytics ships anything usable on Android/Flutter. External docs (obss/sahi repo, Ultralytics SAHI guide) are cited as CONCEPT references only, since our merge differs: IoU-based greedy NMS vs obss/sahi's IoS (intersection-over-smaller) NMM default.
+
+- **SETTINGS_REFERENCE.md**: new "Photo analysis (Analysis screen)" section — first coverage of any Analysis-screen setting; table for the five SAHI tunables + the per-run "Re-analyze photos already done" checkbox; concept links; explicit "expect extra small boxes" note explaining WHY (small box inside big box has low IoU ⇒ IoU-NMS keeps both; tiles surface fine background detail at native scale).
+- **DATA_GUIDE.md**: new §6 documenting `post_detections.jsonl` (previously undocumented, r135+): `post_start` (incl. the `sahi` map — `tile_px` already auto-resolved, `overlap`, `full_pass`, `merge_iou`; `reanalyzed_all` on forced runs), `post_detection` (`jpeg`, `captured_at_ms`, `infer_ms`, `boxes` with `class_name`/`conf`/`box` [l,t,r,b] photo-normalized), `post_end`, `post_cleanup`; last-record-per-jpeg rule; SAHI-run interpretation caveats. Softened §5b's stale "on-phone re-run rejected" note: rejected DURING the session; after-session is §6.
+- **Not done (deliberate)**: the small-box artifact fix itself. Owner observed many small boxes on tiled runs — diagnosis: IoU merge keeps contained partial-insect boxes at tile borders; obss/sahi solves this with IoS matching. If wanted later: switch/augment `mergePostBoxes` to IoS (containment ≈ 1) and/or add a min-box-size filter — small change, tests exist.
+- No code touched; suite/build state unchanged from r139.
+

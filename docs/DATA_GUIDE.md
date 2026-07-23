@@ -451,5 +451,51 @@ re-encoded JPEGs, and the filename + JSONL carry every timestamp needed to
 tie results back to visits. That looks at the actual pixels instead of
 estimating from clocks — the time-match above is the honest *approximation*
 for browsing and quick joins. Re-running the detector **on the phone** for
-each still was considered and rejected: heat is the app's binding
-constraint.
+each still *during the session* was considered and rejected: heat is the
+app's binding constraint. (Running it **after** the session is fine and
+exists since round 135 — see §6.)
+
+## 6. After-session photo analysis (`post_detections.jsonl`)
+
+Rounds 135–139. The Analysis screen can run a detector over a session's
+saved `roi_frames/` photos after the fact — mainly to triage AI-free
+motion/time-lapse sessions (which photos contain a pollinator; optionally
+delete the rest). Results append to `<session>/post_detections.jsonl`,
+following the same append-only JSONL rules as `session.jsonl` (§1–§2).
+Every record carries `time_ms`/`time_iso` (when it was written). Types:
+
+* `post_start` — one per run: `model`, `model_name`, `confidence`, `iou`,
+  `use_gpu`, `photos_total`, `photos_pending`, `app_version`;
+  `reanalyzed_all: true` when "Re-analyze photos already done" forced a
+  full rerun. When small-insect tiling (SAHI) was on, a `sahi` map records
+  the tiling parameters: `tile_px` (resolved tile side — "auto" is already
+  resolved to the model's input size here), `overlap` (fraction, e.g.
+  `0.25`), `full_pass` (whole-photo pass on/off), `merge_iou`. No `sahi`
+  key = plain single-pass run.
+* `post_detection` — one per analyzed photo: `jpeg` (filename in
+  `roi_frames/`, joinable exactly like §5), `captured_at_ms` (parsed from
+  the filename), `infer_ms`, and `boxes` — each with `class_name`, `conf`,
+  and `box` as `[left, top, right, bottom]` normalized 0–1 **of the photo**
+  (same edge order as the live log's `box_in_roi`). A failed photo gets an
+  `error` string and empty `boxes`.
+* `post_end` — one per run: `processed`, `failed`, `skipped_done`,
+  `ended_normally` (plus `reason: "cancelled"` when stopped mid-run).
+* `post_cleanup` — audit record of the optional keep/delete storage triage
+  (which files were deleted and under which keep rule).
+
+A photo can appear in several runs (re-analysis with another model or other
+tiling settings). Take the **last** `post_detection` per `jpeg` — that is
+what the app itself does when deciding keeps and drawing review boxes;
+match it to its run by reading backwards to the nearest preceding
+`post_start`.
+
+**Reading SAHI runs:** the boxes come from overlapping tiles plus (by
+default) a whole-photo pass, merged by same-class IoU-NMS. Expect extra
+small boxes — a partial insect at a tile border merges poorly with the
+full-insect box (a small box inside a big one has low IoU), and each tile
+sees fine background detail at near-native scale. Treat the boxes as triage
+evidence, not tight annotations; for publication-grade boxes re-run offline
+(§5b). The tiling is FaunaPulse's own pure-Dart implementation
+(`lib/fauna_pulse/postprocess/sahi.dart`), not an external library — concept
+background and per-setting docs are in
+[SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).
