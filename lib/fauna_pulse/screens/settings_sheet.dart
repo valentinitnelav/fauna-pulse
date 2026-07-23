@@ -234,16 +234,34 @@ class _SettingsSheetState extends State<SettingsSheet> {
               // visible at once — a scrolling tab strip can hide tabs off the
               // right edge without the user realising more exist. Short labels +
               // an icon keep each tab readable in a quarter of the screen.
-              const TabBar(
+              TabBar(
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white54,
                 indicatorColor: Colors.lightBlueAccent,
-                labelPadding: EdgeInsets.symmetric(horizontal: 2),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                 tabs: [
-                  Tab(icon: Icon(Icons.tune, size: 20), text: 'Setup'),
-                  Tab(icon: Icon(Icons.memory, size: 20), text: 'AI'),
-                  Tab(icon: Icon(Icons.photo_camera, size: 20), text: 'Camera'),
-                  Tab(icon: Icon(Icons.show_chart, size: 20), text: 'Graphs'),
+                  const Tab(icon: Icon(Icons.tune, size: 20), text: 'Setup'),
+                  // The AI tab dims in the no-AI capture modes (r147): its
+                  // settings have no effect there. It stays tappable — the
+                  // tab body shows a notice saying why it is inactive.
+                  if (_c.detectorEnabled)
+                    const Tab(icon: Icon(Icons.memory, size: 20), text: 'AI')
+                  else
+                    const Tab(
+                      icon: Icon(Icons.memory, size: 20, color: Colors.white24),
+                      child: Text(
+                        'AI',
+                        style: TextStyle(color: Colors.white24),
+                      ),
+                    ),
+                  const Tab(
+                    icon: Icon(Icons.photo_camera, size: 20),
+                    text: 'Camera',
+                  ),
+                  const Tab(
+                    icon: Icon(Icons.show_chart, size: 20),
+                    text: 'Graphs',
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -549,12 +567,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'Show detection boxes & track IDs',
           style: TextStyle(color: Colors.white),
         ),
-        subtitle: const Text(
-          'The blue boxes with "#id … Conf.: 0.xy" over each insect.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+        subtitle: Text(
+          'The blue boxes with "#id … Conf.: 0.xy" over each insect.'
+          '${_c.detectorEnabled ? '' : ' (AI detector mode only — there are no detections to draw in this mode.)'}',
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
-        value: _c.showBoxes,
-        onChanged: (v) => setState(() => _c = _c.copyWith(showBoxes: v)),
+        // Locked off in the no-AI modes: the detector never runs there, so
+        // there is nothing to draw. The saved preference is untouched — it
+        // comes back when the AI mode is selected again (r147).
+        value: _c.detectorEnabled && _c.showBoxes,
+        onChanged: _c.detectorEnabled
+            ? (v) => setState(() => _c = _c.copyWith(showBoxes: v))
+            : null,
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -665,245 +689,273 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   Widget _aiPipelineTab() {
     final model = _selectedModel;
-    return ListView(
-      children: [
-        Row(
-          children: [
-            Expanded(child: _label('Detection model')),
-            TextButton.icon(
-              onPressed: _modelsLoading ? null : _downloadModel,
-              icon: const Icon(Icons.cloud_download_outlined, size: 18),
-              label: const Text('Download…'),
-            ),
-            TextButton.icon(
-              onPressed: _modelsLoading ? null : _importModels,
-              icon: const Icon(Icons.file_upload, size: 18),
-              label: const Text('Import…'),
-            ),
-          ],
-        ),
-        if (_modelsLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+    // Built as a plain list so the no-AI branch below can reuse it: in the
+    // motion and time-lapse capture modes none of these settings has any
+    // effect (the detector never runs), so the whole tab is shown greyed and
+    // read-only under a notice instead of pretending to be editable (r147).
+    final children = <Widget>[
+      Row(
+        children: [
+          Expanded(child: _label('Detection model')),
+          TextButton.icon(
+            onPressed: _modelsLoading ? null : _downloadModel,
+            icon: const Icon(Icons.cloud_download_outlined, size: 18),
+            label: const Text('Download…'),
+          ),
+          TextButton.icon(
+            onPressed: _modelsLoading ? null : _importModels,
+            icon: const Icon(Icons.file_upload, size: 18),
+            label: const Text('Import…'),
+          ),
+        ],
+      ),
+      if (_modelsLoading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 10),
+              Text('Scanning models…', style: TextStyle(color: Colors.white70)),
+            ],
+          ),
+        )
+      else
+        DropdownButton<String>(
+          value: _models.any((m) => m.id == _c.modelPath) ? _c.modelPath : null,
+          isExpanded: true,
+          dropdownColor: Colors.black87,
+          // Variable height so long names can wrap onto several lines in
+          // the open menu.
+          itemHeight: null,
+          hint: const Text(
+            'Custom / other',
+            style: TextStyle(color: Colors.white54),
+          ),
+          // Closed (collapsed) display: keep it to a single ellipsized line
+          // so the button never overflows.
+          selectedItemBuilder: (context) => _models
+              .map(
+                (m) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    m.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
-                SizedBox(width: 10),
-                Text(
-                  'Scanning models…',
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ],
-            ),
-          )
-        else
-          DropdownButton<String>(
-            value: _models.any((m) => m.id == _c.modelPath)
-                ? _c.modelPath
-                : null,
-            isExpanded: true,
-            dropdownColor: Colors.black87,
-            // Variable height so long names can wrap onto several lines in
-            // the open menu.
-            itemHeight: null,
-            hint: const Text(
-              'Custom / other',
-              style: TextStyle(color: Colors.white54),
-            ),
-            // Closed (collapsed) display: keep it to a single ellipsized line
-            // so the button never overflows.
-            selectedItemBuilder: (context) => _models
-                .map(
-                  (m) => Align(
-                    alignment: Alignment.centerLeft,
+              )
+              .toList(),
+          items: _models
+              .map(
+                (m) => DropdownMenuItem(
+                  value: m.id,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
                       m.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                )
-                .toList(),
-            items: _models
-                .map(
-                  (m) => DropdownMenuItem(
-                    value: m.id,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        m.label,
-                        softWrap: true,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              final picked = _models.firstWhere((m) => m.id == v);
-              setState(() {
-                _c = _c.copyWith(
-                  modelPath: v,
-                  task: YOLOTaskParsing.tryParse(picked.task) ?? _c.task,
-                );
-              });
-            },
+                ),
+              )
+              .toList(),
+          onChanged: (v) {
+            if (v == null) return;
+            final picked = _models.firstWhere((m) => m.id == v);
+            setState(() {
+              _c = _c.copyWith(
+                modelPath: v,
+                task: YOLOTaskParsing.tryParse(picked.task) ?? _c.task,
+              );
+            });
+          },
+        ),
+      // Dynamic readout of the selected model's input tensor size (read from
+      // its embedded metadata): the square pixel size the model "sees".
+      if (!_modelsLoading)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            model?.inputSize != null
+                ? 'Input resolution: ${model!.inputSize}×${model.inputSize} px '
+                      '(smaller = faster, larger = more accurate on tiny insects)'
+                : 'Input resolution: unknown (not in model metadata)',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
-        // Dynamic readout of the selected model's input tensor size (read from
-        // its embedded metadata): the square pixel size the model "sees".
-        if (!_modelsLoading)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              model?.inputSize != null
-                  ? 'Input resolution: ${model!.inputSize}×${model.inputSize} px '
-                        '(smaller = faster, larger = more accurate on tiny insects)'
-                  : 'Input resolution: unknown (not in model metadata)',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
+        ),
+      // Covers a pre-r119 placeholder id AND an imported model whose file was
+      // deleted from the phone — anything selected that isn't on the device.
+      if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            '⚠ This model isn\'t on the device — the bundled nano runs '
+            'instead. Use Download… or Import… above to add it.',
+            style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),
-        // Covers a pre-r119 placeholder id AND an imported model whose file was
-        // deleted from the phone — anything selected that isn't on the device.
-        if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Text(
-              '⚠ This model isn\'t on the device — the bundled nano runs '
-              'instead. Use Download… or Import… above to add it.',
-              style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
-            ),
+        ),
+      if (!_modelsLoading && _duplicateNames.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '⚠ Two or more models share a name '
+            '(${_duplicateNames.join(', ')}). Rename them on the phone so '
+            'you can tell which is which.',
+            style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),
-        if (!_modelsLoading && _duplicateNames.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              '⚠ Two or more models share a name '
-              '(${_duplicateNames.join(', ')}). Rename them on the phone so '
-              'you can tell which is which.',
-              style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
-            ),
-          ),
-        const SizedBox(height: 8),
+        ),
+      const SizedBox(height: 8),
 
-        NumericSettingField(
-          label: 'Confidence threshold',
-          value: _c.confidenceThreshold,
-          min: 0.05,
-          max: 0.95,
-          decimals: 2,
-          helperText:
-              'Minimum score for the model to report a detection at all '
-              '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
-              'reach the tracker — including the faint, partly-hidden ones the '
-              'tracker can use to hold onto a visit. Note: raising this also '
-              'raises the Tracker\'s High-score threshold below, so a band of '
-              'faint detections is always kept for that purpose.',
-          onChanged: (v) => setState(() {
-            // Keep the High-score threshold at least _highScoreBuffer above the
-            // new Confidence, so the "faint detection" band is never squeezed
-            // shut when the user raises Confidence. Both trackers carry their
-            // own high threshold; the floor applies to each.
-            final p = _c.trackerParams;
-            final cp = _c.cbiouParams;
-            final minHigh = (v + _highScoreBuffer).clamp(0.30, 0.95);
-            _c = _c.copyWith(
-              confidenceThreshold: v,
-              trackerParams: p.highThresh < minHigh
-                  ? p.copyWith(highThresh: minHigh)
-                  : p,
-              cbiouParams: cp.highThresh < minHigh
-                  ? cp.copyWith(highThresh: minHigh)
-                  : cp,
-            );
-          }),
-        ),
-        NumericSettingField(
-          label: 'IoU threshold (NMS — removes duplicate boxes)',
-          value: _c.iouThreshold,
-          min: 0.1,
-          max: 0.95,
-          decimals: 2,
-          helperText:
-              'Overlap above which two boxes are treated as the same '
-              'object (0.10–0.95). Default 0.70.',
-          onChanged: (v) => setState(() => _c = _c.copyWith(iouThreshold: v)),
-        ),
+      NumericSettingField(
+        label: 'Confidence threshold',
+        value: _c.confidenceThreshold,
+        min: 0.05,
+        max: 0.95,
+        decimals: 2,
+        helperText:
+            'Minimum score for the model to report a detection at all '
+            '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
+            'reach the tracker — including the faint, partly-hidden ones the '
+            'tracker can use to hold onto a visit. Note: raising this also '
+            'raises the Tracker\'s High-score threshold below, so a band of '
+            'faint detections is always kept for that purpose.',
+        onChanged: (v) => setState(() {
+          // Keep the High-score threshold at least _highScoreBuffer above the
+          // new Confidence, so the "faint detection" band is never squeezed
+          // shut when the user raises Confidence. Both trackers carry their
+          // own high threshold; the floor applies to each.
+          final p = _c.trackerParams;
+          final cp = _c.cbiouParams;
+          final minHigh = (v + _highScoreBuffer).clamp(0.30, 0.95);
+          _c = _c.copyWith(
+            confidenceThreshold: v,
+            trackerParams: p.highThresh < minHigh
+                ? p.copyWith(highThresh: minHigh)
+                : p,
+            cbiouParams: cp.highThresh < minHigh
+                ? cp.copyWith(highThresh: minHigh)
+                : cp,
+          );
+        }),
+      ),
+      NumericSettingField(
+        label: 'IoU threshold (NMS — removes duplicate boxes)',
+        value: _c.iouThreshold,
+        min: 0.1,
+        max: 0.95,
+        decimals: 2,
+        helperText:
+            'Overlap above which two boxes are treated as the same '
+            'object (0.10–0.95). Default 0.70.',
+        onChanged: (v) => setState(() => _c = _c.copyWith(iouThreshold: v)),
+      ),
 
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show FPS', style: TextStyle(color: Colors.white)),
-          value: _c.showFps,
-          onChanged: (v) => setState(() => _c = _c.copyWith(showFps: v)),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Show FPS', style: TextStyle(color: Colors.white)),
+        value: _c.showFps,
+        onChanged: (v) => setState(() => _c = _c.copyWith(showFps: v)),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Use GPU when faster',
+          style: TextStyle(color: Colors.white),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Use GPU when faster',
-            style: TextStyle(color: Colors.white),
-          ),
-          value: _c.useGpu,
-          onChanged: (v) => setState(() => _c = _c.copyWith(useGpu: v)),
+        value: _c.useGpu,
+        onChanged: (v) => setState(() => _c = _c.copyWith(useGpu: v)),
+      ),
+      NumericSettingField(
+        label: 'CPU threads (0 = automatic)',
+        value: _c.cpuThreads.toDouble(),
+        min: 0,
+        max: 8,
+        isInt: true,
+        helperText:
+            'How many processor cores the model may use when it runs on the '
+            'CPU (GPU runs ignore this). 0 lets the runtime decide. More '
+            'threads can be faster but draw more power and heat — run the '
+            'benchmark below before changing it.',
+        onChanged: (v) =>
+            setState(() => _c = _c.copyWith(cpuThreads: v.round())),
+      ),
+      const SizedBox(height: 4),
+      OutlinedButton.icon(
+        onPressed: _benchmarkRunning ? null : _runEngineBenchmark,
+        icon: _benchmarkRunning
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.speed),
+        label: Text(
+          _benchmarkRunning
+              ? 'Benchmarking… (up to ~30 s)'
+              : 'Benchmark engines (GPU vs CPU)',
         ),
-        NumericSettingField(
-          label: 'CPU threads (0 = automatic)',
-          value: _c.cpuThreads.toDouble(),
-          min: 0,
-          max: 8,
-          isInt: true,
-          helperText:
-              'How many processor cores the model may use when it runs on the '
-              'CPU (GPU runs ignore this). 0 lets the runtime decide. More '
-              'threads can be faster but draw more power and heat — run the '
-              'benchmark below before changing it.',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(cpuThreads: v.round())),
-        ),
-        const SizedBox(height: 4),
-        OutlinedButton.icon(
-          onPressed: _benchmarkRunning ? null : _runEngineBenchmark,
-          icon: _benchmarkRunning
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.speed),
-          label: Text(
-            _benchmarkRunning
-                ? 'Benchmarking… (up to ~30 s)'
-                : 'Benchmark engines (GPU vs CPU)',
-          ),
-        ),
-        const Text(
-          'Times the selected model on the GPU and on the CPU at several '
-          'thread counts — fed test frames at the model\'s own input '
-          'resolution — then lets you apply the fastest. Runs the model at '
-          'full speed for a few seconds per engine, so the phone warms up a '
-          'little — run it when you change model, not before every session. '
-          'The live preview keeps detecting in the background, which can make '
-          'all numbers read slightly slow; their ranking is still valid.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
+      ),
+      const Text(
+        'Times the selected model on the GPU and on the CPU at several '
+        'thread counts — fed test frames at the model\'s own input '
+        'resolution — then lets you apply the fastest. Runs the model at '
+        'full speed for a few seconds per engine, so the phone warms up a '
+        'little — run it when you change model, not before every session. '
+        'The live preview keeps detecting in the background, which can make '
+        'all numbers read slightly slow; their ranking is still valid.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
 
-        const Divider(color: Colors.white24),
-        const Row(
-          children: [
-            Icon(Icons.polyline, size: 20, color: Colors.white70),
-            SizedBox(width: 8),
-            Text(
-              'Visit tracking',
-              style: TextStyle(color: Colors.white70, fontSize: 16),
+      const Divider(color: Colors.white24),
+      const Row(
+        children: [
+          Icon(Icons.polyline, size: 20, color: Colors.white70),
+          SizedBox(width: 8),
+          Text(
+            'Visit tracking',
+            style: TextStyle(color: Colors.white70, fontSize: 16),
+          ),
+        ],
+      ),
+      _trackerFields(),
+      const SizedBox(height: 8),
+    ];
+    if (_c.detectorEnabled) return ListView(children: children);
+    return ListView(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white10,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            'These settings apply only to the AI detector mode. Switch '
+            '"Capture trigger" on the Setup tab to edit them.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+        // IgnorePointer swallows every tap (nothing below can be edited);
+        // the Opacity greys the block so it reads as inactive at a glance.
+        // The stored values are untouched and come back editable as soon as
+        // the AI detector mode is selected again.
+        IgnorePointer(
+          child: Opacity(
+            opacity: 0.4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
             ),
-          ],
+          ),
         ),
-        _trackerFields(),
-        const SizedBox(height: 8),
       ],
     );
   }
@@ -1571,88 +1623,103 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'Auto-adjust inference rate (prevents overheating)',
           style: TextStyle(color: Colors.white),
         ),
-        value: _c.autoThrottle,
-        onChanged: (v) => setState(() => _c = _c.copyWith(autoThrottle: v)),
+        // Locked out in the no-AI modes — there is no inference to throttle.
+        // The saved preference is untouched and returns with the AI mode
+        // (r147; the detail fields below are hidden entirely then).
+        subtitle: _c.detectorEnabled
+            ? null
+            : const Text(
+                'AI detector mode only — there is no inference to throttle '
+                'in this mode.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+        value: _c.detectorEnabled && _c.autoThrottle,
+        onChanged: _c.detectorEnabled
+            ? (v) => setState(() => _c = _c.copyWith(autoThrottle: v))
+            : null,
       ),
-      const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: Text(
-          'Running the detector flat-out keeps the processor ~100% busy; after '
-          'about a minute the phone overheats and quietly slows the chip, so the '
-          'frame rate collapses (e.g. to ~3/s) and stays there. With this on, the '
-          'app watches how long each detection takes and automatically lowers the '
-          'rate just enough to give the chip cooling gaps — holding a steady, '
-          'sustainable frame rate instead. Leave it on for long field sessions.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ),
-
-      // 0 = uncapped (Max); 5..120 caps the rate. With auto-adjust on this is the
-      // ceiling the throttle will not exceed. The cap is only a ceiling: the real
-      // rate can't exceed what the camera delivers.
-      NumericSettingField(
-        label: _c.autoThrottle ? 'Max inference rate' : 'Detector rate cap',
-        value: _c.inferenceFps.toDouble(),
-        min: 0,
-        max: 120,
-        isInt: true,
-        unitSuffix: '/s',
-        helperText: _c.autoThrottle
-            ? 'Upper limit the auto-adjust will not exceed (0 = let it use up to '
-                  '15/s). It will run at or below this, lower when the phone is hot.'
-            : (_c.inferenceFps == 0
-                  ? 'Currently Max (uncapped — highest FPS). Type 0 for Max, or '
-                        '5–120 to cap the rate (lower = cooler).'
-                  : 'Type 0 for Max (uncapped), or 5–120 to cap the rate '
-                        '(lower = cooler).'),
-        onChanged: (v) {
-          final r = v.round();
-          // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 stays "Max".
-          setState(
-            () => _c = _c.copyWith(inferenceFps: r == 0 ? 0 : (r < 5 ? 5 : r)),
-          );
-        },
-      ),
-      if (_c.autoThrottle) ...[
-        NumericSettingField(
-          label: 'Min inference rate',
-          value: _c.minInferenceFps.toDouble(),
-          min: 1,
-          max: 15,
-          isInt: true,
-          unitSuffix: '/s',
-          helperText:
-              'The lowest the auto-adjust will drop to when the phone is hot, so '
-              'a session stays usable. Default 3.',
-          onChanged: (v) => setState(
-            () => _c = _c.copyWith(minInferenceFps: v.round().clamp(1, 15)),
+      if (_c.detectorEnabled) ...[
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Running the detector flat-out keeps the processor ~100% busy; after '
+            'about a minute the phone overheats and quietly slows the chip, so the '
+            'frame rate collapses (e.g. to ~3/s) and stays there. With this on, the '
+            'app watches how long each detection takes and automatically lowers the '
+            'rate just enough to give the chip cooling gaps — holding a steady, '
+            'sustainable frame rate instead. Leave it on for long field sessions.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ),
+
+        // 0 = uncapped (Max); 5..120 caps the rate. With auto-adjust on this is the
+        // ceiling the throttle will not exceed. The cap is only a ceiling: the real
+        // rate can't exceed what the camera delivers.
         NumericSettingField(
-          label: 'Target processor load',
-          value: _c.throttleDutyTarget,
-          min: 0.3,
-          max: 0.8,
-          decimals: 2,
-          helperText:
-              'How busy the auto-adjust lets the processor stay on detection '
-              '(0.3–0.8; default 0.50 = about half the time). Lower = cooler and '
-              'steadier but fewer frames per second; higher = more frames but more '
-              'heat. Advanced — 0.50 suits most phones.',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(throttleDutyTarget: v)),
+          label: _c.autoThrottle ? 'Max inference rate' : 'Detector rate cap',
+          value: _c.inferenceFps.toDouble(),
+          min: 0,
+          max: 120,
+          isInt: true,
+          unitSuffix: '/s',
+          helperText: _c.autoThrottle
+              ? 'Upper limit the auto-adjust will not exceed (0 = let it use up to '
+                    '15/s). It will run at or below this, lower when the phone is hot.'
+              : (_c.inferenceFps == 0
+                    ? 'Currently Max (uncapped — highest FPS). Type 0 for Max, or '
+                          '5–120 to cap the rate (lower = cooler).'
+                    : 'Type 0 for Max (uncapped), or 5–120 to cap the rate '
+                          '(lower = cooler).'),
+          onChanged: (v) {
+            final r = v.round();
+            // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 stays "Max".
+            setState(
+              () =>
+                  _c = _c.copyWith(inferenceFps: r == 0 ? 0 : (r < 5 ? 5 : r)),
+            );
+          },
+        ),
+        if (_c.autoThrottle) ...[
+          NumericSettingField(
+            label: 'Min inference rate',
+            value: _c.minInferenceFps.toDouble(),
+            min: 1,
+            max: 15,
+            isInt: true,
+            unitSuffix: '/s',
+            helperText:
+                'The lowest the auto-adjust will drop to when the phone is hot, so '
+                'a session stays usable. Default 3.',
+            onChanged: (v) => setState(
+              () => _c = _c.copyWith(minInferenceFps: v.round().clamp(1, 15)),
+            ),
+          ),
+          NumericSettingField(
+            label: 'Target processor load',
+            value: _c.throttleDutyTarget,
+            min: 0.3,
+            max: 0.8,
+            decimals: 2,
+            helperText:
+                'How busy the auto-adjust lets the processor stay on detection '
+                '(0.3–0.8; default 0.50 = about half the time). Lower = cooler and '
+                'steadier but fewer frames per second; higher = more frames but more '
+                'heat. Advanced — 0.50 suits most phones.',
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(throttleDutyTarget: v)),
+          ),
+        ],
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'The rate is a ceiling, not a guarantee: the real rate is also limited '
+            'by how fast the camera delivers frames and how fast the model runs. '
+            'For insect visits (seconds long) even ~10/s is usually plenty, and a '
+            'lower steady rate beats a high rate that collapses.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ),
       ],
-      const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: Text(
-          'The rate is a ceiling, not a guarantee: the real rate is also limited '
-          'by how fast the camera delivers frames and how fast the model runs. '
-          'For insect visits (seconds long) even ~10/s is usually plenty, and a '
-          'lower steady rate beats a high rate that collapses.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ),
       const Divider(color: Colors.white24),
 
       // The capture trigger itself (AI detector / motion photos / time-lapse)
@@ -1677,14 +1744,22 @@ class _SettingsSheetState extends State<SettingsSheet> {
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
         isThreeLine: true,
-        value: _c.motionOnlyCapture || _c.motionGateEnabled,
+        // Shown OFF in time-lapse mode even if the preference is on — the
+        // gate is forced off natively there, and the switch should say what
+        // actually happens (r147). The stored preference itself survives.
+        value:
+            !_c.timeLapseCapture &&
+            (_c.motionOnlyCapture || _c.motionGateEnabled),
         // Locked on while the motion trigger depends on it; locked out in
         // time-lapse mode where it does nothing.
         onChanged: _c.motionOnlyCapture || _c.timeLapseCapture
             ? null
             : (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
       ),
-      if (_c.motionGateEnabled) ...[
+      // Sensitivity tuning is hidden in time-lapse mode (the gate never runs
+      // there); it stays visible in motion mode, where these fields ARE the
+      // capture sensitivity (the trigger dropdown force-enables the gate).
+      if (_c.motionGateEnabled && !_c.timeLapseCapture) ...[
         // These tuning fields double as the motion-only capture sensitivity
         // controls — the same gate decides both "wake the detector" and
         // "take a photo".
@@ -1695,11 +1770,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
           max: 60,
           decimals: 1,
           unitSuffix: 's',
-          helperText:
-              'How long the detector keeps running after the last movement or '
-              'detection. Every new detection restarts this window, so a sitting '
-              'insect is not lost. Longer = safer recall, less heat saving. '
-              'Default 3 s.',
+          // The same wake window has a different practical meaning per mode:
+          // AI mode = how long the detector stays on; motion mode = how long
+          // photos keep being taken (they stop when the gate goes idle).
+          helperText: _c.motionOnlyCapture
+              ? 'How long photos keep being taken after the last motion, '
+                    'before the gate goes back to sleep. Every new movement '
+                    'restarts this window. Default 3 s.'
+              : 'How long the detector keeps running after the last movement '
+                    'or detection. Every new detection restarts this window, '
+                    'so a sitting insect is not lost. Longer = safer recall, '
+                    'less heat saving. Default 3 s.',
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
         ),

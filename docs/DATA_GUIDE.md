@@ -76,6 +76,7 @@ Session-wide metadata. Notable fields:
 | `analysis_frame_width_px`, `analysis_frame_height_px` | Live analysis-frame size. |
 | `inference_fps`, `*_sample_seconds` | Rate cap and logging cadences. |
 | `config` | **A complete self-describing copy of every setting used** — the most reliable source for your methods section. Individual keys above are kept for older readers. |
+| `config_not_applicable` | (round 147+) List of `config` keys that had **no effect** under this session's `captureTrigger` (e.g. all model/tracker keys in a motion or time-lapse session; the motion-gate keys in time-lapse). The values themselves stay present with their normal types — filter on this list (or on `captureTrigger`) instead of expecting missing fields or `"n/a"` strings, so typed parsing (pandas dtypes) never breaks. |
 | `thermal` | A starting thermal/power reading (see `thermal` block below). |
 
 The `roi` sub-object (also used in `roi_update`):

@@ -5119,3 +5119,16 @@ Three related camera-screen header bugs, all in `screens/camera_session_screen.d
 - Docs: FIELD_GUIDE troubleshooting gains a '"Camera: 1 fps" in time-lapse mode' entry; overview r63 invariant bullet extended with the time-lapse case.
 - Analyze clean; suite 341 passing (+1 skipped).
 
+## Round 147 (2026-07-23): mode-aware session settings + summary/log applicability (owner-reported)
+
+Owner: with motion/time-lapse capture selected, AI-only controls stayed active and AI-only settings were printed in the summary as if meaningful; also (mid-round follow-up) every setting must stay REGISTERED in session.jsonl with applicability indicated Python-safely.
+
+- **Settings sheet (`settings_sheet.dart`) is now capture-mode-aware**, reusing the two established idioms (gate-switch disable pattern with appended white54 reason; `if (...) ...[` hide pattern):
+  - Setup: "Show detection boxes & track IDs" locked off (value forced false, reason appended) in the no-AI modes; saved preference untouched.
+  - AI tab: tab icon/label dims (white24) in no-AI modes; tab body becomes a notice ("apply only to the AI detector mode…") over the full control list wrapped in `IgnorePointer` + `Opacity(0.4)` — visible but read-only.
+  - Camera: auto-throttle switch locked off with reason in no-AI modes and the whole inference-rate block (rate cap + min rate + duty + explanations) hidden; gate switch now DISPLAYS off in time-lapse (was showing the stored value although the gate is natively forced off there); gate sensitivity block hidden in time-lapse (`motionGateEnabled && !timeLapseCapture`).
+  - "Wake duration after motion" STAYS editable in motion mode (owner decision after code check: the native gate idles after `wakeSeconds` of stillness and photos stop then — it directly governs how long motion-mode capture persists); its helperText now branches per mode.
+- **Summary Settings tab (`session_summary_screen.dart`)**: for no-AI sessions the "Model & detection" and "Visit tracking" sections each collapse to ONE muted "Not applicable — … (<mode> mode)" note (algorithm name dropped from the header then); auto-throttle rows likewise; gate rows kept for motion sessions (they ARE the sensitivity) but replaced with a note for time-lapse. "Ground-truth frames" stays outside the branch (detection-independent, runs in every mode). Old/AI sessions render unchanged (`_motionOnlySession` handles the legacy bool).
+- **Log format (additive)**: start record gains `config_not_applicable` — the list of `config` keys inert under the session's trigger, from the new pure `notApplicableConfigKeys(CaptureTrigger)` in `session_config.dart`. Values are NEVER replaced with "n/a"/null (would flip pandas dtypes); the config block still always carries every field. Two new tests: every listed key exists in `toJson()` (drift guard) + per-mode expectations. DATA_GUIDE start-record table documents it; SETTINGS_REFERENCE gains the mode-aware note + motion-mode wake meaning.
+- Analyze clean; suite 343 passing (+1 skipped). Manual on-device check: switch trigger with the sheet open → all gating reacts live; values survive mode round-trips.
+

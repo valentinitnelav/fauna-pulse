@@ -525,4 +525,45 @@ void main() {
       );
     });
   });
+
+  group('notApplicableConfigKeys', () {
+    // Guards the r147 start-record list against key-name drift: every key it
+    // names must be a real toJson() key, or analysis filters would silently
+    // miss renamed settings.
+    test('every listed key exists in toJson() for every trigger', () {
+      final jsonKeys = const SessionConfig().toJson().keys.toSet();
+      for (final trigger in CaptureTrigger.values) {
+        for (final key in notApplicableConfigKeys(trigger)) {
+          expect(
+            jsonKeys.contains(key),
+            true,
+            reason: '$key (for $trigger) is not a SessionConfig.toJson() key',
+          );
+        }
+      }
+    });
+
+    test('mode expectations', () {
+      // Detector: only the time-lapse burst interval is inert.
+      expect(notApplicableConfigKeys(CaptureTrigger.detector), [
+        'timeLapseIntervalSeconds',
+      ]);
+      // Motion: AI keys inert, but the gate keys APPLY (they are the capture
+      // sensitivity) — and wake duration governs how long photos continue.
+      final motion = notApplicableConfigKeys(CaptureTrigger.motion);
+      expect(motion, contains('modelPath'));
+      expect(motion, contains('showBoxes'));
+      expect(motion, contains('timeLapseIntervalSeconds'));
+      expect(motion, isNot(contains('motionGateWakeSeconds')));
+      expect(motion, isNot(contains('motionGatePixelDelta')));
+      // Time-lapse: AI keys AND all gate keys inert; the burst interval and
+      // photo step/duration apply.
+      final tl = notApplicableConfigKeys(CaptureTrigger.timelapse);
+      expect(tl, contains('modelPath'));
+      expect(tl, contains('motionGateEnabled'));
+      expect(tl, contains('motionGateWakeSeconds'));
+      expect(tl, isNot(contains('timeLapseIntervalSeconds')));
+      expect(tl, isNot(contains('stepSeconds')));
+    });
+  });
 }

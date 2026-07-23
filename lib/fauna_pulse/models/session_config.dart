@@ -94,6 +94,55 @@ CaptureTrigger _captureTriggerFromJson(Map<String, dynamic> j) {
   return CaptureTrigger.detector;
 }
 
+/// Config keys (as written by [SessionConfig.toJson]) that have NO effect
+/// under [trigger]. The start record carries this list as
+/// `config_not_applicable`, next to the `config` block, so analysis code can
+/// tell which of the always-present settings were inert in that session
+/// (round 147). Deliberately additive: the values themselves keep their
+/// normal types — replacing them with "n/a" or null would break typed
+/// parsing downstream (e.g. a numeric pandas column turning into strings).
+List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
+  // Settings that only matter while the detector actually runs.
+  const aiKeys = [
+    'modelPath',
+    'task',
+    'confidenceThreshold',
+    'iouThreshold',
+    'useGpu',
+    'cpuThreads',
+    'inferenceFps',
+    'autoThrottle',
+    'minInferenceFps',
+    'throttleDutyTarget',
+    'occlusionSeconds',
+    'minHitsSeconds',
+    'trackerAlgorithm',
+    'trackerParams',
+    'cbiouParams',
+    'logRawDetections',
+    'showBoxes',
+  ];
+  // The motion gate and its sensitivity tuning; used by the AI mode (as the
+  // heat-saving sleep) AND by the motion trigger (as the capture sensitivity),
+  // but forced off natively in time-lapse mode.
+  const gateKeys = [
+    'motionGateEnabled',
+    'motionGatePixelDelta',
+    'motionGateAreaFraction',
+    'motionGateWakeSeconds',
+    'motionGateGridSize',
+    'motionGateIdleFps',
+  ];
+  switch (trigger) {
+    case CaptureTrigger.detector:
+      return const ['timeLapseIntervalSeconds'];
+    case CaptureTrigger.motion:
+      return [...aiKeys, 'timeLapseIntervalSeconds'];
+    case CaptureTrigger.timelapse:
+      return [...aiKeys, ...gateKeys];
+  }
+}
+
 class SessionConfig {
   /// Model identifier or path (e.g. a bundled "yolo26n" id, or a path to a
   /// user-placed .tflite file).

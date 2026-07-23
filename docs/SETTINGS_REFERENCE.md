@@ -11,6 +11,13 @@ file, the file wins — please update this doc.
 The Settings sheet is organized into four tabs: **Setup**, **AI**, **Camera**,
 **Graphs**. Below they are grouped by purpose.
 
+**Mode-aware controls (round 147):** settings that have no effect under the
+selected *Capture trigger* grey out or disappear instead of pretending to be
+editable — the whole **AI** tab and "Show detection boxes" in the motion and
+time-lapse modes, the inference auto-throttle outside AI mode, and the motion
+gate + its sensitivity in time-lapse mode. Greyed values are not erased: they
+come back as soon as a mode that uses them is selected.
+
 ---
 
 ## Model & detection
@@ -61,7 +68,7 @@ the watching (native side, under ~1 ms/frame).
 | **Motion gate** | `off` | Master switch. Turn on for long sessions on a **mounted** phone (handheld shake keeps it awake). |
 | **Pixel delta** | `25` | How much a pixel's brightness (0–255) must change to count as "moved". Lower = more sensitive (better recall, but petal shadows can wake it); higher = stricter. |
 | **Area fraction** | `0.005` (0.5%) | Fraction of the ROI that must change in one frame to wake the detector. Kept small because an insect covers little of the ROI. |
-| **Wake seconds** | `3.0 s` | How long the detector keeps running after the last motion or detection. Longer = safer recall (a still insect keeps being re-detected, extending the window), but saves less heat. |
+| **Wake seconds** | `3.0 s` | How long the detector keeps running after the last motion or detection. Longer = safer recall (a still insect keeps being re-detected, extending the window), but saves less heat. In **motion-trigger mode** the same window means: how long photos keep being taken after the last motion (they stop when the gate goes back to sleep). |
 | **Grid size** | `48` (range 16–160) | How many cells per side the ROI is shrunk to for the motion check. Raise it (e.g. 96–128) when insects are small relative to the ROI box; costs slightly more CPU. |
 | **Idle check FPS** | `5` (range 1–30) | How many frames per second are inspected *while the gate is asleep*. Higher = faster wake-up but a warmer idle phone. An arriving insect is noticed within ~1/this seconds. (This is why the FPS readout legitimately shows this low number during empty periods.) |
 

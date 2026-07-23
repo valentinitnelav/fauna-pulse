@@ -1434,6 +1434,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // key here. The individual keys above are kept for existing readers and for
         // sessions recorded before this block existed.
         'config': _config.toJson(),
+        // Which of the config keys above had no effect under this session's
+        // capture trigger (round 147). Additive on purpose: the config values
+        // keep their normal types so downstream analysis code never breaks on
+        // absent fields or type changes — filter on this list (or on
+        // captureTrigger) to know what applied.
+        'config_not_applicable': notApplicableConfigKeys(
+          _config.captureTrigger,
+        ),
       },
       captureBuilder: (framesDir, fileToken) => RoiCaptureScheduler(
         framesDir: framesDir,

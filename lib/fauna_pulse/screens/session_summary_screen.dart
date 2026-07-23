@@ -1100,27 +1100,53 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       rows.add(_stat(label, '$text$suffix'));
     }
 
+    // Capture-mode awareness (round 147): in the no-AI sessions the detector
+    // never ran, so the AI-only blocks collapse to one plain "not applicable"
+    // note instead of listing values that had no effect. Every value is still
+    // registered in the log's config block (see config_not_applicable there),
+    // so nothing is lost for analysis — this is display only.
+    final noAi = _motionOnlySession || _timeLapseSession;
+    final modeName = _timeLapseSession ? 'time-lapse' : 'motion-trigger';
+    void addNote(String text) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+      );
+    }
+
     // --- Model & detection ---
     rows.add(_subhead('Model & detection'));
-    add('Model', _setting('modelPath', 'model_path'));
-    add('Task', _setting('task', 'task'));
-    add('GPU requested', _setting('useGpu', 'use_gpu'));
-    add('CPU threads (0 = automatic)', _setting('cpuThreads', 'cpu_threads'));
-    add('Inference engine used', _accelerator);
-    add(
-      'Confidence threshold',
-      _setting('confidenceThreshold', 'confidence_threshold'),
-    );
-    add('IoU threshold', _setting('iouThreshold', 'iou_threshold'));
-    final infFps = _setting('inferenceFps', 'inference_fps');
-    add(
-      'Inference rate cap',
-      infFps == null
-          ? null
-          : (infFps is num && infFps == 0
-                ? 'uncapped (max)'
-                : '${_numStr(infFps)} /s'),
-    );
+    if (noAi) {
+      addNote(
+        'Not applicable — the detector never ran in this session '
+        '($modeName mode).',
+      );
+    } else {
+      add('Model', _setting('modelPath', 'model_path'));
+      add('Task', _setting('task', 'task'));
+      add('GPU requested', _setting('useGpu', 'use_gpu'));
+      add('CPU threads (0 = automatic)', _setting('cpuThreads', 'cpu_threads'));
+      add('Inference engine used', _accelerator);
+      add(
+        'Confidence threshold',
+        _setting('confidenceThreshold', 'confidence_threshold'),
+      );
+      add('IoU threshold', _setting('iouThreshold', 'iou_threshold'));
+      final infFps = _setting('inferenceFps', 'inference_fps');
+      add(
+        'Inference rate cap',
+        infFps == null
+            ? null
+            : (infFps is num && infFps == 0
+                  ? 'uncapped (max)'
+                  : '${_numStr(infFps)} /s'),
+      );
+    }
 
     // --- Heat management ---
     // Only for sessions that recorded these fields (config block, round 44+).
@@ -1137,32 +1163,49 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   ? 'device default'
                   : '${_numStr(camFps)} /s'),
       );
-      add('Auto-throttle', _setting('autoThrottle'));
-      add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
-      add('Throttle duty target', _setting('throttleDutyTarget'));
+      if (noAi) {
+        addNote(
+          'Inference auto-throttle — not applicable (no detector running).',
+        );
+      } else {
+        add('Auto-throttle', _setting('autoThrottle'));
+        add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
+        add('Throttle duty target', _setting('throttleDutyTarget'));
+      }
       // Motion-only capture: photos on ROI motion, detector never ran.
       add('Motion-only capture (detector off)', _setting('motionOnlyCapture'));
-      // Motion gate (round 58+): detector sleeps while nothing moves in the ROI.
-      add('Motion gate', _setting('motionGateEnabled'));
-      if (_setting('motionGateEnabled') == true) {
-        add('Gate pixel sensitivity', _setting('motionGatePixelDelta'));
-        final area = _setting('motionGateAreaFraction');
-        add('Gate trigger area', area is num ? area * 100 : null, suffix: ' %');
-        add(
-          'Gate wake duration',
-          _setting('motionGateWakeSeconds'),
-          suffix: ' s',
-        );
-        add(
-          'Gate grid resolution',
-          _setting('motionGateGridSize'),
-          suffix: ' cells',
-        );
-        add(
-          'Gate idle check rate',
-          _setting('motionGateIdleFps'),
-          suffix: ' fps',
-        );
+      // Motion gate (round 58+): detector sleeps while nothing moves in the
+      // ROI. In a motion session these rows ARE the capture sensitivity, so
+      // they stay; in time-lapse the gate is forced off natively — the config
+      // may still carry motionGateEnabled=true, so the rows would mislead.
+      if (_timeLapseSession) {
+        addNote('Motion gate — not used in time-lapse mode.');
+      } else {
+        add('Motion gate', _setting('motionGateEnabled'));
+        if (_setting('motionGateEnabled') == true) {
+          add('Gate pixel sensitivity', _setting('motionGatePixelDelta'));
+          final area = _setting('motionGateAreaFraction');
+          add(
+            'Gate trigger area',
+            area is num ? area * 100 : null,
+            suffix: ' %',
+          );
+          add(
+            'Gate wake duration',
+            _setting('motionGateWakeSeconds'),
+            suffix: ' s',
+          );
+          add(
+            'Gate grid resolution',
+            _setting('motionGateGridSize'),
+            suffix: ' cells',
+          );
+          add(
+            'Gate idle check rate',
+            _setting('motionGateIdleFps'),
+            suffix: ' fps',
+          );
+        }
       }
     }
 
@@ -1349,37 +1392,51 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // ran is shown (its name in the sub-header), so the card never lists knobs
     // that had no effect.
     final isCbiou = _trackerAlgorithm == 'cbiou';
-    rows.add(_subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'));
-    add('Occlusion tolerance', _setting('occlusionSeconds'), suffix: ' s');
-    // Min visit length: prefer the seconds the user set (newer sessions); fall
-    // back to the raw frame count logged by older sessions.
-    final tp = _trackerParams;
-    final minHitsSeconds = _setting('minHitsSeconds');
-    if (minHitsSeconds != null) {
-      add('Minimum visit length', minHitsSeconds, suffix: ' s');
-    } else if (tp != null) {
-      add('Minimum visit length', tp['minHitsToConfirm'], suffix: ' frames');
-    }
-    if (isCbiou) {
-      final cbp = _cbiouParams;
-      if (cbp != null) {
-        add('Search margin — pass 1', cbp['bufferScale1']);
-        add('Search margin — pass 2', cbp['bufferScale2']);
-        add('High-score threshold', cbp['highThresh']);
+    rows.add(
+      _subhead(
+        noAi
+            ? 'Visit tracking'
+            : 'Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
+      ),
+    );
+    if (noAi) {
+      addNote(
+        'Not applicable — no tracking without the detector ($modeName mode).',
+      );
+    } else {
+      add('Occlusion tolerance', _setting('occlusionSeconds'), suffix: ' s');
+      // Min visit length: prefer the seconds the user set (newer sessions);
+      // fall back to the raw frame count logged by older sessions.
+      final tp = _trackerParams;
+      final minHitsSeconds = _setting('minHitsSeconds');
+      if (minHitsSeconds != null) {
+        add('Minimum visit length', minHitsSeconds, suffix: ' s');
+      } else if (tp != null) {
+        add('Minimum visit length', tp['minHitsToConfirm'], suffix: ' frames');
       }
-    } else if (tp != null) {
-      add('Match overlap (IoU)', tp['matchThresh']);
-      add('Low-score association', tp['lowMatchThresh']);
-      add('Velocity smoothing', tp['velocitySmoothing']);
-      // The frame-count buffer actually used by the tracker (derived from the
-      // seconds above at the session's frame rate).
-      add('Occlusion buffer (derived)', tp['trackBuffer'], suffix: ' frames');
-      add('High-score threshold', tp['highThresh']);
+      if (isCbiou) {
+        final cbp = _cbiouParams;
+        if (cbp != null) {
+          add('Search margin — pass 1', cbp['bufferScale1']);
+          add('Search margin — pass 2', cbp['bufferScale2']);
+          add('High-score threshold', cbp['highThresh']);
+        }
+      } else if (tp != null) {
+        add('Match overlap (IoU)', tp['matchThresh']);
+        add('Low-score association', tp['lowMatchThresh']);
+        add('Velocity smoothing', tp['velocitySmoothing']);
+        // The frame-count buffer actually used by the tracker (derived from
+        // the seconds above at the session's frame rate).
+        add('Occlusion buffer (derived)', tp['trackBuffer'], suffix: ' frames');
+        add('High-score threshold', tp['highThresh']);
+      }
+      // Only worth a row when it was on (it changes what the log contains).
+      if (_setting('logRawDetections') == true) {
+        add('Log raw detections', 'on (replayable session)');
+      }
     }
-    // Only worth a row when it was on (it changes what the log contains).
-    if (_setting('logRawDetections') == true) {
-      add('Log raw detections', 'on (replayable session)');
-    }
+    // Deliberately OUTSIDE the no-AI branch: ground-truth frames are periodic
+    // photos independent of detections, and they run in every capture mode.
     if (_setting('gtFramesEnabled') == true) {
       add(
         'Ground-truth frames',
@@ -2166,9 +2223,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     if (!mounted) return;
     setState(() => _postDeleting = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Deleted $deleted photos.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted $deleted photos.')));
     await _loadPostHoc();
     // The photo list still points at deleted files; reload it and the
     // Overview's storage numbers.
@@ -3100,7 +3157,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                                 // normalized to the shown file
                                                 // itself, so they overlay 1:1.
                                                 ...?widget
-                                                    .postBoxes[_shownNameFor(p)],
+                                                    .postBoxes[_shownNameFor(
+                                                  p,
+                                                )],
                                               ],
                                               _transformFor(
                                                 i,
@@ -3113,8 +3172,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                       // a translucent red ✕ (a marker, not a
                                       // button — r112 allows only text chips
                                       // and passive marks on the photo).
-                                      if (widget.deleteMarked
-                                          .contains(_shownNameFor(p))) ...[
+                                      if (widget.deleteMarked.contains(
+                                        _shownNameFor(p),
+                                      )) ...[
                                         Positioned.fill(
                                           child: IgnorePointer(
                                             child: CustomPaint(
@@ -3429,9 +3489,15 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                     'in ${d.decisiveName}',
               ),
             if (d.reason == KeepReason.pair)
-              _infoRow('Kept', 'pair photo ${d.decisiveName} has the detection'),
+              _infoRow(
+                'Kept',
+                'pair photo ${d.decisiveName} has the detection',
+              ),
             if (d.reason == KeepReason.failed)
-              _infoRow('Kept', 'analysis failed on this photo — kept to be safe'),
+              _infoRow(
+                'Kept',
+                'analysis failed on this photo — kept to be safe',
+              ),
           ] else if (widget.deleteMarked.contains(_shownNameFor(p)))
             _infoRow(
               'Cleanup',
@@ -3602,7 +3668,8 @@ class _DeleteMarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = Paint()
-      ..color = const Color(0x59FF1744) // ~35% red
+      ..color =
+          const Color(0x59FF1744) // ~35% red
       ..strokeWidth = size.shortestSide * 0.04
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(Offset.zero, Offset(size.width, size.height), stroke);
