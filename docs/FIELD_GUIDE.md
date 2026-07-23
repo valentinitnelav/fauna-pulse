@@ -195,6 +195,14 @@ sleeping it deliberately only inspects a few frames per second (the idle check
 rate), so a low FPS readout during an empty period is the feature working, not
 the camera failing.
 
+**"Camera: 1 fps" in time-lapse mode.** Same idea: the camera hardware keeps
+running at its normal rate, but between bursts the app deliberately keeps only
+about one frame per second (and discards the rest before the costly image
+conversion) to save heat and battery. The number counts the frames the app
+*keeps*, and the panel label says so in this mode. During a burst it rises a
+little; it never needs to reach the camera's full rate because time-lapse
+photos come on a clock, not from every frame.
+
 **No detections at all.** Check: is the right model selected? Is confidence set
 too high? Is the insect's centre actually inside the ROI? If the camera is
 clearly running but nothing is ever detected for several seconds, the app raises

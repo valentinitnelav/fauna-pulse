@@ -110,7 +110,11 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (round 63; user-tunable since round 64, default 5).** The early skip in
   `YOLOView.onFrame` closes the rest BEFORE bitmap conversion (idle heat fix).
   Consequence: the delivered/camera FPS readout legitimately shows ~that number while
-  the gate sleeps — that is the fix working, not a camera fault.
+  the gate sleeps — that is the fix working, not a camera fault. Same semantics in
+  time-lapse mode (r146): the pre-conversion sampler sits ABOVE the native frame
+  counter, so the readout shows ~1 fps between bursts; the panel's Camera line is
+  relabelled there ("frames kept for time-lapse — the camera itself runs at full
+  rate") and the Model line is hidden in both no-AI modes (model loaded, never runs).
 - **Photo dims from the probe must go through `uprightHighResDims` (round 64).** The
   probe's JPEG decode is EXIF-aware and may return the photo already upright; a blind
   w/h swap for rotation 90/270 double-rotates (session_97: predicted 1024, saved 992,

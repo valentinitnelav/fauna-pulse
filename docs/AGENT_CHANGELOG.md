@@ -5112,3 +5112,10 @@ Three related camera-screen header bugs, all in `screens/camera_session_screen.d
 - Docs: FIELD_GUIDE §3 chip bullet rewritten (three modes + info-panel-over-REC note); overview chip labels updated in place. Two `if` one-liners in the panel gained braces (lint, after the re-indent).
 - Analyze clean; suite 341 passing (+1 skipped). Owner to verify on-device: no stripes in time-lapse pre-REC, panel readable while recording, chip present in plain-AI mode.
 
+## Round 146 (2026-07-23): no-AI panel honesty — hide Model line, explain time-lapse "Camera: 1 fps" (owner-reported)
+
+- **Model line hidden in motion + time-lapse modes** (`if (_config.detectorEnabled) _statLine(modelLabel)`): the model file is loaded in those modes but `predict()` is never called, so naming it (and its input size) in the expanded panel misled. The "Mode: … (detector off)" line already replaces the Engine line there.
+- **"Camera: 1 fps (sensor→app)" in time-lapse explained, kept, relabelled.** Root cause verified in `YOLOView.kt`: the time-lapse pre-conversion sampler (drop at ~:2284) sits ABOVE `perfFramesIn++` (~:2293), so `lastDeliveredFps` counts frames the app KEEPS — ~1/s between bursts (Dart pushes 1 fps between, ceil(2/step) during a burst), while the camera hardware keeps running at the cap (hence motion mode showing 15). This mirrors the deliberate r63 gate-idle semantics ("readout shows ~idle rate while sleeping = the heat fix working"), so the number stays — the panel line in time-lapse mode now reads "Camera: N fps (frames kept for time-lapse — the camera itself runs at full rate)". Native untouched.
+- Docs: FIELD_GUIDE troubleshooting gains a '"Camera: 1 fps" in time-lapse mode' entry; overview r63 invariant bullet extended with the time-lapse case.
+- Analyze clean; suite 341 passing (+1 skipped).
+

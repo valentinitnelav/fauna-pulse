@@ -2891,8 +2891,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                         CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      // This number counts the frames the app
+                                      // actually KEEPS, not what the sensor
+                                      // produces. In time-lapse mode the app
+                                      // deliberately discards most frames
+                                      // before the costly image conversion
+                                      // (~1/s between bursts, slightly more
+                                      // during one) to save heat, so a low
+                                      // reading is the saving working — not a
+                                      // camera fault (same honesty rule as the
+                                      // r63 gate-idle readout). The label
+                                      // spells that out in that mode.
                                       _statLine(
-                                        'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
+                                        _config.timeLapseCapture
+                                            ? 'Camera: ${f[0].toStringAsFixed(0)} fps '
+                                                  '(frames kept for time-lapse — the '
+                                                  'camera itself runs at full rate)'
+                                            : 'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
                                       ),
                                       // Detector/pipeline rates are meaningless while
                                       // the detector never runs (motion-only and
@@ -2947,7 +2962,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                     ? 'Mode: time-lapse (detector off)'
                                     : engineLabel,
                               ),
-                              _statLine(modelLabel),
+                              // The model line only makes sense when the
+                              // detector actually runs: in the motion and
+                              // time-lapse modes the model file is loaded but
+                              // never asked to predict, so naming it here only
+                              // misleads (owner-reported, round 146).
+                              if (_config.detectorEnabled)
+                                _statLine(modelLabel),
                               _statLine(streamLabel),
                               // Tappable: opens the exact-size slider when we know the
                               // capture resolution.
