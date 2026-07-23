@@ -257,5 +257,56 @@ void main() {
       expect(boxes, hasLength(1));
       expect(boxes.single.left, closeTo(0.60, 0.01));
     });
+
+    test('speck filter drops elongated SLIVER tile boxes too (r143)', () async {
+      // Regression from the owner's session 31 (608 px photo, 10% floor):
+      // a tile-pass false positive of 82×30 px (13.4% × 4.9%) survived the
+      // r141 rule (small in BOTH dims) because of its width. The filter now
+      // tests the NARROWER side, so a sliver drops while an insect-shaped
+      // box (113×90 px → 18.6% × 14.8%) survives. Geometry reproduced here
+      // in photo-normalized terms via one tile detection each.
+      var call = 0;
+      final predict = sahiPredictFn(
+        base: (bytes) async {
+          final i = call++;
+          // Tile 0 spans photo pixels 0..48 of 64 (normalized 0..0.75), so
+          // tile coords scale by 0.75 back to photo coords.
+          if (i == 0) {
+            return {
+              'detections': [
+                {
+                  // sliver: photo-normalized 0.134 wide × 0.049 tall
+                  'className': 'bee',
+                  'confidence': 0.9,
+                  'normalizedBox': {
+                    'left': 0.10, 'top': 0.10,
+                    'right': 0.10 + 0.134 / 0.75, 'bottom': 0.10 + 0.049 / 0.75,
+                  },
+                },
+                {
+                  // insect-shaped: photo-normalized 0.186 × 0.148
+                  'className': 'bee',
+                  'confidence': 0.8,
+                  'normalizedBox': {
+                    'left': 0.10, 'top': 0.45,
+                    'right': 0.10 + 0.186 / 0.75, 'bottom': 0.45 + 0.148 / 0.75,
+                  },
+                },
+              ],
+            };
+          }
+          return const {'detections': []};
+        },
+        options: const SahiOptions(
+          enabled: true,
+          fullImagePass: false,
+          minBoxFrac: 0.10,
+        ),
+        modelInputPx: 48, // 64 px photo → 2×2 tiles
+      );
+      final boxes = boxesFromPredictResult(await predict(photo64));
+      expect(boxes, hasLength(1)); // sliver gone, insect kept
+      expect(boxes.single.bottom - boxes.single.top, closeTo(0.148, 0.01));
+    });
   });
 }

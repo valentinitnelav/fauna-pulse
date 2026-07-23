@@ -474,9 +474,11 @@ Every record carries `time_ms`/`time_iso` (when it was written). Types:
   duplicate-merge threshold), and since round 141 `merge_metric` (`"ios"` —
   overlap measured against the smaller box; a `sahi` map *without*
   `merge_metric` is an r139–140 run that merged by plain IoU and can carry
-  extra small contained boxes) plus `min_box_frac` (tile boxes smaller than
-  this fraction of the photo side in both directions were dropped; `0` =
-  filter off). No `sahi` key = plain single-pass run.
+  extra small contained boxes) plus `min_box_frac` (tile boxes narrower
+  than this fraction of the photo side in either direction were dropped;
+  `0` = filter off; runs from the short-lived r141 build — 2026-07-23
+  morning — required the box to be small in BOTH directions, which let
+  elongated border slivers through). No `sahi` key = plain single-pass run.
 * `post_detection` — one per analyzed photo: `jpeg` (filename in
   `roi_frames/`, joinable exactly like §5), `captured_at_ms` (parsed from
   the filename), `infer_ms`, and `boxes` — each with `class_name`, `conf`,

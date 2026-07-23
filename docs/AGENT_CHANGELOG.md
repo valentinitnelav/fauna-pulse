@@ -5083,3 +5083,13 @@ Owner approved the r140 follow-up: fewer spurious small boxes on tiled runs.
 - **"Keep window around a detection" → "Keep time-window around a detection"** (analysis screen) and the matching summary-Photos-tab info line ("Keep time-window Xs …") — "window" alone reads as a spatial window next to SAHI's tiling on the same page.
 - UI strings only; suite 341 passing, analyze clean.
 
+## Round 143 (2026-07-23): speck filter tests the NARROWER box side (owner-reported bug)
+
+Owner set the r141 filter to 10% on session 31 and a tile-pass false positive survived. Diagnosis from `sessions/Xiaomi/sessions/session_31/post_detections.jsonl`:
+
+- The photo (`roi_z2yq_2026-07-22_185816_662.jpg`, 608×608) has ZERO detections in the plain no-SAHI run → BOTH boxes (bumblebee 113×90 px conf 0.48, false positive 82×30 px conf 0.59) are tile-derived; the full-pass exemption was not the cause. Notably the plain pass misses the bumblebee entirely — SAHI is earning its keep on recall here.
+- The r141 rule dropped a box only when `max(w,h) < floor` ("small in BOTH dims"). The FP is a SLIVER — 13.4% × 4.9% — so its width cleared the 10% floor. Border/partial artifacts are characteristically thin-one-way, not tiny-both-ways; the r141 criterion only ever caught compact specks.
+- **Fix**: filter now tests `min(w,h) < floor` (narrower side, either direction). On session 31 at 10% (60.8 px): FP min side 30 px → dropped; bumblebee min side 90 px → kept. Helper text + SETTINGS_REFERENCE + DATA_GUIDE updated ("narrower than this in either direction"); DATA_GUIDE notes that `min_box_frac` in runs from the r141 build (2026-07-23 morning only) meant the both-dims rule.
+- Trade-off documented: a slender insect side-on also has a narrow side — keep the floor low (~1–2%) unless reviewing.
+- **Test** added reproducing the session-31 geometry through the tile mapping (sliver 0.134×0.049 dropped at 10%, insect-shaped 0.186×0.148 kept). Suite 342 passing; analyze clean.
+

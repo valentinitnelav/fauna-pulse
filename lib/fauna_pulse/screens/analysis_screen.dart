@@ -722,11 +722,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           decimals: 1,
           unitSuffix: '%',
           helperText:
-              '0 = off. Drops tile detections smaller than this percentage '
-              'of the photo side in both directions — background specks '
-              'that only show up at tile scale. Never removes '
-              'whole-photo-pass boxes, so it can only trim what tiling '
-              'added.',
+              '0 = off. Drops tile detections whose box is narrower than '
+              'this percentage of the photo side in either direction — '
+              'catches background specks and the thin sliver boxes tiling '
+              'produces at tile borders. Never removes whole-photo-pass '
+              'boxes, so it can only trim what tiling added.',
           onChanged: (v) async {
             setState(() => _sahiMinBoxPct = v);
             await save();

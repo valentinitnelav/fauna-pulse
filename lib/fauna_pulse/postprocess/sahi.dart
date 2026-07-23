@@ -48,11 +48,15 @@ class SahiOptions {
   /// boxes" artifact) while IoS merges them. Same criterion as obss/sahi.
   final double mergeIou;
 
-  /// Drop TILE detections whose box is smaller than this fraction of the
-  /// photo side in both dimensions (0 = off). Trims background specks that
-  /// only clear the confidence threshold at native tile scale. Applied to
-  /// tile-derived boxes only, never to the whole-photo pass — so the filter
-  /// can only trim tiling's additions, never fall below the plain run.
+  /// Drop TILE detections whose box is NARROWER than this fraction of the
+  /// photo side in either dimension (0 = off). Trims the two tiling
+  /// artifacts: background specks (tiny both ways) and border slivers —
+  /// partial insects cut by a tile edge are thin in one direction but can
+  /// be long in the other, so the narrower side is the right test (round
+  /// 143; the short-lived r141 rule required BOTH sides small and let
+  /// slivers through). Applied to tile-derived boxes only, never to the
+  /// whole-photo pass — so the filter can only trim tiling's additions,
+  /// never fall below the plain run.
   final double minBoxFrac;
 
   const SahiOptions({
@@ -217,9 +221,9 @@ PredictFn sahiPredictFn({
             right: (tl + b.right * tw) / imgW,
             bottom: (tt + b.bottom * th) / imgH,
           );
-          // Optional speck filter — tile boxes only (see SahiOptions).
+          // Optional speck/sliver filter — tile boxes only (see SahiOptions).
           if (options.minBoxFrac > 0 &&
-              max(mapped.right - mapped.left, mapped.bottom - mapped.top) <
+              min(mapped.right - mapped.left, mapped.bottom - mapped.top) <
                   options.minBoxFrac) {
             continue;
           }
