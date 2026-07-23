@@ -9,7 +9,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  An Android field application for detecting, tracking and documenting pollinators using on-device artificial intelligence.
+  An Android field application for detecting, tracking and documenting pollinators (and other animals) using on-device artificial intelligence.
 </p>
 
 <p align="center">
@@ -49,11 +49,11 @@ FaunaPulse is not restricted to pollinators. With a suitable object-detection mo
 
 FaunaPulse is an **early research preview (alpha)**, provided as an experimental field tool rather than a validated monitoring product. Field validation is ongoing. Please treat it accordingly:
 
-- Android is currently supported; iOS compatibility is planned for a later phase.
+- Android is currently supported; iOS compatibility postponed for a later phase.
 - AI-based monitoring requires a compatible `.tflite` object-detection model.
-- Built-in (on device) en masse automated taxonomic identification is not yet available.
+- Built-in (on device) en masse automated taxonomic identification is not available (yet).
 - Detection accuracy and tracking performance depend on the model, smartphone, target organism and field setup.
-- Visit counts may include missed, duplicated, split or merged tracks; review outputs before drawing scientific conclusions.
+- Visit counts may include missed, duplicated, split or merged tracks. Therefore, review outputs before drawing scientific conclusions.
 - Performance varies substantially between phone models. Prolonged continuous inference can cause the device to heat up, thermally throttle and drain the battery faster.
 - Each scientific application should be validated under its intended field conditions before data collection at scale.
 

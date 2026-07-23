@@ -5093,3 +5093,12 @@ Owner set the r141 filter to 10% on session 31 and a tile-pass false positive su
 - Trade-off documented: a slender insect side-on also has a narrow side — keep the floor low (~1–2%) unless reviewing.
 - **Test** added reproducing the session-31 geometry through the tile mapping (sliver 0.134×0.049 dropped at 10%, insect-shaped 0.186×0.148 kept). Suite 342 passing; analyze clean.
 
+## Round 144 (2026-07-23): frozen AI-mode box after switching to motion capture (owner-reported)
+
+- **Bug**: with AI mode running and boxes on screen, switching the capture trigger to motion (or time-lapse) in Settings left the last predicted box frozen on the preview. It only vanished on leaving the screen, because the box overlay listens to `_tracksVN` and in the no-AI modes the streaming handler takes the `motionOnly`/`timeLapse` branch, which never touches that notifier — nothing ever repainted (or cleared) the stale tracks.
+- **Fix** (all in `screens/camera_session_screen.dart`):
+  - `_openSettings` now sets `_tracksVN.value = const []` right after rebuilding the tracker — the rebuilt tracker starts empty, so on-screen boxes are orphans in any mode; in the no-AI modes they were permanent.
+  - The `TrackBoxPainter` overlay is additionally gated on `_config.detectorEnabled` — the no-AI modes can never paint detector boxes, whatever path led there (belt-and-braces).
+  - The expanded stats "Current tracks / Total tracks" lines are now hidden in the no-AI modes, matching the existing detector/pipeline-fps lines (they read the same stale tracker state).
+- No settings, log format, or native code touched. Analyze clean; suite 341 passing (+1 skipped).
+

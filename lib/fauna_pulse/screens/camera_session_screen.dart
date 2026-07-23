@@ -2295,6 +2295,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // restart mid-log; the preview tracks it drops are cosmetic.
       _tracker = _buildTracker(_fpsVN.value);
       _frame.tracker = _tracker;
+      // The rebuilt tracker starts empty, so any boxes still on screen are
+      // orphans. In the no-AI modes (motion / time-lapse) no detector frame
+      // ever repaints this notifier, so without this reset the last AI-mode
+      // box stayed frozen on the preview after a mode switch (round 144).
+      _tracksVN.value = const [];
       _rebuildThrottle();
       // Show "reading…" again while we re-probe the new model's input size.
       if (modelChanged) {
@@ -2676,8 +2681,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // Our own track-id boxes. Wrapped in a RepaintBoundary so that, when
           // the tracks notifier fires each frame, only this layer repaints — the
           // camera preview and everything else are left alone. Skipped entirely
-          // when the user turns boxes off (no per-frame repaint at all).
-          if (!_blackout && _config.showBoxes)
+          // when the user turns boxes off (no per-frame repaint at all), and
+          // in the no-AI modes — the detector never runs there, so a box could
+          // only be a stale leftover from an earlier AI-mode frame.
+          if (!_blackout && _config.showBoxes && _config.detectorEnabled)
             IgnorePointer(
               child: RepaintBoundary(
                 child: ValueListenableBuilder<List<Track>>(
@@ -2886,20 +2893,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                         // running total of unique insects confirmed so far this
                         // session (same figure as the summary's "Unique insects").
                         // Both sit in one per-frame builder, so the total stays live
-                        // without a separate notifier.
-                        ValueListenableBuilder<List<Track>>(
-                          valueListenable: _tracksVN,
-                          builder: (_, tracks, _) => Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _statLine('Current tracks: ${tracks.length}'),
-                              _statLine(
-                                'Total tracks: ${_tracker.totalConfirmed}',
-                              ),
-                            ],
+                        // without a separate notifier. Hidden in the no-AI modes,
+                        // same as the detector/pipeline fps lines above — no
+                        // tracker runs there, so the numbers could only be stale.
+                        if (_config.detectorEnabled)
+                          ValueListenableBuilder<List<Track>>(
+                            valueListenable: _tracksVN,
+                            builder: (_, tracks, _) => Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _statLine('Current tracks: ${tracks.length}'),
+                                _statLine(
+                                  'Total tracks: ${_tracker.totalConfirmed}',
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
                       ],
                     ],
                   ),
