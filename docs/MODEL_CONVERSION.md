@@ -1,6 +1,6 @@
 # Model formats & conversion guide
 
-*For collaborators who want their YOLO detection model to run inside FaunaPulse.*
+*For developers / collaborators who want their YOLO detection model to run inside FaunaPulse.*
 
 FaunaPulse runs its detector(s) **on the phone itself** (no internet, no server). That
 constrains which model file formats work. This page explains what to share, how to
