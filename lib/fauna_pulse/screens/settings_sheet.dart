@@ -151,7 +151,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       SnackBar(
         content: Text(
           n == 0
-              ? 'No .tflite models imported.'
+              ? 'No model files imported (.tflite or *_qnn.onnx).'
               : 'Imported $n model${n == 1 ? '' : 's'}.',
         ),
       ),
@@ -159,7 +159,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     await _reloadModels();
   }
 
-  /// Asks for a URL (e.g. a GitHub release asset link), downloads the .tflite
+  /// Asks for a URL (e.g. a GitHub release asset link), downloads the model
   /// into the imported-models folder, then selects it like a dropdown pick.
   Future<void> _downloadModel() async {
     final savedPath = await showDialog<String>(
@@ -887,31 +887,42 @@ class _SettingsSheetState extends State<SettingsSheet> {
             setState(() => _c = _c.copyWith(cpuThreads: v.round())),
       ),
       const SizedBox(height: 4),
-      OutlinedButton.icon(
-        onPressed: _benchmarkRunning ? null : _runEngineBenchmark,
-        icon: _benchmarkRunning
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.speed),
-        label: Text(
-          _benchmarkRunning
-              ? 'Benchmarking… (up to ~30 s)'
-              : 'Benchmark engines (GPU vs CPU)',
+      // The benchmark compiles TFLite engine variants, so it cannot time an
+      // NPU (*_qnn.onnx) model — those always run on the Snapdragon NPU.
+      if (isQnnModelPath(_c.modelPath))
+        const Text(
+          'NPU model selected (*_qnn.onnx): it always runs on the Snapdragon '
+          'NPU, so the GPU-vs-CPU benchmark and the CPU-thread setting above '
+          'do not apply.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        )
+      else ...[
+        OutlinedButton.icon(
+          onPressed: _benchmarkRunning ? null : _runEngineBenchmark,
+          icon: _benchmarkRunning
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.speed),
+          label: Text(
+            _benchmarkRunning
+                ? 'Benchmarking… (up to ~30 s)'
+                : 'Benchmark engines (GPU vs CPU)',
+          ),
         ),
-      ),
-      const Text(
-        'Times the selected model on the GPU and on the CPU at several '
-        'thread counts — fed test frames at the model\'s own input '
-        'resolution — then lets you apply the fastest. Runs the model at '
-        'full speed for a few seconds per engine, so the phone warms up a '
-        'little — run it when you change model, not before every session. '
-        'The live preview keeps detecting in the background, which can make '
-        'all numbers read slightly slow; their ranking is still valid.',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
-      ),
+        const Text(
+          'Times the selected model on the GPU and on the CPU at several '
+          'thread counts — fed test frames at the model\'s own input '
+          'resolution — then lets you apply the fastest. Runs the model at '
+          'full speed for a few seconds per engine, so the phone warms up a '
+          'little — run it when you change model, not before every session. '
+          'The live preview keeps detecting in the background, which can make '
+          'all numbers read slightly slow; their ranking is still valid.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ],
 
       const Divider(color: Colors.white24),
       const Row(
@@ -2432,7 +2443,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
   );
 }
 
-/// Asks for a direct link to a .tflite model (e.g. a GitHub release asset),
+/// Asks for a direct link to a model file (e.g. a GitHub release asset),
 /// downloads it with a progress bar and pops the saved file path — or null on
 /// cancel. Errors show inline so the URL can be corrected without retyping.
 class _DownloadModelDialog extends StatefulWidget {
@@ -2517,7 +2528,7 @@ class _DownloadModelDialogState extends State<_DownloadModelDialog> {
             decoration: const InputDecoration(
               isDense: true,
               border: OutlineInputBorder(),
-              labelText: 'Link to a .tflite model file',
+              labelText: 'Link to a .tflite or *_qnn.onnx model file',
               helperText:
                   'Model links are published at\n'
                   'github.com/valentinitnelav/fauna-pulse/releases',

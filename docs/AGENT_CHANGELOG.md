@@ -5197,3 +5197,41 @@ and only the *display* stays opt-in via the summary's collapsed "Extra graphs" s
   in the Settings tab. All other sessions render normally.
 - Docs (SETTINGS_REFERENCE, DATA_GUIDE, FIELD_GUIDE, overview) updated to "always
   logged, display opt-in". Analyze clean; suite 344 passing.
+
+## Round 150 (2026-07-24): accept *_qnn.onnx NPU models in the picker + MODEL_CONVERSION.md
+
+Owner investigated ONNX support because collaborators want to share `.pt`/`.onnx`
+models. Findings: the vendored plugin ALREADY contains an ONNX Runtime path — but
+only for Ultralytics QNN context-binary exports (`*_qnn.onnx`) running on the
+Snapdragon Hexagon NPU via `OrtQnnModel.kt` (upstream yolo-flutter-app PR #526,
+merged 2026-06-11; `onnxruntime-android-qnn:1.26.0` was already an `implementation`
+dep in the app's build.gradle, plus the `qnn_*_test.dart` integration tests). Generic
+`.onnx` is deliberately rejected natively (`Predictor.kt`: "convert to TFLite") and we
+decided NOT to add a general ONNX runtime: no FPS to gain (CPU = same XNNPACK; LiteRT's
+GPU delegate beats ORT's weak Android GPU story; per-frame NHWC→NCHW transpose cost),
+big maintenance/APK cost for a solo maintainer. The only ONNX case that IS faster
+(Snapdragon NPU) was already implemented — this round exposes it in the UI.
+
+- **Gap closed**: the Dart `ModelCatalog` filtered `.tflite` everywhere, so even a
+  `*_qnn.onnx` could not be imported despite full native support. New top-level helpers
+  in `model_catalog.dart`: `isSupportedModelFileName()` (`.tflite` OR `_qnn.onnx`,
+  case-insensitive — plain `.onnx` stays rejected so broken entries never reach the
+  picker) and `isQnnModelPath()`. Applied at all four filter sites (bundled-custom asset
+  scan, imported-dir scan, Import… file picker, `modelFileNameFromUrl` for Download…);
+  download error + dialog label + import snackbar now say ".tflite or *_qnn.onnx".
+- **Benchmark guard** (settings AI tab): the engine benchmark builds `LiteRtModel`
+  variants only, so for a selected `*_qnn.onnx` the "Benchmark engines (GPU vs CPU)"
+  button + helper text are replaced by a note ("always runs on the Snapdragon NPU —
+  benchmark and CPU-thread setting don't apply"). Native `inspectModel` already reads
+  ONNX `metadata_props` (`loadMetadataFromOnnx`), so input-size labels work unchanged.
+- **New `docs/MODEL_CONVERSION.md`** (collaborator-facing, plain language): what formats
+  the app accepts and why generic ONNX is not one of them; `.pt` → `.tflite` export
+  one-liners (fp32/fp16 need NO dataset; INT8 needs calibration images — collaborators
+  run `int8=True data=…` on THEIR machine, data never shared); why INT8 matters on
+  CPU-bound phones (Samsung M12: 65 ms int8 vs 260 ms float nano) while GPU-vs-CPU is
+  decided by op-graph compatibility, not precision (r77 invariant); `onnx2tf` as the
+  fallback when only an `.onnx` exists (no embedded class names — prefer `.pt`); QNN
+  export caveats (Snapdragon-only, no CPU fallback, arch-specific).
+- Tests: `model_catalog_test.dart` gains `_qnn.onnx` accept + plain-`.onnx` reject cases
+  for `modelFileNameFromUrl`, plus unit tests for both new helpers. Analyze clean;
+  suite 347 passing.

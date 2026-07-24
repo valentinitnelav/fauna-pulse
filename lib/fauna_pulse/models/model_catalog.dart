@@ -2,11 +2,18 @@
 //
 // Three kinds of model can appear in the picker:
 //   * official  — the YOLO26 sizes the plugin can fetch/bundle (only nano ships).
-//   * bundled   — custom .tflite files shipped inside the app (assets/models/custom/).
-//   * imported  — custom .tflite files the user dropped onto the phone and imported
+//   * bundled   — custom model files shipped inside the app (assets/models/custom/).
+//   * imported  — custom model files the user dropped onto the phone and imported
 //                 at runtime (e.g. from the Downloads folder) via the file picker.
 //                 These live in the app's own models folder, which is also visible
 //                 over USB at Android/data/<package>/files/models/.
+//
+// Accepted file formats (round 150, see docs/MODEL_CONVERSION.md): `.tflite`
+// (any precision — the normal case) and `*_qnn.onnx` (an Ultralytics Snapdragon
+// NPU export the native layer runs via ONNX Runtime; Snapdragon phones only).
+// Plain `.onnx` files are deliberately NOT accepted — the native layer would
+// reject them at load time, so filtering them here keeps broken entries out of
+// the picker.
 //
 // "Runtime scanning" means the imported list is read from disk every time the
 // settings sheet opens, so a newly-added model shows up without rebuilding the app.
@@ -84,22 +91,21 @@ class ModelCatalog {
   static const bundledIds = {'yolo26n'};
 
   /// Folder (inside the app bundle) holding custom detectors shipped with the app.
-  /// Every `.tflite` here is offered automatically — see [_bundledCustomAssets].
+  /// Every supported model file here is offered automatically — see
+  /// [_bundledCustomAssets].
   static const bundledCustomDir = 'assets/models/custom/';
 
   static final _channel = ChannelConfig.createSingleImageChannel();
 
   /// Lists every bundled custom-model asset by reading the build's AssetManifest,
-  /// so any `.tflite` dropped into [bundledCustomDir] appears in the app without a
-  /// code change (just rebuild). Sorted for a stable menu order.
+  /// so any supported model file dropped into [bundledCustomDir] appears in the
+  /// app without a code change (just rebuild). Sorted for a stable menu order.
   static Future<List<String>> _bundledCustomAssets() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
     return manifest
         .listAssets()
         .where(
-          (p) =>
-              p.startsWith(bundledCustomDir) &&
-              p.toLowerCase().endsWith('.tflite'),
+          (p) => p.startsWith(bundledCustomDir) && isSupportedModelFileName(p),
         )
         .toList()
       ..sort();
@@ -150,7 +156,7 @@ class ModelCatalog {
         dir
             .listSync()
             .whereType<File>()
-            .where((f) => f.path.toLowerCase().endsWith('.tflite'))
+            .where((f) => isSupportedModelFileName(f.path))
             .toList()
           ..sort((a, b) => a.path.compareTo(b.path));
     for (final f in files) {
@@ -204,9 +210,10 @@ class ModelCatalog {
     return seen.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
   }
 
-  /// Opens the system file picker so the user can choose one or more .tflite
-  /// models from anywhere on the phone (Downloads, a folder they pick, etc.) and
-  /// copies them into the app's models folder. Returns how many were imported.
+  /// Opens the system file picker so the user can choose one or more model
+  /// files (.tflite or *_qnn.onnx) from anywhere on the phone (Downloads, a
+  /// folder they pick, etc.) and copies them into the app's models folder.
+  /// Returns how many were imported.
   static Future<int> importModels() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result == null) return 0;
@@ -215,7 +222,7 @@ class ModelCatalog {
     for (final picked in result.files) {
       final path = picked.path;
       if (path == null) continue;
-      if (!path.toLowerCase().endsWith('.tflite')) continue;
+      if (!isSupportedModelFileName(path)) continue;
       try {
         await File(path).copy('${dir.path}/${picked.name}');
         imported++;
@@ -227,7 +234,7 @@ class ModelCatalog {
     return imported;
   }
 
-  /// Downloads a .tflite model from [url] into the imported-models folder, so
+  /// Downloads a model file from [url] into the imported-models folder, so
   /// models published as GitHub release assets can be added without a cable.
   /// Streams into a temporary `<name>.part` file and renames only on success,
   /// so a dropped connection never leaves a half model in the picker. Reports
@@ -243,7 +250,9 @@ class ModelCatalog {
   }) async {
     final name = modelFileNameFromUrl(url);
     if (name == null) {
-      throw Exception('The link must point to a .tflite file.');
+      throw Exception(
+        'The link must point to a .tflite or *_qnn.onnx model file.',
+      );
     }
     final dir = await modelsDir();
     final partFile = File('${dir.path}/$name.part');
@@ -352,7 +361,8 @@ class ModelCatalog {
 }
 
 /// The model file name a download URL points at (query string ignored), or
-/// null when the link is not an http(s) URL ending in `.tflite`.
+/// null when the link is not an http(s) URL ending in a supported model
+/// extension (`.tflite` or `_qnn.onnx`).
 String? modelFileNameFromUrl(String url) {
   final uri = Uri.tryParse(url.trim());
   if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
@@ -360,6 +370,21 @@ String? modelFileNameFromUrl(String url) {
   }
   if (uri.pathSegments.isEmpty) return null;
   final name = uri.pathSegments.last;
-  if (!name.toLowerCase().endsWith('.tflite')) return null;
+  if (!isSupportedModelFileName(name)) return null;
   return name;
 }
+
+/// True when [name] (a file name or path) is a model file the app can run:
+/// a `.tflite` (any precision) or an Ultralytics QNN context-binary export
+/// (`*_qnn.onnx` — Snapdragon NPU only). Plain `.onnx` files are rejected;
+/// the native layer cannot run them (docs/MODEL_CONVERSION.md explains why
+/// and how to convert instead).
+bool isSupportedModelFileName(String name) {
+  final n = name.toLowerCase();
+  return n.endsWith('.tflite') || n.endsWith('_qnn.onnx');
+}
+
+/// True when [path] is a Snapdragon-NPU QNN model (`*_qnn.onnx`). These always
+/// run on the NPU — the GPU-vs-CPU engine benchmark and the CPU-thread setting
+/// don't apply to them.
+bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
