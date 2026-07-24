@@ -49,12 +49,23 @@ Caveats, and why it's not the default recommendation:
   my Xiaomi primary test phone qualifies; many budget phones use MediaTek/Exynos chips and do not). 
   There is deliberately no CPU fallback. On other hardware the model simply refuses
   to load and you must switch back to a `.tflite`.
-- It is precompiled for a specific Hexagon NPU architecture at export time.
+- It is precompiled for a specific Hexagon NPU architecture at export time, and it
+  only runs on Snapdragon chips of that architecture generation or newer. The
+  target generation is usually in the file name (e.g. `yolo26n_v73_qnn.onnx`) and
+  embedded in the file as `min_arch`. Approximate mapping: v68 = Snapdragon 888
+  generation, v69 = 8 Gen 1, v73 = 8 Gen 2, v75 = 8 Gen 3, v79 and above = 8 Elite.
+  Real-world example (July 2026): the `yolo26n_v73_qnn.onnx` / `yolo26n_v81_qnn.onnx`
+  assets on the yolo-flutter-app v0.3.5 release page cannot run on my Snapdragon 888
+  test phone (a v68 chip); ONNX Runtime fails with a cryptic
+  `ORT_INVALID_GRAPH ... Error code: 5005`. Testing QNN on that phone would need an
+  export targeting v68.
 - Despite the `.onnx` extension, this is NOT a general ONNX file. A normal
   `yolo export format=onnx` file will not load.
 
 The app's model picker accepts `*_qnn.onnx` through the same Import…
-and Download… buttons as `.tflite`.
+and Download… buttons as `.tflite`. When a QNN model cannot run on the phone,
+the app shows an error dialog explaining why and automatically switches back to
+a model that works (the previously loaded one, or the bundled nano).
 
 ## Converting: `.pt` → `.tflite` (the recommended route)
 

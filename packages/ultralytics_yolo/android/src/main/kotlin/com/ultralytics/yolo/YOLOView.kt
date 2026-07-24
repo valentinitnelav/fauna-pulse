@@ -248,6 +248,19 @@ class YOLOView @JvmOverloads constructor(
         this.modelLoadCallback = callback
     }
 
+    /** True while a predictor is loaded and inference can run. False after an initial-load failure. */
+    fun isModelLoaded(): Boolean = predictor != null
+
+    /**
+     * Why the most recent [setModel] failed (exception class + message), or null after a success.
+     * Written on the loader thread, read on the platform (main) thread when building the channel
+     * error, hence @Volatile. Lets callers surface the real reason (e.g. an ONNX Runtime QNN
+     * context-binary arch mismatch) instead of a generic "failed to load".
+     */
+    @Volatile
+    var lastModelLoadError: String? = null
+        private set
+
     // Use a PreviewView, forcing a TextureView under the hood
     private val previewView: PreviewView = PreviewView(context).apply {
         // Force TextureView usage so the overlay can be on top
@@ -774,6 +787,7 @@ class YOLOView @JvmOverloads constructor(
                 this.task = task
                 this.predictor = cached
                 this.modelName = modelPath.substringAfterLast("/")
+                lastModelLoadError = null
                 cachePredictor(cacheKey, cached)
                 modelLoadCallback?.invoke(true)
                 callback?.invoke(true)
@@ -806,6 +820,7 @@ class YOLOView @JvmOverloads constructor(
                     this.task = task
                     this.predictor = newPredictor
                     this.modelName = modelPath.substringAfterLast("/")
+                    lastModelLoadError = null
                     cachePredictor(cacheKey, newPredictor)
                     modelLoadCallback?.invoke(true)
                     callback?.invoke(true)
@@ -816,6 +831,7 @@ class YOLOView @JvmOverloads constructor(
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to load model: $modelPath. Keeping the previously loaded model if one is present.", e)
+                lastModelLoadError = "${e.javaClass.simpleName}: ${e.message}"
                 post {
                     // The new predictor was built into a local and never assigned, so the previously loaded model is
                     // untouched. Only drop inference when there is nothing to fall back to (an initial-load failure);

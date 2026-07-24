@@ -216,6 +216,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // The model actually loaded (from onModelLoad). Lets the user see when a model
   // switch didn't take effect (e.g. a size that isn't bundled on the device).
   String _loadedModel = '';
+  // Config-style path + task of that loaded model (round 151), so a failed
+  // switch can revert the config to the model that is really still running.
+  String _loadedModelPath = '';
+  YOLOTask? _loadedModelTask;
+  // One model-error dialog at a time; repeated failures while it shows are
+  // only logged (each failure has already reverted the config anyway).
+  bool _modelErrorDialogOpen = false;
 
   // The model's square input resolution in pixels (e.g. 640 → "640×640 px"),
   // read once from the model metadata via ModelCatalog.inputSizeOf. Tri-state so
@@ -2179,6 +2186,83 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
+  /// A model failed to load (round 151). Two shapes reach this handler:
+  /// an in-place switch failure (the previous model keeps running natively,
+  /// so the config must revert to it or the UI lies about what is detecting),
+  /// and an initial-load failure (nothing is running; without recovery the
+  /// detector never emits an analysis frame, so the calibration cycle would
+  /// show "Calibrating…" forever). Both revert the config to a model that can
+  /// actually run, persist it, and tell the user why.
+  void _onModelLoadError(Object error, String failedPath, YOLOTask? task) {
+    final reason = error is PlatformException
+        ? (error.message ?? error.code)
+        : '$error';
+    // Reaches logcat_end.txt and, when a session is live, an app_error line.
+    logSwallowed('model_load_error', '$failedPath: $reason');
+    // Settings are locked while recording, so this should be unreachable then;
+    // the guard keeps a late event from rebuilding config mid-log regardless.
+    if (!mounted || _recording) return;
+    final recovery = modelLoadRecovery(
+      failedPath: failedPath,
+      currentConfigPath: _config.modelPath,
+      loadedModelPath: _loadedModelPath,
+    );
+    if (recovery == null) return; // stale: another model was picked meanwhile
+    final updated = _config.copyWith(
+      modelPath: recovery.revertToPath,
+      task: recovery.toBundledDefault
+          ? YOLOTask.detect
+          : (_loadedModelTask ?? _config.task),
+    );
+    setState(() {
+      _config = updated;
+      // Show "reading…" while the reverted model's input size is re-probed.
+      _modelInputSize = null;
+      _modelInputProbed = false;
+    });
+    updated.save().catchError(
+      (Object e) => logSwallowed('model_error_save', e),
+    );
+    _refreshModelInputSize();
+    _showModelErrorDialog(failedPath, reason, recovery);
+  }
+
+  Future<void> _showModelErrorDialog(
+    String failedPath,
+    String reason,
+    ModelLoadRecovery recovery,
+  ) async {
+    if (_modelErrorDialogOpen) return;
+    _modelErrorDialogOpen = true;
+    final failedName = failedPath.split('/').last;
+    final hint = modelLoadHint(failedPath, reason);
+    final revertName = recovery.toBundledDefault
+        ? 'the bundled YOLO26 nano'
+        : recovery.revertToPath.split('/').last;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Model failed to load'),
+          content: Text(
+            '$failedName could not be loaded.\n\n'
+            '$reason\n'
+            '${hint.isEmpty ? '' : '\n$hint\n'}'
+            '\nSwitched back to $revertName.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _modelErrorDialogOpen = false;
+    }
+  }
+
   /// How long the "tap to wake" hint takes to fade out after entering blackout.
   /// The screen is held at its normal brightness for this whole window so the
   /// message is comfortably readable; only once it has faded is the brightness
@@ -2753,7 +2837,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ),
             onStreamingData: _onStreamingData,
-            onModelLoad: (modelPath, _) {
+            onModelLoad: (modelPath, task) {
               _controller.setShowOverlays(false);
               // Tell the native side to run inference only on the ROI crop.
               _pushInferenceRoi();
@@ -2761,10 +2845,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               // (e.g. a size that isn't bundled), this callback isn't called for
               // it, so the displayed model stays the one really running.
               final loaded = modelPath.split('/').last;
+              _loadedModelPath = modelPath;
+              _loadedModelTask = task;
               if (mounted && loaded != _loadedModel) {
                 setState(() => _loadedModel = loaded);
               }
             },
+            onModelError: _onModelLoadError,
           ),
           // Darken everything outside the ROI: the model only looks inside it.
           // (All these overlays are skipped while blacked out — nothing is drawn

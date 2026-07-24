@@ -5235,3 +5235,61 @@ big maintenance/APK cost for a solo maintainer. The only ONNX case that IS faste
 - Tests: `model_catalog_test.dart` gains `_qnn.onnx` accept + plain-`.onnx` reject cases
   for `modelFileNameFromUrl`, plus unit tests for both new helpers. Analyze clean;
   suite 347 passing.
+
+## Round 151 (2026-07-24): surface model-load failures (QNN test fallout), never hang calibration
+
+Owner field-tested r150 by downloading `yolo26n_v73_qnn.onnx` / `yolo26n_v81_qnn.onnx`
+from the yolo-flutter-app v0.3.5 release assets. Root cause of everything seen: QNN
+context binaries are precompiled per Hexagon NPU generation (`strings` shows
+`min_arch=73`); the Xiaomi 11T Pro (Snapdragon 888) is a v68 HTP, so ONNX Runtime
+fails with `ORT_INVALID_GRAPH ... LoadCachedQnnContextFromBuffer ... Error code: 5005`.
+Those two files can never run on this phone (they need 8 Gen 2 / newer). The app bugs
+were in how that failure was (not) handled:
+
+- **Bug 1, stale detections**: on a failed in-place switch the native side deliberately
+  keeps the previous predictor (YOLOView.kt) and the plugin fires `onModelError`, but
+  the camera screen only wired `onModelLoad`, so the config/dropdown claimed the QNN
+  model while the old model kept detecting, with zero user feedback.
+- **Bug 2, infinite "Calibrating..."**: on cold start the model loads fire-and-forget
+  from creationParams (`YOLOPlatformView` init); on failure `predictor` stays null,
+  `onFrame` never emits streaming data, `_imageWidth` stays 0 and `_calibrating`
+  (r120) never clears. The app was unusable until the saved model changed.
+
+Fixes:
+
+- **Native**: `YOLOView.lastModelLoadError` (@Volatile, exception class + message,
+  cleared on both success paths) so callers can surface the real reason. The
+  `"setModel"` channel error now carries that reason instead of a generic string.
+  `YOLOView.isModelLoaded()` added. `YOLOPlatformView`'s existing model-load callback
+  now, on failure AND only when no predictor is left running (so in-place switch
+  failures are not double-reported), notifies Dart via
+  `methodChannel.invokeMethod("onInitialModelLoadFailed", {modelPath, message})`.
+- **Plugin Dart** (`yolo_view.dart`): new `_handleMethodCall` case
+  `onInitialModelLoadFailed` routes that event into the existing `onModelError`
+  callback, giving hosts ONE error path for both failure shapes.
+- **App** (`camera_session_screen.dart`): `onModelError` is now wired.
+  `_loadedModelPath`/`_loadedModelTask` are captured in `onModelLoad`; the handler
+  calls the new pure helper `modelLoadRecovery()` (model_catalog.dart): revert the
+  config to the still-loaded model on a switch failure, or fall back to the bundled
+  `yolo26n` (+ task detect) when nothing is running (the hang case, now self-healing),
+  persist via `SessionConfig.save()`, re-probe the input size, and show one dialog
+  (spam-guarded via `_modelErrorDialogOpen`) with the file, the native reason, and a
+  plain-language hint (`modelLoadHint()`) for the QNN arch-mismatch pattern.
+  `sameModelFile()` compares by file name and maps official bundled ids to their
+  real asset (`yolo26n` = `yolo26n_int8.tflite`) WITHOUT prefix-matching, so
+  `yolo26n_v73_qnn.onnx` is never confused with the nano id (stale-failure check).
+- **Cleanup**: `YOLOFileUtils.inputImageSize` early-returns null for `.onnx` paths
+  (the TFLite metadata extractor logged a spurious "Input tensor shape read failed"
+  warning per QNN model on every settings-sheet open).
+- **Docs**: MODEL_CONVERSION.md QNN section gains the arch-generation caveat
+  (v68 = SD888 gen, v69 = 8 Gen 1, v73 = 8 Gen 2, v75 = 8 Gen 3, v79+ = 8 Elite),
+  the concrete v0.3.5-assets example, and the new error/fallback behaviour.
+- Tests: `modelLoadRecovery` (switch revert, bundled fallback, resolved-path
+  matching, stale ignore, id-vs-lookalike), `modelLoadHint`. Analyze clean;
+  suite 354 passing; `flutter build apk --debug` compiles the Kotlin changes.
+
+Owner verification steps: (1) with nano loaded, pick the v73 QNN model: expect the
+error dialog naming the file + reason, dropdown reverts, detections stay honest;
+(2) select the QNN model, kill + reopen the app, New session: expect the fallback
+dialog and calibration completing on nano. The two downloaded QNN files can be
+deleted afterwards, they can never run on this phone.

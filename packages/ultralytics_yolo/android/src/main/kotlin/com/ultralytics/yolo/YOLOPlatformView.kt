@@ -127,6 +127,20 @@ class YOLOPlatformView(
                     }
                 } else {
                     initialized = true
+                    // No predictor is running (an initial-load failure, not an in-place switch that kept
+                    // the previous model). Without this event Dart would wait for analysis frames forever:
+                    // onFrame never emits while predictor == null, so the app's calibration cannot finish.
+                    // In-place switch failures are excluded (isModelLoaded true): they already surface
+                    // through the "setModel" channel result error.
+                    if (!yoloView.isModelLoaded()) {
+                        methodChannel?.invokeMethod(
+                            "onInitialModelLoadFailed",
+                            mapOf(
+                                "modelPath" to modelPath,
+                                "message" to (yoloView.lastModelLoadError ?: "Model failed to load"),
+                            ),
+                        )
+                    }
                 }
             }
             
@@ -411,8 +425,11 @@ class YOLOPlatformView(
                         if (success) {
                             result.success(null)
                         } else {
-                            Log.e(TAG, "Failed to switch model")
-                            result.error("MODEL_NOT_FOUND", "Failed to load model", null)
+                            // Surface the real native reason (e.g. an ONNX Runtime QNN arch mismatch)
+                            // instead of a generic message, so the app can show the user why.
+                            val reason = yoloView.lastModelLoadError ?: "Failed to load model"
+                            Log.e(TAG, "Failed to switch model: $reason")
+                            result.error("MODEL_NOT_FOUND", reason, null)
                         }
                     }
                 }

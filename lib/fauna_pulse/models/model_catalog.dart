@@ -388,3 +388,60 @@ bool isSupportedModelFileName(String name) {
 /// run on the NPU — the GPU-vs-CPU engine benchmark and the CPU-thread setting
 /// don't apply to them.
 bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
+
+/// How the camera screen recovers after a model failed to load (round 151).
+/// [revertToPath] is what `SessionConfig.modelPath` should point at again;
+/// [toBundledDefault] is true when nothing was running natively (a failed
+/// initial load), so the recovery falls back to the always-present bundled
+/// nano instead of a previously loaded model.
+class ModelLoadRecovery {
+  final String revertToPath;
+  final bool toBundledDefault;
+  const ModelLoadRecovery(this.revertToPath, this.toBundledDefault);
+}
+
+/// Compares two model references by file name, mapping an official bundled id
+/// (e.g. "yolo26n") to its real asset file, because native reports RESOLVED
+/// paths (flutter_assets/..., absolute) while the config may hold the bare id.
+bool sameModelFile(String a, String b) {
+  String canonical(String p) {
+    final name = p.split('/').last.toLowerCase();
+    if (ModelCatalog.bundledIds.contains(name)) return '${name}_int8.tflite';
+    return name;
+  }
+
+  return canonical(a) == canonical(b);
+}
+
+/// Decides the recovery after [failedPath] failed to load, or null when the
+/// failure is stale (the config no longer points at the failed model, e.g.
+/// the user already picked another one). When a different model is still
+/// loaded natively ([loadedModelPath]), revert to it; otherwise fall back to
+/// [bundledDefault], which always exists on the device.
+ModelLoadRecovery? modelLoadRecovery({
+  required String failedPath,
+  required String currentConfigPath,
+  required String loadedModelPath,
+  String bundledDefault = 'yolo26n',
+}) {
+  if (!sameModelFile(failedPath, currentConfigPath)) return null;
+  if (loadedModelPath.isNotEmpty &&
+      !sameModelFile(loadedModelPath, currentConfigPath)) {
+    return ModelLoadRecovery(loadedModelPath, false);
+  }
+  return ModelLoadRecovery(bundledDefault, true);
+}
+
+/// A plain-language extra line for known cryptic load errors, or '' when none
+/// applies. The QNN case: context binaries are precompiled for ONE Hexagon NPU
+/// generation (the file's min_arch), so on any other chip ONNX Runtime fails
+/// with an opaque ORT_INVALID_GRAPH / "Error code: 5005".
+String modelLoadHint(String failedPath, String reason) {
+  final r = reason.toLowerCase();
+  if (isQnnModelPath(failedPath) &&
+      (r.contains('ort') || r.contains('qnn') || r.contains('5005'))) {
+    return 'This *_qnn.onnx model was built for a different Snapdragon NPU '
+        'generation and cannot run on this phone.';
+  }
+  return '';
+}

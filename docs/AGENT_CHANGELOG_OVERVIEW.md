@@ -47,7 +47,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 | Setting | Default | Notes |
 |---|---|---|
-| Model | `yolo26n` | r119: picker = bundled nano + bundled custom (`assets/models/custom/`) + imported files ONLY (the yolo26 s/m/l/x placeholders are gone; saved ones migrate to nano). Models are added via Download… (URL → `ModelCatalog.downloadModel`, e.g. GitHub release assets) or Import… (file picker). Unused `yolo26n-*` task-variant assets deleted (−13.6 MB APK). r150: accepted formats = `.tflite` OR `*_qnn.onnx` (Snapdragon-NPU export; native `OrtQnnModel` from upstream PR #526 already ran them — this exposed them in the picker); plain `.onnx` stays rejected everywhere (`isSupportedModelFileName` in model_catalog.dart is the single filter); for a selected `*_qnn.onnx` the AI-tab GPU/CPU benchmark is replaced by an "NPU — doesn't apply" note. Collaborator conversion guide: `docs/MODEL_CONVERSION.md` |
+| Model | `yolo26n` | r119: picker = bundled nano + bundled custom (`assets/models/custom/`) + imported files ONLY (the yolo26 s/m/l/x placeholders are gone; saved ones migrate to nano). Models are added via Download… (URL → `ModelCatalog.downloadModel`, e.g. GitHub release assets) or Import… (file picker). Unused `yolo26n-*` task-variant assets deleted (−13.6 MB APK). r150: accepted formats = `.tflite` OR `*_qnn.onnx` (Snapdragon-NPU export; native `OrtQnnModel` from upstream PR #526 already ran them — this exposed them in the picker); plain `.onnx` stays rejected everywhere (`isSupportedModelFileName` in model_catalog.dart is the single filter); for a selected `*_qnn.onnx` the AI-tab GPU/CPU benchmark is replaced by an "NPU — doesn't apply" note. r151: QNN context binaries are per-Hexagon-generation (`min_arch`; SD888 = v68, the v0.3.5 release assets are v73/v81 and can NEVER run on the Xiaomi); a failed model load now reverts the config via `modelLoadRecovery()` (model_catalog.dart) + error dialog instead of silently keeping the old model. Collaborator conversion guide: `docs/MODEL_CONVERSION.md` |
 | Confidence | `0.25` | min detection score |
 | IoU (NMS) | `0.7` | overlap threshold |
 | Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — high-res photos can't keep up) |
@@ -152,7 +152,12 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   data-safe — crops have no EXIF, boxes are pixel-space; content is just rotated 90°.
 - **Start-up calibration is ONE cycle (round 120) and CACHED (round 121).**
   `_calibrating` in `camera_session_screen.dart` (first analysis frame + full-res photo
-  probe + analysis-ceiling probe; every term terminates) gates the controls row
+  probe + analysis-ceiling probe; every term terminates) gates the controls row.
+  r151 termination guard: a FAILED initial model load used to break the "first
+  analysis frame" term forever (predictor null = no frames); native now sends
+  `onInitialModelLoadFailed` (view method channel) → plugin `onModelError` → the
+  screen's `_onModelLoadError` reverts to a runnable model (still-loaded one, else
+  bundled nano) + dialog, so calibration always completes
   (settings gear, blackout, lens switch, focus, REC) and both calibrating indicators,
   so half-probed settings (e.g. the incomplete stream-resolution list) can never be
   opened. The slow photo-size probe is stale-while-revalidate cached

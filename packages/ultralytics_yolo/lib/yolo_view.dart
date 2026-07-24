@@ -548,6 +548,24 @@ class _YOLOViewState extends State<YOLOView> {
           widget.onZoomChanged!(zoomLevel);
         }
         return null;
+      case 'onInitialModelLoadFailed':
+        // The platform view's creation-params model failed to load and NO predictor is
+        // running (an in-place switch failure keeps the previous model and reports
+        // through the setModel result instead). Without this, hosts never learn the
+        // initial load failed: the native side stays camera-only and emits no analysis
+        // frames, so anything waiting on them (e.g. a calibration phase) hangs forever.
+        final args = call.arguments as Map?;
+        final failedPath = args?['modelPath'] as String? ?? widget.modelPath;
+        final message = args?['message'] as String? ?? 'Model failed to load';
+        logInfo('YOLOView: initial model load failed: $failedPath ($message)');
+        if (widget.onModelError != null) {
+          widget.onModelError!(
+            PlatformException(code: 'MODEL_NOT_FOUND', message: message),
+            failedPath,
+            _resolvedModel?.task ?? widget.task,
+          );
+        }
+        return null;
       default:
         return null;
     }

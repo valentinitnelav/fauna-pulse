@@ -201,6 +201,10 @@ object YOLOFileUtils {
      * (RF-DETR, D-FINE, …). Returns null for non-tflite models or on any error.
      */
     fun inputImageSize(context: Context, modelPath: String): Pair<Int, Int>? {
+        // ONNX models can't be parsed by the TFLite metadata extractor; without this
+        // early-out every settings-sheet open logged a spurious "read failed" warning
+        // per *_qnn.onnx model in the picker (their size comes from ONNX metadata).
+        if (modelPath.lowercase().endsWith(".onnx")) return null
         val buffer = openModelBuffer(context, modelPath) ?: return null
         return try {
             val shape = org.tensorflow.lite.support.metadata.MetadataExtractor(buffer)

@@ -74,6 +74,75 @@ void main() {
     expect(isQnnModelPath('yolo26n'), isFalse);
   });
 
+  group('modelLoadRecovery (r151)', () {
+    const qnn = '/storage/models/yolo26n_v73_qnn.onnx';
+
+    test('switch failure reverts to the still-loaded model', () {
+      final r = modelLoadRecovery(
+        failedPath: qnn,
+        currentConfigPath: qnn,
+        loadedModelPath: '/storage/models/arthropod_yolov11_int8.tflite',
+      );
+      expect(r, isNotNull);
+      expect(r!.revertToPath, '/storage/models/arthropod_yolov11_int8.tflite');
+      expect(r.toBundledDefault, isFalse);
+    });
+
+    test('initial-load failure (nothing loaded) falls back to bundled nano', () {
+      final r = modelLoadRecovery(
+        failedPath: qnn,
+        currentConfigPath: qnn,
+        loadedModelPath: '',
+      );
+      expect(r, isNotNull);
+      expect(r!.revertToPath, 'yolo26n');
+      expect(r.toBundledDefault, isTrue);
+    });
+
+    test('native reports the RESOLVED path; matching is by file name', () {
+      final r = modelLoadRecovery(
+        failedPath: '/resolved/elsewhere/yolo26n_v73_qnn.onnx',
+        currentConfigPath: qnn,
+        loadedModelPath: '',
+      );
+      expect(r, isNotNull);
+    });
+
+    test('stale failure (user already picked another model) is ignored', () {
+      final r = modelLoadRecovery(
+        failedPath: qnn,
+        currentConfigPath: '/storage/models/other_model.tflite',
+        loadedModelPath: '',
+      );
+      expect(r, isNull);
+    });
+
+    test('official id matches its resolved bundled asset, not lookalikes', () {
+      // "yolo26n" must equal its real asset file...
+      expect(
+        sameModelFile('yolo26n', 'flutter_assets/assets/models/yolo26n_int8.tflite'),
+        isTrue,
+      );
+      // ...but NOT another file that merely starts with the id.
+      expect(sameModelFile('yolo26n', 'yolo26n_v73_qnn.onnx'), isFalse);
+    });
+  });
+
+  group('modelLoadHint (r151)', () {
+    test('QNN arch mismatch gets a plain-language line', () {
+      final hint = modelLoadHint(
+        '/m/yolo26n_v73_qnn.onnx',
+        'OrtException: Error code - ORT_INVALID_GRAPH ... Error code: 5005',
+      );
+      expect(hint, contains('Snapdragon NPU'));
+    });
+
+    test('other failures get no hint', () {
+      expect(modelLoadHint('/m/x.tflite', 'file not found'), isEmpty);
+      expect(modelLoadHint('/m/yolo26n_v73_qnn.onnx', 'file not found'), isEmpty);
+    });
+  });
+
   test('the dropdown offers no phantom official sizes (r119)', () {
     expect(ModelCatalog.officialModels.keys, ['yolo26n']);
     expect(ModelCatalog.bundledIds, {'yolo26n'});
