@@ -364,11 +364,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // burst starts (re-arm the scheduler's capture window).
   Timer? _timeLapseTimer;
 
-  /// Drives the ground-truth frame dump (round 107) while recording with the
-  /// toggle on. Ticks every second regardless of the configured interval —
-  /// the gt scheduler's own window decides when a photo is really due, so
-  /// timer jitter (or doze stretching a tick) can never double-photograph.
-  /// A plain timer, deliberately independent of the frame stream: dumps must
+  /// Drives the reference photos (r107 as "ground-truth frames"; wire names
+  /// stay gt_*) while recording with the toggle on. Ticks every second
+  /// regardless of the configured interval — the reference scheduler's own
+  /// window decides when a photo is really due, so timer jitter (or doze
+  /// stretching a tick) can never double-photograph. A plain timer,
+  /// deliberately independent of the frame stream: reference photos must
   /// continue while the motion gate holds the detector asleep.
   Timer? _gtFrameTimer;
   TimeLapsePlan? _timeLapsePlan;
@@ -1543,16 +1544,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         onError: (fileName, error) =>
             _logAsyncError('roi_capture', 'Photo $fileName failed: $error'),
       ),
-      // Ground-truth frame dump (round 107): a second scheduler on its own
-      // clock, writing into gt_frames/ regardless of detections, so true
-      // visits can be hand-counted from photos the tracker did not trigger.
-      // Same capture pipeline as normal photos, so the Camera tab's saved
-      // photo side governs the size.
-      gtCaptureBuilder: !_config.gtFramesEnabled
+      // Reference photos (r107 as "ground-truth frames"): a second scheduler
+      // on its own clock, writing into gt_frames/ regardless of detections —
+      // an unbiased sample for spotting missed pollinators and hand-counting
+      // true visits. The Camera tab's saved photo side governs the size.
+      // Inert in time-lapse mode: that session is already clock-driven
+      // photos, so a second periodic sampler would only duplicate them.
+      gtCaptureBuilder: !_config.gtFramesEnabled || _config.timeLapseCapture
           ? null
           : (gtDir, fileToken) => RoiCaptureScheduler(
               framesDir: gtDir,
               sessionToken: fileToken,
+              // `ref_` filenames: both schedulers share the session token, so
+              // without a distinct prefix a same-millisecond capture in
+              // roi_frames/ and gt_frames/ could collide by name (the gallery
+              // export skips same-named files).
+              filePrefix: 'ref',
               stepMs: (_config.gtFrameSeconds * 1000).round().clamp(
                 1000,
                 86400000,
@@ -1560,7 +1567,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               // Effectively unbounded: the dump's shared window must span the
               // whole session (evaluateMotion is the periodic clock here).
               durationMs: 1 << 50,
-              mode: _config.captureMode,
+              // Always the fast live-frame crop, whatever the user's photo
+              // source mode: a high-res capture pauses the analysis stream
+              // 0.13–1.5 s per photo (r115), and a detection-independent
+              // sampler must never tax the detection pipeline. Accepted
+              // trade-off (no cross-scheduler guard): if a detection high-res
+              // capture has the stream paused right now, this crop reuses the
+              // last pre-pause frame — worst case ~1.5 s stale, at a 30 s
+              // default cadence.
+              mode: RoiCaptureMode.fast,
               targetPx: _config.targetRoiSavedPx,
               streamDims: () => (_imageWidth, _imageHeight),
               highResDims: () => (_captureWidth, _captureHeight),
@@ -1607,7 +1622,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               },
               onError: (fileName, error) => _logAsyncError(
                 'gt_capture',
-                'Ground-truth frame $fileName failed: $error',
+                'Reference photo $fileName failed: $error',
               ),
             ),
     );
@@ -1673,13 +1688,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
     }
 
-    // Ground-truth frame dump (round 107): first frame right away, then the
-    // 1 s tick keeps asking; the scheduler's interval window answers.
-    if (_config.gtFramesEnabled) {
+    // Reference photos: first one right away, then the 1 s tick keeps
+    // asking; the scheduler's interval window answers. A true return means a
+    // photo was actually scheduled — flash the capture cue like the other
+    // capture paths do (it self-gates on the flash-on-capture setting).
+    if (_config.gtFramesEnabled && !_config.timeLapseCapture) {
       _gtFrameTimer?.cancel();
-      _recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch);
+      if (_recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch)) {
+        _flashCaptureCue();
+      }
       _gtFrameTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        _recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch);
+        if (_recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch)) {
+          _flashCaptureCue();
+        }
       });
     }
 

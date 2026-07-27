@@ -123,6 +123,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // --- Sample photos (full parse, on demand) ---
   int _sampleCount = 5;
   int _totalSavedPhotos = 0;
+  // How many of those are reference photos (gt_frames/, periodic clock).
+  int _totalReferencePhotos = 0;
   bool _photosRequested = false;
   bool _photosLoading = false;
   List<_PhotoSample> _photos = const [];
@@ -586,6 +588,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final byFileStillTol = <String, bool>{}; // nearest frame within tolerance
     final byFileMatchNote = <String, String>{}; // why a photo fell back
     final roiUpdateTimes = <int>[]; // roi_update stamps (debounced, ~2 s late)
+    // Reference photos (`gt_capture` records): they live in gt_frames/, not
+    // roi_frames/, and are marked in the viewer — the set remembers which
+    // names came from that folder.
+    final referenceNames = <String>{};
     // The ROI pixel size is logged in the start record and again on every ROI
     // edit; carry the most-recent value forward so each photo gets the size that
     // applied when it was captured.
@@ -607,7 +613,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final isTriggerRecord =
             line.contains('"motion_capture"') ||
             line.contains('"timelapse_capture"');
-        if (!isRoiSource && !isDetection && !isCapture && !isTriggerRecord) {
+        // Reference photos (r107 "ground-truth frames"): their gt_capture
+        // record is the only line carrying the photo name.
+        final isGtCapture = line.contains('"gt_capture"');
+        if (!isRoiSource &&
+            !isDetection &&
+            !isCapture &&
+            !isTriggerRecord &&
+            !isGtCapture) {
           continue;
         }
         final rec = _tryDecode(line);
@@ -695,6 +708,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             if (curRoiW != null && curRoiH != null) {
               byFileRes[jpeg] = (curRoiW, curRoiH);
             }
+          }
+          continue;
+        }
+        if (isGtCapture && rec['type'] == 'gt_capture') {
+          // Reference photo: no boxes by design (taken on a clock, not on a
+          // detection); the record is written after the JPEG landed and
+          // carries the exact saved side.
+          final jpeg = rec['jpeg'] as String?;
+          if (jpeg != null && jpeg.isNotEmpty && !byFile.containsKey(jpeg)) {
+            order.add(jpeg);
+            byFile[jpeg] = [];
+            byFileTracks[jpeg] = <int>{};
+            byFileTime[jpeg] =
+                (rec['captured_at_ms'] as num?)?.toInt() ??
+                (rec['time_ms'] as num?)?.toInt() ??
+                0;
+            final px = (rec['saved_px'] as num?)?.toInt();
+            if (px != null && px > 0) {
+              byFileRes[jpeg] = (px, px);
+            } else if (curRoiW != null && curRoiH != null) {
+              byFileRes[jpeg] = (curRoiW, curRoiH);
+            }
+            referenceNames.add(jpeg);
           }
           continue;
         }
@@ -902,16 +938,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         stillMatch: byFileStillMeta[name],
         stillWithinTol: byFileStillTol[name] ?? false,
         stillMatchNote: byFileMatchNote[name],
+        isReference: referenceNames.contains(name),
       );
     }
 
     // Either every saved photo (in order) or an even sample across the session.
     final dir = widget.logFile.parent.path;
+    // Normal captures live in roi_frames/, reference photos in gt_frames/;
+    // the log stores just the file name.
+    File fileFor(String name) => File(
+      '$dir/${referenceNames.contains(name) ? 'gt_frames' : 'roi_frames'}/$name',
+    );
     final picked = <_PhotoSample>[];
     if (order.isNotEmpty) {
       if (all) {
         for (final name in order) {
-          final file = File('$dir/roi_frames/$name');
+          final file = fileFor(name);
           if (file.existsSync()) picked.add(sampleFor(name, file));
         }
       } else {
@@ -919,9 +961,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         for (var i = 0; i < n; i++) {
           final idx = n == 1 ? 0 : ((i * (order.length - 1)) / (n - 1)).round();
           final name = order[idx];
-          // Captures are written to the session's roi_frames/ subfolder; the log
-          // stores just the file name.
-          final file = File('$dir/roi_frames/$name');
+          final file = fileFor(name);
           if (file.existsSync()) picked.add(sampleFor(name, file));
         }
       }
@@ -929,6 +969,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (mounted) {
       setState(() {
         _totalSavedPhotos = order.length;
+        _totalReferencePhotos = referenceNames.length;
         _photos = picked;
         _photosLoading = false;
       });
@@ -1270,6 +1311,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _setting('captureMode') == 'still' ? 'high-res' : _setting('captureMode'),
     );
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
+    // Reference photos (wire keys stay gt_* from the r107 "ground-truth
+    // frames" original): periodic photos independent of detections, active in
+    // every mode except time-lapse (where the whole session is already
+    // clock-driven photos).
+    if (_timeLapseSession && _setting('gtFramesEnabled') == true) {
+      addNote('Reference photos — not used in time-lapse mode.');
+    } else if (_setting('gtFramesEnabled') == true) {
+      add(
+        'Reference photos',
+        'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)',
+      );
+    }
     // Round 108: high-res photos get a trigger-moment live crop next to them
     // ('stillSyncCompanion' is the setting's frozen wire key).
     if (_setting('stillSyncCompanion') != null) {
@@ -1469,15 +1522,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         add('Log raw detections', 'on (replayable session)');
       }
     }
-    // Deliberately OUTSIDE the no-AI branch: ground-truth frames are periodic
-    // photos independent of detections, and they run in every capture mode.
-    if (_setting('gtFramesEnabled') == true) {
-      add(
-        'Ground-truth frames',
-        'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)',
-      );
-    }
-
     return [
       header,
       const SizedBox(height: 4),
@@ -1720,19 +1764,24 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// extra storage the copies will take), then copies them into the phone's
   /// own Gallery app as one album under Pictures/FaunaPulse. Copies
   /// only — the session folder keeps its originals and the data log stays in
-  /// the private session folder. The photo list comes from the real
-  /// `roi_frames/` folder on disk, not from the log, so crash-ended sessions
-  /// (whose log may be missing its tail) still export every file.
+  /// the private session folder. The photo list comes from the real folders
+  /// on disk (`roi_frames/` + the reference photos in `gt_frames/`), not
+  /// from the log, so crash-ended sessions (whose log may be missing its
+  /// tail) still export every file.
   Future<void> _confirmExportPhotosToGallery() async {
-    final dir = Directory('${widget.logFile.parent.path}/roi_frames');
+    final sessionPath = widget.logFile.parent.path;
     final files = <File>[];
     var bytes = 0;
+    var referenceCount = 0;
     try {
-      if (await dir.exists()) {
+      for (final sub in const ['roi_frames', 'gt_frames']) {
+        final dir = Directory('$sessionPath/$sub');
+        if (!await dir.exists()) continue;
         await for (final e in dir.list()) {
           if (e is File && e.path.toLowerCase().endsWith('.jpg')) {
             files.add(e);
             bytes += await e.length();
+            if (sub == 'gt_frames') referenceCount++;
           }
         }
       }
@@ -1750,7 +1799,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
     // Within one session every file shares the session token prefix and the
     // capture timestamp is fixed-width (see roiPhotoFileName), so sorting by
-    // path puts the photos in capture order.
+    // FULL path groups gt_frames/ before roi_frames/ and keeps each group in
+    // capture order. Old sessions' gt_frames files may share roi_ names with
+    // detection photos of the same millisecond — the native same-name skip
+    // would then drop one album copy (vanishingly rare, originals untouched);
+    // new sessions are immune via the ref_ prefix.
     files.sort((a, b) => a.path.compareTo(b.path));
     final album = galleryAlbumName(
       widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
@@ -1762,6 +1815,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
           'Gallery app, as the album "Pictures/FaunaPulse/$album". '
+          '${referenceCount > 0 ? 'Includes $referenceCount reference '
+                    'photo${referenceCount == 1 ? '' : 's'} (fixed-interval '
+                    'shots, taken whether or not anything was detected). ' : ''}'
           'The copies take about ${formatBytes(bytes)} of extra storage; '
           'the originals stay in the session folder. Photos already '
           'exported are skipped, so re-running is safe.',
@@ -2053,7 +2109,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Text(
         'Pick how many ROI photos to preview, spread evenly across the session. '
         'Each is shown with the detection boxes recorded for it, so you can check '
-        'the results make visual sense. Swipe left/right to step through them.',
+        'the results make visual sense. Swipe left/right to step through them. '
+        'Reference photos — taken on a fixed clock regardless of detections — '
+        'are mixed in and marked with a chip; they have no boxes by design.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 4),
@@ -2110,7 +2168,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             'Showing ${_photos.length} of $_totalSavedPhotos saved photo'
-            '${_totalSavedPhotos == 1 ? '' : 's'} this session.',
+            '${_totalSavedPhotos == 1 ? '' : 's'} this session'
+            '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2512,6 +2571,10 @@ class _PhotoSample {
   final bool stillWithinTol;
   final String? stillMatchNote;
 
+  /// True for a reference photo (gt_frames/): taken on a fixed clock
+  /// regardless of detections, so it carries no boxes by design.
+  final bool isReference;
+
   const _PhotoSample({
     required this.file,
     required this.name,
@@ -2532,6 +2595,7 @@ class _PhotoSample {
     this.stillMatch,
     this.stillWithinTol = false,
     this.stillMatchNote,
+    this.isReference = false,
   });
 }
 
@@ -3298,6 +3362,45 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                                     color: Colors.black,
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      // Reference photo (gt_frames/): taken
+                                      // on a fixed clock, no boxes by design
+                                      // — say so on the image (a passive
+                                      // text chip, allowed by r112). The
+                                      // delete/kept chips above can't apply
+                                      // to reference photos (post-hoc scans
+                                      // roi_frames/ only), so the slot is
+                                      // free.
+                                      else if (p.isReference)
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          bottom: 8,
+                                          child: IgnorePointer(
+                                            child: Center(
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blueGrey
+                                                      .withValues(alpha: 0.55),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: const Text(
+                                                  'Reference photo — fixed '
+                                                  'interval',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
                                                   ),
                                                 ),
                                               ),

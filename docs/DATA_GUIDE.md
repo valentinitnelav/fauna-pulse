@@ -180,15 +180,28 @@ association algorithms on real data
 | `frame_ms` | The frame's timestamp (ms since epoch) — use this, not `time_ms` (which is stamped at log-queue time). |
 | `boxes` | Array of `[left, top, right, bottom, confidence, class_index]`, boxes **frame-normalized** 0..1 (not ROI-relative like `box_in_roi`). |
 
-### `gt_capture` — ground-truth frame saves (round 107, only when that toggle is on)
+### `gt_capture` — reference photo saves (round 107 as "ground-truth frames"; renamed and on by default in round 152)
 
-One record per periodic ground-truth photo (Settings → AI → Visit tracking →
-Advanced → **Ground-truth frames**). These photos land in `gt_frames/` (not
-`roi_frames/`) and are taken on a fixed clock regardless of detections — use
-them to hand-count the true visits when evaluating a tracker. Fields:
+One record per periodic **reference photo** (Setup tab → Reference photos; on
+by default since round 152, every 30 s). These photos land in `gt_frames/`
+(not `roi_frames/`) and are taken on a fixed clock regardless of detections —
+an unbiased sample of what the camera saw. Use them to spot pollinators the
+live pipeline missed, or to hand-count the true visits when evaluating a
+tracker. The wire names are frozen from round 107: record type `gt_capture`,
+folder `gt_frames/`, config keys `gtFramesEnabled`/`gtFrameSeconds`. Fields:
 `jpeg` (filename), `captured_at_ms` (trigger moment), plus the same
 `total_ms` / `bytes` / `path` / `saved_px` stats as a `capture` record.
 Deliberately a separate type: never mix these into detection-photo joins.
+
+Round 152 details: files are named
+`ref_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg`
+(`^ref_([a-z0-9]+)_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})\.jpg$`; sessions
+recorded before round 152 used the normal `roi_` prefix inside `gt_frames/`).
+Reference photos always take the fast live-frame path (`path` is always
+`fast`; a high-res capture would stall the detection stream), so they carry
+no lag fields. In time-lapse sessions the feature is inert: no `gt_capture`
+records, no `gt_frames/` folder, and the two config keys appear in the start
+record's `config_not_applicable` list.
 
 ### `roi_update` — when the ROI is moved/resized mid-session
 

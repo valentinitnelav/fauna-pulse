@@ -423,6 +423,44 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ),
 
+      // Reference photos (wire names stay gt_* from the r107 "ground-truth
+      // frames" original). Mode-aware per the r147 pattern: greyed and shown
+      // OFF in time-lapse mode (the switch says what actually happens; the
+      // stored preference survives the mode round-trip).
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Reference photos',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: Text(
+          'Saves an ROI photo at a fixed interval, whether or not anything '
+          'is detected. Lets you check afterwards what the camera really '
+          'saw — including pollinators the AI may have missed (send those '
+          'photos in to improve the model). Same size as normal photos '
+          '(Camera tab → Saved photo side).'
+          '${_c.timeLapseCapture ? '\n(Not used in time-lapse mode — photos come on a clock there anyway.)' : ''}',
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        value: !_c.timeLapseCapture && _c.gtFramesEnabled,
+        onChanged: _c.timeLapseCapture
+            ? null
+            : (v) => setState(() => _c = _c.copyWith(gtFramesEnabled: v)),
+      ),
+      if (_c.gtFramesEnabled && !_c.timeLapseCapture)
+        DurationSettingField(
+          label: 'Reference photo interval',
+          valueSeconds: _c.gtFrameSeconds,
+          minSeconds: 1,
+          maxSeconds: 3600,
+          helperText:
+              'Time between reference photos. Default 30 s — about 120 '
+              'photos per hour; shorter catches briefer visits but uses '
+              'more storage.',
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
+        ),
+
       const SizedBox(height: 8),
       _label('Session length (recording auto-stops after this)'),
       Row(
@@ -1274,38 +1312,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(logRawDetections: v)),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Ground-truth frames (evaluation)',
-            style: TextStyle(color: Colors.white),
-          ),
-          subtitle: const Text(
-            'Saves an ROI photo at a fixed interval into a separate '
-            'gt_frames folder, whether or not anything is detected — an '
-            'independent record for counting the true visits by eye, so the '
-            'tracker is never checked against photos it triggered itself. '
-            'Uses the same photo pipeline and size as normal photos '
-            '(Camera tab → Saved photo side).',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-          value: _c.gtFramesEnabled,
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(gtFramesEnabled: v)),
-        ),
-        if (_c.gtFramesEnabled)
-          DurationSettingField(
-            label: 'Ground-truth frame interval',
-            valueSeconds: _c.gtFrameSeconds,
-            minSeconds: 1,
-            maxSeconds: 3600,
-            helperText:
-                'Time between ground-truth photos. Default 5 s — about '
-                '720 photos per hour; shorter catches briefer visits but '
-                'uses more storage.',
-            onChanged: (v) =>
-                setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
-          ),
       ],
     ),
   ];
@@ -1465,8 +1471,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           highThresh: cbp.highThresh < minHigh ? minHigh : cbp.highThresh,
         ),
         logRawDetections: false,
-        gtFramesEnabled: false,
-        gtFrameSeconds: 5.0,
+        // Reference photos are deliberately NOT reset here: their control
+        // moved to the Setup tab, and a tracking reset must not silently
+        // flip a Setup-tab setting.
       );
     });
   }

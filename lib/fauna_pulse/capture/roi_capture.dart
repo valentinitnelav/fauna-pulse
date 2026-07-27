@@ -65,7 +65,16 @@ enum CapturePath {
 /// fixed width, so alphabetical order equals capture order — the gallery
 /// export relies on this. Pattern for downstream parsing:
 /// `^roi_([a-z0-9]+)_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})\.jpg$`
-String roiPhotoFileName(int epochMs, String token) {
+///
+/// [prefix] distinguishes the photo's origin: `roi` (default) for
+/// detection/motion/time-lapse photos, `ref` for the periodic reference
+/// photos (gt_frames/) — a distinct prefix keeps the two schedulers' files
+/// from ever sharing a name (the gallery export skips same-named files) and
+/// makes reference photos self-identifying in pooled folders. Reference
+/// pattern: `^ref_([a-z0-9]+)_(\d{4}-\d{2}-\d{2})_(\d{6})_(\d{3})\.jpg$`.
+/// The stamp stays fixed-width for every prefix, so within one folder
+/// alphabetical order still equals capture order.
+String roiPhotoFileName(int epochMs, String token, {String prefix = 'roi'}) {
   final t = DateTime.fromMillisecondsSinceEpoch(epochMs);
   String two(int v) => v.toString().padLeft(2, '0');
   final date =
@@ -73,7 +82,7 @@ String roiPhotoFileName(int epochMs, String token) {
       '${two(t.day)}';
   final time = '${two(t.hour)}${two(t.minute)}${two(t.second)}';
   final ms = t.millisecond.toString().padLeft(3, '0');
-  return 'roi_${token}_${date}_${time}_$ms.jpg';
+  return '${prefix}_${token}_${date}_${time}_$ms.jpg';
 }
 
 /// A high-res photo exactly as the camera delivered it: JPEG bytes that are NOT
@@ -470,6 +479,12 @@ class RoiCaptureScheduler {
   /// photo itself later fails.
   final bool syncCompanion;
 
+  /// Filename prefix for this scheduler's photos (see [roiPhotoFileName]):
+  /// `roi` (default) for detection/motion/time-lapse photos, `ref` for the
+  /// reference-photo scheduler, so the two schedulers — which share the same
+  /// [sessionToken] — can never produce identical names.
+  final String filePrefix;
+
   RoiCaptureScheduler({
     required this.framesDir,
     required this.sessionToken,
@@ -483,6 +498,7 @@ class RoiCaptureScheduler {
     required this.streamDims,
     required this.highResDims,
     this.syncCompanion = false,
+    this.filePrefix = 'roi',
     this.onStat,
     this.onError,
   });
@@ -530,7 +546,7 @@ class RoiCaptureScheduler {
       _windows[id]?.lastCaptureMs = nowMs;
     }
     return PendingCapture(
-      fileName: roiPhotoFileName(nowMs, sessionToken),
+      fileName: roiPhotoFileName(nowMs, sessionToken, prefix: filePrefix),
       trackIds: dueIds,
       capturedAtMs: nowMs,
     );
@@ -569,7 +585,7 @@ class RoiCaptureScheduler {
 
     w.lastCaptureMs = nowMs;
     return PendingCapture(
-      fileName: roiPhotoFileName(nowMs, sessionToken),
+      fileName: roiPhotoFileName(nowMs, sessionToken, prefix: filePrefix),
       trackIds: const [],
       capturedAtMs: nowMs,
     );

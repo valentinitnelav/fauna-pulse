@@ -148,18 +148,29 @@ void main() {
     expect(restored.highResSyncCompanion, false);
   });
 
-  test('ground-truth frame dump settings round-trip (round 107)', () {
+  test('reference photo settings round-trip and default ON (r107 gt keys)', () {
+    // Promotion round: on by default, every 30 s (was off / 5 s in r107).
     const c = SessionConfig();
-    expect(c.gtFramesEnabled, false);
-    expect(c.gtFrameSeconds, 5.0);
+    expect(c.gtFramesEnabled, true);
+    expect(c.gtFrameSeconds, 30.0);
     final restored = SessionConfig.fromJson(
-      c.copyWith(gtFramesEnabled: true, gtFrameSeconds: 30.0).toJson(),
+      c.copyWith(gtFramesEnabled: false, gtFrameSeconds: 5.0).toJson(),
     );
-    expect(restored.gtFramesEnabled, true);
-    expect(restored.gtFrameSeconds, 30.0);
-    // Configs saved before the fields existed load the defaults.
-    expect(SessionConfig.fromJson(const {}).gtFramesEnabled, false);
-    expect(SessionConfig.fromJson(const {}).gtFrameSeconds, 5.0);
+    expect(restored.gtFramesEnabled, false);
+    expect(restored.gtFrameSeconds, 5.0);
+    // Configs saved before the fields existed load the new defaults.
+    expect(SessionConfig.fromJson(const {}).gtFramesEnabled, true);
+    expect(SessionConfig.fromJson(const {}).gtFrameSeconds, 30.0);
+    // Migration guard: toJson always writes the keys, so an explicitly saved
+    // OFF (or old 5 s interval) must survive the default flip.
+    expect(
+      SessionConfig.fromJson(const {'gtFramesEnabled': false}).gtFramesEnabled,
+      false,
+    );
+    expect(
+      SessionConfig.fromJson(const {'gtFrameSeconds': 5.0}).gtFrameSeconds,
+      5.0,
+    );
   });
 
   test('stream-resolution explicit flag round-trips (round 109)', () {
@@ -556,12 +567,19 @@ void main() {
       expect(motion, contains('timeLapseIntervalSeconds'));
       expect(motion, isNot(contains('motionGateWakeSeconds')));
       expect(motion, isNot(contains('motionGatePixelDelta')));
+      // Reference photos apply in detector AND motion mode (that is the
+      // point: unbiased samples even when the AI/motion trigger misses).
+      expect(motion, isNot(contains('gtFramesEnabled')));
+      expect(motion, isNot(contains('gtFrameSeconds')));
       // Time-lapse: AI keys AND all gate keys inert; the burst interval and
-      // photo step/duration apply.
+      // photo step/duration apply. Reference photos are inert too — the
+      // whole session is already clock-driven photos.
       final tl = notApplicableConfigKeys(CaptureTrigger.timelapse);
       expect(tl, contains('modelPath'));
       expect(tl, contains('motionGateEnabled'));
       expect(tl, contains('motionGateWakeSeconds'));
+      expect(tl, contains('gtFramesEnabled'));
+      expect(tl, contains('gtFrameSeconds'));
       expect(tl, isNot(contains('timeLapseIntervalSeconds')));
       expect(tl, isNot(contains('stepSeconds')));
     });

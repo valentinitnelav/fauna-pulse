@@ -270,13 +270,14 @@ class SessionLogger {
   void logPower(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('power', payload, at: at);
 
-  /// A ground-truth frame-dump save (round 107): a periodic ROI photo written
-  /// to `gt_frames/` regardless of detections, so true visits can be
+  /// A reference-photo save (r107 as "ground-truth frames"; record type
+  /// frozen as `gt_capture`): a periodic ROI photo written to `gt_frames/`
+  /// regardless of detections, so misses can be spotted and true visits
   /// hand-counted from a record the tracker did NOT influence. One record per
-  /// saved frame, carrying the jpeg name, the trigger moment and the same
+  /// saved photo, carrying the jpeg name, the trigger moment and the same
   /// timing/size stats as a `capture` record. Deliberately a separate type:
-  /// the summary's Photos tab and detection-photo joins must never confuse
-  /// these with detection-triggered photos.
+  /// detection-photo joins must never confuse these with detection-triggered
+  /// photos.
   void logGtCapture(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('gt_capture', payload, at: at);
 

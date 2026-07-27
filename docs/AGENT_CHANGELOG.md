@@ -5293,3 +5293,67 @@ error dialog naming the file + reason, dropdown reverts, detections stay honest;
 (2) select the QNN model, kill + reopen the app, New session: expect the fallback
 dialog and calibration completing on nano. The two downloaded QNN files can be
 deleted afterwards, they can never run on this phone.
+## Round 152 (2026-07-27): reference photos on by default (promote r107 gt frames)
+
+Owner request: periodic photos at a fixed interval during AI sessions (even
+while the motion gate sleeps), on by default, as unbiased evaluation samples —
+users can spot pollinators the AI missed and send those photos in for model
+training. Finding: r107's "Ground-truth frames" already did exactly this
+(plain Dart timer, works through gate-idle and blackout), so this round
+promotes it instead of building anything new. Owner decisions: UI name
+"Reference photos", on/30 s default, visibility-only scope (no post-hoc
+integration), active in detector + motion modes, inert in time-lapse.
+
+- **Wire names FROZEN** (r112 precedent): folder `gt_frames/`, record
+  `gt_capture`, JSON keys `gtFramesEnabled`/`gtFrameSeconds`. Dart
+  identifiers kept too (rename = ~30 cosmetic sites); doc comments lead with
+  the UI name.
+- **Default flip** to `true`/`30.0` (constructor + fromJson fallbacks).
+  Migration nuance: toJson always writes the keys, so ONLY configs missing
+  them (fresh installs, never-resaved pre-r107 configs) get the new
+  defaults; an explicitly saved `false` — including the owner's current
+  device — survives and needs one manual flip ON. Guarded by a migration
+  test in session_config_test.dart.
+- **`ref_` filename prefix** (`roiPhotoFileName` gained `prefix` param;
+  `RoiCaptureScheduler.filePrefix`): both schedulers share the session
+  token, so a same-millisecond capture in roi_frames/ and gt_frames/ could
+  collide by name and the gallery export's native same-name skip would
+  silently drop one album copy. Fixed-width stamp unchanged → per-folder
+  path sort still equals capture order. Old sessions' `roi_`-named gt files
+  keep working (summary resolves by the `jpeg` field, scans glob `*.jpg`).
+- **Fast path FORCED** for the reference scheduler (`RoiCaptureMode.fast`,
+  was `_config.captureMode`): a high-res capture stalls the analysis stream
+  0.13–1.5 s per photo (r115) — a detection-independent sampler must never
+  tax the detection pipeline. Accepted trade-off, documented in code: no
+  cross-scheduler busy guard; if a detection high-res capture has the
+  stream paused, the crop is at worst ~1.5 s stale at a 30 s cadence.
+- **Time-lapse inert** (whole session is already clock-driven photos):
+  builder + timer conditions exclude `timeLapseCapture` (no scheduler, no
+  `gt_frames/` dir), keys added to `notApplicableConfigKeys(timelapse)`,
+  Setup-tab switch greyed + shown OFF with a suffix note (stored preference
+  survives), summary shows a not-applicable note.
+- **Settings control moved** from AI → Visit tracking → Advanced to the
+  Setup tab (SwitchListTile + unit-aware DurationSettingField, r147
+  mode-aware pattern); removed from `_resetTrackingDefaults` (a tracking
+  reset must not flip a Setup-tab setting).
+- **Capture cue wired**: `recordGtFrame`'s previously ignored bool now
+  triggers `_flashCaptureCue()` (self-gates on flashOnCapture).
+- **Summary visibility**: `gt_capture` records seed the Photos tab
+  (chronological, empty box lists — the capture-record backstop pattern),
+  `_PhotoSample.isReference` + neutral blue-grey "Reference photo — fixed
+  interval" chip (slot free: post-hoc delete/kept chips scan roi_frames/
+  only), "(N reference)" in the Showing-count, file resolution helper picks
+  gt_frames/ vs roi_frames/ per name. Settings row moved into Photos &
+  capture. Gallery export scans BOTH folders (full-path sort groups
+  gt_frames first, capture-ordered within each; dialog mentions the
+  reference count).
+- **Out of scope (deliberate)**: post-hoc analysis / photo_keep cleanup
+  stay roi_frames-only. Future ideas noted in the plan: run post_detector
+  (+SAHI) over gt_frames/ and flag frames where it finds insects the live
+  log missed; a gate-wake-without-detection sampler; sub-threshold
+  raw_detections logging.
+- Tests: config round-trip rewritten for the new defaults + explicit-false
+  migration guard + notApplicable expectations; scheduler filePrefix test
+  (`ref_S_…`); roiPhotoFileName prefix/sort test. `flutter analyze` clean,
+  356 tests pass.
+

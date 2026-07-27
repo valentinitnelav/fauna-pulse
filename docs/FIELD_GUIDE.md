@@ -138,7 +138,8 @@ tabs:
 - **Settings** — every setting this session actually used (useful for your
   methods write-up).
 - **Photos** — browse the saved ROI JPEGs; each shows its exact saved pixel
-  size.
+  size. Reference photos (see below) are mixed in chronologically and marked
+  with a "Reference photo" chip; they have no detection boxes by design.
 - **Graphs** — the visit timeline (your visitation-rate result), shown
   automatically. Temperature, FPS and battery/power are always recorded and
   sit under a tap-to-expand "Extra graphs" section for when you need them.
@@ -155,11 +156,20 @@ Each session writes to:
 Android/data/<app-package>/files/sessions/<your-folder-name>/
     session.jsonl              ← the append-only data log
     roi_frames/                ← saved ROI photos (roi_<sessionId>_<epochMs>.jpg)
+    gt_frames/                 ← reference photos (ref_<token>_<stamp>.jpg),
+                                 fixed-interval, on by default
     logcat_start.txt, logcat_end.txt   ← diagnostic logs
 ```
 
 If a folder name already exists, a numeric suffix is added so nothing is
 overwritten.
+
+**Why reference photos matter:** they are taken on a fixed clock (default
+every 30 s) whether or not anything was detected, so they show what the
+camera *really* saw. If you find a pollinator in a reference photo that the
+AI never logged, that photo is a documented miss — please send such photos
+in (Report a problem, or with the session folder): they are exactly what is
+needed to improve the detection models.
 
 To retrieve the data: connect the phone by **USB** and copy the `sessions`
 folder to your computer with your file manager (or `adb pull`). This location
@@ -169,7 +179,8 @@ is app-scoped external storage, which is visible over USB.
 folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
 summary → Overview tab → **Export photos to Gallery**. This copies every saved
-photo into the shared album `Pictures/FaunaPulse/<session-name>`, which
+photo (including the reference photos from `gt_frames/`) into the shared album
+`Pictures/FaunaPulse/<session-name>`, which
 any gallery app shows as its own album. Notes: they are *copies* (the dialog
 shows how much extra storage they take), the data log is not exported,
 pressing the button again skips photos already exported (no duplicates), and

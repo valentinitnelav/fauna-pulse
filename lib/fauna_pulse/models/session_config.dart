@@ -139,7 +139,10 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
     case CaptureTrigger.motion:
       return [...aiKeys, 'timeLapseIntervalSeconds'];
     case CaptureTrigger.timelapse:
-      return [...aiKeys, ...gateKeys];
+      // Reference photos are inert here too: the whole session is already
+      // clock-driven photos, so a second periodic sampler would only
+      // duplicate them.
+      return [...aiKeys, ...gateKeys, 'gtFramesEnabled', 'gtFrameSeconds'];
   }
 }
 
@@ -448,15 +451,20 @@ class SessionConfig {
   /// default — at 10 FPS it adds roughly 1–2 MB per hour to the session log.
   final bool logRawDetections;
 
-  /// Evaluation toggle (round 107): save a periodic ROI photo every
-  /// [gtFrameSeconds] into `gt_frames/` REGARDLESS of detections — an
-  /// independent visual record for hand-counting the true visits, so tracker
-  /// output is never checked against photos the tracker itself triggered.
-  /// Uses the normal photo pipeline, so [targetRoiSavedPx] (Camera tab)
-  /// governs the size. Off by default.
+  /// "Reference photos" (UI name; wire names frozen from the round-107
+  /// "ground-truth frames" original: JSON keys `gtFramesEnabled` /
+  /// `gtFrameSeconds`, folder `gt_frames/`, record `gt_capture`): save a
+  /// periodic ROI photo every [gtFrameSeconds] REGARDLESS of detections — an
+  /// unbiased visual sample of what the camera saw, so users (and the model
+  /// owner) can spot pollinators the AI missed, and tracker output is never
+  /// checked only against photos the tracker itself triggered. ON by default
+  /// since the promotion round; inert in time-lapse mode (the session is
+  /// already clock-driven photos). Size follows [targetRoiSavedPx]
+  /// (Camera tab); the capture path is always the fast live-frame crop.
   final bool gtFramesEnabled;
 
-  /// Interval between ground-truth frames, in seconds (default 5).
+  /// Interval between reference photos, in seconds (default 30 — about 120
+  /// photos per hour). Wire name frozen (`gtFrameSeconds`).
   final double gtFrameSeconds;
 
   /// Round 108: when a photo takes the HIGH-RES path, also save the live-frame
@@ -521,8 +529,8 @@ class SessionConfig {
     this.trackerParams = const ByteTrackParams(),
     this.cbiouParams = const CBiouParams(),
     this.logRawDetections = false,
-    this.gtFramesEnabled = false,
-    this.gtFrameSeconds = 5.0,
+    this.gtFramesEnabled = true,
+    this.gtFrameSeconds = 30.0,
     this.highResSyncCompanion = true,
   });
 
@@ -826,8 +834,12 @@ class SessionConfig {
           )
         : const CBiouParams(),
     logRawDetections: j['logRawDetections'] as bool? ?? false,
-    gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? false,
-    gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 5.0,
+    // Default flip (reference-photos promotion round): only configs MISSING
+    // these keys (fresh installs, configs last saved before r107) get the new
+    // on/30 s defaults — toJson always writes the keys, so an explicitly
+    // saved value (including an explicit `false`) always survives.
+    gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? true,
+    gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 30.0,
     highResSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
   );
 

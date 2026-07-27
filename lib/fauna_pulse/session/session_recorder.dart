@@ -40,9 +40,10 @@ class SessionRecorder {
 
   RoiCaptureScheduler? _capture;
 
-  /// Ground-truth frame dump (round 107): a second, independent scheduler
-  /// writing periodic ROI photos into `gt_frames/` regardless of detections.
-  /// Only exists when the session was started with the gt-frames toggle on.
+  /// Reference photos (r107 as "ground-truth frames"; wire names stay gt_*):
+  /// a second, independent scheduler writing periodic ROI photos into
+  /// `gt_frames/` regardless of detections. Only exists when the session was
+  /// started with the reference-photos toggle on (and not in time-lapse mode).
   RoiCaptureScheduler? _gtCapture;
 
   /// True while a session is being recorded. Flips false at the very START of
@@ -79,10 +80,10 @@ class SessionRecorder {
     required void Function(Object error) onLogWriteError,
     void Function(ThermalReading thermal, StorageReading storage)?
     onStartReadings,
-    // Ground-truth frame dump (round 107): when non-null, a `gt_frames/`
-    // folder is created and this builds its scheduler (screen wiring, like
-    // [captureBuilder]). The screen's periodic timer drives it through
-    // [recordGtFrame].
+    // Reference photos (r107 as "ground-truth frames"): when non-null, a
+    // `gt_frames/` folder is created and this builds its scheduler (screen
+    // wiring, like [captureBuilder]). The screen's periodic timer drives it
+    // through [recordGtFrame].
     RoiCaptureScheduler Function(Directory gtDir, String fileToken)?
     gtCaptureBuilder,
   }) async {
@@ -377,13 +378,14 @@ class SessionRecorder {
     return true;
   }
 
-  /// Ground-truth frame tick (round 107): called from the camera screen's
-  /// periodic timer while recording with the gt-frames toggle on. The gt
-  /// scheduler's shared window (huge duration → a pure periodic clock) makes
-  /// this jitter-safe: however often the timer fires, a photo lands only when
-  /// the configured interval has really elapsed. Returns true when a photo
-  /// was triggered. The `gt_capture` record itself is written by the
-  /// scheduler's onStat, AFTER the JPEG is on disk, carrying its real stats.
+  /// Reference-photo tick (r107 as "ground-truth frames"): called from the
+  /// camera screen's periodic timer while recording with the reference-photos
+  /// toggle on. The reference scheduler's shared window (huge duration → a
+  /// pure periodic clock) makes this jitter-safe: however often the timer
+  /// fires, a photo lands only when the configured interval has really
+  /// elapsed. Returns true when a photo was triggered. The `gt_capture`
+  /// record itself is written by the scheduler's onStat, AFTER the JPEG is on
+  /// disk, carrying its real stats.
   bool recordGtFrame(int ts) {
     if (!_recording) return false;
     final pending = _gtCapture?.evaluateMotion(ts);

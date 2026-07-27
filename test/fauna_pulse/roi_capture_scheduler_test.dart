@@ -37,6 +37,7 @@ RoiCaptureScheduler scheduler({
   int stepMs = 1000,
   int durationMs = 5000,
   Future<Uint8List?> Function()? fastCapture,
+  String filePrefix = 'roi',
 }) => RoiCaptureScheduler(
   framesDir: Directory('${Directory.systemTemp.path}/roi_scheduler_test'),
   sessionToken: 'S',
@@ -49,6 +50,7 @@ RoiCaptureScheduler scheduler({
   roiProvider: () => Roi.defaultRoi,
   streamDims: () => (1280, 960),
   highResDims: () => (0, 0),
+  filePrefix: filePrefix,
 );
 
 void main() {
@@ -181,6 +183,22 @@ void main() {
       expect(s.evaluateMotion(3600000), isNotNull);
     });
 
+    test('a filePrefix: "ref" scheduler names its photos ref_… (the '
+        'reference-photo scheduler shares the session token with the normal '
+        'one, so the prefix is what keeps their names apart)', () {
+      final s = scheduler(stepMs: 5000, durationMs: 1 << 50, filePrefix: 'ref');
+      final pending = s.evaluateMotion(10000);
+      expect(pending, isNotNull);
+      expect(
+        pending!.fileName,
+        roiPhotoFileName(10000, 'S', prefix: 'ref'),
+      );
+      expect(
+        pending.fileName,
+        matches(RegExp(r'^ref_S_\d{4}-\d{2}-\d{2}_\d{6}_\d{3}\.jpg$')),
+      );
+    });
+
     test('first motion takes a photo immediately, with no track ids', () {
       final s = scheduler();
       final pending = s.evaluateMotion(10000);
@@ -281,6 +299,21 @@ void main() {
       expect(s.evaluateMotion(10000), isNotNull);
       expect(s.evaluate([track(1)], 11000), isNotNull);
       expect(s.evaluateMotion(11000), isNotNull);
+    });
+  });
+
+  group('roiPhotoFileName prefix', () {
+    test('only the prefix differs; the fixed-width stamp is untouched, so '
+        'lexicographic order still equals capture order within a folder', () {
+      final roi = roiPhotoFileName(10000, 'S');
+      final ref = roiPhotoFileName(10000, 'S', prefix: 'ref');
+      expect(roi.startsWith('roi_'), true);
+      expect(ref.startsWith('ref_'), true);
+      expect(roi.substring(3), ref.substring(3)); // token + stamp identical
+      // Two reference photos sort in capture order (the invariant the
+      // gallery export relies on, per folder).
+      final earlier = roiPhotoFileName(9000, 'S', prefix: 'ref');
+      expect(earlier.compareTo(ref) < 0, true);
     });
   });
 
