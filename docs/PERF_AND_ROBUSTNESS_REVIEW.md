@@ -615,6 +615,16 @@ re-discovered later:
   packing for `litert`-format (torch-exported) models. Only matters if we
   ever switch to NCHW model exports; our current models are NHWC. Skip
   unless the export pipeline changes.
+  *r153 correction:* re-entry is THREE pieces, not one. The fork also lacks
+  the upstream 0.6.6 NCHW auto-detect prerequisite (input `args_0` /
+  `output_N` handling in `LiteRtModel.kt`), so a real adoption ships
+  auto-detect + CHW packing + a MODEL_CONVERSION.md update together (see D2
+  in Part D). And the failure mode of loading a `format=litert` export today
+  is not silent garbage: the load "succeeds" (warm-up uses the runtime's own
+  correctly-sized buffers), then every frame throws on a buffer-size mismatch
+  (0 fps, endless "Calibrating") while the settings sheet shows the correct
+  input size, because `YOLOFileUtils.inputImageSize` has the layout heuristic
+  the detector path lacks.
 
 ### C5. [x] Pipeline-FPS readout biased high next to an honest detector FPS (display fix, small)
 
@@ -650,3 +660,141 @@ interval, now expressed directly on the interval instead of `5000/fps`), and
 the KEEP IN SYNC comment pair with `Predictor.finishTiming` stands. Tests
 updated for interval semantics + a new test proving the alternating
 67/133 ms cadence reads ~10.0 (the old rate-EMA read ~11.2).
+
+---
+
+## Part D: Round 153 re-audit against fresh upstream main (2026-07-27)
+
+Trigger: the owner re-downloaded the current upstream main branch to
+`/InsectDetectApp/yolo-flutter-app-main` and asked whether newer upstream code
+offers pipeline FPS or efficiency gains. Method: three parallel read-only
+exploration agents (native Android delta, Dart delta, fresh hot-path sweep),
+20 candidate findings, the top 10 each adversarially verified against the code
+and this document; 4 survived. Owner decision (r153): recorded as proposals
+only, no code changed this round.
+
+### D0. Verdict (recorded so this is never redone)
+
+The fresh copy is **v0.6.10, the same release Part C reviewed on 2026-07-18**.
+Android dependencies are byte-identical (litert 2.1.5, CameraX 1.6.0,
+onnxruntime-android-qnn 1.26.0). The Dart `lib/` delta 0.6.4 to 0.6.10
+contains zero performance work (the depth-estimation task and docstrings).
+The C0 parity table stands unchanged: there are **no live-path FPS gains to
+port**, and the FPS ceiling remains the thermal governor (C2). The items below
+are the modest survivors: one smoothness fix, one capability/workflow fix, one
+offline-path waste removal.
+
+### D1. [ ] Move the fast ROI photo crop off the platform/main thread
+
+`YOLOPlatformView.kt` registers its method handler with no TaskQueue (~:85),
+so the `"captureRoiFromFrame"` branch (~:654-665) runs
+`ImageUtils.cropRoiFromFrame` (bitmap alloc, rotate-draw, optional rescale,
+JPEG encode) on the thread that also drains detection results to Dart. Cost
+per photo: ~8-15 ms at the default 640x480 stream, ~20-50 ms at 1440x1080, at
+~1 Hz during visits (the fast path is the default capture mode; the high-res
+sync companion adds one crop per photo). This is the one capture entry point
+that stayed synchronous (the r72/A3 note described its caller as "the
+platform-channel thread", which is why it was never spotted as main-thread
+work).
+
+**Fix:** run `yoloView.captureRoiFromFrame(...)` on the existing
+`stillExecutor` and post `result.success`/`result.error` back on a main-thread
+handler, the same pattern as `capturePhotoRaw` (`YOLOView.kt` ~:1985-2010, the
+round-63 lesson at ~:348-356) and the app crop channel (`MainActivity.kt`
+~:135-145).
+
+*Expected gain:* smoothness, not throughput. Removes an 8-50 ms main-thread
+hitch per photo; box delivery and preview stop stuttering during captures. No
+effect on the thermal ceiling.
+*Effort:* ~10 lines, ~30 min. On-device check: photos at 1 Hz while watching
+box smoothness, once at 640x480 and once at 1440x1080.
+*Cautions:* the `synchronized(bitmap)` guard already covers off-thread use;
+the deferred grab reads a slightly newer frame (companion freshness improves);
+do NOT convert the whole method channel to a background TaskQueue (other
+handlers touch camera/view state).
+
+### D2. [ ] format=litert (NCHW) model support, staged (capability fix, zero live-path effect)
+
+`yolo export format=litert` is now the documented Ultralytics Android export
+route (0.6.6+, official w8a32 assets). Such a model in FaunaPulse today
+*appears to load* (warm-up uses the runtime's own correctly-sized buffers),
+then throws on every frame: 0 fps, permanent "Calibrating", while the settings
+sheet correctly shows 640x640 (`YOLOFileUtils.inputImageSize` ~:213-219 has
+the layout heuristic the detector path lacks). Not reachable via the shipped
+defaults (bundled URLs pin the NHWC v0.3.5 assets; MODEL_CONVERSION.md says
+`format=tflite`), but reachable the moment anyone imports such a model or
+pastes a current official asset URL (`model_catalog.dart` ~:254 accepts any
+.tflite).
+
+- [ ] **Stage A, loud load-time guard (~10 lines, do first):** in
+  `LiteRtModel.prepareModel` after dims resolve (including the graph
+  fallback, ~:207-225), detect NCHW (`dims.size >= 4 && dims[1] == 3 &&
+  dims.last() != 3`) and fail the load with a plain-language message
+  ("re-export with format=tflite"). A load failure flows through the existing
+  r151 `onInitialModelLoadFailed` recovery (error dialog + config revert) for
+  free. Highest value per line in this Part.
+- [ ] **Stage B, full detect-only support (~60 LOC, 4 files; do at the next
+  model-export cycle):** port upstream's layout handling
+  (`yolo-flutter-app-main/.../LiteRtModel.kt` ~:124-181): input-name probe
+  (`images`, `args_0`, `input`, `input_1`, `serving_default_input`), NCHW
+  detection with NHWC-convention `inputDims` plus `inputUsesNchw`;
+  output-name probe `output_$i` then `Identity`/`Identity_$i`; `Predictor.kt`
+  exposes `inputUsesNchw` (~3 lines); `ImageUtils.copyRgbBitmapToFloatArray`
+  gains a `channelsFirst` branch that MUST use the fork's `normalizationLut`
+  (~:458), not upstream's invStd multiply (~18 lines); `ObjectDetector.kt`
+  1-line call arg. This is the C4 escape clause firing, not a re-proposal.
+  Merge hazards a verbatim upstream copy gets wrong: (1) the fork-only graph
+  fallback (`YOLOFileUtils.inputTensorShapeFromPath`) must ALSO pass the NCHW
+  test (reuse the heuristic already in `inputImageSize` ~:213-219); (2) keep
+  the fork's graph fallback, upstream's `sqrt(count/3)` buffer-size guess is
+  strictly worse. Deliberately skipped: Segmenter `protoNchw`, the other
+  predictors, the OrtQnn transpose cleanup (detect-only app, diff inflation
+  against the readability rule). Then simplify `MODEL_CONVERSION.md` to one
+  command: `yolo export format=litert quantize=w8a32` (dynamic-range
+  quantization, no calibration dataset, embedded Ultralytics metadata;
+  requires `ultralytics>=8.4.83`); keep full-INT8 documented for low-end CPUs
+  (the Galaxy M12 datapoint stands, w8a32's FP32 activations are not the
+  fastest CPU path). Verify on-device with a fresh w8a32 export.
+
+### D3. [ ] Skip the discarded annotated image on the batch/SAHI predict path
+
+Every `YOLO.predict` call (post-hoc photo analysis and each SAHI tile) makes
+the native side draw all boxes onto a full `bitmap.copy(ARGB_8888)`
+(`YOLO.kt` ~:239; the ~:215 early-out never fires for DETECT) and
+JPEG-q90-encode it (`YOLOPlugin.kt` ~:453-458); FaunaPulse reads only the box
+list and throws the bytes away. Upstream 0.6.10 has the same behaviour, so
+this is a parity gap, not a port.
+
+**Fix:** optional `includeAnnotatedImage` param on `yolo_inference.dart`
+`predict()` (default `true` for compatibility), threaded through
+`predictSingleImage` / `YOLOInstanceManager.predict` / `YOLO.predict`;
+`post_detector.dart` passes `false`; the plugin demo screen keeps the default.
+
+*Expected gain (honest):* ~3-6 ms per 640 tile against ~30-40 ms
+decode+inference (roughly 10-20% of batch wall time; the SAHI isolate's own
+Dart `encodeJpg` per tile is the bigger cost), ~15-25 ms on the full-image
+pass of a 1440x1080 photo, plus ~100 KB less per tile over the method channel.
+Offline path only, no heat-budget interaction; saves some heat on long
+unattended batch runs. Measure batch wall-clock before/after on the Xiaomi.
+*Effort:* ~30 lines across 5 files, 1-2 h.
+*Cautions:* do NOT bundle a `Dispatchers.IO` hop for `predictSingleImage`
+(`YOLOInstanceManager.predict` mutates and restores per-instance thresholds
+around the call; concurrency there is a correctness risk). Known observation,
+recorded, no action: batch inference blocks the platform thread ~30-60 ms per
+tile (progress-UI jank only).
+*Tests:* assert the flag in the `predictSingleImage` args from
+`post_detector_test.dart` / `sahi_test.dart`; assert the default stays `true`.
+
+### D4. Skipped leads (recorded so they are not rediscovered)
+
+- **Wholesale re-sync to upstream 0.6.10:** no performance content; a
+  block-copy would silently delete fork-only assets. Re-sync hazard
+  inventory: `yolo_model_resolver.dart` is the most diverged Dart file; the
+  fork-only 256-entry `normalizationLut` exists only in our `ImageUtils.kt`;
+  upstream `YOLOTask` gained a depth entry (index shift, safe: task crosses
+  the channel by name).
+- **Micro items (skip unless touched incidentally):** per-frame
+  `overlayView.invalidate()` although FaunaPulse permanently disables the
+  native overlay; the `tracks` ValueNotifier fires every detector frame even
+  when nothing is detected. Both immaterial at 10 fps.
+- **`Dispatchers.IO` for `predictSingleImage`:** correctness risk, see D3.

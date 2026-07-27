@@ -5357,3 +5357,38 @@ integration), active in detector + motion modes, inert in time-lapse.
   (`ref_S_…`); roiPhotoFileName prefix/sort test. `flutter analyze` clean,
   356 tests pass.
 
+## Round 153 (2026-07-27): upstream 0.6.10 re-audit, proposals recorded (no code)
+
+Trigger: owner re-downloaded upstream yolo-flutter-app main into
+`./yolo-flutter-app-main` and asked whether the newer upstream offers pipeline
+FPS or efficiency gains. Audit: 3 parallel read-only explorers (native delta,
+Dart delta, fresh hot-path sweep) + adversarial verification of the top 10 of
+20 candidate findings; 4 survived.
+
+- Verdict: upstream main is **v0.6.10, the same release the r128 Part C review
+  compared file-by-file**. Android deps byte-identical (litert 2.1.5, CameraX
+  1.6.0, onnxruntime-android-qnn 1.26.0); Dart lib delta 0.6.4 to 0.6.10 has
+  zero perf work (depth task + docstrings). No live-path FPS gains to port;
+  the thermal governor stays the ceiling (C2 verdict stands).
+- Recorded in PERF_AND_ROBUSTNESS_REVIEW.md as new **Part D** (open
+  checkboxes, so a future round can implement without re-auditing):
+  - D1: fast ROI crop (`captureRoiFromFrame`) runs synchronously on the
+    platform/main thread; move to `stillExecutor` (~10 lines, removes an
+    8-50 ms hitch per photo, smoothness only).
+  - D2: format=litert (NCHW) model support, staged. Today such a model
+    "loads" then throws every frame (0 fps, endless "Calibrating") while the
+    settings sheet shows the right input size. Stage A = loud load-time guard
+    (~10 lines, rides the r151 recovery dialog); Stage B = ~60 LOC detect-only
+    port + MODEL_CONVERSION.md collapses to one calibration-free
+    `quantize=w8a32` command (at the next model-export cycle).
+  - D3: batch/SAHI predict path JPEG-encodes an annotated image FaunaPulse
+    discards; opt-out flag (~30 lines, roughly 10-20% batch wall time).
+  - D4: skipped-leads inventory (re-sync hazards incl. fork-only
+    normalizationLut, micro items, Dispatchers.IO correctness risk).
+- C4 record corrected in place: re-entry is three pieces (NCHW auto-detect
+  prerequisite + CHW packing + doc update together), and the failure mode is
+  a loud per-frame buffer-mismatch throw, not silent garbage.
+- Owner decision: proposals only, no code changes this round. Files touched:
+  PERF_AND_ROBUSTNESS_REVIEW.md, AGENT_CHANGELOG_OVERVIEW.md (pointer line),
+  this file.
+
