@@ -2272,6 +2272,36 @@ class YOLOView @JvmOverloads constructor(
         )
     }
 
+    /** Round 154 (perf review D1): as [captureRoiFromFrame], but off the main
+     *  thread. The crop + JPEG encode cost ~10-50 ms (stream-size dependent),
+     *  and the platform thread that used to run them also delivers detection
+     *  results to Flutter, so every photo stalled box delivery by that much.
+     *  The work runs on [stillExecutor] (round-63 rationale; single-threaded,
+     *  so crops stay serialized behind any in-flight still job) and [callback]
+     *  is always invoked on the main thread; null on failure. Safe off-thread:
+     *  [captureRoiFromFrame] reads only volatile frame state, and
+     *  ImageUtils.cropRoiFromFrame synchronizes its source draw on the shared
+     *  frame bitmap. */
+    fun captureRoiFromFrameAsync(
+        cx: Double,
+        cy: Double,
+        side: Double,
+        quality: Int,
+        maxPx: Int = 0,
+        callback: (ByteArray?) -> Unit,
+    ) {
+        val mainExec = ContextCompat.getMainExecutor(context)
+        stillExecutor.execute {
+            val bytes = try {
+                captureRoiFromFrame(cx, cy, side, quality, maxPx)
+            } catch (e: Throwable) {
+                Log.w(TAG, "ROI frame crop failed off-thread: ${e.message}")
+                null
+            }
+            mainExec.execute { callback(bytes) }
+        }
+    }
+
     private fun onFrame(imageProxy: ImageProxy) {
         // Early return if view is stopped to prevent accessing closed resources
         if (isStopped) {

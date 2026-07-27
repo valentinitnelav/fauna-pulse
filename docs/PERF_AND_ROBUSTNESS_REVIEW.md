@@ -684,7 +684,7 @@ port**, and the FPS ceiling remains the thermal governor (C2). The items below
 are the modest survivors: one smoothness fix, one capability/workflow fix, one
 offline-path waste removal.
 
-### D1. [ ] Move the fast ROI photo crop off the platform/main thread
+### D1. [x] Move the fast ROI photo crop off the platform/main thread
 
 `YOLOPlatformView.kt` registers its method handler with no TaskQueue (~:85),
 so the `"captureRoiFromFrame"` branch (~:654-665) runs
@@ -712,6 +712,17 @@ box smoothness, once at 640x480 and once at 1440x1080.
 the deferred grab reads a slightly newer frame (companion freshness improves);
 do NOT convert the whole method channel to a background TaskQueue (other
 handlers touch camera/view state).
+
+**Done (round 154):** new `YOLOView.captureRoiFromFrameAsync` mirrors the
+`capturePhotoRaw` contract: work on `stillExecutor` (single-threaded, so crops
+stay serialized behind any in-flight still job), callback always on the main
+thread, null on failure (exceptions caught + logged, mapped to null, which the
+Dart `_invoke` wrapper already treats as the normal "fast path failed"
+fallback). The `"captureRoiFromFrame"` handler completes its MethodChannel
+result from that callback instead of blocking. No Dart changes, no new
+tunable. Verified: `flutter analyze` clean, 356 tests pass, debug APK builds;
+the on-device smoke test (photos at ~1 Hz watching box smoothness, at 640x480
+and 1440x1080) is the owner's step.
 
 ### D2. [ ] format=litert (NCHW) model support, staged (capability fix, zero live-path effect)
 

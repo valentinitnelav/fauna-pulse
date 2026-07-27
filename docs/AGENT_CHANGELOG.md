@@ -5392,3 +5392,30 @@ Dart delta, fresh hot-path sweep) + adversarial verification of the top 10 of
   PERF_AND_ROBUSTNESS_REVIEW.md, AGENT_CHANGELOG_OVERVIEW.md (pointer line),
   this file.
 
+## Round 154 (2026-07-27): D1, fast ROI photo crop off the platform thread
+
+Implements Part D's D1 (from the r153 audit): the `"captureRoiFromFrame"`
+method-channel handler ran `ImageUtils.cropRoiFromFrame` (bitmap alloc +
+rotate-draw + optional rescale + JPEG encode; ~8-15 ms at 640x480, ~20-50 ms
+at 1440x1080) directly on the platform/main thread, the same thread that
+drains detection results to Flutter. Every fast photo (the default capture
+path, ~1 Hz during visits, plus one per high-res sync companion) stalled box
+delivery and UI by that much.
+
+- New `YOLOView.captureRoiFromFrameAsync` (beside its sync sibling): work runs
+  on the round-63 `stillExecutor` (single-threaded, so crops stay serialized
+  behind any in-flight still job), callback always invoked on the main thread,
+  null on failure. Exceptions are caught, logged (reaches `logcat_end.txt`)
+  and mapped to null, which the Dart `_invoke` wrapper already turns into the
+  normal "fast path failed" fallback, so error behaviour is unchanged from the
+  caller's point of view.
+- `YOLOPlatformView.kt` handler now completes the MethodChannel result from
+  that callback instead of blocking. No Dart changes, no new tunable, no
+  behaviour change beyond the removed stall (the deferred grab reads a
+  slightly newer frame, so companion freshness marginally improves).
+- Deliberately NOT done (r153 verifier warning): no channel-wide background
+  TaskQueue (other handlers touch camera/view state).
+- Verified: `flutter analyze` clean, 356 tests pass, debug APK builds. Owner
+  smoke test: photos at ~1 Hz while watching box smoothness, once at 640x480
+  and once at 1440x1080.
+

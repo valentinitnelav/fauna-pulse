@@ -659,9 +659,16 @@ class YOLOPlatformView(
                     val side = call.argument<Double>("side") ?: 0.5
                     val quality = call.argument<Int>("quality") ?: 90
                     val maxPx = call.argument<Int>("maxPx") ?: 0
-                    val bytes = yoloView.captureRoiFromFrame(cx, cy, side, quality, maxPx)
-                    if (bytes != null) result.success(bytes)
-                    else result.error("no_frame", "No analysis frame available yet", null)
+                    // Round 154 (perf review D1): the crop + JPEG encode used to run
+                    // right here on the platform thread (the thread that also
+                    // delivers detection results to Flutter), so every photo
+                    // stalled box delivery ~10-50 ms. The async variant does the
+                    // work on the view's still executor and completes the
+                    // MethodChannel result back on this thread.
+                    yoloView.captureRoiFromFrameAsync(cx, cy, side, quality, maxPx) { bytes ->
+                        if (bytes != null) result.success(bytes)
+                        else result.error("no_frame", "No analysis frame available yet", null)
+                    }
                 }
                 else -> {
                     result.notImplemented()
