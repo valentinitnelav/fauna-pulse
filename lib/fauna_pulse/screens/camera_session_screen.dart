@@ -1547,7 +1547,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Reference photos (r107 as "ground-truth frames"): a second scheduler
       // on its own clock, writing into gt_frames/ regardless of detections —
       // an unbiased sample for spotting missed pollinators and hand-counting
-      // true visits. The Camera tab's saved photo side governs the size.
+      // true visits. The Photos tab's saved photo side governs the size.
       // Inert in time-lapse mode: that session is already clock-driven
       // photos, so a second periodic sampler would only duplicate them.
       gtCaptureBuilder: !_config.gtFramesEnabled || _config.timeLapseCapture

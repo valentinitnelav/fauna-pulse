@@ -11,6 +11,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -54,10 +55,14 @@ class _PastSession {
   });
 }
 
-/// Actions in the home screen's top-right "⋮" overflow menu. These act on ALL
-/// sessions at once (a single session is managed from its own summary screen);
-/// future bulk actions (filtering, export, …) get their own value here.
-enum _HomeMenuAction { deleteAllSessions }
+/// Actions in the home screen's top-right "⋮" overflow menu: app-level
+/// preferences and actions on ALL sessions at once (a single session is
+/// managed from its own summary screen). Future bulk actions (filtering,
+/// export, …) get their own value here. "Show setup tips" moved here from the
+/// settings sheet in round 159 — it is an app-level preference, and this menu
+/// is the established home for those (session settings stay on the camera
+/// screen, which needs the live camera).
+enum _HomeMenuAction { toggleSetupTips, deleteAllSessions }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -71,10 +76,33 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingSessions = true;
   List<_PastSession> _sessions = const [];
 
+  /// Whether the one-time setup reminder shows at session start. Mirrors the
+  /// inverse of the persisted "hide" flag ([kHideSessionInfoPrefKey]); shown
+  /// as a check item in the ⋮ menu.
+  bool _showSetupTips = true;
+
   @override
   void initState() {
     super.initState();
     _loadSessions();
+    _loadSetupTipsPref();
+  }
+
+  /// Reads the persisted "hide setup tips" flag so the menu check item
+  /// reflects the current state.
+  Future<void> _loadSetupTipsPref() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hidden = prefs.getBool(kHideSessionInfoPrefKey) ?? false;
+    if (!mounted) return;
+    setState(() => _showSetupTips = !hidden);
+  }
+
+  /// Turns the one-time setup reminder on/off by writing the persisted flag.
+  /// On = reminder shows next time a session screen opens; Off = stays hidden.
+  Future<void> _toggleSetupTips() async {
+    setState(() => _showSetupTips = !_showSetupTips);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kHideSessionInfoPrefKey, !_showSetupTips);
   }
 
   /// Scans the app's sessions folder for past sessions (a sub-folder containing
@@ -432,11 +460,19 @@ class _HomeScreenState extends State<HomeScreen> {
       tooltip: 'All-session actions',
       onSelected: (action) {
         switch (action) {
+          case _HomeMenuAction.toggleSetupTips:
+            _toggleSetupTips();
           case _HomeMenuAction.deleteAllSessions:
             _confirmDeleteAllSessions();
         }
       },
       itemBuilder: (_) => [
+        CheckedPopupMenuItem(
+          value: _HomeMenuAction.toggleSetupTips,
+          checked: _showSetupTips,
+          child: const Text('Show setup tips at session start'),
+        ),
+        const PopupMenuDivider(),
         PopupMenuItem(
           value: _HomeMenuAction.deleteAllSessions,
           enabled: _sessions.isNotEmpty,

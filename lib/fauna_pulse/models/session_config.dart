@@ -460,7 +460,7 @@ class SessionConfig {
   /// checked only against photos the tracker itself triggered. ON by default
   /// since the promotion round; inert in time-lapse mode (the session is
   /// already clock-driven photos). Size follows [targetRoiSavedPx]
-  /// (Camera tab); the capture path is always the fast live-frame crop.
+  /// (Photos tab); the capture path is always the fast live-frame crop.
   final bool gtFramesEnabled;
 
   /// Interval between reference photos, in seconds (default 30 — about 120

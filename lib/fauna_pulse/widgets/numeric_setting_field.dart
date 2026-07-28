@@ -11,6 +11,13 @@
 // number into [min]..[max]. The visible text is only re-formatted to the
 // canonical value when the field loses focus, so the user can type freely
 // (e.g. "0.3") without the box rewriting their input mid-typing.
+//
+// The helper paragraph is collapsed behind an ⓘ icon (round 159): with ~40
+// fields in the settings sheet, always-visible multi-line helpers were the
+// main source of visual density. Tapping the label row (or the icon) reveals
+// the full explanation; the state is per-field and resets when the sheet
+// closes — deliberately, so a first-time user always starts with the compact
+// view.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -62,6 +69,10 @@ class NumericSettingField extends StatefulWidget {
 class _NumericSettingFieldState extends State<NumericSettingField> {
   late final TextEditingController _controller;
   late final FocusNode _focus;
+
+  /// Whether the helper paragraph is expanded (ⓘ tapped). Ephemeral on
+  /// purpose — every field starts compact each time the sheet opens.
+  bool _helpOpen = false;
 
   String _format(double v) =>
       widget.isInt ? v.round().toString() : v.toStringAsFixed(widget.decimals);
@@ -115,9 +126,31 @@ class _NumericSettingFieldState extends State<NumericSettingField> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  widget.label,
-                  style: const TextStyle(color: Colors.white70),
+                // The whole label row toggles the helper, not just the small
+                // icon — a fingertip-sized target in the field.
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.helperText == null
+                      ? null
+                      : () => setState(() => _helpOpen = !_helpOpen),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          widget.label,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                      if (widget.helperText != null) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          _helpOpen ? Icons.info : Icons.info_outline,
+                          size: 16,
+                          color: Colors.white38,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -156,7 +189,7 @@ class _NumericSettingFieldState extends State<NumericSettingField> {
               ),
             ],
           ),
-          if (widget.helperText != null)
+          if (widget.helperText != null && _helpOpen)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(

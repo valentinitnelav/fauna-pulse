@@ -4,11 +4,20 @@
 // SessionConfig and returns it via Navigator.pop when the user taps Apply, so
 // the caller can persist it and push the new thresholds to the detector.
 //
-// The controls are grouped into four tabs so the sheet stays readable:
-//   • Setup — output folder, photo time-lapse, session length.
-//   • AI — model, thresholds, FPS/GPU, tracker tuning.
-//   • Camera — live stream resolution and ROI-photo quality.
-//   • Graphs — end-of-session graph sampling rates.
+// The controls are grouped into four tabs BY USER INTENT (round 159), so the
+// sheet stays readable and a citizen scientist can run a session touching only
+// the folder, the capture trigger and the session length:
+//   • Setup — what am I recording? Folder, trigger, session length, schedule,
+//     on-screen display toggles (folded).
+//   • AI — how does detection behave? Model, confidence, visit tracking;
+//     engine/threshold knobs folded.
+//   • Photos — what do saved photos look like? Size, photo source, viewer;
+//     the live camera stream folded.
+//   • Power — heat, battery and rates: inference throttle, camera fps cap,
+//     motion gate, diagnostic graph sampling.
+// Expert-only controls sit inside collapsed "Advanced" folds (_foldSection);
+// every control stays user-adjustable — folding is discoverability, never
+// removal (owner rule).
 //
 // Every numeric control is a typed number box (NumericSettingField), not a
 // slider. Sliders were unusable here: a horizontal drag on a slider was stolen
@@ -18,7 +27,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../capture/roi_capture.dart';
@@ -53,7 +61,7 @@ class SettingsSheet extends StatefulWidget {
 
   /// Per-camera diagnostics from the native enumeration (one map per camera/lens:
   /// id, facing, focal lengths, logical vs physical, whether usable for inference
-  /// + reason, supported analysis sizes). Shown read-only under the Camera tab so
+  /// + reason, supported analysis sizes). Shown read-only under the Photos tab so
   /// a user can see which lenses their phone actually offers the detector. Empty
   /// when the camera wasn't running when the sheet was opened.
   final List<Map<String, dynamic>> cameraDiagnostics;
@@ -100,10 +108,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
   Set<String> _duplicateNames = const {};
   bool _modelsLoading = true;
 
-  /// Whether the one-time setup reminder is enabled (shown at session start).
-  /// Mirrors the inverse of the persisted "hide" flag; loaded in [initState].
-  bool _showSetupTips = true;
-
   /// True while the engine benchmark runs (disables its button).
   bool _benchmarkRunning = false;
 
@@ -111,7 +115,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
   void initState() {
     super.initState();
     _c = widget.config;
-    _loadSetupTipsPref();
     _folder = TextEditingController(text: _c.folderName);
     // Show whole hours when the saved length divides cleanly into hours
     // (e.g. 120 → "2 h"); otherwise show minutes.
@@ -256,12 +259,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     ),
                   const Tab(
                     icon: Icon(Icons.photo_camera, size: 20),
-                    text: 'Camera',
+                    text: 'Photos',
                   ),
-                  const Tab(
-                    icon: Icon(Icons.show_chart, size: 20),
-                    text: 'Graphs',
-                  ),
+                  const Tab(icon: Icon(Icons.bolt, size: 20), text: 'Power'),
                 ],
               ),
               const SizedBox(height: 8),
@@ -270,8 +270,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   children: [
                     _sessionTab(),
                     _aiPipelineTab(),
-                    _cameraTab(),
-                    _summaryTab(),
+                    _photosTab(),
+                    _powerTab(),
                   ],
                 ),
               ),
@@ -360,7 +360,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         CaptureTrigger.motion =>
           'Photos whenever something moves in the ROI; the AI model loads '
               'but never runs (big energy saver). No species/track data — the '
-              'motion gate on the Camera tab is the trigger (forced on) and '
+              'motion gate on the Power tab is the trigger (forced on) and '
               'its sensitivity settings apply. Wind/shadows produce junk '
               'photos instead of wasted computation.',
         CaptureTrigger.timelapse =>
@@ -371,6 +371,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'Meant for running a detector on the photos afterwards.',
       }, style: const TextStyle(color: Colors.white54, fontSize: 12)),
       const SizedBox(height: 12),
+
+      // Session length sits right after the trigger (round 159): folder,
+      // trigger and length are the three settings every session needs; the
+      // photo-timing details below are fine on their defaults.
+      ..._sessionLengthFields(),
+      const SizedBox(height: 8),
 
       NumericSettingField(
         label: 'Photo step',
@@ -438,7 +444,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'is detected. Lets you check afterwards what the camera really '
           'saw — including pollinators the AI may have missed (send those '
           'photos in to improve the model). Same size as normal photos '
-          '(Camera tab → Saved photo side).'
+          '(Photos tab → Saved photo side).'
           '${_c.timeLapseCapture ? '\n(Not used in time-lapse mode — photos come on a clock there anyway.)' : ''}',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
@@ -457,54 +463,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'Time between reference photos. Default 30 s — about 120 '
               'photos per hour; shorter catches briefer visits but uses '
               'more storage.',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
+          onChanged: (v) => setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
         ),
-
-      const SizedBox(height: 8),
-      _label('Session length (recording auto-stops after this)'),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _sessionLen,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: '60',
-                hintStyle: TextStyle(color: Colors.white38),
-              ),
-              onChanged: (_) => _applySessionLength(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          ToggleButtons(
-            isSelected: [!_sessionInHours, _sessionInHours],
-            borderColor: Colors.white24,
-            selectedBorderColor: Colors.lightBlueAccent,
-            color: Colors.white54,
-            selectedColor: Colors.white,
-            fillColor: Colors.white10,
-            constraints: const BoxConstraints(minWidth: 64, minHeight: 40),
-            onPressed: (i) {
-              setState(() => _sessionInHours = i == 1);
-              _applySessionLength();
-            },
-            children: const [Text('Minutes'), Text('Hours')],
-          ),
-        ],
-      ),
-      Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Text(
-          _sessionInHours
-              ? 'Typical 1–24 h; custom values allowed. = ${_c.sessionMinutes} min total.'
-              : 'Typical 1–60 min; custom values allowed. = ${_c.sessionMinutes} min total.',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ),
 
       const Divider(color: Colors.white24),
       SwitchListTile(
@@ -569,89 +529,132 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ],
 
       const Divider(color: Colors.white24),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Show setup tips at session start',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'The one-time reminder about fixing the flower, centring the ROI and '
-          'locking focus before recording.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _showSetupTips,
-        onChanged: _setShowSetupTips,
-      ),
-
-      const Divider(color: Colors.white24),
-      const Text(
-        'On-screen display',
-        style: TextStyle(color: Colors.white70, fontSize: 16),
-      ),
-      const Padding(
-        padding: EdgeInsets.only(top: 2, bottom: 4),
-        child: Text(
-          'Drawing overlays uses the phone briefly each frame. Turning them off '
-          'gives the lightest preview; detection and tracking keep running and '
-          'everything is still logged either way.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Show detection boxes & track IDs',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: Text(
-          'The blue boxes with "#id … Conf.: 0.xy" over each insect.'
-          '${_c.detectorEnabled ? '' : ' (AI detector mode only — there are no detections to draw in this mode.)'}',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        // Locked off in the no-AI modes: the detector never runs there, so
-        // there is nothing to draw. The saved preference is untouched — it
-        // comes back when the AI mode is selected again (r147).
-        value: _c.detectorEnabled && _c.showBoxes,
-        onChanged: _c.detectorEnabled
-            ? (v) => setState(() => _c = _c.copyWith(showBoxes: v))
-            : null,
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Show on-screen info panel',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'The top-left readouts (FPS, model, engine, stream, ROI size, '
-          'temperature, track count). Off = only the ROI box and recording '
-          'controls remain.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.showOverlayInfo,
-        onChanged: (v) => setState(() => _c = _c.copyWith(showOverlayInfo: v)),
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Flash ROI border when a photo is saved',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'The ROI outline blinks green for a split second each time a photo is '
-          'captured, so you can see captures happening.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.flashOnCapture,
-        onChanged: (v) => setState(() => _c = _c.copyWith(flashOnCapture: v)),
+      // Display toggles all have good defaults, so they sit folded (round
+      // 159). "Show FPS" moved in from the AI tab the same round: it is a
+      // display toggle, not an AI setting. "Show setup tips" left for the
+      // home screen's ⋮ menu (an app-level preference, not per-session).
+      _foldSection(
+        title: 'On-screen display',
+        subtitle:
+            'Boxes, info panel, FPS readout, capture flash. Drawing overlays '
+            'uses the phone briefly each frame; detection, tracking and '
+            'logging run the same either way.',
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Show detection boxes & track IDs',
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              'The blue boxes with "#id … Conf.: 0.xy" over each insect.'
+              '${_c.detectorEnabled ? '' : ' (AI detector mode only — there are no detections to draw in this mode.)'}',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            // Locked off in the no-AI modes: the detector never runs there, so
+            // there is nothing to draw. The saved preference is untouched — it
+            // comes back when the AI mode is selected again (r147).
+            value: _c.detectorEnabled && _c.showBoxes,
+            onChanged: _c.detectorEnabled
+                ? (v) => setState(() => _c = _c.copyWith(showBoxes: v))
+                : null,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Show on-screen info panel',
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              'The top-left readouts (FPS, model, engine, stream, ROI size, '
+              'temperature, track count). Off = only the ROI box and recording '
+              'controls remain.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            isThreeLine: true,
+            value: _c.showOverlayInfo,
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(showOverlayInfo: v)),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Show FPS',
+              style: TextStyle(color: Colors.white),
+            ),
+            value: _c.showFps,
+            onChanged: (v) => setState(() => _c = _c.copyWith(showFps: v)),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Flash ROI border when a photo is saved',
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              'The ROI outline blinks green for a split second each time a photo is '
+              'captured, so you can see captures happening.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            isThreeLine: true,
+            value: _c.flashOnCapture,
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(flashOnCapture: v)),
+          ),
+          const SizedBox(height: 8),
+        ],
       ),
       const SizedBox(height: 8),
     ],
   );
+
+  /// Session-length input: typed number + Minutes/Hours toggle. Extracted so
+  /// the Setup tab can place it directly after the capture trigger (round 159).
+  List<Widget> _sessionLengthFields() => [
+    _label('Session length (recording auto-stops after this)'),
+    Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _sessionLen,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: '60',
+              hintStyle: TextStyle(color: Colors.white38),
+            ),
+            onChanged: (_) => _applySessionLength(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        ToggleButtons(
+          isSelected: [!_sessionInHours, _sessionInHours],
+          borderColor: Colors.white24,
+          selectedBorderColor: Colors.lightBlueAccent,
+          color: Colors.white54,
+          selectedColor: Colors.white,
+          fillColor: Colors.white10,
+          constraints: const BoxConstraints(minWidth: 64, minHeight: 40),
+          onPressed: (i) {
+            setState(() => _sessionInHours = i == 1);
+            _applySessionLength();
+          },
+          children: const [Text('Minutes'), Text('Hours')],
+        ),
+      ],
+    ),
+    Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        _sessionInHours
+            ? 'Typical 1–24 h; custom values allowed. = ${_c.sessionMinutes} min total.'
+            : 'Typical 1–60 min; custom values allowed. = ${_c.sessionMinutes} min total.',
+        style: const TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+    ),
+  ];
 
   /// One schedule-window row: "Window N  [06:00] – [10:00]  🗑". The time
   /// buttons open the system time picker; the delete icon appears only while
@@ -883,6 +886,69 @@ class _SettingsSheetState extends State<SettingsSheet> {
           );
         }),
       ),
+      // IoU, engine and benchmark sit folded (round 159): all have good
+      // defaults, and Confidence above is the one detection knob a first-time
+      // user plausibly touches. "Show FPS" moved to the Setup tab's
+      // On-screen display fold the same round.
+      _engineAdvancedSection(),
+
+      const Divider(color: Colors.white24),
+      const Row(
+        children: [
+          Icon(Icons.polyline, size: 20, color: Colors.white70),
+          SizedBox(width: 8),
+          Text(
+            'Visit tracking',
+            style: TextStyle(color: Colors.white70, fontSize: 16),
+          ),
+        ],
+      ),
+      _trackerFields(),
+      const SizedBox(height: 8),
+    ];
+    if (_c.detectorEnabled) return ListView(children: children);
+    return ListView(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white10,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            'These settings apply only to the AI detector mode. Switch '
+            '"Capture trigger" on the Setup tab to edit them.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+        // IgnorePointer swallows every tap (nothing below can be edited);
+        // the Opacity greys the block so it reads as inactive at a glance.
+        // The stored values are untouched and come back editable as soon as
+        // the AI detector mode is selected again.
+        IgnorePointer(
+          child: Opacity(
+            opacity: 0.4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Collapsed "Advanced" block of the detection section (round 159): the NMS
+  /// IoU threshold and the engine controls (GPU switch, CPU threads,
+  /// benchmark). All have good defaults; the benchmark button is the usual
+  /// reason to open this, after switching models.
+  Widget _engineAdvancedSection() => _foldSection(
+    title: 'Advanced (engine & thresholds)',
+    subtitle:
+        'Duplicate-box filtering (IoU) and which processor runs the model. '
+        'The benchmark finds the fastest engine for a newly added model.',
+    children: [
       NumericSettingField(
         label: 'IoU threshold (NMS — removes duplicate boxes)',
         value: _c.iouThreshold,
@@ -893,13 +959,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Overlap above which two boxes are treated as the same '
             'object (0.10–0.95). Default 0.70.',
         onChanged: (v) => setState(() => _c = _c.copyWith(iouThreshold: v)),
-      ),
-
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Show FPS', style: TextStyle(color: Colors.white)),
-        value: _c.showFps,
-        onChanged: (v) => setState(() => _c = _c.copyWith(showFps: v)),
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -961,53 +1020,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ],
-
-      const Divider(color: Colors.white24),
-      const Row(
-        children: [
-          Icon(Icons.polyline, size: 20, color: Colors.white70),
-          SizedBox(width: 8),
-          Text(
-            'Visit tracking',
-            style: TextStyle(color: Colors.white70, fontSize: 16),
-          ),
-        ],
-      ),
-      _trackerFields(),
       const SizedBox(height: 8),
-    ];
-    if (_c.detectorEnabled) return ListView(children: children);
-    return ListView(
-      children: [
-        Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Text(
-            'These settings apply only to the AI detector mode. Switch '
-            '"Capture trigger" on the Setup tab to edit them.',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-        ),
-        // IgnorePointer swallows every tap (nothing below can be edited);
-        // the Opacity greys the block so it reads as inactive at a glance.
-        // The stored values are untouched and come back editable as soon as
-        // the AI detector mode is selected again.
-        IgnorePointer(
-          child: Opacity(
-            opacity: 0.4,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: children,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+    ],
+  );
 
   /// Runs the plugin's engine benchmark (perf review A4) on the currently
   /// selected model and shows the timings. User-triggered on purpose: the
@@ -1168,42 +1183,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           '"visit" with a stable ID — the basis of the visitation rate. The '
           'two settings below are the ones that matter day to day; the '
           'defaults suit insects that land and linger on a flower. '
-          'Fine-tuning and the algorithm\'s own knobs live under Advanced.',
-        ),
-        DropdownButton<TrackerAlgorithm>(
-          value: _c.trackerAlgorithm,
-          isExpanded: true,
-          dropdownColor: Colors.black87,
-          items: const [
-            // Names only (owner, 2026-07-15): no "default"/"experimental"
-            // qualifiers while the two are still being compared in the field.
-            DropdownMenuItem(
-              value: TrackerAlgorithm.bytetrack,
-              child: Text(
-                'ByteTrack',
-                style: TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-            DropdownMenuItem(
-              value: TrackerAlgorithm.cbiou,
-              child: Text(
-                'C-BIoU',
-                style: TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-          ],
-          onChanged: (a) =>
-              setState(() => _c = _c.copyWith(trackerAlgorithm: a)),
-        ),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'How detections are linked frame to frame. ByteTrack predicts '
-            'where each insect went and matches by box overlap; C-BIoU '
-            'enlarges the boxes before comparing them. Both count visits '
-            'the same way, so results stay comparable across sessions.',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
+          'The algorithm choice and its own knobs live under Advanced.',
         ),
         // Occlusion tolerance is exposed in SECONDS (intuitive); it is converted
         // to a frame count at runtime against the live detector FPS, since the
@@ -1250,9 +1230,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   /// The collapsed "Advanced" block of the Visit-tracking section: the
-  /// selected algorithm's own tuning knobs (only the active algorithm's are
-  /// shown, so citizen-science users are never faced with both sets at once),
-  /// a reset button, and the raw-detections evaluation toggle.
+  /// algorithm choice (inside the fold since round 159 — comparing trackers is
+  /// a research task, not day-to-day setup), the selected algorithm's own
+  /// tuning knobs (only the active algorithm's are shown, so citizen-science
+  /// users are never faced with both sets at once), a reset button, and the
+  /// raw-detections evaluation toggle.
   List<Widget> _advancedTrackerSection(
     bool isCbiou,
     ByteTrackParams p,
@@ -1260,22 +1242,47 @@ class _SettingsSheetState extends State<SettingsSheet> {
     CBiouParams cp,
     void Function(CBiouParams) updateC,
   ) => [
-    ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      collapsedIconColor: Colors.white70,
-      iconColor: Colors.white70,
-      shape: const Border(), // no divider lines when expanded
-      collapsedShape: const Border(),
-      title: Text(
-        'Advanced (${isCbiou ? 'C-BIoU' : 'ByteTrack'} tuning)',
-        style: const TextStyle(color: Colors.white, fontSize: 14),
-      ),
-      subtitle: const Text(
-        'Fine-tuning for frame-to-frame matching. The defaults suit insects '
-        'on a flower — most sessions never need these.',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
-      ),
+    _foldSection(
+      title: 'Advanced (${isCbiou ? 'C-BIoU' : 'ByteTrack'} tuning)',
+      subtitle:
+          'Algorithm choice and fine-tuning for frame-to-frame matching. The '
+          'defaults suit insects on a flower — most sessions never need these.',
       children: [
+        DropdownButton<TrackerAlgorithm>(
+          value: _c.trackerAlgorithm,
+          isExpanded: true,
+          dropdownColor: Colors.black87,
+          items: const [
+            // Names only (owner, 2026-07-15): no "default"/"experimental"
+            // qualifiers while the two are still being compared in the field.
+            DropdownMenuItem(
+              value: TrackerAlgorithm.bytetrack,
+              child: Text(
+                'ByteTrack',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+            DropdownMenuItem(
+              value: TrackerAlgorithm.cbiou,
+              child: Text(
+                'C-BIoU',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          ],
+          onChanged: (a) =>
+              setState(() => _c = _c.copyWith(trackerAlgorithm: a)),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'How detections are linked frame to frame. ByteTrack predicts '
+            'where each insect went and matches by box overlap; C-BIoU '
+            'enlarges the boxes before comparing them. Both count visits '
+            'the same way, so results stay comparable across sessions.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ),
         if (isCbiou)
           ..._cbiouFields(cp, updateC)
         else
@@ -1478,19 +1485,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
     });
   }
 
-  // --- Tab 3: Camera & resolution ----------------------------------------
+  // --- Tab 3: Photos — what saved photos look like ------------------------
 
-  Widget _cameraTab() => ListView(
+  Widget _photosTab() => ListView(
     children: [
-      _label(
-        'Live stream resolution (short × long) — caps the fast ROI crop; '
-        'higher may cost FPS.',
-      ),
-      _streamResolutionDropdown(),
-      _streamCeilingNote(),
-      // Directly under the stream dropdown (round 122, owner request): the
-      // two settings are coupled — "Auto" above picks the smallest stream
-      // that can supply this many pixels to a fast crop.
+      // Saved photo side leads the tab (round 159): it answers "how big are
+      // my photos". The live-stream choice that feeds fast crops sits in the
+      // Advanced fold below and, on "Auto", follows this value (round 122
+      // coupling, placement flipped).
       NumericSettingField(
         label: 'Saved photo side (px)',
         value: _c.targetRoiSavedPx.toDouble(),
@@ -1503,15 +1505,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'exactly this size so files stay uniform; photos are NEVER '
             'enlarged to reach it — stretching pixels adds no real detail. '
             'With fast crops (the default) the photo is cut from the live '
-            'stream above, so it can only reach this size when the ROI covers '
-            'that many stream pixels. If not, the "ROI photo source" setting '
+            'analysis stream (see Advanced below), so it can only reach this '
+            'size when the ROI covers that many stream pixels. If not, the '
+            '"ROI photo source" setting '
             'below can force it with slower full-resolution photos ("Auto" '
             'does that per photo, only when needed). When even a '
             'full-resolution photo cannot supply it, the photo saves smaller '
             'and the ROI readout on the camera screen shows ⚠ — move the '
             'phone closer or switch lens. Values snap to a multiple of 32. '
-            'The app ships set to 1024, and the "Auto" stream size above '
-            'follows whatever you enter here.',
+            'The app ships set to 1024, and the "Auto" stream size (in '
+            'Advanced below) follows whatever you enter here.',
         onChanged: (v) => setState(() {
           _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v));
           // The Auto stream pick follows this target (round 122): keep the
@@ -1530,46 +1533,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
         }),
       ),
       const SizedBox(height: 16),
-
-      // 0 = uncapped (the camera's own full rate, ~30/s); 5..30 asks the
-      // camera hardware itself to capture slower. Different from the
-      // inference cap on the AI tab, which only skips frames in software
-      // after the camera already produced them.
-      NumericSettingField(
-        label: 'Camera frame rate cap',
-        value: _c.cameraFpsCap.toDouble(),
-        min: 0,
-        max: 30,
-        isInt: true,
-        unitSuffix: '/s',
-        // Round 110 wording: the old text said "0 = device default" and then
-        // "Default 15", using "default" for two different things (the
-        // camera's own uncapped rate vs the app's factory setting) — the
-        // owner found it confusing in the field. Keep the two ideas in
-        // separate, differently-worded sentences.
-        helperText:
-            'How many frames per second the camera itself captures. Enter 0 '
-            'to remove the cap — the camera then runs at its own full rate '
-            '(~30/s on most phones). Without a cap the sensor and image '
-            'processor run at that full rate the whole session, even while '
-            'the motion gate has the detector asleep — the main reason a '
-            '"sleeping" phone still warms up. Lower = cooler phone but a '
-            'less smooth preview; detection is unaffected as long as this '
-            'stays at or above the inference rate cap. The phone only '
-            'supports certain rates, so the nearest supported one is used. '
-            'The app ships set to 15/s (cooler); note that capping also '
-            'delays high-res photos — measured on the test phone, a '
-            'high-res photo shows the scene ~0.4 s after its trigger at '
-            '15/s vs ~0.17 s uncapped.',
-        onChanged: (v) {
-          final r = v.round();
-          // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.
-          setState(
-            () => _c = _c.copyWith(cameraFpsCap: r == 0 ? 0 : (r < 5 ? 5 : r)),
-          );
-        },
-      ),
-      const Divider(color: Colors.white24),
 
       _label(
         'ROI photo source. Fast crops (the default) cut each photo out of the '
@@ -1634,7 +1597,64 @@ class _SettingsSheetState extends State<SettingsSheet> {
             setState(() => _c = _c.copyWith(highResSyncCompanion: v)),
       ),
       const Divider(color: Colors.white24),
+      const Text(
+        'Photo viewer',
+        style: TextStyle(color: Colors.white70, fontSize: 16),
+      ),
+      // Moved here from the old Graphs tab (round 159): it is a photo-viewer
+      // preference, so it lives with the photo settings. The "1:1" chip in
+      // the summary viewer toggles the same key (cropSquareLock).
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Square (1:1) export crops',
+          style: TextStyle(color: Colors.white),
+        ),
+        subtitle: const Text(
+          'Force the crop-and-export box in the summary photo viewer to a '
+          'square. Off = free rectangle that can hug the insect\'s shape. '
+          'The "1:1" chip next to the crop box toggles this same setting.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        isThreeLine: true,
+        value: _c.cropSquareLock,
+        onChanged: (v) => setState(() => _c = _c.copyWith(cropSquareLock: v)),
+      ),
+      const Divider(color: Colors.white24),
+      // The stream feeds the AI and caps fast crops; on "Auto" it follows the
+      // saved-photo target above, so it sits folded (round 159; the round-122
+      // coupling is unchanged, only the placement flipped).
+      _foldSection(
+        title: 'Advanced (camera stream)',
+        subtitle:
+            'The live video stream the AI reads. "Auto" follows the saved '
+            'photo size above; pick a smaller size manually on a phone that '
+            'runs hot.',
+        children: [
+          _label(
+            'Live stream resolution (short × long) — caps the fast ROI crop; '
+            'higher may cost FPS.',
+          ),
+          _streamResolutionDropdown(),
+          _streamCeilingNote(),
+          const SizedBox(height: 8),
+        ],
+      ),
+      const Divider(color: Colors.white24),
+      _cameraInfoSection(),
+    ],
+  );
 
+  // --- Tab 4: Power — heat, battery and rates -----------------------------
+
+  Widget _powerTab() => ListView(
+    children: [
+      _label(
+        'Controls that trade detection speed against phone heat and battery. '
+        'The defaults suit long field sessions. (The screen-off button on the '
+        'live camera screen saves the most power of all.)',
+      ),
+      const SizedBox(height: 4),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text(
@@ -1697,36 +1717,46 @@ class _SettingsSheetState extends State<SettingsSheet> {
             );
           },
         ),
-        if (_c.autoThrottle) ...[
-          NumericSettingField(
-            label: 'Min inference rate',
-            value: _c.minInferenceFps.toDouble(),
-            min: 1,
-            max: 15,
-            isInt: true,
-            unitSuffix: '/s',
-            helperText:
-                'The lowest the auto-adjust will drop to when the phone is hot, so '
-                'a session stays usable. Default 3.',
-            onChanged: (v) => setState(
-              () => _c = _c.copyWith(minInferenceFps: v.round().clamp(1, 15)),
-            ),
+        // Floor + duty target are expert tuning, folded (round 159); the Max
+        // rate above stays visible as the one day-to-day heat lever.
+        if (_c.autoThrottle)
+          _foldSection(
+            title: 'Advanced (throttle tuning)',
+            subtitle:
+                'The floor and the processor-load target the auto-adjust '
+                'works within. Defaults suit most phones.',
+            children: [
+              NumericSettingField(
+                label: 'Min inference rate',
+                value: _c.minInferenceFps.toDouble(),
+                min: 1,
+                max: 15,
+                isInt: true,
+                unitSuffix: '/s',
+                helperText:
+                    'The lowest the auto-adjust will drop to when the phone is hot, so '
+                    'a session stays usable. Default 3.',
+                onChanged: (v) => setState(
+                  () =>
+                      _c = _c.copyWith(minInferenceFps: v.round().clamp(1, 15)),
+                ),
+              ),
+              NumericSettingField(
+                label: 'Target processor load',
+                value: _c.throttleDutyTarget,
+                min: 0.3,
+                max: 0.8,
+                decimals: 2,
+                helperText:
+                    'How busy the auto-adjust lets the processor stay on detection '
+                    '(0.3–0.8; default 0.50 = about half the time). Lower = cooler and '
+                    'steadier but fewer frames per second; higher = more frames but more '
+                    'heat. Advanced — 0.50 suits most phones.',
+                onChanged: (v) =>
+                    setState(() => _c = _c.copyWith(throttleDutyTarget: v)),
+              ),
+            ],
           ),
-          NumericSettingField(
-            label: 'Target processor load',
-            value: _c.throttleDutyTarget,
-            min: 0.3,
-            max: 0.8,
-            decimals: 2,
-            helperText:
-                'How busy the auto-adjust lets the processor stay on detection '
-                '(0.3–0.8; default 0.50 = about half the time). Lower = cooler and '
-                'steadier but fewer frames per second; higher = more frames but more '
-                'heat. Advanced — 0.50 suits most phones.',
-            onChanged: (v) =>
-                setState(() => _c = _c.copyWith(throttleDutyTarget: v)),
-          ),
-        ],
         const Padding(
           padding: EdgeInsets.only(bottom: 8),
           child: Text(
@@ -1738,6 +1768,47 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ),
       ],
+      const Divider(color: Colors.white24),
+
+      // 0 = uncapped (the camera's own full rate, ~30/s); 5..30 asks the
+      // camera hardware itself to capture slower. Different from the
+      // inference rate cap above, which only skips frames in software after
+      // the camera already produced them. Heat territory, so it lives here
+      // next to that cap (round 159; it sat on the Camera tab before).
+      NumericSettingField(
+        label: 'Camera frame rate cap',
+        value: _c.cameraFpsCap.toDouble(),
+        min: 0,
+        max: 30,
+        isInt: true,
+        unitSuffix: '/s',
+        // Round 110 wording: the old text said "0 = device default" and then
+        // "Default 15", using "default" for two different things (the
+        // camera's own uncapped rate vs the app's factory setting) — the
+        // owner found it confusing in the field. Keep the two ideas in
+        // separate, differently-worded sentences.
+        helperText:
+            'How many frames per second the camera itself captures. Enter 0 '
+            'to remove the cap — the camera then runs at its own full rate '
+            '(~30/s on most phones). Without a cap the sensor and image '
+            'processor run at that full rate the whole session, even while '
+            'the motion gate has the detector asleep — the main reason a '
+            '"sleeping" phone still warms up. Lower = cooler phone but a '
+            'less smooth preview; detection is unaffected as long as this '
+            'stays at or above the inference rate cap. The phone only '
+            'supports certain rates, so the nearest supported one is used. '
+            'The app ships set to 15/s (cooler); note that capping also '
+            'delays high-res photos — measured on the test phone, a '
+            'high-res photo shows the scene ~0.4 s after its trigger at '
+            '15/s vs ~0.17 s uncapped.',
+        onChanged: (v) {
+          final r = v.round();
+          // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.
+          setState(
+            () => _c = _c.copyWith(cameraFpsCap: r == 0 ? 0 : (r < 5 ? 5 : r)),
+          );
+        },
+      ),
       const Divider(color: Colors.white24),
 
       // The capture trigger itself (AI detector / motion photos / time-lapse)
@@ -1775,102 +1846,179 @@ class _SettingsSheetState extends State<SettingsSheet> {
             : (v) => setState(() => _c = _c.copyWith(motionGateEnabled: v)),
       ),
       // Sensitivity tuning is hidden in time-lapse mode (the gate never runs
-      // there); it stays visible in motion mode, where these fields ARE the
-      // capture sensitivity (the trigger dropdown force-enables the gate).
-      if (_c.motionGateEnabled && !_c.timeLapseCapture) ...[
-        // These tuning fields double as the motion-only capture sensitivity
-        // controls — the same gate decides both "wake the detector" and
-        // "take a photo".
-        NumericSettingField(
-          label: 'Wake duration after motion',
-          value: _c.motionGateWakeSeconds,
-          min: 0.5,
-          max: 60,
-          decimals: 1,
-          unitSuffix: 's',
-          // The same wake window has a different practical meaning per mode:
-          // AI mode = how long the detector stays on; motion mode = how long
-          // photos keep being taken (they stop when the gate goes idle).
-          helperText: _c.motionOnlyCapture
-              ? 'How long photos keep being taken after the last motion, '
-                    'before the gate goes back to sleep. Every new movement '
-                    'restarts this window. Default 3 s.'
-              : 'How long the detector keeps running after the last movement '
-                    'or detection. Every new detection restarts this window, '
-                    'so a sitting insect is not lost. Longer = safer recall, '
-                    'less heat saving. Default 3 s.',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
+      // there). In motion mode these fields ARE the capture sensitivity (the
+      // trigger dropdown force-enables the gate), so the fold arrives OPEN
+      // there; in AI mode it is collapsed expert tuning. The ValueKey rebuilds
+      // the tile when the mode flips so initiallyExpanded applies again.
+      if (_c.motionGateEnabled && !_c.timeLapseCapture)
+        _foldSection(
+          key: ValueKey(_c.motionOnlyCapture),
+          title: 'Gate sensitivity',
+          subtitle: _c.motionOnlyCapture
+              ? 'In motion-trigger mode these settings decide what causes a '
+                    'photo.'
+              : 'When the gate wakes and how touchy it is. Defaults suit '
+                    'most flowers.',
+          initiallyExpanded: _c.motionOnlyCapture,
+          children: [
+            // These tuning fields double as the motion-only capture sensitivity
+            // controls — the same gate decides both "wake the detector" and
+            // "take a photo".
+            NumericSettingField(
+              label: 'Wake duration after motion',
+              value: _c.motionGateWakeSeconds,
+              min: 0.5,
+              max: 60,
+              decimals: 1,
+              unitSuffix: 's',
+              // The same wake window has a different practical meaning per mode:
+              // AI mode = how long the detector stays on; motion mode = how long
+              // photos keep being taken (they stop when the gate goes idle).
+              helperText: _c.motionOnlyCapture
+                  ? 'How long photos keep being taken after the last motion, '
+                        'before the gate goes back to sleep. Every new movement '
+                        'restarts this window. Default 3 s.'
+                  : 'How long the detector keeps running after the last movement '
+                        'or detection. Every new detection restarts this window, '
+                        'so a sitting insect is not lost. Longer = safer recall, '
+                        'less heat saving. Default 3 s.',
+              onChanged: (v) =>
+                  setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
+            ),
+            NumericSettingField(
+              label: 'Pixel sensitivity',
+              value: _c.motionGatePixelDelta.toDouble(),
+              min: 5,
+              max: 100,
+              isInt: true,
+              helperText:
+                  'How much a pixel\'s brightness (0–255) must change to count as '
+                  'movement. Lower = more sensitive (wakes on small insects, but also '
+                  'on petal shadows); higher = stricter. Default 25.',
+              onChanged: (v) => setState(
+                () => _c = _c.copyWith(
+                  motionGatePixelDelta: v.round().clamp(5, 100),
+                ),
+              ),
+            ),
+            NumericSettingField(
+              label: 'Trigger area',
+              value: _c.motionGateAreaFraction * 100,
+              min: 0.05,
+              max: 20,
+              decimals: 2,
+              unitSuffix: '%',
+              helperText:
+                  'How much of the ROI must change in one frame to wake the detector. '
+                  'Keep small — an insect covers little of the ROI. Default 0.5%.',
+              onChanged: (v) => setState(
+                () => _c = _c.copyWith(motionGateAreaFraction: v / 100),
+              ),
+            ),
+            NumericSettingField(
+              label: 'Motion grid resolution',
+              value: _c.motionGateGridSize.toDouble(),
+              min: 16,
+              max: 160,
+              isInt: true,
+              helperText:
+                  'Number of cells per side of the motion-check thumbnail (a count, '
+                  'not pixels): the ROI is compared as an N×N mosaic, so each cell '
+                  'watches 1/N of the ROI width. An insect only registers if it '
+                  'spans at least about one cell — e.g. at 48, an insect narrower '
+                  'than ~1/48th (2%) of the ROI width may pass unseen; at 128 '
+                  'anything wider than ~0.8% of the ROI registers. Raise it for '
+                  'small insects relative to your ROI (and consider lowering '
+                  'Trigger area too); higher costs slightly more CPU. Default 48.',
+              onChanged: (v) => setState(
+                () => _c = _c.copyWith(
+                  motionGateGridSize: v.round().clamp(16, 160),
+                ),
+              ),
+            ),
+            NumericSettingField(
+              label: 'Idle check rate (frames/s)',
+              value: _c.motionGateIdleFps.toDouble(),
+              min: 1,
+              max: 30,
+              isInt: true,
+              helperText:
+                  'How many camera frames per second are inspected for motion '
+                  'while the detector sleeps; the rest are dropped before the '
+                  'costly image conversion — the main source of idle heat. Higher '
+                  'wakes faster but runs warmer; an arriving insect is noticed '
+                  'within ~1/rate s (default 5 → ~0.2 s). While awake, every '
+                  'frame is processed regardless, so the camera FPS readout '
+                  'showing ~this number just means the gate is asleep.',
+              onChanged: (v) => setState(
+                () =>
+                    _c = _c.copyWith(motionGateIdleFps: v.round().clamp(1, 30)),
+              ),
+            ),
+          ],
         ),
-        NumericSettingField(
-          label: 'Pixel sensitivity',
-          value: _c.motionGatePixelDelta.toDouble(),
-          min: 5,
-          max: 100,
-          isInt: true,
-          helperText:
-              'How much a pixel\'s brightness (0–255) must change to count as '
-              'movement. Lower = more sensitive (wakes on small insects, but also '
-              'on petal shadows); higher = stricter. Default 25.',
-          onChanged: (v) => setState(
-            () =>
-                _c = _c.copyWith(motionGatePixelDelta: v.round().clamp(5, 100)),
-          ),
-        ),
-        NumericSettingField(
-          label: 'Trigger area',
-          value: _c.motionGateAreaFraction * 100,
-          min: 0.05,
-          max: 20,
-          decimals: 2,
-          unitSuffix: '%',
-          helperText:
-              'How much of the ROI must change in one frame to wake the detector. '
-              'Keep small — an insect covers little of the ROI. Default 0.5%.',
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(motionGateAreaFraction: v / 100)),
-        ),
-        NumericSettingField(
-          label: 'Motion grid resolution',
-          value: _c.motionGateGridSize.toDouble(),
-          min: 16,
-          max: 160,
-          isInt: true,
-          helperText:
-              'Number of cells per side of the motion-check thumbnail (a count, '
-              'not pixels): the ROI is compared as an N×N mosaic, so each cell '
-              'watches 1/N of the ROI width. An insect only registers if it '
-              'spans at least about one cell — e.g. at 48, an insect narrower '
-              'than ~1/48th (2%) of the ROI width may pass unseen; at 128 '
-              'anything wider than ~0.8% of the ROI registers. Raise it for '
-              'small insects relative to your ROI (and consider lowering '
-              'Trigger area too); higher costs slightly more CPU. Default 48.',
-          onChanged: (v) => setState(
-            () =>
-                _c = _c.copyWith(motionGateGridSize: v.round().clamp(16, 160)),
-          ),
-        ),
-        NumericSettingField(
-          label: 'Idle check rate (frames/s)',
-          value: _c.motionGateIdleFps.toDouble(),
-          min: 1,
-          max: 30,
-          isInt: true,
-          helperText:
-              'How many camera frames per second are inspected for motion '
-              'while the detector sleeps; the rest are dropped before the '
-              'costly image conversion — the main source of idle heat. Higher '
-              'wakes faster but runs warmer; an arriving insect is noticed '
-              'within ~1/rate s (default 5 → ~0.2 s). While awake, every '
-              'frame is processed regardless, so the camera FPS readout '
-              'showing ~this number just means the gate is asleep.',
-          onChanged: (v) => setState(
-            () => _c = _c.copyWith(motionGateIdleFps: v.round().clamp(1, 30)),
-          ),
-        ),
-      ],
       const Divider(color: Colors.white24),
-      _cameraInfoSection(),
+      // The old Graphs tab's sampling fields, folded (round 159): nobody
+      // needs them before their first session, and they are thematically at
+      // home here (they sample temperature and power).
+      _foldSection(
+        title: 'Diagnostic graph sampling (advanced)',
+        subtitle:
+            'How often temperature, frame rate and power are sampled for the '
+            '"Extra graphs" in the session summary.',
+        children: [
+          _label(
+            'Lower values give finer graphs but measure more often; the '
+            'defaults are deliberately light so the detection pipeline is '
+            'not slowed down.',
+          ),
+          NumericSettingField(
+            label: 'Frame-rate sample',
+            value: _c.fpsSampleSeconds.toDouble(),
+            min: 1,
+            max: 60,
+            isInt: true,
+            unitSuffix: 's',
+            helperText:
+                'How often (1–60 s) the frame rate is sampled for the '
+                'graph. Already computed every frame, so a sample is '
+                'essentially free. Default 5 s.',
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(fpsSampleSeconds: v.round())),
+          ),
+          NumericSettingField(
+            label: 'Temperature sample',
+            value: _c.thermalSampleSeconds.toDouble(),
+            min: 1,
+            max: 120,
+            isInt: true,
+            unitSuffix: 's',
+            helperText:
+                'How often (1–120 s) the phone temperature is sampled. '
+                'A system call, so kept coarser — heat changes slowly. '
+                'Default 10 s.',
+            onChanged: (v) => setState(
+              () => _c = _c.copyWith(thermalSampleSeconds: v.round()),
+            ),
+          ),
+          NumericSettingField(
+            label: 'Power sample',
+            value: _c.powerSampleSeconds.toDouble(),
+            min: 1,
+            max: 120,
+            isInt: true,
+            unitSuffix: 's',
+            helperText:
+                'How often (1–120 s) battery power (current × voltage) and '
+                'remaining charge are sampled for the energy graphs. A '
+                'system call, so kept coarse — power changes slowly. '
+                'Default 10 s.',
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(powerSampleSeconds: v.round())),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     ],
   );
 
@@ -2136,104 +2284,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
-  /// Reads the persisted "hide setup tips" flag so the switch reflects the
-  /// current state when the sheet opens.
-  Future<void> _loadSetupTipsPref() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hidden = prefs.getBool(kHideSessionInfoPrefKey) ?? false;
-    if (!mounted) return;
-    setState(() => _showSetupTips = !hidden);
-  }
-
-  /// Turns the one-time setup reminder on/off by writing the persisted flag.
-  /// On = reminder shows next time a session screen opens; Off = stays hidden.
-  Future<void> _setShowSetupTips(bool show) async {
-    setState(() => _showSetupTips = show);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(kHideSessionInfoPrefKey, !show);
-  }
-
-  // --- Tab 4: Session-summary graph sampling -----------------------------
-
-  Widget _summaryTab() => ListView(
-    children: [
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Square (1:1) export crops',
-          style: TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text(
-          'Force the crop-and-export box in the summary photo viewer to a '
-          'square. Off = free rectangle that can hug the insect\'s shape. '
-          'The "1:1" chip next to the crop box toggles this same setting.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        isThreeLine: true,
-        value: _c.cropSquareLock,
-        onChanged: (v) => setState(() => _c = _c.copyWith(cropSquareLock: v)),
-      ),
-      const Divider(color: Colors.white24),
-      _label(
-        'How often the diagnostic graphs (temperature, FPS, power — shown '
-        'under "Extra graphs" in the session summary) are sampled while '
-        'recording. Lower values give finer graphs but measure more often; '
-        'the defaults are deliberately light so the detection pipeline is not '
-        'slowed down.',
-      ),
-      const SizedBox(height: 12),
-
-      NumericSettingField(
-        label: 'Frame-rate sample',
-        value: _c.fpsSampleSeconds.toDouble(),
-        min: 1,
-        max: 60,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–60 s) the frame rate is sampled for the '
-            'graph. Already computed every frame, so a sample is essentially '
-            'free. Default 5 s.',
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(fpsSampleSeconds: v.round())),
-      ),
-
-      const Divider(color: Colors.white24),
-
-      NumericSettingField(
-        label: 'Temperature sample',
-        value: _c.thermalSampleSeconds.toDouble(),
-        min: 1,
-        max: 120,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–120 s) the phone temperature is sampled. '
-            'A system call, so kept coarser — heat changes slowly. Default '
-            '10 s.',
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(thermalSampleSeconds: v.round())),
-      ),
-
-      const Divider(color: Colors.white24),
-
-      NumericSettingField(
-        label: 'Power sample',
-        value: _c.powerSampleSeconds.toDouble(),
-        min: 1,
-        max: 120,
-        isInt: true,
-        unitSuffix: 's',
-        helperText:
-            'How often (1–120 s) battery power (current × voltage) and '
-            'remaining charge are sampled for the energy graphs. A system '
-            'call, so kept coarse — power changes slowly. Default 10 s.',
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(powerSampleSeconds: v.round())),
-      ),
-    ],
-  );
-
   /// Dropdown of the camera's actual HAL-supported analysis sizes (verbatim — no
   /// 32-rounding, which would force a non-native size). Labelled "short × long".
   // Parses the estimated analysis ceiling ("WxH") into (area, short, long). Zero
@@ -2447,6 +2497,37 @@ class _SettingsSheetState extends State<SettingsSheet> {
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Text(text, style: const TextStyle(color: Colors.white70)),
+  );
+
+  /// Shared recipe for a collapsed "Advanced"-style section (round 159; same
+  /// styling as the original tracker Advanced fold): zero tile padding, muted
+  /// chevron, no divider lines when expanded. Folding is progressive
+  /// disclosure only — every control inside stays fully editable.
+  Widget _foldSection({
+    Key? key,
+    required String title,
+    String? subtitle,
+    bool initiallyExpanded = false,
+    required List<Widget> children,
+  }) => ExpansionTile(
+    key: key,
+    tilePadding: EdgeInsets.zero,
+    collapsedIconColor: Colors.white70,
+    iconColor: Colors.white70,
+    shape: const Border(), // no divider lines when expanded
+    collapsedShape: const Border(),
+    initiallyExpanded: initiallyExpanded,
+    title: Text(
+      title,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+    ),
+    subtitle: subtitle == null
+        ? null
+        : Text(
+            subtitle,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+    children: children,
   );
 }
 

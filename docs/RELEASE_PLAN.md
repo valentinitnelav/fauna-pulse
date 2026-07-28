@@ -170,7 +170,12 @@ wording move. Reuse existing patterns: the ExpansionTile advanced-fold template
 (`_advancedTrackerSection`, settings_sheet.dart L1256), per-control mode-aware greying,
 conditional children lists.
 
-- [ ] **Round A (core fix):** rename Graphs to Power; move from the Camera tab: the
+All four sub-rounds landed together as **round 159** (2026-07-28): analyzer
+clean, 363 tests pass (4 new for the ⓘ help toggle), no SessionConfig key
+changes. Remaining: the owner's on-device pass across the 3 capture modes
+(settings round-trip, greying, folds, gate fold auto-open in motion mode).
+
+- [x] **Round A (core fix):** rename Graphs to Power; move from the Camera tab: the
       auto-throttle switch + max/min inference rate + duty target (L1638-1740), the
       camera FPS cap (L1538), and the motion gate + its 5 sensitivity fields
       (L1747-1871), keeping all greying logic verbatim. Folds on Power:
@@ -180,7 +185,7 @@ conditional children lists.
       Graphs fields). Power-tab intro sentence points at the live-screen power-save
       button. Re-point cross-reference strings (Setup trigger explainer L363, gate
       subtitle L1760, sheet header comment).
-- [ ] **Round B (Setup + AI + Photos polish):** Setup gains a collapsed "On-screen
+- [x] **Round B (Setup + AI + Photos polish):** Setup gains a collapsed "On-screen
       display" fold (show boxes, info panel, ROI flash, plus "Show FPS" arriving from the
       AI tab L898); session length moves up next to the trigger. AI tab: new fold
       "Advanced (engine & thresholds)" (IoU, GPU switch, CPU threads, benchmark button);
@@ -190,11 +195,11 @@ conditional children lists.
       arrives from Graphs, stream-resolution dropdown goes into an
       "Advanced (camera stream)" fold above the existing lens-info fold. The AI-tab
       whole-greying (r147) stays untouched (everything left on it is detector-only).
-- [ ] **Round C (helper-text density):** per-field info toggle inside
+- [x] **Round C (helper-text density):** per-field info toggle inside
       `NumericSettingField` / `DurationSettingField` (small info icon in the label row;
       the helper paragraph renders only when tapped; ephemeral state, no API change for
       the ~40 call sites). Add the widgets' first widget test.
-- [ ] **Round D (app-level settings home):** "Show setup tips" moves from the sheet to
+- [x] **Round D (app-level settings home):** "Show setup tips" moves from the sheet to
       the home-screen ⋮ menu as a CheckedPopupMenuItem (it is the only app-level
       preference inside the otherwise per-session sheet; `kHideSessionInfoPrefKey`
       unchanged). Extend the home menu test.

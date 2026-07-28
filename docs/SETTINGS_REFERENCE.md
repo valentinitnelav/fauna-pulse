@@ -8,8 +8,19 @@ Source of truth for defaults: `lib/fauna_pulse/models/session_config.dart`
 (the `SessionConfig` constructor). If a default here ever disagrees with that
 file, the file wins — please update this doc.
 
-The Settings sheet is organized into four tabs: **Setup**, **AI**, **Camera**,
-**Graphs**. Below they are grouped by purpose.
+The Settings sheet is organized into four tabs, grouped by what you are trying
+to do (round 159): **Setup** (what am I recording?), **AI** (how does detection
+behave?), **Photos** (what do saved photos look like?), **Power** (heat,
+battery and rates). A first session needs only the Setup tab: output folder,
+capture trigger, session length. Expert settings sit inside collapsed
+**Advanced** sections on each tab — tap to open them; nothing is hidden for
+good. Each numeric setting also keeps its full explanation behind a small ⓘ
+icon: tap the setting's name to show or hide it.
+
+Before round 159 the last two tabs were called **Camera** and **Graphs**, and
+the heat controls (inference throttle, camera frame rate cap, motion gate) sat
+on the Camera tab. If an older screenshot or note mentions those, look on the
+**Power** tab now.
 
 **Mode-aware controls (round 147):** settings that have no effect under the
 selected *Capture trigger* grey out or disappear instead of pretending to be
@@ -26,7 +37,8 @@ come back as soon as a mode that uses them is selected.
 |---|---|---|
 | **Model** | `yolo26n` | Which AI model detects insects. Only the bundled "nano" model ships with the app; other `.tflite` models must be added to the phone first (see [INSTALL.md](INSTALL.md)). Change to use a custom-trained model. |
 | **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
-| **IoU threshold** | `0.7` | Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
+| **IoU threshold** | `0.7` | *(AI tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
+| **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). Run the engine benchmark in the same fold before changing it. |
 
 ## Region of Interest & photos
 
@@ -47,23 +59,28 @@ come back as soon as a mode that uses them is selected.
 |---|---|---|
 | **Session length** | `60 min` | Recording auto-stops after this many minutes. Set to your planned observation window. |
 
-## Speed, heat & battery (AI tab)
+## Speed, heat & battery (Power tab)
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Inference FPS cap** | `10` | Maximum times per second the detector runs. Insect visits last seconds, so ~10/s is plenty and it delays the thermal collapse that happens if the phone runs flat-out under sun. **`0` = uncapped** (raw benchmark mode only). |
 | **Auto-throttle** | `on` | When on, the app automatically lowers the inference rate during the session to keep the phone cool and the rate steady, instead of overheating into a ~3 fps collapse. With it on, the FPS cap above acts as the *ceiling*; with it off, the cap is a fixed manual value. Leave on for field use. |
-| **Minimum inference FPS** | `3` | The lowest rate auto-throttle will drop to, so the session stays usable even when hot. Only used when auto-throttle is on. |
-| **Throttle duty target** | `0.5` | How busy (0–1) auto-throttle tries to keep the processor. Lower = cooler and steadier but fewer FPS; higher = more FPS but more heat. Only used when auto-throttle is on. |
-| **Use GPU when available** | `on` | Prefer the GPU for the model; the app automatically falls back to CPU if the GPU can't run the model (and remembers models that crash the GPU). |
+| **Minimum inference FPS** | `3` | *(Advanced (throttle tuning) fold)* The lowest rate auto-throttle will drop to, so the session stays usable even when hot. Only used when auto-throttle is on. |
+| **Throttle duty target** | `0.5` | *(Advanced (throttle tuning) fold)* How busy (0–1) auto-throttle tries to keep the processor. Lower = cooler and steadier but fewer FPS; higher = more FPS but more heat. Only used when auto-throttle is on. |
+| **Camera frame rate cap** | `15 /s` | How many frames per second the camera *hardware* captures (round 82). Different from the inference cap: that one only skips frames in software, while the sensor + image processor otherwise keep running at full rate the whole session — even while the motion gate has the detector asleep (the main measured reason a "sleeping" phone still warms up). Lower = cooler phone, slightly choppier preview; detection is unaffected while this stays at or above the inference cap. `0` = no cap (~30/s on most phones). Capping also delays high-res photos (~0.4 s content lag at 15/s vs ~0.17 s uncapped on the test phone, round 110); the `_live.jpg` companion covers the trigger moment either way. |
+| **Use GPU when available** | `on` | *(AI tab → Advanced (engine & thresholds))* Prefer the GPU for the model; the app automatically falls back to CPU if the GPU can't run the model (and remembers models that crash the GPU). |
 
-## Motion gate (opt-in; AI tab)
+## Motion gate (opt-in; Power tab)
 
 The motion gate lets the detector **sleep** while nothing moves in the ROI, so
 the phone stays cool during the (usually long) empty-flower stretches of a
 field session. It is **off by default** until validated against always-on
 recall. A cheap brightness comparison against a slowly-learned background does
 the watching (native side, under ~1 ms/frame).
+
+The sensitivity settings sit in a **Gate sensitivity** fold under the switch.
+In motion-trigger mode (where they decide what causes a photo) the fold opens
+by itself; in AI mode it starts collapsed.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
@@ -82,7 +99,7 @@ same way, so results stay comparable across sessions.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Tracker algorithm** | `ByteTrack` | How detections are linked frame to frame. **ByteTrack** predicts where each insect went and matches by box overlap; **C-BIoU** enlarges the boxes before comparing them. Compare them on your own recordings with the replay harness (see "Log raw detections" below) rather than trusting labels. |
+| **Tracker algorithm** | `ByteTrack` | *(inside the Advanced fold since round 159 — comparing trackers is a research task)* How detections are linked frame to frame. **ByteTrack** predicts where each insect went and matches by box overlap; **C-BIoU** enlarges the boxes before comparing them. Compare them on your own recordings with the replay harness (see "Log raw detections" below) rather than trusting labels. |
 | **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low fragments one visit into several IDs; too high can merge separate visits. 3 s was tuned for bees. |
 | **Minimum visit length** | `0.2 s` | How long an insect must be continuously detected before it counts as a confirmed visit (anything briefer is treated as noise). Directly affects visitation rate for brief touchdowns: lower counts more brief visits (and more false blips); higher counts only clear landings. |
 
@@ -108,25 +125,36 @@ on by default since round 152.
 A **Reset tracking to defaults** button in Advanced restores every setting in
 this section (keeping the algorithm choice).
 
-## Camera (Camera tab)
+## Camera stream & lens (Photos tab)
+
+The stream choice sits in the **Advanced (camera stream)** fold: on "Auto" it
+simply follows *Saved photo side*, so most users never open it. The camera
+frame rate cap moved to the Power tab (it is a heat control, see above).
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Stream resolution** | `Auto` | The video resolution the detector analyzes (4:3). The phone delivers the nearest it supports. The short side caps how large a *fast* (no-stall) ROI crop can be — it does **not** affect detection accuracy (every frame is shrunk to the model's input size anyway). **Auto** (round 109, the default until you pick a size) chooses the smallest device-supported size whose short side is ≥ 1024 px, so fast crops can reach the default *Saved photo side* and the slow high-res path (≈0.4–0.8 s behind the trigger on the test phone) is needed less often; sizes above the phone's real analysis ceiling are never auto-picked. Trade-off: larger streams cost more per-frame processing → more heat and battery; on a heat-limited phone pick a small size manually (a manual choice is never overridden). |
-| **Camera frame rate cap** | `15 /s` (app's factory setting) | How many frames per second the camera *hardware* captures (round 82). Different from the inference rate cap: that one only skips frames in software, while the sensor + image processor otherwise keep running at full rate the whole session — even while the motion gate has the detector asleep. This standing camera load was measured to be the main reason a "sleeping" phone still warms up. Lower = cooler phone, slightly choppier preview; detection is unaffected while this stays at or above the inference cap. `0` = **no cap**: the camera runs at its own full rate (~30/s on most phones). The phone only supports certain rates; the nearest supported one is used (logged at session start). Trade-off measured in round 110 (sessions 12/14): capping also slows the *high-res* photo pipeline — a high-res photo's content trails its trigger by ~0.4 s at 15/s vs ~0.17 s uncapped (never negative: true zero-shutter-lag doesn't engage on the test phone either way). If in-sync high-res photos matter more than heat for a session, set 0; the trigger-moment `_live.jpg` companion covers the arrival moment in both cases. |
 | **Lens** | `1.0` (main wide) | Which rear lens, by zoom factor: 1.0 = main wide, 0.5 = ultra-wide, 2.0/3.0 = telephoto. The app snaps to the available lens closest to this value; single-lens phones just stay on their one lens. Use a telephoto/zoom to reach the target photo size on a small flower. |
 | **Focus** | manual/auto/fixed | Locked manual focus is recommended for a mounted session so the flower stays sharp; the log records which mode was used. |
 
-## Display & diagnostics
+## Display & diagnostics (Setup tab → On-screen display fold)
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Show FPS** | `on` | Show the live frames-per-second number. |
+| **Show FPS** | `on` | Show the live frames-per-second number. (Moved from the AI tab in round 159 — it is a display toggle.) |
 | **Show boxes** | `on` | Draw bounding boxes + track-ID labels. Turning off removes per-frame repaint for the lightest preview; detection/tracking still run. |
 | **Show status strip** | `on` | The top-left info strip (FPS, model, engine, stream, ROI size, temperature, track count). |
 | **Flash on capture** | `on` | Briefly flash the ROI border when a photo saves, as a visual cue. Border-only, at photo cadence — never affects FPS. |
 
-## Graphs & logging cadence (Graphs tab)
+Two related toggles live elsewhere:
+
+- **Show setup tips at session start** moved to the home screen's **⋮ menu**
+  (round 159) — it is an app-level preference, not a per-session setting.
+- **Square (1:1) export crops** (Photos tab → "Photo viewer") forces the
+  crop-and-export box in the summary photo viewer to a square; the "1:1" chip
+  next to the crop box toggles the same setting.
+
+## Graphs & logging cadence (Power tab → Diagnostic graph sampling fold)
 
 Frame rate, phone temperature and battery power are always logged while
 recording (the readings are taken for the live preview anyway, so logging them
