@@ -63,7 +63,7 @@ A short path from install to first data. See the linked guides for detail.
 
 1. **Install the app.** Download the latest APK from the [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page, or build from source — both are covered in the [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Add a detection model.** AI modes need a compatible `.tflite` model; import one via the in-app model picker (see [INSTALL.md](docs/INSTALL.md)). Motion-triggered and time-lapse capture work without a model.
+3. **Choose a detection model.** A general-purpose model is bundled, so the app runs immediately after install, but it does **not** recognise insects. To detect insects you need a purpose-trained model, added with **Download…** (a link) or **Import…** (a file) in the model picker. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your flower or observation area and drag the square region of interest (ROI) over it — see the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -125,9 +125,24 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ## Models
 
-Model weights (`.tflite` files) are not stored in this online repository. They can be too large to keep in Git history, and some test detectors may belong to research collaborators and must not be redistributed without approval.
+**Does a fresh install detect insects?** Not yet. The app bundles one general-purpose detector (YOLO26 nano, trained on the everyday-object COCO dataset: people, vehicles, common animals). It ships so that the AI pipeline works the moment you install the app, and so that nothing has to be downloaded in the field, but it does not know what an insect is.
 
-All model binaries should therefore remain Git-ignored for now. See the [Installation & Testing Guide](docs/INSTALL.md) for instructions on importing models.
+To detect insects, add a model trained for that purpose:
+
+- **Download…** in the model picker, pasting a link to a `.tflite` file (for example a GitHub release asset), or
+- **Import…**, selecting a file already on the phone, or
+- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md).
+
+Motion-triggered and time-lapse capture record without any detection model.
+
+Model weights are not stored in this repository. They can be too large to keep in Git history, and some test detectors belong to research collaborators and must not be redistributed without approval, so all model binaries stay Git-ignored. See the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
+
+<!-- OWNER TODO (round 158): the single biggest adoption question for citizen
+     scientists is whether they can get a working insect detector in one click.
+     Decide whether an insect-trained .tflite can be published as a GitHub release
+     asset (licence and collaborator approval), and if so link it here plus in
+     docs/QUICK_START.md, so "Download…" becomes a copy-paste step. -->
+
 
 ## Repository layout
 
@@ -185,6 +200,10 @@ Example (update the year, version and DOI once released):
 > Ștefan, V. et al. (2026). *FaunaPulse: an Android field application for on-device
 > detection, tracking and documentation of flower-visiting insects* (version 0.6.4)
 > [Computer software]. https://github.com/valentinitnelav/fauna-pulse
+
+## Privacy
+
+FaunaPulse collects and transmits nothing: no account, no analytics, no tracking. Detection runs on the phone and everything recorded stays in the app's folder on the device. See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) for the permission-by-permission detail, and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.
 
 ## License
 

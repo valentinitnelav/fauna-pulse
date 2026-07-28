@@ -1,0 +1,15 @@
+# Template for android/key.properties (the real file is git-ignored, never commit it).
+#
+# Easiest path: run `bash scripts/create_release_keystore.sh`, which creates the
+# keystore and writes key.properties for you. Copy this file manually only if you
+# already have a keystore (for example when moving to a new computer).
+#
+# storeFile     absolute path to your .jks keystore (keep it OUTSIDE this repository)
+# storePassword password of the keystore file
+# keyAlias      name of the key inside the keystore
+# keyPassword   password of that key (same as storePassword for PKCS12 keystores)
+
+storeFile=/home/YOUR_USER/faunapulse-release.jks
+storePassword=CHANGE_ME
+keyAlias=faunapulse
+keyPassword=CHANGE_ME

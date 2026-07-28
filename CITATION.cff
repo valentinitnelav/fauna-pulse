@@ -11,7 +11,7 @@ type: software
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
 url: "https://github.com/valentinitnelav/fauna-pulse"
-# TODO: update `version` and `date-released` to match each tagged release.
+# Keep `version` and `date-released` in step with each tagged release.
 version: "0.6.4"
 date-released: "2026-07-20"
 keywords:
@@ -24,9 +24,6 @@ keywords:
   - camera trap
   - Android
 authors:
-  # TODO: replace the placeholder(s) below with the full author list before the
-  # first public release. Add one block per author. `orcid` and `affiliation`
-  # are optional but recommended for a scientific citation.
   - family-names: "Ștefan"
     given-names: "Valentin"
     affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
@@ -39,5 +36,6 @@ authors:
     given-names: "Tiffany"
     affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany & Martin Luther University, Halle, Germany & National Tropical Botanical Garden, Kalāheo, US"
     orcid: "https://orcid.org/0000-0003-0318-1567"
-# TODO: after the first release is archived on Zenodo, add the versioned DOI:
+# Add the Zenodo DOI here once the first release is archived (use the concept DOI,
+# the one that always resolves to the newest version):
 # doi: "10.5281/zenodo.XXXXXXX"

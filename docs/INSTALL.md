@@ -28,9 +28,10 @@ Google Play intends it in this way, but the app is safe to install.
 
 ### A3. Add detection models
 
-The app usually ships **without** model files (they are shared separately — see
-[Getting the models](#getting-the-models)). Once you have one or more `.tflite` model
-files to test, load them in **either** way:
+The app ships with one **general-purpose** model, so it runs immediately, but that
+model does not recognise insects. For insect work you need a purpose-trained model
+(see [Getting the models](#getting-the-models)). Once you have one or more `.tflite`
+model files to test, load them in **either** way:
 
 - **In-app (easiest):** open **FaunaPulse → Settings (gear icon) → Import…**,
   then pick the `.tflite` file(s) you downloaded (e.g. from your **Downloads** folder).
@@ -84,7 +85,7 @@ flutter pub get           # retrieve or upgrade flutter dependencies
 Models are **not** in the repo (see [Getting the models](#getting-the-models)).
 Two options:
 
-- build/run first, then use the in-app **Import…** button (Track A4).
+- build/run first, then use the in-app **Import…** button (Track A3).
 - **Bundle them into your build:** copy the model files you were given into
   `assets/models/` (general models) and `assets/models/custom/` (custom detectors)
   *before* building. These folders are git-ignored, so your models never get committed.
@@ -140,7 +141,49 @@ Two options:
 
    > Note that in the path used above, `~/InsectDetectApp/sessions/logcats/` is an example on my local computer at the time of writing this guide.
 
-### B4. Or build an installable `.apk` to share
+### B4. Set up release signing (one time, maintainers only)
+
+Every Android app file is **signed** with a cryptographic key. Android will only
+install an update if the new file is signed with the **same** key as the version
+already on the phone, which is how it knows the update really comes from you and not
+from someone else. That key lives in a **keystore** file (`.jks`), protected by a
+password.
+
+Two consequences worth understanding before you create one:
+
+- **Losing the keystore or its password is permanent.** Nobody can recover it, not
+  even Google. Every user would have to uninstall and reinstall to move to a new key,
+  losing their local sessions. Back it up in at least two places.
+- **Use the same key everywhere.** If FaunaPulse is later published on Google Play,
+  upload this same key to Play App Signing. Otherwise a Play install and a
+  GitHub-download install become two incompatible apps that cannot update each other.
+
+Create the key once with the helper script (it asks for a password, which is never
+displayed or stored in the repository):
+
+```bash
+cd fauna-pulse
+bash scripts/create_release_keystore.sh
+```
+
+It writes two things:
+
+| File | What it is | In git? |
+|---|---|---|
+| `~/faunapulse-release.jks` | the keystore itself (kept outside the repository) | no, back it up yourself |
+| `android/key.properties` | tells Gradle where the keystore is and its password | no, git-ignored |
+
+If you already have a keystore (for instance on a second computer), skip the script
+and copy `android/key.properties.example` to `android/key.properties`, filling in your
+own path and passwords. On a build server you can instead set the environment
+variables `ANDROID_STORE_FILE`, `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD`.
+
+Release builds deliberately fail with an explanatory message if this is missing, so an
+unsigned or debug-signed app can never be published by accident. Debug builds
+(`flutter run`, `flutter build apk --debug`) need none of this.
+
+### B5. Or build an installable `.apk` to share
 
 ```bash
 cd fauna-pulse           # navigate to the git repository (cloned on your computer)

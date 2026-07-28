@@ -493,6 +493,18 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 - **Full history & rationale:** `AGENT_CHANGELOG.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
 - **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index), `MODEL_CONVERSION.md` (r150: collaborator guide — accepted model formats, pt→tflite export, INT8 calibration, why no generic ONNX; r155: leads with the one-command calibration-free `format=litert quantize=w8a32` export). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
 - **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; Parts A/B complete r79; Part C (r128) vs upstream 0.6.10: plugin at parity — C1 deadline-scheduler cap DONE r129 + field-verified r130 (true 10.0 at cap 10/camera 15); C2/C3 done: thermal governor ≥40 °C throttles the CAMERA hardest (session_27: cam 1.6–3 fps, inference fine; auto-throttle recovered as designed), toBitmap 0.3→4.4 ms at 640→1440 stream (guidance only); C5 DONE r131 (pipeline-FPS now interval-EMA like the native detector FPS — reads a true 10, was ~11 rate-EMA Jensen bias); OPEN: C4 micro-ports likely skip, record corrected r153. Part D (r153): fresh upstream main is STILL 0.6.10, parity stands, no live-FPS gains to port; D1 DONE r154 (fast ROI crop now runs on `stillExecutor` via `captureRoiFromFrameAsync`, callback on main thread); D2 DONE r155 (format=litert NCHW support, detect-only: input/output name probes + `inputUsesNchw` + CHW packing via the fork's LUT; Stage A guard subsumed, OrtQnn transpose untouched); D3 DONE r156 (`includeAnnotatedImage: false` on the batch/SAHI predict path; wire key sent only when false, native default true). Part D fully closed — D4 is a skipped-leads record, no open work).
+- **Build/release config (r158):** SDK levels are PINNED in `android/app/build.gradle`
+  (`compileSdk 36`, `minSdk 24`, `targetSdk 36` — no longer `flutter.*SdkVersion`; Play
+  requires target 36 for new apps from 2026-08-31). Release builds fail fast without a
+  keystore (`scripts/create_release_keystore.sh` writes `android/key.properties`) AND
+  without the bundled model (escape hatch `-PallowMissingBundledModels`).
+  `fetchBundledModels` now calls `fauna-pulse/scripts/fetch_bundled_models.sh` (ours)
+  which fetches ONLY `yolo26n_int8.tflite` into `assets/models/` — do NOT re-point it at
+  the plugin's script (writes to the plugin example app, pulls the 6 task variants r119
+  deleted). Root `PRIVACY_POLICY.md` + human `CHANGELOG.md` exist now.
+  KEY FACT for user-facing docs: the bundled yolo26n is a general-purpose COCO model, so
+  a fresh install runs the AI pipeline but detects NO insects (open owner decision:
+  whether an insect model can be published as a release asset).
 - **Release plan (r157):** `docs/RELEASE_PLAN.md` — phased checklist for the first public
   release (Zenodo DOI, GitHub+Obtainium and Google Play distribution, citizen-scientist
   docs, settings-sheet reorg where the Graphs tab becomes Power and the heat controls move

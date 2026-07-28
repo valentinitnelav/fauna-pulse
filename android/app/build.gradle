@@ -17,7 +17,13 @@ def hasReleaseSigning = (keystoreProperties["storeFile"] ?: System.getenv("ANDRO
 
 android {
     namespace = "com.ultralytics.yolo"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned instead of flutter.compileSdkVersion (round 158). The Flutter-provided
+    // values follow whichever Flutter SDK happens to be installed, so the API level
+    // the app is built and tested against could change silently under us. Google Play
+    // requires new apps to target API 36 from 2026-08-31, so that number must be a
+    // deliberate, reviewable choice. These match Flutter 3.44 defaults, so pinning
+    // them changed no behaviour on the day it was introduced.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -40,8 +46,16 @@ android {
         // (The internal Kotlin namespace stays com.ultralytics.yolo — it's not
         // user-visible and renaming it would mean moving all native sources.)
         applicationId = "com.faunapulse.app"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // Pinned (round 158), see the compileSdk note above.
+        // minSdk 24 = Android 7.0. The vendored plugin's own floor is 23 (LiteRT),
+        // but the release build already dexed at 24, so this changes nothing and
+        // keeps the supported-device set stable.
+        minSdk = 24
+        // targetSdk 36 = Android 16. Required by Google Play for new apps from
+        // 2026-08-31. Raising it later means re-testing the camera preview, the
+        // recording foreground service and the notification permission, since each
+        // Android release tightens those.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -84,10 +98,28 @@ android {
 }
 
 // Fail fast — before any compilation — when a release build is requested without
-// release signing. Attached to preReleaseBuild (an early step that only runs for
-// release variants), so debug and profile builds are completely unaffected.
+// release signing, or without the bundled detection model. Attached to
+// preReleaseBuild (an early step that only runs for release variants), so debug and
+// profile builds are completely unaffected.
+def bundledDefaultModel = new File(rootProject.projectDir, "../assets/models/yolo26n_int8.tflite")
+def allowMissingBundledModel = project.hasProperty("allowMissingBundledModels")
+
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {
+        // A release APK without the bundled model still runs, but every user would
+        // need internet on first launch to fetch it — unacceptable for a field app
+        // that is meant to work offline. fetchBundledModels normally supplies it.
+        if (!bundledDefaultModel.exists() && !allowMissingBundledModel) {
+            throw new GradleException(
+                "The default detection model is missing, refusing to build a release " +
+                "APK that needs a first-run download.\n\n" +
+                "Expected: assets/models/yolo26n_int8.tflite\n\n" +
+                "Fix: run the fetch script (it needs internet once)\n" +
+                "    bash scripts/fetch_bundled_models.sh\n\n" +
+                "or, to build anyway (the app will download the model on first use):\n" +
+                "    flutter build apk --release -PallowMissingBundledModels"
+            )
+        }
         if (!hasReleaseSigning) {
             throw new GradleException(
                 "Release signing is not configured, refusing to build a release APK " +
@@ -99,9 +131,9 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
                 "    keyPassword=<key password>\n\n" +
                 "or set the ANDROID_STORE_FILE, ANDROID_STORE_PASSWORD, " +
                 "ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD environment variables.\n\n" +
-                "To create a keystore (one-time):\n" +
-                "    keytool -genkey -v -keystore ~/faunapulse-release.jks " +
-                "-keyalg RSA -keysize 2048 -validity 10000 -alias faunapulse\n\n" +
+                "To create a keystore (one-time), from the repository root:\n" +
+                "    bash scripts/create_release_keystore.sh\n" +
+                "(it also writes android/key.properties; see docs/INSTALL.md section B4)\n\n" +
                 "Debug builds (flutter run / flutter build apk --debug) are unaffected."
             )
         }
@@ -121,13 +153,17 @@ dependencies {
     implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
 }
 
-// Bundle the nano YOLO models into the app at build time. They are NOT committed to git (large binaries, gitignored);
-// this fetches them into example/assets/models/ before assets are merged so the app ships with them by default. The
-// resolver checks assets/models/ before downloading, so a bundled model means no first-run network fetch. Best-effort:
-// the script always exits 0, so an offline build still succeeds and simply falls back to the runtime download.
+// Bundle the default detection model into the app at build time. Model binaries are NOT committed to git (large
+// files, and some collaborator detectors are not redistributable), so a fresh clone has none; this fetches the one
+// default model into assets/models/ before assets are merged, so the installed app works with no network. The
+// resolver checks assets/models/ before downloading, so a bundled model means no first-run network fetch.
+// Best-effort: the script always exits 0, so an offline debug build still succeeds and falls back to the runtime
+// download (release builds are blocked instead, see the preReleaseBuild guard above).
+// Round 158 fix: the path used to point outside the repository (../../scripts) at the plugin's script, which writes
+// into the PLUGIN's example app and pulls six unused task variants; both were silently swallowed by ignoreExitValue.
 tasks.register("fetchBundledModels", Exec) {
     workingDir = rootProject.projectDir
-    commandLine "bash", "${rootProject.projectDir}/../../scripts/fetch_bundled_models.sh", "android"
+    commandLine "bash", "${rootProject.projectDir}/../scripts/fetch_bundled_models.sh"
     ignoreExitValue = true
 }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("fetchBundledModels") }

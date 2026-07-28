@@ -36,47 +36,72 @@ yet, no release keystore, docs written for researchers.
 | Zenodo webhook enabled | **before the first git tag** | Zenodo cannot mint DOIs for pre-existing releases |
 | Android developer verification | enforcement 2026-09-30 (BR, ID, SG, TH), global 2027 | Play registration satisfies it; also protects the GitHub-APK channel on certified devices |
 
-## Known build-config gaps (verified 2026-07-28)
+## Build-config state
 
-- `android/key.properties` missing, so `flutter build apk --release` fails fast by design
-  (keystore instructions already sit in `android/app/build.gradle` L89-109).
-- `minSdk`/`targetSdk`/`compileSdk` not pinned (they float with the installed Flutter SDK).
-- The `fetchBundledModels` preBuild task (`build.gradle` L128-132) points at
-  `<root>/../../scripts/` but the script lives at
-  `packages/ultralytics_yolo/scripts/fetch_bundled_models.sh`, and `ignoreExitValue=true`
-  hides the failure: a clean clone can silently build WITHOUT bundled models.
-- The stale `build/.../app-release.apk` (129 MB) still carries the old id
+Fixed in round 158:
+- SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
+  `compileSdk 36` (verified in the built APK). They previously followed whichever
+  Flutter SDK was installed. The Play API-36 deadline is therefore already met.
+- `fetchBundledModels` now runs `fauna-pulse/scripts/fetch_bundled_models.sh` (new,
+  ours) and downloads ONLY the default `yolo26n_int8.tflite` into `assets/models/`.
+  It used to point outside the repo at the plugin's script, which writes into the
+  plugin's own example app and pulls six unused task variants.
+- Release builds are blocked when the bundled model is missing (escape hatch:
+  `-PallowMissingBundledModels`). Note the ordering: `fetchBundledModels` runs first,
+  so on an online machine the model is simply downloaded and the guard never fires; it
+  is an offline/failed-download backstop.
+- `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
+  section B4 make signing setup a one-command step.
+
+Still open:
+- [ ] **The owner must run the keystore script once** and back the keystore up. Until then
+  `flutter build apk --release` fails by design (verified: fails in ~33 s, before
+  compilation, with instructions).
+- [ ] The stale `build/.../app-release.apk` (129 MB) still carries the old id
   `com.pollinatormonitor.app`. Never ship it; rebuild.
-- The two camera `uses-feature` manifest entries default to required=true (narrows Play
+- [ ] The two camera `uses-feature` manifest entries default to required=true (narrows Play
   device eligibility; decide whether to mark them `android:required="false"`).
-- `ic_launcher-playstore.png` is 1.1 MB; the Play listing icon must be 512x512 and
+- [ ] `ic_launcher-playstore.png` is 1.1 MB; the Play listing icon must be 512x512 and
   at most 1 MB (recompress).
-- Universal APK ships 4 ABIs (CPU architectures); GitHub releases should use
+- [ ] Universal APK ships 4 ABIs (CPU architectures); GitHub releases should use
   `--split-per-abi` so each APK is far smaller.
+
+## Open question for the owner
+
+The bundled `yolo26n` is a general-purpose COCO detector: it makes the AI pipeline run
+out of the box but it does **not** recognise insects. So a citizen scientist who
+installs the app today cannot detect insects without obtaining a model from somewhere.
+Decide whether an insect-trained `.tflite` may be published as a public GitHub release
+asset (licence, collaborator approval). If yes, the "Download…" button becomes a
+copy-paste step and QUICK_START can promise real detections. If no, the docs must say
+plainly that AI mode needs a model the user supplies. Marked as an OWNER TODO comment
+in README (§Models).
 
 ---
 
 ## Phase 0: release prerequisites (repo hygiene, ~1 round)
 
 - [x] Create this `docs/RELEASE_PLAN.md` and a Claude memory pointer to it (round 157).
-- [ ] Generate the release keystore, create `android/key.properties` (already gitignored),
-      and BACK UP the keystore off-machine (losing it means losing the update channel).
-      Document in INSTALL.md that release builds need it.
-- [ ] Pin `minSdk` (23 or 24), `targetSdk` 36, `compileSdk` in `android/app/build.gradle`.
-      Target 36 may require a Flutter upgrade first; run the full test suite after.
-- [ ] Fix the `fetchBundledModels` script path; consider making a missing model fail the
-      RELEASE build loudly.
-- [ ] Write `PRIVACY_POLICY.md` (repo root; a public GitHub URL satisfies Play): fully
-      offline processing, what CAMERA / location / INTERNET are for, one GPS fix per
-      session stored locally only, EXIF only on user-exported crops, user-initiated
-      problem reports, no analytics or trackers. Include a short data-ethics note
-      (protected-species locations; `redactLocation` already strips coordinates from
-      problem reports).
-- [ ] `docs/FIELD_GUIDE.md`: fix the heading typo ("FaunaPulseing") and fill or remove the
-      visible TODO at line 25 (owner writes phone-mount / distance / lighting tips, the
-      single most-wanted content for a first-time user).
-- [ ] Start a human-facing `CHANGELOG.md` (short entries per release;
-      AGENT_CHANGELOG.md stays the dev journal).
+- [x] Signing made a one-command step: `scripts/create_release_keystore.sh`,
+      `android/key.properties.example`, INSTALL.md section B4 (round 158).
+- [ ] **OWNER: run `bash scripts/create_release_keystore.sh` once, then back the
+      keystore up** in two places plus the password in a password manager. Losing it
+      means no user can ever update the app.
+- [x] Pin `minSdk 24` / `targetSdk 36` / `compileSdk 36` (round 158; verified in the
+      built APK, tests and analyze clean).
+- [x] Fix `fetchBundledModels` and block release builds with no bundled model
+      (round 158).
+- [x] `PRIVACY_POLICY.md` at the repo root (round 158): offline processing, permission
+      table, the two model-download exceptions, problem reports with location
+      redaction, protected-species note.
+- [x] `CITATION.cff`: stale TODO comments removed (round 158); DOI line stays commented
+      until Phase 1.
+- [x] README: bundled model explained honestly ("runs out of the box, does not know
+      insects"); INSTALL.md A3 aligned (round 158).
+- [x] `docs/FIELD_GUIDE.md`: title typo fixed, physical-setup section written from what
+      the code guarantees, with an OWNER TODO comment for the field knowledge only the
+      owner has (mount model, distance in cm, lighting/glare, wind) (round 158).
+- [x] Start a human-facing `CHANGELOG.md` (round 158).
 - [ ] Rebuild and smoke-test a release APK with the new keystore on a device (note: the
       Xiaomi test phone normally deploys debug builds only, MIUI quirk; use the Samsung
       or the "Install via USB" workaround for release-build testing).

@@ -1,4 +1,4 @@
-# Field Guide — Running a FaunaPulseing Session
+# Field Guide — Running a FaunaPulse Session
 
 **Who this is for:** the researcher operating the app in the field. It assumes
 the app is already installed (see [INSTALL.md](INSTALL.md)) and covers the
@@ -22,9 +22,29 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 - **Pick your model and settings ahead of time** so you're not fiddling in the
   sun. Settings persist between sessions, so last-used values reappear.
 
-> **TODO (owner knowledge):** physical field setup — recommended phone mount,
-> distance from the flower so the ROI meets your target photo resolution, and
-> lighting/glare tips. Fill in from field experience.
+### Physical setup
+
+- **Mount the phone, do not hold it.** Any camera movement looks like subject
+  movement, so a handheld phone keeps the motion gate permanently awake and adds
+  blur to saved photos. Use a tripod, clamp or stake with a phone holder, and check
+  that it stays put in wind.
+- **Portrait orientation.** The app is portrait-only; the mount has to hold the
+  phone upright.
+- **Distance to the flower.** There is no single correct distance: let the on-screen
+  readout decide it. Move the phone closer until the region of
+  interest covers the flower *and* the label shows your target saved size with no
+  ⚠ warning. Closer means more pixels on the insect, but a smaller area watched.
+- **Power.** Plan for a power bank on any session longer than a few tens of minutes
+  (see §8 on heat and battery).
+
+<!-- OWNER TODO (round 158): add your own field experience to this section before
+     the first public release. Specifically: (a) which mount/clamp you actually use,
+     (b) typical phone-to-flower distance in cm for your setup and target resolution,
+     (c) lighting and glare (sun behind the phone or behind the flower, midday
+     reflections, shading tricks), (d) how you deal with wind-moved vegetation.
+     These are the questions a first-time user asks and nothing in the code answers
+     them. -->
+
 
 - **Location & flight mode (round 126).** The app takes ONE GPS fix per session
   (pin button on the camera screen; green = set). The GPS receiver still works in
