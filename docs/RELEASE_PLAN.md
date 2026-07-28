@@ -39,26 +39,28 @@ yet, no release keystore, docs written for researchers.
 ## Build-config state
 
 Fixed in round 158:
-- SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
+
+- [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
   Flutter SDK was installed. The Play API-36 deadline is therefore already met.
-- `fetchBundledModels` now runs `fauna-pulse/scripts/fetch_bundled_models.sh` (new,
+- [x] `fetchBundledModels` now runs `fauna-pulse/scripts/fetch_bundled_models.sh` (new,
   ours) and downloads ONLY the default `yolo26n_int8.tflite` into `assets/models/`.
   It used to point outside the repo at the plugin's script, which writes into the
   plugin's own example app and pulls six unused task variants.
-- Release builds are blocked when the bundled model is missing (escape hatch:
+- [x] Release builds are blocked when the bundled model is missing (escape hatch:
   `-PallowMissingBundledModels`). Note the ordering: `fetchBundledModels` runs first,
   so on an online machine the model is simply downloaded and the guard never fires; it
   is an offline/failed-download backstop.
-- `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
+- [x] `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
   section B4 make signing setup a one-command step.
 
 Still open:
-- [ ] **The owner must run the keystore script once** and back the keystore up. Until then
+
+- [x] **The owner must run the keystore script once** and back the keystore up. Until then
   `flutter build apk --release` fails by design (verified: fails in ~33 s, before
   compilation, with instructions).
-- [ ] The stale `build/.../app-release.apk` (129 MB) still carries the old id
-  `com.pollinatormonitor.app`. Never ship it; rebuild.
+- [x] The stale `build/.../app-release.apk` with the old id `com.pollinatormonitor.app`
+  was overwritten by the 2026-07-28 rebuild (now `com.faunapulse.app`, release-signed).
 - [ ] The two camera `uses-feature` manifest entries default to required=true (narrows Play
   device eligibility; decide whether to mark them `android:required="false"`).
 - [ ] `ic_launcher-playstore.png` is 1.1 MB; the Play listing icon must be 512x512 and
@@ -84,7 +86,7 @@ in README (§Models).
 - [x] Create this `docs/RELEASE_PLAN.md` and a Claude memory pointer to it (round 157).
 - [x] Signing made a one-command step: `scripts/create_release_keystore.sh`,
       `android/key.properties.example`, INSTALL.md section B4 (round 158).
-- [ ] **OWNER: run `bash scripts/create_release_keystore.sh` once, then back the
+- [x] **OWNER: run `bash scripts/create_release_keystore.sh` once, then back the
       keystore up** in two places plus the password in a password manager. Losing it
       means no user can ever update the app.
 - [x] Pin `minSdk 24` / `targetSdk 36` / `compileSdk 36` (round 158; verified in the
@@ -102,9 +104,12 @@ in README (§Models).
       the code guarantees, with an OWNER TODO comment for the field knowledge only the
       owner has (mount model, distance in cm, lighting/glare, wind) (round 158).
 - [x] Start a human-facing `CHANGELOG.md` (round 158).
-- [ ] Rebuild and smoke-test a release APK with the new keystore on a device (note: the
-      Xiaomi test phone normally deploys debug builds only, MIUI quirk; use the Samsung
-      or the "Install via USB" workaround for release-build testing).
+- [x] Rebuild and smoke-test a release APK with the new keystore on a device
+      (2026-07-28: 122.1 MB release APK built and installed on the Samsung; the first
+      install attempt failed with INSTALL_FAILED_UPDATE_INCOMPATIBLE because the phone
+      still carried a debug-signed build, expected one-time step, resolved by
+      uninstalling first). Convention going forward: Samsung = release-test phone,
+      Xiaomi = debug/dev phone, so the two signatures never fight on the same device.
 
 ## Phase 1: v0.7.0 GitHub release + Zenodo DOI (~1 round + owner web steps)
 

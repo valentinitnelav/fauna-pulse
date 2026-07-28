@@ -128,7 +128,7 @@ Two options:
    
    ```bash
    cd fauna-pulse    # navigate to this git repository (cloned on your computer)
-   flutter run -d 2b2dc560  # will run the app on mobile device id "2b2dc560"
+   flutter run -d 2b2dc560  # will run the app (debug mode) on mobile device id "2b2dc560"
    # -d stands for --device-id
    ```
 
@@ -202,7 +202,7 @@ The file appears at `.../build/app/outputs/flutter-apk/app-release.apk` (or
 `app-debug.apk`). Note that these files are overwritten. 
 That's exactly the file used in **Track A**. Share it via a GitHub Release or a private link.
 
-To deploy the app (the `app-release.apk`) on a smartphone:
+To deploy the app (the `app-release.apk`) on a specific smartphone:
 
 ```bash
 cd fauna-pulse           # navigate to the git repository

@@ -77,7 +77,7 @@ themselves carry no EXIF).
 ## Changes to this policy
 
 Any change will be committed to this file in the public repository, so the version
-history is the record. The date at the top shows the latest revision.
+history is the record.
 
 ## Contact
 
