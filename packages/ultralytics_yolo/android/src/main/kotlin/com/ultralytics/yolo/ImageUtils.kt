@@ -446,22 +446,39 @@ object ImageUtils {
     }
 
     // FloatArray variant for the LiteRT 2.x CompiledModel path (TensorBuffer.writeFloat takes a float[], not a
-    // ByteBuffer). Writes planar-free interleaved RGB, normalized to [0,1] by default. `out` must be width*height*3.
+    // ByteBuffer). Writes interleaved HWC RGB, or planar CHW (all R values, then all G, then all B) when
+    // [channelsFirst] — NCHW litert-torch (`format=litert`) exports need that (round 155). Normalized to
+    // [0,1] by default via the cached LUT above. `out` must be width*height*3.
     @JvmStatic
     fun copyRgbBitmapToFloatArray(
         bitmap: Bitmap,
         out: FloatArray,
         pixels: IntArray,
         inputMean: Float = 0f,
-        inputStd: Float = 255f
+        inputStd: Float = 255f,
+        channelsFirst: Boolean = false
     ) {
         val lut = normalizationLut(inputMean, inputStd)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        var j = 0
-        for (pixel in pixels) {
-            out[j++] = lut[(pixel shr 16) and 0xFF]
-            out[j++] = lut[(pixel shr 8) and 0xFF]
-            out[j++] = lut[pixel and 0xFF]
+        val pixelCount = bitmap.width * bitmap.height
+        if (channelsFirst) {
+            var r = 0
+            var g = pixelCount
+            var b = pixelCount * 2
+            for (i in 0 until pixelCount) {
+                val pixel = pixels[i]
+                out[r++] = lut[(pixel shr 16) and 0xFF]
+                out[g++] = lut[(pixel shr 8) and 0xFF]
+                out[b++] = lut[pixel and 0xFF]
+            }
+        } else {
+            var j = 0
+            for (i in 0 until pixelCount) {
+                val pixel = pixels[i]
+                out[j++] = lut[(pixel shr 16) and 0xFF]
+                out[j++] = lut[(pixel shr 8) and 0xFF]
+                out[j++] = lut[pixel and 0xFF]
+            }
         }
     }
 

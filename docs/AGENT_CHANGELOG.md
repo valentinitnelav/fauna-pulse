@@ -5419,3 +5419,42 @@ delivery and UI by that much.
   smoke test: photos at ~1 Hz while watching box smoothness, once at 640x480
   and once at 1440x1080.
 
+## Round 155 (2026-07-27): D2, format=litert (NCHW) model support (detect-only)
+
+Implements Part D's D2 at the owner's request, Stage B directly (which subsumes
+the Stage A load guard: NCHW models now load and run, so there is nothing to
+reject). `yolo export format=litert` (the current documented Ultralytics Android
+export; official `*_w8a32.tflite` assets) produces NCHW `[1,3,H,W]` models with
+input `args_0` and outputs `output_N`; the fork previously understood only the
+legacy onnx2tf convention (`images`/`Identity_N`, NHWC), and such a model would
+"load" then throw every frame (0 fps, endless "Calibrating").
+
+- `LiteRtModel.kt`: input-name probe (`images`, `args_0`, `input`, `input_1`,
+  `serving_default_input`); NCHW detected from the native shape AFTER the
+  fork-only TFLite-graph fallback so both resolution paths pass the test (r153
+  hazard 1); the graph fallback is kept over upstream's sqrt(count/3) buffer
+  guess (hazard 2); `inputDims` stays NHWC-convention, new `inputUsesNchw`
+  property; outputs probed as `output_$i` then `Identity`/`Identity_$i`; the
+  compile log line now prints `layout=NCHW|NHWC`.
+- `Predictor.kt`: `InferenceModel.inputUsesNchw` with default `false`, so
+  `OrtQnnModel` keeps its internal HWC-to-CHW transpose untouched (the r153
+  deliberate skip stands); only `LiteRtModel` overrides it.
+- `ImageUtils.kt`: `copyRgbBitmapToFloatArray` gained `channelsFirst` (planar
+  CHW branch, all R then all G then all B) using the fork's cached
+  `normalizationLut`, NOT upstream's invStd multiply (hazard 3).
+- `ObjectDetector.kt`: passes `channelsFirst = rtModel.inputUsesNchw`.
+  Detect-only scope: Segmenter protoNchw and the other predictors deliberately
+  not ported (unreachable in FaunaPulse).
+- `MODEL_CONVERSION.md`: now leads with ONE export command, `format=litert
+  quantize=w8a32` (dynamic-range quantization, NO calibration dataset, embedded
+  Ultralytics metadata, requires `ultralytics>=8.4.83`); the legacy
+  `format=tflite` exports stay documented, full INT8 kept as the low-end-CPU
+  option (Galaxy M12 datapoint stands).
+- No new tunable (the layout is auto-detected, nothing to configure); the model
+  picker filter is unchanged (`.tflite` was already accepted, r150).
+- Verified: `flutter analyze` clean, 356 tests pass, debug APK builds. Owner
+  on-device test: Settings → AI → Model → Download… with
+  https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.6.6/yolo26n_w8a32.tflite
+  then confirm boxes appear, logcat shows "layout=NCHW", and run the engine
+  benchmark (GPU vs CPU) on it.
+

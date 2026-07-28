@@ -18,7 +18,11 @@ import com.google.ai.edge.litert.TensorType
  * on GPU (verified: arthropod_yolov11_int8, session_120). Unlike the old `Interpreter`+`GpuDelegate`, `CompiledModel` compiles the whole graph for one
  * accelerator, so a model either runs fully on GPU or fully on CPU - no per-op fragmentation.
  *
- * Tensor names follow the Ultralytics tflite export convention: input `images`, outputs `Identity`, `Identity_1`, ...
+ * Tensor names follow the Ultralytics tflite export conventions (round 155): legacy onnx2tf exports use input
+ * `images` and outputs `Identity`, `Identity_1`, ...; litert-torch (`format=litert`) exports use input `args_0`
+ * and outputs `output_0`, `output_1`, .... The input layout is detected from the input tensor shape: legacy
+ * exports are NHWC `[1,H,W,3]`, litert-torch exports are NCHW `[1,3,H,W]`. [inputDims] is always reported in
+ * the NHWC convention so predictors stay layout-agnostic; [inputUsesNchw] tells them when to write CHW planes.
  */
 class LiteRtModel(
     private val context: android.content.Context,
@@ -36,6 +40,7 @@ class LiteRtModel(
         val inputBuffers: List<TensorBuffer>,
         val outputBuffers: List<TensorBuffer>,
         val inputDims: IntArray,
+        val nchw: Boolean,
         val outputElementCounts: IntArray,
         val outputDims: List<IntArray>,
         val outputTypes: List<TensorType.ElementType?>,
@@ -49,8 +54,14 @@ class LiteRtModel(
     /** Accelerator actually in use after the ladder resolves: "GPU" or "CPU". */
     override val accelerator: String
 
-    /** Input tensor dimensions, e.g. [1, 640, 640, 3]. Empty if the model doesn't use the conventional `images` name. */
+    /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3], regardless of the model's native
+     *  layout (NCHW litert-torch shapes are reported transposed). Empty if the shape can't be read by any
+     *  known input name or from the TFLite graph. */
     override val inputDims: IntArray
+
+    /** True when the model input is NCHW `[1,3,H,W]` (litert-torch / `format=litert`) rather than NHWC
+     *  `[1,H,W,3]` (legacy onnx2tf). Preprocessing writes CHW planes when set (round 155). */
+    override val inputUsesNchw: Boolean
 
     /** Float element count of each output buffer, in order. */
     override val outputElementCounts: IntArray
@@ -133,6 +144,7 @@ class LiteRtModel(
         inputBuffers = prepared.inputBuffers
         outputBuffers = prepared.outputBuffers
         inputDims = prepared.inputDims
+        inputUsesNchw = prepared.nchw
         outputElementCounts = prepared.outputElementCounts
         outputDims = prepared.outputDims
         outputTypes = prepared.outputTypes
@@ -140,6 +152,7 @@ class LiteRtModel(
         Log.i(
             tag,
             "LiteRT compiled on $acc; inputDims=${inputDims.toList()} " +
+                "layout=${if (inputUsesNchw) "NCHW" else "NHWC"} " +
                 "outputDims=${outputDims.map { it.toList() }} outputCounts=${outputElementCounts.toList()}",
         )
     }
@@ -204,25 +217,37 @@ class LiteRtModel(
         }
 
         try {
-            var dims = try {
-                compiled.getInputTensorType(inputName = "images").layout?.dimensions?.toIntArray() ?: IntArray(0)
-            } catch (e: Throwable) {
-                Log.w(tag, "Could not read input tensor type by name 'images': ${e.message}")
-                IntArray(0)
-            }
-            // Fallback for models whose input tensor isn't named "images" (older or
-            // renamed YOLO exports, non-Ultralytics models): read the shape from the
-            // TFLite graph by index. Without this, dims stays empty and the predictor
-            // falls back to a 640 input — which overflows a model whose real input is
-            // a different size, throwing on every frame (0 FPS, endless "Calibrating").
-            if (dims.size < 4) {
+            // Round 155: read the input shape by name. Legacy onnx2tf exports name the input `images`;
+            // litert-torch (format=litert) exports name it `args_0`. Custom (non-Ultralytics) TFLite models
+            // may use other signature input names, so a few common ones are probed too — litert 2.1.5
+            // exposes the input shape only by name (no by-index lookup).
+            var nativeDims = sequenceOf("images", "args_0", "input", "input_1", "serving_default_input")
+                .firstNotNullOfOrNull { name ->
+                    try {
+                        compiled.getInputTensorType(inputName = name).layout?.dimensions?.toIntArray()
+                            ?.takeIf { it.isNotEmpty() }
+                    } catch (_: Throwable) {
+                        null
+                    }
+                } ?: IntArray(0)
+            // Fallback for models whose input tensor matches none of the names above: read the shape from
+            // the TFLite graph by index (kept over upstream's buffer-size square guess — the graph shape is
+            // exact). Without this, dims stays empty and the predictor falls back to a 640 input — which
+            // overflows a model whose real input is a different size, throwing on every frame (0 FPS,
+            // endless "Calibrating").
+            if (nativeDims.size < 4) {
                 YOLOFileUtils.inputTensorShapeFromPath(modelPath)?.let { graphDims ->
                     if (graphDims.size == 4) {
-                        Log.i(tag, "Input dims via TFLite graph (input not named 'images'): ${graphDims.toList()}")
-                        dims = graphDims
+                        Log.i(tag, "Input dims via TFLite graph (input name not recognized): ${graphDims.toList()}")
+                        nativeDims = graphDims
                     }
                 }
             }
+            // litert-torch exports are NCHW [1,3,H,W]; legacy onnx2tf exports are NHWC [1,H,W,3]. Detect
+            // from the shape — the graph fallback above must pass through this test too, it returns the
+            // native layout — and report NHWC-convention dims so predictors stay layout-agnostic.
+            val nchw = nativeDims.size >= 4 && nativeDims[1] == 3 && nativeDims.last() != 3
+            val dims = if (nchw) intArrayOf(nativeDims[0], nativeDims[2], nativeDims[3], 3) else nativeDims
 
             // Warm up once with a zeroed input to (a) prime the accelerator and (b) learn each output's element count,
             // which the predictors use to reshape the flat float outputs. Keep this inside the accelerator fallback
@@ -233,17 +258,22 @@ class LiteRtModel(
                 compiled.run(inputs, outputs)
             }
             val outputTensorTypes = List(outputs.size) { i ->
-                val name = if (i == 0) "Identity" else "Identity_$i"
-                try {
-                    compiled.getOutputTensorType(outputName = name)
-                } catch (e: Throwable) {
-                    null // also thrown for element types the Kotlin API can't read (e.g. uint8)
+                // litert-torch (format=litert) names signature outputs output_0, output_1, …; legacy onnx2tf
+                // exports name them Identity, Identity_1, …. Try both so the output shape resolves for either
+                // export; a miss leaves that outputDims entry empty (detect falls back to the element count).
+                val legacyName = if (i == 0) "Identity" else "Identity_$i"
+                sequenceOf("output_$i", legacyName).firstNotNullOfOrNull { name ->
+                    try {
+                        compiled.getOutputTensorType(outputName = name)
+                    } catch (_: Throwable) {
+                        null // also thrown for element types the Kotlin API can't read (e.g. uint8)
+                    }
                 }
             }
             val outputShapes = outputTensorTypes.map { it?.layout?.dimensions?.toIntArray() ?: IntArray(0) }
             val types = outputTensorTypes.map { it?.elementType }
             val elementCounts = IntArray(outputs.size) { readAsFloats(outputs[it], types[it]).size }
-            return PreparedModel(compiled, inputs, outputs, dims, elementCounts, outputShapes, types)
+            return PreparedModel(compiled, inputs, outputs, dims, nchw, elementCounts, outputShapes, types)
         } catch (e: Throwable) {
             closeBuffers(inputs, outputs)
             runCatching { compiled.close() }

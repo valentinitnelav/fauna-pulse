@@ -724,7 +724,7 @@ tunable. Verified: `flutter analyze` clean, 356 tests pass, debug APK builds;
 the on-device smoke test (photos at ~1 Hz watching box smoothness, at 640x480
 and 1440x1080) is the owner's step.
 
-### D2. [ ] format=litert (NCHW) model support, staged (capability fix, zero live-path effect)
+### D2. [x] format=litert (NCHW) model support, staged (capability fix, zero live-path effect)
 
 `yolo export format=litert` is now the documented Ultralytics Android export
 route (0.6.6+, official w8a32 assets). Such a model in FaunaPulse today
@@ -737,14 +737,14 @@ defaults (bundled URLs pin the NHWC v0.3.5 assets; MODEL_CONVERSION.md says
 pastes a current official asset URL (`model_catalog.dart` ~:254 accepts any
 .tflite).
 
-- [ ] **Stage A, loud load-time guard (~10 lines, do first):** in
+- [x] **Stage A (subsumed r155, never built), loud load-time guard (~10 lines, do first):** in
   `LiteRtModel.prepareModel` after dims resolve (including the graph
   fallback, ~:207-225), detect NCHW (`dims.size >= 4 && dims[1] == 3 &&
   dims.last() != 3`) and fail the load with a plain-language message
   ("re-export with format=tflite"). A load failure flows through the existing
   r151 `onInitialModelLoadFailed` recovery (error dialog + config revert) for
   free. Highest value per line in this Part.
-- [ ] **Stage B, full detect-only support (~60 LOC, 4 files; do at the next
+- [x] **Stage B, full detect-only support (~60 LOC, 4 files; do at the next
   model-export cycle):** port upstream's layout handling
   (`yolo-flutter-app-main/.../LiteRtModel.kt` ~:124-181): input-name probe
   (`images`, `args_0`, `input`, `input_1`, `serving_default_input`), NCHW
@@ -766,6 +766,23 @@ pastes a current official asset URL (`model_catalog.dart` ~:254 accepts any
   requires `ultralytics>=8.4.83`); keep full-INT8 documented for low-end CPUs
   (the Galaxy M12 datapoint stands, w8a32's FP32 activations are not the
   fastest CPU path). Verify on-device with a fresh w8a32 export.
+
+**Done (round 155), Stage B implemented directly at the owner's request, which
+subsumes Stage A** (NCHW models now load and run, so there is nothing to guard;
+the one remaining failure edge, a model matching no known input name whose graph
+shape also can't be read, behaves exactly as before). Port honoured all three
+r153 hazards: NCHW is detected AFTER the fork-only TFLite-graph fallback so both
+resolution paths pass the test; the graph fallback is kept over upstream's
+sqrt(count/3) guess; the `channelsFirst` CHW branch uses the fork's cached
+`normalizationLut`. `InferenceModel.inputUsesNchw` defaults false, so OrtQnnModel
+keeps its internal transpose untouched (the deliberate skip stands). The LiteRT
+compile log line now prints `layout=NCHW|NHWC` for field diagnosis.
+MODEL_CONVERSION.md leads with the one-command `format=litert quantize=w8a32`
+export; full INT8 stays documented for low-end CPUs. Verified: `flutter analyze`
+clean, 356 tests pass, debug APK builds. On-device verification (owner): Settings
+→ AI → Model → Download… with
+`https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.6.6/yolo26n_w8a32.tflite`,
+confirm boxes appear, logcat shows `layout=NCHW`, and run the engine benchmark.
 
 ### D3. [ ] Skip the discarded annotated image on the batch/SAHI predict path
 
