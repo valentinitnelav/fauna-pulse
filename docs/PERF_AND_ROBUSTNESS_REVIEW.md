@@ -529,7 +529,7 @@ explained by C1 + C3 and no pipeline work is owed. If it falls clearly short
 (say ≤9), reopen this part — that residue would point at our divergent frame
 path (frame cache, gate plumbing) and would justify per-stage timing.
 
-- Results (at parity settings), date 2026-18-07, 08:22, "session_25"
+- Test results (at parity settings), date 2026-07-18, 08:22, "session_25"
   
   I adjusted the FaunaPulse settings: "Session settings" > "Camera" tab:
 
@@ -826,6 +826,25 @@ PredictFn). The Dispatchers.IO hop stays NOT done, per the D4 record. Tests:
 Verified: analyze clean, 359 tests pass, debug APK builds. Owner measurement:
 re-run "Analyze saved photos" on a large session and compare wall time with a
 pre-r156 run of the same session and settings.
+
+- Test results (at parity settings), date 2026-07-28, 10:35, "session_29"
+  
+  FaunaPulse settings: "Analyze saved photos":
+
+    - Session: session_29 [AI live] - 228 photos
+    - Detection model: arthropod_yolov11_int8.tflite
+    - Confidence threshold: 0.25
+    - IoU threshold: 0.70
+    - Small-insect tiling (SAHI): on
+    - Keep time-window around a detection: 0.0 seconds (s)
+
+  The gain before-after varied from 2-3% to 8-10%. The run before D3 implementation
+  gave around 920-930 ms processing time per image. After D3, I saw ~900 ms/img
+  in a first test and then 830-855 ms/img in a second test, when the phone
+  was a bit cooler. Time between runs matter, as the second run can be affected by the
+  overheating of the first run. Let at least 10 min between test runs on the same
+  images of the tested session. It looks like overheating of the Xiaomi phone remains
+  the main driver of performance.
 
 ### D4. Skipped leads (recorded so they are not rediscovered)
 
