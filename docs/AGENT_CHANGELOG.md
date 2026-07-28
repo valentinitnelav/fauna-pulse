@@ -5493,3 +5493,10 @@ FaunaPulse reads only the box list and discarded the bytes.
   re-run "Analyze saved photos" on a large session and compare wall time with a
   pre-r156 run of the same session and settings.
 
+
+## Round 157 (2026-07-28): first-public-release plan (docs/RELEASE_PLAN.md)
+
+- Added docs/RELEASE_PLAN.md: phased, checkbox-tracked plan for the first public release. Phases: 0 repo hygiene (release keystore, SDK pinning to targetSdk 36, privacy policy, CITATION.cff cleanup, fetchBundledModels path fix), 1 v0.7.0 GitHub release + Zenodo DOI (webhook must be enabled BEFORE the first tag), 2 citizen-scientist docs (QUICK_START, screenshots, "(round N)" cleanup, fastlane metadata), 3 settings-sheet reorganization (Graphs tab becomes Power; auto-throttle, rate caps, camera fps cap and motion gate move there; advanced folds; per-field help toggles), 4 Google Play (personal account, 12 testers x 14 days closed test, own keystore uploaded to Play App Signing so GitHub APKs cross-update), 5 optional F-Droid.
+- Key research findings (sources listed in the plan): Play requires target API 36 for new apps from 2026-08-31; IzzyOnDroid's ~30 MB limit rules it out (129 MB universal APK); the free channel is GitHub Releases + Obtainium.
+- Owner decisions recorded: early tag + DOI before polish; heat controls go to a Power tab, not the AI tab (the AI tab is whole-greyed in no-AI modes while the motion gate must stay editable in motion mode).
+- Docs only, no code changes this round.
