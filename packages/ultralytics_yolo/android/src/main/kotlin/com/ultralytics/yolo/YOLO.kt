@@ -62,13 +62,16 @@ class YOLO(
      * Predict using a bitmap input
      * @param bitmap The bitmap to process
      * @param rotateForCamera Whether to rotate the image for camera processing, defaults to false for standard bitmap inference
+     * @param generateAnnotatedImage FaunaPulse (round 156, perf review D3): when false, skip rendering the
+     * detections onto a full-size copy of the image — for DETECT that copy + draw costs several ms per call,
+     * and the batch/SAHI analysis path throws the result away (it draws its own boxes from coordinates).
      */
-    fun predict(bitmap: Bitmap, rotateForCamera: Boolean = false): YOLOResult {
+    fun predict(bitmap: Bitmap, rotateForCamera: Boolean = false, generateAnnotatedImage: Boolean = true): YOLOResult {
         (predictor as? BasePredictor)?.includeRawMaskData = true
         val result = predictor.predict(bitmap, bitmap.width, bitmap.height, rotateForCamera, isLandscape = false)
-        
-        // Don't create annotated image for classification tasks to save memory and processing time
-        val annotatedImage = if (task == YOLOTask.CLASSIFY) {
+
+        // Don't create annotated image for classification tasks (memory/time) or when the caller opted out.
+        val annotatedImage = if (!generateAnnotatedImage || task == YOLOTask.CLASSIFY) {
             null
         } else {
             drawAnnotations(bitmap, result, rotateForCamera)

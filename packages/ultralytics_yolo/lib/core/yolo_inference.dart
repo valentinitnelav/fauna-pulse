@@ -24,6 +24,7 @@ class YOLOInference {
     Uint8List imageBytes, {
     double? confidenceThreshold,
     double? iouThreshold,
+    bool includeAnnotatedImage = true,
   }) async {
     if (imageBytes.isEmpty) {
       throw InvalidInputException('Image data is empty');
@@ -47,6 +48,13 @@ class YOLOInference {
       }
       if (iouThreshold != null) {
         arguments['iouThreshold'] = iouThreshold;
+      }
+      if (!includeAnnotatedImage) {
+        // FaunaPulse (round 156, perf review D3): callers that only read the
+        // box list (batch/SAHI photo analysis) skip the native annotated-image
+        // render + JPEG encode. The key is sent ONLY when false; the native
+        // default stays true so existing callers keep their image.
+        arguments['includeAnnotatedImage'] = false;
       }
 
       if (_instanceId != 'default') {

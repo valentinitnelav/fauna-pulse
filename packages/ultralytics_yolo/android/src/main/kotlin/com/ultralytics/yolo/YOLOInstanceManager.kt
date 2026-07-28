@@ -121,7 +121,9 @@ object YOLOInstanceManager {
         instanceId: String,
         bitmap: Bitmap,
         confidenceThreshold: Float? = null,
-        iouThreshold: Float? = null
+        iouThreshold: Float? = null,
+        // FaunaPulse (round 156, perf review D3): false skips the annotated-image render.
+        generateAnnotatedImage: Boolean = true
     ): YOLOResult? {
         val yolo = instances[instanceId] ?: run {
             Log.e(TAG, "No model loaded for instance: $instanceId")
@@ -137,7 +139,7 @@ object YOLOInstanceManager {
         iouThreshold?.let { yolo.setIouThreshold(it) }
 
         return try {
-            val result = yolo.predict(bitmap)
+            val result = yolo.predict(bitmap, generateAnnotatedImage = generateAnnotatedImage)
 
             // Restore original thresholds
             yolo.setConfidenceThreshold(originalConfThreshold)

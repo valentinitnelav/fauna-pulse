@@ -5457,4 +5457,39 @@ legacy onnx2tf convention (`images`/`Identity_N`, NHWC), and such a model would
   https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.6.6/yolo26n_w8a32.tflite
   then confirm boxes appear, logcat shows "layout=NCHW", and run the engine
   benchmark (GPU vs CPU) on it.
+- 2026-07-28 field confirmation (owner): the official yolo26n_w8a32.tflite
+  downloads, loads and detects on the Xiaomi — r155 verified on-device.
+
+## Round 156 (2026-07-28): D3, skip the discarded annotated JPEG on batch/SAHI predicts
+
+Implements Part D's D3, the last open Part D item (D4 is a record of skipped
+leads, not work). Every single-image predict (post-hoc photo analysis + each
+SAHI tile) made the native side draw all boxes onto a full
+bitmap.copy(ARGB_8888) and JPEG-q90-encode it into response["annotatedImage"];
+FaunaPulse reads only the box list and discarded the bytes.
+
+- New optional `includeAnnotatedImage` (default `true`) on `YOLO.predict` /
+  `YOLOInference.predict`; the wire key crosses the channel ONLY when false and
+  the native default stays true, so the plugin demo screen and any older caller
+  behave byte-identically.
+- Kotlin: `YOLOPlugin.predictSingleImage` reads the flag →
+  `YOLOInstanceManager.predict` gains `generateAnnotatedImage` →
+  `YOLO.predict(bitmap)` skips `drawAnnotations` when false (the plugin's
+  JPEG-encode block is null-guarded and skips itself).
+- `analysis_screen.dart` base PredictFn passes `false` — applies to plain AND
+  SAHI analysis (PostDetector / sahi.dart unchanged, they see only the
+  PredictFn).
+- Deliberately NOT bundled (D4 record): the Dispatchers.IO hop for
+  predictSingleImage (`YOLOInstanceManager.predict` mutates and restores
+  per-instance thresholds around the call; concurrency there is a correctness
+  risk).
+- Expected gain (r153 verified estimate): ~3-6 ms per 640 tile (~10-20% of
+  batch wall time), ~15-25 ms on a 1440x1080 full-image pass, ~100 KB less per
+  tile over the method channel; offline path only, no live-camera or heat
+  interaction.
+- Tests: `test/fauna_pulse/predict_annotated_image_test.dart` (wire contract:
+  key only when false; default and explicit true stay off the wire). Verified:
+  `flutter analyze` clean, 359 tests pass, debug APK builds. Owner measurement:
+  re-run "Analyze saved photos" on a large session and compare wall time with a
+  pre-r156 run of the same session and settings.
 

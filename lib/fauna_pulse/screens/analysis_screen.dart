@@ -333,8 +333,15 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     try {
       await yolo.loadModel();
       final info = await PackageInfo.fromPlatform();
-      Future<Map<String, dynamic>> base(Uint8List bytes) =>
-          yolo.predict(bytes, confidenceThreshold: _confidence, iouThreshold: _iou);
+      // Round 156 (perf review D3): the annotated JPEG the plugin renders per
+      // predict call is never shown here (boxes are drawn from coordinates),
+      // so skip its render + encode — once per photo, once per SAHI tile.
+      Future<Map<String, dynamic>> base(Uint8List bytes) => yolo.predict(
+            bytes,
+            confidenceThreshold: _confidence,
+            iouThreshold: _iou,
+            includeAnnotatedImage: false,
+          );
       // SAHI (round 139): tiling is a pure wrapper around the plain
       // predictor — the driver and all downstream logic see merged boxes.
       final modelInputPx = model.inputSize ?? 640;

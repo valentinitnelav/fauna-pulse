@@ -274,6 +274,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           val confidenceThreshold = args?.get("confidenceThreshold") as? Double
           val iouThreshold = args?.get("iouThreshold") as? Double
           val instanceId = args?.get("instanceId") as? String ?: "default"
+          // FaunaPulse (round 156, perf review D3): callers that only read the box list
+          // (batch/SAHI analysis) opt out of the annotated-image render + JPEG encode.
+          val includeAnnotatedImage = args?.get("includeAnnotatedImage") as? Boolean ?: true
 
           if (imageData == null) {
             result.error("bad_args", "No image data", null)
@@ -293,7 +296,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
               instanceId = instanceId,
               bitmap = bitmap,
               confidenceThreshold = confidenceThreshold?.toFloat(),
-              iouThreshold = iouThreshold?.toFloat()
+              iouThreshold = iouThreshold?.toFloat(),
+              generateAnnotatedImage = includeAnnotatedImage
             )
   
             if (yoloResult == null) {

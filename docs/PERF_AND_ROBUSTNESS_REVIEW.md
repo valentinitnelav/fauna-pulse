@@ -784,7 +784,7 @@ clean, 356 tests pass, debug APK builds. On-device verification (owner): Setting
 `https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.6.6/yolo26n_w8a32.tflite`,
 confirm boxes appear, logcat shows `layout=NCHW`, and run the engine benchmark.
 
-### D3. [ ] Skip the discarded annotated image on the batch/SAHI predict path
+### D3. [x] Skip the discarded annotated image on the batch/SAHI predict path
 
 Every `YOLO.predict` call (post-hoc photo analysis and each SAHI tile) makes
 the native side draw all boxes onto a full `bitmap.copy(ARGB_8888)`
@@ -812,6 +812,20 @@ recorded, no action: batch inference blocks the platform thread ~30-60 ms per
 tile (progress-UI jank only).
 *Tests:* assert the flag in the `predictSingleImage` args from
 `post_detector_test.dart` / `sahi_test.dart`; assert the default stays `true`.
+
+**Done (round 156):** `includeAnnotatedImage` param (default `true`) on
+`YOLO.predict` / `YOLOInference.predict`; the wire key crosses the channel ONLY
+when false, so the native default keeps the demo screen and older callers
+byte-identical. Kotlin chain: `YOLOPlugin.predictSingleImage` reads the flag →
+`YOLOInstanceManager.predict(generateAnnotatedImage)` → `YOLO.predict` skips
+`drawAnnotations` (the JPEG-encode block is null-guarded and skips itself). The
+analysis screen's base PredictFn passes `false` (applies to plain and SAHI
+analysis; PostDetector and sahi.dart are unchanged, they see only the
+PredictFn). The Dispatchers.IO hop stays NOT done, per the D4 record. Tests:
+`test/fauna_pulse/predict_annotated_image_test.dart` pins the wire contract.
+Verified: analyze clean, 359 tests pass, debug APK builds. Owner measurement:
+re-run "Analyze saved photos" on a large session and compare wall time with a
+pre-r156 run of the same session and settings.
 
 ### D4. Skipped leads (recorded so they are not rediscovered)
 
