@@ -5,6 +5,10 @@ package com.ultralytics.yolo
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Manages multiple YOLO instances with unique IDs
@@ -15,14 +19,15 @@ object YOLOInstanceManager {
     // Singleton access
     val shared: YOLOInstanceManager = this
 
-    // Store YOLO instances by their ID
-    private val instances = mutableMapOf<String, YOLO>()
+    // Store YOLO instances by their ID. Concurrent maps (round 161, perf review E2): dispose()
+    // closes instances on an IO dispatcher while predict/load run on the platform thread.
+    private val instances = ConcurrentHashMap<String, YOLO>()
 
     // Store loading states to prevent multiple concurrent loads
-    private val loadingStates = mutableMapOf<String, Boolean>()
+    private val loadingStates = ConcurrentHashMap<String, Boolean>()
 
     // Store classifier options per instance
-    private val instanceOptions = mutableMapOf<String, Map<String, Any>>()
+    private val instanceOptions = ConcurrentHashMap<String, Map<String, Any>>()
 
     init {
         // Initialize default instance for backward compatibility
@@ -130,30 +135,25 @@ object YOLOInstanceManager {
             return null
         }
 
-        // Store original thresholds
-        val originalConfThreshold = yolo.getConfidenceThreshold()
-        val originalIouThreshold = yolo.getIouThreshold()
-
-        // Apply custom thresholds if provided
-        confidenceThreshold?.let { yolo.setConfidenceThreshold(it) }
-        iouThreshold?.let { yolo.setIouThreshold(it) }
-
-        return try {
-            val result = yolo.predict(bitmap, generateAnnotatedImage = generateAnnotatedImage)
-
-            // Restore original thresholds
-            yolo.setConfidenceThreshold(originalConfThreshold)
-            yolo.setIouThreshold(originalIouThreshold)
-
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Prediction failed for instance $instanceId: ${e.message}")
-
-            // Restore thresholds even on error
-            yolo.setConfidenceThreshold(originalConfThreshold)
-            yolo.setIouThreshold(originalIouThreshold)
-
-            null
+        // Round 161 (perf review E2): synchronized(yolo) makes the temporary-threshold window and the
+        // predict atomic against a concurrent close() (same monitor as YOLO's @Synchronized methods),
+        // and the finally block restores thresholds on EVERY exit path, including non-Exception
+        // Throwables that the old try/catch pair missed. A predict on an already-closed instance
+        // throws IllegalStateException from the predictor guard and lands in the catch -> null.
+        return synchronized(yolo) {
+            val originalConfThreshold = yolo.getConfidenceThreshold()
+            val originalIouThreshold = yolo.getIouThreshold()
+            confidenceThreshold?.let { yolo.setConfidenceThreshold(it) }
+            iouThreshold?.let { yolo.setIouThreshold(it) }
+            try {
+                yolo.predict(bitmap, generateAnnotatedImage = generateAnnotatedImage)
+            } catch (e: Exception) {
+                Log.e(TAG, "Prediction failed for instance $instanceId: ${e.message}")
+                null
+            } finally {
+                yolo.setConfidenceThreshold(originalConfThreshold)
+                yolo.setIouThreshold(originalIouThreshold)
+            }
         }
     }
 
@@ -164,34 +164,40 @@ object YOLOInstanceManager {
     }
 
     /**
-     * Disposes a specific instance
+     * Disposes a specific instance. Round 161 (perf review E2, ported from upstream 0.6.11): the
+     * instance is removed from the maps FIRST (no new caller can reach it), then its native model is
+     * released on the IO dispatcher — YOLO.close() may briefly block on an in-flight predict, and
+     * that wait must not happen on the platform thread. Pre-r161 this method silently leaked the
+     * native interpreter (an empty try block noting "YOLO class doesn't have a close() method").
      */
-    fun dispose(instanceId: String) {
-        instances[instanceId]?.let { yolo ->
-            try {
-                // YOLO class doesn't have a close() method, just remove from map
-            } catch (e: Exception) {
-                Log.e(TAG, "Error disposing instance $instanceId: ${e.message}")
-            }
-        }
-        instances.remove(instanceId)
+    suspend fun dispose(instanceId: String) {
         loadingStates.remove(instanceId)
         instanceOptions.remove(instanceId)
+        val yolo = instances.remove(instanceId) ?: return
+        withContext(Dispatchers.IO) { yolo.close() }
     }
 
     /**
-     * Removes an instance (alias for dispose for compatibility)
-     */
-    fun removeInstance(instanceId: String) {
-        dispose(instanceId)
-    }
-
-    /**
-     * Disposes all instances
+     * Disposes all instances (engine detach). Non-suspend on purpose: the caller is the plugin's
+     * onDetachedFromEngine, which has no scope left after cancel() — the closes are handed straight
+     * to the IO dispatcher.
      */
     fun disposeAll() {
-        val allIds = instances.keys.toList()
-        allIds.forEach { dispose(it) }
+        loadingStates.clear()
+        instanceOptions.clear()
+        val all = instances.values.toList()
+        instances.clear()
+        if (all.isNotEmpty()) {
+            Dispatchers.IO.dispatch(EmptyCoroutineContext) {
+                all.forEach { yolo ->
+                    try {
+                        yolo.close()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error closing instance during disposeAll: ${e.message}")
+                    }
+                }
+            }
+        }
     }
 
     /**

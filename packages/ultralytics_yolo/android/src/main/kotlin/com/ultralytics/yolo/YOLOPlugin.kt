@@ -16,8 +16,10 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry // Added for RequestPermissionsResultListener
 import java.io.ByteArrayOutputStream
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -32,7 +34,13 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
   private lateinit var viewFactory: YOLOPlatformViewFactory
   private lateinit var binaryMessenger: io.flutter.plugin.common.BinaryMessenger
 
+  // Round 161 (perf review E2, ported from upstream 0.6.11): plugin-owned coroutine scope instead of
+  // GlobalScope, so background work (instance dispose, predictor warm-up) is cancelled when the engine
+  // detaches rather than outliving the plugin.
+  private lateinit var pluginScope: CoroutineScope
+
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+    pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // Store application context and binary messenger for later use
     applicationContext = flutterPluginBinding.applicationContext
     binaryMessenger = flutterPluginBinding.binaryMessenger
@@ -82,9 +90,14 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
 
   override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
     methodChannel.setMethodCallHandler(null)
+    instanceChannels.values.forEach { it.setMethodCallHandler(null) }
+    instanceChannels.clear()
     // Clean up view factory resources
     viewFactory.dispose()
-    // YOLO class doesn't need explicit release
+    pluginScope.cancel()
+    // Round 161 (perf review E2): release every YOLO instance's native model on engine detach —
+    // pre-r161 this leaked them ("YOLO class doesn't need explicit release" was wrong).
+    YOLOInstanceManager.shared.disposeAll()
   }
   
   /**
@@ -603,26 +616,27 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       }
       
       "disposeInstance" -> {
-        try {
-          val args = call.arguments as? Map<*, *>
-          val instanceId = args?.get("instanceId") as? String
-          
-          if (instanceId == null) {
-            result.error("bad_args", "Missing instanceId", null)
-            return
+        val args = call.arguments as? Map<*, *>
+        val instanceId = args?.get("instanceId") as? String
+
+        if (instanceId == null) {
+          result.error("bad_args", "Missing instanceId", null)
+          return
+        }
+
+        // Remove the channel first so no further calls for this instance can race the close.
+        instanceChannels.remove(instanceId)?.setMethodCallHandler(null)
+
+        // Round 161 (perf review E2): dispose() now actually closes the native model, off the
+        // platform thread (it may wait for an in-flight predict). The reply resumes on main.
+        pluginScope.launch {
+          try {
+            YOLOInstanceManager.shared.dispose(instanceId)
+            result.success(null)
+          } catch (e: Exception) {
+            Log.e(TAG, "Error disposing instance", e)
+            result.error("dispose_error", "Failed to dispose instance: ${e.message}", null)
           }
-          
-          // Remove instance from manager
-          YOLOInstanceManager.shared.removeInstance(instanceId)
-          
-          // Remove the channel for this instance
-          instanceChannels[instanceId]?.setMethodCallHandler(null)
-          instanceChannels.remove(instanceId)
-          
-          result.success(null)
-        } catch (e: Exception) {
-          Log.e(TAG, "Error disposing instance", e)
-          result.error("dispose_error", "Failed to dispose instance: ${e.message}", null)
         }
       }
 
@@ -630,8 +644,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         val args = call.arguments as? Map<*, *>
         val instanceId = args?.get("instanceId") as? String ?: "default"
 
-        // Run expensive work on the IO dispatcher via GlobalScope.launch(Dispatchers.IO)
-        GlobalScope.launch(Dispatchers.IO){
+        // Run expensive work on the IO dispatcher; pluginScope (not GlobalScope) so the job dies
+        // with the engine (round 161, perf review E2).
+        pluginScope.launch(Dispatchers.IO){
 
           try {
             YOLOInstanceManager.shared.predictorInstance(instanceId);

@@ -689,6 +689,9 @@ class YOLOPlatformView(
 
         try {
             yoloView.stop()
+            // Round 161 (perf review E2): this disposal is permanent, so also shut down the
+            // view-lifetime executors (still capture + model loading) that stop() must leave alive.
+            yoloView.release()
             // Detach from the lifecycle so the Activity doesn't retain this disposed view (and won't fire
             // onStart/onResume into it after disposal).
             yoloView.detachLifecycle()

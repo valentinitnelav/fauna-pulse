@@ -5563,3 +5563,53 @@ before recording anything. Docs + two comment lines only; no behavior changes.
   Code unchanged.
 - Review artifacts: the codex source plan sits at `/InsectDetectApp/codex-proposed-plan.md`
   (repo-root sibling, not part of the app tree).
+
+## Round 161 (2026-07-31): E2 native predictor lifecycle port (close/scope/executors)
+
+Implements Part E item E2 of PERF_AND_ROBUSTNESS_REVIEW.md, both phases: the upstream-0.6.11
+predictor-close port and the executor-ownership cleanup. Native Kotlin only (plugin + app shell),
+zero Dart changes, zero behavior changes to detection/capture. Robustness work, not frame time:
+before this round every disposed batch-analysis instance leaked its native LiteRT interpreter
+(the r135+ analyze/re-analyze flows dispose one per run) and every model switch parked one
+non-daemon thread forever.
+
+- **YOLO.kt**: explicit lazy `predictorDelegate` + `closed` flag; `@Synchronized`
+  `predictorInstance()` / `predict(bitmap)` / new idempotent `close()` (releases the
+  BasePredictor's LiteRT interpreter or ORT session). Any predictor access after close fails fast
+  with IllegalStateException; the existing channel catches turn that into a clean
+  `prediction_error` reply instead of silently rebuilding an interpreter on a disposed instance.
+- **YOLOInstanceManager.kt**: maps are ConcurrentHashMaps (close happens on IO while predict/load
+  run on the platform thread); `predict()` is `synchronized(yolo)` with the temporary thresholds
+  restored in `finally` (the old try/catch pair missed non-Exception Throwables); `dispose()` is
+  suspend, removes the instance from the maps FIRST, then closes on Dispatchers.IO (the close can
+  briefly wait for an in-flight predict and must not do that on the platform thread) - pre-r161 it
+  held an empty try block ("YOLO class doesn't have a close() method") and leaked the model;
+  `disposeAll()` hands all closes to the IO dispatcher; `removeInstance` alias deleted.
+- **YOLOPlugin.kt**: plugin-owned `pluginScope` (SupervisorJob + Dispatchers.Main.immediate)
+  replaces GlobalScope; created in onAttachedToEngine, cancelled in onDetachedFromEngine, which now
+  also clears every instance-channel handler and calls `disposeAll()` (the old detach comment
+  "YOLO class doesn't need explicit release" was wrong). `disposeInstance` replies after the real
+  close; `predictorInstance` warm-up runs in the scope.
+- **YOLOView.kt (executor ownership)**: one owned `modelLoadExecutor` replaces
+  `Executors.newSingleThreadExecutor()` per `setModel()` call (one leaked thread per model switch,
+  e.g. every engine-benchmark run). A generation token (AtomicInteger) resolves overlapping loads:
+  a superseded load's finished predictor goes into the bounded LRU cache but is NOT installed over
+  the newer model; a load finishing after permanent view disposal closes itself. KEY DETAIL:
+  completions run on a main-looper Handler, deliberately NOT `View.post` - a detached (disposed)
+  view parks View.post runnables until a re-attach that never comes, which would strand the fresh
+  predictor unclosed. New terminal `release()` (shuts down `modelLoadExecutor` + `stillExecutor`)
+  is called from `YOLOPlatformView.dispose()` AFTER `stop()`; `stop()` itself stays restartable
+  (a later `setModel()` rebinds the camera), which is why the executors were never shut down there.
+  CameraX `takePicture` now receives a rejection-tolerant wrapper executor: a capture-error
+  callback delivered from the camera thread just after `release()` is dropped with a log line
+  instead of crashing CameraX internals with RejectedExecutionException.
+- **MainActivity.kt**: `onDestroy()` shuts down `cropExecutor` (queued crop/Gallery writes still
+  finish; the executor is per-Activity so a recreated Activity gets a fresh one).
+- **Preserved invariants**: `includeAnnotatedImage` behavior (D3), the r151 model-load recovery +
+  `onInitialModelLoadFailed` flow (the failure path's stale/disposed guard fires BEFORE any UI
+  state is touched, so a superseded failure can no longer overwrite the newer load's state), the
+  3-entry predictor LRU cache semantics, and the round-63 still-capture threading.
+- Verified: `flutter analyze` clean, 363 tests pass, debug APK builds. Owner's on-device step:
+  repeated "Analyze saved photos" run/cancel/re-run cycles and a few model switches while watching
+  `dumpsys meminfo <pkg>` (native heap should plateau, pre-r161 it climbed per analysis run) and
+  `ps -T -p <pid> | wc -l` (thread count should plateau, pre-r161 it grew per model switch).

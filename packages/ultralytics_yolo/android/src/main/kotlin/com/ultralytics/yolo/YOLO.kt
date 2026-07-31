@@ -30,7 +30,12 @@ class YOLO(
 
     // The underlying predictor that will be initialized based on the task. LiteRT 2.x CompiledModel handles thread/
     // accelerator configuration internally (see LiteRtModel), so there are no per-interpreter options to pass.
-    private val predictor: Predictor by lazy {
+    // FaunaPulse (round 161, perf review E2): the explicit lazy delegate + closed flag make disposal
+    // deterministic. close() releases the native model, and any predictor access after close() fails fast
+    // (IllegalStateException) instead of silently rebuilding a fresh interpreter on a disposed instance.
+    // LazyThreadSafetyMode.NONE is safe because every initializing access point is @Synchronized.
+    private var closed = false
+    private val predictorDelegate = lazy(LazyThreadSafetyMode.NONE) {
         when (task) {
             YOLOTask.DETECT -> ObjectDetector(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
             YOLOTask.SEGMENT -> Segmenter(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
@@ -40,10 +45,16 @@ class YOLO(
             YOLOTask.OBB -> ObbDetector(context, modelPath, labels, useGpu, numItemsThreshold = numItemsThreshold)
         }
     }
+    private val predictor: Predictor
+        get() {
+            check(!closed) { "YOLO instance is closed" }
+            return predictorDelegate.value
+        }
 
     /**
      * This method is used to directly instantiate the predictor to avoid lazy invocation.
      */
+    @Synchronized
     fun predictorInstance(): Predictor {
         return predictor
     }
@@ -66,6 +77,7 @@ class YOLO(
      * detections onto a full-size copy of the image — for DETECT that copy + draw costs several ms per call,
      * and the batch/SAHI analysis path throws the result away (it draws its own boxes from coordinates).
      */
+    @Synchronized
     fun predict(bitmap: Bitmap, rotateForCamera: Boolean = false, generateAnnotatedImage: Boolean = true): YOLOResult {
         (predictor as? BasePredictor)?.includeRawMaskData = true
         val result = predictor.predict(bitmap, bitmap.width, bitmap.height, rotateForCamera, isLandscape = false)
@@ -714,5 +726,20 @@ class YOLO(
      */
     fun setNumItemsThreshold(max: Int) {
         predictor.setNumItemsThreshold(max)
+    }
+
+    /**
+     * FaunaPulse (round 161, perf review E2): idempotent release of the native predictor (LiteRT
+     * interpreter / ORT session and their buffers). @Synchronized so a close waits for an in-flight
+     * synchronized predict on this instance instead of freeing native memory under it. After close(),
+     * every predictor access throws IllegalStateException, which YOLOInstanceManager.predict turns
+     * into a null result for the platform channel.
+     */
+    @Synchronized
+    fun close() {
+        closed = true
+        if (predictorDelegate.isInitialized()) {
+            (predictorDelegate.value as? BasePredictor)?.close()
+        }
     }
 }

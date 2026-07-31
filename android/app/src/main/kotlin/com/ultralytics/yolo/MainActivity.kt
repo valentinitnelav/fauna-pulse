@@ -59,6 +59,14 @@ class MainActivity : FlutterFragmentActivity() {
         installCrashFileHandler()
     }
 
+    override fun onDestroy() {
+        // Round 161 (perf review E2): release the crop worker thread with the Activity. shutdown()
+        // (not shutdownNow()) lets any queued crop/Gallery write finish; the executor is per-Activity
+        // (val field), so a recreated Activity gets a fresh one.
+        cropExecutor.shutdown()
+        super.onDestroy()
+    }
+
     /// Persists any uncaught Java/Kotlin exception as a timestamped file under
     /// `crashes/` (same folder + format as the Dart side's crash_store.dart —
     /// keep the two in sync) BEFORE the process dies, so the next "Report a

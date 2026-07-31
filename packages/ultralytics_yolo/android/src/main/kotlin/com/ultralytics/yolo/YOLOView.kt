@@ -355,6 +355,36 @@ class YOLOView @JvmOverloads constructor(
     // must survive camera rebinds).
     private val stillExecutor = Executors.newSingleThreadExecutor()
 
+    // Round 161 (perf review E2): model loads run on ONE owned executor instead of a throwaway
+    // Executors.newSingleThreadExecutor() per setModel() call — each of those parked a non-daemon
+    // thread forever (one leaked thread per model switch). The generation counter identifies loads
+    // that a newer setModel() superseded while they were still building; the released flag marks
+    // permanent platform-view disposal. Both stillExecutor and modelLoadExecutor are view-lifetime
+    // on purpose: stop() is NOT terminal (a later setModel() restarts the camera), so they are only
+    // shut down by release(), called from YOLOPlatformView.dispose().
+    private val modelLoadExecutor = Executors.newSingleThreadExecutor()
+    private val modelLoadGeneration = AtomicInteger(0)
+    @Volatile
+    private var executorsReleased = false
+
+    // Main-looper handler for model-load completions. Deliberately NOT View.post: on a detached
+    // (disposed) view, View.post parks the runnable until a re-attach that never comes, which would
+    // strand the freshly built predictor unclosed. A looper handler always runs.
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // The executor handed to CameraX takePicture. A capture-error callback can arrive from the
+    // camera thread just AFTER release() shut stillExecutor down (dispose() unbinds first, but that
+    // delivery is asynchronous); dropping the late callback beats crashing CameraX internals with
+    // RejectedExecutionException. All direct stillExecutor.execute call sites run on the main
+    // thread and are therefore serialized against release() — only this CameraX hand-off races.
+    private val stillCallbackExecutor = java.util.concurrent.Executor { r ->
+        try {
+            stillExecutor.execute(r)
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            Log.w(TAG, "Still-capture callback after release(); dropped")
+        }
+    }
+
     // FaunaPulse: optional region of interest. When non-null, inference runs only on this
     // square crop of the frame (see BasePredictor.inferenceRoi). Volatile because it is written from
     // the Flutter platform-channel thread and read on the camera analyzer thread.
@@ -773,6 +803,9 @@ class YOLOView @JvmOverloads constructor(
 
     fun setModel(modelPath: String, task: YOLOTask, useGpu: Boolean = true, cpuThreads: Int = 0, callback: ((Boolean) -> Unit)? = null) {
         val cacheKey = "$modelPath|$task|$useGpu|$cpuThreads"
+        // Round 161 (perf review E2): this call owns the newest generation; any still-building older
+        // load sees the mismatch on completion and steps aside instead of installing over us.
+        val generation = modelLoadGeneration.incrementAndGet()
         inferenceResult = null
         post {
             overlayView.invalidate()
@@ -798,7 +831,7 @@ class YOLOView @JvmOverloads constructor(
             return
         }
 
-        Executors.newSingleThreadExecutor().execute {
+        val accepted = submitModelLoad(modelPath) {
             try {
                 val newPredictor = when (task) {
                     YOLOTask.DETECT -> ObjectDetector(context = context, modelPath = modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
@@ -816,7 +849,26 @@ class YOLOView @JvmOverloads constructor(
                     setNumItemsThreshold(numItemsThreshold)
                 }
 
-                post {
+                mainHandler.post {
+                    if (executorsReleased) {
+                        // The platform view was disposed while this model was building: stop() has
+                        // already closed the active + cached predictors, so close the orphan too.
+                        try {
+                            (newPredictor as? BasePredictor)?.close()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error closing orphaned model load", e)
+                        }
+                        callback?.invoke(false)
+                        return@post
+                    }
+                    if (generation != modelLoadGeneration.get()) {
+                        // A newer setModel() superseded this load while it was building. Keep the
+                        // finished predictor warm in the bounded LRU cache (instant switch back)
+                        // but do NOT install it over the newer model.
+                        cachePredictor(cacheKey, newPredictor)
+                        callback?.invoke(true)
+                        return@post
+                    }
                     this.task = task
                     this.predictor = newPredictor
                     this.modelName = modelPath.substringAfterLast("/")
@@ -832,7 +884,13 @@ class YOLOView @JvmOverloads constructor(
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to load model: $modelPath. Keeping the previously loaded model if one is present.", e)
                 lastModelLoadError = "${e.javaClass.simpleName}: ${e.message}"
-                post {
+                mainHandler.post {
+                    if (executorsReleased || generation != modelLoadGeneration.get()) {
+                        // Disposed or superseded by a newer load: that newer call owns the UI/error
+                        // state now (nothing to close — the failed load built no predictor).
+                        callback?.invoke(false)
+                        return@post
+                    }
                     // The new predictor was built into a local and never assigned, so the previously loaded model is
                     // untouched. Only drop inference when there is nothing to fall back to (an initial-load failure);
                     // for an in-place switch failure keep the previous predictor running so the camera doesn't
@@ -845,6 +903,35 @@ class YOLOView @JvmOverloads constructor(
                 }
             }
         }
+        if (!accepted) {
+            // release() already shut the load executor down (platform view disposed mid-call).
+            callback?.invoke(false)
+        }
+    }
+
+    /** Round 161 (perf review E2): submit a model load to the owned executor; false when the
+     *  executor was already shut down by release() (permanent view disposal). */
+    private fun submitModelLoad(modelPath: String, block: () -> Unit): Boolean =
+        try {
+            modelLoadExecutor.execute { block() }
+            true
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            Log.w(TAG, "Model load rejected after release(): $modelPath")
+            false
+        }
+
+    /**
+     * Round 161 (perf review E2): terminal counterpart to stop() for PERMANENT platform-view
+     * disposal (YOLOPlatformView.dispose()). stop() must stay restartable — a later setModel()
+     * rebinds the camera — so the view-lifetime executors are only shut down here. Call AFTER
+     * stop(). shutdown() (not shutdownNow()) lets an in-flight model build finish; its completion
+     * sees executorsReleased and closes the orphaned predictor instead of installing it.
+     */
+    fun release() {
+        executorsReleased = true
+        modelLoadGeneration.incrementAndGet() // strand any in-flight load's generation
+        modelLoadExecutor.shutdown()
+        stillExecutor.shutdown()
     }
 
     // endregion
@@ -2052,7 +2139,7 @@ class YOLOView @JvmOverloads constructor(
         val t0Nanos = SystemClock.elapsedRealtimeNanos()
         try {
             ic.takePicture(
-                stillExecutor,
+                stillCallbackExecutor,
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(image: ImageProxy) {
                         try {

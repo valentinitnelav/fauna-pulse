@@ -926,7 +926,7 @@ implementation, tests, and measurements are complete (codex's own instruction).
 - Benefit: publication-grade evidence, protection against optimizing
   debug-build noise. Cost: ~1 day, no runtime overhead.
 
-### E2. [ ] Port upstream's deterministic native predictor cleanup
+### E2. [x] Port upstream's deterministic native predictor cleanup
 
 - Verified defect: vendored `YOLOInstanceManager.kt:169-180` `dispose()` holds
   an EMPTY try block with the comment "YOLO class doesn't have a close()
@@ -959,6 +959,43 @@ implementation, tests, and measurements are complete (codex's own instruction).
   plateau via `dumpsys meminfo` and `ps -T`.
 - Benefit: long-running robustness (bounded native memory/threads), not frame
   time. Cost: 0.5-1 day predictor cleanup, 1-2 days executor ownership.
+
+**Done (round 161), both phases in one round.** Predictor lifecycle:
+`YOLO.kt` gained the explicit lazy delegate + closed flag, `@Synchronized`
+`predictorInstance()`/`predict(bitmap)`/`close()`; `close()` releases the
+BasePredictor (LiteRT interpreter / ORT session) once, idempotently, and any
+predictor access after close fails fast (IllegalStateException, surfaced by
+the existing channel catches as `prediction_error`). `YOLOInstanceManager.kt`:
+maps are ConcurrentHashMaps, `predict()` is `synchronized(yolo)` with the
+thresholds restored in `finally` (survives non-Exception Throwables too),
+`dispose()` is suspend + remove-from-maps-FIRST then close on
+`Dispatchers.IO`, `disposeAll()` hands every close to the IO dispatcher; the
+`removeInstance` alias was deleted (single caller updated). `YOLOPlugin.kt`:
+plugin-owned `pluginScope` (SupervisorJob + Main.immediate) created on
+attach, cancelled on detach; detach also clears all instance-channel
+handlers and calls `disposeAll()`; `disposeInstance`/`predictorInstance` run
+in that scope (GlobalScope is gone). Executor ownership: one owned
+`modelLoadExecutor` replaces the throwaway per-`setModel()`
+`newSingleThreadExecutor` (which parked one non-daemon thread per model
+switch); a generation token makes superseded loads step aside (finished
+predictor goes into the bounded LRU cache, NOT installed) and loads that
+finish after permanent disposal close themselves; completions run on a
+main-looper handler DELIBERATELY instead of `View.post` (a detached view
+parks View.post runnables until a re-attach that never comes, which would
+strand the freshly built predictor unclosed). New terminal
+`YOLOView.release()` (called from `YOLOPlatformView.dispose()` after
+`stop()`) shuts down `modelLoadExecutor` + `stillExecutor`; `stop()` itself
+stays restartable and was not changed. CameraX `takePicture` now gets a
+rejection-tolerant wrapper executor (a capture-error callback delivered
+from the camera thread just after `release()` is dropped, not crashed).
+`MainActivity.onDestroy()` shuts down `cropExecutor`. Preserved:
+`includeAnnotatedImage` (D3), the r151 model-load recovery /
+`onInitialModelLoadFailed` flow, predictor LRU cache semantics, and the
+already-correct `cameraExecutor` handling (untouched). Verified: analyze
+clean, 363 tests pass, debug APK builds. The on-device validation pass
+(repeated analyze/cancel/re-analyze + model-switch soak while watching
+`dumpsys meminfo` native heap and `ps -T` thread count plateau) is the
+owner's step.
 
 ### E3. [ ] Park CameraX between long time-lapse bursts
 
