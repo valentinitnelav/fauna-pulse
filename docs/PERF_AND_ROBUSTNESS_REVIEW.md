@@ -892,7 +892,7 @@ implementation, tests, and measurements are complete (codex's own instruction).
   the page could not be fully re-fetched on 2026-07-31, low stakes since this
   only keeps an already-rejected idea rejected).
 
-### E1. [ ] Establish a reproducible performance baseline
+### E1. [x] Establish a reproducible performance baseline
 
 - Add `docs/PERFORMANCE_BENCHMARKING.md` + a `tool/perf_summary.dart` parser
   (neither exists yet). The parser streams one or more session JSONL files and
@@ -925,6 +925,30 @@ implementation, tests, and measurements are complete (codex's own instruction).
   collapse.
 - Benefit: publication-grade evidence, protection against optimizing
   debug-build noise. Cost: ~1 day, no runtime overhead.
+
+**Done (round 162).** `docs/PERFORMANCE_BENCHMARKING.md` written: four golden
+rules (no debug-build speed claims; no mixed-binary comparisons; power only
+unplugged per r84; 10-minute cool-down per D3), the device/build matrix
+(Xiaomi = debug/thermal, Samsung = release/absolute, broken `current_ua`
+noted), the fixed-variables checklist, the 3-paired-alternating-runs protocol
+with cold (first 120 s) vs sustained (last 600 s) separation, the acceptance
+criteria verbatim from this item, and cross-links to the in-app engine
+benchmark (A4/r76), C2, C3, D3 and the QNN harness. `tool/perf_summary.dart`
+written: pure Dart (no Flutter dependency, runs as
+`dart tool/perf_summary.dart <session.jsonl|folder>...` with `--csv`,
+`--cold=S`, `--sustained=S`), STREAMS each log (never a whole-file
+`List<String>`), emits a one-row-per-session comparison table + per-session
+cold/overall/sustained detail tables covering camera/detector/pipeline FPS,
+pre/inf/post/track ms medians+p95, temperature/headroom, gate-idle fraction,
+applied-cap changes, power/energy (withheld when charging was detected),
+error and malformed-line counts, and end-record status; honours the r85
+`pipeline_fps ?? fps` fallback and the r77 absent-while-idle rule. 10 unit
+tests in `test/fauna_pulse/perf_summary_test.dart` (fixtures include
+malformed/truncated lines, charging, legacy records, window splits). The
+bench harness's `_v81_qnn.onnx` download was aligned to the v73 assets the
+validation/soak tests use (the RUN_BENCH/RUN_SOAK `=true` comment fix landed
+r160). Verified: analyze clean, 380 tests pass, CLI smoke-run on a synthetic
+session.
 
 ### E2. [x] Port upstream's deterministic native predictor cleanup
 
@@ -1090,6 +1114,19 @@ owner's step.
 - Benefit: bounded heap, one parse instead of three, responsive summaries,
   safer error reporting after long sessions. No live FPS change. Cost: 2-3
   days for the index, under half a day for bounded error sampling.
+
+**Partially done (round 162): the bounded error-sampling half.**
+`ErrorReporter._sampledLog` now goes through a new `boundedHeadTailSample`
+(logging/error_reporter.dart): reads a 128 KB head chunk + 512 KB tail chunk
+via RandomAccessFile instead of `readAsLines()` on the whole log, drops the
+partial line each chunk boundary cuts, runs `redactLocation` only on RETAINED
+lines, and keeps byte-identical output for small files (they still route
+through `headTailSample`). For large files the omission marker reports the
+file size instead of an exact line count (unknowable without reading the
+middle). 7 unit tests added (small-file parity, chunk-boundary completeness,
+tail redaction, no trailing newline, empty file, line cap). The streaming
+`SessionLogIndex` for the summary screen remains OPEN and is this item's
+remaining work.
 
 ### E6. [ ] Native tiled-image API only if SAHI profiling justifies it
 

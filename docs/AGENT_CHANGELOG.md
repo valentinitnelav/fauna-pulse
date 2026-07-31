@@ -5613,3 +5613,46 @@ non-daemon thread forever.
   repeated "Analyze saved photos" run/cancel/re-run cycles and a few model switches while watching
   `dumpsys meminfo <pkg>` (native heap should plateau, pre-r161 it climbed per analysis run) and
   `ps -T -p <pid> | wc -l` (thread count should plateau, pre-r161 it grew per model switch).
+
+## Round 162 (2026-07-31): E1 benchmark protocol + perf_summary tool; E5 bounded error sampling
+
+Implements Part E item E1 (both deliverables) and the small half of E5 from
+PERF_AND_ROBUSTNESS_REVIEW.md. `flutter analyze` clean, 380 tests pass (17 new). No behavior
+changes to detection/capture; the only app-code change is the error-report sampler.
+
+- **docs/PERFORMANCE_BENCHMARKING.md (new):** how to measure honestly. Four golden rules (never
+  quote debug-build numbers as device speed; never compare mixed binaries, the r132 start-record
+  fields make that auditable; power/energy only unplugged, the r84 rule; 10 min cool-down between
+  runs, the D3 lesson). Device/build matrix: Xiaomi = debug/dev + thermal-behaviour phone,
+  Samsung = release-test + absolute-speed phone (its `battery_current_ua` is broken, battery-%
+  only). Fixed-variables checklist, 3 paired runs in alternating order, cold (first ~2 min) vs
+  sustained (last ~10 min) separation, and the acceptance criteria (all three pairs agree AND the
+  gain exceeds run-to-run variation; capped modes need equal delivered FPS + >=5% lower power or a
+  materially delayed thermal collapse). Cross-links to the r76 in-app engine benchmark, C2, C3,
+  D3 and the QNN harness instead of restating them.
+- **tool/perf_summary.dart (new):** pure-Dart session-log summarizer, no Flutter dependency
+  (`dart tool/perf_summary.dart <session.jsonl|session-folder>... [--csv] [--cold=S]
+  [--sustained=S]`). STREAMS each log via openRead + LineSplitter (never a file-sized
+  `List<String>`; only the periodic samples are buffered, a few thousand numbers even for 8 h).
+  Output: one comparison row per session (build/model/trigger, sustained camera+pipeline FPS,
+  inference med/p95, temp start->max, gate-idle %, cap changes, power/energy, errors, end status)
+  plus per-session overall/cold/sustained detail tables; `--csv` gives one stable row per session
+  for R/pandas. Honours the diagnostics semantics so humans don't have to: `pipeline_fps ?? fps`
+  (r85 legacy), inference fields absent while the gate sleeps = missing data not zeros (r77),
+  power withheld whenever any sample was charging (r84), malformed/truncated lines counted and
+  skipped. Debug-build and no-end-record sessions are flagged in the output. 10 unit tests
+  (test/fauna_pulse/perf_summary_test.dart) on synthetic fixtures. Note: sustained columns read
+  n/a for sessions shorter than cold+sustained windows, deliberately (no steady state exists).
+- **E5, bounded error sampling:** `ErrorReporter._sampledLog` no longer `readAsLines()`s the
+  whole session log at report time (the worst possible moment for a memory spike, right after
+  something failed, possibly hours into a recording). New `boundedHeadTailSample` reads a 128 KB
+  head + 512 KB tail chunk via RandomAccessFile (the `_loadStats()` pattern), drops the partial
+  line at each chunk boundary, redacts ONLY retained lines (`redactLocation` unchanged), and is
+  byte-identical to the old output for small files. Large-file marker reports file size instead
+  of exact omitted-line count. 7 new tests in error_reporter_test.dart. The summary-screen
+  `SessionLogIndex` (E5's main body) remains open.
+- **QNN bench consistency:** the RUN_BENCH benchmark downloaded `_v81_qnn.onnx` while validation
+  and soak use `_v73` (silently different context binaries per row). Aligned to v73 with an r151
+  reminder that neither arch runs on the SD888 Xiaomi.
+- Owner workflow note: from now on, perf/thermal claims in review rounds should come with a
+  perf_summary table and follow PERFORMANCE_BENCHMARKING.md; the E3/E4/E6/E9 gates depend on it.

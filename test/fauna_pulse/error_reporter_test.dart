@@ -48,6 +48,102 @@ void main() {
     });
   });
 
+  group('boundedHeadTailSample (round 162, perf review E5)', () {
+    late Directory tmp;
+    setUp(() => tmp = Directory.systemTemp.createTempSync('bounded_sample'));
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    File write(String content) =>
+        File('${tmp.path}/session.jsonl')..writeAsStringSync(content);
+
+    test('small file matches the whole-file sampler, marker and all', () async {
+      final lines = List.generate(500, (i) => 'line $i');
+      final f = write('${lines.join('\n')}\n');
+      final bounded = await boundedHeadTailSample(f, head: 30, tail: 200);
+      expect(bounded, headTailSample(lines, head: 30, tail: 200));
+    });
+
+    test('small file applies redaction', () async {
+      const loc = '{"type":"start_of_session","location":{"lat":1.0}}';
+      final f = write('$loc\nplain\n');
+      final out = await boundedHeadTailSample(
+        f,
+        head: 30,
+        tail: 200,
+        redact: redactLocation,
+      );
+      expect(out, contains('[redacted]'));
+      expect(out, isNot(contains('"lat"')));
+    });
+
+    test('large file reads only head+tail chunks, complete lines only',
+        () async {
+      // 1000 numbered ~20-byte lines with tiny chunk budgets, so the chunk
+      // boundaries are guaranteed to cut lines mid-record.
+      final lines =
+          List.generate(1000, (i) => 'line ${i.toString().padLeft(6, '0')}');
+      final f = write('${lines.join('\n')}\n');
+      final out = await boundedHeadTailSample(
+        f,
+        head: 5,
+        tail: 5,
+        headBytes: 200,
+        tailBytes: 300,
+      );
+      final outLines = out.split('\n');
+      expect(outLines.first, 'line 000000');
+      expect(outLines[4], 'line 000004');
+      expect(outLines[5], contains('middle omitted'));
+      expect(outLines.last, 'line 000999');
+      expect(outLines, hasLength(5 + 1 + 5));
+      // Every kept line is complete (no partial-line fragments).
+      for (final l in [...outLines.take(5), ...outLines.skip(6)]) {
+        expect(l, matches(RegExp(r'^line \d{6}$')));
+      }
+    });
+
+    test('large file redacts retained tail lines', () async {
+      final filler = List.generate(200, (i) => 'x' * 50).join('\n');
+      const loc = '{"type":"roi_update","location":{"lat":9.9}}';
+      final f = write('$filler\n$loc\n');
+      final out = await boundedHeadTailSample(
+        f,
+        head: 2,
+        tail: 2,
+        headBytes: 128,
+        tailBytes: 256,
+        redact: redactLocation,
+      );
+      expect(out, contains('[redacted]'));
+      expect(out, isNot(contains('"lat"')));
+    });
+
+    test('no trailing newline: final line still sampled', () async {
+      final lines = List.generate(300, (i) => 'row $i');
+      final f = write(lines.join('\n')); // no trailing \n
+      final out = await boundedHeadTailSample(
+        f,
+        head: 3,
+        tail: 3,
+        headBytes: 64,
+        tailBytes: 128,
+      );
+      expect(out.split('\n').last, 'row 299');
+    });
+
+    test('empty file yields empty sample', () async {
+      final f = write('');
+      expect(await boundedHeadTailSample(f, head: 30, tail: 200), '');
+    });
+
+    test('caps overlong retained lines', () async {
+      final f = write('${'y' * 5000}\n');
+      final out = await boundedHeadTailSample(f, head: 5, tail: 5);
+      expect(out, endsWith('…[truncated]'));
+      expect(out.length, lessThan(2100));
+    });
+  });
+
   group('crash file format', () {
     test('file name is a fixed-width local stamp', () {
       expect(

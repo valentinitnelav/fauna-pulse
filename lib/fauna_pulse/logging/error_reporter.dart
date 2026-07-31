@@ -266,14 +266,21 @@ class ErrorReporter {
 
   /// A head + tail sample of [file] (so a big session log doesn't bloat the
   /// report): the first lines carry the start-record metadata, the last ones
-  /// the failure-time context. Reads the whole file but keeps only the sample.
+  /// the failure-time context. Bounded read (round 162, perf review E5): only
+  /// a head chunk and a tail chunk are read — the old whole-file
+  /// `readAsLines()` held a potentially huge log in memory at exactly the
+  /// moment things had already gone wrong.
   /// The session's GPS `location` (round 126) is stripped from the sample —
   /// field-site coordinates (possibly of protected species) must never ride
-  /// along in a report shared by email.
+  /// along in a report shared by email. Redaction runs only on RETAINED lines.
   static Future<String> _sampledLog(File file, int head, int tail) async {
     try {
-      final lines = (await file.readAsLines()).map(redactLocation).toList();
-      return headTailSample(lines, head: head, tail: tail);
+      return await boundedHeadTailSample(
+        file,
+        head: head,
+        tail: tail,
+        redact: redactLocation,
+      );
     } catch (e) {
       return '(could not read session log: $e)';
     }
@@ -304,6 +311,83 @@ String redactLocation(String line) {
     return jsonEncode(obj);
   } catch (_) {
     return line;
+  }
+}
+
+/// Bounded head+tail sample of a possibly huge file (round 162, perf review
+/// E5). Reads at most [headBytes] + [tailBytes] from disk instead of the whole
+/// file, following the `_loadStats()` pattern in the summary screen. Chunk
+/// boundaries cut lines, so the trailing partial line of the head chunk and
+/// the leading partial line of the tail chunk are dropped; [redact] (e.g.
+/// [redactLocation]) runs only on lines that are actually kept. Small files
+/// (length within the two chunk budgets) go through [headTailSample]
+/// unchanged, marker and all.
+Future<String> boundedHeadTailSample(
+  File file, {
+  required int head,
+  required int tail,
+  String Function(String line)? redact,
+  int maxLineChars = 2000,
+  int headBytes = 128 * 1024,
+  int tailBytes = 512 * 1024,
+}) async {
+  String keep(String line) {
+    final r = redact == null ? line : redact(line);
+    return r.length <= maxLineChars
+        ? r
+        : '${r.substring(0, maxLineChars)}…[truncated]';
+  }
+
+  final raf = await file.open();
+  try {
+    final len = await raf.length();
+    if (len <= headBytes + tailBytes) {
+      final all = utf8.decode(await raf.read(len), allowMalformed: true);
+      final lines = const LineSplitter().convert(all);
+      final redacted = redact == null ? lines : lines.map(redact).toList();
+      return headTailSample(
+        redacted,
+        head: head,
+        tail: tail,
+        maxLineChars: maxLineChars,
+      );
+    }
+
+    // Head chunk: keep only complete lines (drop the trailing partial one —
+    // the byte boundary almost certainly cut it mid-record).
+    final headChunk = utf8.decode(
+      await raf.read(headBytes),
+      allowMalformed: true,
+    );
+    var headLines = const LineSplitter().convert(headChunk);
+    if (!headChunk.endsWith('\n') && headLines.isNotEmpty) {
+      headLines = headLines.sublist(0, headLines.length - 1);
+    }
+
+    // Tail chunk: drop the leading partial line (start after the first '\n').
+    await raf.setPosition(len - tailBytes);
+    final tailChunk = utf8.decode(
+      await raf.read(tailBytes),
+      allowMalformed: true,
+    );
+    final firstNewline = tailChunk.indexOf('\n');
+    final tailLines = firstNewline < 0
+        ? <String>[]
+        : const LineSplitter().convert(tailChunk.substring(firstNewline + 1));
+
+    final keptHead = headLines.take(head).map(keep);
+    final keptTail = (tailLines.length <= tail
+            ? tailLines
+            : tailLines.sublist(tailLines.length - tail))
+        .map(keep);
+    // The total line count is unknown without reading the middle, so the
+    // marker reports the file size instead of an exact omitted-line count.
+    final marker =
+        '… middle omitted (log is ${(len / (1024 * 1024)).toStringAsFixed(1)} MB; '
+        'first $head + last $tail lines sampled) …';
+    return [...keptHead, marker, ...keptTail].join('\n');
+  } finally {
+    await raf.close();
   }
 }
 

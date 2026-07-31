@@ -177,9 +177,14 @@ void main() {
         await _bench('${entry.key}|cpu', id, task, image, useGpu: false);
         if (Platform.isAndroid) {
           await _bench('${entry.key}|gpu', id, task, image);
+          // v73 to match the validation + soak tests above (round 162; this row
+          // said v81, so bench and validation silently exercised DIFFERENT
+          // context binaries). Note (r151): context binaries are per-Hexagon-
+          // generation — neither v73 nor v81 can run on the SD888 test Xiaomi
+          // (v68); QNN rows need a newer Snapdragon.
           await _bench(
             '${entry.key}|qnn',
-            '$_releaseBase/${id}_v81_qnn.onnx',
+            '$_releaseBase/${id}_v73_qnn.onnx',
             task,
             image,
           );
