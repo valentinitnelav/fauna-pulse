@@ -5530,3 +5530,36 @@ Implements all four sub-rounds (A-D) of RELEASE_PLAN.md Phase 3 in one round. UI
 - **New shared helper `_foldSection`** (settings_sheet.dart): the tracker-fold ExpansionTile recipe (zero tile padding, muted chevron, `shape: Border()`), reused by all 6 folds incl. the refactored tracker fold.
 - Cross-references updated: Setup trigger explainer ("motion gate on the Power tab"), reference-photos subtitle ("Photos tab"), sheet header comment, session_config.dart L463 comment, camera_session_screen.dart L1550 comment. `docs/SETTINGS_REFERENCE.md` restructured to mirror the new tabs (its "(AI tab)" headings for throttle/gate were stale even before this round) + a migration note for pre-r159 screenshots + fold locations marked per setting + previously-undocumented "Square export crops" and "Show setup tips" locations added.
 - Files: settings_sheet.dart (large diff, mostly moves), home_screen.dart, numeric_setting_field.dart, session_config.dart (1 comment), camera_session_screen.dart (1 comment), test/fauna_pulse/numeric_setting_field_test.dart (new), docs/SETTINGS_REFERENCE.md, docs/RELEASE_PLAN.md, this file, AGENT_CHANGELOG_OVERVIEW.md.
+
+## Round 160 (2026-07-31): Part E recorded (codex re-audit, adversarially verified)
+
+The owner had codex (OpenAI) audit the repo against the re-downloaded upstream plugin copy
+(now v0.6.11) and propose a Part E for PERF_AND_ROBUSTNESS_REVIEW.md; Claude then verified
+every checkable claim (3 parallel read-only exploration agents + firsthand spot-checks)
+before recording anything. Docs + two comment lines only; no behavior changes.
+
+- **Verification verdict:** the codex plan is nearly hallucination-free. Of ~40 verifiable
+  claims essentially all matched the code at exact file:line, including the QNN packaging
+  size (claimed ~76/226 MB; measured 75.7 MB in-APK / 224.3 MB uncompressed in the actual
+  release APK). One proposal rested on a false premise and was reworded (E7
+  thermal-headroom caching: headroom is read ~2x per 10 s, nowhere near Android's ~1/s NaN
+  throttle; only the thermal+power read coalescing survives). Smaller amendments: E0 must
+  not rewrite Part D's historical "0.6.10" statements; E1 gains the RUN_SOAK twin bug, the
+  v81-vs-v73 asset inconsistency and the debug-Xiaomi/release-Samsung device caveat; E9
+  gains the fact that PreviewView COMPATIBLE is a deliberate fork override.
+- **Top verified finding (E2):** vendored `YOLOInstanceManager.dispose()` has an EMPTY try
+  block ("YOLO class doesn't have a close() method") so every dispose leaks the native
+  interpreter; upstream 0.6.11 contains the complete fix to port (idempotent YOLO.close(),
+  remove-then-close on Dispatchers.IO, synchronized predict with finally-restored
+  thresholds, plugin-owned scope instead of GlobalScope). Highest-value open item.
+- **Part E appended** to PERF_AND_ROBUSTNESS_REVIEW.md: E0 verdict (upstream v0.6.11,
+  iOS-only change, rejected leads) + E1-E10 proposals, ALL unchecked until implemented,
+  tested and measured, with interfaces/acceptance/order recorded. New settings proposed
+  there (timeLapseCameraSleep, reduceCameraFpsWhileMotionGateIdle) both default false and
+  only ship if their experiments pass.
+- **Small fix landed:** `integration_test/qnn_benchmark_test.dart` header comments said
+  `--dart-define=RUN_BENCH=1`, but `bool.fromEnvironment` only accepts the literal `true`,
+  so the bench silently never ran; comments now say `=true` and document `RUN_SOAK=true`.
+  Code unchanged.
+- Review artifacts: the codex source plan sits at `/InsectDetectApp/codex-proposed-plan.md`
+  (repo-root sibling, not part of the app tree).

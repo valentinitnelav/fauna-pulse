@@ -3,12 +3,14 @@
 // On-device QNN validation + CPU/GPU/QNN benchmark harness (Snapdragon device + network).
 //
 // Validation: loads the v73 QNN context-binary model for every task and checks real outputs on
-// bus.jpg. Benchmark (enable with --dart-define=RUN_BENCH=1): times predict() per task per backend
+// bus.jpg. Benchmark (enable with --dart-define=RUN_BENCH=true; bool.fromEnvironment only accepts
+// the literal "true", so "=1" silently leaves it off): times predict() per task per backend
 // using the native speed (pre + inference + post, no plotting). CPU and GPU rows use the default
 // official int8 TFLite assets (what the app ships); QNN rows use the release context binaries.
 //
 // Run with:
-//   flutter test integration_test/qnn_benchmark_test.dart -d <device> [--dart-define=RUN_BENCH=1]
+//   flutter test integration_test/qnn_benchmark_test.dart -d <device> \
+//     [--dart-define=RUN_BENCH=true] [--dart-define=RUN_SOAK=true]
 
 import 'dart:io';
 import 'dart:typed_data';

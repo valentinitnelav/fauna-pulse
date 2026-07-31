@@ -859,3 +859,356 @@ pre-r156 run of the same session and settings.
   native overlay; the `tracks` ValueNotifier fires every detector frame even
   when nothing is detected. Both immaterial at 10 fps.
 - **`Dispatchers.IO` for `predictSingleImage`:** correctness risk, see D3.
+
+## Part E: Round 160 codex re-audit against upstream v0.6.11 and broader efficiency review (2026-07-31)
+
+Provenance: these proposals were authored by codex (OpenAI) on 2026-07-31 from a
+read-only repo audit, then adversarially verified by Claude in round 160 (three
+parallel exploration agents plus firsthand spot-checks; every file:line reference
+below was re-checked against the code). The verification found the codex plan
+nearly hallucination-free; E7's first bullet was reworded (false premise) and
+E0/E1/E9 carry small factual amendments. Every proposal stays UNCHECKED until
+implementation, tests, and measurements are complete (codex's own instruction).
+
+### E0. Verdict: upstream v0.6.11 and rejected leads (recorded so this is never redone)
+
+- The on-disk upstream copy at `/InsectDetectApp/yolo-flutter-app-main` is now
+  **v0.6.11** (pubspec:5). Its only change after 0.6.10 is an iOS float16
+  object-decoding fix (CHANGELOG top entry): no Android CameraX, LiteRT,
+  ORT/QNN, or live-pipeline changes. The D0 parity conclusions are unaffected.
+  Part D's "v0.6.10" statements are historical (true when written on
+  2026-07-27) and are deliberately NOT rewritten.
+- The vendored plugin's pubspec still says `version: 0.6.4`. That is a stale
+  label, not the audit state: parity against 0.6.10 was established in Parts
+  C/D (D1-D3 selectively ported r154-156). E10's FAUNAPULSE_FORK.md should
+  record base version + audit dates so the label stops misleading.
+- Rejected leads, do not re-investigate: wholesale plugin synchronization,
+  task-specific segmentation/depth/pose changes, tracker rewrites, overlay
+  micro-optimizations, direct CameraX RGBA-to-tensor conversion, speculative
+  AHardwareBuffer zero-copy work.
+- Output-buffer reuse stays unavailable: LiteRT's current `TensorBuffer`
+  exposes array-returning reads only, no destination-buffer API
+  (https://ai.google.dev/edge/api/litert/kotlin/com/google/ai/edge/litert/TensorBuffer;
+  the page could not be fully re-fetched on 2026-07-31, low stakes since this
+  only keeps an already-rejected idea rejected).
+
+### E1. [ ] Establish a reproducible performance baseline
+
+- Add `docs/PERFORMANCE_BENCHMARKING.md` + a `tool/perf_summary.dart` parser
+  (neither exists yet). The parser streams one or more session JSONL files and
+  emits CSV/Markdown: camera/detector/pipeline FPS; pre/inference/post/tracking
+  medians and p95; temperature/headroom; cap changes; gate-idle fraction;
+  power/energy only where valid (unplugged sessions, the r84 rule); error
+  counts. Precedent for offline session parsing incl. the dart-define pattern:
+  `tracking/tracker_replay.dart`.
+- Protocol: profile or release builds, fixed model hash, scene, mount, camera
+  mode, FPS settings, screen state, charging state, ambient conditions,
+  starting temperature. Three paired A/B runs with alternating order; separate
+  cold startup from the final sustained interval. Cross-link (do not restate)
+  the existing benchmarking material in A4, C2, C3 and the D3 field notes.
+- Device caveat (r160 amendment): the Xiaomi deploys as a debug build (MIUI
+  quirk) while the Samsung is the release-test phone (r158 convention), so the
+  protocol must state per table which device/build produced each number. The
+  Samsung's `battery_current_ua` is broken (r132): battery-% drop only.
+- RUN_BENCH define bug: `integration_test/qnn_benchmark_test.dart:22` uses
+  `bool.fromEnvironment('RUN_BENCH')`, which is false unless the value is
+  exactly `true`, while the in-file instructions said `--dart-define=RUN_BENCH=1`
+  (silently skips the bench). Comment fix landed r160; `RUN_SOAK` (:23) had the
+  same trap and is now documented. Still open for this item: the bench
+  downloads `_v81_qnn.onnx` (:180) while validation uses `_v73` (:105), and per
+  r151 neither Hexagon arch can run on the Xiaomi (SD888 = v68), so QNN rows
+  are other-device only; keep QNN/network/soak tests explicitly opt-in and keep
+  the pinned v0.3.5 assets for reproducibility.
+- Acceptance rule: adopt an optimization only when three paired runs agree and
+  the gain exceeds run-to-run variation. For capped modes: equal useful
+  delivered FPS plus at least 5% lower power, or materially delayed thermal
+  collapse.
+- Benefit: publication-grade evidence, protection against optimizing
+  debug-build noise. Cost: ~1 day, no runtime overhead.
+
+### E2. [ ] Port upstream's deterministic native predictor cleanup
+
+- Verified defect: vendored `YOLOInstanceManager.kt:169-180` `dispose()` holds
+  an EMPTY try block with the comment "YOLO class doesn't have a close()
+  method, just remove from map", so every dispose leaks the native LiteRT
+  interpreter/delegates/buffers until GC maybe finalizes them. Vendored
+  `YOLO.kt` has no `close()` at all. Vendored `YOLOPlugin.kt:634` launches on
+  `GlobalScope`. This matters most for the r135+ batch analyze/cancel/
+  re-analyze flows, which dispose predictors repeatedly.
+- Port from upstream 0.6.11: idempotent synchronized `YOLO.close()` closing its
+  BasePredictor (upstream `YOLO.kt:730-734`); `YOLOInstanceManager.dispose()`
+  removes the instance then closes it on `Dispatchers.IO` (upstream
+  `YOLOInstanceManager.kt:116-119`); synchronized predict with temporary
+  thresholds restored in a real `finally` (upstream `:90-104`, the vendored
+  copy restores in try/catch so a non-Exception Throwable corrupts them);
+  reject prediction after close. Replace GlobalScope with a plugin-owned
+  SupervisorJob scope cancelled on engine detach (upstream pattern:
+  `pluginScope` created at attach, `pluginScope.cancel()` on detach), and on
+  detach close every instance and clear method/event channels.
+- Second phase (executor ownership): `stillExecutor` (`YOLOView.kt:356`) is
+  never shut down; model loading spawns throwaway
+  `Executors.newSingleThreadExecutor().execute` (`YOLOView.kt:801`, needs one
+  owned executor + a generation token so stale loads are closed); `cropExecutor`
+  (`MainActivity.kt:47`) needs shutdown from `onDestroy()`. Do NOT touch
+  `cameraExecutor`: it is already drained on rebind and stop.
+- Preserve: FaunaPulse's `includeAnnotatedImage` behavior (D3), the r151
+  model-load recovery path, and the fork's 3-entry predictor LRU cache
+  semantics (see E9).
+- Validate: 20 repeated analyze/cancel/reanalyze cycles, dispose-during-
+  prediction, double-dispose, engine detach/reattach, native heap/thread
+  plateau via `dumpsys meminfo` and `ps -T`.
+- Benefit: long-running robustness (bounded native memory/threads), not frame
+  time. Cost: 0.5-1 day predictor cleanup, 1-2 days executor ownership.
+
+### E3. [ ] Park CameraX between long time-lapse bursts
+
+- New `SessionConfig.timeLapseCameraSleep`, UI "Turn camera off between
+  bursts", default false. Owner rule applies: Settings control + SessionConfig
+  JSON + summary row + round-trip test in the same round.
+- Extract a tested `TimeLapseCameraCoordinator` from
+  `screens/camera_session_screen.dart` with explicit running / parked /
+  warming / fallbackBound states. The machinery exists: r94 scheduled sleep
+  already fully unbinds via `_controller.pause()` and resumes via
+  `_controller.resume()` (`camera_session_screen.dart:1904-1943`), and the
+  post-resume frame-arrival deadline `_waitForFrames(Duration(seconds: 20))`
+  (`:1933`) is the "wake allowance" to reuse. No coordinator/parking logic
+  exists today; `time_lapse_plan.dart` stays pure schedule math.
+- Park only when time-lapse is non-continuous and the idle gap is at least
+  30 s. Unbind after a burst; resume ~10 s before the next wall-clock burst;
+  invalidate cached native frames and wait for a fresh frame generation/
+  timestamp before capturing (today the between-burst 1 fps sampler keeps the
+  frame cache fresh for the burst's first photo, `:2624-2637`; parking removes
+  that, so staleness must be handled explicitly).
+- Late wake: preserve the original time grid. If no fresh frame arrives within
+  the 20 s allowance: record the failure, leave the camera bound, disable
+  parking for the rest of the session. Suppress the dead-camera watchdog
+  (`_checkCameraDelivery`, 10 s silence threshold, `:1173-1191`) ONLY while
+  explicitly parked; today the native 1 Hz heartbeat keeps it quiet between
+  bursts, so parking would otherwise trip it within 10 s.
+- New compact `camera_sleep` JSONL records {state, reason, scheduled burst
+  time} so a scientific audit can tell intentional inactivity from camera
+  failure. Existing readers ignore unknown record types.
+- Update session config/settings/summary display, FIELD_GUIDE,
+  SETTINGS_REFERENCE; warn that the preview freezes while parked.
+- Validate: fast and high-res capture, manual and auto focus, blackout,
+  scheduled windows, stop/dispose during wake, Doze lateness, stale-frame
+  prevention, fallback behavior, on both test phones.
+- Benefit: at the default 10 s burst / 30 min interval, camera-bound duty falls
+  from 100% to ~1.1% including prewake (20 s per 1800 s). Whole-device savings
+  smaller (foreground service + wakelock remain). Live detector mode unchanged.
+  Cost: 3-5 days plus paired one-hour field runs.
+
+### E4. [ ] Experiment: hardware camera cap while the motion gate sleeps
+
+- Step 1 (cheap, do first): log every supported Camera2 AE FPS range plus the
+  requested/applied range. `chooseAeFpsRange()` already reads
+  `CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES` (`YOLOView.kt:1865`) but discards
+  the list; the existing applied-range log line only fires on change. No UI
+  until a lower legal range is proven on hardware (the Xiaomi is known to
+  accept a fixed [15,15]; whether anything like [5,15] or [5,5] exists is the
+  open question).
+- Design (r160 amendments): keep the user's configured ceiling separate from a
+  new effective-cap field so the r82 single-funnel invariant holds and the
+  user's value is never clobbered; when the gate goes idle, request
+  min(configuredCap, 5) once on the state transition (`gateAwakeUntilNs`
+  transitions exist, wake at `YOLOView.kt:2471`); restore immediately on
+  motion, ROI change, gate disable, or capture preparation. The gate code runs
+  on the camera executor while interop options are applied from main/bind
+  paths, so post the funnel call to the main thread.
+- If proven: expose `reduceCameraFpsWhileMotionGateIdle`, default false, in the
+  gate-sensitivity advanced fold (Power tab). Independent from the inference
+  cap controller.
+- Reject on: only [15,15]-style fixed ranges, under 10% camera/power reduction
+  in paired release tests, worse low-light behavior, delayed high-res capture,
+  or missed events.
+- Benefit: sensor/ISP heat reduction during empty-ROI periods, possibly better
+  sustained active FPS later. No instantaneous FPS gain. Cost: 1-2 days plus
+  Xiaomi/Samsung A/B.
+
+### E5. [ ] One streaming session-log index + bounded error sampling
+
+- Verified: `screens/session_summary_screen.dart` (4208 lines) does three full
+  `readAsLines()` parses of session.jsonl on the UI isolate (`:374` graphs +
+  track spans + diagnostics, `:600` photos, `:1001` ROI history) plus a full
+  `readAsString()` of post_detections.jsonl (`:187`). The parses are lazy
+  (tab-triggered), so this is jank/heap relief on long sessions, not a crash
+  fix.
+- Introduce an immutable internal `SessionLogIndex` built OFF the UI isolate
+  from `File.openRead()` + UTF-8 decode + `LineSplitter`; cache one future per
+  summary screen; graphs, photos, ROI history, diagnostics and track spans all
+  consume it. Keep the existing bounded head/tail stats path (`_loadStats()`
+  `:288-336`; same pattern in home_screen and analysis_screen). A second
+  streaming pass only for high-res frame-bracket matching. Move parsing/
+  aggregation out of the widget into a pure logging/repository component.
+  Preserve legacy `detection` vs batched `detections` semantics (`:385-395`)
+  and tolerate malformed/truncated final lines.
+- Separately: `ErrorReporter._sampledLog()` (`logging/error_reporter.dart:273`)
+  reads the WHOLE file (its docstring says so) before `headTailSample` keeps
+  30+200 lines. Replace with a bounded random-access head/tail reader; redact
+  only retained lines.
+- Validate parity against the existing parser for detection, raw-detection,
+  gate, ROI, photo, time-lapse and ground-truth records; 100k-line unit
+  fixtures + a large integration fixture, with no file-sized `List<String>` and
+  no UI-isolate JSON decoding.
+- Benefit: bounded heap, one parse instead of three, responsive summaries,
+  safer error reporting after long sessions. No live FPS change. Cost: 2-3
+  days for the index, under half a day for bounded error sampling.
+
+### E6. [ ] Native tiled-image API only if SAHI profiling justifies it
+
+- Step 1: instrument SAHI phases (source decode, tile crop/JPEG encode, channel
+  transfer, native tile decode, inference, merge). Today the only timing is the
+  lumped per-photo `infer_ms` (`postprocess/post_detector.dart:281`); no
+  Stopwatch exists anywhere under `postprocess/`.
+- Gate: continue only if tile preparation plus JPEG round trips are at least
+  15% of wall time on cooled paired runs. Bounding note (r160): tile prep
+  already runs in a background isolate via `compute()` (`sahi.dart:202`), so
+  the candidate win is the per-tile `encodeJpg` (`:186`), the per-tile
+  `predictSingleImage` channel round trip, and the native re-decode; the D3
+  field data says Xiaomi heat dominates SAHI wall time, so this gate may well
+  fail, and that outcome should be recorded as a skipped lead.
+- If justified: add `predictTiledImage` to the vendored plugin (decode the
+  source JPEG once, sequentially crop + infer one tile at a time, recycle
+  temporary bitmaps, return source dimensions + tile rectangles + per-tile
+  detections; never parallelize access to the mutable predictor). Keep
+  coordinate mapping, minimum-box filtering, IoS merging and all scientific
+  behavior in pure Dart (r141/r143 semantics); keep the current per-tile path
+  as the fallback.
+- Validate: mapped-box parity, thresholds restored after failure, cancellation
+  between tiles/photos, decode errors, fallback, peak heap, absence of
+  annotated-image bytes (D3).
+- Benefit: ~10-25% lower SAHI wall time and bounded tile memory, SUBJECT TO
+  MEASUREMENT; offline only, no live-camera effect. Cost: 2-4 days plus
+  increased fork-maintenance burden.
+
+### E7. [ ] Three small cleanups (first bullet reworded after verification)
+
+- Coalesce the thermal/power reads (REWORDED r160: codex's original premise,
+  frequent headroom calls risking the Android NaN throttle, is FALSE: the
+  single call site `MainActivity.kt:648-657` is driven by two Dart timers both
+  defaulting to 10 s, ~2 calls per 10 s, nowhere near the ~1/s limit). What
+  remains worth doing: both timers hit the same channel, so share one native
+  sample per tick, stamped with a monotonic clock; this also covers the
+  user-configurable 1 s minimum interval, the only case where the rate limit
+  could ever matter.
+- C++ NMS early break: `native-lib.cpp:79-93` collects every surviving
+  proposal and truncates only afterwards (`:153`, `num_items_threshold`,
+  default 30). Inputs are pre-sorted (`:147`), so breaking once the threshold
+  is reached is byte-identical. C++ path only; the Kotlin
+  `postprocessEndToEnd` already breaks early (`ObjectDetector.kt:252`).
+  Require an exact-parity test; expect a benefit only on noisy frames with
+  more than 30 surviving proposals.
+- Batch-analysis progress at most ~5 Hz: today an unthrottled per-photo
+  callback lands in `setState` (`post_detector.dart:299-304` →
+  `analysis_screen.dart:370-377`). Keep per-photo cancellation and the
+  mandatory final/cancel updates; only matters when photos process fast.
+- Benefit: tidier telemetry, a crowded-frame postprocessing micro-gain,
+  smoother fast batches. Cost: ~1 day total. None of these are live-FPS gains.
+
+### E8. [ ] Document the lean QNN packaging alternative (document only)
+
+- Measured (r160, release APK 116.5 MB): the ORT/QNN stack is 21 arm64-v8a
+  libs, 75.7 MB in-APK (deflated) / 224.3 MB uncompressed, ~62% of the APK;
+  `libQnnHtpPrepare.so` alone is 90.4 MB uncompressed. `useLegacyPackaging =
+  true` (app build.gradle:91-97) additionally extracts these to
+  `nativeLibraryDir` at install (the Hexagon DSP loads Skel libs via real file
+  paths), so the on-device cost is roughly APK + extracted copies. The plugin
+  declares the dep `compileOnly` (plugin build.gradle:94-97); the app's two
+  `implementation` lines (app build.gradle:150,153) are the single opt-in
+  point, which makes a lean variant genuinely easy.
+- Preserve the accepted single-capability-build decision (RELEASE_PLAN
+  "keep useLegacyPackaging ... accept the size cost") unless the owner
+  explicitly reopens distribution policy. Part E documents the lean
+  alternative WITHOUT implementing it:
+    - Default build omits the QNN deps and uses `useLegacyPackaging = false`.
+    - `-Pqnn` / `ENABLE_QNN=1` produces a separately labelled QNN artifact.
+    - Native `isQnnRuntimeAvailable` capability query (safe class/provider
+      detection); the model picker must explain that `*_qnn.onnx` needs the
+      QNN build (extend the r151 `modelLoadRecovery` path) rather than accept
+      a model that cannot load.
+    - Prefer an App Bundle for Play; QNN APK for advanced users via GitHub.
+- Benefit: major download/install reduction for standard users; zero runtime
+  effect when QNN is unused. Cost: 1-2 days plus the REAL ongoing cost, a
+  two-artifact release matrix.
+
+### E9. [ ] Three controlled camera experiments (build-time A/B, not defaults)
+
+- Fast-mode ImageCapture unbind: all three use cases currently bind
+  unconditionally (`YOLOView.kt:1091-1097`) with the ZSL ring buffer alive,
+  while fast live-frame crops are the DEFAULT photo mode that never uses
+  ImageCapture. Retain only if visit/reference photos, lens switching, resume,
+  CALIBRATION (the startup full-res photo probe uses ImageCapture) and the
+  auto/high-res fallback all stay correct, and PSS or camera power improves
+  materially.
+- PreviewView PERFORMANCE mode: correction (r160), the fork EXPLICITLY sets
+  `ImplementationMode.COMPATIBLE` (`YOLOView.kt:265-267`); CameraX's default
+  is PERFORMANCE, so this was a deliberate opt-out, almost certainly for
+  Flutter platform-view layering. First recover why, then try PERFORMANCE in
+  one experimental build; retain only if every ROI control/overlay stays
+  visible and GPU/power improves at least 5%.
+- Predictor cache 3 → 1 (`predictorCacheLimit`, `YOLOView.kt:730-732`,
+  fork-local LRU): measure native/graphics PSS after loading three models;
+  reduce only if materially elevated; slower switching back is the accepted
+  tradeoff.
+- Cost: 0.5-2 days each.
+
+### E10. [ ] Documentation truth pass
+
+- Add `packages/ultralytics_yolo/FAUNAPULSE_FORK.md`: upstream base (commit
+  `22b2e5d`, label 0.6.4) vs last audited version/date (0.6.10 Part C/D,
+  0.6.11 glanced r160), selectively ported changes (D1-D3, E2 when done),
+  fork-only invariants, safe re-audit checklist. Add a short fork banner to
+  the plugin README (currently VERBATIM upstream: Ultralytics badges, zero
+  fork markers).
+- Replace `lib/fauna_pulse/README.md`: it is a Phase-1 snapshot ("the plugin
+  itself is untouched" contradicts ARCHITECTURE §5; the code map misses
+  `perf/ postprocess/ services/ session/`; the schema section predates the r69
+  one-line-per-frame change). ARCHITECTURE.md's intro points readers at it, so
+  the staleness propagates.
+- Replace `test/README.md`: verbatim upstream boilerplate whose commands
+  reference a nonexistent `example/` directory; document the real commands
+  (`flutter test test/fauna_pulse`, the replay harness, integration tests with
+  WORKING dart-defines, see E1).
+- CONTRIBUTING.md: "the app deploys as a debug build" is stale since r158
+  (Samsung = release-test phone); benchmarking guidance should point at
+  E1's protocol. Fix the doc-index bugs: duplicate AGENT_CHANGELOG.md row
+  (the first should be AGENT_CHANGELOG_OVERVIEW.md) and missing
+  RELEASE_PLAN.md + MODEL_CONVERSION.md rows.
+- FIELD_GUIDE.md / DATA_GUIDE.md: verify telemetry cadence and omission
+  semantics (r77 gate-idle fps omissions, r149 always-on diagnostics) and
+  actual startup behavior. Verified r160: ARCHITECTURE.md, CONTRIBUTING.md and
+  test/README.md contain NO stale "Camera tab"/"Graphs tab" names; only
+  SETTINGS_REFERENCE.md's deliberate migration note mentions them.
+- RELEASE_PLAN.md: fix the real bundled-model contradiction (the open-question
+  section says a fresh install "cannot detect insects", while two verification
+  lines promise "detects insects with the bundled model out of the box";
+  align on the honest r158 README wording). Update the drifted APK size
+  figures (129 / 122.1 MB recorded vs 116.5 MB current). Do NOT add another
+  Quick Start task; it exists in Phase 2. Add the simple mode-choice and
+  heat/battery table when that existing task is done.
+- Benefit: less onboarding ambiguity for users, reviewers, and future agents.
+  Cost: ~1 day.
+
+### Part E interfaces, acceptance, and order
+
+- New user settings only if their experiments pass: `timeLapseCameraSleep`
+  (default false), `reduceCameraFpsWhileMotionGateIdle` (default false); both
+  ship with Settings control + SessionConfig JSON + summary row + round-trip
+  test per the owner rule.
+- New log record: `camera_sleep` (state, reason, scheduled burst time);
+  readers must keep ignoring unknown record types.
+- New optional plugin APIs: `predictTiledImage(...)` (E6, gated),
+  `isQnnRuntimeAvailable()` (E8, only if split packaging is ever adopted).
+- `SessionLogIndex` stays internal and must read every existing session schema
+  without migration. No model, session folder, or existing JSONL is rewritten.
+- Preserve: detection-only behavior, the 15 camera / 10 inference defaults,
+  blackout, capture modes, scheduling, model recovery, all completed Parts
+  A-D work. Measure live/thermal changes on both test phones; benchmark
+  offline SAHI and lifecycle changes separately from the live pipeline.
+  Default to scientific reliability over aggressive power saving: every
+  wake/cap failure falls back to today's bound-camera behavior. Keep the
+  QNN-inclusive release until the owner changes distribution policy.
+- Recommended order: 1) E1 protocol + E2 predictor cleanup + E5 bounded error
+  reports; 2) E3 parking + E5 index; 3) E4 measurement-gated cap; 4) E6 if
+  profiling supports it; 5) E8 documentation, E9 experiments, E10 truth pass
+  (E10 is cheap and can land any time).
