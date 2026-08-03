@@ -4,10 +4,12 @@
 import 'package:flutter/material.dart';
 
 /// One-time setup reminder shown when the camera screen opens. It explains how
-/// to frame the shot (fix the flower, centre the ROI) and — importantly — points
-/// the user at the focus button beside the record button so they lock focus
-/// *before* recording. It does not block recording; the user dismisses it with
-/// "Got it" and can tick "Don't show again" to never see it again.
+/// to frame the shot (fix the flower, centre the ROI) and — importantly —
+/// tells the user to CHECK the focus: since round 164 focus is always manual,
+/// already locked at a ~13 cm close-up preset when the screen opens, and the
+/// focus button (amber dot until adjusted) fine-tunes it. It does not block
+/// recording; the user dismisses it with "Got it" and can tick "Don't show
+/// again" to never see it again.
 ///
 /// Pops `true` if the user asked to hide it permanently, otherwise `false`.
 class SessionInfoDialog extends StatefulWidget {
@@ -43,10 +45,12 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
             const SizedBox(height: 12),
             _bullet(
               Icons.center_focus_strong,
-              'Before recording, tap the focus button (just right of the record '
-              'button) and lock focus on the flower. Focus then stays fixed for '
-              'the whole session. This is recommended: autofocus can drift onto '
-              'the background if the flower moves.',
+              'Check the focus before recording: it starts locked for a '
+              'subject about 13 cm away (autofocus is never used — it would '
+              'drift onto the background). Tap the focus button (the one with '
+              'the amber dot) and adjust the Far–Near slider until the flower '
+              'is sharp; the dot disappears once you have set it. Focus then '
+              'stays exactly where you put it for the whole session.',
             ),
           ],
         ),

@@ -75,10 +75,16 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
      If it shows a **⚠ warning that the size is below your target**, the flower
      is too small in frame — move the phone closer or zoom the lens (there is
      no software fix; enlarging pixels invents no detail).
-4. **Open Settings** (gear/tune icon) if you want to change the model, target
+4. **Check the focus.** Focus is always manual (round 164 — autofocus would
+   drift onto the background) and starts locked for a subject about **13 cm**
+   from the lens. The focus button shows an **amber dot** until you have set
+   it: tap the button and drag the Far–Near slider until the flower is sharp;
+   the dot then disappears. Focus stays exactly where you put it for the whole
+   session (you may still fine-tune mid-recording; every change is logged).
+5. **Open Settings** (gear/tune icon) if you want to change the model, target
    plant folder name, confidence, capture timing, etc. See
    [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
-5. **Press Record.** A red REC banner and an elapsed-time clock appear. The
+6. **Press Record.** A red REC banner and an elapsed-time clock appear. The
    session auto-stops after the configured session length, or when you press
    stop.
 
@@ -238,9 +244,12 @@ photos come on a clock, not from every frame.
 off between bursts" enabled (round 163), the camera hardware is fully turned
 off between bursts — the preview freezes on its last frame and the chip reads
 "NEXT BURST in mm:ss · camera off". That is the power saver working, not a
-crash. The camera turns back on ~10 s before each burst; if it ever fails to
-come back in time, the app leaves it on for the rest of the session and logs
-the failure, so a burst is never silently skipped twice.
+crash. The camera turns back on shortly before each burst (the "Camera wake
+lead" setting, default 5 s); if it ever fails to come back in time, the app
+leaves it on for the rest of the session and logs the failure, so a burst is
+never silently skipped twice. This combines freely with blackout (§4): the
+moon button saves the screen, camera sleep saves the camera — use both for
+unattended time-lapse runs.
 
 **No detections at all.** Check: is the right model selected? Is confidence set
 too high? Is the insect's centre actually inside the ROI? If the camera is

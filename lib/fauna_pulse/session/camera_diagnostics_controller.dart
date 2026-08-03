@@ -10,6 +10,8 @@
 // results; the screen just re-reads them through thin getters and rebuilds
 // when [onChanged] fires.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
@@ -18,11 +20,33 @@ import '../logging/app_error_hooks.dart';
 import '../capture/roi_capture.dart';
 import 'capture_calibration_cache.dart';
 
+/// The focus preset every session starts on (round 164): 7.5 dioptres
+/// (1/metres) ≈ a subject 13 cm from the lens — the dioptre midpoint of the
+/// 10–20 cm band a phone-on-a-flower setup uses (depth of field is roughly
+/// symmetric in dioptres, so this covers the band most evenly). The user
+/// fine-tunes from here with the focus slider; autofocus is never used.
+const double kFocusPresetDioptres = 7.5;
+
+/// Slider-normalized (0..1) value that lands the focus at
+/// [targetDioptres], given the lens's largest focus distance [maxDioptres]
+/// (its closest-focus ability; 0 = fixed-focus lens). The native mapping is
+/// linear (normalized × maxDioptres, see YOLOView.setManualFocus), so this
+/// is its inverse, clamped: a lens that cannot focus as close as the target
+/// gets its own closest (1.0). Pure — unit-tested without widgets.
+double focusPresetNormalized(
+  double maxDioptres, {
+  double targetDioptres = kFocusPresetDioptres,
+}) {
+  if (maxDioptres <= 0) return 0;
+  return (targetDioptres / maxDioptres).clamp(0.0, 1.0);
+}
+
 /// Fires the one-time camera probes and holds their results.
 class CameraDiagnosticsController {
   CameraDiagnosticsController({
     required this.controller,
     required this.onChanged,
+    this.onFocusRangeKnown,
   });
 
   final YOLOViewController controller;
@@ -30,6 +54,12 @@ class CameraDiagnosticsController {
   /// Called after any probe result lands, so the screen can rebuild. The
   /// screen's callback guards on `mounted` itself.
   final VoidCallback onChanged;
+
+  /// Called whenever [minFocusDistance] has (re)landed — at first probe and
+  /// again after every lens switch (round 164). The screen applies the
+  /// always-manual focus preset here: a dedicated hook, because [onChanged]
+  /// is a generic rebuild signal that cannot tell WHICH probe finished.
+  final VoidCallback? onFocusRangeKnown;
 
   /// Camera-supported analysis stream resolutions ("WxH"), for the settings
   /// menu. Empty until probed (settings falls back to a standard preset list).
@@ -78,10 +108,23 @@ class CameraDiagnosticsController {
 
   bool _disposed = false;
 
+  /// Lens-switch settle detection (round 164): a lens change rebinds the
+  /// camera asynchronously, and the new lens has its OWN focus range — the
+  /// preset must be re-derived against it. The native side emits a zoom
+  /// event from inside the bind-success callback (after the interop options
+  /// are re-asserted), so that event is the "rebind finished, safe to
+  /// re-probe" signal; a 3 s fallback covers the bind-failure paths that
+  /// never emit (the focus range then simply re-reads the old lens —
+  /// harmless).
+  StreamSubscription<double>? _zoomSub;
+  bool _awaitingLensSettle = false;
+
   /// Stops probe results from landing after the screen is gone (the
   /// class-level equivalent of the screen's old `mounted` checks).
   void dispose() {
     _disposed = true;
+    _zoomSub?.cancel();
+    _zoomSub = null;
   }
 
   void _notify() {
@@ -98,12 +141,35 @@ class CameraDiagnosticsController {
     required (int, int) Function() analysisDims,
     required double preferredLensZoom,
   }) {
+    // Pinch zoom also emits these events; the flag keeps them inert unless
+    // a lens switch armed the re-probe.
+    _zoomSub ??= controller.zoomEvents.listen((_) {
+      if (_awaitingLensSettle) _settleFocusReprobe();
+    });
     _probeCaptureResolution(analysisDims, preferredLensZoom);
     _probeFocusSupport();
     _fetchStreamResolutions();
     _fetchAnalysisCeiling();
     _fetchAvailableLenses(preferredLensZoom);
     _fetchCameraDiagnostics();
+  }
+
+  /// Arms the settle listener ahead of a `setLens` call and schedules the
+  /// fallback in case the rebind never emits (bind failure, hidden lens).
+  void _armFocusReprobe() {
+    _awaitingLensSettle = true;
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (_awaitingLensSettle) _settleFocusReprobe();
+    });
+  }
+
+  /// The camera has (probably) rebound on the new lens: re-read its focus
+  /// range, which re-fires [onFocusRangeKnown] → the screen re-applies the
+  /// focus preset against the new lens.
+  void _settleFocusReprobe() {
+    _awaitingLensSettle = false;
+    if (_disposed) return;
+    _probeFocusSupport();
   }
 
   /// Advances to the next available rear lens (cycles round), updating
@@ -116,6 +182,9 @@ class CameraDiagnosticsController {
     final lens = lenses[lensIndex];
     lensLabel = lensLabelFor(lens);
     _notify();
+    // The new lens has its own focus range: re-probe once the rebind
+    // settles so the always-manual preset re-derives against it (r164).
+    _armFocusReprobe();
     await controller.setLens(lens.zoomFactor);
     return lens;
   }
@@ -202,12 +271,15 @@ class CameraDiagnosticsController {
 
   /// Asks the camera whether it can focus manually. If so the screen exposes
   /// a focus slider; fixed-focus lenses report 0 and the control stays hidden.
+  /// Re-run after every lens switch (r164) — each lens has its own range.
   Future<void> _probeFocusSupport() async {
     try {
       final d = await controller.getMinFocusDistance();
       if (!_disposed) {
         minFocusDistance = d;
         _notify();
+        // Range (re)landed: let the screen apply the focus preset (r164).
+        onFocusRangeKnown?.call();
       }
     } catch (e) {
       // Leave at 0 (manual focus unsupported / unavailable).
@@ -274,6 +346,10 @@ class CameraDiagnosticsController {
       _notify();
       // Apply the persisted lens (no-op if it's already the active one).
       if (found[index].zoomFactor != 1.0) {
+        // Startup race fix (r164): the initial focus probe may have read the
+        // DEFAULT lens before this persisted lens applies — re-probe after
+        // the rebind settles so the preset matches the lens actually in use.
+        _armFocusReprobe();
         await controller.setLens(found[index].zoomFactor);
       }
     } catch (e) {

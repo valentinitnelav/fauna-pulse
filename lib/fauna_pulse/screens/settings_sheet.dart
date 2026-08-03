@@ -429,18 +429,40 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
           subtitle: Text(
             'Big heat/power saver for sparse time-lapses: the camera hardware '
-            'is fully turned off after each burst and back on ~10 s before '
-            'the next one. The preview freezes while it is off — that is '
-            'normal, not a crash. Needs ≥ 30 s between bursts'
+            'is fully turned off after each burst and back on shortly before '
+            'the next one (the wake lead below). The preview freezes while '
+            'it is off — that is normal, not a crash. Needs ≥ 30 s between '
+            'bursts'
             '${_c.timeLapseIntervalSeconds - _c.durationSeconds < 30 ? ' (your current burst timing leaves less — the camera will stay on)' : ''}. '
             'If the camera ever fails to come back in time, it stays on for '
-            'the rest of the session and the failure is logged.',
+            'the rest of the session and the failure is logged. Combines '
+            'with the screen-off (moon) button — use both for unattended '
+            'runs.',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           value: _c.timeLapseCameraSleep,
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(timeLapseCameraSleep: v)),
         ),
+        if (_c.timeLapseCameraSleep)
+          NumericSettingField(
+            label: 'Camera wake lead',
+            value: _c.timeLapseWakeLeadSeconds,
+            min: 1,
+            max: 60,
+            decimals: 0,
+            unitSuffix: 's',
+            helperText:
+                'How many seconds before each burst the camera is turned '
+                'back on, so exposure has settled when the first photo is '
+                'due. Default 5. Raise it if the first photo of a burst '
+                'looks too dark/bright; lower it to keep the camera off '
+                'longer. Focus never re-hunts on wake (it stays locked '
+                'manual).',
+            onChanged: (v) => setState(
+              () => _c = _c.copyWith(timeLapseWakeLeadSeconds: v),
+            ),
+          ),
       ],
       if (!_c.isTimeLapseValid)
         const Padding(

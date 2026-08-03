@@ -135,9 +135,18 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
   ];
   switch (trigger) {
     case CaptureTrigger.detector:
-      return const ['timeLapseIntervalSeconds', 'timeLapseCameraSleep'];
+      return const [
+        'timeLapseIntervalSeconds',
+        'timeLapseCameraSleep',
+        'timeLapseWakeLeadSeconds',
+      ];
     case CaptureTrigger.motion:
-      return [...aiKeys, 'timeLapseIntervalSeconds', 'timeLapseCameraSleep'];
+      return [
+        ...aiKeys,
+        'timeLapseIntervalSeconds',
+        'timeLapseCameraSleep',
+        'timeLapseWakeLeadSeconds',
+      ];
     case CaptureTrigger.timelapse:
       // Reference photos are inert here too: the whole session is already
       // clock-driven photos, so a second periodic sampler would only
@@ -343,6 +352,13 @@ class SessionConfig {
   /// Off by default: turning the camera hardware off/on is the riskier path.
   final bool timeLapseCameraSleep;
 
+  /// Time-lapse camera sleep only (round 164): how many seconds BEFORE the
+  /// next scheduled burst the camera is turned back on, so it is warm
+  /// (exposure settled, fresh frames cached) when the first photo is due.
+  /// Larger = safer warm-up but less camera-off time; focus never hunts on
+  /// wake (always-manual focus, round 164), so the default is a short 5 s.
+  final double timeLapseWakeLeadSeconds;
+
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
   /// crop can be. Higher = bigger crops but can cost FPS on weaker phones.
@@ -522,6 +538,7 @@ class SessionConfig {
     this.captureTrigger = CaptureTrigger.detector,
     this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
     this.timeLapseCameraSleep = false,
+    this.timeLapseWakeLeadSeconds = 5.0,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -622,6 +639,7 @@ class SessionConfig {
     CaptureTrigger? captureTrigger,
     double? timeLapseIntervalSeconds,
     bool? timeLapseCameraSleep,
+    double? timeLapseWakeLeadSeconds,
     int? streamWidth,
     int? streamHeight,
     bool? streamResolutionExplicit,
@@ -675,6 +693,8 @@ class SessionConfig {
     timeLapseIntervalSeconds:
         timeLapseIntervalSeconds ?? this.timeLapseIntervalSeconds,
     timeLapseCameraSleep: timeLapseCameraSleep ?? this.timeLapseCameraSleep,
+    timeLapseWakeLeadSeconds:
+        timeLapseWakeLeadSeconds ?? this.timeLapseWakeLeadSeconds,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     streamResolutionExplicit:
@@ -732,6 +752,7 @@ class SessionConfig {
     'motionOnlyCapture': motionOnlyCapture,
     'timeLapseIntervalSeconds': timeLapseIntervalSeconds,
     'timeLapseCameraSleep': timeLapseCameraSleep,
+    'timeLapseWakeLeadSeconds': timeLapseWakeLeadSeconds,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'streamResolutionExplicit': streamResolutionExplicit,
@@ -805,6 +826,8 @@ class SessionConfig {
     timeLapseIntervalSeconds:
         (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
     timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
+    timeLapseWakeLeadSeconds:
+        (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 5.0,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     // Pre-round-109 configs lack the key. A stored size that differs from the

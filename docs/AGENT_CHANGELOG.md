@@ -5706,3 +5706,47 @@ Perf review Part E, second batch (recommended order step 2: "E3 parking + E5 ind
 - Review doc: E3 and E5 ticked with done-notes; full suite 411 tests green, analyzer clean.
 - Next per Part E order: E4 step 1 (log the supported AE FPS ranges — cheap, no UI) gating the
   gate-idle hardware cap experiment; E8/E9/E10 remain.
+
+## Round 164 (2026-08-03): configurable wake lead, blackout+parking verified, always-manual focus
+
+Owner follow-up to the round-163 camera parking, three parts.
+
+- **Configurable camera wake lead (`timeLapseWakeLeadSeconds`, default 5 s, 1-60 s):** the r163
+  10 s prewake came from the review spec (headroom for the CameraX rebind + auto-exposure
+  settling). It is now a user setting per the owner rule (Setup tab field under the camera-sleep
+  switch, SessionConfig JSON + round-trip test, summary row, `config_not_applicable` in
+  detector/motion modes); the coordinator default dropped to 5000 ms and the screen passes the
+  configured value. 5 s is enough headroom now that focus never re-hunts on a wake (part 3);
+  raise it if the first burst photo looks badly exposed. Coordinator tests updated + one test
+  proving an explicit lead moves the prewake moment.
+- **Blackout (moon) + camera parking compose — verified, no code change:** both
+  `_applyBlackoutSteadyState` and `_exitBlackout` guard their `setPreviewEnabled` call on
+  `!_paused`, and the r163 park path sets `_paused = true`, so a moon tap while parked never
+  touches the unbound camera (the native `setPreviewEnabled(true)` WOULD partially rebind a
+  parked camera - the Dart guard is what prevents it); the r163 wake already re-asserts the
+  blackout steady state after `resume()`, and the native `previewEnabled` flag is honored on
+  every full rebind (r82). Energy-wise they are complementary (screen+preview vs whole camera):
+  use both for unattended time-lapse. FIELD_GUIDE + SETTINGS_REFERENCE now say so.
+- **Always-manual focus with close-up preset + reminder badge (owner decision):** autofocus is
+  no longer selectable anywhere - on a mounted phone it drifts onto the background and silently
+  changes what "sharp" means mid-session. Every camera-screen open now locks a manual preset at
+  `kFocusPresetDioptres` 7.5 dpt (~13 cm; the DIOPTRE midpoint of the owner's 10-20 cm band, so
+  depth of field covers the band most evenly; owner-confirmed over the 15 cm arithmetic middle),
+  computed by the pure `focusPresetNormalized` (camera_diagnostics_controller.dart, clamped to
+  the lens's own closest focus; 6 unit tests in focus_preset_test.dart). Applied via the new
+  `onFocusRangeKnown` hook when the focus-range probe lands; on every LENS SWITCH the range is
+  re-probed and the preset re-applied against the new lens (the native zoom event emitted inside
+  the bind-success callback is the "rebind settled" signal - already surfaced as
+  `YOLOViewController.zoomEvents`, previously unused; 3 s fallback for bind paths that never
+  emit; this also fixed a startup race where the initial probe could read the default lens
+  before the persisted lens applied). The focus button carries an amber Badge dot until the user
+  drags the Far-Near slider themselves (the preset does not count; the badge re-arms per lens
+  switch); the "Auto" reset button and `_resetAutoFocus` are gone. Mid-recording slider
+  adjustments stay allowed and logged (`focus_change`, owner-confirmed). Wire values unchanged:
+  `focus_mode` is now always `manual`/`fixed`; `auto` only appears in pre-r164 logs (DATA_GUIDE
+  notes it). Focus stays SCREEN state by design (the preset must reset every session), not
+  SessionConfig. SessionInfoDialog bullet rewritten (also fixed its stale button-position text).
+- Docs: SETTINGS_REFERENCE (wake-lead row, camera-sleep row, Focus row rewrite), FIELD_GUIDE
+  (new "Check the focus" setup step 4, time-lapse paragraph), DATA_GUIDE (camera_sleep intro,
+  focus_mode notes), review E3 done-note amended, OVERVIEW defaults + invariants.
+- flutter analyze clean; full suite green.

@@ -67,7 +67,7 @@ Session-wide metadata. Notable fields:
 | `capture_dims_from_cache` | Present (`true`) when recording started before the live photo probe confirmed the cached photo size (round 121) — the dims above came from the previous measurement. |
 | `location` | The session's single location fix (round 126): `lat`, `lon` (decimal degrees), `accuracy_m` (GPS only), `fix_time_ms`, `source` (`gps` / `manual` / `previous`). Absent when no location was set. Stripped from problem-report samples. |
 | `selected_lens_zoom`, `selected_lens_label` | Which rear lens was used. |
-| `focus_mode` (`manual`/`auto`/`fixed`), `focus_value` | Focus; `focus_value` (0..1) present only for manual. |
+| `focus_mode` (`manual`/`auto`/`fixed`), `focus_value` | Focus; `focus_value` (0..1) present only for manual. Round 164+: always `manual` (locked at a ~13 cm close-up preset until the user adjusts) or `fixed` (lens without manual focus) — `auto` only occurs in sessions recorded before round 164. |
 | `confidence_threshold`, `iou_threshold` | Detection thresholds. |
 | `step_seconds`, `duration_seconds`, `session_minutes` | Timing config. |
 | `roi` | Starting ROI geometry (see the `roi` sub-object below). |
@@ -239,9 +239,11 @@ Sessions recorded before round 132 carry no screen-state information.
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 
 Written only in time-lapse sessions with "Turn camera off between bursts"
-enabled. The camera is fully turned off between bursts and back on ~10 s
-before the next one; these records make the resulting frame-less gaps
-auditable — "confirmed intentionally off", never "camera failed".
+enabled. The camera is fully turned off between bursts and back on shortly
+before the next one (the "Camera wake lead" setting,
+`timeLapseWakeLeadSeconds`, default 5 s); these records make the resulting
+frame-less gaps auditable — "confirmed intentionally off", never "camera
+failed".
 
 | Field | Meaning |
 |---|---|
@@ -258,7 +260,8 @@ gap in that session is real camera time, not parking.
 ### `focus_change` — camera focus changed mid-session (round 132+)
 
 Same fields as the start record's focus pair: `focus_mode`
-(`manual`/`auto`) and, for manual, `focus_value` (0..1, 0 = far/infinity).
+(`manual`; `auto` only in pre-round-164 sessions) and, for manual,
+`focus_value` (0..1, 0 = far/infinity).
 Debounced like `roi_update`: one record per adjustment, written once the
 slider has sat unchanged for ~2 s (flushed at stop; a change that ends back
 on the previous state writes nothing). Focus affects sharpness and therefore

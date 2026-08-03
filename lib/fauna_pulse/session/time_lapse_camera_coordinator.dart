@@ -53,8 +53,10 @@ class TimeLapseCameraCoordinator {
   final int minIdleGapMs;
 
   /// How long before the next scheduled burst the wake is issued, so the
-  /// camera is warm (auto-exposure/focus settled, fresh frames cached) when
-  /// the first photo is due.
+  /// camera is warm (exposure settled, fresh frames cached) when the first
+  /// photo is due. User-tunable since round 164
+  /// (SessionConfig.timeLapseWakeLeadSeconds, default 5 s — focus never
+  /// hunts on wake, it is always locked manual).
   final int prewakeLeadMs;
 
   /// How long the screen waits for a fresh frame after a wake before
@@ -68,7 +70,7 @@ class TimeLapseCameraCoordinator {
   TimeLapseCameraCoordinator({
     required this.plan,
     this.minIdleGapMs = 30000,
-    this.prewakeLeadMs = 10000,
+    this.prewakeLeadMs = 5000,
     this.wakeAllowanceMs = 20000,
     this.minParkMs = 10000,
   });
@@ -135,8 +137,8 @@ class TimeLapseCameraCoordinator {
 
   /// Extra timer deadline the coordinator needs beyond the plan's own photo
   /// cadence: while parked, a tick must land at the prewake moment (the
-  /// plan's next-burst delay alone would wake 10 s too late). Null when the
-  /// plan's cadence suffices. The caller caps the delay (≤ 60 s) as usual.
+  /// plan's next-burst delay alone would wake a whole lead too late). Null
+  /// when the plan's cadence suffices. The caller caps the delay (≤ 60 s).
   int? nextEventDelayMs(int sinceStartMs) {
     if (_state != TimeLapseCameraState.parked) return null;
     final wait = prewakeAt(sinceStartMs) - sinceStartMs;

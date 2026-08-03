@@ -83,6 +83,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _maybeApplyAutoStreamDefault();
       setState(() {});
     },
+    // Round 164 (always-manual focus): fires when the lens's focus range
+    // (re)lands — at the first probe and after every lens switch — so the
+    // close-up preset is applied against the range of the lens in use.
+    onFocusRangeKnown: () {
+      if (mounted) _applyFocusPreset();
+    },
   );
 
   // Round 109: settles ROI drags into one roi_update record per adjustment
@@ -275,13 +281,21 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // end-of-session energy graphs.
   Timer? _powerTimer;
 
-  // Manual focus. The lens's largest focus distance (in dioptres, 1/metres) is
-  // read once from the camera; > 0 means the lens supports manual focus, so we
-  // show a focus slider. _focusValue is 0..1 (0 = far/infinity, 1 = near).
+  // Focus is ALWAYS manual (round 164) — autofocus is not selectable
+  // anywhere: on a phone mounted over a flower it drifts onto the background
+  // and silently changes what "sharp" means mid-session. As soon as the
+  // lens's focus range is probed (largest focus distance in dioptres,
+  // 1/metres; > 0 = manual focus supported), [_applyFocusPreset] locks the
+  // close-up preset (~13 cm, kFocusPresetDioptres) and the user fine-tunes
+  // with the slider. _focusValue is 0..1 (0 = far/infinity, 1 = near).
+  // [_focusUserAdjusted] drives the amber "set your focus" badge on the
+  // focus button: false until the user drags the slider themselves (the
+  // programmatic preset doesn't count), re-armed on every lens switch.
   double get _minFocusDistance => _probes.minFocusDistance;
   bool _focusManual = false;
   double _focusValue = 0;
   bool _showFocusSlider = false;
+  bool _focusUserAdjusted = false;
 
   // Rear-camera lens selection. The device's available lenses (main wide,
   // ultra-wide, telephoto, …) are read once from the camera. Each lens has an
@@ -582,8 +596,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
-  /// The focus state recorded in the session log: 'manual' (locked, recommended),
-  /// 'auto' (continuous autofocus), or 'fixed' (fixed-focus lens — no choice).
+  /// The focus state recorded in the session log: 'manual' (locked — the
+  /// only mode since round 164) or 'fixed' (fixed-focus lens — no control).
+  /// The 'auto' branch is an honesty fallback for the sliver of time before
+  /// the preset has applied; it should be unreachable in practice (REC is
+  /// calibration-gated) and never occurs by user choice any more. Wire
+  /// values are unchanged, so logs from all rounds parse the same way.
   String _focusModeForLog() {
     if (_minFocusDistance <= 0) return 'fixed';
     return _focusManual ? 'manual' : 'auto';
@@ -1151,17 +1169,44 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     setState(() {
       _focusManual = true;
       _focusValue = v;
+      // Only the slider calls this — the user has now chosen their focus,
+      // so the reminder badge on the focus button goes away (round 164).
+      _focusUserAdjusted = true;
     });
     if (_recording) {
       _focusLogDebounce.notify((manual: true, value: v), _writeFocusChange);
     }
   }
 
-  void _resetAutoFocus() {
-    _controller.setAutoFocus();
-    setState(() => _focusManual = false);
+  /// Locks the close-up focus preset (round 164): called whenever the
+  /// lens's focus range (re)lands — screen open and every lens switch — so
+  /// each session starts manually focused at ~13 cm instead of on
+  /// autofocus, which drifts onto the background on a mounted phone. The
+  /// preset is NOT a user adjustment: the reminder badge stays (or comes
+  /// back) until the user drags the slider for the lens in use.
+  void _applyFocusPreset() {
+    if (_minFocusDistance <= 0) {
+      // Fixed-focus lens (or the probe failed): nothing to lock; the start
+      // record then honestly logs 'fixed'.
+      setState(() {
+        _focusManual = false;
+        _focusValue = 0;
+        _focusUserAdjusted = false;
+      });
+      return;
+    }
+    final v = focusPresetNormalized(_minFocusDistance);
+    _controller.setManualFocus(v);
+    setState(() {
+      _focusManual = true;
+      _focusValue = v;
+      _focusUserAdjusted = false;
+    });
+    // Normally the preset lands during calibration, long before REC. If a
+    // late lens-settle fallback ever re-applies it mid-recording, log the
+    // change like any settled focus move so the session stays auditable.
     if (_recording) {
-      _focusLogDebounce.notify((manual: false, value: 0), _writeFocusChange);
+      _focusLogDebounce.notify((manual: true, value: v), _writeFocusChange);
     }
   }
 
@@ -1705,7 +1750,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // to park when the plan's idle gaps are too short (or continuous), so
       // arming it is always safe.
       _tlCamera = _config.timeLapseCameraSleep
-          ? TimeLapseCameraCoordinator(plan: _timeLapsePlan!)
+          ? TimeLapseCameraCoordinator(
+              plan: _timeLapsePlan!,
+              prewakeLeadMs: (_config.timeLapseWakeLeadSeconds * 1000).round(),
+            )
           : null;
       _tlCameraBusy = false;
       _timeLapseTimer?.cancel();
@@ -3436,24 +3484,42 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                           // Cycles the rear lenses; disabled while recording.
                           _lensSwitchButton(),
                           const SizedBox(width: 16),
-                          IconButton(
-                            iconSize: 32,
-                            color: (_minFocusDistance > 0 && !_calibrating)
-                                ? (_showFocusSlider
-                                      ? Colors.amber
-                                      : Colors.white)
-                                : Colors.white24,
-                            icon: Icon(
-                              _focusManual
-                                  ? Icons.center_focus_strong
-                                  : Icons.center_focus_weak,
+                          // Round 164: the amber dot reminds the user to
+                          // check/set the focus for THIS lens — it vanishes
+                          // once they drag the slider, and re-arms on a lens
+                          // switch (the preset is a starting point, not a
+                          // confirmation the flower is sharp).
+                          Badge(
+                            isLabelVisible:
+                                _minFocusDistance > 0 &&
+                                !_calibrating &&
+                                !_focusUserAdjusted,
+                            smallSize: 10,
+                            backgroundColor: Colors.amber,
+                            child: IconButton(
+                              iconSize: 32,
+                              color: (_minFocusDistance > 0 && !_calibrating)
+                                  ? (_showFocusSlider
+                                        ? Colors.amber
+                                        : Colors.white)
+                                  : Colors.white24,
+                              icon: Icon(
+                                _focusManual
+                                    ? Icons.center_focus_strong
+                                    : Icons.center_focus_weak,
+                              ),
+                              tooltip: _focusUserAdjusted
+                                  ? 'Manual focus'
+                                  : 'Manual focus (preset applied — check '
+                                        'sharpness)',
+                              onPressed:
+                                  (_minFocusDistance > 0 && !_calibrating)
+                                  ? () => setState(
+                                      () =>
+                                          _showFocusSlider = !_showFocusSlider,
+                                    )
+                                  : null,
                             ),
-                            tooltip: 'Manual focus',
-                            onPressed: (_minFocusDistance > 0 && !_calibrating)
-                                ? () => setState(
-                                    () => _showFocusSlider = !_showFocusSlider,
-                                  )
-                                : null,
                           ),
                           const SizedBox(width: 16),
                           // Session location pin (round 126): green = set,
@@ -3711,8 +3777,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     ),
   );
 
-  /// Horizontal manual-focus slider with an "Auto" reset. 0 = far (infinity),
-  /// 1 = near (closest the lens can focus).
+  /// Horizontal manual-focus slider. 0 = far (infinity), 1 = near (closest
+  /// the lens can focus). No "Auto" reset since round 164: focus is always
+  /// manual — it opens on the close-up preset and only the user moves it.
   Widget _focusSliderBar() => Container(
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -3737,17 +3804,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         const Text(
           'Near',
           style: TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(width: 8),
-        TextButton(
-          onPressed: _focusManual ? _resetAutoFocus : null,
-          child: Text(
-            'Auto',
-            style: TextStyle(
-              color: _focusManual ? Colors.amber : Colors.white38,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
         ),
       ],
     ),

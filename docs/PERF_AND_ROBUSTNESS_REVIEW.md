@@ -1061,9 +1061,11 @@ owner's step.
 
 **Done (round 163).** `session/time_lapse_camera_coordinator.dart`: pure
 clock-injected state machine (running / parked / warming / fallbackBound;
-constants minIdleGap 30 s, prewake 10 s, wake allowance 20 s, minPark 10 s)
-with unit tests; the screen owns the async `pause()`/`resume()` calls and
-reports outcomes back. Photos are gated on `framesUsable` so a stale cached
+constants minIdleGap 30 s, wake allowance 20 s, minPark 10 s; the prewake
+lead became the user setting `timeLapseWakeLeadSeconds` in round 164,
+default 5 s, range 1–60 s — safe because focus never re-hunts on wake, it
+is always-manual since r164) with unit tests; the screen owns the async
+`pause()`/`resume()` calls and reports outcomes back. Photos are gated on `framesUsable` so a stale cached
 frame can never be saved as a "photo" (the burst grid itself never shifts —
 a late wake starts that burst's photos late); a wake success re-fires the
 time-lapse tick immediately. `_checkCameraDelivery` is suppressed only while

@@ -955,6 +955,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Camera off between bursts',
         _setting('timeLapseCameraSleep'),
       );
+      if (_setting('timeLapseCameraSleep') == true) {
+        add(
+          'Camera wake lead',
+          _setting('timeLapseWakeLeadSeconds'),
+          suffix: ' s',
+        );
+      }
     }
     add(
       'Photo step interval',
