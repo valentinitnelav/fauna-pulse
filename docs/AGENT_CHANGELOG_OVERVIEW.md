@@ -460,7 +460,10 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   r148: the Graphs tab always parses on open (no "Generate graphs" button); the visit
   timeline renders at top and everything else (temperature, headroom, FPS, inference,
   power) sits behind a ▸/▾ "Extra graphs" disclosure (pref `extra_graphs_expanded`,
-  collapsed by default — mirrors the r125 stats-panel pattern). Sessions recorded with
+  collapsed by default — mirrors the r125 stats-panel pattern). r165: the
+  floating Hide/Show-timeline toggle only exists for a REAL timeline with
+  > 10 lanes (`_timelineCollapsible`) — no-AI sessions show only the
+  explanatory note there, no button. Sessions recorded with
   the r148 build's `diagnosticsEnabled:false` show an explanatory note there instead
   of empty charts, and their sample-interval rows are dropped from the Settings tab. r86: the Photos tab draws EVERY insect of the photo's trigger
   frame (the `jpeg` filename is shared across the record's entries at parse time —

@@ -59,6 +59,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _showTimeline = true;
   bool _timelineInView = false;
 
+  /// The floating show/hide control only exists when the timeline is real
+  /// AND tall enough to be worth collapsing (round 165, owner request):
+  /// in no-AI sessions (motion/time-lapse — no track ids by design) the
+  /// timeline area is just an explanatory note, and a "Hide timeline"
+  /// button floating over it confused the user; with only a few lanes
+  /// there is no scrolling problem for the button to solve either.
+  static const int _timelineCollapseMinLanes = 10;
+  bool get _timelineCollapsible => _spans.length > _timelineCollapseMinLanes;
+
   // "Extra graphs" disclosure (round 148): the diagnostic graphs (temperature,
   // FPS, inference time, power) sit behind a tap-to-expand header so the visit
   // timeline — the main deliverable — is all a general user sees. Mirrors the
@@ -1598,11 +1607,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ],
         ),
         // Floating show/hide for the (potentially very tall) visit
-        // timeline — only while that section is on screen. The bottom
-        // offset must include the system inset: the Stack spans the whole
-        // edge-to-edge body, so a bare `bottom: 16` puts the button BEHIND
-        // the navigation/gesture bar (round 165 field bug).
-        if (_timelineInView)
+        // timeline — only while that section is on screen, and only when
+        // there is a collapsible timeline at all (> 10 lanes; see
+        // [_timelineCollapsible]). The bottom offset must include the
+        // system inset: the Stack spans the whole edge-to-edge body, so a
+        // bare `bottom: 16` puts the button BEHIND the navigation/gesture
+        // bar (round 165 field bug).
+        if (_timelineInView && _timelineCollapsible)
           Positioned(
             left: 0,
             right: 0,

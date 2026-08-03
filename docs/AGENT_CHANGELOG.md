@@ -5774,6 +5774,15 @@ Audit of the other screens: home, analysis (fixed the same way in r137) and prob
 their bodies in SafeArea; the settings sheet SafeArea-guards its bottom bar; the camera screen's
 controls row sits in SafeArea - only the summary screen was exposed.
 
+Same round, same button (owner follow-up): the floating "Hide/Show timeline" toggle used to
+render for EVERY session — including no-AI (motion/time-lapse) ones where the timeline area is
+just an explanatory note (the empty state carries the same GlobalKey, so the visibility check
+saw it "in view"). It now only exists when a real, tall timeline is there:
+`_timelineCollapsible` = more than 10 track lanes (`_timelineCollapseMinLanes`); below that
+there is no scrolling problem for the button to solve. Two widget tests encode it (no-AI
+session and a 3-lane AI session both show no toggle; the inset test's fixture grew to 12 lanes
+so the button still exists there).
+
 Regression guard (the owner-requested "reminder"): new widget test
 `test/fauna_pulse/summary_bottom_inset_test.dart` simulates a 48 px bottom system bar
 (FakeViewPadding), opens the summary straight on the Graphs tab over a real temp session.jsonl,
