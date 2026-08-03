@@ -36,6 +36,7 @@ import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
+import '../session/time_lapse_camera_coordinator.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
@@ -376,6 +377,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   int _timeLapseStartMs = 0;
   int _tlLastCycle = -1;
   bool _tlBurstActive = false;
+
+  // Camera parking between time-lapse bursts (round 163, perf review E3):
+  // non-null only while recording in time-lapse mode with the user's
+  // "Turn camera off between bursts" setting on. The coordinator is the pure
+  // decision logic (park / wake / nothing per tick); [_tlCameraBusy]
+  // serializes the async pause/resume transitions the same way
+  // [_scheduleBusy] does for scheduled sleeps — a 60 s-capped tick must not
+  // start a second wake while one is mid-flight.
+  TimeLapseCameraCoordinator? _tlCamera;
+  bool _tlCameraBusy = false;
 
   // Scheduled recording (opt-in via Settings). While [_schedule] is non-null a
   // scheduled run is active: [_scheduleTimer] re-arms itself for the next
@@ -1172,6 +1183,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// red banner; both clear automatically if delivery resumes.
   void _checkCameraDelivery() {
     if (!_recording || _cameraSilent || _lastStreamEventMs == 0) return;
+    // Round 163 (E3): while the time-lapse coordinator has the camera
+    // intentionally parked (or a wake is still warming up), silence IS the
+    // feature — the watchdog must not read it as a camera failure. After a
+    // FAILED wake the coordinator reads fallbackBound (not "down"), so the
+    // watchdog resumes and correctly surfaces the dead camera.
+    if (_tlCamera?.cameraIntentionallyDown ?? false) return;
     final silentMs = DateTime.now().millisecondsSinceEpoch - _lastStreamEventMs;
     if (silentMs < _cameraSilentAfterMs) return;
     _cameraSilent = true;
@@ -1684,6 +1701,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _timeLapseStartMs = DateTime.now().millisecondsSinceEpoch;
       _tlLastCycle = -1;
       _tlBurstActive = false;
+      // Camera parking (round 163, opt-in): the coordinator itself refuses
+      // to park when the plan's idle gaps are too short (or continuous), so
+      // arming it is always safe.
+      _tlCamera = _config.timeLapseCameraSleep
+          ? TimeLapseCameraCoordinator(plan: _timeLapsePlan!)
+          : null;
+      _tlCameraBusy = false;
       _timeLapseTimer?.cancel();
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
     }
@@ -1732,6 +1756,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _gtFrameTimer?.cancel();
     _gtFrameTimer = null;
     _timeLapsePlan = null;
+    // Parked at stop time is fine: [_paused] is already true, so the paths
+    // that follow a stop (summary review, scheduled sleep, dispose) treat it
+    // exactly like their own cool-down pause and resume it when appropriate.
+    _tlCamera = null;
     if (_tlBurstActive) {
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
@@ -1930,7 +1958,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         await _controller.resume();
         _paused = false;
       }
-      final gotFrames = await _waitForFrames(const Duration(seconds: 20));
+      final gotFrames = await _waitForFrames(
+        const Duration(seconds: 20),
+        active: () => _schedule != null,
+      );
       if (!mounted || _schedule == null) return;
       if (!gotFrames) {
         logSwallowed(
@@ -1964,12 +1995,18 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// Polls [_lastStreamEventMs] (fed by every native stream event, including
   /// gate-idle heartbeats) until a frame newer than the call arrives.
-  Future<bool> _waitForFrames(Duration timeout) async {
+  /// [active] aborts the wait early when the state it belongs to is gone —
+  /// the scheduled wake passes the run's liveness, the time-lapse wake
+  /// (round 163) the recording's.
+  Future<bool> _waitForFrames(
+    Duration timeout, {
+    required bool Function() active,
+  }) async {
     final since = DateTime.now().millisecondsSinceEpoch;
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted || _schedule == null) return false;
+      if (!mounted || !active()) return false;
       if (_lastStreamEventMs >= since) return true;
     }
     return false;
@@ -2646,7 +2683,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final t = nowMs - _timeLapseStartMs;
     final inBurst = plan.inBurstAt(t);
-    if (inBurst) {
+    final cam = _tlCamera;
+    // Round 163 (E3): while the camera is parked or still warming up after a
+    // wake, the native frame cache holds the PRE-PARK frame — a photo now
+    // could show the scene from half an hour ago. Skip triggering (and keep
+    // [_tlLastCycle] untouched so the burst window is re-armed the moment
+    // fresh frames confirm); the plan math preserves the wall-clock grid, so
+    // a late wake starts this burst's photos late without shifting the next.
+    if (inBurst && (cam == null || cam.framesUsable)) {
       final cycle = plan.cycleIndexAt(t);
       if (cycle != _tlLastCycle) {
         _tlLastCycle = cycle;
@@ -2661,8 +2705,147 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _pushTimeLapse();
       if (mounted) setState(() {}); // chip label flips
     }
-    final delay = plan.nextTickDelayMs(t).clamp(100, 60000);
+    // Park/wake decision. Busy = a pause/resume is already mid-flight; the
+    // next tick re-asks the (pure) coordinator, so nothing is lost.
+    if (cam != null && !_tlCameraBusy && !_recorder.stopping) {
+      switch (cam.actionAt(t)) {
+        case TimeLapseCameraAction.park:
+          unawaited(_parkTimeLapseCamera(cam));
+        case TimeLapseCameraAction.wake:
+          unawaited(_wakeTimeLapseCamera(cam));
+        case TimeLapseCameraAction.none:
+          break;
+      }
+    }
+    // While parked, a tick must also land at the prewake moment — the plan's
+    // own cadence (next burst start) would wake 10 s too late.
+    var delayMs = plan.nextTickDelayMs(t);
+    final camDelay = cam?.nextEventDelayMs(t);
+    if (camDelay != null && camDelay < delayMs) delayMs = camDelay;
+    final delay = delayMs.clamp(100, 60000);
     _timeLapseTimer = Timer(Duration(milliseconds: delay), _timeLapseTick);
+  }
+
+  /// Epoch ms of the next scheduled burst start — the audit anchor every
+  /// `camera_sleep` record carries, so intentional camera-off gaps can be
+  /// told apart from camera failure in post-processing.
+  int _nextBurstEpochMs(TimeLapsePlan plan, int nowMs) =>
+      _timeLapseStartMs + plan.nextBurstStartAt(nowMs - _timeLapseStartMs);
+
+  /// Unbinds the camera between time-lapse bursts (round 163, E3). Uses the
+  /// same `pause()` the r94 scheduled sleep uses — analysis, photo capture
+  /// and preview all stop; the preview freezes on its last frame. A failed
+  /// park disables parking for the session (never retry into an unknown
+  /// camera state mid-recording).
+  Future<void> _parkTimeLapseCamera(TimeLapseCameraCoordinator cam) async {
+    _tlCameraBusy = true;
+    try {
+      final plan = _timeLapsePlan;
+      if (plan == null || !_recording) return;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      try {
+        await _controller.pause();
+        _paused = true;
+      } catch (e) {
+        cam.disableParking();
+        _logger?.logCameraSleep({
+          'state': 'fallback_bound',
+          'reason': 'park_failed',
+          'next_burst_at_ms': _nextBurstEpochMs(plan, nowMs),
+        });
+        _logAsyncError('timelapse_park', e);
+        return;
+      }
+      cam.parked();
+      _logger?.logCameraSleep({
+        'state': 'parked',
+        'reason': 'between_bursts',
+        'next_burst_at_ms': _nextBurstEpochMs(plan, nowMs),
+      });
+      if (mounted) setState(() {}); // chip shows "camera off"
+    } finally {
+      _tlCameraBusy = false;
+    }
+  }
+
+  /// Rebinds the camera ahead of the next burst and waits (bounded) for a
+  /// fresh frame before photos may flow again. On timeout: leave the camera
+  /// bound, disable parking for the rest of the session, and let the
+  /// camera-delivery watchdog surface the failure — reliability over saving.
+  Future<void> _wakeTimeLapseCamera(TimeLapseCameraCoordinator cam) async {
+    _tlCameraBusy = true;
+    try {
+      final plan = _timeLapsePlan;
+      if (plan == null || !_recording) return;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final t = nowMs - _timeLapseStartMs;
+      // The burst this wake serves: the upcoming one on a normal prewake, the
+      // CURRENT cycle's on a late (doze-delayed) wake that landed inside it.
+      final nextBurstAtMs = plan.inBurstAt(t)
+          ? _timeLapseStartMs + plan.cycleIndexAt(t) * plan.intervalMs
+          : _nextBurstEpochMs(plan, nowMs);
+      cam.wakeStarted();
+      _logger?.logCameraSleep({
+        'state': 'warming',
+        // late_wake: a doze-delayed tick landed inside (or past) the burst —
+        // the wake is happening after the burst was already due.
+        'reason': plan.inBurstAt(t) ? 'late_wake' : 'prewake',
+        'next_burst_at_ms': nextBurstAtMs,
+      });
+      try {
+        await _controller.resume();
+        _paused = false;
+      } catch (e) {
+        cam.disableParking();
+        _logger?.logCameraSleep({
+          'state': 'fallback_bound',
+          'reason': 'wake_failed',
+          'next_burst_at_ms': nextBurstAtMs,
+        });
+        _logAsyncError('timelapse_wake', e);
+        return;
+      }
+      // The rebind re-attached the preview; if the blackout cover is up, put
+      // the preview back into the measured power-save state (same re-assert
+      // the scheduled wake does).
+      if (_blackout) await _applyBlackoutSteadyState();
+      final fresh = await _waitForFrames(
+        Duration(milliseconds: cam.wakeAllowanceMs),
+        active: () => _recording && identical(_tlCamera, cam),
+      );
+      if (!mounted || !_recording || !identical(_tlCamera, cam)) return;
+      if (fresh) {
+        cam.wakeSucceeded();
+        _logger?.logCameraSleep({
+          'state': 'running',
+          'reason': 'fresh_frame',
+          'next_burst_at_ms': nextBurstAtMs,
+          'wake_ms': DateTime.now().millisecondsSinceEpoch - nowMs,
+        });
+        if (mounted) setState(() {}); // chip drops "camera off"
+        // Frames are fresh NOW — don't wait for the (≤ 60 s) scheduled tick
+        // to notice: a late wake inside a burst should start photos at once.
+        _timeLapseTimer?.cancel();
+        _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+      } else {
+        cam.disableParking();
+        _logger?.logCameraSleep({
+          'state': 'fallback_bound',
+          'reason': 'wake_timeout',
+          'next_burst_at_ms': nextBurstAtMs,
+        });
+        // The camera stays bound; [_checkCameraDelivery] resumes checking
+        // from here on (cameraIntentionallyDown is false now) and raises the
+        // red banner + app_error if frames never return.
+        _logAsyncError(
+          'timelapse_wake',
+          'Camera produced no frames within ${cam.wakeAllowanceMs} ms of the '
+              'time-lapse wake — parking disabled for this session.',
+        );
+      }
+    } finally {
+      _tlCameraBusy = false;
+    }
   }
 
   // --- UI -----------------------------------------------------------------
@@ -3486,6 +3669,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               final mm = (waitS ~/ 60).toString().padLeft(2, '0');
               final ss = (waitS % 60).toString().padLeft(2, '0');
               label = 'NEXT BURST in $mm:$ss';
+              // Round 163: the frozen preview while parked is the feature
+              // working, not a hang — say so where the user is looking.
+              if (_tlCamera?.cameraIntentionallyDown ?? false) {
+                label += ' · camera off';
+              }
             }
           }
           return _modeChipShell(

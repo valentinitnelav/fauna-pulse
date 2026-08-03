@@ -5656,3 +5656,53 @@ changes to detection/capture; the only app-code change is the error-report sampl
   reminder that neither arch runs on the SD888 Xiaomi.
 - Owner workflow note: from now on, perf/thermal claims in review rounds should come with a
   perf_summary table and follow PERFORMANCE_BENCHMARKING.md; the E3/E4/E6/E9 gates depend on it.
+
+## Round 163 (2026-08-03): E3 time-lapse camera parking + E5 streaming session-log index
+
+Perf review Part E, second batch (recommended order step 2: "E3 parking + E5 index").
+
+- **E3, camera parking between time-lapse bursts (opt-in `timeLapseCameraSleep`, default off):**
+  new `session/time_lapse_camera_coordinator.dart` — a pure, clock-injected state machine
+  (running / parked / warming / fallbackBound; minIdleGap 30 s, prewake lead 10 s, wake
+  allowance 20 s, minPark 10 s) in the TimeLapsePlan/SchedulePlan style, 15 unit tests. The
+  camera screen owns the async platform calls: park = the r94 `_controller.pause()` full
+  unbind after a burst ends, wake = `resume()` ~10 s before the next wall-clock burst, then a
+  bounded wait for a FRESH stream event before photos may flow (`_waitForFrames` generalized
+  with an `active` predicate; the native frame cache holds the pre-park frame, so capturing
+  earlier could save a half-hour-old "photo"). A late (dozed) wake starts that burst's photos
+  late but never shifts the burst grid. Failure policy is reliability-first: a failed park or
+  a wake timeout logs the failure, leaves the camera bound, and disables parking for the rest
+  of the session (fallbackBound); the camera-delivery watchdog is suppressed ONLY while
+  parked/warming, so after a failed wake it deliberately fires on the genuinely dead camera.
+  New `camera_sleep` JSONL records ({state, reason, next_burst_at_ms, wake_ms on success};
+  DATA_GUIDE section added) make intentional camera-off gaps auditable. Owner rule honoured in
+  the same round: Settings switch (Setup tab, under "Repeat burst every", with a
+  current-timing hint), SessionConfig JSON + round-trip test, summary Settings row,
+  `config_not_applicable` in detector/motion modes. Chip shows "NEXT BURST in mm:ss · camera
+  off" while parked; blackout steady state is re-asserted after the wake rebind (same as the
+  scheduled-window wake); SETTINGS_REFERENCE + FIELD_GUIDE warn that the frozen preview is
+  intentional. Expected effect at the 10 s / 30 min defaults: camera-bound duty ~100% → ~1.1%.
+  OPEN: paired one-hour field runs on both phones per PERFORMANCE_BENCHMARKING.md (the r162
+  protocol exists precisely to measure this).
+- **E5, streaming `SessionLogIndex` (the remaining half; E5 now fully done):** new
+  `logging/session_log_index.dart` replaces the summary screen's three full `readAsLines()`
+  parses on the UI isolate (graphs+spans, photos, ROI history) with ONE streaming pass —
+  `File.openRead()` → UTF-8 decode → `LineSplitter`, built inside `Isolate.run`, no file-sized
+  `List<String>` and no UI-isolate JSON decoding. The index carries track spans, the
+  temperature/headroom/FPS/inference series, raw power samples, per-photo aggregates (trigger
+  boxes with the r86 co-detection filename sharing, r64 capture-record size/time overrides,
+  r108 live-companion fields, motion/timelapse/gt discovery, carried-forward ROI size) and the
+  ROI history (r109 stream-side recompute for pre-109 logs now happens in-index). The r114/115
+  high-res frame-bracket matching runs as a second bounded streaming pass only when needed
+  (memory O(photos), never O(frames)). The screen caches ONE future; `_loadGraphs` /
+  `_loadPhotos` / `_loadRoiHistory` consume it and keep only display concerns (label text,
+  `_DetBox` mapping, file-existence checks); `_loadPostHoc`'s post_detections.jsonl read+parse
+  moved off the UI isolate too. Legacy per-track `detection` (≤ r68) vs batched `detections`
+  semantics preserved; crash-truncated lines tolerated; the cheap `_loadStats` head/tail path
+  untouched (headline numbers still appear before the full parse). 15 tests in
+  session_log_index_test.dart: mixed-record fixture covering every record shape, pre-109 ROI
+  recompute, bracket interpolation/no-frame/ROI-move cases, a worker-isolate round-trip, and a
+  100k-line fixture.
+- Review doc: E3 and E5 ticked with done-notes; full suite 411 tests green, analyzer clean.
+- Next per Part E order: E4 step 1 (log the supported AE FPS ranges — cheap, no UI) gating the
+  gate-idle hardware cap experiment; E8/E9/E10 remain.

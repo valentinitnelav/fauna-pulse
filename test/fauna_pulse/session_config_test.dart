@@ -440,6 +440,19 @@ void main() {
     },
   );
 
+  test(
+    'time-lapse camera sleep (r163, E3): default off, survives the round-trip',
+    () {
+      expect(const SessionConfig().timeLapseCameraSleep, false);
+      final restored = SessionConfig.fromJson(
+        const SessionConfig().copyWith(timeLapseCameraSleep: true).toJson(),
+      );
+      expect(restored.timeLapseCameraSleep, true);
+      // Configs saved before the key existed fall back to off.
+      expect(SessionConfig.fromJson(const {}).timeLapseCameraSleep, false);
+    },
+  );
+
   group('scheduled recording', () {
     test('defaults: off, one 06:00–10:00 window, 1 day', () {
       const c = SessionConfig();
@@ -555,9 +568,10 @@ void main() {
     });
 
     test('mode expectations', () {
-      // Detector: only the time-lapse burst interval is inert.
+      // Detector: only the time-lapse burst settings are inert.
       expect(notApplicableConfigKeys(CaptureTrigger.detector), [
         'timeLapseIntervalSeconds',
+        'timeLapseCameraSleep',
       ]);
       // Motion: AI keys inert, but the gate keys APPLY (they are the capture
       // sensitivity) — and wake duration governs how long photos continue.
@@ -565,6 +579,7 @@ void main() {
       expect(motion, contains('modelPath'));
       expect(motion, contains('showBoxes'));
       expect(motion, contains('timeLapseIntervalSeconds'));
+      expect(motion, contains('timeLapseCameraSleep'));
       expect(motion, isNot(contains('motionGateWakeSeconds')));
       expect(motion, isNot(contains('motionGatePixelDelta')));
       // Reference photos apply in detector AND motion mode (that is the
@@ -581,6 +596,7 @@ void main() {
       expect(tl, contains('gtFramesEnabled'));
       expect(tl, contains('gtFrameSeconds'));
       expect(tl, isNot(contains('timeLapseIntervalSeconds')));
+      expect(tl, isNot(contains('timeLapseCameraSleep')));
       expect(tl, isNot(contains('stepSeconds')));
     });
   });

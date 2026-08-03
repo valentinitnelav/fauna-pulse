@@ -14,6 +14,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
+import '../logging/session_log_index.dart';
 import '../logging/device_storage.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
@@ -96,14 +98,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _graphsLoading = false;
   final Map<int, (int first, int last)> _spans = {};
 
-  /// Widens track [id]'s first/last-seen span to include time [t].
-  void _extendSpan(int? t, int? id) {
-    if (id == null || t == null) return;
-    final cur = _spans[id];
-    _spans[id] = cur == null
-        ? (t, t)
-        : (cur.$1 < t ? cur.$1 : t, cur.$2 > t ? cur.$2 : t);
-  }
+  /// Round 163 (perf review E5): ONE streaming parse of session.jsonl —
+  /// built off the UI isolate by [SessionLogIndex.build] — serves graphs,
+  /// photos, ROI history, diagnostics and track spans. The future is cached
+  /// so however many tabs ask, the file is read once (twice when high-res
+  /// box time-matching needs its second bounded pass). The cheap head/tail
+  /// stats path ([_loadStats]) deliberately stays separate: the headline
+  /// numbers must appear before this full parse finishes.
+  Future<SessionLogIndex>? _indexFuture;
+  Future<SessionLogIndex> get _logIndex =>
+      _indexFuture ??= SessionLogIndex.build(widget.logFile);
 
   final List<(int ms, double v)> _temps = [];
   // "Thermal headroom" 0..1+ (0 = cool, 1 = throttling threshold) — a direct
@@ -183,8 +187,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (!f.existsSync()) return;
       final prefs = await SharedPreferences.getInstance();
       final gap = prefs.getDouble('analysis_keep_gap') ?? 2.0;
+      // Round 163 (E5): read + parse the (possibly large) results file off
+      // the UI isolate; only the outcome list is copied back.
+      final path = f.path;
+      final parsed = await Isolate.run(
+        () => photoOutcomesFromJsonl(File(path).readAsStringSync()),
+      );
       // Only photos still on disk — earlier cleanups keep their records.
-      final outcomes = photoOutcomesFromJsonl(await f.readAsString())
+      final outcomes = parsed
           .where(
             (o) => File(
               '${widget.logFile.parent.path}/roi_frames/${o.name}',
@@ -361,79 +371,24 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return s - e;
   }
 
-  /// Full parse for the graphs: visit spans per track, temperature and FPS series.
+  /// Fills the graphs from the shared [SessionLogIndex] (round 163, E5):
+  /// visit spans per track, temperature/FPS/inference series, and the power
+  /// samples the energy series derives from. The parse itself — previously a
+  /// full `readAsLines()` right here on the UI isolate — happens once, off
+  /// the UI isolate, for all tabs together.
   Future<void> _loadGraphs() async {
     setState(() {
       _graphsRequested = true;
       _graphsLoading = true;
     });
-    // Raw battery samples gathered from the `power` records, post-processed below
-    // into the power/energy series (so we can correct for per-device current units).
-    final raw = <_PowerSample>[];
     try {
-      final lines = await widget.logFile.readAsLines();
-      for (final line in lines) {
-        if (line.trim().isEmpty) continue;
-        final rec = _tryDecode(line);
-        if (rec == null) continue;
-        final t = (rec['time_ms'] as num?)?.toInt();
-        switch (rec['type']) {
-          // 'detection': one line per track (sessions ≤ round 68).
-          // 'detections': one line per frame with a `tracks` array (round 69+).
-          case 'detection':
-            _extendSpan(t, (rec['track_id'] as num?)?.toInt());
-            break;
-          case 'detections':
-            final tracks = rec['tracks'];
-            if (tracks is List) {
-              for (final entry in tracks) {
-                if (entry is Map) {
-                  _extendSpan(t, (entry['track_id'] as num?)?.toInt());
-                }
-              }
-            }
-            break;
-          case 'thermal':
-            if (t == null) break;
-            final temp = (rec['battery_temp_c'] as num?)?.toDouble();
-            if (temp != null) _temps.add((t, temp));
-            final hr = (rec['thermal_headroom'] as num?)?.toDouble();
-            if (hr != null) _headroom.add((t, hr));
-            // Older sessions logged FPS inside the thermal record; keep reading it
-            // so their graphs still work alongside the newer dedicated 'fps' records.
-            final f = (rec['fps'] as num?)?.toDouble();
-            if (f != null) _fps.add((t, f));
-            break;
-          case 'fps':
-            if (t == null) break;
-            // Both fields estimate the detector's results/second; prefer
-            // `pipeline_fps` because in sessions recorded before round 85 the
-            // native `fps` EMA blended motion-gate sleep gaps in and read near
-            // zero for the whole wake window (session_127: 0.5–5 logged vs ~10
-            // real), while pipeline_fps stayed ≈ true. Post-r85 the two agree;
-            // older sessions only carry `fps`.
-            final f = ((rec['pipeline_fps'] ?? rec['fps']) as num?)?.toDouble();
-            if (f != null) _fps.add((t, f));
-            // Newer sessions also carry the inference time here; older ones don't.
-            final inf = (rec['inf_ms'] as num?)?.toDouble();
-            if (inf != null) _infMs.add((t, inf));
-            break;
-          case 'power':
-            if (t == null) break;
-            raw.add(
-              _PowerSample(
-                ms: t,
-                currentUa: (rec['battery_current_ua'] as num?)?.toInt(),
-                voltageMv: (rec['battery_voltage_mv'] as num?)?.toInt(),
-                chargeUah: (rec['charge_counter_uah'] as num?)?.toInt(),
-                loggedW: (rec['power_w'] as num?)?.toDouble(),
-                isCharging: rec['is_charging'] as bool?,
-              ),
-            );
-            break;
-        }
-      }
-      _buildEnergySeries(raw);
+      final index = await _logIndex;
+      _spans.addAll(index.trackSpans);
+      _temps.addAll(index.temps);
+      _headroom.addAll(index.headroom);
+      _fps.addAll(index.fps);
+      _infMs.addAll(index.infMs);
+      _buildEnergySeries(index.powerSamples);
       // If the start/end weren't found from head/tail (rare), fall back here.
       if (_spans.isNotEmpty) {
         _startMs ??= _spans.values.map((s) => s.$1).reduce(min);
@@ -455,7 +410,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   ///    (see below), which works even when the charge counter never moves.
   ///  - Some phones (notably Xiaomi) report a 2-cell *series* voltage (~8.8 V);
   ///    [_singleCellVoltageV] normalizes that so power/energy aren't doubled.
-  void _buildEnergySeries(List<_PowerSample> raw) {
+  void _buildEnergySeries(List<IndexedPowerSample> raw) {
     // Battery-terminal readings only measure the PHONE's consumption while it
     // is discharging: plugged in, the sensor sees the charging current (or ~0
     // once the battery is full and the charger carries the load). Any charging
@@ -477,7 +432,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final avgV = volts.isEmpty
         ? 3.85
         : volts.reduce((a, b) => a + b) / volts.length;
-    double voltAt(_PowerSample s) => _singleCellVoltageV(s.voltageMv) ?? avgV;
+    double voltAt(IndexedPowerSample s) =>
+        _singleCellVoltageV(s.voltageMv) ?? avgV;
 
     // Decide whether the current readings are microamps (the spec) or milliamps
     // (some phones) purely from their magnitude. A phone actively recording draws
@@ -552,393 +508,102 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _energyTotalWh = wh;
   }
 
-  /// Parses the log for saved ROI photos and the detection boxes recorded
-  /// against each one, then samples [_sampleCount] of them spread evenly across
-  /// the session, so the user can eyeball whether detections look right.
+  /// Fills the Photos tab from the shared [SessionLogIndex] (round 163, E5):
+  /// maps each saved photo's indexed record to the viewer's display types,
+  /// then samples [_sampleCount] of them spread evenly across the session
+  /// (or takes all), so the user can eyeball whether detections look right.
+  /// The heavy log parse — previously a full `readAsLines()` plus a second
+  /// full re-scan for high-res box time-matching, all on the UI isolate —
+  /// lives in [SessionLogIndex.build] now.
   Future<void> _loadPhotos({bool all = false}) async {
     setState(() {
       _photosRequested = true;
       _photosLoading = true;
     });
-    // Map each saved JPEG (in file order) to the boxes logged against it, plus
-    // the metadata shown under each photo: capture time, the track ids visible
-    // in it, and the ROI pixel resolution in effect when it was saved. All of
-    // this is read straight from the session log — no image decoding needed.
-    final order = <String>[];
-    final byFile = <String, List<_DetBox>>{};
-    final byFileTracks = <String, Set<int>>{}; // unique track ids per photo
-    final byFileConf =
-        <String, Map<int, double>>{}; // per photo: track id -> confidence
-    final byFileTime = <String, int>{}; // capture time (ms since epoch)
-    final byFileRes = <String, (int, int)>{}; // ROI (width_px, height_px)
-    // Round 111: the r108 sync companion — a high-res-path photo's
-    // trigger-moment live-stream crop (`<name>_live.jpg`), so the viewer can
-    // flip between the late high-res photo and the exact-moment (lower-res)
-    // companion.
-    final byFileLive = <String, String>{}; // high-res file -> companion name
-    final byFileLivePx = <String, int>{}; // companion saved square side (px)
-    final byFileLagMs = <String, int>{}; // high-res content lag vs trigger (ms)
-    final byFileLiveLagMs = <String, int>{}; // companion lag vs trigger (ms)
-    // Round 114 time-matching: each high-res photo's CONTENT moment (epoch
-    // ms), and — filled by pass 2 below — the nearest detector frame's boxes.
-    final byFileContentMs = <String, int>{};
-    final byFileContentApprox = <String, bool>{};
-    final byFileStillBoxes = <String, List<_DetBox>>{};
-    final byFileStillMeta = <String, PhotoBoxResult>{}; // r115 deltas/flags
-    final byFileStillTol = <String, bool>{}; // nearest frame within tolerance
-    final byFileMatchNote = <String, String>{}; // why a photo fell back
-    final roiUpdateTimes = <int>[]; // roi_update stamps (debounced, ~2 s late)
-    // Reference photos (`gt_capture` records): they live in gt_frames/, not
-    // roi_frames/, and are marked in the viewer — the set remembers which
-    // names came from that folder.
-    final referenceNames = <String>{};
-    // The ROI pixel size is logged in the start record and again on every ROI
-    // edit; carry the most-recent value forward so each photo gets the size that
-    // applied when it was captured.
-    int? curRoiW, curRoiH;
+    var order = const <String>[];
+    var photosByName = const <String, IndexedPhoto>{};
+    var referenceNames = const <String>{};
     try {
-      final lines = await widget.logFile.readAsLines();
-      for (final line in lines) {
-        if (line.trim().isEmpty) continue;
-        final isRoiSource =
-            line.contains('"start_of_session"') ||
-            line.contains('"roi_update"');
-        // Batched frame records ("detections", round 69+) and legacy
-        // per-track records ("detection", ≤ round 68).
-        final isDetection =
-            line.contains('"detections"') || line.contains('"detection"');
-        final isCapture = line.contains('"type":"capture"');
-        // Motion-only / time-lapse sessions: no detector ran, so these
-        // trigger records are the only lines carrying the photo names.
-        final isTriggerRecord =
-            line.contains('"motion_capture"') ||
-            line.contains('"timelapse_capture"');
-        // Reference photos (r107 "ground-truth frames"): their gt_capture
-        // record is the only line carrying the photo name.
-        final isGtCapture = line.contains('"gt_capture"');
-        if (!isRoiSource &&
-            !isDetection &&
-            !isCapture &&
-            !isTriggerRecord &&
-            !isGtCapture) {
-          continue;
-        }
-        final rec = _tryDecode(line);
-        if (rec == null) continue;
-        if (isRoiSource) {
-          final roi = rec['roi'];
-          if (roi is Map) {
-            final w = (roi['width_px'] as num?)?.toInt();
-            final h = (roi['height_px'] as num?)?.toInt();
-            if (w != null) curRoiW = w;
-            if (h != null) curRoiH = h;
-          }
-          // Round 114: an ROI move invalidates box↔photo time-matching
-          // across it (box_in_roi is relative to the ROI of ITS frame).
-          if (rec['type'] == 'roi_update') {
-            final t = (rec['time_ms'] as num?)?.toInt();
-            if (t != null) roiUpdateTimes.add(t);
-          }
-          continue;
-        }
-        if (isCapture) {
-          // The capture record carries the EXACT saved side (crop snapping +
-          // target cap applied) — it overrides the ROI-geometry estimate set
-          // when the photo was scheduled, so the browser shows the file's
-          // true resolution (round 64; older logs lack this and keep the
-          // estimate).
-          final file = rec['file'] as String?;
-          final px = (rec['saved_px'] as num?)?.toInt();
-          // Backstop: a photo no detections/motion_capture record ever named
-          // (shouldn't happen, but a lost line must not hide a saved JPEG)
-          // still becomes browsable — seeded here, boxes simply empty.
-          if (file != null && file.isNotEmpty && !byFile.containsKey(file)) {
-            order.add(file);
-            byFile[file] = [];
-            byFileTracks[file] = <int>{};
-            byFileTime[file] = (rec['time_ms'] as num?)?.toInt() ?? 0;
-          }
-          // Round 99: prefer the exact trigger moment — the instant the
-          // filename stamp encodes — over the earlier-seeded record times
-          // (the detections record is stamped ~tens of ms after the frame,
-          // this capture record only after the JPEG landed on storage).
-          // Older logs lack the field and keep the seeded time.
-          final capMs = (rec['captured_at_ms'] as num?)?.toInt();
-          if (file != null && capMs != null) byFileTime[file] = capMs;
-          if (file != null && px != null && px > 0) byFileRes[file] = (px, px);
-          // Sync companion (r108) + content lag: only high-res-path records
-          // carry these; fast-path photos ARE live crops, so they have neither.
-          final liveJpeg = rec['live_jpeg'] as String?;
-          if (file != null && liveJpeg != null && liveJpeg.isNotEmpty) {
-            byFileLive[file] = liveJpeg;
-            final livePx = (rec['live_saved_px'] as num?)?.toInt();
-            if (livePx != null && livePx > 0) byFileLivePx[file] = livePx;
-            final liveLag = (rec['live_lag_ms'] as num?)?.toInt();
-            if (liveLag != null) byFileLiveLagMs[file] = liveLag;
-          }
-          final lagMs = (rec['content_lag_ms'] as num?)?.toDouble();
-          if (file != null && lagMs != null) byFileLagMs[file] = lagMs.round();
-          // Round 114: when this photo's content moment is known (measured
-          // `content_at_ms`, or reconstructed from the r108 lags), pass 2
-          // below can time-match detector frames to it.
-          final moment = contentMomentOf(rec);
-          if (file != null && moment != null) {
-            byFileContentMs[file] = moment.ms;
-            byFileContentApprox[file] = moment.approx;
-          }
-          continue;
-        }
-        if (isTriggerRecord &&
-            (rec['type'] == 'motion_capture' ||
-                rec['type'] == 'timelapse_capture')) {
-          // Motion-only / time-lapse mode: the discovery line for its photo
-          // (the detector never ran, so no detections record carries the
-          // name).
-          final jpeg = rec['jpeg'] as String?;
-          if (jpeg != null && jpeg.isNotEmpty && !byFile.containsKey(jpeg)) {
-            order.add(jpeg);
-            byFile[jpeg] = [];
-            byFileTracks[jpeg] = <int>{};
-            // Prefer the exact trigger moment (round 99, == the filename
-            // stamp) over this record's log-queue time_ms; old logs lack it.
-            byFileTime[jpeg] =
-                (rec['captured_at_ms'] as num?)?.toInt() ??
-                (rec['time_ms'] as num?)?.toInt() ??
-                0;
-            if (curRoiW != null && curRoiH != null) {
-              byFileRes[jpeg] = (curRoiW, curRoiH);
-            }
-          }
-          continue;
-        }
-        if (isGtCapture && rec['type'] == 'gt_capture') {
-          // Reference photo: no boxes by design (taken on a clock, not on a
-          // detection); the record is written after the JPEG landed and
-          // carries the exact saved side.
-          final jpeg = rec['jpeg'] as String?;
-          if (jpeg != null && jpeg.isNotEmpty && !byFile.containsKey(jpeg)) {
-            order.add(jpeg);
-            byFile[jpeg] = [];
-            byFileTracks[jpeg] = <int>{};
-            byFileTime[jpeg] =
-                (rec['captured_at_ms'] as num?)?.toInt() ??
-                (rec['time_ms'] as num?)?.toInt() ??
-                0;
-            final px = (rec['saved_px'] as num?)?.toInt();
-            if (px != null && px > 0) {
-              byFileRes[jpeg] = (px, px);
-            } else if (curRoiW != null && curRoiH != null) {
-              byFileRes[jpeg] = (curRoiW, curRoiH);
-            }
-            referenceNames.add(jpeg);
-          }
-          continue;
-        }
-        // Joins one tracked insect's entry to a photo. Shared by both record
-        // shapes. Only the tracks whose time-lapse step was DUE carry the
-        // `jpeg` filename in the log; [frameJpeg] passes that filename to the
-        // OTHER tracks of the same frame record, so every insect visible in
-        // the photo gets its box drawn (round 86) — jpeg-carrying entries are
-        // marked as the photo's trigger and drawn in a distinct color.
-        void addEntry(
-          Map<String, dynamic> entry,
-          int timeMs, {
-          String? frameJpeg,
-        }) {
-          final own = entry['jpeg'] as String?;
-          final jpeg = own ?? frameJpeg;
-          if (jpeg == null || jpeg.isEmpty) return;
-          if (!byFile.containsKey(jpeg)) {
-            order.add(jpeg);
-            byFile[jpeg] = [];
-            byFileTracks[jpeg] = <int>{};
-            byFileTime[jpeg] = timeMs;
-            if (curRoiW != null && curRoiH != null) {
-              byFileRes[jpeg] = (curRoiW, curRoiH);
-            }
-          }
-          final tid = (entry['track_id'] as num?)?.toInt();
-          if (tid != null) byFileTracks[jpeg]!.add(tid);
-          // The detector confidence (0..1) for this track, logged with every
-          // detection — no extra cost, it's already in the record.
-          final conf = (entry['confidence'] as num?)?.toDouble();
-          if (tid != null && conf != null) {
-            (byFileConf[jpeg] ??= <int, double>{})[tid] = conf;
-          }
-          final box = entry['box_in_roi'];
-          if (box is Map) {
-            final confLabel = conf != null
-                ? '  ${conf.toStringAsFixed(2)}'
-                : '';
-            byFile[jpeg]!.add(
-              _DetBox(
-                left: (box['left'] as num?)?.toDouble() ?? 0,
-                top: (box['top'] as num?)?.toDouble() ?? 0,
-                right: (box['right'] as num?)?.toDouble() ?? 0,
-                bottom: (box['bottom'] as num?)?.toDouble() ?? 0,
-                label: '#${tid ?? '?'} ${entry['class_name'] ?? ''}$confLabel'
-                    .trim(),
-                triggered: own != null,
-              ),
-            );
-          }
-        }
-
-        final timeMs = (rec['time_ms'] as num?)?.toInt() ?? 0;
-        if (rec['type'] == 'detections') {
-          final tracks = rec['tracks'];
-          if (tracks is List) {
-            // The frame's shared photo filename (one photo per frame at most):
-            // handed to the entries that lack their own, so co-detected
-            // insects appear on the photo too. Legacy per-track 'detection'
-            // records (≤ round 68) can't be regrouped into frames, so they
-            // keep showing trigger boxes only.
-            String? frameJpeg;
-            for (final e in tracks) {
-              if (e is Map<String, dynamic> && e['jpeg'] is String) {
-                frameJpeg = e['jpeg'] as String;
-                break;
-              }
-            }
-            for (final e in tracks) {
-              if (e is Map<String, dynamic>) {
-                addEntry(e, timeMs, frameJpeg: frameJpeg);
-              }
-            }
-          }
-        } else {
-          addEntry(rec, timeMs);
-        }
-      }
-      // ---- Pass 2 (round 114): time-match detector frames to each high-res
-      // photo's CONTENT moment. A high-res photo shows the scene 0.17–0.8 s
-      // after its trigger, so the trigger frame's boxes often miss the
-      // insect; the frame nearest the content moment fits better. Pure
-      // display-time work over the already-in-memory lines — pre-r114 logs
-      // (no `frame_ms` in detections records) skip this entirely and keep
-      // the trigger boxes.
-      if (byFileContentMs.isNotEmpty) {
-        final acc = FrameBracketAccumulator(byFileContentMs);
-        // Consecutive frame-time deltas (bounded sample) — the adaptive
-        // match tolerance derives from their median.
-        final intervals = <int>[];
-        int? prevFrameMs;
-        for (final line in lines) {
-          if (!line.contains('"detections"') || !line.contains('"frame_ms"')) {
-            continue;
-          }
-          final rec = _tryDecode(line);
-          if (rec == null || rec['type'] != 'detections') continue;
-          // Prefer the sensor-exposure stamp (precise) over the emit stamp
-          // (~pre+inference later); both are epoch ms.
-          final frameMs =
-              (rec['frame_sensor_ms'] as num?)?.toInt() ??
-              (rec['frame_ms'] as num?)?.toInt();
-          if (frameMs == null) continue;
-          if (prevFrameMs != null && intervals.length < 5000) {
-            final d = frameMs - prevFrameMs;
-            if (d > 0) intervals.add(d);
-          }
-          prevFrameMs = frameMs;
-          final tracks = rec['tracks'];
-          if (tracks is List) {
-            acc.feed(frameMs, [
-              for (final e in tracks)
-                if (e is Map<String, dynamic>) e,
-            ]);
-          }
-        }
-        final tol = toleranceMs(intervals);
-        for (final MapEntry(key: file, value: contentMs)
-            in byFileContentMs.entries) {
-          // ROI-move check FIRST (r115): a moved ROI genuinely invalidates
-          // the coordinates, whatever frames exist.
-          if (roiMovedInWindow(
-            roiUpdateTimes,
-            byFileTime[file] ?? 0,
-            contentMs,
-          )) {
-            byFileMatchNote[file] =
-                'the ROI was moved before the photo '
-                'landed';
-            continue;
-          }
-          final bracket = acc.bracketOf(file);
-          final result = buildPhotoBoxes(
-            before: bracket.before,
-            after: bracket.after,
-            photoFile: file,
-          );
-          if (result == null) {
-            byFileMatchNote[file] =
-                'no detector frame within $kBracketWindowMs ms — the insect '
-                "had likely left by this photo's moment";
-            continue;
-          }
-          // r115: no hard tolerance rejection any more — r114's fallback
-          // (trigger boxes ~0.5 s away) was often FARTHER than the frame it
-          // rejected. The tolerance now only picks the label tone.
-          byFileStillBoxes[file] = [
-            for (final b in result.boxes)
-              _DetBox(
-                left: b.left,
-                top: b.top,
-                right: b.right,
-                bottom: b.bottom,
-                // Same label format as the trigger boxes; a trailing ≈ marks
-                // the odd single-side box inside an interpolated photo.
-                label:
-                    '#${b.trackId ?? '?'} ${b.className ?? ''}'
-                            '${b.confidence != null ? '  ${b.confidence!.toStringAsFixed(2)}' : ''}'
-                            '${result.anyInterpolated && !b.interpolated ? ' ≈' : ''}'
-                        .trim(),
-                // Matched frames rarely carry this photo's filename; boxes
-                // then render in the co-detected color — honest, they were
-                // not the trigger.
-                triggered: b.triggered,
-              ),
-          ];
-          byFileStillMeta[file] = result;
-          byFileStillTol[file] = result.nearestAbsDeltaMs <= tol;
-        }
-      }
+      final index = await _logIndex;
+      order = index.photoOrder;
+      photosByName = index.photos;
+      referenceNames = index.referenceNames;
     } catch (e) {
       // Use whatever parsed.
       logSwallowed('summary_photos_scan', e);
     }
 
-    // Builds a fully-populated sample for a given file name (joins all the
-    // per-photo maps gathered above).
-    _PhotoSample sampleFor(String name, File file) {
-      final ids = (byFileTracks[name] ?? const <int>{}).toList()..sort();
-      // Companion sits next to its high-res photo in roi_frames/; only offer the
-      // flip when the file is really on disk (best-effort save, r108).
-      final liveName = byFileLive[name];
+    // Label text for a trigger box — same format the parse always rendered:
+    // "#id class  0.87".
+    String triggerLabel(IndexedPhotoBox b) {
+      final confLabel = b.confidence != null
+          ? '  ${b.confidence!.toStringAsFixed(2)}'
+          : '';
+      return '#${b.trackId ?? '?'} ${b.className ?? ''}$confLabel'.trim();
+    }
+
+    // Builds a fully-populated display sample from one photo's indexed record.
+    _PhotoSample sampleFor(IndexedPhoto p, File file) {
+      // Companion sits next to its high-res photo in roi_frames/; only offer
+      // the flip when the file is really on disk (best-effort save, r108).
+      final liveName = p.liveName;
       final liveFile = liveName == null
           ? null
           : File('${file.parent.path}/$liveName');
       final liveExists = liveFile != null && liveFile.existsSync();
+      final still = p.stillMatch;
       return _PhotoSample(
         file: file,
-        name: name,
-        boxes: byFile[name] ?? const [],
-        trackIds: ids,
-        trackConf: byFileConf[name] ?? const <int, double>{},
-        captureMs: byFileTime[name] ?? 0,
-        width: byFileRes[name]?.$1,
-        height: byFileRes[name]?.$2,
+        name: p.name,
+        boxes: [
+          for (final b in p.boxes)
+            _DetBox(
+              left: b.left,
+              top: b.top,
+              right: b.right,
+              bottom: b.bottom,
+              label: triggerLabel(b),
+              triggered: b.triggered,
+            ),
+        ],
+        trackIds: p.trackIds,
+        trackConf: p.trackConf,
+        captureMs: p.captureMs,
+        width: p.resW,
+        height: p.resH,
         liveFile: liveExists ? liveFile : null,
         liveName: liveExists ? liveName : null,
-        livePx: byFileLivePx[name],
-        contentLagMs: byFileLagMs[name],
-        liveLagMs: byFileLiveLagMs[name],
-        contentAtMs: byFileContentMs[name],
-        contentAtApprox: byFileContentApprox[name] ?? false,
-        stillBoxes: byFileStillBoxes[name],
-        stillMatch: byFileStillMeta[name],
-        stillWithinTol: byFileStillTol[name] ?? false,
-        stillMatchNote: byFileMatchNote[name],
-        isReference: referenceNames.contains(name),
+        livePx: p.livePx,
+        contentLagMs: p.contentLagMs,
+        liveLagMs: p.liveLagMs,
+        contentAtMs: p.contentAtMs,
+        contentAtApprox: p.contentAtApprox,
+        // Round 114/115 time-matched boxes for the high-res view. Same label
+        // format as the trigger boxes; a trailing ≈ marks the odd single-side
+        // box inside an interpolated photo. Matched frames rarely carry this
+        // photo's filename; those boxes render in the co-detected color —
+        // honest, they were not the trigger.
+        stillBoxes: still == null
+            ? null
+            : [
+                for (final b in still.boxes)
+                  _DetBox(
+                    left: b.left,
+                    top: b.top,
+                    right: b.right,
+                    bottom: b.bottom,
+                    label:
+                        '#${b.trackId ?? '?'} ${b.className ?? ''}'
+                                '${b.confidence != null ? '  ${b.confidence!.toStringAsFixed(2)}' : ''}'
+                                '${still.anyInterpolated && !b.interpolated ? ' ≈' : ''}'
+                            .trim(),
+                    triggered: b.triggered,
+                  ),
+              ],
+        stillMatch: still,
+        stillWithinTol: p.stillWithinTol,
+        stillMatchNote: p.stillMatchNote,
+        isReference: p.isReference,
       );
     }
 
@@ -953,16 +618,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (order.isNotEmpty) {
       if (all) {
         for (final name in order) {
+          final p = photosByName[name];
           final file = fileFor(name);
-          if (file.existsSync()) picked.add(sampleFor(name, file));
+          if (p != null && file.existsSync()) picked.add(sampleFor(p, file));
         }
       } else {
         final n = _sampleCount.clamp(1, order.length);
         for (var i = 0; i < n; i++) {
           final idx = n == 1 ? 0 : ((i * (order.length - 1)) / (n - 1)).round();
           final name = order[idx];
+          final p = photosByName[name];
           final file = fileFor(name);
-          if (file.existsSync()) picked.add(sampleFor(name, file));
+          if (p != null && file.existsSync()) picked.add(sampleFor(p, file));
         }
       }
     }
@@ -992,24 +659,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   /// Collects the session's settled mid-session ROI changes (`roi_update`
-  /// records) for the Settings tab's history list. Full-line scan with a
-  /// cheap contains() prefilter, same pattern as [_loadPhotos].
+  /// records) for the Settings tab's history list — from the shared
+  /// [SessionLogIndex] since round 163 (E5); previously its own full
+  /// `readAsLines()` scan.
   Future<void> _loadRoiHistory() async {
-    final entries =
-        <({int timeMs, int? sidePx, int? savesPx, String? source})>[];
+    var entries = const <RoiHistoryEntry>[];
     try {
-      final lines = await widget.logFile.readAsLines();
-      for (final line in lines) {
-        if (!line.contains('"roi_update"')) continue;
-        final rec = _tryDecode(line);
-        if (rec == null || rec['type'] != 'roi_update') continue;
-        entries.add((
-          timeMs: (rec['time_ms'] as num?)?.toInt() ?? 0,
-          sidePx: _roiStreamSideOf(rec),
-          savesPx: (rec['saves_px'] as num?)?.toInt(),
-          source: rec['roi_source'] as String?,
-        ));
-      }
+      entries = (await _logIndex).roiHistory;
     } catch (e) {
       logSwallowed('roi_history_load', e);
     }
@@ -1292,6 +948,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Burst repeat interval',
         _setting('timeLapseIntervalSeconds'),
         suffix: ' s',
+      );
+      // Round 163 (E3): camera parking between bursts. Sessions recorded
+      // before the setting existed carry no key — add() skips null.
+      add(
+        'Camera off between bursts',
+        _setting('timeLapseCameraSleep'),
       );
     }
     add(
@@ -2467,25 +2129,6 @@ double? _singleCellVoltageV(int? mv) {
 }
 
 /// One raw battery reading from a `power` log record, before unit correction.
-class _PowerSample {
-  final int ms;
-  final int?
-  currentUa; // instantaneous current (µA per spec; mA on some phones)
-  final int? voltageMv; // battery voltage (mV)
-  final int? chargeUah; // remaining charge counter (µAh) — spec-reliable units
-  final double?
-  loggedW; // power computed at capture time (last-resort fallback)
-  final bool? isCharging; // plugged in at sample time (null on older logs)
-  const _PowerSample({
-    required this.ms,
-    required this.currentUa,
-    required this.voltageMv,
-    required this.chargeUah,
-    required this.loggedW,
-    required this.isCharging,
-  });
-}
-
 /// One detection box, in ROI-normalized (0..1) coordinates — which is exactly
 /// the coordinate space of the saved square ROI photo, so the rect maps onto the
 /// image directly.

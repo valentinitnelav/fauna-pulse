@@ -252,6 +252,16 @@ class SessionLogger {
   void logTimeLapseCapture(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('timelapse_capture', payload, at: at);
 
+  /// A time-lapse camera-parking transition (round 163, perf review E3):
+  /// `state` (parked / warming / running / fallback_bound), `reason`
+  /// (between_bursts / prewake / late_wake / fresh_frame / wake_timeout /
+  /// park_failed / wake_failed) and the next scheduled burst as
+  /// `next_burst_at_ms` (epoch), so a scientific audit can tell intentional
+  /// camera-off gaps from camera failure. Sparse (a few per burst cycle);
+  /// flushed like the other lifecycle records.
+  void logCameraSleep(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('camera_sleep', payload, at: at);
+
   /// A periodic phone-temperature sample taken during the session (battery °C
   /// and OS thermal status), so heat can be correlated with the recording.
   void logThermal(Map<String, dynamic> payload, {DateTime? at}) =>

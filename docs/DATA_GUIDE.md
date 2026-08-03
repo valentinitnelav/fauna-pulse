@@ -236,6 +236,25 @@ Screen state at any moment = the last `blackout` record before it (before the
 first one: `blackout_at_start` in the start record, absent = screen on).
 Sessions recorded before round 132 carry no screen-state information.
 
+### `camera_sleep` — time-lapse camera parking transitions (round 163+)
+
+Written only in time-lapse sessions with "Turn camera off between bursts"
+enabled. The camera is fully turned off between bursts and back on ~10 s
+before the next one; these records make the resulting frame-less gaps
+auditable — "confirmed intentionally off", never "camera failed".
+
+| Field | Meaning |
+|---|---|
+| `state` | `parked` (camera off between bursts), `warming` (turned back on, waiting for the first fresh frame), `running` (fresh frames confirmed — photos may flow), `fallback_bound` (a park/wake failed: parking disabled for the rest of the session, camera stays on). |
+| `reason` | Why the transition happened: `between_bursts`, `prewake`, `late_wake` (an OS-delayed wake after the burst was already due), `fresh_frame`, `wake_timeout` (no frame within 20 s), `park_failed` / `wake_failed` (the platform call itself errored). |
+| `next_burst_at_ms` | The next scheduled burst start (epoch ms) — join against `timelapse_capture` records to see whether a burst started on time, late (`late_wake`), or fell inside a failure. |
+| `wake_ms` | On `running` only: how long the wake took, from the turn-on call to the first fresh frame. |
+
+Analysis rule: photos are only captured in `running`/`fallback_bound` states,
+so a burst overlapping a `parked`/`warming` gap starts its photos late (the
+burst grid itself never shifts). A `fallback_bound` record means every later
+gap in that session is real camera time, not parking.
+
 ### `focus_change` — camera focus changed mid-session (round 132+)
 
 Same fields as the start record's focus pair: `focus_mode`

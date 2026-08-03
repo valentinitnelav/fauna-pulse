@@ -406,7 +406,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Should be a whole multiple of the step.',
         onChanged: (v) => setState(() => _c = _c.copyWith(durationSeconds: v)),
       ),
-      if (_c.timeLapseCapture)
+      if (_c.timeLapseCapture) ...[
         DurationSettingField(
           label: 'Repeat burst every',
           valueSeconds: _c.timeLapseIntervalSeconds,
@@ -420,6 +420,28 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(timeLapseIntervalSeconds: v)),
         ),
+        // Round 163 (perf review E3): camera parking between bursts.
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Turn camera off between bursts',
+            style: TextStyle(color: Colors.white),
+          ),
+          subtitle: Text(
+            'Big heat/power saver for sparse time-lapses: the camera hardware '
+            'is fully turned off after each burst and back on ~10 s before '
+            'the next one. The preview freezes while it is off — that is '
+            'normal, not a crash. Needs ≥ 30 s between bursts'
+            '${_c.timeLapseIntervalSeconds - _c.durationSeconds < 30 ? ' (your current burst timing leaves less — the camera will stay on)' : ''}. '
+            'If the camera ever fails to come back in time, it stays on for '
+            'the rest of the session and the failure is logged.',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          value: _c.timeLapseCameraSleep,
+          onChanged: (v) =>
+              setState(() => _c = _c.copyWith(timeLapseCameraSleep: v)),
+        ),
+      ],
       if (!_c.isTimeLapseValid)
         const Padding(
           padding: EdgeInsets.only(bottom: 8),

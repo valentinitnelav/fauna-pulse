@@ -234,6 +234,14 @@ conversion) to save heat and battery. The number counts the frames the app
 little; it never needs to reach the camera's full rate because time-lapse
 photos come on a clock, not from every frame.
 
+**Frozen preview + "camera off" in the chip (time-lapse).** With "Turn camera
+off between bursts" enabled (round 163), the camera hardware is fully turned
+off between bursts — the preview freezes on its last frame and the chip reads
+"NEXT BURST in mm:ss · camera off". That is the power saver working, not a
+crash. The camera turns back on ~10 s before each burst; if it ever fails to
+come back in time, the app leaves it on for the rest of the session and logs
+the failure, so a burst is never silently skipped twice.
+
 **No detections at all.** Check: is the right model selected? Is confidence set
 too high? Is the insect's centre actually inside the ROI? If the camera is
 clearly running but nothing is ever detected for several seconds, the app raises

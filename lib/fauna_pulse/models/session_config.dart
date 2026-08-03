@@ -135,9 +135,9 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
   ];
   switch (trigger) {
     case CaptureTrigger.detector:
-      return const ['timeLapseIntervalSeconds'];
+      return const ['timeLapseIntervalSeconds', 'timeLapseCameraSleep'];
     case CaptureTrigger.motion:
-      return [...aiKeys, 'timeLapseIntervalSeconds'];
+      return [...aiKeys, 'timeLapseIntervalSeconds', 'timeLapseCameraSleep'];
     case CaptureTrigger.timelapse:
       // Reference photos are inert here too: the whole session is already
       // clock-driven photos, so a second periodic sampler would only
@@ -334,6 +334,15 @@ class SessionConfig {
   /// or overlap — photos then flow continuously every [stepSeconds].
   final double timeLapseIntervalSeconds;
 
+  /// Time-lapse mode only (round 163, perf review E3): fully turn the camera
+  /// off ("park" it) between bursts and turn it back on ~10 s before the next
+  /// one — the big heat/power saver for sparse time-lapses, at the cost of a
+  /// frozen preview and a small wake risk. Only takes effect when the bursts
+  /// leave ≥ 30 s of idle time between them; a failed wake disables parking
+  /// for the rest of the session (camera stays on — reliability first).
+  /// Off by default: turning the camera hardware off/on is the riskier path.
+  final bool timeLapseCameraSleep;
+
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
   /// crop can be. Higher = bigger crops but can cost FPS on weaker phones.
@@ -512,6 +521,7 @@ class SessionConfig {
     this.motionGateIdleFps = 5,
     this.captureTrigger = CaptureTrigger.detector,
     this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
+    this.timeLapseCameraSleep = false,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -611,6 +621,7 @@ class SessionConfig {
     int? motionGateIdleFps,
     CaptureTrigger? captureTrigger,
     double? timeLapseIntervalSeconds,
+    bool? timeLapseCameraSleep,
     int? streamWidth,
     int? streamHeight,
     bool? streamResolutionExplicit,
@@ -663,6 +674,7 @@ class SessionConfig {
     captureTrigger: captureTrigger ?? this.captureTrigger,
     timeLapseIntervalSeconds:
         timeLapseIntervalSeconds ?? this.timeLapseIntervalSeconds,
+    timeLapseCameraSleep: timeLapseCameraSleep ?? this.timeLapseCameraSleep,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     streamResolutionExplicit:
@@ -719,6 +731,7 @@ class SessionConfig {
     // pattern) so round-95/96 parsers still recognise motion-only sessions.
     'motionOnlyCapture': motionOnlyCapture,
     'timeLapseIntervalSeconds': timeLapseIntervalSeconds,
+    'timeLapseCameraSleep': timeLapseCameraSleep,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'streamResolutionExplicit': streamResolutionExplicit,
@@ -791,6 +804,7 @@ class SessionConfig {
     captureTrigger: _captureTriggerFromJson(j),
     timeLapseIntervalSeconds:
         (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
+    timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     // Pre-round-109 configs lack the key. A stored size that differs from the

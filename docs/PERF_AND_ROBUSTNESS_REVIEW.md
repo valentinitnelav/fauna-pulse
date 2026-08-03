@@ -1021,7 +1021,7 @@ clean, 363 tests pass, debug APK builds. The on-device validation pass
 `dumpsys meminfo` native heap and `ps -T` thread count plateau) is the
 owner's step.
 
-### E3. [ ] Park CameraX between long time-lapse bursts
+### E3. [x] Park CameraX between long time-lapse bursts
 
 - New `SessionConfig.timeLapseCameraSleep`, UI "Turn camera off between
   bursts", default false. Owner rule applies: Settings control + SessionConfig
@@ -1059,6 +1059,27 @@ owner's step.
   smaller (foreground service + wakelock remain). Live detector mode unchanged.
   Cost: 3-5 days plus paired one-hour field runs.
 
+**Done (round 163).** `session/time_lapse_camera_coordinator.dart`: pure
+clock-injected state machine (running / parked / warming / fallbackBound;
+constants minIdleGap 30 s, prewake 10 s, wake allowance 20 s, minPark 10 s)
+with unit tests; the screen owns the async `pause()`/`resume()` calls and
+reports outcomes back. Photos are gated on `framesUsable` so a stale cached
+frame can never be saved as a "photo" (the burst grid itself never shifts —
+a late wake starts that burst's photos late); a wake success re-fires the
+time-lapse tick immediately. `_checkCameraDelivery` is suppressed only while
+`cameraIntentionallyDown` (parked/warming) — after a failed wake the state is
+fallbackBound, so the watchdog deliberately fires on the genuinely dead
+camera. `_waitForFrames` was generalized with an `active` predicate (the r94
+scheduled wake passes the run's liveness, this passes the recording's).
+`camera_sleep` records as specified (+ `wake_ms` on success; documented in
+DATA_GUIDE); `timeLapseCameraSleep` shipped per the owner rule (Settings
+switch under "Repeat burst every", SessionConfig JSON, summary row,
+round-trip test, `config_not_applicable` in detector/motion modes); chip
+appends "· camera off" while parked; blackout re-asserted after a wake
+rebind (same as the scheduled wake). SETTINGS_REFERENCE + FIELD_GUIDE warn
+about the frozen preview. Remaining owner validation: the paired one-hour
+field runs on both phones (the perf_summary protocol from E1).
+
 ### E4. [ ] Experiment: hardware camera cap while the motion gate sleeps
 
 - Step 1 (cheap, do first): log every supported Camera2 AE FPS range plus the
@@ -1086,7 +1107,7 @@ owner's step.
   sustained active FPS later. No instantaneous FPS gain. Cost: 1-2 days plus
   Xiaomi/Samsung A/B.
 
-### E5. [ ] One streaming session-log index + bounded error sampling
+### E5. [x] One streaming session-log index + bounded error sampling
 
 - Verified: `screens/session_summary_screen.dart` (4208 lines) does three full
   `readAsLines()` parses of session.jsonl on the UI isolate (`:374` graphs +
@@ -1114,6 +1135,23 @@ owner's step.
 - Benefit: bounded heap, one parse instead of three, responsive summaries,
   safer error reporting after long sessions. No live FPS change. Cost: 2-3
   days for the index, under half a day for bounded error sampling.
+
+**Done (round 163): the streaming index half.**
+`logging/session_log_index.dart`: immutable `SessionLogIndex` built via
+`Isolate.run` from `File.openRead()` → UTF-8 decode → `LineSplitter` (no
+file-sized `List<String>`, no UI-isolate JSON decoding); ONE pass fills
+track spans, temperature/headroom/FPS/inference series, raw power samples,
+photo aggregates (trigger boxes, capture-record overrides, r108 live
+companions, motion/timelapse/gt discovery, carried-forward ROI size) and the
+ROI history (round-109 stream side recomputed in-index for older logs); a
+second bounded streaming pass runs only for r114/115 high-res frame-bracket
+matching (`FrameBracketAccumulator` keeps it O(photos)). The summary screen
+caches one future; `_loadGraphs`/`_loadPhotos`/`_loadRoiHistory` all consume
+it (label/text building stays in the widget); `_loadPostHoc`'s
+post_detections.jsonl read+parse moved off the UI isolate too. Legacy
+`detection` vs batched `detections` semantics preserved; truncated lines
+tolerated. 15 unit tests incl. a 100k-line fixture and a worker-isolate
+round-trip. The bounded head/tail stats path stays untouched, as specified.
 
 **Partially done (round 162): the bounded error-sampling half.**
 `ErrorReporter._sampledLog` now goes through a new `boundedHeadTailSample`
