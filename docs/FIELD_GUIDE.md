@@ -245,7 +245,9 @@ off between bursts" enabled (round 163), the camera hardware is fully turned
 off between bursts — the preview freezes on its last frame and the chip reads
 "NEXT BURST in mm:ss · camera off". That is the power saver working, not a
 crash. The camera turns back on shortly before each burst (the "Camera wake
-lead" setting, default 5 s); if it ever fails to come back in time, the app
+lead" setting, default 10 s — a woken camera needs a few seconds to settle
+exposure and move the lens back to your locked focus, or the first photo
+comes out dark and blurry); if it ever fails to come back in time, the app
 leaves it on for the rest of the session and logs the failure, so a burst is
 never silently skipped twice. This combines freely with blackout (§4): the
 moon button saves the screen, camera sleep saves the camera — use both for

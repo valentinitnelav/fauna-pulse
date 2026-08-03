@@ -241,7 +241,7 @@ Sessions recorded before round 132 carry no screen-state information.
 Written only in time-lapse sessions with "Turn camera off between bursts"
 enabled. The camera is fully turned off between bursts and back on shortly
 before the next one (the "Camera wake lead" setting,
-`timeLapseWakeLeadSeconds`, default 5 s); these records make the resulting
+`timeLapseWakeLeadSeconds`, default 10 s); these records make the resulting
 frame-less gaps auditable — "confirmed intentionally off", never "camera
 failed".
 

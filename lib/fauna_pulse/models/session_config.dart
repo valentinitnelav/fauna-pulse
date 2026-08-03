@@ -353,10 +353,13 @@ class SessionConfig {
   final bool timeLapseCameraSleep;
 
   /// Time-lapse camera sleep only (round 164): how many seconds BEFORE the
-  /// next scheduled burst the camera is turned back on, so it is warm
-  /// (exposure settled, fresh frames cached) when the first photo is due.
-  /// Larger = safer warm-up but less camera-off time; focus never hunts on
-  /// wake (always-manual focus, round 164), so the default is a short 5 s.
+  /// next scheduled burst the camera is turned back on, so it is warm when
+  /// the first photo is due. Default 10 s (owner field test, r164): a full
+  /// power-off parks the lens actuator and discards auto-exposure state, so
+  /// a wake needs real time for the motor to travel back to the locked
+  /// manual focus and for AE to ramp — at 5 s the burst's first photo came
+  /// out dark and blurry on the test phone. Larger = safer warm-up, smaller
+  /// = more camera-off time.
   final double timeLapseWakeLeadSeconds;
 
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
@@ -538,7 +541,7 @@ class SessionConfig {
     this.captureTrigger = CaptureTrigger.detector,
     this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
     this.timeLapseCameraSleep = false,
-    this.timeLapseWakeLeadSeconds = 5.0,
+    this.timeLapseWakeLeadSeconds = 10.0,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -827,7 +830,7 @@ class SessionConfig {
         (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
     timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
     timeLapseWakeLeadSeconds:
-        (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 5.0,
+        (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 10.0,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     // Pre-round-109 configs lack the key. A stored size that differs from the

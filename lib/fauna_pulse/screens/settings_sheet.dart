@@ -454,11 +454,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             unitSuffix: 's',
             helperText:
                 'How many seconds before each burst the camera is turned '
-                'back on, so exposure has settled when the first photo is '
-                'due. Default 5. Raise it if the first photo of a burst '
-                'looks too dark/bright; lower it to keep the camera off '
-                'longer. Focus never re-hunts on wake (it stays locked '
-                'manual).',
+                'back on. After a full power-off the camera needs a few '
+                'seconds to settle exposure and physically move the lens '
+                'back to your locked focus — with less than ~10 the first '
+                'burst photo can come out dark and blurry (field-tested). '
+                'Default 10. Raise it if first photos still look off; lower '
+                'only if your first-photo quality holds up.',
             onChanged: (v) => setState(
               () => _c = _c.copyWith(timeLapseWakeLeadSeconds: v),
             ),

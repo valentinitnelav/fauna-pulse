@@ -5711,13 +5711,19 @@ Perf review Part E, second batch (recommended order step 2: "E3 parking + E5 ind
 
 Owner follow-up to the round-163 camera parking, three parts.
 
-- **Configurable camera wake lead (`timeLapseWakeLeadSeconds`, default 5 s, 1-60 s):** the r163
+- **Configurable camera wake lead (`timeLapseWakeLeadSeconds`, default 10 s, 1-60 s):** the r163
   10 s prewake came from the review spec (headroom for the CameraX rebind + auto-exposure
   settling). It is now a user setting per the owner rule (Setup tab field under the camera-sleep
   switch, SessionConfig JSON + round-trip test, summary row, `config_not_applicable` in
-  detector/motion modes); the coordinator default dropped to 5000 ms and the screen passes the
-  configured value. 5 s is enough headroom now that focus never re-hunts on a wake (part 3);
-  raise it if the first burst photo looks badly exposed. Coordinator tests updated + one test
+  detector/motion modes); the screen passes the configured value to the coordinator. The default
+  was briefly 5 s in this round, then reverted to 10 s after the owner's same-day field test:
+  the first burst photo came out DARK AND BLURRY at 5 s. Root cause is physics, not an app focus
+  bug - a full camera power-off parks the lens actuator and discards auto-exposure state; on
+  wake the locked manual focus VALUE is re-asserted instantly (r82 funnel), but the lens motor
+  still has to physically travel back to it and AE has to ramp from scratch, which LOOKS like an
+  autofocus hunt on the preview. Only full unbind/rebind paths pay this cost (time-lapse
+  parking, scheduled-window wakes); blackout never unbinds the camera and the detector/motion
+  modes never power it off, so no other mode is affected. Coordinator tests updated + one test
   proving an explicit lead moves the prewake moment.
 - **Blackout (moon) + camera parking compose — verified, no code change:** both
   `_applyBlackoutSteadyState` and `_exitBlackout` guard their `setPreviewEnabled` call on

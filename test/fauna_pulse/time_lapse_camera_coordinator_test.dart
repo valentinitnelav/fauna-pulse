@@ -77,11 +77,11 @@ void main() {
 
     test('no park when a late tick lands within minParkMs of the prewake', () {
       final c = sparse();
-      // Prewake for the next burst (t=1800 s) is at 1795 s (default 5 s
-      // lead, r164). At 1790 s only 5 s of parking remain (< minParkMs
-      // 10 s) — unbind/rebind churn.
-      expect(c.actionAt(1790000), TimeLapseCameraAction.none);
-      // At 1779 s exactly 16 s remain — still worth it.
+      // Prewake for the next burst (t=1800 s) is at 1790 s (default 10 s
+      // lead). At 1785 s only 5 s of parking remain (< minParkMs 10 s) —
+      // unbind/rebind churn.
+      expect(c.actionAt(1785000), TimeLapseCameraAction.none);
+      // At 1779 s exactly 11 s remain — still worth it.
       expect(c.actionAt(1779000), TimeLapseCameraAction.park);
     });
   });
@@ -98,9 +98,11 @@ void main() {
       final c = parked();
       expect(c.state, TimeLapseCameraState.parked);
       expect(c.actionAt(1000000), TimeLapseCameraAction.none);
-      // Prewake for the t=1800 s burst is at 1795 s (default 5 s lead).
-      expect(c.actionAt(1794999), TimeLapseCameraAction.none);
-      expect(c.actionAt(1795000), TimeLapseCameraAction.wake);
+      // Prewake for the t=1800 s burst is at 1790 s (default 10 s lead —
+      // r164 field test: a shorter lead left the first burst photo dark and
+      // blurry, the wake needs AE ramp + lens-actuator travel time).
+      expect(c.actionAt(1789999), TimeLapseCameraAction.none);
+      expect(c.actionAt(1790000), TimeLapseCameraAction.wake);
     });
 
     test('a configured wake lead moves the prewake moment (round 164)', () {
@@ -126,8 +128,8 @@ void main() {
 
     test('while parked the coordinator supplies the prewake deadline', () {
       final c = parked();
-      // At t=100 s the prewake (1795 s) is 1695 s away.
-      expect(c.nextEventDelayMs(100000), 1695000);
+      // At t=100 s the prewake (1790 s) is 1690 s away.
+      expect(c.nextEventDelayMs(100000), 1690000);
       // Running/others: the plan's own cadence suffices.
       expect(sparse().nextEventDelayMs(100000), null);
     });
@@ -150,7 +152,7 @@ void main() {
       final c = sparse();
       c.parked();
       c.wakeStarted();
-      expect(c.actionAt(1795000), TimeLapseCameraAction.none);
+      expect(c.actionAt(1790000), TimeLapseCameraAction.none);
       expect(c.actionAt(1803000), TimeLapseCameraAction.none);
     });
 

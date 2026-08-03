@@ -454,15 +454,18 @@ void main() {
   );
 
   test(
-    'time-lapse wake lead (r164): default 5 s, survives the round-trip',
+    'time-lapse wake lead (r164): default 10 s, survives the round-trip',
     () {
-      expect(const SessionConfig().timeLapseWakeLeadSeconds, 5.0);
+      // 10 s, not less: the owner's field test at 5 s produced a dark,
+      // blurry first burst photo (AE ramp + lens-actuator travel after the
+      // camera powers back on need the extra margin).
+      expect(const SessionConfig().timeLapseWakeLeadSeconds, 10.0);
       final restored = SessionConfig.fromJson(
         const SessionConfig().copyWith(timeLapseWakeLeadSeconds: 12.0).toJson(),
       );
       expect(restored.timeLapseWakeLeadSeconds, 12.0);
       // Configs saved before the key existed fall back to the default.
-      expect(SessionConfig.fromJson(const {}).timeLapseWakeLeadSeconds, 5.0);
+      expect(SessionConfig.fromJson(const {}).timeLapseWakeLeadSeconds, 10.0);
     },
   );
 
