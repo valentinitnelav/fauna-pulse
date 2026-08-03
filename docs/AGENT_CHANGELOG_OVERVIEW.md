@@ -78,6 +78,21 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 ## Key invariants
 
+- **Edge-to-edge bottom insets (round 165).** The app renders edge-to-edge
+  (forced by targetSdk 36 on Android 15+), so two recurring traps hide the
+  screen's last element under the system navigation/gesture bar: (1) a
+  ListView with an EXPLICIT `padding:` loses Flutter's automatic
+  MediaQuery-inset padding — always add `MediaQuery.paddingOf(context).bottom`
+  to the bottom term (see the summary screen's `_tabPadding`); (2) a
+  `Positioned(bottom: N)` in a full-body Stack anchors to the SCREEN bottom
+  — add the inset there too. Screens whose body is wrapped in `SafeArea`
+  (home, analysis r137, problem report) are already safe. RULE: any new
+  screen with bottom-anchored content or an explicitly-padded scrollable
+  gets a regression test reusing `expectAboveBottomInset` +
+  the FakeViewPadding fixture in
+  `test/fauna_pulse/summary_bottom_inset_test.dart` (that file also
+  documents the widget-test async traps: sync fixture IO, runAsync/pump
+  interleave).
 - **Settings-sheet tabs are user-intent groups (round 159).** Setup / AI /
   Photos (was Camera) / Power (was Graphs). ALL heat controls live on POWER
   (auto-throttle + inference caps, camera fps cap, motion gate + sensitivity),

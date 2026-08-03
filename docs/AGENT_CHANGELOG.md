@@ -5756,3 +5756,33 @@ Owner follow-up to the round-163 camera parking, three parts.
   (new "Check the focus" setup step 4, time-lapse paragraph), DATA_GUIDE (camera_sleep intro,
   focus_mode notes), review E3 done-note amended, OVERVIEW defaults + invariants.
 - flutter analyze clean; full suite green.
+
+## Round 165 (2026-08-03): summary bottom-inset fix + scroll-to-end regression guard
+
+Owner field bug: on the session summary's Graphs tab the bottom-most element could not be
+seen/reached. Recurring bug CLASS, not a one-off - the app renders edge-to-edge (forced by
+targetSdk 36 on Android 15+), and two traps keep reproducing it:
+
+- A ListView with an EXPLICIT `padding:` silently loses Flutter's automatic MediaQuery
+  bottom-inset padding. The summary's four tabs shared `_tabPadding` (fixed bottom 64) - now an
+  instance getter adding `MediaQuery.paddingOf(context).bottom`.
+- A `Positioned(bottom: 16)` inside the Graphs tab's full-body Stack anchored the floating
+  "Hide/Show timeline" button to the SCREEN bottom - i.e. behind the navigation/gesture bar
+  (the invisible "last button" the owner hit). Now `16 + MediaQuery.paddingOf(context).bottom`.
+
+Audit of the other screens: home, analysis (fixed the same way in r137) and problem-report wrap
+their bodies in SafeArea; the settings sheet SafeArea-guards its bottom bar; the camera screen's
+controls row sits in SafeArea - only the summary screen was exposed.
+
+Regression guard (the owner-requested "reminder"): new widget test
+`test/fauna_pulse/summary_bottom_inset_test.dart` simulates a 48 px bottom system bar
+(FakeViewPadding), opens the summary straight on the Graphs tab over a real temp session.jsonl,
+and asserts BOTH the floating button and the last scrolled row stay fully above the bar via the
+reusable `expectAboveBottomInset` helper (verified to FAIL against the unfixed code: "bottom
+edge 770.0, safe bottom 752"). New OVERVIEW invariant records the rule: any new screen with
+bottom-anchored content or an explicitly-padded scrollable gets a test reusing this pattern.
+Widget-test traps documented in the file for future rounds: fixture IO must be SYNC (awaiting
+real IO outside runAsync hangs the fake-async clock - even the test timeout can't fire), and
+frames are pumped OUTSIDE short `tester.runAsync` waits (pump inside runAsync deadlocks).
+
+flutter analyze clean; suite 420 tests green.

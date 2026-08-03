@@ -1256,7 +1256,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  static const _tabPadding = EdgeInsets.fromLTRB(16, 16, 16, 64);
+  /// Tab content padding. The bottom term is 64 px of clearance for the
+  /// Graphs tab's floating timeline button PLUS the system bottom inset:
+  /// giving a ListView an EXPLICIT `padding` disables Flutter's automatic
+  /// MediaQuery inset padding, and the app renders edge-to-edge (forced by
+  /// targetSdk 36 on Android 15+), so without the inset the last rows sit
+  /// under the system navigation/gesture bar (round 165 field bug — the
+  /// recurring "cannot scroll to the last element" class; regression test
+  /// pattern in test/fauna_pulse/summary_bottom_inset_test.dart).
+  EdgeInsets get _tabPadding =>
+      EdgeInsets.fromLTRB(16, 16, 16, 64 + MediaQuery.paddingOf(context).bottom);
 
   /// Headline numbers: the quick "how did it go" read.
   Widget _overviewTab() {
@@ -1589,12 +1598,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ],
         ),
         // Floating show/hide for the (potentially very tall) visit
-        // timeline — only while that section is on screen.
+        // timeline — only while that section is on screen. The bottom
+        // offset must include the system inset: the Stack spans the whole
+        // edge-to-edge body, so a bare `bottom: 16` puts the button BEHIND
+        // the navigation/gesture bar (round 165 field bug).
         if (_timelineInView)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 16,
+            bottom: 16 + MediaQuery.paddingOf(context).bottom,
             child: Center(
               child: FilledButton.tonalIcon(
                 icon: Icon(
