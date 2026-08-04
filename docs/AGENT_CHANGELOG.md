@@ -5971,3 +5971,32 @@ from smoother fast analysis batches; no new tunables (internal constants only).
 - flutter analyze clean; suite 432 tests green; debug APK builds (NDK
   recompiled native-lib.cpp).
 
+## Round 171 (2026-08-04): E8, lean QNN packaging documented (not built)
+
+Perf review E8, document-only by its own scope. Nothing in the build or the app
+changed; the accepted single QNN-inclusive release stands.
+
+- New docs/LEAN_QNN_PACKAGING.md: plain-language explainer of what QNN is and
+  its r160 measured cost (21 arm64 libs, 75.7 MB in-APK / 224.3 MB uncompressed,
+  ~62% of the 116.5 MB APK; useLegacyPackaging doubles the on-device footprint
+  because Hexagon loads Skel libs via real file paths); where the single opt-in
+  point lives (the app's two implementation lines, onnxruntime-android-qnn
+  1.26.0 + qnn-runtime 2.46.0 override; the plugin declares compileOnly).
+- The lean design on record: default build without the QNN deps and with
+  useLegacyPackaging=false (estimated ~41 MB arm64 APK, to be re-measured if
+  built); a -Pqnn Gradle property gating both the deps and the packaging flag;
+  stable -qnn- artifact names for Obtainium; native isQnnRuntimeAvailable via
+  safe Class.forName("ai.onnxruntime.OrtEnvironment") (NOT via OrtQnnModel,
+  whose constructor references OrtEnvironment and would throw the very
+  NoClassDefFoundError the query prevents); selection-time "needs the QNN
+  edition" dialog with the r151 modelLoadRecovery net as backstop; Play = lean
+  App Bundle only, GitHub = both artifacts.
+- Why not built: the permanent two-artifact release matrix vs a capability no
+  current test device can exercise (SD888 = Hexagon v68, assets need v73+).
+  Three explicit reopen triggers recorded (size limits bite; a v73+ device AND
+  a QNN insect model arrive; Play flags the payload).
+- Cross-refs: RELEASE_PLAN Play-phase bullet (where the accepted decision
+  lives) now points at the doc; CONTRIBUTING doc index gains the row; review
+  E8 marked done.
+- Docs-only round; analyze/tests untouched (last verified green in r170).
+

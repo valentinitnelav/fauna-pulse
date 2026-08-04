@@ -123,5 +123,6 @@ retains its own `LICENSE`. Contributions are made under AGPL-3.0.
 | [../packages/ultralytics_yolo/FAUNAPULSE_FORK.md](../packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
 | [RELEASE_PLAN.md](RELEASE_PLAN.md) | maintainer | Phased checklist for the first public release (DOI, GitHub/Obtainium, Play). |
+| [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) | maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact; reopen triggers. |
 | [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) | AI grounding | Current-state snapshot (rewrite in place). |
 | [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | maintainer | Append-only development journal. |

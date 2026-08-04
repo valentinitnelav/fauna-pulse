@@ -1318,7 +1318,7 @@ un-splittable native decode share inside `tile_predict_ms`) against
   interval → per-photo parity with the old cadence, cancelled run still ends
   on the true totals).
 
-### E8. [ ] Document the lean QNN packaging alternative (document only)
+### E8. [x] Document the lean QNN packaging alternative (document only)
 
 - Measured (r160, release APK 116.5 MB): the ORT/QNN stack is 21 arm64-v8a
   libs, 75.7 MB in-APK (deflated) / 224.3 MB uncompressed, ~62% of the APK;
@@ -1343,6 +1343,22 @@ un-splittable native decode share inside `tile_predict_ms`) against
 - Benefit: major download/install reduction for standard users; zero runtime
   effect when QNN is unused. Cost: 1-2 days plus the REAL ongoing cost, a
   two-artifact release matrix.
+
+**Done (round 171), as a document only, per the item's own scope.**
+`docs/LEAN_QNN_PACKAGING.md`: the r160 measurements, where the single opt-in
+point lives (the app's two `implementation` lines; plugin stays `compileOnly`),
+the full lean design (default lean build with `useLegacyPackaging = false`,
+`-Pqnn` gating both the deps and the packaging flag, stable artifact naming
+for Obtainium, `isQnnRuntimeAvailable` via safe `Class.forName` — explicitly
+NOT by touching `OrtQnnModel`, whose constructor references `OrtEnvironment`
+and would throw the very `NoClassDefFoundError` the query exists to prevent —
+selection-time explanation dialog with the r151 `modelLoadRecovery` net as
+backstop, Play = lean App Bundle / GitHub = both artifacts), and three
+explicit reopen triggers (size limit bites, a v73+ test device plus a QNN
+insect model arrive, Play flags the payload). Cross-referenced from the
+RELEASE_PLAN Play-phase bullet that records the accepted decision, and from
+the CONTRIBUTING doc index. Nothing in the build or app changed; the accepted
+single-artifact policy stands until the owner reopens it.
 
 ### E9. [ ] Three controlled camera experiments (build-time A/B, not defaults)
 

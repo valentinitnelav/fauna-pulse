@@ -224,7 +224,9 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       Play generates per-device APKs from it); confirm targetSdk 36; decide
       `android:required="false"` for the two camera uses-feature entries; keep
       `useLegacyPackaging` (the QNN/NPU runtime needs real file paths) and accept the
-      size cost.
+      size cost. (A lean two-artifact alternative is documented, not implemented, in
+      [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) — review E8, round 171 — with the
+      reopen triggers; this bullet's decision stands until one fires.)
 - [ ] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
       screenshots (from Phase 2); recompress the 1.1 MB playstore icon to at most 1 MB;
       privacy policy URL (Phase 0 file); Data safety form ("no data collected":
