@@ -5821,3 +5821,32 @@ cheap decision-data collector. Kotlin-only, no UI/config/Dart change.
   still owed, then decide E4 per its reject criteria.
 - flutter analyze clean; suite 421 tests green; debug APK builds.
 
+## Round 167 (2026-08-04): E4 verdict, rejected on hardware evidence
+
+Owner collected the r166 AE fps-range log lines on both phones (flutter-run logcats
+plus pulled sessions: Xiaomi session_41, Samsung session_2). Doc-only round, no code.
+
+- Measured menus: Xiaomi 2107113SG camera 0: [12, 12], [15, 15], [12, 30], [30, 30].
+  Samsung SM-M127F cameras 0 and 2 (identical): [15, 15], [15, 20], [20, 20],
+  [24, 24], [8, 30], [10, 30], [15, 30], [30, 30].
+- Reading: [8, 30]-style entries are AE-variable ranges (may drop toward 8 in low
+  light, run ~30 in daylight), NOT caps. The lowest forced rate is the smallest
+  upper bound: Samsung 15 (equals the current default cap, zero headroom),
+  Xiaomi 12.
+- Verdict: E4 REJECTED per its own criteria. A gate-idle cap could never go below
+  [12,12], and the existing Camera FPS cap setting reaches [12,12] statically
+  (chooseAeFpsRange(12)) for the whole session, with zero new machinery and none
+  of E4's wake-transition risks. Gate-idle switching adds nothing on either phone.
+- Replacement follow-up (no new code): paired E1-protocol Xiaomi run at camera
+  cap 12 vs 15. Code check done this round: the r129 deadline scheduler keeps
+  inference cap 10 a true ~10 on a 12 fps camera (per-frame deadline overshoot
+  <= 83 ms, under the 100 ms interval, so it never re-anchors). Expected costs:
+  ~17 ms worse worst-case fast-capture latency, less AE shutter headroom in dim
+  light. Default stays 15 unless the paired run says otherwise; on the Samsung a
+  requested 12 harmlessly resolves to [15,15].
+- Side observation from the same logs: applied [15,15] delivers a true 15.0
+  deliveredFps on both phones (FRAMEPERF lines), funnel working as designed.
+- Docs: E4 marked [x] REJECTED with the full verdict note in
+  PERF_AND_ROBUSTNESS_REVIEW.md; OVERVIEW Part E status line updated and both
+  device-quirk entries now record their AE menus (durable hardware facts).
+

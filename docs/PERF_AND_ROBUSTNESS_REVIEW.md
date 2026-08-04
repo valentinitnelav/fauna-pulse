@@ -1085,7 +1085,7 @@ rebind (same as the scheduled wake). SETTINGS_REFERENCE + FIELD_GUIDE warn
 about the frozen preview. Remaining owner validation: the paired one-hour
 field runs on both phones (the perf_summary protocol from E1).
 
-### E4. [ ] Experiment: hardware camera cap while the motion gate sleeps
+### E4. [x] Experiment: hardware camera cap while the motion gate sleeps (REJECTED r167)
 
 - Step 1 (cheap, do first): log every supported Camera2 AE FPS range plus the
   requested/applied range. `chooseAeFpsRange()` already reads
@@ -1125,6 +1125,33 @@ open, so a normal recording captures it in `logcat_start.txt` (2000-line
 snapshot at REC start); live check: `adb logcat -d -s YOLOView`. Decision
 still owed: one screen-open + lens-cycle per test phone, then reject the rest
 of E4 if no advertised range sits below the current [15,15]-style floor.
+
+**Rejected (round 167), on the step-1 hardware evidence.** Owner-collected
+menus (r166 debug build, 2026-08-04; flutter-run logcats + pulled sessions
+Xiaomi session_41 / Samsung session_2):
+
+- Xiaomi 2107113SG, camera 0: `[12, 12], [15, 15], [12, 30], [30, 30]`
+- Samsung SM-M127F, cameras 0 and 2 (identical menus):
+  `[15, 15], [15, 20], [20, 20], [24, 24], [8, 30], [10, 30], [15, 30], [30, 30]`
+
+Reading the menus: `[8, 30]`-style entries are AE-VARIABLE ranges (the HAL may
+drop toward 8 in low light but runs ~30 in daylight), not caps; the lowest
+FORCED rate is the smallest upper bound, which is 15 on the Samsung (exactly
+the current default cap, zero headroom) and 12 on the Xiaomi. A gate-idle cap
+could therefore never go below [12,12], and the EXISTING user setting already
+reaches that statically: Camera FPS cap = 12 picks [12,12] via
+`chooseAeFpsRange` and holds it for 100% of the session, not just while the
+gate sleeps, with none of E4's transition risks (delayed high-res capture,
+missed events, funnel threading). Gate-idle switching adds zero incremental
+value on both test phones; rejected per the item's own criteria without
+building anything. Replacement follow-up (no new code): a paired E1-protocol
+Xiaomi run at camera cap 12 vs 15. Code check for that run: the r129 deadline
+scheduler keeps inference cap 10 a true ~10 on a 12 fps camera (per-frame
+deadline overshoot <= 83 ms, under the 100 ms interval, so the schedule never
+re-anchors); expected costs are only ~17 ms worse worst-case fast-capture
+latency and less AE shutter headroom in dim light. Do NOT change the shipped
+default of 15 without that paired measurement (and note 12 is device-specific:
+on the Samsung a requested 12 harmlessly resolves to [15,15]).
 
 - Verified: `screens/session_summary_screen.dart` (4208 lines) does three full
   `readAsLines()` parses of session.jsonl on the UI isolate (`:374` graphs +
