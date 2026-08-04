@@ -920,35 +920,56 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: _starting ? null : _start,
-                  icon: _starting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.videocam),
-                  label: const Text('New session'),
-                ),
-                const SizedBox(height: 6),
-                // Post-hoc analysis (round 135): run a (bigger) detector over a
-                // finished session's saved photos — no camera, no time limit.
-                OutlinedButton.icon(
-                  onPressed: _openAnalysis,
-                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                  label: const Text('Run AI on photos'),
-                ),
-                const SizedBox(height: 6),
-                // Always-available entry point so a problem can be reported even after
-                // the app restarts (e.g. following a crash) — the report still captures
-                // the recent technical log. Outlined like the analyze button
-                // above it (round 183): a bare text label did not read as
-                // tappable.
-                OutlinedButton.icon(
-                  onPressed: _reportProblem,
-                  icon: const Icon(Icons.bug_report_outlined, size: 18),
-                  label: const Text('Report a problem'),
+                // The three actions render as one equal-width stack
+                // (round 185): IntrinsicWidth sizes the column to its
+                // widest button and the stretch alignment pulls the other
+                // two up to it, so the block reads as a unit whatever the
+                // labels' lengths.
+                Center(
+                  child: IntrinsicWidth(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _starting ? null : _start,
+                          icon: _starting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.videocam),
+                          label: const Text('New session'),
+                        ),
+                        const SizedBox(height: 6),
+                        // Post-hoc analysis (round 135): run a (bigger)
+                        // detector over a finished session's saved photos —
+                        // no camera, no time limit.
+                        OutlinedButton.icon(
+                          onPressed: _openAnalysis,
+                          icon: const Icon(
+                            Icons.auto_awesome_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('Run AI on photos'),
+                        ),
+                        const SizedBox(height: 6),
+                        // Always-available entry point so a problem can be
+                        // reported even after the app restarts (e.g.
+                        // following a crash) — the report still captures the
+                        // recent technical log. Outlined like the analyze
+                        // button above it (round 183): a bare text label did
+                        // not read as tappable.
+                        OutlinedButton.icon(
+                          onPressed: _reportProblem,
+                          icon: const Icon(Icons.bug_report_outlined, size: 18),
+                          label: const Text('Report a problem'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 // A full-width rule marks where the action block ends and

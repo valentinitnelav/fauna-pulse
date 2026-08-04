@@ -6498,3 +6498,11 @@ Owner feedback on round 183 + the pending rename decision.
   "post-hoc analysis". The ✨ badge semantics are unchanged.
 - Suite green (475 passed); analyzer clean.
 
+## Round 185 (2026-08-05): equal-width home action buttons
+
+- The three home actions (New session / Run AI on photos / Report a problem)
+  now render inside Center > IntrinsicWidth > Column(stretch): the column
+  sizes itself to the widest button and stretches the others to match, so
+  the block reads as one unit regardless of label lengths (no hard-coded
+  width). Suite green (475), analyzer clean.
+
