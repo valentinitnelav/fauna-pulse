@@ -120,7 +120,7 @@ Two options:
    ```bash
    cd fauna-pulse    # navigate to the git repository (cloned on your computer)
    flutter pub get          # retrieve or upgrade flutter dependencies
-   flutter run              # will run the app on the first detected smartphone
+   flutter run              # will run the app (debug mode) on the first detected smartphone
    ```
 
    If you have multiple smartphones connected, and need to run on a specific smartphone, use its ID listed in the output of `flutter devices`.
@@ -183,23 +183,31 @@ Release builds deliberately fail with an explanatory message if this is missing,
 unsigned or debug-signed app can never be published by accident. Debug builds
 (`flutter run`, `flutter build apk --debug`) need none of this.
 
-### B5. Or build an installable `.apk` to share
+### B5. Build an installable `.apk` to share
+
+Note: make sure to have the `key.properties` file existing in the `.../fauna-pulse/android/` folder (see B4).
+
+Also, in case you have sessions that are stored on the phone and they might be 
+still useful for debugging purposes or want to keep that collected data for 
+further testing, make sure to back the up on your computer first - see [Pulling data from the smartphone](##pulling-data-from-the-smartphone).
 
 ```bash
-cd fauna-pulse           # navigate to the git repository (cloned on your computer)
+cd fauna-pulse                  # navigate to the git repository (cloned on your computer)
 flutter pub get                 # retrieve or upgrade flutter dependencies
 flutter build apk --release     # or: flutter build apk --debug (but slower app run time)
 
 # Expected output if success:
 
-# Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 5276 bytes (99.7% reduction).
-# Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
-# Running Gradle task 'assembleRelease'...                          329.4s
-# ✓ Built build/app/outputs/flutter-apk/app-release.apk (133.7MB)
+#   fetch_bundled_models: have yolo26n_int8.tflite
+#   Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 9532 bytes (99.4% reduction). 
+#   Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+#   Running Gradle task 'assembleRelease'...                          232.1s
+#   ✓ Built build/app/outputs/flutter-apk/app-release.apk (122.2MB)
 ```
 
-The file appears at `.../build/app/outputs/flutter-apk/app-release.apk` (or
-`app-debug.apk`). Note that these files are overwritten. 
+The file appears at `.../build/app/outputs/flutter-apk/` 
+(e.g.: `app-release.apk` and `app-release.apk.sha1`).
+Note that these files are overwritten. 
 That's exactly the file used in **Track A**. Share it via a GitHub Release or a private link.
 
 To deploy the app (the `app-release.apk`) on a specific smartphone:
@@ -207,18 +215,31 @@ To deploy the app (the `app-release.apk`) on a specific smartphone:
 ```bash
 cd fauna-pulse           # navigate to the git repository
 adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
-# Performing Streamed Install
-# Success
+# Your phone might require you to click "Allow" (or something similar) to install the app,
+# so watch the phone's screen for any pop-up messages.
+
+# Expect on the terminal these 2 lines if the installation was successful:
+#   Performing Streamed Install
+#   Success
 ```
 
 The `-r` flag stands for `reinstall`. It instructs the Android operating system to replace any existing version of the app on the device while preserving all local session data and databases you've already generated.
 
 If the installation fails with an error like `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, it means an active Debug version of the app is already sitting on your phone. Android security protocols strictly prohibit a Release build from overwriting a Debug build because their cryptographic signatures do not match.
 
+Example of error message:
+
+```
+# Performing Streamed Install
+# adb: failed to install build/app/outputs/flutter-apk/app-release.apk: 
+# Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: 
+# Existing package com.faunapulse.app signatures do not match newer version; ignoring!]
+```
+
 How to resolve it:
 
 You must purge the debug package from the phone before the release installation will succeed.
-Note that this will discard any sesssion setups and change them to their defaults values.
+Note that this will discard any session setups and change them to their defaults values.
 
 Uninstall the existing package directly via ADB:
 
