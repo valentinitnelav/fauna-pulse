@@ -462,9 +462,50 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 'burst photo can come out dark and blurry (field-tested). '
                 'Default 10. Raise it if first photos still look off; lower '
                 'only if your first-photo quality holds up.',
-            onChanged: (v) => setState(
-              () => _c = _c.copyWith(timeLapseWakeLeadSeconds: v),
-            ),
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(timeLapseWakeLeadSeconds: v)),
+          ),
+        // Round 180: nocturnal monitoring — LED torch around each burst.
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Torch during bursts (night)',
+            style: TextStyle(color: Colors.white),
+          ),
+          subtitle: Text(
+            'For monitoring at night: the phone\'s flashlight comes on a few '
+            'seconds before each burst (the torch lead below), stays on '
+            'through the burst, and goes off in the break. The early start '
+            'gives the camera time to settle its exposure, so the first '
+            'photo already comes out bright and sharp. The very first burst '
+            'of a session starts immediately and skips the early lead. '
+            'Works together with "Turn camera off between bursts" and with '
+            'the screen-off (moon) button. If this phone has no flashlight '
+            'you get a message and photos continue without light.'
+            '${_c.timeLapseTorch && _c.timeLapseTorchLeadSeconds >= _c.timeLapseGapSeconds ? ' With your current settings the torch stays on for the whole session (the lead is not shorter than the break between bursts).' : ''}',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          value: _c.timeLapseTorch,
+          onChanged: (v) => setState(() => _c = _c.copyWith(timeLapseTorch: v)),
+        ),
+        if (_c.timeLapseTorch)
+          NumericSettingField(
+            label: 'Torch lead',
+            value: _c.timeLapseTorchLeadSeconds,
+            min: 1,
+            max: 60,
+            decimals: 0,
+            unitSuffix: 's',
+            helperText:
+                'How many seconds before each burst the torch comes on, '
+                'giving auto-exposure time to settle under the lit scene '
+                'before the first photo. Exposure usually settles within 1 '
+                'to 2 seconds once the light is on; the default 5 leaves '
+                'margin. With "Turn camera off between bursts" the camera '
+                'wakes at whichever lead is longer, and the torch lights as '
+                'soon as the camera is back on.',
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(timeLapseTorchLeadSeconds: v)),
           ),
       ],
       if (!_c.isTimeLapseValid)

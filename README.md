@@ -30,7 +30,7 @@ Depending on the selected mode, FaunaPulse supports several modes of operation:
 
 1. **Real-time AI-based object detection and tracking** using a compatible custom model;
 2. **Motion-triggered** image capture;
-3. **Time-lapse** image capture;
+3. **Time-lapse** image capture, including nocturnal mode using the phone's torch / flashlight;
 4. **Post-capture AI detection** processing of the motion or time-lapse images using either a single-model pass or [SAHI (Slicing Aided Hyper Inference)][sahi]. This can help reduce the amount of "empty" images (without pollinators / target object).
 
 Modes 1-3 can also be **scheduled** - for example 1st run 9:00-12:00, 2nd run 13:00-17:00, daily; or with interruptions over night time if the smartphone(s) are deployed over multiple days.

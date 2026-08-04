@@ -445,39 +445,36 @@ void main() {
     },
   );
 
-  test(
-    'legacy timeLapseIntervalSeconds (start-to-start, pre-r174) migrates to '
-    'an equivalent break: gap = interval - duration, clamped to 0',
-    () {
-      // 30 min start-to-start with 10 s bursts -> 1790 s break (identical
-      // effective timing).
-      expect(
-        SessionConfig.fromJson(const {
-          'timeLapseIntervalSeconds': 1800.0,
-          'durationSeconds': 10.0,
-        }).timeLapseGapSeconds,
-        1790.0,
-      );
-      // Old interval <= duration meant continuous -> gap 0 (the owner's
-      // r173/174 field configs).
-      expect(
-        SessionConfig.fromJson(const {
-          'timeLapseIntervalSeconds': 10.0,
-          'durationSeconds': 10.0,
-        }).timeLapseGapSeconds,
-        0.0,
-      );
-      // The new key wins when both are present.
-      expect(
-        SessionConfig.fromJson(const {
-          'timeLapseGapSeconds': 60.0,
-          'timeLapseIntervalSeconds': 1800.0,
-          'durationSeconds': 10.0,
-        }).timeLapseGapSeconds,
-        60.0,
-      );
-    },
-  );
+  test('legacy timeLapseIntervalSeconds (start-to-start, pre-r174) migrates to '
+      'an equivalent break: gap = interval - duration, clamped to 0', () {
+    // 30 min start-to-start with 10 s bursts -> 1790 s break (identical
+    // effective timing).
+    expect(
+      SessionConfig.fromJson(const {
+        'timeLapseIntervalSeconds': 1800.0,
+        'durationSeconds': 10.0,
+      }).timeLapseGapSeconds,
+      1790.0,
+    );
+    // Old interval <= duration meant continuous -> gap 0 (the owner's
+    // r173/174 field configs).
+    expect(
+      SessionConfig.fromJson(const {
+        'timeLapseIntervalSeconds': 10.0,
+        'durationSeconds': 10.0,
+      }).timeLapseGapSeconds,
+      0.0,
+    );
+    // The new key wins when both are present.
+    expect(
+      SessionConfig.fromJson(const {
+        'timeLapseGapSeconds': 60.0,
+        'timeLapseIntervalSeconds': 1800.0,
+        'durationSeconds': 10.0,
+      }).timeLapseGapSeconds,
+      60.0,
+    );
+  });
 
   test(
     'time-lapse camera sleep (r163, E3): default off, survives the round-trip',
@@ -505,6 +502,32 @@ void main() {
       expect(restored.timeLapseWakeLeadSeconds, 12.0);
       // Configs saved before the key existed fall back to the default.
       expect(SessionConfig.fromJson(const {}).timeLapseWakeLeadSeconds, 10.0);
+    },
+  );
+
+  test('time-lapse torch (r180): default off, survives the round-trip', () {
+    expect(const SessionConfig().timeLapseTorch, false);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(timeLapseTorch: true).toJson(),
+    );
+    expect(restored.timeLapseTorch, true);
+    // Configs saved before the key existed fall back to off.
+    expect(SessionConfig.fromJson(const {}).timeLapseTorch, false);
+  });
+
+  test(
+    'time-lapse torch lead (r180): default 5 s, survives the round-trip',
+    () {
+      // 5 s: auto-exposure re-converges within ~1–2 s of the torch coming
+      // on (it runs in the camera hardware's own loop), so 5 s leaves
+      // margin for slow low-light AE without burning the LED needlessly.
+      expect(const SessionConfig().timeLapseTorchLeadSeconds, 5.0);
+      final restored = SessionConfig.fromJson(
+        const SessionConfig().copyWith(timeLapseTorchLeadSeconds: 8.0).toJson(),
+      );
+      expect(restored.timeLapseTorchLeadSeconds, 8.0);
+      // Configs saved before the key existed fall back to the default.
+      expect(SessionConfig.fromJson(const {}).timeLapseTorchLeadSeconds, 5.0);
     },
   );
 
@@ -628,6 +651,8 @@ void main() {
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
+        'timeLapseTorch',
+        'timeLapseTorchLeadSeconds',
       ]);
       // Motion: AI keys inert, but the gate keys APPLY (they are the capture
       // sensitivity) — and wake duration governs how long photos continue.
@@ -637,6 +662,8 @@ void main() {
       expect(motion, contains('timeLapseGapSeconds'));
       expect(motion, contains('timeLapseCameraSleep'));
       expect(motion, contains('timeLapseWakeLeadSeconds'));
+      expect(motion, contains('timeLapseTorch'));
+      expect(motion, contains('timeLapseTorchLeadSeconds'));
       expect(motion, isNot(contains('motionGateWakeSeconds')));
       expect(motion, isNot(contains('motionGatePixelDelta')));
       // Reference photos apply in detector AND motion mode (that is the
@@ -655,6 +682,8 @@ void main() {
       expect(tl, isNot(contains('timeLapseGapSeconds')));
       expect(tl, isNot(contains('timeLapseCameraSleep')));
       expect(tl, isNot(contains('timeLapseWakeLeadSeconds')));
+      expect(tl, isNot(contains('timeLapseTorch')));
+      expect(tl, isNot(contains('timeLapseTorchLeadSeconds')));
       expect(tl, isNot(contains('stepSeconds')));
     });
   });

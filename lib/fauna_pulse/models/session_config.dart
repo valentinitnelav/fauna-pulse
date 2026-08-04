@@ -156,6 +156,8 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
+        'timeLapseTorch',
+        'timeLapseTorchLeadSeconds',
       ];
     case CaptureTrigger.motion:
       return [
@@ -163,6 +165,8 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
+        'timeLapseTorch',
+        'timeLapseTorchLeadSeconds',
       ];
     case CaptureTrigger.timelapse:
       // Reference photos are inert here too: the whole session is already
@@ -385,6 +389,28 @@ class SessionConfig {
   /// = more camera-off time.
   final double timeLapseWakeLeadSeconds;
 
+  /// Time-lapse mode only (round 180): keep the phone's LED torch on during
+  /// every burst so nocturnal sessions produce usable photos, switching it on
+  /// [timeLapseTorchLeadSeconds] before each burst so auto-exposure settles
+  /// under the final lighting, and off again in the break. Composes with
+  /// [timeLapseCameraSleep] (the torch is re-asserted after the wake rebind)
+  /// and with the screen-off blackout (the torch sits on the camera, not the
+  /// screen). Off by default: a light source changes insect behaviour and
+  /// only night sessions want it. (Distinct from `flashOnCapture`, which is
+  /// the on-SCREEN capture cue.)
+  final bool timeLapseTorch;
+
+  /// Time-lapse torch only (round 180): how many seconds BEFORE each burst
+  /// the torch comes on. Auto-exposure runs in the camera hardware's own
+  /// loop, and re-converging after the big darkness→torch illumination step
+  /// typically takes 1–2 s at 15 fps — default 5 s gives margin for slow
+  /// low-light AE. With [timeLapseCameraSleep] the camera wakes at
+  /// max(wake lead, torch lead), so a raised torch lead still finds a bound
+  /// camera; the torch itself can only physically ignite once the camera is
+  /// rebound. The first burst of a recording starts immediately, so it gets
+  /// no lead.
+  final double timeLapseTorchLeadSeconds;
+
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
   /// crop can be. Higher = bigger crops but can cost FPS on weaker phones.
@@ -565,6 +591,8 @@ class SessionConfig {
     this.timeLapseGapSeconds = 1800.0, // 30 min break between bursts
     this.timeLapseCameraSleep = false,
     this.timeLapseWakeLeadSeconds = 10.0,
+    this.timeLapseTorch = false,
+    this.timeLapseTorchLeadSeconds = 5.0,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -666,6 +694,8 @@ class SessionConfig {
     double? timeLapseGapSeconds,
     bool? timeLapseCameraSleep,
     double? timeLapseWakeLeadSeconds,
+    bool? timeLapseTorch,
+    double? timeLapseTorchLeadSeconds,
     int? streamWidth,
     int? streamHeight,
     bool? streamResolutionExplicit,
@@ -720,6 +750,9 @@ class SessionConfig {
     timeLapseCameraSleep: timeLapseCameraSleep ?? this.timeLapseCameraSleep,
     timeLapseWakeLeadSeconds:
         timeLapseWakeLeadSeconds ?? this.timeLapseWakeLeadSeconds,
+    timeLapseTorch: timeLapseTorch ?? this.timeLapseTorch,
+    timeLapseTorchLeadSeconds:
+        timeLapseTorchLeadSeconds ?? this.timeLapseTorchLeadSeconds,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     streamResolutionExplicit:
@@ -778,6 +811,8 @@ class SessionConfig {
     'timeLapseGapSeconds': timeLapseGapSeconds,
     'timeLapseCameraSleep': timeLapseCameraSleep,
     'timeLapseWakeLeadSeconds': timeLapseWakeLeadSeconds,
+    'timeLapseTorch': timeLapseTorch,
+    'timeLapseTorchLeadSeconds': timeLapseTorchLeadSeconds,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'streamResolutionExplicit': streamResolutionExplicit,
@@ -852,6 +887,9 @@ class SessionConfig {
     timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
     timeLapseWakeLeadSeconds:
         (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 10.0,
+    timeLapseTorch: j['timeLapseTorch'] as bool? ?? false,
+    timeLapseTorchLeadSeconds:
+        (j['timeLapseTorchLeadSeconds'] as num?)?.toDouble() ?? 5.0,
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     // Pre-round-109 configs lack the key. A stored size that differs from the

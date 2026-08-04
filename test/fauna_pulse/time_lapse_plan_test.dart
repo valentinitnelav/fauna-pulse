@@ -144,4 +144,66 @@ void main() {
       expect(photos, 306);
     });
   });
+
+  // Round 180: the nocturnal torch schedule — LED on from a lead before each
+  // burst through the burst's (inclusive) end, off in the break.
+  group('TimeLapseTorchPlan', () {
+    // Bursts every 10 s (3 s burst + 7 s break); torch lead 2 s → torch on
+    // over [8000, 13000] of each 10 s cycle (and [0, 3000] for burst 0,
+    // which starts with the recording and structurally gets no lead).
+    const torch = TimeLapseTorchPlan(plan: plan, leadMs: 2000);
+
+    test('on through the burst, including its inclusive end', () {
+      expect(torch.shouldBeOnAt(0), isTrue);
+      expect(torch.shouldBeOnAt(3000), isTrue); // burst end (inclusive)
+      expect(torch.shouldBeOnAt(3001), isFalse); // OFF edge
+    });
+
+    test('off mid-break, back on a lead before the next burst', () {
+      expect(torch.shouldBeOnAt(5000), isFalse);
+      expect(torch.shouldBeOnAt(7999), isFalse);
+      expect(torch.shouldBeOnAt(8000), isTrue); // lead window opens
+      expect(torch.shouldBeOnAt(9999), isTrue);
+      expect(torch.shouldBeOnAt(10000), isTrue); // burst 1 starts
+    });
+
+    test('the first burst gets no lead (recording starts in-burst)', () {
+      expect(torch.alwaysOn, isFalse);
+      expect(torch.shouldBeOnAt(-500), isTrue); // clock skew = start
+    });
+
+    test('continuous plan means the torch never turns off', () {
+      const cont = TimeLapsePlan(stepMs: 500, burstMs: 5000, gapMs: 0);
+      const t = TimeLapseTorchPlan(plan: cont, leadMs: 2000);
+      expect(t.alwaysOn, isTrue);
+      expect(t.shouldBeOnAt(123456), isTrue);
+      expect(t.nextEventDelayMs(123456), isNull);
+    });
+
+    test('a lead covering the whole break means always on too', () {
+      const t = TimeLapseTorchPlan(plan: plan, leadMs: 7000);
+      expect(t.alwaysOn, isTrue);
+      expect(t.shouldBeOnAt(5000), isTrue); // mid-break
+    });
+
+    group('nextEventDelayMs (extra tick deadlines at the flip edges)', () {
+      test('in burst: lands one ms past the inclusive burst end', () {
+        expect(torch.nextEventDelayMs(0), 3001);
+        expect(torch.nextEventDelayMs(2500), 501);
+        // A tick exactly on the inclusive end must not spin (floor ≥ 1).
+        expect(torch.nextEventDelayMs(3000), 1);
+      });
+
+      test('in the dark break: lands at the torch-on moment', () {
+        expect(torch.nextEventDelayMs(3001), 4999);
+        expect(torch.nextEventDelayMs(7000), 1000);
+      });
+
+      test('inside the lead window: null (the plan\'s own next-burst delay '
+          'is the next flip-relevant tick)', () {
+        expect(torch.nextEventDelayMs(8000), isNull);
+        expect(torch.nextEventDelayMs(9500), isNull);
+      });
+    });
+  });
 }

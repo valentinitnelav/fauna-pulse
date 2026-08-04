@@ -80,3 +80,56 @@ class TimeLapsePlan {
     return wait > 0 ? wait : stepMs;
   }
 }
+
+/// Pure torch schedule for nocturnal time-lapse (round 180): the LED torch
+/// should be ON from [leadMs] before each burst (so the camera's auto-exposure
+/// settles under the final lighting before the first photo) through the
+/// burst's end, and OFF in the break. Same clock-injection style as
+/// [TimeLapsePlan]; the camera screen owns the actual platform calls and
+/// re-issues them whenever the commanded state drifts from this schedule
+/// (e.g. the camera-parking unbind physically kills the torch).
+class TimeLapseTorchPlan {
+  /// The session's burst schedule (the same instance the screen drives).
+  final TimeLapsePlan plan;
+
+  /// How long before each burst start the torch comes on.
+  final int leadMs;
+
+  const TimeLapseTorchPlan({required this.plan, required this.leadMs})
+    : assert(leadMs >= 0);
+
+  /// With no break (continuous photos) or a lead that covers the whole break,
+  /// the torch simply never turns off.
+  bool get alwaysOn => plan.continuous || leadMs >= plan.gapMs;
+
+  /// Whether the torch should be lit at [sinceStartMs]. The first burst
+  /// starts at 0, so it structurally gets no lead — the recording begins
+  /// in-burst with the torch due immediately.
+  bool shouldBeOnAt(int sinceStartMs) {
+    if (alwaysOn || plan.inBurstAt(sinceStartMs)) return true;
+    return plan.nextBurstStartAt(sinceStartMs) - sinceStartMs <= leadMs;
+  }
+
+  /// Extra timer deadline beyond the plan's own cadence, so a tick lands at
+  /// each torch flip: the OFF edge just after a burst's inclusive end (the
+  /// plan's in-burst delay is one step, which for long steps would leave the
+  /// torch burning up to a whole step into the break), and the torch-on
+  /// moment [leadMs] before the next burst (the plan's between-burst delay
+  /// alone would arrive a whole lead too late). Null when no flip needs an
+  /// extra tick: [alwaysOn], or inside the lead window where the plan's own
+  /// delay (next burst start) is the next flip-relevant tick anyway. The
+  /// caller caps and floors the delay like every other tick source.
+  int? nextEventDelayMs(int sinceStartMs) {
+    if (alwaysOn) return null;
+    final t = sinceStartMs < 0 ? 0 : sinceStartMs;
+    final inCycle = t % plan.cycleMs;
+    if (inCycle <= plan.burstMs) {
+      // In burst: the OFF edge is one ms past the inclusive burst end.
+      final wait = plan.burstMs + 1 - inCycle;
+      return wait > 0 ? wait : 1;
+    }
+    final torchOnAt = plan.nextBurstStartAt(t) - leadMs;
+    if (t < torchOnAt) return torchOnAt - t;
+    return null;
+  }
+}

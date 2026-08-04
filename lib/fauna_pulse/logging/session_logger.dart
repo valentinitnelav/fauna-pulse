@@ -262,6 +262,15 @@ class SessionLogger {
   void logCameraSleep(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('camera_sleep', payload, at: at);
 
+  /// A nocturnal time-lapse torch transition (round 180): `on` (the state the
+  /// schedule wants), `success` (whether the camera actually applied it — the
+  /// LED can be missing on this lens, or the camera mid-rebind), and `reason`
+  /// (burst_lead / burst_end / camera_parked / session_stop). Logged only on
+  /// outcome changes, never per retry, so a torch-less phone can't flood the
+  /// log. Sparse like [logCameraSleep].
+  void logTorch(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('torch', payload, at: at);
+
   /// A periodic phone-temperature sample taken during the session (battery °C
   /// and OS thermal status), so heat can be correlated with the recording.
   void logThermal(Map<String, dynamic> payload, {DateTime? at}) =>

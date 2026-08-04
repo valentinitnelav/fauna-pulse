@@ -6286,3 +6286,54 @@ many photos would be kept/deleted).
   anchored at 0.
 - flutter analyze clean; suite 451 tests green; debug APK builds.
 
+
+## Round 180 (2026-08-04): nocturnal time-lapse, torch lights each burst
+
+- Owner request: unattended overnight time-lapse (e.g. 10 s burst / 10 min
+  gap for 8 h) needs light — the LED torch now comes on a lead before each
+  burst so auto-exposure settles under the final lighting, stays on through
+  the burst, and goes off in the break.
+- KEY FINDING: no native work was needed. The vendored plugin already ships
+  a complete, unused torch path (Dart `YOLOViewController.setTorchMode` →
+  channel `setTorchMode` → `YOLOView.setTorchMode` with `hasFlashUnit()` +
+  `cameraControl.enableTorch()`; platform reply cached in `isTorchEnabled`,
+  `resetTorchState()` for platform-side drops). CameraX's TorchControl owns
+  FLASH_MODE, disjoint from the r82 interop funnel keys (AF mode, focus
+  distance, AE fps range), so no conflict with manual focus / fps cap. The
+  one gap: `pauseCamera()` unbinds all (`camera = null`), physically killing
+  the LED, and nothing native re-asserts it — handled app-side.
+- New settings (owner rule: control + config + summary row + tests, same
+  round): `timeLapseTorch` (default off) + `timeLapseTorchLeadSeconds`
+  (default 5 s, range 1–60). Lead rationale: AE runs in the camera HAL's
+  repeating request (the app-level 1 fps between-burst sampling does not
+  slow it) and re-converges within ~1–2 s of a large illumination step at
+  15 fps; 5 s leaves margin. Both keys in `notApplicableConfigKeys` for
+  detector + motion modes.
+- Pure schedule `TimeLapseTorchPlan` (time_lapse_plan.dart, beside the burst
+  plan): `shouldBeOnAt(t)` = in burst OR within lead of the next burst start;
+  `alwaysOn` when continuous or lead ≥ gap; `nextEventDelayMs(t)` hands the
+  tick timer the flip edges (OFF edge is burstMs+1 — `inBurstAt` is
+  inclusive — otherwise a long photo step would leave the torch burning up
+  to a step into the break; in-lead-window returns null, the plan's own
+  next-burst delay already lands there). Unit-tested.
+- Screen wiring (camera_session_screen.dart): `_tlTorchPlan`/`_tlTorchOn`
+  (last CONFIRMED state)/`_tlTorchBusy`/one-time warn+log flags.
+  `_timeLapseTick` applies the schedule on mismatch, BEFORE the park/wake
+  dispatch, and only while `framesUsable` (parked/warming calls could only
+  fail, and a transient rebind failure would be indistinguishable from
+  "no flash unit"); the wake path's existing fresh-frame re-tick re-lights
+  the torch with most of the wake lead still ahead. Mismatch-retry is the
+  single re-assert mechanism (a failed call leaves `_tlTorchOn` on the
+  confirmed state). Park resets the Dart caches (`resetTorchState`), stop
+  forces the LED off. With parking + torch both on, the coordinator's
+  prewake lead = max(wake lead, torch lead) so a raised torch lead still
+  finds a bound camera. Chip appends "· torch" while lit (lead + burst).
+- Logging: new sparse `torch` records (SessionLogger.logTorch) with
+  `on`/`success`/`reason` (burst_lead / burst_end / camera_parked /
+  session_stop), written on outcome transitions only — a torch-less phone
+  logs ONE failure line per recording (plus a one-time snackbar), never a
+  flood. DATA_GUIDE section added (incl. the methods note: light attracts /
+  repels some taxa; first burst of every recording/window has no lead).
+- Docs: SETTINGS_REFERENCE rows for both settings; summary Settings tab
+  shows "Torch during bursts" + conditional "Torch lead" row.
+- flutter analyze clean; suite 461 tests green.

@@ -274,6 +274,28 @@ so a burst overlapping a `parked`/`warming` gap starts its photos late (the
 burst grid itself never shifts). A `fallback_bound` record means every later
 gap in that session is real camera time, not parking.
 
+### `torch` — nocturnal time-lapse torch transitions (round 180+)
+
+Written only in time-lapse sessions with "Torch during bursts (night)"
+enabled. The LED torch is switched on a lead before each burst (the "Torch
+lead" setting, `timeLapseTorchLeadSeconds`, default 5 s) so auto-exposure
+settles under the final lighting, and off in the break. Records are written
+only on OUTCOME changes (a confirmed on/off flip, or the first failure since
+the last success), never per retry, so they stay sparse.
+
+| Field | Meaning |
+|---|---|
+| `on` | The state the schedule asked for (`true` = torch on). |
+| `success` | Whether the camera confirmed it. `false` usually means this lens has no flash unit (the session continues unlit; the app also shows a one-time notice). |
+| `reason` | `burst_lead` (scheduled on, lead before a burst), `burst_end` (scheduled off), `camera_parked` (the camera power-off physically killed the LED; it re-lights after the wake), `session_stop`. |
+
+Analysis rule: illumination changes detectability, so treat the torch-on
+windows as their own observation condition. The first burst of every
+recording (and of every scheduled window) starts immediately and gets no
+lead; its earliest photos can still show the exposure settling. Note the
+light itself may attract or repel some taxa — a methods consideration for
+nocturnal visitation rates.
+
 ### `focus_change` — camera focus changed mid-session (round 132+)
 
 Same fields as the start record's focus pair: `focus_mode`

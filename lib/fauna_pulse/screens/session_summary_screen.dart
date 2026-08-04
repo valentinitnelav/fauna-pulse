@@ -976,11 +976,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // Round 174: the key became a BREAK between bursts. Pre-174 sessions
       // carry the old start-to-start key instead — show whichever exists,
       // labeled with its true meaning (never relabel old data).
-      add(
-        'Time between bursts',
-        _setting('timeLapseGapSeconds'),
-        suffix: ' s',
-      );
+      add('Time between bursts', _setting('timeLapseGapSeconds'), suffix: ' s');
       add(
         'Burst repeat interval (start-to-start, pre-r174)',
         _setting('timeLapseIntervalSeconds'),
@@ -988,16 +984,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       // Round 163 (E3): camera parking between bursts. Sessions recorded
       // before the setting existed carry no key — add() skips null.
-      add(
-        'Camera off between bursts',
-        _setting('timeLapseCameraSleep'),
-      );
+      add('Camera off between bursts', _setting('timeLapseCameraSleep'));
       if (_setting('timeLapseCameraSleep') == true) {
         add(
           'Camera wake lead',
           _setting('timeLapseWakeLeadSeconds'),
           suffix: ' s',
         );
+      }
+      // Round 180: nocturnal torch. Older sessions carry no key — add()
+      // skips null.
+      add('Torch during bursts', _setting('timeLapseTorch'));
+      if (_setting('timeLapseTorch') == true) {
+        add('Torch lead', _setting('timeLapseTorchLeadSeconds'), suffix: ' s');
       }
     }
     add(
@@ -1301,8 +1300,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// under the system navigation/gesture bar (round 165 field bug — the
   /// recurring "cannot scroll to the last element" class; regression test
   /// pattern in test/fauna_pulse/summary_bottom_inset_test.dart).
-  EdgeInsets get _tabPadding =>
-      EdgeInsets.fromLTRB(16, 16, 16, 64 + MediaQuery.paddingOf(context).bottom);
+  EdgeInsets get _tabPadding => EdgeInsets.fromLTRB(
+    16,
+    16,
+    16,
+    64 + MediaQuery.paddingOf(context).bottom,
+  );
 
   /// Headline numbers: the quick "how did it go" read.
   Widget _overviewTab() {

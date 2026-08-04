@@ -402,6 +402,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   TimeLapseCameraCoordinator? _tlCamera;
   bool _tlCameraBusy = false;
 
+  // Nocturnal time-lapse torch (round 180): non-null only while recording in
+  // time-lapse mode with "Torch during bursts" on. [_tlTorchPlan] is the pure
+  // on/off schedule (lead before each burst through burst end);
+  // [_tlTorchOn] is the last state the camera CONFIRMED (the platform reply),
+  // so a failed or rebind-raced call keeps the mismatch and the next tick
+  // retries — that retry-on-mismatch is also how the torch comes back after a
+  // camera-parking wake (the unbind physically kills the LED).
+  // [_tlTorchBusy] serializes the async platform call; [_tlTorchWarned] and
+  // [_tlTorchLoggedFailure] keep the no-torch snackbar and the failure log
+  // line one-time per recording.
+  TimeLapseTorchPlan? _tlTorchPlan;
+  bool _tlTorchOn = false;
+  bool _tlTorchBusy = false;
+  bool _tlTorchWarned = false;
+  bool _tlTorchLoggedFailure = false;
+
   // Scheduled recording (opt-in via Settings). While [_schedule] is non-null a
   // scheduled run is active: [_scheduleTimer] re-arms itself for the next
   // window boundary (capped at 60 s so doze gaps / clock jumps self-heal) and
@@ -1746,13 +1762,33 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _timeLapseStartMs = DateTime.now().millisecondsSinceEpoch;
       _tlLastCycle = -1;
       _tlBurstActive = false;
+      // Nocturnal torch (round 180, opt-in): pure on/off schedule; the tick
+      // applies it and retries on mismatch (see _setTorch).
+      _tlTorchPlan = _config.timeLapseTorch
+          ? TimeLapseTorchPlan(
+              plan: _timeLapsePlan!,
+              leadMs: (_config.timeLapseTorchLeadSeconds * 1000).round(),
+            )
+          : null;
+      _tlTorchOn = false;
+      _tlTorchBusy = false;
+      _tlTorchWarned = false;
+      _tlTorchLoggedFailure = false;
       // Camera parking (round 163, opt-in): the coordinator itself refuses
       // to park when the plan's idle gaps are too short (or continuous), so
-      // arming it is always safe.
+      // arming it is always safe. With the torch on, the camera must be awake
+      // by the LONGER of the two leads — the torch can only physically ignite
+      // on a bound camera.
+      final wakeLeadSeconds =
+          _config.timeLapseTorch &&
+              _config.timeLapseTorchLeadSeconds >
+                  _config.timeLapseWakeLeadSeconds
+          ? _config.timeLapseTorchLeadSeconds
+          : _config.timeLapseWakeLeadSeconds;
       _tlCamera = _config.timeLapseCameraSleep
           ? TimeLapseCameraCoordinator(
               plan: _timeLapsePlan!,
-              prewakeLeadMs: (_config.timeLapseWakeLeadSeconds * 1000).round(),
+              prewakeLeadMs: (wakeLeadSeconds * 1000).round(),
             )
           : null;
       _tlCameraBusy = false;
@@ -1808,6 +1844,25 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // that follow a stop (summary review, scheduled sleep, dispose) treat it
     // exactly like their own cool-down pause and resume it when appropriate.
     _tlCamera = null;
+    // Torch off with the recording (round 180). If the stop caught the camera
+    // parked the LED is already physically dead — the extra call is a cheap
+    // no-op; either way the Dart cache ends honest for the next recording.
+    if (_tlTorchPlan != null) {
+      _tlTorchPlan = null;
+      if (_tlTorchOn) {
+        _tlTorchOn = false;
+        _logger?.logTorch({
+          'on': false,
+          'success': true,
+          'reason': 'session_stop',
+        });
+      }
+      unawaited(
+        _controller
+            .setTorchMode(false)
+            .catchError((Object e) => _logAsyncError('timelapse_torch', e)),
+      );
+    }
     if (_tlBurstActive) {
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
@@ -2753,6 +2808,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _pushTimeLapse();
       if (mounted) setState(() {}); // chip label flips
     }
+    // Nocturnal torch (round 180): apply the schedule whenever the commanded
+    // state drifts from it. Skipped while parked or warming (the camera is
+    // unbound or mid-rebind — a call now could only fail, and a transient
+    // failure would be indistinguishable from "this lens has no torch"); the
+    // wake path re-ticks the moment fresh frames confirm, so after a parking
+    // wake the LED ignites with most of the (≥ torch) wake lead still ahead.
+    // A failed call leaves [_tlTorchOn] on the confirmed state, so the next
+    // tick retries — this mismatch-retry is also what re-lights the torch
+    // after every park/wake cycle (the unbind kills the LED physically).
+    final torchPlan = _tlTorchPlan;
+    if (torchPlan != null && !_tlTorchBusy && !_recorder.stopping) {
+      final wantOn = torchPlan.shouldBeOnAt(t);
+      final cameraUsable = cam == null || cam.framesUsable;
+      if (wantOn != _tlTorchOn && cameraUsable) {
+        unawaited(_setTorch(wantOn, wantOn ? 'burst_lead' : 'burst_end'));
+      }
+    }
     // Park/wake decision. Busy = a pause/resume is already mid-flight; the
     // next tick re-asks the (pure) coordinator, so nothing is lost.
     if (cam != null && !_tlCameraBusy && !_recorder.stopping) {
@@ -2766,12 +2838,62 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     }
     // While parked, a tick must also land at the prewake moment — the plan's
-    // own cadence (next burst start) would wake 10 s too late.
+    // own cadence (next burst start) would wake 10 s too late. Same for the
+    // torch's flip edges (torch-on lead, burst-end OFF edge).
     var delayMs = plan.nextTickDelayMs(t);
     final camDelay = cam?.nextEventDelayMs(t);
     if (camDelay != null && camDelay < delayMs) delayMs = camDelay;
+    final torchDelay = _tlTorchPlan?.nextEventDelayMs(t);
+    if (torchDelay != null && torchDelay < delayMs) delayMs = torchDelay;
     final delay = delayMs.clamp(100, 60000);
     _timeLapseTimer = Timer(Duration(milliseconds: delay), _timeLapseTick);
+  }
+
+  /// Commands the camera's LED torch and reconciles [_tlTorchOn] with what
+  /// the platform CONFIRMED (false when the lens has no flash unit or the
+  /// camera is unbound mid-rebind — the tick's mismatch check retries those).
+  /// Logs `torch` records only on outcome transitions, and warns the user
+  /// once per recording when the phone reports no torch.
+  Future<void> _setTorch(bool on, String reason) async {
+    _tlTorchBusy = true;
+    try {
+      final wasOn = _tlTorchOn;
+      try {
+        await _controller.setTorchMode(on);
+      } catch (e) {
+        _logAsyncError('timelapse_torch', e);
+        return;
+      }
+      final confirmed = _controller.isTorchEnabled;
+      _tlTorchOn = confirmed;
+      final success = confirmed == on;
+      if (success) {
+        _tlTorchLoggedFailure = false;
+        if (wasOn != confirmed) {
+          _logger?.logTorch({'on': on, 'success': true, 'reason': reason});
+          if (mounted) setState(() {}); // chip torch suffix
+        }
+      } else if (!_tlTorchLoggedFailure) {
+        // First failure since the last success: one log line, then silence
+        // until the outcome changes (a torch-less phone must not flood the
+        // log at every retry).
+        _tlTorchLoggedFailure = true;
+        _logger?.logTorch({'on': on, 'success': false, 'reason': reason});
+        if (on && !_tlTorchWarned && mounted) {
+          _tlTorchWarned = true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This camera reports no torch — the time-lapse continues '
+                'without light.',
+              ),
+            ),
+          );
+        }
+      }
+    } finally {
+      _tlTorchBusy = false;
+    }
   }
 
   /// Epoch ms of the next scheduled burst start — the audit anchor every
@@ -2805,6 +2927,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         return;
       }
       cam.parked();
+      // The unbind physically killed the torch (round 180): keep the Dart
+      // caches honest so the post-wake mismatch check re-lights it. Normally
+      // the torch is already off well before a park; a doze-late park while
+      // it was still lit is worth its own audit line.
+      if (_tlTorchOn) {
+        _tlTorchOn = false;
+        _logger?.logTorch({
+          'on': false,
+          'success': true,
+          'reason': 'camera_parked',
+        });
+      }
+      _controller.resetTorchState();
       _logger?.logCameraSleep({
         'state': 'parked',
         'reason': 'between_bursts',
@@ -3741,6 +3876,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 label += ' · camera off';
               }
             }
+            // Round 180: confirm the nocturnal torch where the user is
+            // looking (during the pre-burst lead AND the burst itself).
+            if (_tlTorchOn) label += ' · torch';
           }
           return _modeChipShell(
             color: active ? _chipActiveColor : _chipWaitingColor,
