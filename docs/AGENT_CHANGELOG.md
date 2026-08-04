@@ -6030,3 +6030,48 @@ scale rule: one meaning per label, derived counts labeled separately.
   (photos == files, suffix suppressed).
 - flutter analyze clean; suite 435 tests green; debug APK builds.
 
+## Round 173 (2026-08-04): continuous time-lapse starvation fix (owner field bug)
+
+Owner report: time-lapse with Photo step 1 s, Photo duration 100 s, "Repeat
+burst every" 5 s took exactly the first 100 photos and then NOTHING for the
+rest of the 1 h session. Expected (and documented r97) behavior for interval <=
+duration is CONTINUOUS capture (bursts touch/overlap, photos never stop).
+
+Root cause (three pieces, each individually correct):
+- `TimeLapsePlan.continuous` mode defined `cycleIndexAt` as ALWAYS 0.
+- `_timeLapseTick` re-arms the shared capture window (`beginTimeLapseBurst` ->
+  `resetMotionWindow`) only when the cycle index CHANGES -> re-armed exactly
+  once, at recording start.
+- The scheduler window hard-stops `> durationMs` after its start
+  (roi_capture.dart `evaluateMotion` "window exhausted"), and its
+  forget-backstop (`lastSeenMs` gap > durationMs) can never fire while ticks
+  keep arriving every step. Net: photos for exactly one photo-duration, then
+  starvation. Non-continuous mode was always fine (cycle advances per
+  interval).
+
+Fix in `capture/time_lapse_plan.dart` only: new private `_cycleMs` =
+`continuous ? burstMs : intervalMs`; `cycleIndexAt` and `nextBurstStartAt` use
+it. Continuous cycles now advance every photo duration, so the existing tick
+contract re-arms the window the moment the old one is exhausted: seamless one
+photo per step across the seam (the reset fires BEFORE the same tick's
+evaluateMotion, so no duplicate and no gap). Non-continuous behavior is
+byte-identical (`_cycleMs` = intervalMs).
+
+Consequences audited:
+- `timelapse_capture.burst` now increments per photo-duration block in
+  continuous mode (was always 0). DATA_GUIDE gains a `timelapse_capture`
+  record note (the record was previously undocumented) incl. the r97-r172
+  data caveat: continuous sessions from old builds contain only the first
+  burst's photos.
+- "NEXT BURST in mm:ss" chip and camera parking are unreachable in continuous
+  mode (always in burst; idle gap < 30 s), unchanged.
+
+Tests (time_lapse_plan_test.dart): the old test asserting "always cycle 0" in
+continuous mode ENCODED the bug and was replaced; new cycle-advance test plus
+an end-to-end regression reproducing the owner's exact config against the REAL
+scheduler window via the screen's tick contract (305 s simulated, expect 306
+photos). Verified to fail on the unfixed code with exactly the field numbers
+(101 photos, then starvation), pass with the fix.
+
+flutter analyze clean; suite 437 tests green; debug APK builds.
+

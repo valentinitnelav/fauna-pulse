@@ -3,8 +3,13 @@
 // schedule_plan_test.dart: walk "ms since recording start" through the phases
 // and assert what the plan reports; no timers, no mocks.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart';
 import 'package:fauna_pulse/fauna_pulse/capture/time_lapse_plan.dart';
+import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 
 void main() {
   // A burst of 3 s (photos at 0/1/2/3 s), repeated every 10 s start-to-start.
@@ -58,16 +63,70 @@ void main() {
   group('continuous mode (interval ≤ duration → photos never stop)', () {
     const cont = TimeLapsePlan(stepMs: 500, burstMs: 5000, intervalMs: 5000);
 
-    test('is detected and always in burst, always cycle 0', () {
+    test('is detected and always in burst', () {
       expect(cont.continuous, isTrue);
       expect(cont.inBurstAt(0), isTrue);
       expect(cont.inBurstAt(123456789), isTrue);
-      expect(cont.cycleIndexAt(123456789), 0);
       expect(cont.nextTickDelayMs(99999), 500);
+    });
+
+    // Round 173 regression: cycles must ADVANCE every burst duration. The
+    // r97 "everything is cycle 0" definition meant the tick never re-armed
+    // the capture window (it re-arms on cycle CHANGE), and the window
+    // hard-stops after the photo duration — the owner's continuous session
+    // took the first window's photos and then nothing.
+    test('cycles advance every photo duration so the window is re-armed', () {
+      expect(cont.cycleIndexAt(0), 0);
+      expect(cont.cycleIndexAt(4999), 0);
+      expect(cont.cycleIndexAt(5000), 1);
+      expect(cont.cycleIndexAt(123456789), 123456789 ~/ 5000);
+      expect(cont.nextBurstStartAt(0), 5000);
+      expect(cont.nextBurstStartAt(5000), 10000);
     });
 
     test('a normal plan is not continuous', () {
       expect(plan.continuous, isFalse);
+    });
+
+    // The owner's round-173 field configuration end-to-end: step 1 s,
+    // duration 100 s, interval 5 s. Simulates the camera screen's tick
+    // contract (re-arm the scheduler window on every cycle change, then ask
+    // for the due photo) against the REAL scheduler window and asserts one
+    // photo per second far past the first window's end.
+    test('plan + scheduler window: photos keep flowing past the first '
+        'photo duration (owner bug, r173)', () {
+      const owner = TimeLapsePlan(
+        stepMs: 1000,
+        burstMs: 100000,
+        intervalMs: 5000,
+      );
+      final s = RoiCaptureScheduler(
+        framesDir: Directory('${Directory.systemTemp.path}/tl_plan_test'),
+        sessionToken: 'S',
+        stepMs: 1000,
+        durationMs: 100000,
+        mode: RoiCaptureMode.fast,
+        targetPx: 640,
+        fastCaptureFn: () async => null,
+        highResCaptureFn: () async => null,
+        roiProvider: () => Roi.defaultRoi,
+        streamDims: () => (1280, 960),
+        highResDims: () => (0, 0),
+      );
+      const baseMs = 1700000000000;
+      var lastCycle = -1;
+      var photos = 0;
+      for (var t = 0; t <= 305000; t += 1000) {
+        if (!owner.inBurstAt(t)) continue;
+        final cycle = owner.cycleIndexAt(t);
+        if (cycle != lastCycle) {
+          lastCycle = cycle;
+          s.resetMotionWindow();
+        }
+        if (s.evaluateMotion(baseMs + t) != null) photos++;
+      }
+      // One photo per 1 s tick over 305 s — the unfixed code stopped at 101.
+      expect(photos, 306);
     });
   });
 }

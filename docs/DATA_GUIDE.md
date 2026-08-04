@@ -236,6 +236,18 @@ Screen state at any moment = the last `blackout` record before it (before the
 first one: `blackout_at_start` in the start record, absent = screen on).
 Sessions recorded before round 132 carry no screen-state information.
 
+### `timelapse_capture` — one per time-lapse photo (round 97+)
+
+Fields: `jpeg` (filename in `roi_frames/`), `captured_at_ms` (the trigger
+moment, same convention as `capture` records) and `burst` (0-based index of
+the burst the photo belongs to). `burst` semantics in CONTINUOUS mode
+("Repeat burst every" ≤ "Photo duration", photos flowing nonstop): before
+round 173 it was always `0`; since round 173 it advances every photo-duration
+block (the fix for a field bug where a continuous session silently stopped
+capturing after the first photo duration — sessions recorded on r97–r172
+builds with a continuous configuration contain ONLY that first burst's
+photos).
+
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 
 Written only in time-lapse sessions with "Turn camera off between bursts"
