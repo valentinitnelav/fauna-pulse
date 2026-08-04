@@ -1262,6 +1262,20 @@ paired SAHI runs on the phones, then compare `tile_overhead_ms` (plus the
 un-splittable native decode share inside `tile_predict_ms`) against
 `elapsed_ms` — under 15% means E6 closes as a skipped lead.
 
+**Step 2 done (round 176): gate PASSED overwhelmingly — build the native
+API.** Owner measurement (Xiaomi, RELEASE build, 180 × 1024 px time-lapse
+photos, 320 px arthropod model → 16 tiles/photo): SAHI + full pass ran
+199.0 s with `tile_overhead_ms` 164.9 s (82.8% of wall; `tile_prep_ms`
+alone, the pure-Dart crop + encodeJpg of 2880 tiles, was 145.7 s = 73%);
+the no-full-pass rerun read 85.9% overhead. Inference was only ~17% of
+wall. The r160 bounding guess ("heat dominates, gate may fail") is REFUTED:
+the `image` package's pure-Dart pixel work dominates. Corollary: the full
+pass costs ~3.6 s of 199 s (~2%) — keep it on, its large-insect recall is
+nearly free. Next: implement `predictTiledImage` per this item's design
+bullets (decode once natively, sequential tile crop + infer, mapping/
+filtering/merging stays in Dart, current path as fallback); projected
+~3-5× lower SAHI wall time (~1.1 → ~0.3 s/photo).
+
 ### E7. [x] Three small cleanups (first bullet reworded after verification)
 
 - Coalesce the thermal/power reads (REWORDED r160: codex's original premise,

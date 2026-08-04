@@ -187,6 +187,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Set<String> _postDeleteMarked = const {};
   bool _postDeleting = false;
 
+  /// Reads + parses post_detections.jsonl in a worker isolate. A TOP-LEVEL
+  /// sync wrapper on purpose (round 175, owner bug): inlined inside the
+  /// async [_loadPostHoc] the `Isolate.run` closure shared the method's
+  /// context, which holds the current Zone for the async machinery — and the
+  /// app runs inside `runZonedGuarded` (app_error_hooks), a CUSTOM Zone,
+  /// which is unsendable. `Isolate.run` then threw "Illegal argument in
+  /// isolate message" on every call and the catch swallowed it, so no green
+  /// post-hoc box ever rendered (broken since the round-163 move
+  /// off the UI isolate). Same shape as `SessionLogIndex.build`, which never
+  /// had the problem for exactly this reason. Regression test:
+  /// summary_posthoc_boxes_test.dart.
+  static Future<List<PhotoOutcome>> _outcomesOffUi(String path) =>
+      Isolate.run(() => photoOutcomesFromJsonl(File(path).readAsStringSync()));
+
   /// Loads (or reloads after a cleanup) the post-hoc analysis results, if any.
   Future<void> _loadPostHoc() async {
     try {
@@ -198,10 +212,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final gap = prefs.getDouble('analysis_keep_gap') ?? 2.0;
       // Round 163 (E5): read + parse the (possibly large) results file off
       // the UI isolate; only the outcome list is copied back.
-      final path = f.path;
-      final parsed = await Isolate.run(
-        () => photoOutcomesFromJsonl(File(path).readAsStringSync()),
-      );
+      final parsed = await _outcomesOffUi(f.path);
       // Only photos still on disk — earlier cleanups keep their records.
       final outcomes = parsed
           .where(

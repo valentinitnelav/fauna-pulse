@@ -6112,3 +6112,57 @@ which happens exactly in that break.
   config-key change and cross-version conversion; OVERVIEW defaults row
   rewritten.
 
+## Round 175 (2026-08-04): post-hoc box overlay fix (silently broken since r163)
+
+Owner report: "Review photos before deleting" after a SAHI run showed NO green
+prediction boxes, while post_detections.jsonl carried boxes for 179/180 photos.
+
+Root cause (reproduced in a widget test before fixing): `_loadPostHoc`'s
+r163 `Isolate.run(() => photoOutcomesFromJsonl(...))` was inlined in the async
+State method, so the closure's context chain included the Zone the async
+machinery keeps — and the app runs inside runZonedGuarded (r67
+app_error_hooks), a CUSTOM Zone, which is unsendable. Every call threw
+"Illegal argument in isolate message: object is unsendable - _CustomZone",
+the catch logSwallowed it (logcat only), and the post-hoc maps stayed empty:
+no green boxes, no red deletion marks, no kept-chips, for EVERY session type
+since round 163. The SessionLogIndex never had the problem because its
+`build` wraps Isolate.run in a SYNC static helper whose closure captures only
+the path string.
+
+Fix: `_outcomesOffUi(String path)`, a top-level-style static sync wrapper in
+session_summary_screen.dart (same shape as SessionLogIndex.build);
+_loadPostHoc awaits it. Audit of all other worker calls: sahi.dart,
+roi_capture.dart, crop_export.dart use compute(topLevelFn, message) (nothing
+captured) and session_log_index.dart already uses the safe shape — only this
+one site was broken.
+
+Regression test: new summary_posthoc_boxes_test.dart — synthetic time-lapse
+session + post_detections.jsonl with one box, pumps the real summary on the
+Photos tab (bottom-inset test's async recipe), taps "All", then digs the
+_BoxPainter out of the tree and asserts a postHoc box reached it. Verified
+failing before the fix with the exact production error, passing after.
+
+flutter analyze clean; suite 440 tests green; debug APK builds.
+
+## Round 176 (2026-08-04): E6 step 2 verdict — gate PASSED overwhelmingly
+
+Owner ran the r168-instrumented analysis on the Xiaomi, RELEASE build, on a
+180-photo 1024 px time-lapse session with the 320 px arthropod model (16 tiles
+per photo + optional full pass). post_end phases:
+
+- SAHI + full pass: elapsed 199.0 s; source_decode 18.9 s, tile_prep 145.7 s,
+  tile_transfer 0.3 s, tile_predict 29.6 s, full_predict 3.6 s, merge ~0.
+  tile_overhead_ms = 164.9 s = 82.8% of wall.
+- SAHI, no full pass (same photos, force): elapsed 201.6 s; overhead 173.3 s
+  = 85.9%. The full pass costs only ~3.6 s (~2%) — keep it on, its recall win
+  is nearly free; run-to-run variance/thermal outweighs it.
+
+Verdict: the 15% gate is passed by more than 5x. The r160 bounding guess
+("Xiaomi heat dominates, gate may fail") is REFUTED on the release build:
+pure-Dart tile prep (`image` package crop + encodeJpg, 2880 tiles) alone is
+73% of wall time; inference is ~17%. A native `predictTiledImage` (decode the
+source once natively, crop + infer tile by tile, no JPEG round trips —
+design already specified in review E6) is justified and projected to cut SAHI
+wall time roughly 3-5x (~1.1 s/photo -> ~0.3 s/photo). E6 step 3 (the native
+API) is now the next implementation item; review doc updated.
+
