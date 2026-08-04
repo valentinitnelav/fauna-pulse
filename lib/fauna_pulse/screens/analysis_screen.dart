@@ -107,6 +107,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   /// Cleanup: "keep neighbours within this many seconds of a detection".
   double _keepGap = 2.0;
   List<PhotoOutcome>? _outcomes;
+
+  /// The `min_box_frac` the last analysis run itself filtered with (round
+  /// 179): the live tiny-box slider below can only act ABOVE it, because
+  /// smaller boxes were never recorded — the cleanup section hints when the
+  /// slider is set below this. Null = no SAHI filter recorded.
+  double? _lastRunMinBoxFrac;
   bool _cleanupBusy = false;
 
   // SAHI tiling (round 139) — all persisted except the per-run force flag.
@@ -228,23 +234,33 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       return;
     }
     List<PhotoOutcome>? outcomes;
+    double? lastRunMinBox;
     try {
       final f = File('${session.dir.path}/${PostDetector.outputFileName}');
       if (f.existsSync()) {
+        final content = await f.readAsString();
         // Only photos still on disk count — a previous cleanup's deleted
         // photos keep their records but must not skew the numbers.
-        outcomes = photoOutcomesFromJsonl(await f.readAsString())
+        outcomes = photoOutcomesFromJsonl(content)
             .where(
               (o) => File(
                 '${session.dir.path}/roi_frames/${o.name}',
               ).existsSync(),
             )
             .toList();
+        // Round 179: what the analysis itself already filtered out — the
+        // live tiny-box slider can't go below this (boxes never recorded).
+        lastRunMinBox = lastSahiMinBoxFrac(content);
       }
     } catch (e) {
       logSwallowed('analysis_outcomes_load', e);
     }
-    if (mounted) setState(() => _outcomes = outcomes);
+    if (mounted) {
+      setState(() {
+        _outcomes = outcomes;
+        _lastRunMinBoxFrac = lastRunMinBox;
+      });
+    }
   }
 
   /// Same sessions folder the home screen lists, but with photo counts.
@@ -790,11 +806,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           decimals: 1,
           unitSuffix: '%',
           helperText:
-              '0 = off. Drops tile detections whose box is narrower than '
-              'this percentage of the photo side in either direction — '
-              'catches background specks and the thin sliver boxes tiling '
-              'produces at tile borders. Never removes whole-photo-pass '
-              'boxes, so it can only trim what tiling added.',
+              '0 = off. Ignores detections whose box is narrower than this '
+              'percentage of the photo side in either direction — catches '
+              'background specks and the thin sliver boxes tiling produces '
+              'at tile borders. Since round 179 this also applies LIVE to '
+              'existing results: after a run, move it and watch the cleanup '
+              'numbers below re-derive instantly (no re-analysis). Tip: '
+              'analyze with 0% so every box stays recorded and tunable.',
           onChanged: (v) async {
             setState(() => _sahiMinBoxPct = v);
             await save();
@@ -885,10 +903,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   /// hits is most likely the same insect) and offer to delete the rest.
   Widget _cleanupSection() {
     final session = _session;
-    final outcomes = _outcomes;
-    if (session == null || outcomes == null || outcomes.isEmpty) {
+    final recorded = _outcomes;
+    if (session == null || recorded == null || recorded.isEmpty) {
       return const SizedBox.shrink();
     }
+    // Round 179 (owner idea): the "Ignore tiny tile boxes" threshold applies
+    // LIVE over the recorded boxes — moving it re-derives every number and
+    // the delete plan below instantly, a sensitivity analysis over one run
+    // instead of a re-analysis per value. It can only act on recorded boxes:
+    // when the analysis itself already filtered (hint below), lower values
+    // change nothing. setState on the field triggers this rebuild.
+    final outcomes = applyMinBoxFrac(recorded, _sahiMinBoxPct / 100);
     final keep = keepNames(outcomes, (_keepGap * 1000).round());
     final plan = planCleanup(session.dir, outcomes, keep);
     final withBoxes = outcomes.where((o) => o.hasBoxes == true).length;
@@ -910,10 +935,25 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           // File units throughout this section: the cleanup keeps/deletes
           // FILES (a high-res/live pair moves as one but counts as two files).
           'Of ${outcomes.length} analyzed files, $withBoxes contain a '
-          'detection. With a ${formatKeepWindow(_keepGap)} keep window: '
+          'detection'
+          '${_sahiMinBoxPct > 0 ? ' (ignoring boxes narrower than ${_sahiMinBoxPct.toStringAsFixed(1)}% of the photo)' : ''}'
+          '. With a ${formatKeepWindow(_keepGap)} keep window: '
           '$kept kept ($keptPct%), $deleted deleted ($deletedPct%).',
           style: const TextStyle(fontSize: 13),
         ),
+        // Round 179: values below what the analysis itself filtered with
+        // cannot act — those boxes were never recorded.
+        if (_lastRunMinBoxFrac case final rec?
+            when rec > 0 && _sahiMinBoxPct / 100 < rec)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'The analysis itself already removed boxes narrower than '
+              '${(rec * 100).toStringAsFixed(1)}% — to filter less than '
+              'that, re-analyze with "Ignore tiny tile boxes" at 0%.',
+              style: TextStyle(color: Colors.amber.shade200, fontSize: 12),
+            ),
+          ),
         const SizedBox(height: 8),
         DurationSettingField(
           label: 'Keep time-window around a detection',
@@ -1006,7 +1046,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     );
     if (sure != true || !mounted) return;
     setState(() => _cleanupBusy = true);
-    final deleted = await runCleanup(session.dir, plan, gapSeconds: _keepGap);
+    final deleted = await runCleanup(
+      session.dir,
+      plan,
+      gapSeconds: _keepGap,
+      minBoxFrac: _sahiMinBoxPct / 100,
+    );
     if (!mounted) return;
     setState(() => _cleanupBusy = false);
     ScaffoldMessenger.of(context).showSnackBar(

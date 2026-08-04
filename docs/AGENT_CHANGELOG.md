@@ -6248,3 +6248,41 @@ in summary_posthoc_boxes_test.dart):
 
 flutter analyze clean; suite 447 tests green; debug APK builds.
 
+## Round 179 (2026-08-04): tiny-box threshold as a live review-time sensitivity filter
+
+Owner idea: after a SAHI run, changing "Ignore tiny tile boxes" should update
+the cleanup statistics instantly from the RECORDED boxes instead of requiring
+a re-analysis — a sensitivity analysis over one run (analyze once at the 0%
+default so every box stays recorded, then tune the threshold and watch how
+many photos would be kept/deleted).
+
+- photo_keep.dart: `applyMinBoxFrac(outcomes, minFrac)` — drops recorded
+  boxes whose NARROWER side is under the fraction, recomputes hasBoxes,
+  leaves failed (null) photos and the on-disk records untouched; 0 = no-op
+  (same list instance). Semantics note (documented in code + docs): the
+  analysis-time filter is pre-merge and tile-only (r141/143); recorded boxes
+  are post-merge with no origin, so the review-time filter is size-only and
+  can also drop a tiny full-pass box (a box that small is a dot either way).
+  `lastSahiMinBoxFrac(jsonl)` — the last post_start's sahi.min_box_frac
+  (plain runs reset it to null): the live filter can't go BELOW what the
+  analysis itself removed, those boxes were never recorded.
+- analysis screen: `_cleanupSection` applies the current % live (the field's
+  setState already rebuilds it); the stats sentence names the active filter;
+  an amber hint appears when the slider sits below the run's own recorded
+  filter ("re-analyze at 0% to go lower"); field helper text rewritten
+  (tip: analyze at 0%). `_loadOutcomes` also parses the last run's filter.
+- summary screen: `_loadPostHoc` applies the same pref, so the review's
+  green boxes, kept-chips, deletion marks and counts always match the
+  analysis screen's numbers (the two screens share the decision).
+- Audit: `runCleanup` gains `minBoxFrac` (written as `min_box_frac` in the
+  `post_cleanup` record when > 0; both call sites pass it) — an executed
+  deletion stays explainable after the pref changes. DATA_GUIDE +
+  SETTINGS_REFERENCE updated.
+- Tests: photo_keep_test +4 (0 = untouched instance; dots and slivers
+  dropped by the narrower side with hasBoxes recomputed and an exact-
+  boundary survivor; failed photos pass through; lastSahiMinBoxFrac last-run
+  semantics incl. plain-run reset). Float-dust lesson kept in the test
+  comments: 0.4+0.05-0.4 is NOT the double 0.05, boundary fixtures must be
+  anchored at 0.
+- flutter analyze clean; suite 451 tests green; debug APK builds.
+

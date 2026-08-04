@@ -21,6 +21,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import '../logging/app_error_hooks.dart';
 import 'post_detector.dart';
@@ -68,6 +69,59 @@ int analyzedPhotoUnitCount(Iterable<String> jpegNames, Set<String> doneFiles) {
     allDoneByBase[base] = (allDoneByBase[base] ?? true) && doneFiles.contains(n);
   }
   return allDoneByBase.values.where((allDone) => allDone).length;
+}
+
+/// Review-time "ignore tiny boxes" filter (round 179, owner idea): drops
+/// every recorded box whose NARROWER side is under [minFrac] of the photo
+/// side and recomputes each photo's has-a-detection flag — without touching
+/// the records on disk. This is what lets the cleanup statistics react LIVE
+/// to the threshold: a sensitivity analysis over one recorded run instead of
+/// a re-analysis per value (analyze with the filter at 0% to keep every box
+/// available for tuning). Differences from the analysis-time filter
+/// (r141/r143): that one runs PRE-merge and spares whole-photo-pass boxes;
+/// recorded boxes are post-merge and carry no origin, so this one is
+/// size-only and can also drop a tiny full-pass box (a box that small is a
+/// dot either way). It can only act on boxes that were RECORDED — values
+/// below the filter the analysis itself ran with (see [lastSahiMinBoxFrac])
+/// change nothing. Failed photos (hasBoxes null) pass through untouched.
+List<PhotoOutcome> applyMinBoxFrac(
+  List<PhotoOutcome> outcomes,
+  double minFrac,
+) {
+  if (minFrac <= 0) return outcomes;
+  final out = <PhotoOutcome>[];
+  for (final o in outcomes) {
+    if (o.hasBoxes == null) {
+      out.add(o);
+      continue;
+    }
+    final kept = [
+      for (final b in o.boxes)
+        if (min(b.right - b.left, b.bottom - b.top) >= minFrac) b,
+    ];
+    out.add(PhotoOutcome(o.name, o.capturedAtMs, kept.isNotEmpty, kept));
+  }
+  return out;
+}
+
+/// The `min_box_frac` the LAST analysis run itself filtered with (from its
+/// `post_start.sahi` block), or null for a plain / pre-r141 / absent run.
+/// The review-time [applyMinBoxFrac] cannot go below this — those boxes were
+/// never recorded — so the UI shows a hint instead of silently doing nothing.
+double? lastSahiMinBoxFrac(String jsonlContent) {
+  double? last;
+  for (final line in const LineSplitter().convert(jsonlContent)) {
+    if (!line.contains('"post_start"')) continue;
+    try {
+      final rec = jsonDecode(line) as Map<String, dynamic>;
+      if (rec['type'] != 'post_start') continue;
+      final sahi = rec['sahi'];
+      last = sahi is Map ? (sahi['min_box_frac'] as num?)?.toDouble() : null;
+    } catch (_) {
+      // Truncated lines are expected in an append-only file.
+    }
+  }
+  return last;
 }
 
 /// Parses every `post_detection` record of [jsonlContent]; when a photo was
@@ -287,6 +341,9 @@ Future<int> runCleanup(
   Directory sessionDir,
   CleanupPlan plan, {
   required double gapSeconds,
+  // The review-time tiny-box threshold the keep decision used (round 179);
+  // audited so a deletion stays explainable after the pref changes.
+  double minBoxFrac = 0,
 }) async {
   var deleted = 0;
   for (final name in plan.deleteNames) {
@@ -310,6 +367,7 @@ Future<int> runCleanup(
         'time_ms': now.millisecondsSinceEpoch,
         'time_iso': now.toIso8601String(),
         'gap_seconds': gapSeconds,
+        if (minBoxFrac > 0) 'min_box_frac': minBoxFrac,
         'deleted': deleted,
         'kept': plan.keepCount,
         'freed_bytes': plan.deleteBytes,

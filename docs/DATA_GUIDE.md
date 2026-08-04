@@ -571,7 +571,11 @@ Every record carries `time_ms`/`time_iso` (when it was written). Types:
   `tile_transfer_ms` contribute 0 — a mostly-native run's
   `tile_overhead_ms` is expected to be tiny compared to r168–r176 runs.
 * `post_cleanup` — audit record of the optional keep/delete storage triage
-  (which files were deleted and under which keep rule).
+  (which files were deleted and under which keep rule: `gap_seconds`, and
+  since round 179 `min_box_frac` when the review-time tiny-box filter was
+  active — the keep decision then ignored recorded boxes whose narrower
+  side was under that fraction of the photo, without altering the
+  `post_detection` records themselves).
 
 A photo can appear in several runs (re-analysis with another model or other
 tiling settings). Take the **last** `post_detection` per `jpeg` — that is

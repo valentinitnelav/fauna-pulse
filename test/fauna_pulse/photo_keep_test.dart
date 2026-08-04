@@ -305,4 +305,84 @@ void main() {
       );
     });
   });
+
+  // Round 179 (owner idea): the tiny-box threshold as a REVIEW-time
+  // sensitivity filter over already-recorded boxes — the cleanup numbers
+  // re-derive live instead of needing a re-analysis per value.
+  group('applyMinBoxFrac / lastSahiMinBoxFrac', () {
+    PhotoOutcome outcome(String name, List<PostBox> boxes, {bool failed = false}) =>
+        PhotoOutcome(name, 1000, failed ? null : boxes.isNotEmpty, boxes);
+
+    PostBox box(double w, double h) => PostBox(
+      className: 'bee',
+      confidence: 0.9,
+      left: 0.4,
+      top: 0.4,
+      right: 0.4 + w,
+      bottom: 0.4 + h,
+    );
+
+    test('0 = off returns the outcomes untouched', () {
+      final list = [outcome('a.jpg', [box(0.01, 0.01)])];
+      expect(identical(applyMinBoxFrac(list, 0), list), isTrue);
+    });
+
+    test('drops dots and slivers by the NARROWER side, recomputes hasBoxes',
+        () {
+      final filtered = applyMinBoxFrac([
+        outcome('dot.jpg', [box(0.01, 0.01)]), // dot: gone
+        outcome('sliver.jpg', [box(0.20, 0.01)]), // long but thin: gone
+        outcome('insect.jpg', [box(0.08, 0.06), box(0.01, 0.01)]),
+      ], 0.05);
+      expect(filtered[0].hasBoxes, isFalse);
+      expect(filtered[0].boxes, isEmpty);
+      expect(filtered[1].hasBoxes, isFalse);
+      expect(filtered[2].hasBoxes, isTrue);
+      expect(filtered[2].boxes, hasLength(1)); // the dot beside it is gone
+      // Boundary: exactly the threshold survives (mirrors the analysis-time
+      // filter's `< minBoxFrac` drop rule). Anchored at 0 so the width is
+      // the same double as the threshold literal (0.4+0.05-0.4 is not).
+      expect(
+        applyMinBoxFrac([
+          outcome('edge.jpg', const [
+            PostBox(
+              className: 'bee',
+              confidence: 0.9,
+              left: 0,
+              top: 0,
+              right: 0.05,
+              bottom: 0.05,
+            ),
+          ]),
+        ], 0.05).single.hasBoxes,
+        isTrue,
+      );
+    });
+
+    test('failed photos (hasBoxes null) pass through untouched', () {
+      final filtered = applyMinBoxFrac([
+        outcome('failed.jpg', const [], failed: true),
+      ], 0.05);
+      expect(filtered.single.hasBoxes, isNull);
+    });
+
+    test('lastSahiMinBoxFrac reads the LAST run, plain runs reset to null',
+        () {
+      String start({double? minBox}) => jsonEncode({
+        'type': 'post_start',
+        'model': 'm',
+        if (minBox != null)
+          'sahi': {'tile_px': 320, 'min_box_frac': minBox},
+      });
+      expect(lastSahiMinBoxFrac(''), isNull);
+      expect(lastSahiMinBoxFrac(start(minBox: 0.02)), 0.02);
+      expect(
+        lastSahiMinBoxFrac('${start(minBox: 0.05)}\n${start(minBox: 0.02)}'),
+        0.02,
+      );
+      // A newer PLAIN run (no sahi block) means the current records are not
+      // pre-filtered at all.
+      expect(lastSahiMinBoxFrac('${start(minBox: 0.05)}\n${start()}'), isNull);
+    });
+  });
 }

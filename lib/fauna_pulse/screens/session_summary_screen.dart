@@ -182,6 +182,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<PhotoOutcome>? _postOutcomes;
   Set<String> _postKeep = const {};
   double _postGapSeconds = 2.0;
+
+  /// Round 179: the review-time tiny-box threshold (fraction of the photo
+  /// side) the loaded outcomes were filtered with; audited on deletion.
+  double _postMinBoxFrac = 0;
   Map<String, List<_DetBox>> _postBoxesByName = const {};
   Map<String, KeepDecision> _postDecisions = const {};
   Set<String> _postDeleteMarked = const {};
@@ -210,11 +214,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (!f.existsSync()) return;
       final prefs = await SharedPreferences.getInstance();
       final gap = prefs.getDouble('analysis_keep_gap') ?? 2.0;
+      // Round 179: the review-time tiny-box threshold the analysis screen
+      // tunes — applied here too, so the green boxes, keep chips, deletion
+      // marks and counts in this review match the cleanup numbers over there.
+      final minBoxPct = prefs.getDouble('analysis_sahi_min_box_pct') ?? 0;
       // Round 163 (E5): read + parse the (possibly large) results file off
       // the UI isolate; only the outcome list is copied back.
       final parsed = await _outcomesOffUi(f.path);
       // Only photos still on disk — earlier cleanups keep their records.
-      final outcomes = parsed
+      final outcomes = applyMinBoxFrac(parsed, minBoxPct / 100)
           .where(
             (o) => File(
               '${widget.logFile.parent.path}/roi_frames/${o.name}',
@@ -244,6 +252,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _postOutcomes = outcomes;
         _postKeep = keep;
         _postGapSeconds = gap;
+        _postMinBoxFrac = minBoxPct / 100;
         _postBoxesByName = boxes;
         _postDecisions = decisions;
         _postDeleteMarked = {
@@ -2045,6 +2054,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       widget.logFile.parent,
       plan,
       gapSeconds: _postGapSeconds,
+      minBoxFrac: _postMinBoxFrac,
     );
     if (!mounted) return;
     setState(() => _postDeleting = false);
