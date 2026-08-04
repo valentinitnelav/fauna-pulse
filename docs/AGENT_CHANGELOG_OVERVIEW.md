@@ -99,13 +99,22 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (auto-throttle + inference caps, camera fps cap, motion gate + sensitivity),
   NOT on AI: the AI tab is whole-greyed (r147) in the no-AI modes while the
   gate must stay editable in motion mode. Expert knobs sit in collapsed
-  `_foldSection` ExpansionTiles (6 folds; the gate-sensitivity fold
-  auto-expands in motion mode via ValueKey + initiallyExpanded); numeric
-  helper texts hide behind per-field ⓘ toggles (NumericSettingField);
+  `FoldSection` ExpansionTiles (6 folds; the gate-sensitivity fold
+  auto-expands in motion mode via ValueKey + initiallyExpanded);
   "Show setup tips" is a CheckedPopupMenuItem in the home ⋮ menu. NO
   SessionConfig keys changed. Pre-r159 docs/screenshots naming "Camera
   tab"/"Graphs tab" for these controls are stale — SETTINGS_REFERENCE.md
-  carries the migration note.
+  carries the migration note. r181: EVERY control's explanation (not just
+  numeric fields) hides behind a ⓘ via `widgets/setting_help.dart`
+  (`HelpLabel` labels, `HelpSwitchTile` switch/checkbox tiles, `HelpRow`
+  buttons, `FoldSection` — also used on the analysis screen). RULES: live
+  status/warnings that depend on current values (e.g. "the camera will stay
+  on", "Not used in time-lapse mode") stay ALWAYS visible via `statusText`,
+  never behind the ⓘ; on tiles only the ⓘ toggles help (row tap keeps
+  flipping the switch); HelpSwitchTile renders status/help BELOW the tile,
+  never as ListTile `subtitle` — toggling a subtitle null↔non-null with the
+  padded ⓘ in the title trips a RenderShiftedBox baseline assertion
+  (regression-tested in setting_help_test.dart).
 - **ROI is ÷32 WYSIWYG (round 57).** The ROI box, the on-screen resolution readout, the
   saved JPEG crop, and the inference ROI are all the **same** square. The side snaps to a
   multiple of 32 and is capped to the frame's short side, so the saved size can **never

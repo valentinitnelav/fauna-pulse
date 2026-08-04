@@ -34,6 +34,7 @@ import '../postprocess/sahi.dart';
 import '../postprocess/sahi_profile.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
+import '../widgets/setting_help.dart';
 import 'session_summary_screen.dart';
 
 /// One analyzable session folder. Counts come in TWO units (round 172):
@@ -496,11 +497,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
-                const Text(
-                  'Runs a detector over the photos a finished session saved — '
-                  'no camera involved. A bigger model than the live one can be '
-                  'used: there is no real-time limit, only processing time.',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                const HelpLabel(
+                  label:
+                      'Runs a detector over the photos a finished session '
+                      'saved (no camera involved).',
+                  labelStyle: TextStyle(color: Colors.white70, fontSize: 13),
+                  helperText:
+                      'Made for motion and time-lapse sessions, where no AI '
+                      'ran during capture. A bigger model than the live one '
+                      'can be used: there is no real-time limit, only '
+                      'processing time.',
                 ),
                 const SizedBox(height: 16),
                 _sessionPicker(),
@@ -525,24 +531,19 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ),
                 _sahiSection(),
                 if (_session != null && _session!.doneFileCount > 0)
-                  CheckboxListTile(
+                  HelpSwitchTile(
+                    checkbox: true,
                     dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
+                    title: 'Re-analyze photos already done',
+                    titleStyle: const TextStyle(fontSize: 14),
+                    helperText:
+                        'Runs every photo again, for trying another model '
+                        'or other tiling settings. The newest result per '
+                        'photo wins.',
                     value: _forceReanalyze,
                     onChanged: _running
                         ? null
-                        : (v) =>
-                              setState(() => _forceReanalyze = v ?? false),
-                    title: const Text(
-                      'Re-analyze photos already done',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    subtitle: const Text(
-                      'Run every photo again — for trying another model or '
-                      'tiling settings. The newest result per photo wins.',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
+                        : (v) => setState(() => _forceReanalyze = v),
                   ),
                 const SizedBox(height: 16),
                 if (_running) _progressPanel() else _startButton(),
@@ -667,7 +668,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('$label: ${value.toStringAsFixed(2)}'),
+        HelpLabel(
+          label: '$label: ${value.toStringAsFixed(2)}',
+          labelStyle: const TextStyle(color: Colors.white),
+          helperText: help,
+        ),
         Slider(
           value: value,
           min: 0.05,
@@ -675,7 +680,6 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           divisions: 18,
           onChanged: _running ? null : onChanged,
         ),
-        Text(help, style: const TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 4),
       ],
     );
@@ -696,18 +700,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     }
 
     final modelPx = _model?.inputSize ?? 640;
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      title: Text(
-        'Small-insect tiling (SAHI)${_sahiEnabled ? ' — ON' : ''}',
-        style: const TextStyle(fontSize: 14),
-      ),
-      subtitle: const Text(
-        'Cuts each photo into overlapping tiles at model scale so tiny '
-        'insects are not shrunk away. Slower; worth trying when the model '
-        'input is much smaller than the photos.',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
-      ),
+    return FoldSection(
+      title: 'Small-insect tiling (SAHI)${_sahiEnabled ? ' — ON' : ''}',
+      subtitle:
+          'Cuts each photo into overlapping tiles so tiny insects are not '
+          'shrunk away.',
+      helperText:
+          'The model sees every photo shrunk to its own input size, so a '
+          'small insect can end up just a few pixels wide. Tiling analyzes '
+          'the photo piece by piece at model scale instead. Slower (several '
+          'inferences per photo); worth trying when the model input is much '
+          'smaller than the photos.',
       children: [
         SwitchListTile(
           dense: true,
@@ -762,9 +765,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             await save();
           },
         ),
-        SwitchListTile(
+        HelpSwitchTile(
           dense: true,
-          contentPadding: EdgeInsets.zero,
+          title: 'Also run the whole-photo pass',
+          titleStyle: const TextStyle(fontSize: 14),
+          helperText:
+              'Catches insects larger than one tile (one extra inference '
+              'per photo).',
           value: _sahiFullPass,
           onChanged: _running
               ? null
@@ -772,14 +779,6 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   setState(() => _sahiFullPass = v);
                   await save();
                 },
-          title: const Text(
-            'Also run the whole-photo pass',
-            style: TextStyle(fontSize: 14),
-          ),
-          subtitle: const Text(
-            'Catches insects larger than one tile (one extra inference).',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
         ),
         NumericSettingField(
           label: 'Duplicate-merge overlap',

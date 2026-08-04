@@ -14,8 +14,10 @@ behave?), **Photos** (what do saved photos look like?), **Power** (heat,
 battery and rates). A first session needs only the Setup tab: output folder,
 capture trigger, session length. Expert settings sit inside collapsed
 **Advanced** sections on each tab — tap to open them; nothing is hidden for
-good. Each numeric setting also keeps its full explanation behind a small ⓘ
-icon: tap the setting's name to show or hide it.
+good. Every setting keeps its full explanation behind a small ⓘ icon (round
+181, previously only the numeric ones): tap the setting's name, or the ⓘ
+itself on a switch row, to show or hide it. Only live warnings and mode notes
+(for example "the camera will stay on") stay always visible.
 
 Before round 159 the last two tabs were called **Camera** and **Graphs**, and
 the heat controls (inference throttle, camera frame rate cap, motion gate) sat

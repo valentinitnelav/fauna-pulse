@@ -6337,3 +6337,62 @@ many photos would be kept/deleted).
 - Docs: SETTINGS_REFERENCE rows for both settings; summary Settings tab
   shows "Torch during bursts" + conditional "Torch lead" row.
 - flutter analyze clean; suite 461 tests green.
+## Round 181 (2026-08-05): every setting's explanation behind an ⓘ icon
+
+Owner request: too much always-visible text per control; extend the round-159
+NumericSettingField pattern (explanation collapsed behind a small ⓘ) to every
+user input, and double-check the plain English of each helper.
+
+- New `lib/fauna_pulse/widgets/setting_help.dart`:
+  - `HelpLabel` — a label (over a dropdown, a section header, a screen intro)
+    whose explanation toggles on a label-row tap; optional `leading` icon and
+    `labelStyle` (used for the "Visit tracking" header with its polyline icon).
+  - `HelpRow` — wraps a control that has no label (benchmark button, reset
+    tracking button) with a trailing ⓘ and the explanation below.
+  - `HelpSwitchTile` — SwitchListTile replacement (plus `checkbox: true`
+    variant used by the analysis screen's re-analyze checkbox). ONLY the ⓘ
+    opens the help; tapping the rest of the row still flips the switch (the
+    Android habit). `statusText`/`statusColor` carry live, value-dependent
+    notes that must never hide behind the ⓘ: warnings in amber ("Time between
+    bursts" under 30 s so the camera stays on; torch lead >= gap so the torch
+    never turns off) and mode notes in grey ("Not used in time-lapse mode",
+    "AI detector mode only…").
+  - `FoldSection` — public replacement of the sheet-private `_foldSection`
+    (same zero-padding/no-divider recipe) with an optional header ⓘ; fold
+    subtitles are now trimmed to one short "what's inside" line and the
+    why/when explanation sits behind the header ⓘ.
+- Settings sheet: all remaining always-visible paragraphs moved behind ⓘ —
+  every SwitchListTile subtitle, the capture-trigger per-mode paragraph (the
+  helper follows the dropdown selection), the ROI-photo-source paragraph, the
+  stream-ceiling note (merged into the stream label's ⓘ, `_streamHelpText()`
+  replaces `_streamCeilingNote()`), the benchmark and reset-tracking
+  explanations, the tracker intro, the Power-tab intro, and the "ceiling, not
+  a guarantee" paragraph (merged into the Max-inference-rate helper). The
+  algorithm dropdown finally got a label ("Tracking algorithm"). "Use GPU
+  when faster" and "Show FPS" gained explanations they never had. The model
+  input-resolution readout stays visible but lost its parenthetical (now in
+  the Detection-model ⓘ). Session length: hint behind ⓘ; the live "= N min
+  total" conversion is shown only in Hours mode (in Minutes it just repeated
+  the typed number).
+- Analysis screen: screen intro, both threshold-slider helps, the SAHI fold
+  (subtitle trimmed, mechanism explained behind the header ⓘ), the
+  whole-photo-pass switch and the re-analyze checkbox all use the same
+  widgets now.
+- Wording pass while moving (owner asked to double-check plain English):
+  several em-dash chains split into plain sentences; "Wind/shadows produce
+  junk photos instead of wasted computation" clarified to "A false alarm
+  (wind, moving shadows) costs only a junk photo, not computation"; the
+  sync-companion text restructured so the "insect is in it" point lands last.
+- Flutter gotcha (regression-tested): toggling a ListTile `subtitle` between
+  null and non-null while the title row contains the padded ⓘ trips a
+  RenderShiftedBox `!debugNeedsLayout` baseline assertion. HelpSwitchTile
+  therefore renders status/help BELOW the tile in a Column, never as
+  `subtitle`.
+- Tests: new `test/fauna_pulse/setting_help_test.dart` (6 widget tests: help
+  hidden until tap, ⓘ vs row-tap separation on switches, status always
+  visible + ⓘ works on disabled tiles, checkbox variant, HelpRow, FoldSection
+  header ⓘ without expansion). Full suite green (468 passed).
+- Docs: SETTINGS_REFERENCE.md intro now says every setting (not just numeric)
+  keeps its explanation behind the ⓘ and that live warnings stay visible;
+  AGENT_CHANGELOG_OVERVIEW.md r159 invariant updated with the r181 rules.
+
