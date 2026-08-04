@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../logging/app_error_hooks.dart';
+import 'sahi_profile.dart';
 
 /// Runs the model on one encoded JPEG and returns the plugin's result map
 /// (the shape `YOLO.predict` returns: a 'detections' list whose entries carry
@@ -207,6 +208,10 @@ class PostDetector {
   /// Calls [onProgress] after every photo; checks [isCancelled] between photos
   /// so a cancel takes effect within one inference. Never throws for a single
   /// bad photo — it is recorded as failed and the run continues.
+  ///
+  /// [phaseProfile] (round 168, perf review E6 step 1): the accumulator a
+  /// SAHI [predict] wrapper fills per photo; its totals are embedded in the
+  /// `post_end` record as `phases`. Null for plain runs.
   Future<PostRunResult> run(
     Directory sessionDir, {
     required PostRunConfig config,
@@ -214,6 +219,7 @@ class PostDetector {
     bool Function()? isCancelled,
     String appVersion = '',
     bool force = false,
+    SahiPhaseProfile? phaseProfile,
   }) async {
     final started = DateTime.now();
     final framesDir = Directory('${sessionDir.path}/roi_frames');
@@ -310,6 +316,10 @@ class PostDetector {
       'processed': processed,
       'failed': failed,
       'skipped_done': skippedDone,
+      // Whole-run wall time (round 168) — also what the analysis screen shows
+      // the user at completion, so a future run's duration can be estimated.
+      'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
+      if (phaseProfile != null) 'phases': phaseProfile.toJson(),
       'ended_normally': !cancelled,
       if (cancelled) 'reason': 'cancelled',
     });

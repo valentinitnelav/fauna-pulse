@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
 import 'post_detector.dart';
+import 'sahi_profile.dart';
 
 /// User-facing tiling parameters. All exposed in the analysis screen's
 /// advanced section; stored in shared_preferences (`analysis_sahi_*`).
@@ -161,17 +162,25 @@ List<PostBox> mergePostBoxes(List<PostBox> boxes, double overlapThresh) {
 /// Runs in a background isolate — pure-Dart decode of a 1024 px JPEG takes
 /// ~0.1 s and would jank the progress UI on the main isolate.
 /// Returns null when the bytes don't decode; empty tile lists when the photo
-/// fits in one tile (tiling is a no-op).
-(int, int, List<(int, int, int, int)>, List<Uint8List>)? tileWorker(
+/// fits in one tile (tiling is a no-op). The two trailing ints are this
+/// worker's decode / crop+encode wall time in MICROseconds (round 168, perf
+/// review E6 step 1) — timed in here because the isolate boundary hides them
+/// from the caller, which sees only the compute() total.
+(int, int, List<(int, int, int, int)>, List<Uint8List>, int, int)? tileWorker(
   (Uint8List, int, double) job,
 ) {
   final (bytes, tileSide, overlapFrac) = job;
+  final sw = Stopwatch()..start();
   final decoded = img.decodeImage(bytes);
+  final decodeUs = sw.elapsedMicroseconds;
   if (decoded == null) return null;
   final tiles = planTiles(decoded.width, decoded.height, tileSide, overlapFrac);
   if (tiles.length <= 1) {
-    return (decoded.width, decoded.height, const [], const []);
+    return (decoded.width, decoded.height, const [], const [], decodeUs, 0);
   }
+  sw
+    ..reset()
+    ..start();
   final rects = <(int, int, int, int)>[];
   final jpegs = <Uint8List>[];
   for (final t in tiles) {
@@ -185,33 +194,62 @@ List<PostBox> mergePostBoxes(List<PostBox> boxes, double overlapThresh) {
     rects.add((t.left, t.top, t.width, t.height));
     jpegs.add(Uint8List.fromList(img.encodeJpg(crop, quality: 90)));
   }
-  return (decoded.width, decoded.height, rects, jpegs);
+  return (decoded.width, decoded.height, rects, jpegs, decodeUs,
+      sw.elapsedMicroseconds);
 }
 
 /// Wraps a plain single-image [base] predictor into a tiled one, returning
 /// the same result-map shape `YOLO.predict` produces (a 'detections' list
 /// with `className`/`confidence`/`normalizedBox`), so the batch driver's
 /// parsing works unchanged.
+///
+/// When [profile] is given (round 168, perf review E6 step 1) every phase's
+/// wall time is accumulated into it — behaviour is identical either way, the
+/// stopwatches just answer where a SAHI run's time actually goes.
 PredictFn sahiPredictFn({
   required PredictFn base,
   required SahiOptions options,
   required int modelInputPx,
+  SahiPhaseProfile? profile,
 }) {
   final tileSide = options.effectiveTileSide(modelInputPx);
   return (Uint8List bytes) async {
+    final sw = Stopwatch()..start();
     final tiled = await compute(tileWorker, (
       bytes,
       tileSide,
       options.overlapFrac,
     ));
+    if (profile != null) {
+      // The worker reports its in-isolate decode/prep time; what remains of
+      // the compute() total is isolate startup + the byte copies both ways.
+      profile.photos++;
+      final decodeUs = tiled?.$5 ?? 0;
+      final prepUs = tiled?.$6 ?? 0;
+      profile.sourceDecodeUs += decodeUs;
+      profile.tilePrepUs += prepUs;
+      profile.tileTransferUs += max(
+        0,
+        sw.elapsedMicroseconds - decodeUs - prepUs,
+      );
+    }
     final all = <PostBox>[];
     var ranTiles = false;
     if (tiled != null && tiled.$3.isNotEmpty) {
       ranTiles = true;
-      final (imgW, imgH, rects, jpegs) = tiled;
+      if (profile != null) profile.tiledPhotos++;
+      final (imgW, imgH, rects, jpegs, _, _) = tiled;
       for (var i = 0; i < rects.length; i++) {
         final (tl, tt, tw, th) = rects[i];
-        for (final b in boxesFromPredictResult(await base(jpegs[i]))) {
+        sw
+          ..reset()
+          ..start();
+        final tileResult = await base(jpegs[i]);
+        if (profile != null) {
+          profile.tiles++;
+          profile.tilePredictUs += sw.elapsedMicroseconds;
+        }
+        for (final b in boxesFromPredictResult(tileResult)) {
           // Tile-normalized → whole-photo-normalized coordinates.
           final mapped = PostBox(
             className: b.className,
@@ -235,9 +273,21 @@ PredictFn sahiPredictFn({
     // failed — the native side may still decode what the Dart codec can't),
     // otherwise only when enabled.
     if (!ranTiles || options.fullImagePass) {
-      all.addAll(boxesFromPredictResult(await base(bytes)));
+      sw
+        ..reset()
+        ..start();
+      final fullResult = await base(bytes);
+      if (profile != null) {
+        profile.fullPasses++;
+        profile.fullPredictUs += sw.elapsedMicroseconds;
+      }
+      all.addAll(boxesFromPredictResult(fullResult));
     }
+    sw
+      ..reset()
+      ..start();
     final merged = mergePostBoxes(all, options.mergeIou);
+    if (profile != null) profile.mergeUs += sw.elapsedMicroseconds;
     return {
       'detections': [
         for (final b in merged)

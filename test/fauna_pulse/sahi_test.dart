@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:fauna_pulse/fauna_pulse/postprocess/post_detector.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/sahi.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/sahi_profile.dart';
 
 void main() {
   group('planTiles', () {
@@ -307,6 +308,73 @@ void main() {
       final boxes = boxesFromPredictResult(await predict(photo64));
       expect(boxes, hasLength(1)); // sliver gone, insect kept
       expect(boxes.single.bottom - boxes.single.top, closeTo(0.148, 0.01));
+    });
+
+    // Round 168 (perf review E6 step 1): the phase profile answers where a
+    // SAHI run's wall time goes. Counts are exact; times only get lower-bound
+    // checks (a 5 ms fake predictor guarantees ≥ 5 ms per call).
+    test('phase profile counts tiles/passes and accumulates phase times',
+        () async {
+      final profile = SahiPhaseProfile();
+      final predict = sahiPredictFn(
+        base: (bytes) async {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          return const {'detections': []};
+        },
+        options: const SahiOptions(enabled: true, overlapFrac: 0.25),
+        modelInputPx: 32, // 64 px photo, 32 px tiles → 3×3 grid + full pass
+        profile: profile,
+      );
+      await predict(photo64);
+      expect(profile.photos, 1);
+      expect(profile.tiledPhotos, 1);
+      expect(profile.tiles, 9);
+      expect(profile.fullPasses, 1);
+      expect(profile.sourceDecodeUs, greaterThan(0));
+      expect(profile.tilePrepUs, greaterThan(0));
+      expect(profile.tileTransferUs, greaterThanOrEqualTo(0));
+      expect(profile.tilePredictUs, greaterThanOrEqualTo(9 * 5000));
+      expect(profile.fullPredictUs, greaterThanOrEqualTo(5000));
+      final json = profile.toJson();
+      expect(json['tiles'], 9);
+      expect(json['tile_predict_ms'], greaterThanOrEqualTo(45));
+      expect(
+        json['tile_overhead_ms'],
+        (profile.tileOverheadUs / 1000).round(),
+      );
+    });
+
+    test('phase profile: a no-tile photo counts only the fallback full pass',
+        () async {
+      final profile = SahiPhaseProfile();
+      final predict = sahiPredictFn(
+        base: (bytes) async => const {'detections': []},
+        options: const SahiOptions(enabled: true, fullImagePass: false),
+        modelInputPx: 128, // tile bigger than the 64 px photo → tiling no-op
+        profile: profile,
+      );
+      await predict(photo64);
+      expect(profile.photos, 1);
+      expect(profile.tiledPhotos, 0);
+      expect(profile.tiles, 0);
+      expect(profile.fullPasses, 1);
+      expect(profile.tilePrepUs, 0); // the worker never cut tiles
+    });
+
+    test('without a profile behaviour is unchanged (null stays cheap)',
+        () async {
+      var calls = 0;
+      final predict = sahiPredictFn(
+        base: (bytes) async {
+          calls++;
+          return const {'detections': []};
+        },
+        options: const SahiOptions(enabled: true, overlapFrac: 0.25),
+        modelInputPx: 32,
+      );
+      final result = await predict(photo64);
+      expect(calls, 10);
+      expect(result['detections'], isEmpty);
     });
   });
 }

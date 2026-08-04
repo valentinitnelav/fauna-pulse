@@ -31,6 +31,7 @@ import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart';
 import '../postprocess/sahi.dart';
+import '../postprocess/sahi_profile.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import 'session_summary_screen.dart';
@@ -344,13 +345,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           );
       // SAHI (round 139): tiling is a pure wrapper around the plain
       // predictor — the driver and all downstream logic see merged boxes.
+      // The phase profile (round 168, perf review E6 step 1) collects where a
+      // SAHI run's time goes; it is written into the post_end record.
       final modelInputPx = model.inputSize ?? 640;
+      final profile = _sahiEnabled ? SahiPhaseProfile() : null;
       final detector = PostDetector(
         predict: _sahiEnabled
             ? sahiPredictFn(
                 base: base,
                 options: _sahiOptions,
                 modelInputPx: modelInputPx,
+                profile: profile,
               )
             : base,
       );
@@ -366,6 +371,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         ),
         force: _forceReanalyze,
         appVersion: '${info.version}+${info.buildNumber}',
+        phaseProfile: profile,
         isCancelled: () => _cancelRequested,
         onProgress: (done, total, avgMs) {
           if (!mounted) return;
@@ -390,11 +396,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
     if (!mounted) return;
     setState(() => _running = false);
+    // The total wall time (round 168): shown here and logged as `elapsed_ms`
+    // in the post_end record, so the user learns what a run of this session
+    // costs — SAHI multiplies inferences per photo, and this is the honest
+    // bottom line of that choice.
     final message = failure != null
         ? 'Analysis failed: $failure'
         : result!.cancelled
-        ? 'Stopped — ${result.processed} photos analyzed (resumable).'
-        : 'Done: ${result.processed} photos analyzed'
+        ? 'Stopped — ${result.processed} photos analyzed '
+              'in ${_fmtElapsed(result.elapsed)} (resumable).'
+        : 'Done: ${result.processed} photos analyzed '
+              'in ${_fmtElapsed(result.elapsed)}'
               '${result.failed > 0 ? ', ${result.failed} failed' : ''}'
               '${result.skippedDone > 0 ? ' (${result.skippedDone} were already done)' : ''}.';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -419,6 +431,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final m = remaining.inMinutes;
     final s = remaining.inSeconds % 60;
     return m > 0 ? '~$m min ${s.toString().padLeft(2, '0')} s left' : '~$s s left';
+  }
+
+  /// "2 h 5 min" / "3 min 07 s" / "42 s" — the finished run's wall time for
+  /// the completion message (round 168).
+  String _fmtElapsed(Duration d) {
+    if (d.inHours > 0) return '${d.inHours} h ${d.inMinutes % 60} min';
+    if (d.inMinutes > 0) {
+      return '${d.inMinutes} min ${(d.inSeconds % 60).toString().padLeft(2, '0')} s';
+    }
+    return '${d.inSeconds} s';
   }
 
   @override

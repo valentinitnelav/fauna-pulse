@@ -1237,6 +1237,31 @@ remaining work.
   MEASUREMENT; offline only, no live-camera effect. Cost: 2-4 days plus
   increased fork-maintenance burden.
 
+**Step 1 done (round 168).** `postprocess/sahi_profile.dart`:
+`SahiPhaseProfile`, a per-run accumulator (microseconds internally so
+sub-millisecond phases don't round away; JSON in ms) filled by
+`sahiPredictFn(profile:)` and embedded by `PostDetector.run(phaseProfile:)`
+into the `post_end` record as `phases`. Phase split: `source_decode_ms` +
+`tile_prep_ms` (timed INSIDE the tile worker isolate and returned in its
+record — the isolate boundary hides them from the caller),
+`tile_transfer_ms` (compute() wall minus the in-isolate work),
+`tile_predict_ms` / `full_predict_ms` (per-call stopwatches around the
+predict channel round trips — one lump each, verified this round that the
+native `predictSingleImage` response carries NO timing fields, so channel
+transfer / native JPEG decode / inference cannot be split from Dart, exactly
+the bounding note's expectation), `merge_ms`, plus counts and the
+`tile_overhead_ms` convenience sum (the gate's Dart-visible numerator).
+`post_end` also gains `elapsed_ms` for EVERY run (owner request: the total
+run wall time, also shown in the completion message, e.g. "Done: 412 photos
+analyzed in 18 min 05 s"). No behavior change with a null profile; no new
+user setting (instrumentation is free and always on for SAHI runs). 4 new
+tests (phase counts + lower-bound times via a delayed fake predictor,
+no-tile fallback accounting, null-profile parity, post_end embedding);
+DATA_GUIDE §6 documents the new fields. Gate evaluation still owed: cooled
+paired SAHI runs on the phones, then compare `tile_overhead_ms` (plus the
+un-splittable native decode share inside `tile_predict_ms`) against
+`elapsed_ms` — under 15% means E6 closes as a skipped lead.
+
 ### E7. [ ] Three small cleanups (first bullet reworded after verification)
 
 - Coalesce the thermal/power reads (REWORDED r160: codex's original premise,

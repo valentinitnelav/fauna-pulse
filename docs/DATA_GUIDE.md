@@ -530,6 +530,18 @@ Every record carries `time_ms`/`time_iso` (when it was written). Types:
   `error` string and empty `boxes`.
 * `post_end` — one per run: `processed`, `failed`, `skipped_done`,
   `ended_normally` (plus `reason: "cancelled"` when stopped mid-run).
+  Since round 168 also `elapsed_ms` (the run's total wall time, matching
+  the duration the app shows when the run finishes) and, for SAHI runs
+  only, a `phases` map splitting that time by pipeline phase: counts
+  `photos`, `tiled_photos`, `tiles`, `full_passes`, and millisecond totals
+  `source_decode_ms` (decoding each source photo), `tile_prep_ms` (cutting
+  tiles + re-encoding them to JPEG), `tile_transfer_ms` (background-worker
+  startup and byte copies), `tile_predict_ms` / `full_predict_ms` (the
+  native detector calls — transfer, native decode and inference in one
+  lump), `merge_ms` (duplicate merge), and the convenience sum
+  `tile_overhead_ms` (= everything tiling adds outside the detector
+  calls). All phase times are summed across the whole run; the difference
+  between `elapsed_ms` and the phase sum is file I/O and bookkeeping.
 * `post_cleanup` — audit record of the optional keep/delete storage triage
   (which files were deleted and under which keep rule).
 

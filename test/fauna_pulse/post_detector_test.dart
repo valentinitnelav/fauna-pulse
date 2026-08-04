@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/post_detector.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/sahi_profile.dart';
 
 void main() {
   group('capturedAtMsFromPhotoName', () {
@@ -159,6 +160,30 @@ void main() {
       expect((dets.first['boxes'] as List).single['class_name'], 'bee');
       expect(recs.last['type'], 'post_end');
       expect(recs.last['ended_normally'], isTrue);
+      // Round 168: every run logs its total wall time.
+      expect(recs.last['elapsed_ms'], greaterThanOrEqualTo(0));
+      // No profile passed (plain run) → no phases block.
+      expect(recs.last.containsKey('phases'), isFalse);
+    });
+
+    test('post_end embeds the SAHI phase profile when one is passed (r168)',
+        () async {
+      final profile = SahiPhaseProfile()
+        ..photos = 2
+        ..tiledPhotos = 2
+        ..tiles = 8
+        ..fullPasses = 2
+        ..tilePredictUs = 123456; // 123.456 ms → rounds to 123
+      final detector = PostDetector(predict: (_) async => fakeResult());
+      await detector.run(sessionDir, config: config, phaseProfile: profile);
+
+      final end = records().last;
+      expect(end['type'], 'post_end');
+      final phases = end['phases'] as Map<String, dynamic>;
+      expect(phases['photos'], 2);
+      expect(phases['tiles'], 8);
+      expect(phases['tile_predict_ms'], 123);
+      expect(phases['tile_overhead_ms'], 0);
     });
 
     test('a second run skips already-processed photos', () async {

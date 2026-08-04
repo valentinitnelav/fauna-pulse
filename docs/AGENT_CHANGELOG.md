@@ -5850,3 +5850,38 @@ plus pulled sessions: Xiaomi session_41, Samsung session_2). Doc-only round, no 
   PERF_AND_ROBUSTNESS_REVIEW.md; OVERVIEW Part E status line updated and both
   device-quirk entries now record their AE menus (durable hardware facts).
 
+## Round 168 (2026-08-04): E6 step 1, SAHI phase profiling + run wall time
+
+Perf review E6 ("native tiled-image API only if profiling justifies it") step 1:
+instrument where a SAHI batch run's time actually goes, so the 15%-of-wall-time
+gate can be evaluated on real runs. Plus the owner request: show and log every
+analysis run's total duration.
+
+- New `postprocess/sahi_profile.dart`: `SahiPhaseProfile`, a per-run accumulator.
+  Internally microseconds (many sub-ms events, e.g. merge, must not round away),
+  JSON in whole ms. Counts: `photos`, `tiled_photos`, `tiles`, `full_passes`.
+  Times: `source_decode_ms` + `tile_prep_ms` (measured INSIDE the tileWorker
+  isolate and returned in its record, the isolate boundary hides them otherwise),
+  `tile_transfer_ms` (compute() wall minus in-isolate work = isolate spawn + byte
+  copies), `tile_predict_ms` / `full_predict_ms` (stopwatch around each predict
+  channel call; one lump on purpose, the native predictSingleImage response has
+  NO timing fields so channel/native-decode/inference cannot be split from Dart),
+  `merge_ms`, and the `tile_overhead_ms` convenience sum (the E6 gate's
+  Dart-visible numerator).
+- `sahi.dart`: `tileWorker` returns two extra ints (decode/prep µs);
+  `sahiPredictFn` gains optional `profile:`; behavior identical when null.
+- `post_detector.dart`: `run(phaseProfile:)`; `post_end` gains `elapsed_ms`
+  (EVERY run, plain and SAHI) and `phases` (SAHI runs).
+- `analysis_screen.dart`: builds the profile when SAHI is on, passes it to both;
+  completion snackbar now reports the total wall time ("Done: N photos analyzed
+  in 18 min 05 s", also on the Stopped branch), `_fmtElapsed` helper. No new
+  user setting: instrumentation is free and always on (r149 precedent).
+- Tests: +4 (phase counts and lower-bound times via a 5 ms fake predictor,
+  no-tile fallback accounting, null-profile parity, post_end embedding +
+  elapsed_ms presence and plain runs carrying no phases block).
+- Docs: DATA_GUIDE §6 post_end fields; review E6 step-1 done note.
+- Gate evaluation owed (owner): cooled paired SAHI runs, then compare
+  tile_overhead_ms (+ the native decode share hidden in tile_predict_ms)
+  against elapsed_ms; under 15% closes E6 as a skipped lead.
+- flutter analyze clean; suite 425 tests green.
+
