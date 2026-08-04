@@ -11,6 +11,7 @@ This guide shows two ways to get the app running on an Android phone:
 | **A. Install the ready-made app** | You just want to **test** the app | An Android phone + the app `.apk` file | a few minutes, no coding |
 | **B. Build from source** | You want to **change the code** | Windows/MacOS/Linux computer + developer tools | ~1 hour first time (installing software) |
 
+Supplementary sections are marked with **S**.
 
 ---
 
@@ -30,7 +31,7 @@ Google Play intends it in this way, but the app is safe to install.
 
 The app ships with one **general-purpose** model, so it runs immediately, but that
 model does not recognise insects. For insect work you need a purpose-trained model
-(see [Getting the models](#getting-the-models)). Once you have one or more `.tflite`
+(see [S1. Getting the models](#s1-getting-the-models)). Once you have one or more `.tflite`
 model files to test, load them in **either** way:
 
 - **In-app (easiest):** open **FaunaPulse → Settings (gear icon) → Import…**,
@@ -82,7 +83,7 @@ flutter pub get           # retrieve or upgrade flutter dependencies
 
 ### B2. Add the models
 
-Models are **not** in the repo (see [Getting the models](#getting-the-models)).
+Models are **not** in the repo (see [S1. Getting the models](#s1-getting-the-models)).
 Two options:
 
 - build/run first, then use the in-app **Import…** button (Track A3).
@@ -185,11 +186,11 @@ unsigned or debug-signed app can never be published by accident. Debug builds
 
 ### B5. Build an installable `.apk` to share
 
-Note: make sure to have the `key.properties` file existing in the `.../fauna-pulse/android/` folder (see B4).
+Note: make sure to have the `key.properties` file existing in the `.../fauna-pulse/android/` folder (see section [B4](#b4-set-up-release-signing-one-time-maintainers-only)).
 
 Also, in case you have sessions that are stored on the phone and they might be 
 still useful for debugging purposes or want to keep that collected data for 
-further testing, make sure to back the up on your computer first - see [Pulling data from the smartphone](#pulling-data-from-the-smartphone).
+further testing, make sure to back the up on your computer first - see [S2. Pulling data from the smartphone](#s2-pulling-data-from-the-smartphone).
 
 ```bash
 cd fauna-pulse                  # navigate to the git repository (cloned on your computer)
@@ -274,7 +275,7 @@ To understand the difference between **debug** & **release**, imagine preparing 
 
 ---
 
-## Getting the models
+## S1. Getting the models
 
 Model weights (`.tflite` files) are **deliberately not stored in this repository**, for
 two reasons: they are large, and **some detectors belong to collaborators and must not
@@ -291,11 +292,11 @@ The in-app model picker is built **dynamically** from whatever `.tflite` files i
 Models can also be placed in `assets/models/` / `assets/models/custom/` before building and running the app (those folders stay
 git-ignored).
 
-## Pulling data from the smartphone
+## S2. Pulling data from the smartphone
 
-### USB transfer via Media Transfer Protocol (MTP)
+### S2.1. USB transfer via Media Transfer Protocol (MTP)
 
-#### On Linux
+#### S2.1.1. On Linux
 
 Connect your Android smartphone to your computer and allow File Transfer option. On your smartphone you should get a info message where you can allow the file transfer option.
 
@@ -303,16 +304,16 @@ Then you can see the content of the folder associated with the app on your file 
 
 You can copy or add files and folders between your computer and the smartphone using your favorite file explorer.
 
-#### On Windows
+#### S2.1.2 On Windows
 
 > To be added.
 
 
-### USB transfer via Android Debug Bridge (ADB)
+### S2.2. USB transfer via Android Debug Bridge (ADB)
 
 Need to install [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools#downloads). There you get download links for all 3 major operating systems: Windows, Mac, Linux.
 
-#### On Linux
+#### S2.2.1. On Linux
 
 Can also install ADB tools with these commands:
 
@@ -373,6 +374,6 @@ adb -s 2b2dc560 pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
 adb pull -a /sdcard/Android/data/com.faunapulse.app/files/ ~/InsectDetectApp/sessions/Xiaomi/
 ```
 
-#### On Windows
+#### S2.2.2. On Windows
 
 > To be added.
