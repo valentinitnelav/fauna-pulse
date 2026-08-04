@@ -366,9 +366,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         CaptureTrigger.timelapse =>
           'Photos on a pure clock — no AI, no motion check: the cheapest '
               'mode. Each burst takes a photo every "Photo step" for "Photo '
-              'duration", and bursts repeat per "Repeat burst every" below. '
-              'Set the repeat ≤ the duration for a continuous time-lapse. '
-              'Meant for running a detector on the photos afterwards.',
+              'duration", then pauses for "Time between bursts" below before '
+              'the next burst. Set the pause to 0 for a continuous '
+              'time-lapse. Meant for running a detector on the photos '
+              'afterwards.',
       }, style: const TextStyle(color: Colors.white54, fontSize: 12)),
       const SizedBox(height: 12),
 
@@ -408,17 +409,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       if (_c.timeLapseCapture) ...[
         DurationSettingField(
-          label: 'Repeat burst every',
-          valueSeconds: _c.timeLapseIntervalSeconds,
-          minSeconds: 1,
+          label: 'Time between bursts',
+          valueSeconds: _c.timeLapseGapSeconds,
+          minSeconds: 0,
           maxSeconds: 86400,
           helperText:
-              'Time from the START of one photo burst to the start of the '
-              'next (so "every 30 min" stays every 30 min regardless of the '
-              'burst length). Set it ≤ the photo duration for a continuous '
-              'time-lapse. Default 30 min.',
+              'The break between photo bursts: after each burst the camera '
+              'waits this long before the next burst starts. This break is '
+              'when "Turn camera off between bursts" can power the camera '
+              'down. 0 = no break (continuous photos every step). '
+              'Default 30 min.',
           onChanged: (v) =>
-              setState(() => _c = _c.copyWith(timeLapseIntervalSeconds: v)),
+              setState(() => _c = _c.copyWith(timeLapseGapSeconds: v)),
         ),
         // Round 163 (perf review E3): camera parking between bursts.
         SwitchListTile(
@@ -433,7 +435,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'the next one (the wake lead below). The preview freezes while '
             'it is off — that is normal, not a crash. Needs ≥ 30 s between '
             'bursts'
-            '${_c.timeLapseIntervalSeconds - _c.durationSeconds < 30 ? ' (your current burst timing leaves less — the camera will stay on)' : ''}. '
+            '${_c.timeLapseGapSeconds < 30 ? ' (your current "Time between bursts" is less — the camera will stay on)' : ''}. '
             'If the camera ever fails to come back in time, it stays on for '
             'the rest of the session and the failure is logged. Combines '
             'with the screen-off (moon) button — use both for unattended '

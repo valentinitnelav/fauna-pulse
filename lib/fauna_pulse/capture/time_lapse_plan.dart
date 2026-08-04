@@ -8,10 +8,13 @@
 /// A *burst* reuses the shared capture window the scheduler already
 /// implements for motion events (first photo at the burst start, then one per
 /// step, stopping after the photo duration); this class only decides WHEN
-/// bursts happen: one starts every [intervalMs], counted START-TO-START (so
-/// "every 30 minutes" stays every 30 minutes regardless of burst length). An
-/// interval ≤ the burst duration means the bursts touch or overlap —
-/// [continuous] time-lapse, photos flowing every step for the whole session.
+/// bursts happen. Round 174 (owner decision): the spacing is a BREAK between
+/// bursts ([gapMs], one burst's end to the next one's start — the "Time
+/// between bursts" setting, and exactly the window in which the round-163
+/// camera parking may power the camera off). Before round 174 the setting was
+/// START-TO-START spacing, which silently meant "continuous" whenever it was
+/// ≤ the photo duration — the owner's session_2 surprise (10 s bursts
+/// "every 10 s" never paused).
 class TimeLapsePlan {
   /// Milliseconds between photos inside a burst (the "Photo step" setting).
   final int stepMs;
@@ -21,51 +24,50 @@ class TimeLapsePlan {
   /// window's exclusive `> durationMs` cutoff).
   final int burstMs;
 
-  /// Milliseconds from the start of one burst to the start of the next.
-  final int intervalMs;
+  /// Break between bursts in milliseconds (the "Time between bursts"
+  /// setting): from one burst's END to the next burst's START. 0 = no break,
+  /// photos flow continuously every step.
+  final int gapMs;
 
   const TimeLapsePlan({
     required this.stepMs,
     required this.burstMs,
-    required this.intervalMs,
+    required this.gapMs,
   }) : assert(stepMs > 0),
        assert(burstMs > 0),
-       assert(intervalMs > 0);
+       assert(gapMs >= 0);
 
-  /// Bursts touch or overlap: photos never stop.
-  bool get continuous => intervalMs <= burstMs;
+  /// No break configured: photos never stop.
+  bool get continuous => gapMs == 0;
 
-  /// One cycle's length: [intervalMs] normally (start-to-start burst
-  /// spacing), but [burstMs] in [continuous] mode. The caller re-arms the
-  /// shared capture window whenever the cycle index CHANGES, and that window
-  /// hard-stops [burstMs] after its start — so continuous mode must present
-  /// back-to-back [burstMs] cycles to keep the window alive. The original
-  /// round-97 "everything is cycle 0" definition starved it: the owner's
-  /// step 1 s / duration 100 s / interval 5 s session took exactly the first
-  /// 100 photos and then nothing for the rest of the hour (round 173).
-  int get _cycleMs => continuous ? burstMs : intervalMs;
+  /// One full cycle: a burst plus its break. With no break this is just
+  /// [burstMs] — cycles must keep advancing even then, because the shared
+  /// capture window hard-stops [burstMs] after its start and the caller
+  /// re-arms it only on a cycle CHANGE (round 173: a "cycle 0 forever"
+  /// definition starved the window after the first photo duration).
+  int get cycleMs => burstMs + gapMs;
 
-  /// Which cycle [sinceStartMs] falls in (0-based). In [continuous] mode this
-  /// advances every [burstMs] (each advance re-arms the capture window for a
-  /// seamless immediate first photo — one photo per step across the seam,
-  /// no duplicate, no gap).
+  /// Which cycle [sinceStartMs] falls in (0-based). Every advance re-arms the
+  /// capture window: at a burst start after a break, or seamlessly at the
+  /// window seam when [continuous] (one photo per step across it — no
+  /// duplicate, no gap).
   int cycleIndexAt(int sinceStartMs) {
     final t = sinceStartMs < 0 ? 0 : sinceStartMs;
-    return t ~/ _cycleMs;
+    return t ~/ cycleMs;
   }
 
   /// Whether photos should be flowing at [sinceStartMs].
   bool inBurstAt(int sinceStartMs) {
     if (continuous) return true;
     final t = sinceStartMs < 0 ? 0 : sinceStartMs;
-    return t % intervalMs <= burstMs;
+    return t % cycleMs <= burstMs;
   }
 
   /// Start (ms since recording start) of the next cycle strictly after
   /// [sinceStartMs]'s. In [continuous] mode that is the next window re-anchor
   /// (photos never pause around it).
   int nextBurstStartAt(int sinceStartMs) =>
-      (cycleIndexAt(sinceStartMs) + 1) * _cycleMs;
+      (cycleIndexAt(sinceStartMs) + 1) * cycleMs;
 
   /// How long the driving timer should sleep from [sinceStartMs]: one step
   /// while photos are flowing, otherwise until the next burst begins. The

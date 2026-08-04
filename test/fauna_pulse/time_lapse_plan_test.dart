@@ -12,8 +12,9 @@ import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 
 void main() {
-  // A burst of 3 s (photos at 0/1/2/3 s), repeated every 10 s start-to-start.
-  const plan = TimeLapsePlan(stepMs: 1000, burstMs: 3000, intervalMs: 10000);
+  // A burst of 3 s (photos at 0/1/2/3 s), then a 7 s break: bursts start
+  // every 10 s (r174: the configured number is the BREAK, not start-to-start).
+  const plan = TimeLapsePlan(stepMs: 1000, burstMs: 3000, gapMs: 7000);
 
   group('TimeLapsePlan burst phases', () {
     test('the first burst starts with the recording', () {
@@ -28,13 +29,27 @@ void main() {
       expect(plan.inBurstAt(9999), isFalse);
     });
 
-    test('the next burst starts exactly one interval after the previous '
-        'START (start-to-start, independent of burst length)', () {
+    test('the next burst starts one break AFTER the previous burst ends '
+        '(r174 gap semantics: burst 3 s + break 7 s → starts every 10 s)', () {
       expect(plan.inBurstAt(10000), isTrue);
       expect(plan.cycleIndexAt(10000), 1);
       expect(plan.nextBurstStartAt(0), 10000);
       expect(plan.nextBurstStartAt(9999), 10000);
       expect(plan.nextBurstStartAt(10000), 20000);
+    });
+
+    // The owner's round-174 session_2 expectation: 10 s bursts with a REAL
+    // 10 s break between them (under the old start-to-start semantics this
+    // exact configuration silently meant "continuous" — the reported bug).
+    test('equal burst and break really pause: 10 s on, 10 s off, repeat', () {
+      const owner = TimeLapsePlan(stepMs: 1000, burstMs: 10000, gapMs: 10000);
+      expect(owner.continuous, isFalse);
+      expect(owner.inBurstAt(10000), isTrue); // burst end (inclusive)
+      expect(owner.inBurstAt(10001), isFalse); // the break
+      expect(owner.inBurstAt(19999), isFalse);
+      expect(owner.inBurstAt(20000), isTrue); // next burst starts
+      expect(owner.cycleIndexAt(20000), 1);
+      expect(owner.nextTickDelayMs(11000), 9000); // sleep out the break
     });
 
     test('negative time (clock skew) is treated as the recording start', () {
@@ -60,8 +75,8 @@ void main() {
     });
   });
 
-  group('continuous mode (interval ≤ duration → photos never stop)', () {
-    const cont = TimeLapsePlan(stepMs: 500, burstMs: 5000, intervalMs: 5000);
+  group('continuous mode (no break → photos never stop)', () {
+    const cont = TimeLapsePlan(stepMs: 500, burstMs: 5000, gapMs: 0);
 
     test('is detected and always in burst', () {
       expect(cont.continuous, isTrue);
@@ -98,7 +113,7 @@ void main() {
       const owner = TimeLapsePlan(
         stepMs: 1000,
         burstMs: 100000,
-        intervalMs: 5000,
+        gapMs: 0, // was "repeat every 5 s" <= duration, i.e. continuous
       );
       final s = RoiCaptureScheduler(
         framesDir: Directory('${Directory.systemTemp.path}/tl_plan_test'),

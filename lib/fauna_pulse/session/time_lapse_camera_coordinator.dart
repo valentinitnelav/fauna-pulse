@@ -80,11 +80,11 @@ class TimeLapseCameraCoordinator {
   TimeLapseCameraState _state = TimeLapseCameraState.running;
   TimeLapseCameraState get state => _state;
 
-  /// Whether this plan can ever park: bursts must really end (non-continuous)
-  /// and the start-to-start interval must leave ≥ [minIdleGapMs] of idle
-  /// time between a burst's end and the next burst's start.
-  bool get parkingPossible =>
-      !plan.continuous && plan.intervalMs - plan.burstMs >= minIdleGapMs;
+  /// Whether this plan can ever park: the configured break between bursts
+  /// ("Time between bursts", round 174 — the exact window the camera can be
+  /// off) must be at least [minIdleGapMs]. A continuous plan has no break at
+  /// all (gap 0), so it can never park.
+  bool get parkingPossible => plan.gapMs >= minIdleGapMs;
 
   /// True while the absence of frames is intentional — the camera-delivery
   /// watchdog (which reads 10 s of silence as a camera failure) must skip

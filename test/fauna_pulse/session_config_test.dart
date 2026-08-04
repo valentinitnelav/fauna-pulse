@@ -426,17 +426,56 @@ void main() {
   );
 
   test(
-    'time-lapse burst interval: default 30 min, survives the round-trip',
+    'time between bursts (r174): default 30 min, survives the round-trip',
     () {
-      expect(const SessionConfig().timeLapseIntervalSeconds, 1800.0);
+      expect(const SessionConfig().timeLapseGapSeconds, 1800.0);
       final restored = SessionConfig.fromJson(
-        const SessionConfig()
-            .copyWith(timeLapseIntervalSeconds: 600.0)
-            .toJson(),
+        const SessionConfig().copyWith(timeLapseGapSeconds: 600.0).toJson(),
       );
-      expect(restored.timeLapseIntervalSeconds, 600.0);
-      // Configs saved before the key existed fall back to the default.
-      expect(SessionConfig.fromJson(const {}).timeLapseIntervalSeconds, 1800.0);
+      expect(restored.timeLapseGapSeconds, 600.0);
+      // 0 = continuous is a legal stored value.
+      expect(
+        SessionConfig.fromJson(
+          const SessionConfig().copyWith(timeLapseGapSeconds: 0).toJson(),
+        ).timeLapseGapSeconds,
+        0.0,
+      );
+      // Configs saved before either key existed fall back to the default.
+      expect(SessionConfig.fromJson(const {}).timeLapseGapSeconds, 1800.0);
+    },
+  );
+
+  test(
+    'legacy timeLapseIntervalSeconds (start-to-start, pre-r174) migrates to '
+    'an equivalent break: gap = interval - duration, clamped to 0',
+    () {
+      // 30 min start-to-start with 10 s bursts -> 1790 s break (identical
+      // effective timing).
+      expect(
+        SessionConfig.fromJson(const {
+          'timeLapseIntervalSeconds': 1800.0,
+          'durationSeconds': 10.0,
+        }).timeLapseGapSeconds,
+        1790.0,
+      );
+      // Old interval <= duration meant continuous -> gap 0 (the owner's
+      // r173/174 field configs).
+      expect(
+        SessionConfig.fromJson(const {
+          'timeLapseIntervalSeconds': 10.0,
+          'durationSeconds': 10.0,
+        }).timeLapseGapSeconds,
+        0.0,
+      );
+      // The new key wins when both are present.
+      expect(
+        SessionConfig.fromJson(const {
+          'timeLapseGapSeconds': 60.0,
+          'timeLapseIntervalSeconds': 1800.0,
+          'durationSeconds': 10.0,
+        }).timeLapseGapSeconds,
+        60.0,
+      );
     },
   );
 
@@ -586,7 +625,7 @@ void main() {
     test('mode expectations', () {
       // Detector: only the time-lapse burst settings are inert.
       expect(notApplicableConfigKeys(CaptureTrigger.detector), [
-        'timeLapseIntervalSeconds',
+        'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
       ]);
@@ -595,7 +634,7 @@ void main() {
       final motion = notApplicableConfigKeys(CaptureTrigger.motion);
       expect(motion, contains('modelPath'));
       expect(motion, contains('showBoxes'));
-      expect(motion, contains('timeLapseIntervalSeconds'));
+      expect(motion, contains('timeLapseGapSeconds'));
       expect(motion, contains('timeLapseCameraSleep'));
       expect(motion, contains('timeLapseWakeLeadSeconds'));
       expect(motion, isNot(contains('motionGateWakeSeconds')));
@@ -613,7 +652,7 @@ void main() {
       expect(tl, contains('motionGateWakeSeconds'));
       expect(tl, contains('gtFramesEnabled'));
       expect(tl, contains('gtFrameSeconds'));
-      expect(tl, isNot(contains('timeLapseIntervalSeconds')));
+      expect(tl, isNot(contains('timeLapseGapSeconds')));
       expect(tl, isNot(contains('timeLapseCameraSleep')));
       expect(tl, isNot(contains('timeLapseWakeLeadSeconds')));
       expect(tl, isNot(contains('stepSeconds')));

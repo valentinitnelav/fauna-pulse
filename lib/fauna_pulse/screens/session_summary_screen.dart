@@ -953,8 +953,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // motion-only bool shown in Heat management instead — add() skips null).
     add('Capture trigger', _setting('captureTrigger'));
     if (_timeLapseSession) {
+      // Round 174: the key became a BREAK between bursts. Pre-174 sessions
+      // carry the old start-to-start key instead — show whichever exists,
+      // labeled with its true meaning (never relabel old data).
       add(
-        'Burst repeat interval',
+        'Time between bursts',
+        _setting('timeLapseGapSeconds'),
+        suffix: ' s',
+      );
+      add(
+        'Burst repeat interval (start-to-start, pre-r174)',
         _setting('timeLapseIntervalSeconds'),
         suffix: ' s',
       );

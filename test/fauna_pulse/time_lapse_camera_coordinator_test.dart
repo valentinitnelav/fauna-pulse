@@ -14,21 +14,21 @@ void main() {
     plan: const TimeLapsePlan(
       stepMs: 1000,
       burstMs: 10000,
-      intervalMs: 1800000,
+      gapMs: 1790000,
     ),
   );
 
   group('parkingPossible', () {
-    test('true for sparse plans (10 s burst / 30 min interval)', () {
+    test('true for sparse plans (10 s burst, ~30 min break)', () {
       expect(sparse().parkingPossible, true);
     });
 
-    test('false for continuous time-lapse (interval ≤ burst)', () {
+    test('false for continuous time-lapse (no break configured)', () {
       final c = TimeLapseCameraCoordinator(
         plan: const TimeLapsePlan(
           stepMs: 1000,
           burstMs: 60000,
-          intervalMs: 60000,
+          gapMs: 0,
         ),
       );
       expect(c.parkingPossible, false);
@@ -42,7 +42,7 @@ void main() {
         plan: const TimeLapsePlan(
           stepMs: 1000,
           burstMs: 40000,
-          intervalMs: 60000,
+          gapMs: 20000,
         ),
       );
       expect(c.parkingPossible, false);
@@ -54,7 +54,7 @@ void main() {
         plan: const TimeLapsePlan(
           stepMs: 1000,
           burstMs: 30000,
-          intervalMs: 60000,
+          gapMs: 30000,
         ),
       );
       expect(c.parkingPossible, true);
@@ -110,7 +110,7 @@ void main() {
         plan: const TimeLapsePlan(
           stepMs: 1000,
           burstMs: 10000,
-          intervalMs: 1800000,
+          gapMs: 1790000,
         ),
         prewakeLeadMs: 30000,
       );

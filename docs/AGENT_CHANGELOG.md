@@ -6075,3 +6075,40 @@ photos). Verified to fail on the unfixed code with exactly the field numbers
 
 flutter analyze clean; suite 437 tests green; debug APK builds.
 
+## Round 174 (2026-08-04): "Time between bursts" (gap semantics, owner decision)
+
+Owner follow-up to r173: "Repeat burst every" should be the BREAK between
+bursts, not start-to-start spacing (session_2: duration 10 s + "repeat every"
+10 s was expected to pause 10 s between bursts; under start-to-start semantics
+it legally meant continuous). The break framing also matches camera parking,
+which happens exactly in that break.
+
+- SessionConfig: new key `timeLapseGapSeconds` (default 1800 = 30 min break;
+  0 = continuous) replaces `timeLapseIntervalSeconds`. Migration in fromJson
+  (`_timeLapseGapFromJson`): new key wins; else gap = legacy interval −
+  duration clamped ≥ 0 (old interval ≤ duration meant continuous → gap 0), so
+  a migrated config's effective timing is unchanged. notApplicableConfigKeys
+  updated (detector/motion modes list the new key).
+- TimeLapsePlan rewritten gap-based: `gapMs` (≥ 0), `cycleMs` = burst + gap
+  (public; the camera_sleep wake record's burst-anchor math uses it),
+  `continuous` ⇔ gap 0. This ABSORBS the r173 special case: cycles always
+  advance every cycleMs, so the tick's re-arm-on-cycle-change contract keeps
+  the capture window alive in every configuration. Coordinator:
+  `parkingPossible` is now simply `plan.gapMs >= minIdleGapMs`.
+- Settings sheet: label "Time between bursts", min 0, helper explains the
+  break + camera-off connection + 0 = continuous; mode help text updated;
+  the camera-off "leaves less than 30 s" hint now reads the gap directly.
+- Summary Settings tab: "Time between bursts" row (new key) + a
+  clearly-labelled "Burst repeat interval (start-to-start, pre-r174)" row for
+  old sessions (add() skips whichever key is absent) — old data is never
+  relabelled with the new meaning.
+- Tests: config round-trip incl. 0, three-case migration test (1800/10 →
+  1790; 10/10 → 0; new key wins), plan tests converted to gap values
+  (numerically identical phases), a new 10 s-on/10 s-off test encoding the
+  owner's session_2 expectation, coordinator plans converted
+  semantics-preserving. Suite 439 tests green; analyze clean; APK builds.
+- Docs: SETTINGS_REFERENCE gains the (previously missing) setting row incl.
+  the migration note; DATA_GUIDE timelapse_capture note updated with the
+  config-key change and cross-version conversion; OVERVIEW defaults row
+  rewritten.
+

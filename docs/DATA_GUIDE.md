@@ -240,13 +240,18 @@ Sessions recorded before round 132 carry no screen-state information.
 
 Fields: `jpeg` (filename in `roi_frames/`), `captured_at_ms` (the trigger
 moment, same convention as `capture` records) and `burst` (0-based index of
-the burst the photo belongs to). `burst` semantics in CONTINUOUS mode
-("Repeat burst every" ≤ "Photo duration", photos flowing nonstop): before
-round 173 it was always `0`; since round 173 it advances every photo-duration
-block (the fix for a field bug where a continuous session silently stopped
-capturing after the first photo duration — sessions recorded on r97–r172
-builds with a continuous configuration contain ONLY that first burst's
-photos).
+the burst the photo belongs to). `burst` semantics in CONTINUOUS mode (since
+round 174: config `timeLapseGapSeconds` = 0, no break; on r97–r173 builds:
+`timeLapseIntervalSeconds` ≤ "Photo duration"): before round 173 it was
+always `0`; since round 173 it advances every photo-duration block (the fix
+for a field bug where a continuous session silently stopped capturing after
+the first photo duration — sessions recorded on r97–r172 builds with a
+continuous configuration contain ONLY that first burst's photos). Round 174
+config-key change: the start record's config block carries
+`timeLapseGapSeconds` (the BREAK between bursts, one burst's end to the next
+one's start); pre-174 sessions carry `timeLapseIntervalSeconds` instead
+(START-TO-START spacing) — convert via gap = interval − duration when
+comparing across the change.
 
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 

@@ -75,9 +75,10 @@ RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
 ///    the motion gate alone decides).
 ///  * **timelapse** — clock-triggered photo bursts, no AI and no motion check
 ///    (round 97): a photo every [SessionConfig.stepSeconds] for
-///    [SessionConfig.durationSeconds] per burst, a new burst every
-///    [SessionConfig.timeLapseIntervalSeconds] (start-to-start). The cheapest
-///    mode — meant for later offline detection/tracking on the saved photos.
+///    [SessionConfig.durationSeconds] per burst, then a
+///    [SessionConfig.timeLapseGapSeconds] break before the next burst
+///    (round 174; 0 = continuous). The cheapest mode — meant for later
+///    offline detection/tracking on the saved photos.
 enum CaptureTrigger { detector, motion, timelapse }
 
 /// Reads the capture trigger from a saved config, accepting both the new
@@ -92,6 +93,22 @@ CaptureTrigger _captureTriggerFromJson(Map<String, dynamic> j) {
   }
   if (j['motionOnlyCapture'] as bool? ?? false) return CaptureTrigger.motion;
   return CaptureTrigger.detector;
+}
+
+/// Reads the time-lapse break between bursts (round 174 key
+/// `timeLapseGapSeconds`), migrating pre-174 configs: their
+/// `timeLapseIntervalSeconds` was START-TO-START burst spacing, so the
+/// equivalent break is interval − photo duration, clamped to ≥ 0 (an old
+/// interval ≤ duration meant continuous, which is now gap 0). The effective
+/// burst timing of a migrated config is unchanged.
+double _timeLapseGapFromJson(Map<String, dynamic> j) {
+  final gap = (j['timeLapseGapSeconds'] as num?)?.toDouble();
+  if (gap != null) return gap < 0 ? 0.0 : gap;
+  final legacy = (j['timeLapseIntervalSeconds'] as num?)?.toDouble();
+  if (legacy == null) return 1800.0;
+  final duration = (j['durationSeconds'] as num?)?.toDouble() ?? 10.0;
+  final migrated = legacy - duration;
+  return migrated < 0 ? 0.0 : migrated;
 }
 
 /// Config keys (as written by [SessionConfig.toJson]) that have NO effect
@@ -136,14 +153,14 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
   switch (trigger) {
     case CaptureTrigger.detector:
       return const [
-        'timeLapseIntervalSeconds',
+        'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
       ];
     case CaptureTrigger.motion:
       return [
         ...aiKeys,
-        'timeLapseIntervalSeconds',
+        'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
       ];
@@ -321,10 +338,10 @@ class SessionConfig {
   ///
   /// [CaptureTrigger.timelapse]: photo bursts on a pure clock, no AI and no
   /// motion check — the cheapest mode. Each burst: first photo at the burst
-  /// start, then every [stepSeconds] for [durationSeconds]; bursts repeat
-  /// every [timeLapseIntervalSeconds] (start-to-start). Set the interval ≤
-  /// the duration for a CONTINUOUS time-lapse. Meant for offline detection/
-  /// tracking on the saved photos afterwards.
+  /// start, then every [stepSeconds] for [durationSeconds]; then a
+  /// [timeLapseGapSeconds] break before the next burst (round 174; 0 = a
+  /// CONTINUOUS time-lapse). Meant for offline detection/tracking on the
+  /// saved photos afterwards.
   final CaptureTrigger captureTrigger;
 
   /// Convenience: motion-triggered photo mode (round 95 name, kept so call
@@ -337,11 +354,17 @@ class SessionConfig {
   /// Convenience: the AI pipeline (detector + tracker) actually runs.
   bool get detectorEnabled => captureTrigger == CaptureTrigger.detector;
 
-  /// Time-lapse mode only: seconds from the START of one photo burst to the
-  /// START of the next (so "every 30 minutes" is 1800 regardless of how long
-  /// each burst lasts). An interval ≤ [durationSeconds] means the bursts touch
-  /// or overlap — photos then flow continuously every [stepSeconds].
-  final double timeLapseIntervalSeconds;
+  /// Time-lapse mode only: the BREAK between photo bursts, in seconds — from
+  /// one burst's end to the next burst's start ("Time between bursts"). This
+  /// break is exactly when [timeLapseCameraSleep] may power the camera off.
+  /// 0 = no break, photos flow continuously every [stepSeconds].
+  ///
+  /// Round 174 (owner decision, after the session_2 surprise): replaces the
+  /// r97 `timeLapseIntervalSeconds`, which was START-TO-START spacing and
+  /// silently meant "continuous" whenever ≤ [durationSeconds]. Legacy configs
+  /// migrate in [SessionConfig.fromJson]: gap = old interval − duration
+  /// (clamped to ≥ 0), so their effective timing is unchanged.
+  final double timeLapseGapSeconds;
 
   /// Time-lapse mode only (round 163, perf review E3): fully turn the camera
   /// off ("park" it) between bursts and turn it back on ~10 s before the next
@@ -539,7 +562,7 @@ class SessionConfig {
     this.motionGateGridSize = 48,
     this.motionGateIdleFps = 5,
     this.captureTrigger = CaptureTrigger.detector,
-    this.timeLapseIntervalSeconds = 1800.0, // every 30 min by default
+    this.timeLapseGapSeconds = 1800.0, // 30 min break between bursts
     this.timeLapseCameraSleep = false,
     this.timeLapseWakeLeadSeconds = 10.0,
     this.streamWidth = 640,
@@ -640,7 +663,7 @@ class SessionConfig {
     int? motionGateGridSize,
     int? motionGateIdleFps,
     CaptureTrigger? captureTrigger,
-    double? timeLapseIntervalSeconds,
+    double? timeLapseGapSeconds,
     bool? timeLapseCameraSleep,
     double? timeLapseWakeLeadSeconds,
     int? streamWidth,
@@ -693,8 +716,7 @@ class SessionConfig {
     motionGateGridSize: motionGateGridSize ?? this.motionGateGridSize,
     motionGateIdleFps: motionGateIdleFps ?? this.motionGateIdleFps,
     captureTrigger: captureTrigger ?? this.captureTrigger,
-    timeLapseIntervalSeconds:
-        timeLapseIntervalSeconds ?? this.timeLapseIntervalSeconds,
+    timeLapseGapSeconds: timeLapseGapSeconds ?? this.timeLapseGapSeconds,
     timeLapseCameraSleep: timeLapseCameraSleep ?? this.timeLapseCameraSleep,
     timeLapseWakeLeadSeconds:
         timeLapseWakeLeadSeconds ?? this.timeLapseWakeLeadSeconds,
@@ -753,7 +775,7 @@ class SessionConfig {
     // Legacy key kept one generation (mirrors the captureMode/fullResPhotos
     // pattern) so round-95/96 parsers still recognise motion-only sessions.
     'motionOnlyCapture': motionOnlyCapture,
-    'timeLapseIntervalSeconds': timeLapseIntervalSeconds,
+    'timeLapseGapSeconds': timeLapseGapSeconds,
     'timeLapseCameraSleep': timeLapseCameraSleep,
     'timeLapseWakeLeadSeconds': timeLapseWakeLeadSeconds,
     'streamWidth': streamWidth,
@@ -826,8 +848,7 @@ class SessionConfig {
     motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
     motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
     captureTrigger: _captureTriggerFromJson(j),
-    timeLapseIntervalSeconds:
-        (j['timeLapseIntervalSeconds'] as num?)?.toDouble() ?? 1800.0,
+    timeLapseGapSeconds: _timeLapseGapFromJson(j),
     timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
     timeLapseWakeLeadSeconds:
         (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 10.0,

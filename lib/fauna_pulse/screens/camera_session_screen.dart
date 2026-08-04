@@ -1741,7 +1741,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _timeLapsePlan = TimeLapsePlan(
         stepMs: (_config.stepSeconds * 1000).round(),
         burstMs: (_config.durationSeconds * 1000).round(),
-        intervalMs: (_config.timeLapseIntervalSeconds * 1000).round(),
+        gapMs: (_config.timeLapseGapSeconds * 1000).round(),
       );
       _timeLapseStartMs = DateTime.now().millisecondsSinceEpoch;
       _tlLastCycle = -1;
@@ -2830,7 +2830,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // The burst this wake serves: the upcoming one on a normal prewake, the
       // CURRENT cycle's on a late (doze-delayed) wake that landed inside it.
       final nextBurstAtMs = plan.inBurstAt(t)
-          ? _timeLapseStartMs + plan.cycleIndexAt(t) * plan.intervalMs
+          ? _timeLapseStartMs + plan.cycleIndexAt(t) * plan.cycleMs
           : _nextBurstEpochMs(plan, nowMs);
       cam.wakeStarted();
       _logger?.logCameraSleep({
