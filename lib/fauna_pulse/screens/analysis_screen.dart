@@ -366,6 +366,18 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         predict: _sahiEnabled
             ? sahiPredictFn(
                 base: base,
+                // Round 177 (perf review E6): the native one-call tiled path
+                // (decode once, crop + infer per tile natively) replaces the
+                // pure-Dart tile pipeline that measured 83-86% of a SAHI
+                // run's wall time; sahiPredictFn falls back to the Dart path
+                // automatically on any native failure.
+                tiledPredict: (bytes, tiles, fullPass) => yolo.predictTiled(
+                  bytes,
+                  tiles: tiles,
+                  fullPass: fullPass,
+                  confidenceThreshold: _confidence,
+                  iouThreshold: _iou,
+                ),
                 options: _sahiOptions,
                 modelInputPx: modelInputPx,
                 profile: profile,

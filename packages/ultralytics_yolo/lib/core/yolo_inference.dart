@@ -76,6 +76,67 @@ class YOLOInference {
     }
   }
 
+  /// FaunaPulse (round 177, perf review E6): tiled inference for the batch/
+  /// SAHI analysis path. ONE channel call: the native side decodes
+  /// [imageBytes] once, crops every [tiles] rectangle
+  /// (`[left, top, width, height]` in source pixels), runs the detector
+  /// sequentially per tile and, when [fullPass] is set, on the whole photo
+  /// too. Returns:
+  ///  - 'imageWidth' / 'imageHeight': the decoded source dimensions (callers
+  ///    verify them against the dimensions they planned the grid for),
+  ///  - 'tiles': one detection list per input rectangle, same element shape
+  ///    as [predict]'s 'detections' but normalized to the TILE,
+  ///  - 'fullPass': the whole-photo detection list (when requested).
+  /// Detect task only; never returns an annotated image.
+  Future<Map<String, dynamic>> predictTiled(
+    Uint8List imageBytes, {
+    required List<List<int>> tiles,
+    bool fullPass = false,
+    double? confidenceThreshold,
+    double? iouThreshold,
+  }) async {
+    if (imageBytes.isEmpty) {
+      throw InvalidInputException('Image data is empty');
+    }
+    if (_task != YOLOTask.detect) {
+      throw InvalidInputException('predictTiled supports the detect task only');
+    }
+    try {
+      final arguments = <String, dynamic>{
+        'image': imageBytes,
+        'tiles': tiles,
+        'fullPass': fullPass,
+        'confidenceThreshold': ?confidenceThreshold,
+        'iouThreshold': ?iouThreshold,
+        if (_instanceId != 'default') 'instanceId': _instanceId,
+      };
+      final result = await _channel.invokeMethod(
+        'predictTiledImage',
+        arguments,
+      );
+      if (result is! Map) {
+        throw InferenceException(
+          'Invalid result format returned from tiled inference',
+        );
+      }
+      final map = MapConverter.convertToTypedMap(result);
+      List<Map<String, dynamic>> detectionsOf(dynamic rawBoxes) =>
+          _processDetectResults(
+            MapConverter.convertBoxesList((rawBoxes as List?) ?? const []),
+          );
+      return {
+        'imageWidth': (map['imageWidth'] as num?)?.toInt() ?? 0,
+        'imageHeight': (map['imageHeight'] as num?)?.toInt() ?? 0,
+        'tiles': [
+          for (final t in (map['tiles'] as List? ?? const [])) detectionsOf(t),
+        ],
+        if (map['fullBoxes'] != null) 'fullPass': detectionsOf(map['fullBoxes']),
+      };
+    } catch (e) {
+      throw YOLOErrorHandler.handleError(e, 'Error during tiled prediction');
+    }
+  }
+
   Map<String, dynamic> _processInferenceResult(Map<dynamic, dynamic> result) {
     final Map<String, dynamic> resultMap = MapConverter.convertToTypedMap(
       result,

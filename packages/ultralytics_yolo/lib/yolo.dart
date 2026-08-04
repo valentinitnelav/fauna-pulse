@@ -264,6 +264,37 @@ class YOLO {
     );
   }
 
+  /// FaunaPulse (round 177, perf review E6): one-call tiled inference for the
+  /// batch/SAHI analysis path — the native side decodes the photo once, crops
+  /// each `[left, top, width, height]` rectangle of [tiles], runs the detector
+  /// per tile (plus the whole photo when [fullPass] is set) and returns
+  /// per-tile detection lists normalized to each tile, with the decoded
+  /// 'imageWidth'/'imageHeight' echoed for verification. Detect task only.
+  /// See `YOLOInference.predictTiled` for the exact result shape.
+  Future<Map<String, dynamic>> predictTiled(
+    Uint8List imageBytes, {
+    required List<List<int>> tiles,
+    bool fullPass = false,
+    double? confidenceThreshold,
+    double? iouThreshold,
+  }) async {
+    if (!_isInitialized) {
+      final success = await loadModel();
+      if (!success) {
+        throw ModelNotLoadedException(
+          'Model failed to load. Cannot perform inference.',
+        );
+      }
+    }
+    return _inference!.predictTiled(
+      imageBytes,
+      tiles: tiles,
+      fullPass: fullPass,
+      confidenceThreshold: confidenceThreshold,
+      iouThreshold: iouThreshold,
+    );
+  }
+
   /// Reads exported metadata for a model without loading it for inference.
   static Future<Map<String, dynamic>> inspectModel(String modelPath) async {
     final resolvedPath = await YOLOModelResolver.preparePath(modelPath);

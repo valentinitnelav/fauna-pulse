@@ -490,12 +490,135 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         }
       }
 
+      // FaunaPulse (round 177, perf review E6): batch/SAHI tiled inference. The pure-Dart
+      // tile pipeline (decode + crop + JPEG-encode every tile, then one channel round trip
+      // per tile) measured 83-86% of a SAHI run's wall time on a release build; this call
+      // removes it: decode the source JPEG ONCE, crop each Dart-planned tile rectangle out
+      // of the bitmap, run the detector sequentially per tile (the predictor is mutable,
+      // never parallelize it), optionally run the whole photo too, and reply with per-tile
+      // box lists normalized to each tile. Tile PLANNING, box mapping back to photo
+      // coordinates, the speck filter and the IoS merge all stay in Dart (single source of
+      // the scientific behavior). Detect task only; no annotated image, ever. Work runs on
+      // a background thread (a whole photo's tiles in one call would otherwise block the
+      // platform thread for hundreds of ms); the Dart driver awaits each call, so two
+      // tiled predictions are never in flight at once.
+      "predictTiledImage" -> {
+        try {
+          val args = call.arguments as? Map<*, *>
+          val imageData = args?.get("image") as? ByteArray
+          val tileSpecs = args?.get("tiles") as? List<*>
+          val fullPass = args?.get("fullPass") as? Boolean ?: false
+          val confidenceThreshold = args?.get("confidenceThreshold") as? Double
+          val iouThreshold = args?.get("iouThreshold") as? Double
+          val instanceId = args?.get("instanceId") as? String ?: "default"
+          if (imageData == null || tileSpecs == null) {
+            result.error("bad_args", "predictTiledImage needs image + tiles", null)
+            return
+          }
+          val rects = tileSpecs.map { spec ->
+            val r = (spec as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+            if (r == null || r.size != 4) {
+              result.error("bad_args", "each tile must be [left, top, width, height]", null)
+              return
+            }
+            r
+          }
+          Thread({
+            val reply = android.os.Handler(android.os.Looper.getMainLooper())
+            try {
+              val source = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
+              if (source == null) {
+                reply.post { result.error("image_error", "Failed to decode image", null) }
+                return@Thread
+              }
+              try {
+                // Per-box map in the exact predictSingleImage shape, normalized to the
+                // bitmap the detector saw (the tile), so the Dart parsing is shared.
+                fun boxesOf(res: YOLOResult, w: Float, h: Float): List<Map<String, Any>> =
+                  res.boxes.map { box ->
+                    mapOf(
+                      "x1" to box.xywh.left,
+                      "y1" to box.xywh.top,
+                      "x2" to box.xywh.right,
+                      "y2" to box.xywh.bottom,
+                      "x1_norm" to box.xywh.left / w,
+                      "y1_norm" to box.xywh.top / h,
+                      "x2_norm" to box.xywh.right / w,
+                      "y2_norm" to box.xywh.bottom / h,
+                      "class" to box.cls,
+                      "className" to box.cls,
+                      "confidence" to box.conf
+                    )
+                  }
+                fun predictOn(bitmap: Bitmap): YOLOResult? = YOLOInstanceManager.shared.predict(
+                  instanceId = instanceId,
+                  bitmap = bitmap,
+                  confidenceThreshold = confidenceThreshold?.toFloat(),
+                  iouThreshold = iouThreshold?.toFloat(),
+                  generateAnnotatedImage = false
+                )
+
+                val perTile = mutableListOf<List<Map<String, Any>>>()
+                for (r in rects) {
+                  // Clamp to the decoded bitmap so a stale Dart-side dimension probe can
+                  // never crash createBitmap; Dart verifies the echoed dims anyway.
+                  val left = r[0].coerceIn(0, source.width - 1)
+                  val top = r[1].coerceIn(0, source.height - 1)
+                  val w = r[2].coerceAtMost(source.width - left).coerceAtLeast(1)
+                  val h = r[3].coerceAtMost(source.height - top).coerceAtLeast(1)
+                  val tile = Bitmap.createBitmap(source, left, top, w, h)
+                  try {
+                    val res = predictOn(tile)
+                    if (res == null) {
+                      reply.post {
+                        result.error("MODEL_NOT_LOADED", "Model has not been loaded. Call loadModel() first.", null)
+                      }
+                      return@Thread
+                    }
+                    perTile.add(boxesOf(res, w.toFloat(), h.toFloat()))
+                  } finally {
+                    // createBitmap can return the source itself for a full-bitmap rect.
+                    if (tile !== source) tile.recycle()
+                  }
+                }
+                val response = HashMap<String, Any>()
+                response["imageWidth"] = source.width
+                response["imageHeight"] = source.height
+                response["tiles"] = perTile
+                if (fullPass) {
+                  val res = predictOn(source)
+                  if (res == null) {
+                    reply.post {
+                      result.error("MODEL_NOT_LOADED", "Model has not been loaded. Call loadModel() first.", null)
+                    }
+                    return@Thread
+                  }
+                  response["fullBoxes"] =
+                    boxesOf(res, source.width.toFloat(), source.height.toFloat())
+                }
+                reply.post { result.success(response) }
+              } finally {
+                source.recycle()
+              }
+            } catch (e: Exception) {
+              Log.e(TAG, "Error during tiled prediction", e)
+              reply.post {
+                result.error("prediction_error", "Error during tiled prediction: ${e.message}", null)
+              }
+            }
+          }, "yolo-tiled-predict").start()
+        } catch (e: Exception) {
+          Log.e(TAG, "Error during tiled prediction setup", e)
+          result.error("prediction_error", "Error during tiled prediction: ${e.message}", null)
+        }
+      }
+
       "checkModelExists" -> {
         try {
           val args = call.arguments as? Map<*, *>
           val originalPath = args?.get("modelPath") as? String ?: ""
           val modelPath = resolveModelPath(originalPath)
-          
+
           val checkResult = YOLOUtils.checkModelExistence(applicationContext, modelPath)
           result.success(checkResult)
         } catch (e: Exception) {

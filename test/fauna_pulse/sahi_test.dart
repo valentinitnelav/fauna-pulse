@@ -376,5 +376,169 @@ void main() {
       expect(calls, 10);
       expect(result['detections'], isEmpty);
     });
+
+    // Round 177 (perf review E6): the native one-call tiled path. The fakes
+    // return the plugin's predictTiled shape; `base` must stay unused while
+    // the native path is healthy and take over seamlessly when it breaks.
+    group('native tiled path', () {
+      test('jpegDimensions reads the header without a full decode', () {
+        expect(jpegDimensions(photo64), (64, 64));
+        expect(jpegDimensions(Uint8List.fromList([1, 2, 3])), isNull);
+      });
+
+      test('plans the grid in Dart, maps tile boxes, never calls base',
+          () async {
+        var baseCalls = 0;
+        List<List<int>>? seenTiles;
+        final predict = sahiPredictFn(
+          base: (bytes) async {
+            baseCalls++;
+            return const {'detections': []};
+          },
+          tiledPredict: (bytes, tiles, fullPass) async {
+            seenTiles = tiles;
+            expect(fullPass, isFalse);
+            // Only the LAST tile (bottom-right, flush at 32..64) "detects",
+            // covering its whole tile — mirrors the pure-Dart path's test.
+            return {
+              'imageWidth': 64,
+              'imageHeight': 64,
+              'tiles': [
+                for (var i = 0; i < tiles.length; i++)
+                  if (i == tiles.length - 1)
+                    detectionAt(0, 0, 1, 1)['detections']
+                  else
+                    const <Map<String, dynamic>>[],
+              ],
+            };
+          },
+          options: const SahiOptions(
+            enabled: true,
+            overlapFrac: 0.25,
+            fullImagePass: false,
+          ),
+          modelInputPx: 32, // 64 px photo, 32 px tiles → 3×3 grid
+        );
+        final boxes = boxesFromPredictResult(await predict(photo64));
+        expect(baseCalls, 0);
+        expect(seenTiles, hasLength(9));
+        expect(seenTiles!.first, [0, 0, 32, 32]);
+        expect(seenTiles!.last, [32, 32, 32, 32]);
+        expect(boxes, hasLength(1));
+        expect(boxes.single.left, closeTo(0.5, 0.01));
+        expect(boxes.single.bottom, closeTo(1.0, 0.01));
+      });
+
+      test('full pass rides along in the same call; profile accounts it',
+          () async {
+        final profile = SahiPhaseProfile();
+        final predict = sahiPredictFn(
+          base: (bytes) async => const {'detections': []},
+          tiledPredict: (bytes, tiles, fullPass) async {
+            expect(fullPass, isTrue);
+            return {
+              'imageWidth': 64,
+              'imageHeight': 64,
+              'tiles': [for (final _ in tiles) const <Map<String, dynamic>>[]],
+              'fullPass': detectionAt(0.6, 0.6, 0.85, 0.85)['detections'],
+            };
+          },
+          options: const SahiOptions(enabled: true, fullImagePass: true),
+          modelInputPx: 32,
+          profile: profile,
+        );
+        final boxes = boxesFromPredictResult(await predict(photo64));
+        expect(boxes, hasLength(1));
+        expect(boxes.single.left, closeTo(0.6, 0.01));
+        expect(profile.photos, 1);
+        expect(profile.nativeTiledPhotos, 1);
+        expect(profile.tiles, 9);
+        expect(profile.fullPasses, 1);
+        expect(profile.tilePrepUs, 0); // no Dart tile prep on this path
+        expect(profile.nativeFallbacks, 0);
+        expect(profile.toJson()['native_tiled_photos'], 1);
+      });
+
+      test('speck filter still trims native tile boxes, never full-pass ones',
+          () async {
+        final predict = sahiPredictFn(
+          base: (bytes) async => const {'detections': []},
+          tiledPredict: (bytes, tiles, fullPass) async => {
+            'imageWidth': 64,
+            'imageHeight': 64,
+            'tiles': [
+              // First tile (0,0,32,32) reports a speck: tile-normalized
+              // 0.04 → photo-normalized 0.02, under the 5% floor.
+              detectionAt(0.10, 0.10, 0.14, 0.14)['detections'],
+              for (var i = 1; i < tiles.length; i++)
+                const <Map<String, dynamic>>[],
+            ],
+            'fullPass': detectionAt(0.6, 0.6, 0.85, 0.85)['detections'],
+          },
+          options: const SahiOptions(
+            enabled: true,
+            fullImagePass: true,
+            minBoxFrac: 0.05,
+          ),
+          modelInputPx: 32,
+        );
+        final boxes = boxesFromPredictResult(await predict(photo64));
+        expect(boxes, hasLength(1)); // speck gone, full-pass box kept
+        expect(boxes.single.left, closeTo(0.6, 0.01));
+      });
+
+      test('a dims mismatch falls back to the Dart path, then stays there',
+          () async {
+        final profile = SahiPhaseProfile();
+        var baseCalls = 0;
+        var tiledCalls = 0;
+        final predict = sahiPredictFn(
+          base: (bytes) async {
+            baseCalls++;
+            return const {'detections': []};
+          },
+          tiledPredict: (bytes, tiles, fullPass) async {
+            tiledCalls++;
+            return {'imageWidth': 63, 'imageHeight': 64, 'tiles': const []};
+          },
+          options: const SahiOptions(enabled: true, overlapFrac: 0.25),
+          modelInputPx: 32,
+          profile: profile,
+        );
+        await predict(photo64);
+        // Photo 1: native attempted once, then the full Dart path (9 tiles +
+        // full pass = 10 base calls).
+        expect(tiledCalls, 1);
+        expect(baseCalls, 10);
+        expect(profile.nativeFallbacks, 1);
+        expect(profile.nativeTiledPhotos, 0);
+        expect(profile.photos, 1); // never half-counted by the failed native try
+        // Photo 2: the native path stays disabled for the rest of the run.
+        await predict(photo64);
+        expect(tiledCalls, 1);
+        expect(baseCalls, 20);
+      });
+
+      test('a photo no bigger than one tile skips the native path entirely',
+          () async {
+        var tiledCalls = 0;
+        var baseCalls = 0;
+        final predict = sahiPredictFn(
+          base: (bytes) async {
+            baseCalls++;
+            return const {'detections': []};
+          },
+          tiledPredict: (bytes, tiles, fullPass) async {
+            tiledCalls++;
+            return const {'imageWidth': 64, 'imageHeight': 64, 'tiles': []};
+          },
+          options: const SahiOptions(enabled: true, fullImagePass: false),
+          modelInputPx: 128, // tile bigger than the 64 px photo → no-op
+        );
+        await predict(photo64);
+        expect(tiledCalls, 0);
+        expect(baseCalls, 1); // the plain fallback single pass
+      });
+    });
   });
 }

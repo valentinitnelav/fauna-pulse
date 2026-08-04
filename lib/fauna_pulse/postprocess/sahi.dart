@@ -21,6 +21,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
+import '../logging/app_error_hooks.dart';
 import 'post_detector.dart';
 import 'sahi_profile.dart';
 
@@ -198,10 +199,166 @@ List<PostBox> mergePostBoxes(List<PostBox> boxes, double overlapThresh) {
       sw.elapsedMicroseconds);
 }
 
+/// One-call NATIVE tiled predictor (round 177, perf review E6): given the
+/// source JPEG, the Dart-planned tile rectangles (`[left, top, width,
+/// height]` px each) and whether to also run the whole photo, returns the
+/// plugin's `YOLO.predictTiled` map: `imageWidth`/`imageHeight` (decoded
+/// dims, echoed for verification), `tiles` (one 'detections'-shaped list per
+/// rectangle, normalized to the TILE) and optionally `fullPass`.
+typedef TiledPredictFn =
+    Future<Map<String, dynamic>> Function(
+      Uint8List bytes,
+      List<List<int>> tiles,
+      bool fullPass,
+    );
+
+/// Width/height read from the JPEG HEADER only — no pixel decode
+/// (microseconds instead of the ~100 ms a full 1024 px decode costs). The
+/// native tiled path needs the dimensions BEFORE the photo crosses the
+/// channel, to plan the tile grid in Dart. Null for non-JPEG/corrupt bytes
+/// (the caller then takes the pure-Dart path, whose full decode decides).
+(int, int)? jpegDimensions(Uint8List bytes) {
+  try {
+    final info = img.JpegDecoder().startDecode(bytes);
+    if (info == null || info.width <= 0 || info.height <= 0) return null;
+    return (info.width, info.height);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Tile-normalized box → whole-photo-normalized coordinates (shared by the
+/// pure-Dart and the native tiled paths, so the mapping can never drift).
+PostBox _tileBoxToPhoto(
+  PostBox b,
+  int tl,
+  int tt,
+  int tw,
+  int th,
+  int imgW,
+  int imgH,
+) => PostBox(
+  className: b.className,
+  confidence: b.confidence,
+  left: (tl + b.left * tw) / imgW,
+  top: (tt + b.top * th) / imgH,
+  right: (tl + b.right * tw) / imgW,
+  bottom: (tt + b.bottom * th) / imgH,
+);
+
+/// The r141/r143 speck/sliver filter: drops a TILE-derived box whose narrower
+/// side is under the configured fraction of the photo side. Never applied to
+/// whole-photo-pass boxes.
+bool _underMinBox(PostBox mapped, SahiOptions options) =>
+    options.minBoxFrac > 0 &&
+    min(mapped.right - mapped.left, mapped.bottom - mapped.top) <
+        options.minBoxFrac;
+
+/// The `YOLO.predict`-shaped result map the batch driver parses.
+Map<String, dynamic> _detectionsResult(List<PostBox> merged) => {
+  'detections': [
+    for (final b in merged)
+      {
+        'className': b.className,
+        'confidence': b.confidence,
+        'normalizedBox': {
+          'left': b.left,
+          'top': b.top,
+          'right': b.right,
+          'bottom': b.bottom,
+        },
+      },
+  ],
+};
+
+/// One photo through the native tiled path (round 177). Returns the standard
+/// result map, or null when this photo should take the plain path instead
+/// (unreadable JPEG header, or a grid of one tile — tiling is a no-op).
+/// Throws when the native reply is unusable; the caller then falls back to
+/// the pure-Dart pipeline, which is the always-correct baseline.
+Future<Map<String, dynamic>?> _nativeTiledPhoto(
+  Uint8List bytes,
+  TiledPredictFn tiledPredict,
+  SahiOptions options,
+  int tileSide,
+  SahiPhaseProfile? profile,
+) async {
+  final probe = Stopwatch()..start();
+  final dims = jpegDimensions(bytes);
+  if (dims == null) return null;
+  final (imgW, imgH) = dims;
+  final tiles = planTiles(imgW, imgH, tileSide, options.overlapFrac);
+  if (tiles.length <= 1) return null;
+  final probeUs = probe.elapsedMicroseconds;
+
+  final rects = [
+    for (final t in tiles) [t.left, t.top, t.width, t.height],
+  ];
+  final call = Stopwatch()..start();
+  final reply = await tiledPredict(bytes, rects, options.fullImagePass);
+  call.stop();
+  final gotW = (reply['imageWidth'] as num?)?.toInt() ?? 0;
+  final gotH = (reply['imageHeight'] as num?)?.toInt() ?? 0;
+  if (gotW != imgW || gotH != imgH) {
+    // The native decode disagrees with the header probe: the planned grid
+    // does not match what was cropped — boxes would mis-map, so fall back.
+    throw StateError(
+      'tiled dims mismatch: planned ${imgW}x$imgH, decoded ${gotW}x$gotH',
+    );
+  }
+  final tileLists = reply['tiles'];
+  if (tileLists is! List || tileLists.length != rects.length) {
+    throw StateError(
+      'tiled reply carries '
+      '${tileLists is List ? tileLists.length : 'no'} tile lists '
+      'for ${rects.length} rects',
+    );
+  }
+
+  // Success is certain from here — the profile is written in ONE place so a
+  // throw above can never leave this photo half-counted before the Dart
+  // fallback counts it in full.
+  if (profile != null) {
+    profile.photos++;
+    profile.tiledPhotos++;
+    profile.nativeTiledPhotos++;
+    profile.tiles += rects.length;
+    if (options.fullImagePass) profile.fullPasses++;
+    profile.sourceDecodeUs += probeUs;
+    // One lump: the native decode, all tile crops and every inference.
+    profile.tilePredictUs += call.elapsedMicroseconds;
+  }
+
+  final all = <PostBox>[];
+  for (var i = 0; i < rects.length; i++) {
+    final r = rects[i];
+    for (final b in boxesFromPredictResult({'detections': tileLists[i]})) {
+      final mapped = _tileBoxToPhoto(b, r[0], r[1], r[2], r[3], imgW, imgH);
+      if (_underMinBox(mapped, options)) continue;
+      all.add(mapped);
+    }
+  }
+  if (options.fullImagePass) {
+    all.addAll(
+      boxesFromPredictResult({'detections': reply['fullPass'] ?? const []}),
+    );
+  }
+  final mergeSw = Stopwatch()..start();
+  final merged = mergePostBoxes(all, options.mergeIou);
+  if (profile != null) profile.mergeUs += mergeSw.elapsedMicroseconds;
+  return _detectionsResult(merged);
+}
+
 /// Wraps a plain single-image [base] predictor into a tiled one, returning
 /// the same result-map shape `YOLO.predict` produces (a 'detections' list
 /// with `className`/`confidence`/`normalizedBox`), so the batch driver's
 /// parsing works unchanged.
+///
+/// When [tiledPredict] is given (round 177, perf review E6) each photo goes
+/// through the native one-call tiled path — the measured 83-86% pure-Dart
+/// tiling overhead disappears. The first native failure disables that path
+/// for the rest of the run (reliability first, like the r163 camera-parking
+/// fallback) and the pure-Dart pipeline below takes over seamlessly.
 ///
 /// When [profile] is given (round 168, perf review E6 step 1) every phase's
 /// wall time is accumulated into it — behaviour is identical either way, the
@@ -210,10 +367,30 @@ PredictFn sahiPredictFn({
   required PredictFn base,
   required SahiOptions options,
   required int modelInputPx,
+  TiledPredictFn? tiledPredict,
   SahiPhaseProfile? profile,
 }) {
   final tileSide = options.effectiveTileSide(modelInputPx);
+  var nativeBroken = false;
   return (Uint8List bytes) async {
+    if (tiledPredict != null && !nativeBroken) {
+      try {
+        final native = await _nativeTiledPhoto(
+          bytes,
+          tiledPredict,
+          options,
+          tileSide,
+          profile,
+        );
+        if (native != null) return native;
+        // null = plain single pass is the right treatment for this photo;
+        // the code below handles it (its tile grid will be empty too).
+      } catch (e) {
+        nativeBroken = true;
+        if (profile != null) profile.nativeFallbacks++;
+        logSwallowed('sahi_native_tiled', e);
+      }
+    }
     final sw = Stopwatch()..start();
     final tiled = await compute(tileWorker, (
       bytes,
@@ -250,21 +427,9 @@ PredictFn sahiPredictFn({
           profile.tilePredictUs += sw.elapsedMicroseconds;
         }
         for (final b in boxesFromPredictResult(tileResult)) {
-          // Tile-normalized → whole-photo-normalized coordinates.
-          final mapped = PostBox(
-            className: b.className,
-            confidence: b.confidence,
-            left: (tl + b.left * tw) / imgW,
-            top: (tt + b.top * th) / imgH,
-            right: (tl + b.right * tw) / imgW,
-            bottom: (tt + b.bottom * th) / imgH,
-          );
+          final mapped = _tileBoxToPhoto(b, tl, tt, tw, th, imgW, imgH);
           // Optional speck/sliver filter — tile boxes only (see SahiOptions).
-          if (options.minBoxFrac > 0 &&
-              min(mapped.right - mapped.left, mapped.bottom - mapped.top) <
-                  options.minBoxFrac) {
-            continue;
-          }
+          if (_underMinBox(mapped, options)) continue;
           all.add(mapped);
         }
       }
@@ -288,20 +453,6 @@ PredictFn sahiPredictFn({
       ..start();
     final merged = mergePostBoxes(all, options.mergeIou);
     if (profile != null) profile.mergeUs += sw.elapsedMicroseconds;
-    return {
-      'detections': [
-        for (final b in merged)
-          {
-            'className': b.className,
-            'confidence': b.confidence,
-            'normalizedBox': {
-              'left': b.left,
-              'top': b.top,
-              'right': b.right,
-              'bottom': b.bottom,
-            },
-          },
-      ],
-    };
+    return _detectionsResult(merged);
   };
 }

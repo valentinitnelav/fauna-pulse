@@ -44,6 +44,17 @@ class SahiPhaseProfile {
   /// Whole-photo inferences across the run.
   int fullPasses = 0;
 
+  /// Photos processed by the round-177 native one-call tiled path (decode +
+  /// crop + every tile inference in a single plugin call): their whole wall
+  /// time lands in [tilePredictUs], [sourceDecodeUs] holds only the
+  /// header-only dimension probe, and tile prep/transfer stay 0.
+  int nativeTiledPhotos = 0;
+
+  /// Times the native tiled path failed and the pure-Dart pipeline took over
+  /// (the first failure disables the native path for the rest of the run, so
+  /// this is 0 or 1 per run).
+  int nativeFallbacks = 0;
+
   int sourceDecodeUs = 0;
   int tilePrepUs = 0;
   int tileTransferUs = 0;
@@ -63,6 +74,8 @@ class SahiPhaseProfile {
   Map<String, dynamic> toJson() => {
     'photos': photos,
     'tiled_photos': tiledPhotos,
+    'native_tiled_photos': nativeTiledPhotos,
+    'native_fallbacks': nativeFallbacks,
     'tiles': tiles,
     'full_passes': fullPasses,
     'source_decode_ms': _ms(sourceDecodeUs),

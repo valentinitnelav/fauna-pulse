@@ -563,6 +563,13 @@ Every record carries `time_ms`/`time_iso` (when it was written). Types:
   `tile_overhead_ms` (= everything tiling adds outside the detector
   calls). All phase times are summed across the whole run; the difference
   between `elapsed_ms` and the phase sum is file I/O and bookkeeping.
+  Since round 177 the map also carries `native_tiled_photos` /
+  `native_fallbacks`: photos that went through the native one-call tiled
+  path (decode + crop + every tile inference in a single plugin call). For
+  those photos `tile_predict_ms` is that whole lump, `source_decode_ms` is
+  only a header-only dimension probe, and `tile_prep_ms` /
+  `tile_transfer_ms` contribute 0 — a mostly-native run's
+  `tile_overhead_ms` is expected to be tiny compared to r168–r176 runs.
 * `post_cleanup` — audit record of the optional keep/delete storage triage
   (which files were deleted and under which keep rule).
 

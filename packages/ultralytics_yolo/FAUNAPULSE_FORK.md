@@ -67,6 +67,13 @@ The headline changes, with the round that introduced each (full rationale in
 - **NCHW `format=litert` model support** (r155, review D2) and the
   **`includeAnnotatedImage: false`** predict opt-out for batch/SAHI analysis
   (r156, review D3).
+- **`predictTiledImage`** (r177, review E6): one-call tiled inference for the
+  app's batch/SAHI analysis — decode the photo once natively, crop each
+  Dart-planned tile rectangle, run the detector sequentially per tile
+  (plus an optional whole-photo pass), reply with per-tile box lists.
+  Dart API `YOLO.predictTiled`, detect task only, never renders an
+  annotated image. Removed the pure-Dart tile pipeline that measured
+  83-86% of a SAHI run's wall time.
 - **User-triggered engine benchmark**, `benchmarkAccelerators` in
   `YOLOPlugin.kt` (r76): GPU vs CPU thread variants on noise input;
   deliberately never run automatically.

@@ -1210,7 +1210,7 @@ tail redaction, no trailing newline, empty file, line cap). The streaming
 `SessionLogIndex` for the summary screen remains OPEN and is this item's
 remaining work.
 
-### E6. [ ] Native tiled-image API only if SAHI profiling justifies it
+### E6. [x] Native tiled-image API only if SAHI profiling justifies it
 
 - Step 1: instrument SAHI phases (source decode, tile crop/JPEG encode, channel
   transfer, native tile decode, inference, merge). Today the only timing is the
@@ -1275,6 +1275,36 @@ nearly free. Next: implement `predictTiledImage` per this item's design
 bullets (decode once natively, sequential tile crop + infer, mapping/
 filtering/merging stays in Dart, current path as fallback); projected
 ~3-5× lower SAHI wall time (~1.1 → ~0.3 s/photo).
+
+**Step 3 done (round 177): the native API is built.** Native
+`predictTiledImage` in YOLOPlugin.kt: decodes the source JPEG once, crops
+each Dart-supplied `[left, top, width, height]` rectangle (clamped to the
+decoded bitmap), runs the detector SEQUENTIALLY per tile via the instance
+manager with `generateAnnotatedImage=false`, optionally runs the whole
+photo in the same call, recycles every temporary bitmap, and replies with
+per-tile box lists (exact predictSingleImage box shape, normalized to the
+tile) plus the echoed decoded dimensions. Work runs on a background thread
+with a main-looper reply (the benchmark's pattern) so a whole photo's tiles
+never block the platform thread; the Dart driver awaits each call, so two
+tiled predictions are never in flight. Dart plugin API `YOLO.predictTiled`
+(detect task only; `YOLOInference.predictTiled` shares the detect-result
+mapping). App side: `sahiPredictFn(tiledPredict: …)` — tile PLANNING stays
+in Dart (`planTiles` on a new header-only `jpegDimensions` probe, no pixel
+decode), and mapping/speck-filter/IoS-merge run through helpers now SHARED
+with the pure-Dart path (`_tileBoxToPhoto`/`_underMinBox`/
+`_detectionsResult`, so the two paths cannot drift). Reliability: the
+native reply's dimensions must match the planned grid and its tile count
+must match the request, else the photo (and, after any failure, the rest
+of the run) falls back to the pure-Dart pipeline; profile fields
+`native_tiled_photos`/`native_fallbacks` make the path auditable in
+`post_end.phases` (on the native path `tile_predict_ms` is one lump and
+`tile_prep_ms`/`tile_transfer_ms` read 0). 7 new tests (header probe, grid
+planning + mapping parity without touching `base`, full-pass ride-along +
+profile accounting, speck filter on the native path, dims-mismatch
+fallback that never half-counts and stays on Dart for the run, one-tile
+no-op). Owner validation owed: re-run the same 180-photo session (force)
+on the new build and compare `elapsed_ms` + keep counts vs the r176
+baseline (199 s / 83% overhead).
 
 ### E7. [x] Three small cleanups (first bullet reworded after verification)
 

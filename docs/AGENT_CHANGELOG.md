@@ -6166,3 +6166,57 @@ design already specified in review E6) is justified and projected to cut SAHI
 wall time roughly 3-5x (~1.1 s/photo -> ~0.3 s/photo). E6 step 3 (the native
 API) is now the next implementation item; review doc updated.
 
+## Round 177 (2026-08-04): E6 step 3, native tiled inference (predictTiledImage)
+
+The r176 measurement justified it (Dart tile pipeline = 83-86% of SAHI wall
+time); this round builds the native API per the review E6 design.
+
+- Native (YOLOPlugin.kt) `predictTiledImage`: decode the source JPEG ONCE,
+  crop each Dart-supplied [left, top, width, height] rectangle (clamped to
+  the decoded bitmap so a stale probe can never crash createBitmap), run the
+  detector SEQUENTIALLY per tile via YOLOInstanceManager with
+  generateAnnotatedImage=false, optionally run the whole photo in the same
+  call, recycle every temporary bitmap (createBitmap may return the source
+  itself for a full-bitmap rect — identity-checked), reply with per-tile box
+  lists in the exact predictSingleImage box shape (normalized to the tile)
+  plus the echoed decoded dims. Work on a background thread with a
+  main-looper reply (benchmarkAccelerators' pattern): one photo's tiles
+  would otherwise block the platform thread for hundreds of ms. The Dart
+  driver awaits each call, so two tiled predictions are never in flight
+  (the predictor is mutable — never parallelize it).
+- Plugin Dart: YOLO.predictTiled / YOLOInference.predictTiled (detect task
+  only; shares _processDetectResults so the detection shape is identical).
+- App (sahi.dart): sahiPredictFn gains tiledPredict. Tile PLANNING stays in
+  Dart: new `jpegDimensions` reads width/height from the JPEG HEADER only
+  (img.JpegDecoder().startDecode, no pixel decode — microseconds vs the
+  ~100 ms full decode that was 18.9 s of the r176 run), then the existing
+  planTiles. Mapping, the r141/r143 speck filter and the IoS merge now run
+  through helpers SHARED by both paths (_tileBoxToPhoto, _underMinBox,
+  _detectionsResult) so native and Dart results cannot drift.
+- Reliability: the reply's echoed dims must equal the planned dims and the
+  tile-list count must equal the request, else throw; any native failure
+  logs (logSwallowed 'sahi_native_tiled'), counts `nativeFallbacks`, and
+  disables the native path for the REST of the run (r163 fallback
+  philosophy) — the pure-Dart pipeline is the always-correct baseline.
+  Profile accounting happens only after native success, so a failed attempt
+  never half-counts a photo. One-tile photos and unreadable headers take
+  the plain path as before.
+- Profile/records: SahiPhaseProfile gains nativeTiledPhotos/nativeFallbacks
+  (post_end.phases keys native_tiled_photos/native_fallbacks; DATA_GUIDE §6
+  updated: on the native path tile_predict_ms is one lump, source_decode_ms
+  is only the header probe, tile_prep/transfer are 0). FAUNAPULSE_FORK.md
+  gains the new-API bullet. Correction for the record: r168's claim that
+  the native predict response carries no timing fields was wrong (speed/
+  preMs/inferenceMs/postMs exist on the wire); the lump measurement stands.
+- analysis_screen wires tiledPredict: (bytes, tiles, fullPass) =>
+  yolo.predictTiled(...) with the run's thresholds.
+- Tests: +7 (header probe; grid planning + tile-box mapping parity with
+  base never called; full-pass ride-along + profile accounting incl.
+  tilePrepUs 0; speck filter on the native path never trimming full-pass
+  boxes; dims-mismatch fallback that never half-counts and stays on Dart
+  for the run; one-tile no-op skipping the native call). Suite 446 green;
+  analyze clean; debug APK builds (new Kotlin compiled).
+- Owner validation owed: re-run the same 180-photo session (force,
+  release build) and compare elapsed_ms + keep counts vs the r176 baseline
+  (199.0 s, 83% overhead; projected ~3-5x faster).
+
