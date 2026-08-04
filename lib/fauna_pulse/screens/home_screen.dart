@@ -707,8 +707,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The ⋮ menu's About dialog (round 183; replaced the landing-screen
   /// tagline): a condensed version of the README's Overview, the app version
   /// (from the build, so it can never drift) and a link to the public GitHub
-  /// repository. `showAboutDialog` also provides the standard "View
-  /// licenses" page, which an AGPL app should expose anyway.
+  /// repository. Round 184: a custom dialog instead of `showAboutDialog` —
+  /// its mandatory "View licenses" button drowned the About in hundreds of
+  /// framework/package entries (owner feedback). The app's OWN license
+  /// (AGPL-3.0) is stated directly; the third-party list stays reachable
+  /// (BSD/MIT dependencies require the attribution to ship with the app)
+  /// but demoted to one muted link.
   Future<void> _showAbout() async {
     PackageInfo? info;
     try {
@@ -717,20 +721,38 @@ class _HomeScreenState extends State<HomeScreen> {
       logSwallowed('about_package_info', e);
     }
     if (!mounted) return;
-    showAboutDialog(
+    final version = info != null
+        ? 'v${info.version} (build ${info.buildNumber})'
+        : null;
+    await showDialog<void>(
       context: context,
-      applicationName: 'FaunaPulse',
-      applicationVersion: info != null
-          ? 'v${info.version} (build ${info.buildNumber})'
-          : null,
-      applicationIcon: const Icon(
-        Icons.emoji_nature,
-        size: 40,
-        color: Colors.amber,
-      ),
-      children: [
-        const SizedBox(height: 8),
-        const Text(
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.emoji_nature, size: 32, color: Colors.amber),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('FaunaPulse'),
+                if (version != null)
+                  Text(
+                    version,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white54,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
           'A passive, non-invasive field tool for monitoring flower-visiting '
           'insects (and, with a suitable detection model, other wildlife) at '
           'a fixed spot. Place the square region of interest over a flower: '
@@ -739,39 +761,71 @@ class _HomeScreenState extends State<HomeScreen> {
           'timestamps, so visitation rates can be computed afterwards in R '
           'or Python. AI-free motion-triggered and time-lapse capture, '
           'scheduled multi-day runs and post-capture AI analysis of saved '
-          'photos are built in.',
-          style: TextStyle(fontSize: 13),
-        ),
-        const SizedBox(height: 14),
-        InkWell(
-          onTap: () async {
-            try {
-              await launchUrl(
-                Uri.parse(ErrorReporter.githubRepoUrl),
-                mode: LaunchMode.externalApplication,
-              );
-            } catch (e) {
-              logSwallowed('about_open_github', e);
-            }
-          },
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.code, size: 18, color: Colors.lightBlueAccent),
-              SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'github.com/valentinitnelav/fauna-pulse',
-                  style: TextStyle(
-                    color: Colors.lightBlueAccent,
-                    fontSize: 13,
-                  ),
+                'photos are built in.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: () async {
+                  try {
+                    await launchUrl(
+                      Uri.parse(ErrorReporter.githubRepoUrl),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  } catch (e) {
+                    logSwallowed('about_open_github', e);
+                  }
+                },
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.code, size: 18, color: Colors.lightBlueAccent),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'github.com/valentinitnelav/fauna-pulse',
+                        style: TextStyle(
+                          color: Colors.lightBlueAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Open source under the AGPL-3.0 license (full text in the '
+                'repository).',
+                style: TextStyle(fontSize: 12, color: Colors.white54),
               ),
             ],
           ),
         ),
-      ],
+        actions: [
+          // Attribution for bundled BSD/MIT packages must stay reachable,
+          // but muted — the auto-generated list is hundreds of entries.
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.white54),
+            onPressed: () => Navigator.of(ctx).push(
+              MaterialPageRoute(
+                builder: (_) => LicensePage(
+                  applicationName: 'FaunaPulse',
+                  applicationVersion: version,
+                ),
+              ),
+            ),
+            child: const Text(
+              'Third-party licenses',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -801,10 +855,28 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const PopupMenuDivider(),
-        CheckedPopupMenuItem(
+        // An explicit checkbox glyph instead of CheckedPopupMenuItem
+        // (round 184): its unchecked state was just blank space, so the
+        // owner could not tell whether the option was on or off.
+        PopupMenuItem(
           value: _HomeMenuAction.toggleSetupTips,
-          checked: _showSetupTips,
-          child: const Text('Show setup tips at session start'),
+          child: Row(
+            children: [
+              Icon(
+                _showSetupTips
+                    ? Icons.check_box
+                    : Icons.check_box_outline_blank,
+                size: 20,
+                color: _showSetupTips
+                    ? Colors.lightBlueAccent
+                    : Colors.white54,
+              ),
+              const SizedBox(width: 10),
+              const Flexible(
+                child: Text('Show setup tips at session start'),
+              ),
+            ],
+          ),
         ),
         const PopupMenuDivider(),
         PopupMenuItem(
@@ -865,7 +937,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 OutlinedButton.icon(
                   onPressed: _openAnalysis,
                   icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                  label: const Text('Analyze saved photos'),
+                  label: const Text('Run AI on photos'),
                 ),
                 const SizedBox(height: 6),
                 // Always-available entry point so a problem can be reported even after
@@ -972,7 +1044,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.auto_awesome_outlined),
-                    title: Text('Analyze photos'),
+                    title: Text('Run AI on photos'),
                   ),
                 ),
                 PopupMenuItem(

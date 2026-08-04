@@ -208,7 +208,7 @@ folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
 summary → Overview tab → **Export photos to Gallery** (or the ⚙ gear menu on
 the session's row in the home screen's Previous sessions list, which also
-offers **Rename session**, **Analyze photos** and **Delete session**). This
+offers **Rename session**, **Run AI on photos** and **Delete session**). This
 copies every saved
 photo (including the reference photos from `gt_frames/`) into the shared album
 `Pictures/FaunaPulse/<session-name>`, which

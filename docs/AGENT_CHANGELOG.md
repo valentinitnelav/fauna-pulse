@@ -6472,3 +6472,29 @@ the analysis screen title and in the docs).
   sessions" list header.
 - Suite green (475 passed); analyzer clean.
 
+## Round 184 (2026-08-05): About-dialog license fix, clear setup-tips check, "Run AI on photos"
+
+Owner feedback on round 183 + the pending rename decision.
+
+- **About dialog rebuilt as a custom AlertDialog** (was `showAboutDialog`,
+  whose mandatory "View licenses" button led to hundreds of framework/package
+  entries — "truly overwhelming"). Now: icon + name + version in the title,
+  the description, the GitHub link, and a plain statement of the app's OWN
+  license ("Open source under the AGPL-3.0 license, full text in the
+  repository"). Best-practice compromise: the auto-generated third-party
+  list is NOT deleted — bundled BSD/MIT packages require their attribution
+  to ship with the app — but demoted to one muted "Third-party licenses"
+  action that pushes the standard LicensePage only when deliberately opened.
+- **⋮ "Show setup tips at session start"**: replaced CheckedPopupMenuItem
+  with an explicit checkbox glyph (filled blue check_box when on, outlined
+  blank box when off) — the unchecked CheckedPopupMenuItem rendered as blank
+  space, so the current state was unreadable.
+- **"Analyze saved photos" → "Run AI on photos"** (owner's pick from the
+  r183 suggestions), applied at every entry point: home-screen button, the
+  session gear menu (was "Analyze photos"), the analysis screen's AppBar
+  title, FIELD_GUIDE and the overview doc. Wording INSIDE the analysis
+  screen (e.g. "Analyze 42 photos", "analyzed" badges/counts) deliberately
+  stays — it reads naturally in context and matches the log/doc term
+  "post-hoc analysis". The ✨ badge semantics are unchanged.
+- Suite green (475 passed); analyzer clean.
+

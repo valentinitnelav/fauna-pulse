@@ -1,6 +1,7 @@
 // FaunaPulse — post-hoc analysis setup + progress screen (round 135).
 //
-// Reached from the home screen ("Analyze saved photos"): the user picks one
+// Reached from the home screen ("Run AI on photos", r184 wording): the user
+// picks one
 // recorded session, a detection model (any bundled/imported one — typically a
 // higher-resolution model than the live default) and thresholds, then the
 // photos in the session's `roi_frames/` run through the detector while a
@@ -488,7 +489,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Analyze saved photos')),
+      appBar: AppBar(title: const Text('Run AI on photos')),
       // SafeArea: without it the list's last lines sit under the system
       // navigation/gesture bar and can never be scrolled into view.
       body: SafeArea(
