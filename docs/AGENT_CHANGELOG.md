@@ -5795,3 +5795,29 @@ real IO outside runAsync hangs the fake-async clock - even the test timeout can'
 frames are pumped OUTSIDE short `tester.runAsync` waits (pump inside runAsync deadlocks).
 
 flutter analyze clean; suite 420 tests green.
+## Round 166 (2026-08-04): E4 step 1, log the HAL's AE fps-range menu
+
+Perf review E4 ("hardware camera cap while the motion gate sleeps") step 1, the
+cheap decision-data collector. Kotlin-only, no UI/config/Dart change.
+
+- `YOLOView.kt`: new `supportedAeFpsRanges()` helper is now the single reader of
+  Camera2 `CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES` (`chooseAeFpsRange` consumes
+  it instead of reading + discarding the list).
+- New `logSupportedAeFpsRangesOnce(applied)`, called from the r82 interop funnel
+  `applyInteropOptions()`: logs ONE logcat line per lens with the full advertised
+  menu + requested cap + applied range, e.g. "Supported AE fps ranges (camera 0):
+  [15, 15], [15, 30], [30, 30]; requested=15 applied=[15, 15]". Keyed on the
+  Camera2 camera id (field `aeRangesLoggedCameraId`), so a lens switch re-logs
+  (each physical camera has its own menu) but repeated funnel calls do not.
+  Fires even at camera fps cap 0 (applied reads "device default").
+- Why: the whole E4 experiment hangs on whether the Xiaomi/Samsung advertise ANY
+  range below the known-good fixed [15,15]. If the menu holds nothing lower,
+  E4 gets rejected without building the gate-idle cap machinery.
+- Where the data lands: the line fires at camera-screen open (camera bind), so
+  `logcat_start.txt` (2000-line snapshot at REC start) captures it; live check
+  via `adb logcat -d -s YOLOView`. Owner to-do: one screen-open + lens-cycle on
+  each test phone, ideally during the paired one-hour E3 parking benchmark runs
+  (PERFORMANCE_BENCHMARKING.md protocol, `dart tool/perf_summary.dart`) that are
+  still owed, then decide E4 per its reject criteria.
+- flutter analyze clean; suite 421 tests green; debug APK builds.
+

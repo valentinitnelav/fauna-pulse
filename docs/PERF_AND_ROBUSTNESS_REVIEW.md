@@ -1112,7 +1112,19 @@ field runs on both phones (the perf_summary protocol from E1).
   sustained active FPS later. No instantaneous FPS gain. Cost: 1-2 days plus
   Xiaomi/Samsung A/B.
 
-### E5. [x] One streaming session-log index + bounded error sampling
+**Step 1 done (round 166).** `supportedAeFpsRanges()` (single source for the
+Camera2 characteristic read) + `logSupportedAeFpsRangesOnce()` in YOLOView.kt:
+the r82 interop funnel now logs ONE line per lens with the HAL's complete AE
+fps-range menu plus the requested cap and the applied range, e.g.
+`Supported AE fps ranges (camera 0): [15, 15], [15, 30], [30, 30]; requested=15
+applied=[15, 15]`. Keyed on the Camera2 camera id, so it re-fires after every
+lens switch (each physical camera advertises its own menu) but not on every
+funnel call. Fires even at cap 0 (applied reads "device default"). No UI, no
+config, no Dart change, per the step-1 spec. The line lands at camera-screen
+open, so a normal recording captures it in `logcat_start.txt` (2000-line
+snapshot at REC start); live check: `adb logcat -d -s YOLOView`. Decision
+still owed: one screen-open + lens-cycle per test phone, then reject the rest
+of E4 if no advertised range sits below the current [15,15]-style floor.
 
 - Verified: `screens/session_summary_screen.dart` (4208 lines) does three full
   `readAsLines()` parses of session.jsonl on the UI isolate (`:374` graphs +

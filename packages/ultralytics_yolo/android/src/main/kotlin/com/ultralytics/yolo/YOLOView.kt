@@ -344,6 +344,9 @@ class YOLOView @JvmOverloads constructor(
     private var interopFocusDioptres: Float? = null // only when interopAfMode == AF_MODE_OFF
     private var requestedCameraFpsCap = 0           // user wish; 0 = device default (~30)
     private var appliedFpsRange: android.util.Range<Int>? = null // what the HAL accepted
+    // Round 166 (perf review E4 step 1): which lens (Camera2 camera id) already had its full
+    // AE fps-range menu logged, so the funnel logs it once per lens instead of on every call.
+    private var aeRangesLoggedCameraId: String? = null
 
     // Round 63: still photos are processed OFF the main thread. CameraX runs the
     // takePicture callback on whatever executor it is given; handing it the main
@@ -1939,25 +1942,61 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
+     * Reads the list of AE target FPS ranges this camera's HAL advertises (Camera2
+     * CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES). The HAL rejects any range not on this menu, so
+     * it is the single source for both picking a cap ([chooseAeFpsRange]) and the once-per-lens
+     * diagnostic dump ([logSupportedAeFpsRangesOnce]).
+     */
+    private fun supportedAeFpsRanges(): List<android.util.Range<Int>> {
+        val cam = camera ?: return emptyList()
+        return try {
+            Camera2CameraInfo.from(cam.cameraInfo)
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                ?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            Log.w(TAG, "supportedAeFpsRanges: cannot read supported ranges", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Round 166 (perf review E4 step 1): logs the HAL's complete AE fps-range menu, plus the
+     * requested cap and the range actually applied, once per lens. This one logcat line is the
+     * evidence the E4 experiment (drop the camera rate while the motion gate sleeps) hangs on:
+     * if the menu holds no range lower than the current cap (e.g. only [15,15] and up), the
+     * experiment is rejected without building anything. Fires again after a lens switch because
+     * each physical camera advertises its own menu.
+     */
+    private fun logSupportedAeFpsRangesOnce(applied: android.util.Range<Int>?) {
+        val cam = camera ?: return
+        val cameraId = try {
+            Camera2CameraInfo.from(cam.cameraInfo).cameraId
+        } catch (e: Exception) {
+            return
+        }
+        if (cameraId == aeRangesLoggedCameraId) return
+        aeRangesLoggedCameraId = cameraId
+        val menu = supportedAeFpsRanges()
+        Log.i(
+            TAG,
+            "Supported AE fps ranges (camera $cameraId): " +
+                (if (menu.isEmpty()) "unavailable" else menu.joinToString(", ")) +
+                "; requested=$requestedCameraFpsCap applied=${applied ?: "device default"}"
+        )
+    }
+
+    /**
      * Picks the AE target FPS range closest to the requested cap among the ranges this camera
      * actually supports. Prefers the highest upper bound that stays <= [cap] (the strongest
      * legal cap not exceeding the wish); when none exists, the smallest upper bound available.
      * Ties prefer a narrower range (fixed rate = steadier, and AE can't speed back up).
      */
     private fun chooseAeFpsRange(cap: Int): android.util.Range<Int>? {
-        val cam = camera ?: return null
         if (cap <= 0) return null
-        val available: Array<android.util.Range<Int>> = try {
-            Camera2CameraInfo.from(cam.cameraInfo)
-                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-                ?: return null
-        } catch (e: Exception) {
-            Log.w(TAG, "chooseAeFpsRange: cannot read supported ranges", e)
-            return null
-        }
+        val available = supportedAeFpsRanges()
         if (available.isEmpty()) return null
         val within = available.filter { it.upper <= cap }
-        val pool = if (within.isNotEmpty()) within else available.toList()
+        val pool = if (within.isNotEmpty()) within else available
         val bestUpper = if (within.isNotEmpty()) pool.maxOf { it.upper } else pool.minOf { it.upper }
         return pool.filter { it.upper == bestUpper }.maxByOrNull { it.lower }
     }
@@ -1982,6 +2021,7 @@ class YOLOView @JvmOverloads constructor(
         if (range != null) {
             builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, range)
         }
+        logSupportedAeFpsRangesOnce(range)
         if (range != appliedFpsRange) {
             Log.i(TAG, "Camera fps cap: requested=$requestedCameraFpsCap applied=${range ?: "device default"}")
             appliedFpsRange = range
