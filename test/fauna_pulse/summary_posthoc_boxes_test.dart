@@ -118,6 +118,79 @@ void main() {
             'no post-hoc box reached the painter (owner bug, round 175)',
       );
 
+      // Round 178 (owner bug): the pager caption must count the drawn
+      // analysis boxes ("0 detections" under five green boxes), and the
+      // live-tracking info rows must hide when no detector ran.
+      expect(find.textContaining('1 analysis detection'), findsOneWidget);
+      expect(find.text('Track IDs'), findsNothing);
+      expect(find.text('Confidence'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'AI session: live detection count and Track IDs/Confidence rows stay',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+
+      const jpegName = 'roi_ai01_2026-08-04_120000_000.jpg';
+      final tmp = Directory.systemTemp.createTempSync('summary_ai_rows');
+      addTearDown(() {
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      final im = img.Image(width: 32, height: 32);
+      img.fill(im, color: img.ColorRgb8(40, 120, 40));
+      Directory('${tmp.path}/roi_frames').createSync();
+      File(
+        '${tmp.path}/roi_frames/$jpegName',
+      ).writeAsBytesSync(img.encodeJpg(im, quality: 90));
+      // A detector session: the photo is discovered via its trigger frame's
+      // batched detections record (round 69 format), which carries the
+      // track id + confidence the info rows must keep showing.
+      File('${tmp.path}/session.jsonl').writeAsStringSync([
+        '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
+            '"config":{"captureTrigger":"detector"}}',
+        '{"type":"detections","time_ms":2000,"frame_ms":2000,"tracks":['
+            '{"track_id":7,"class_name":"bee","confidence":0.91,'
+            '"box_in_roi":{"left":0.1,"top":0.1,"right":0.3,"bottom":0.3},'
+            '"jpeg":"$jpegName"}]}',
+        '{"type":"end_of_session","time_ms":60000,"ended_normally":true,'
+            '"unique_track_count":1}',
+      ].join('\n'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            logFile: File('${tmp.path}/session.jsonl'),
+            initialTabIndex: 2,
+          ),
+        ),
+      );
+      for (var i = 0; i < 250; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+        if (find.text('All').evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('All'));
+      for (var i = 0; i < 250; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+        if (find.textContaining('saved photo').evaluate().isNotEmpty) break;
+      }
+      expect(find.textContaining('Showing 1 of 1 saved photo'), findsOneWidget);
+
+      expect(find.textContaining('1 detection'), findsOneWidget);
+      expect(find.text('Track IDs'), findsOneWidget);
+      expect(find.text('Confidence'), findsOneWidget);
+      expect(find.textContaining('#7'), findsWidgets);
+
       await tester.pumpWidget(const SizedBox());
     },
   );

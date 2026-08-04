@@ -6220,3 +6220,31 @@ time); this round builds the native API per the review E6 design.
   release build) and compare elapsed_ms + keep counts vs the r176 baseline
   (199.0 s, 83% overhead; projected ~3-5x faster).
 
+## Round 178 (2026-08-04): E6 validated (6.5x) + photo-caption/info-row fixes
+
+E6 VALIDATION (owner, release build, same 180-photo session re-run with the
+r177 native tiled path): elapsed_ms 30761 vs the r176 baseline 199010 =
+6.5x faster. post_end.phases: native_tiled_photos 180, native_fallbacks 0,
+tile_prep_ms 0, tile_transfer_ms 0, source_decode_ms 795 (header probes
+only), tile_predict_ms 28685 — essentially pure inference; tile_overhead_ms
+collapsed 82.8% -> 0.26% (796 ms). E6 closed end to end (instrumented r168,
+gate measured r176, built r177, validated r178). Review doc + OVERVIEW note
+the numbers.
+
+Owner-reported viewer bugs, same review session (both fixed + widget-tested
+in summary_posthoc_boxes_test.dart):
+
+- Pager caption said "0 detections" under five green analysis boxes: it
+  counted only the live trigger-frame boxes. New `_detectionCountLabel`
+  counts what the overlay actually DRAWS for the current view: live-only ->
+  "N detections" (unchanged AI behavior), post-hoc-only -> "N analysis
+  detections", both -> "N live + M analysis detections". Keyed on the SHOWN
+  file, so the count follows the high-res/live toggle like the boxes do.
+- "Track IDs: none" / "Confidence: n/a" rows on no-AI photos: the two rows
+  now render only when the photo has live track data (p.trackIds non-empty)
+  — hidden for motion/time-lapse/reference photos, kept for AI sessions
+  (one entry per visible track id, as before; regression test with a
+  detector-session fixture asserts they stay).
+
+flutter analyze clean; suite 447 tests green; debug APK builds.
+

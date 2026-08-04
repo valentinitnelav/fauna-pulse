@@ -1306,6 +1306,15 @@ no-op). Owner validation owed: re-run the same 180-photo session (force)
 on the new build and compare `elapsed_ms` + keep counts vs the r176
 baseline (199 s / 83% overhead).
 
+**Validated (round 178), owner release-build re-run of the same 180-photo
+session:** `elapsed_ms` 30 761 (**6.5× faster** than the 199 010 baseline),
+`native_tiled_photos` 180, `native_fallbacks` 0, `tile_prep_ms` 0,
+`tile_transfer_ms` 0, `source_decode_ms` 795 (header probes only),
+`tile_predict_ms` 28 685 — the run is now essentially pure inference, and
+`tile_overhead_ms` collapsed from 82.8% of wall to **0.26%** (796 ms). E6
+closed end to end: instrumented (r168), gate measured (r176), built (r177),
+validated (r178).
+
 ### E7. [x] Three small cleanups (first bullet reworded after verification)
 
 - Coalesce the thermal/power reads (REWORDED r160: codex's original premise,

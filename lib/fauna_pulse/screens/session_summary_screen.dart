@@ -2562,6 +2562,19 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   List<_DetBox> _boxesFor(_PhotoSample p) =>
       _showLive && p.liveFile != null ? p.boxes : (p.stillBoxes ?? p.boxes);
 
+  /// The pager caption's count — everything the overlay actually DRAWS for
+  /// the current view (round 178, owner bug: a SAHI-analyzed time-lapse
+  /// photo read "0 detections" under five green analysis boxes, because only
+  /// the live trigger-frame boxes were counted). Post-hoc analysis boxes are
+  /// named separately so an AI session's live count keeps its meaning.
+  String _detectionCountLabel(_PhotoSample p) {
+    final live = _boxesFor(p).length;
+    final post = widget.postBoxes[_shownNameFor(p)]?.length ?? 0;
+    if (post == 0) return '$live detection${live == 1 ? '' : 's'}';
+    if (live == 0) return '$post analysis detection${post == 1 ? '' : 's'}';
+    return '$live live + $post analysis detections';
+  }
+
   /// Saved square side (px) of whichever image is currently displayed for
   /// [p] — the companion's own size while it is shown. Both are square ROI
   /// crops, so one side describes them.
@@ -3236,8 +3249,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             Expanded(
               child: Text(
                 'Photo ${_page + 1} / ${widget.photos.length}'
-                '  •  ${_boxesFor(widget.photos[_page]).length} detection'
-                '${_boxesFor(widget.photos[_page]).length == 1 ? '' : 's'}',
+                '  •  ${_detectionCountLabel(widget.photos[_page])}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
@@ -3292,19 +3304,16 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         ? '${p.width! < p.height! ? p.width : p.height} × '
               '${p.width! < p.height! ? p.height : p.width} px'
         : 'unknown';
-    final ids = p.trackIds.isEmpty
-        ? 'none'
-        : p.trackIds.map((e) => '#$e').join(', ');
-    // One "#id Conf.: 0.xy" entry per track visible in this photo.
-    final conf = p.trackIds.isEmpty
-        ? 'n/a'
-        : p.trackIds
-              .map(
-                (e) => p.trackConf[e] != null
-                    ? '#$e Conf.: ${p.trackConf[e]!.toStringAsFixed(2)}'
-                    : '#$e Conf.: —',
-              )
-              .join(', ');
+    // One "#id Conf.: 0.xy" entry per track visible in this photo. Only
+    // meaningful when the live detector ran (see the rows below).
+    final ids = p.trackIds.map((e) => '#$e').join(', ');
+    final conf = p.trackIds
+        .map(
+          (e) => p.trackConf[e] != null
+              ? '#$e Conf.: ${p.trackConf[e]!.toStringAsFixed(2)}'
+              : '#$e Conf.: —',
+        )
+        .join(', ');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),
@@ -3325,8 +3334,15 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                   : 'high-res photo (⚡ for the trigger-moment live crop)',
             ),
           _infoRow('Resolution', res),
-          _infoRow('Track IDs', ids),
-          _infoRow('Confidence', conf),
+          // Live-tracking rows only when the detector actually ran on this
+          // photo (round 178, owner request): motion/time-lapse/SAHI-only
+          // photos have no track ids or live confidences, and permanent
+          // "none"/"n/a" rows only puzzled. AI-session photos keep them,
+          // one entry per visible track id.
+          if (p.trackIds.isNotEmpty) ...[
+            _infoRow('Track IDs', ids),
+            _infoRow('Confidence', conf),
+          ],
           _infoRow('Captured', _formatStamp(p.captureMs)),
           _infoRow('File', liveShown ? p.liveName! : p.name),
           // Post-hoc cleanup verdict for the shown file (round 138): a photo
