@@ -189,7 +189,7 @@ Note: make sure to have the `key.properties` file existing in the `.../fauna-pul
 
 Also, in case you have sessions that are stored on the phone and they might be 
 still useful for debugging purposes or want to keep that collected data for 
-further testing, make sure to back the up on your computer first - see [Pulling data from the smartphone](##pulling-data-from-the-smartphone).
+further testing, make sure to back the up on your computer first - see [Pulling data from the smartphone](#pulling-data-from-the-smartphone).
 
 ```bash
 cd fauna-pulse                  # navigate to the git repository (cloned on your computer)
