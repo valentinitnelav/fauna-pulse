@@ -90,7 +90,7 @@ String detectionsLine(int timeMs, List<int> ids) =>
 /// frames until the graphs content is on screen.
 Future<void> pumpSummaryGraphs(WidgetTester tester, File log) async {
   await tester.pumpWidget(
-    MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 3)),
+    MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 2)),
   );
   for (var i = 0; i < 250; i++) {
     await tester.runAsync(

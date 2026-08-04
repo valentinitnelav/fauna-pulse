@@ -6396,3 +6396,54 @@ user input, and double-check the plain English of each helper.
   keeps its explanation behind the ⓘ and that live warnings stay visible;
   AGENT_CHANGELOG_OVERVIEW.md r159 invariant updated with the r181 rules.
 
+## Round 182 (2026-08-05): session rename, per-session gear menu, summary tab reorder
+
+Owner requests: (1) an option to rename a session, with the new name updated
+everywhere it appears, especially in the session's text outputs; (2) a home
+for it — the per-row gear popup idea won over an Overview-tab button (the
+histogram row icon was decorative anyway); (3) the summary's "Settings" tab
+renamed to avoid confusion with the live settings sheet and moved last
+(Overview, Photos, Graphs, Setup).
+
+- **Where the name lives (checked exhaustively):** the folder under
+  `sessions/`, `config.folderName` in the start record, and nowhere else —
+  capture records log `jpeg` file NAMES, post_detections.jsonl stores bare
+  photo names resolved against the session dir (rename never breaks
+  resumability or review), the gallery album name derives from the folder at
+  export time, and photos carry no EXIF. `session_id`/`file_token` are
+  name-independent.
+- New `logging/session_rename.dart`: `sanitizeSessionName` (mirrors
+  `_resolveSessionDir`'s `[^A-Za-z0-9_\- ]` → `_` rule so a renamed folder is
+  never something a fresh recording would refuse) + `renameSession`:
+  validates (non-empty, no existing target), renames the folder, then
+  rewrites session.jsonl line-streamed to a `.rename_tmp` file — only the
+  first `start_of_session` line is re-encoded (config.folderName updated;
+  a truncated start line stays byte-identical) — appends a `session_renamed`
+  audit record ({old_name, new_name} + the standard type/time_ms/time_iso
+  envelope) and atomically replaces the log. Crash mid-rewrite leaves the
+  original log intact; a failure after the folder rename says so and a
+  re-rename retries the log update. This is the ONE sanctioned post-recording
+  edit of the otherwise append-only log; the audit record keeps the edit
+  honest (documented in DATA_GUIDE §3, incl. the "end_of_session is last
+  line" caveat).
+- **Home screen gear menu** (leading icon of each Previous-sessions row,
+  replacing the decorative amber histogram): Rename session (dialog with
+  inline validation errors, sanitisation hint, busy guard), Export photos to
+  Gallery (same confirm text as the summary; progress in a modal dialog;
+  shared scan via new `scanSessionPhotos` in crop_export.dart — the summary's
+  `_confirmExportPhotosToGallery` now uses it too), Analyze photos (the
+  long-press action, now discoverable; long-press kept), Delete session
+  (same confirmation language as the summary's round-90 red button). Row tap
+  still opens the summary. Summary Overview buttons unchanged.
+- **Summary tabs:** Overview | Photos | Graphs | Setup (was Overview |
+  Settings | Photos | Graphs). "Setup" = the read-only record of what the
+  session ran with; last because it is consulted least. `_settingsTab` →
+  `_setupTab`; `initialTabIndex` docs + callers updated (analysis screen
+  Photos jump 2→1; tests: posthoc-boxes 2→1, bottom-inset Graphs 3→2).
+- Tests: new `session_rename_test.dart` (7 cases: full rename incl. photo
+  move + record-level assertions, unicode/unsafe-char sanitisation, empty
+  name, name collision, no-op same name, missing log, truncated start
+  record). Full suite green (475 passed).
+- Docs: DATA_GUIDE `session_renamed` section + Setup-tab mention; overview
+  doc new r182 bullet + tab-order update; FIELD_GUIDE gear-menu mention.
+

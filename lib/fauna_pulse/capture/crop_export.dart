@@ -320,6 +320,46 @@ String galleryAlbumName(String sessionFolderName) {
   return s.isEmpty ? 'session' : s;
 }
 
+/// What a session folder holds for a whole-session gallery export: every
+/// saved .jpg with its total size, and how many are reference photos.
+class SessionPhotoScan {
+  final List<File> files;
+  final int bytes;
+  final int referenceCount;
+  const SessionPhotoScan(this.files, this.bytes, this.referenceCount);
+}
+
+/// Lists a session's exportable photos from the real folders on disk
+/// (`roi_frames/` + the reference photos in `gt_frames/`), not from the log,
+/// so crash-ended sessions (whose log may be missing its tail) still export
+/// every file. Sorted by full path: within one session every file shares the
+/// session token prefix and the capture timestamp is fixed-width (see
+/// roiPhotoFileName), so this groups gt_frames/ before roi_frames/ and keeps
+/// each group in capture order. Shared by the summary Overview button and the
+/// home screen's per-session gear menu (round 182).
+Future<SessionPhotoScan> scanSessionPhotos(String sessionPath) async {
+  final files = <File>[];
+  var bytes = 0;
+  var referenceCount = 0;
+  try {
+    for (final sub in const ['roi_frames', 'gt_frames']) {
+      final dir = Directory('$sessionPath/$sub');
+      if (!await dir.exists()) continue;
+      await for (final e in dir.list()) {
+        if (e is File && e.path.toLowerCase().endsWith('.jpg')) {
+          files.add(e);
+          bytes += await e.length();
+          if (sub == 'gt_frames') referenceCount++;
+        }
+      }
+    }
+  } catch (e) {
+    logSwallowed('gallery_export_scan', e);
+  }
+  files.sort((a, b) => a.path.compareTo(b.path));
+  return SessionPhotoScan(files, bytes, referenceCount);
+}
+
 /// Counts from one whole-session gallery export, for the completion message.
 /// [supported] is false when the phone runs Android 9 or older, where the app
 /// can't write into the shared Gallery without a legacy permission.

@@ -206,7 +206,10 @@ is app-scoped external storage, which is visible over USB.
 **Viewing a session's photos in the phone's own Gallery app:** the session
 folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
-summary → Overview tab → **Export photos to Gallery**. This copies every saved
+summary → Overview tab → **Export photos to Gallery** (or the ⚙ gear menu on
+the session's row in the home screen's Previous sessions list, which also
+offers **Rename session**, **Analyze photos** and **Delete session**). This
+copies every saved
 photo (including the reference photos from `gt_frames/`) into the shared album
 `Pictures/FaunaPulse/<session-name>`, which
 any gallery app shows as its own album. Notes: they are *copies* (the dialog

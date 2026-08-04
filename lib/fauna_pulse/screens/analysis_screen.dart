@@ -981,7 +981,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                     MaterialPageRoute(
                       builder: (_) => SessionSummaryScreen(
                         logFile: File('${session.dir.path}/session.jsonl'),
-                        initialTabIndex: 2, // Photos tab
+                        initialTabIndex: 1, // Photos tab (r182 order)
                       ),
                     ),
                   );

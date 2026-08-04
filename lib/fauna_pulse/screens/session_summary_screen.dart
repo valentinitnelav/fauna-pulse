@@ -36,8 +36,9 @@ import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
 
-  /// Tab shown first (0 Overview … 2 Photos): the analysis screen's "Review
-  /// photos before deleting" jumps straight to the Photos tab (round 137).
+  /// Tab shown first (0 Overview, 1 Photos, 2 Graphs, 3 Setup — round 182
+  /// order): the analysis screen's "Review photos before deleting" jumps
+  /// straight to the Photos tab (round 137).
   final int initialTabIndex;
 
   const SessionSummaryScreen({
@@ -1253,9 +1254,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Four tabs keep the summary uncluttered: headline numbers, the full
-    // settings record, the saved-photo browser, and the graphs each get their
-    // own page instead of one very long scroll.
+    // Four tabs keep the summary uncluttered: headline numbers, the
+    // saved-photo browser, the graphs and the full settings record each get
+    // their own page instead of one very long scroll. Tab order + the
+    // "Setup" label are round 182 (owner request): the settings record is
+    // consulted least, so it sits last, and "Setup" avoids confusion with
+    // the live settings sheet (these rows are the read-only record of what
+    // the session ran with).
     return DefaultTabController(
       length: 4,
       initialIndex: widget.initialTabIndex.clamp(0, 3),
@@ -1265,9 +1270,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Overview'),
-              Tab(text: 'Settings'),
               Tab(text: 'Photos'),
               Tab(text: 'Graphs'),
+              Tab(text: 'Setup'),
             ],
           ),
         ),
@@ -1283,9 +1288,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     : null,
                 children: [
                   _overviewTab(),
-                  _settingsTab(),
                   _photosTab(),
                   _graphsTab(),
+                  _setupTab(),
                 ],
               ),
       ),
@@ -1487,25 +1492,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// from the log, so crash-ended sessions (whose log may be missing its
   /// tail) still export every file.
   Future<void> _confirmExportPhotosToGallery() async {
-    final sessionPath = widget.logFile.parent.path;
-    final files = <File>[];
-    var bytes = 0;
-    var referenceCount = 0;
-    try {
-      for (final sub in const ['roi_frames', 'gt_frames']) {
-        final dir = Directory('$sessionPath/$sub');
-        if (!await dir.exists()) continue;
-        await for (final e in dir.list()) {
-          if (e is File && e.path.toLowerCase().endsWith('.jpg')) {
-            files.add(e);
-            bytes += await e.length();
-            if (sub == 'gt_frames') referenceCount++;
-          }
-        }
-      }
-    } catch (e) {
-      logSwallowed('gallery_export_scan', e);
-    }
+    // Old sessions' gt_frames files may share roi_ names with detection
+    // photos of the same millisecond — the native same-name skip would then
+    // drop one album copy (vanishingly rare, originals untouched); new
+    // sessions are immune via the ref_ prefix.
+    final scan = await scanSessionPhotos(widget.logFile.parent.path);
+    final files = scan.files;
+    final bytes = scan.bytes;
+    final referenceCount = scan.referenceCount;
     if (!mounted) return;
     if (files.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1515,14 +1509,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       return;
     }
-    // Within one session every file shares the session token prefix and the
-    // capture timestamp is fixed-width (see roiPhotoFileName), so sorting by
-    // FULL path groups gt_frames/ before roi_frames/ and keeps each group in
-    // capture order. Old sessions' gt_frames files may share roi_ names with
-    // detection photos of the same millisecond — the native same-name skip
-    // would then drop one album copy (vanishingly rare, originals untouched);
-    // new sessions are immune via the ref_ prefix.
-    files.sort((a, b) => a.path.compareTo(b.path));
     final album = galleryAlbumName(
       widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
     );
@@ -1593,9 +1579,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// Every parameter the user chose at session start (from the log's config
-  /// block), grouped — its own tab so the overview stays scannable.
-  Widget _settingsTab() {
+  /// The "Setup" tab (labeled "Settings" before round 182): every parameter
+  /// the user chose at session start (from the log's config block), grouped —
+  /// its own tab so the overview stays scannable.
+  Widget _setupTab() {
     // Lazy one-shot scan for mid-session ROI changes (round 109): kicked off
     // the first time this tab builds so the fast head/tail stats load is
     // untouched; setState on completion re-renders with the history rows.

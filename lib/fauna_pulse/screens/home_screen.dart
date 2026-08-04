@@ -4,6 +4,7 @@
 // user can re-open any of them and view its summary (stats + graphs + photos)
 // without recording anything new.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -13,9 +14,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/crop_export.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/error_reporter.dart';
+import '../logging/session_rename.dart';
 import '../models/session_config.dart';
 import '../postprocess/post_detector.dart';
 import 'analysis_screen.dart';
@@ -63,6 +66,13 @@ class _PastSession {
 /// is the established home for those (session settings stay on the camera
 /// screen, which needs the live camera).
 enum _HomeMenuAction { toggleSetupTips, deleteAllSessions }
+
+/// Per-session actions in the gear menu on each "Previous sessions" row
+/// (round 182). The gear replaced a decorative histogram icon; it groups
+/// everything that manages ONE session without opening its summary: rename,
+/// gallery export, post-hoc analysis (same as the row long-press) and
+/// delete. Opening the summary stays the row tap.
+enum _SessionAction { rename, exportPhotos, analyze, delete }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -318,6 +328,244 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     // The summary can DELETE its session (round 90) — rescan so the list and
     // the per-session sizes stay accurate.
+    _loadSessions();
+  }
+
+  /// Rename dialog for one session (round 182). The heavy lifting —
+  /// folder rename, start-record update, `session_renamed` audit record —
+  /// is `renameSession` (logging/session_rename.dart); this dialog only
+  /// collects the name and shows any failure inline so the user can correct
+  /// it without retyping.
+  Future<void> _renameSession(_PastSession s) async {
+    final controller = TextEditingController(text: s.name);
+    String? error;
+    var busy = false;
+    final renamed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Rename session'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                enabled: !busy,
+                decoration: InputDecoration(
+                  labelText: 'Session name',
+                  border: const OutlineInputBorder(),
+                  errorText: error,
+                  errorMaxLines: 3,
+                  helperText:
+                      'Letters, digits, spaces, - and _ '
+                      '(anything else becomes _).',
+                  helperMaxLines: 2,
+                ),
+                onChanged: (_) {
+                  if (error != null) setSt(() => error = null);
+                },
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Renames the session folder and updates the name inside the '
+                'session\'s data log too (the change itself is documented '
+                'there as a "session_renamed" record). Photos keep their '
+                'file names.',
+                style: TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setSt(() => busy = true);
+                      try {
+                        await renameSession(
+                          s.logFile.parent,
+                          controller.text,
+                        );
+                        if (ctx.mounted) Navigator.of(ctx).pop(true);
+                      } on SessionRenameException catch (e) {
+                        setSt(() {
+                          busy = false;
+                          error = e.message;
+                        });
+                      } catch (e) {
+                        setSt(() {
+                          busy = false;
+                          error = 'Rename failed: $e';
+                        });
+                      }
+                    },
+              child: const Text('Rename'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final newName = sanitizeSessionName(controller.text);
+    controller.dispose();
+    if (renamed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Session renamed to "$newName".')),
+      );
+      _loadSessions();
+    }
+  }
+
+  /// Whole-session gallery export from the gear menu (round 182): the same
+  /// scan → confirm → copy flow as the summary's Overview button (shared
+  /// `scanSessionPhotos` / `exportPhotosToGallery` helpers), with the
+  /// progress shown as a modal dialog since this screen has no inline slot.
+  Future<void> _exportSessionPhotos(_PastSession s) async {
+    final scan = await scanSessionPhotos(s.logFile.parent.path);
+    if (!mounted) return;
+    if (scan.files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This session has no saved photos to export.'),
+        ),
+      );
+      return;
+    }
+    final album = galleryAlbumName(s.name);
+    final n = scan.referenceCount;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Export ${scan.files.length} photos to Gallery?'),
+        content: Text(
+          'Copies every saved photo of this session into the phone\'s '
+          'Gallery app, as the album "Pictures/FaunaPulse/$album". '
+          '${n > 0 ? 'Includes $n reference photo${n == 1 ? '' : 's'} '
+                    '(fixed-interval shots, taken whether or not anything '
+                    'was detected). ' : ''}'
+          'The copies take about ${formatBytes(scan.bytes)} of extra '
+          'storage; the originals stay in the session folder. Photos '
+          'already exported are skipped, so re-running is safe.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Export',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+
+    // Modal progress: the export runs in chunks, so the bar moves while the
+    // dialog blocks other taps. `progressOpen` guards the final pop against
+    // the Android back button dismissing the dialog first.
+    var done = 0;
+    final total = scan.files.length;
+    StateSetter? progressUpdate;
+    var progressOpen = true;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Exporting photos…'),
+          content: StatefulBuilder(
+            builder: (ctx, setSt) {
+              progressUpdate = setSt;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(
+                    value: total == 0 ? null : done / total,
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Photo $done of $total', style: const TextStyle(fontSize: 13)),
+                ],
+              );
+            },
+          ),
+        ),
+      ).then((_) => progressOpen = false),
+    );
+    final res = await exportPhotosToGallery(
+      scan.files,
+      album,
+      onProgress: (d, _) {
+        done = d;
+        progressUpdate?.call(() {});
+      },
+    );
+    if (!mounted) return;
+    if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+    final msg = !res.supported
+        ? 'Export to Gallery needs Android 10 or newer — this phone runs an '
+              'older Android. The photos are still on the phone in the '
+              'session folder (reachable over USB).'
+        : 'Exported ${res.exported} photos to Gallery ▸ '
+              'Pictures/FaunaPulse/$album.'
+              '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
+              '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    _loadSessions();
+  }
+
+  /// Delete ONE session from the gear menu (round 182) — same confirmation
+  /// language and delete call as the summary's red button (round 90).
+  Future<void> _confirmDeleteSession(_PastSession s) async {
+    final size = s.sizeBytes > 0 ? ' (${formatBytes(s.sizeBytes)})' : '';
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this session?'),
+        content: Text(
+          'This permanently deletes "${s.name}"$size from the phone: the '
+          'data log, all metadata and every saved photo. '
+          'This cannot be undone.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    try {
+      await s.logFile.parent.delete(recursive: true);
+    } catch (e) {
+      logSwallowed('session_delete', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete the session.')),
+        );
+      }
+      return;
+    }
     _loadSessions();
   }
 
@@ -603,7 +851,67 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (_, i) {
           final s = _sessions[i];
           return ListTile(
-            leading: const Icon(Icons.bar_chart, color: Colors.amber),
+            // The gear menu (round 182) replaced a purely decorative
+            // histogram icon: per-session management (rename, export,
+            // analyze, delete) lives here, opening the summary stays the
+            // row tap.
+            leading: PopupMenuButton<_SessionAction>(
+              icon: const Icon(Icons.settings, color: Colors.amber),
+              tooltip: 'Session actions',
+              onSelected: (a) {
+                switch (a) {
+                  case _SessionAction.rename:
+                    _renameSession(s);
+                  case _SessionAction.exportPhotos:
+                    _exportSessionPhotos(s);
+                  case _SessionAction.analyze:
+                    _openAnalysis(s.logFile.parent.path);
+                  case _SessionAction.delete:
+                    _confirmDeleteSession(s);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _SessionAction.rename,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.drive_file_rename_outline),
+                    title: Text('Rename session'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _SessionAction.exportPhotos,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.photo_library_outlined),
+                    title: Text('Export photos to Gallery'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _SessionAction.analyze,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.auto_awesome_outlined),
+                    title: Text('Analyze photos'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _SessionAction.delete,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.delete_forever, color: Colors.red),
+                    title: Text(
+                      'Delete session',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             title: Row(
               children: [
                 Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),

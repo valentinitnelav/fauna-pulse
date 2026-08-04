@@ -61,7 +61,7 @@ void main() {
         MaterialApp(
           home: SessionSummaryScreen(
             logFile: File('${tmp.path}/session.jsonl'),
-            initialTabIndex: 2, // Photos tab — the review-before-delete path
+            initialTabIndex: 1, // Photos tab (r182 order) — review-before-delete
           ),
         ),
       );
@@ -165,7 +165,7 @@ void main() {
         MaterialApp(
           home: SessionSummaryScreen(
             logFile: File('${tmp.path}/session.jsonl'),
-            initialTabIndex: 2,
+            initialTabIndex: 1,
           ),
         ),
       );

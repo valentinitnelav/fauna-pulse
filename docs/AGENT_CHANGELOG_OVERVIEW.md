@@ -463,8 +463,23 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   checked right after `predict`) so the ROI is copied out of the camera frame once per
   frame; idle and FPS-capped frames keep the gate's own direct draw (no model raster
   exists there), so the gate still sees every converted frame while awake.
-- **Session summary is tabbed (round 60):** Overview | Settings | Photos | Graphs
-  (`DefaultTabController`, `session_summary_screen.dart`). The Settings tab reads the
+- **Session rename + per-session gear menu (round 182).** Each Previous-sessions
+  row's leading icon is a gear `PopupMenuButton` (replaced the decorative
+  histogram icon): Rename / Export photos to Gallery / Analyze photos / Delete;
+  opening the summary stays the row tap, analyze stays on long-press too.
+  Rename = `renameSession` (`logging/session_rename.dart`): renames the folder,
+  rewrites `config.folderName` in the start record (streamed to a temp file +
+  atomic replace, so a crash can't corrupt the log) and APPENDS a
+  `session_renamed` audit record ({old_name, new_name}; DATA_GUIDE §3) — the
+  ONE sanctioned post-recording edit of session.jsonl. Nothing else stores the
+  name: photos and post_detections.jsonl reference bare file names, and the
+  gallery album name derives from the folder at export time.
+  `scanSessionPhotos` (crop_export.dart) is the shared photo-list scan behind
+  both gallery-export entry points (summary Overview button + gear menu).
+- **Session summary is tabbed (round 60; r182 label+order):** Overview | Photos |
+  Graphs | Setup (`DefaultTabController`, `session_summary_screen.dart`). The last
+  tab was "Settings" in slot 1 until r182 — `initialTabIndex` callers use the NEW
+  indices (Photos 1, Graphs 2, Setup 3). The Setup tab reads the
   `config` block from the start record, so every new `SessionConfig` field appears in
   the JSON automatically — but add a display row in `_settingsSection()` when adding
   a setting. r84: the power (W) graph + energy numbers render only for sessions with
@@ -480,7 +495,7 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   > 10 lanes (`_timelineCollapsible`) — no-AI sessions show only the
   explanatory note there, no button. Sessions recorded with
   the r148 build's `diagnosticsEnabled:false` show an explanatory note there instead
-  of empty charts, and their sample-interval rows are dropped from the Settings tab. r86: the Photos tab draws EVERY insect of the photo's trigger
+  of empty charts, and their sample-interval rows are dropped from the Setup tab. r86: the Photos tab draws EVERY insect of the photo's trigger
   frame (the `jpeg` filename is shared across the record's entries at parse time —
   only due tracks carry it in the log): cyan box = triggered the photo, amber =
   co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)

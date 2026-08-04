@@ -212,8 +212,8 @@ adjustment, written once the box has sat unchanged for ~2 s (a change still
 pending when recording stops is flushed, so the session's final ROI is always
 on record; an adjustment that ends back on the previous geometry writes
 nothing). Sessions recorded before round 109 instead carry one record per drag
-tick — take the last of a burst. The summary's Settings tab lists these as
-"ROI changes during the session".
+tick — take the last of a burst. The summary's Setup tab (labeled "Settings"
+before round 182) lists these as "ROI changes during the session".
 
 ### `motion_gate` — when the detector sleeps/wakes (only if the gate is enabled)
 
@@ -364,7 +364,24 @@ JSONL throughout.
 ### `end_of_session` — one per session, last line (absent = crash)
 
 `ended_normally` (`true` only on a clean stop), `battery_percent`,
-`unique_track_count`, and a final `thermal` reading.
+`unique_track_count`, and a final `thermal` reading. (One exception to "last
+line": a `session_renamed` record, below, lands after it if the session was
+renamed later — detect a crash by the record's *absence*, as in §2, not by
+its position.)
+
+### `session_renamed` — the session was renamed after recording (round 182+)
+
+Written when the user renames a session from the app's home screen (the gear
+menu on a session row). The rename also rewrites `config.folderName` in the
+`start_of_session` record so the log agrees with the folder; this record is
+the audit trail of that edit — the one sanctioned post-recording change to an
+otherwise append-only file. It appears AFTER `end_of_session` (one per
+rename, so several can accumulate).
+
+| Field | Meaning |
+|---|---|
+| `old_name` | Folder name before the rename. |
+| `new_name` | Folder name after the rename (also the new `config.folderName`). |
 
 ## 4. Computing visitation rate
 
