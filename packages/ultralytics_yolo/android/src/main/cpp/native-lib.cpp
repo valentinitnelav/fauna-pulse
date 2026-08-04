@@ -68,8 +68,14 @@ static float intersection_area(const DetectedObject &a, const DetectedObject &b)
     return interWidth * interHeight;
 }
 
-// Non-Maximum Suppression (NMS) implementation (for already sorted proposals)
-static void nms_sorted_bboxes(const std::vector<DetectedObject>& objects, std::vector<int>& picked, float nms_threshold) {
+// Non-Maximum Suppression (NMS) implementation (for already sorted proposals).
+// FaunaPulse (round 170, perf review E7): stops once max_picked survivors are
+// collected. The proposals arrive sorted by score and survivors are appended in
+// that order, so the first max_picked survivors are exactly the ones the
+// caller's truncation kept anyway — identical output, less work on noisy frames
+// with more than max_picked survivors (the Kotlin postprocessEndToEnd path
+// already breaks early the same way).
+static void nms_sorted_bboxes(const std::vector<DetectedObject>& objects, std::vector<int>& picked, float nms_threshold, int max_picked) {
     picked.clear();
     int n = objects.size();
     std::vector<float> areas(n);
@@ -77,6 +83,7 @@ static void nms_sorted_bboxes(const std::vector<DetectedObject>& objects, std::v
         areas[i] = objects[i].rect.width * objects[i].rect.height;
     }
     for (int i = 0; i < n; i++) {
+        if ((int)picked.size() >= max_picked) break;
         const DetectedObject &a = objects[i];
         bool keep = true;
         for (int j = 0; j < (int)picked.size(); j++) {
@@ -146,9 +153,10 @@ Java_com_ultralytics_yolo_ObjectDetector_postprocess(
     // Sort by score
     qsort_descent_inplace(proposals);
 
-    // Apply Non-Maximum Suppression (NMS)
+    // Apply Non-Maximum Suppression (NMS); collects at most num_items_threshold
+    // survivors (the min() below stays as a guard, it can no longer bite).
     std::vector<int> picked;
-    nms_sorted_bboxes(proposals, picked, iou_threshold);
+    nms_sorted_bboxes(proposals, picked, iou_threshold, num_items_threshold);
 
     int count = std::min((int)picked.size(), (int)num_items_threshold);
     std::vector<DetectedObject> objects(count);

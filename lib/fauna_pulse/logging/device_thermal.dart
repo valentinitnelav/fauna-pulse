@@ -6,6 +6,7 @@
 // MainActivity.kt) to read the battery temperature in °C and the OS thermal
 // status, so we can show it on screen and record it in the session log.
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'app_error_hooks.dart';
@@ -89,25 +90,75 @@ class ThermalReading {
 class DeviceThermal {
   static const MethodChannel _channel = MethodChannel('faunapulse/thermal');
 
+  /// Round 170 (perf review E7): one native sample is shared by every caller
+  /// within this window. The thermal and power sample timers are armed
+  /// together with the same default interval, so their ticks land in the same
+  /// instant and used to cost two identical channel calls each time; and
+  /// Android's getThermalHeadroom() starts answering NaN when polled more
+  /// than about once per second, which the user-configurable 1 s minimum
+  /// interval could reach. 900 ms coalesces same-tick callers at every legal
+  /// interval while a 1 s cadence still gets a fresh reading each tick.
+  static const Duration cacheWindow = Duration(milliseconds: 900);
+
+  // Cache stamps use a MONOTONIC clock (a Stopwatch only ever counts up), so
+  // a wall-clock jump (NTP sync, timezone) can never poison the window.
+  static final Stopwatch _monotonic = Stopwatch()..start();
+  @visibleForTesting
+  static Duration Function() now = () => _monotonic.elapsed;
+
+  static ThermalReading? _cached;
+  static Duration? _cachedAt;
+  static Future<ThermalReading>? _inFlight;
+
+  @visibleForTesting
+  static void resetForTesting() {
+    _cached = null;
+    _cachedAt = null;
+    _inFlight = null;
+    now = () => _monotonic.elapsed;
+  }
+
   /// Reads the current thermal state. Returns an empty reading on any error
   /// (e.g. iOS, or a platform that doesn't expose battery temperature).
-  static Future<ThermalReading> read() async {
+  /// A reading younger than [cacheWindow] is served from cache, and callers
+  /// arriving while a channel call is already underway share that call's
+  /// result (the thermal and power timers tick in the same event-loop turn,
+  /// so without this they would still fetch twice).
+  static Future<ThermalReading> read() {
+    final cached = _cached;
+    final at = _cachedAt;
+    if (cached != null && at != null && now() - at < cacheWindow) {
+      return Future.value(cached);
+    }
+    return _inFlight ??= _fetch();
+  }
+
+  static Future<ThermalReading> _fetch() async {
     try {
       final res = await _channel.invokeMapMethod<String, dynamic>('getThermal');
-      if (res == null) return const ThermalReading();
-      return ThermalReading(
-        batteryTempC: (res['batteryTempC'] as num?)?.toDouble(),
-        thermalStatus: res['thermalStatus'] as String?,
-        batteryCurrentUa: (res['batteryCurrentUa'] as num?)?.toInt(),
-        batteryVoltageMv: (res['batteryVoltageMv'] as num?)?.toInt(),
-        chargeCounterUah: (res['chargeCounterUah'] as num?)?.toInt(),
-        isCharging: res['isCharging'] as bool?,
-        thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
-      );
+      final reading = res == null
+          ? const ThermalReading()
+          : ThermalReading(
+              batteryTempC: (res['batteryTempC'] as num?)?.toDouble(),
+              thermalStatus: res['thermalStatus'] as String?,
+              batteryCurrentUa: (res['batteryCurrentUa'] as num?)?.toInt(),
+              batteryVoltageMv: (res['batteryVoltageMv'] as num?)?.toInt(),
+              chargeCounterUah: (res['chargeCounterUah'] as num?)?.toInt(),
+              isCharging: res['isCharging'] as bool?,
+              thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
+            );
+      _cached = reading;
+      _cachedAt = now();
+      return reading;
     } catch (e) {
-      // Polled ~1/s while recording; logSwallowed rate-limits the trace.
       logSwallowed('thermal_read', e);
+      // Cache the empty reading too: a failing channel should not be
+      // re-hammered by every caller inside the same window.
+      _cached = const ThermalReading();
+      _cachedAt = now();
       return const ThermalReading();
+    } finally {
+      _inFlight = null;
     }
   }
 }

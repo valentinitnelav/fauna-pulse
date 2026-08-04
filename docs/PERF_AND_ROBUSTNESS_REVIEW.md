@@ -1262,7 +1262,7 @@ paired SAHI runs on the phones, then compare `tile_overhead_ms` (plus the
 un-splittable native decode share inside `tile_predict_ms`) against
 `elapsed_ms` — under 15% means E6 closes as a skipped lead.
 
-### E7. [ ] Three small cleanups (first bullet reworded after verification)
+### E7. [x] Three small cleanups (first bullet reworded after verification)
 
 - Coalesce the thermal/power reads (REWORDED r160: codex's original premise,
   frequent headroom calls risking the Android NaN throttle, is FALSE: the
@@ -1285,6 +1285,38 @@ un-splittable native decode share inside `tile_predict_ms`) against
   mandatory final/cancel updates; only matters when photos process fast.
 - Benefit: tidier telemetry, a crowded-frame postprocessing micro-gain,
   smoother fast batches. Cost: ~1 day total. None of these are live-FPS gains.
+
+**Done (round 170).** All three, with the required parity evidence:
+
+- *Thermal/power coalescing:* `DeviceThermal.read()` (device_thermal.dart)
+  serves a monotonic-stamped cached reading for 900 ms AND shares one
+  in-flight channel call among concurrent callers. The second half matters:
+  the thermal and power timers are armed together with the same default
+  interval, so their ticks land in the same event-loop turn and a TTL cache
+  alone would still have fetched twice (the second call arrives before the
+  first completes). Result: one native sample per tick, and the 1 s
+  user-minimum cadence stays under the ~1/s `getThermalHeadroom` NaN limit.
+  Errors cache as an empty reading (a failing channel is not re-hammered
+  inside the window). Session start/end reads may now be up to 0.9 s stale,
+  harmless for battery-% / temperature records. 4 unit tests (shared
+  in-flight call, cache hit, expiry via the injectable clock, error caching
+  with recovery).
+- *C++ NMS early break:* `nms_sorted_bboxes` (native-lib.cpp) takes
+  `max_picked` and breaks once that many survivors are collected; the caller
+  passes `num_items_threshold` and the post-loop `min()` stays as a guard.
+  Parity evidence: a standalone host-compiled harness replicating the file's
+  exact sort/intersection/NMS code compared old (collect all, truncate after)
+  vs new (early break) over 48,000 randomized cases (0-299 proposals, score
+  ties, degenerate zero-width boxes, IoU thresholds 0/0.3/0.7/1.0, item
+  thresholds 0/1/5/30/300/10000): outputs exactly identical, indices and
+  order. The repo has no C++ test infrastructure, so the harness run is
+  recorded here and in the changelog rather than checked in.
+- *Batch-progress throttle:* `PostDetector` emits progress at most once per
+  200 ms (`progressMinInterval`, pinnable in tests); the FIRST and the
+  FINAL/cancel updates always fire and cancellation stays per-photo,
+  unthrottled. 3 deterministic tests (huge interval → first+final only, zero
+  interval → per-photo parity with the old cadence, cancelled run still ends
+  on the true totals).
 
 ### E8. [ ] Document the lean QNN packaging alternative (document only)
 

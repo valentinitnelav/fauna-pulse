@@ -20,6 +20,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../logging/app_error_hooks.dart';
 import 'sahi_profile.dart';
 
@@ -196,6 +198,15 @@ class PostRunConfig {
 class PostDetector {
   static const outputFileName = 'post_detections.jsonl';
 
+  /// Round 170 (perf review E7): progress updates fire at most once per this
+  /// interval (~5 Hz). A fast model on small photos used to land one setState
+  /// per photo on the analysis screen. The FIRST and the FINAL update always
+  /// fire regardless (the UI's last state must show the true totals), and
+  /// cancellation stays per-photo (checked between photos, unthrottled).
+  /// Mutable only so tests can pin it (zero = per-photo, huge = first+final).
+  @visibleForTesting
+  static Duration progressMinInterval = const Duration(milliseconds: 200);
+
   final PredictFn predict;
 
   PostDetector({required this.predict});
@@ -270,6 +281,23 @@ class PostDetector {
 
     var processed = 0, failed = 0;
     var cancelled = false;
+    // Progress throttle state (round 170): monotonic clock, last emit time,
+    // and the count the UI last saw (so the mandatory final update is skipped
+    // when the last in-loop emit already showed the true totals).
+    final progressClock = Stopwatch()..start();
+    Duration? lastProgressAt;
+    var lastProgressCount = 0;
+    void emitProgress(int doneCount) {
+      if (onProgress == null || doneCount == 0) return;
+      lastProgressAt = progressClock.elapsed;
+      lastProgressCount = doneCount;
+      onProgress(
+        doneCount,
+        pending.length,
+        DateTime.now().difference(started).inMilliseconds / doneCount,
+      );
+    }
+
     for (final name in pending) {
       if (isCancelled?.call() ?? false) {
         cancelled = true;
@@ -302,13 +330,14 @@ class PostDetector {
       final doneCount = processed + failed;
       // Flush periodically so a kill mid-run loses at most a few records.
       if (doneCount % 20 == 0) await sink.flush();
-      onProgress?.call(
-        doneCount,
-        pending.length,
-        DateTime.now().difference(started).inMilliseconds /
-            (doneCount == 0 ? 1 : doneCount),
-      );
+      if (lastProgressAt == null ||
+          progressClock.elapsed - lastProgressAt! >= progressMinInterval) {
+        emitProgress(doneCount);
+      }
     }
+    // Mandatory final/cancel update: whatever the throttle swallowed, the last
+    // thing the UI hears is the true totals.
+    if (lastProgressCount != processed + failed) emitProgress(processed + failed);
 
     final skippedDone = force ? 0 : done.length;
     writeRecord({

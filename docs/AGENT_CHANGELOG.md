@@ -5931,3 +5931,43 @@ verified against the code/tests before editing.
   a remeasured note on the 2026-07-28 122.1 MB record).
 - flutter analyze clean; suite green (no code touched).
 
+## Round 170 (2026-08-04): E7 three small cleanups
+
+Perf review E7, all three bullets. No behavior change visible to the user apart
+from smoother fast analysis batches; no new tunables (internal constants only).
+
+- Thermal/power sample coalescing (`logging/device_thermal.dart`):
+  `DeviceThermal.read()` now serves a cached reading for 900 ms (stamped with a
+  monotonic Stopwatch clock, immune to wall-clock jumps) AND shares one
+  in-flight channel call among concurrent callers. The in-flight sharing is the
+  part that actually coalesces the default case: the thermal and power timers
+  are armed together with the same interval, so their ticks land in the same
+  event-loop turn and the second read() arrives BEFORE the first channel call
+  returns (a plain TTL cache would fetch twice). One native sample per tick;
+  the user-minimum 1 s cadence stays under Android's ~1/s getThermalHeadroom
+  NaN limit. Errors cache as an empty reading (no re-hammering a failing
+  channel inside the window). Session start/end reads can be up to 0.9 s
+  stale, harmless for battery-%/temp records. New
+  test/fauna_pulse/device_thermal_test.dart: 4 tests (shared in-flight call,
+  cache hit, expiry via injectable clock, error caching + recovery).
+- C++ NMS early break (`packages/.../cpp/native-lib.cpp`): `nms_sorted_bboxes`
+  gains a `max_picked` parameter and breaks once that many survivors are
+  collected; caller passes `num_items_threshold` (default 30); the post-loop
+  min() stays as a guard. Proposals are pre-sorted and survivors append in
+  order, so the first N survivors are exactly what the old truncate kept.
+  PARITY EVIDENCE (the review's requirement; repo has no C++ test infra): a
+  standalone host harness (scratchpad, g++ -O2) replicating the file's exact
+  code compared old vs new over 48,000 randomized cases (0-299 proposals,
+  score ties, degenerate zero-width boxes, IoU 0/0.3/0.7/1.0, thresholds
+  0/1/5/30/300/10000): outputs exactly identical (indices and order). Only
+  helps noisy frames with > 30 survivors, as the review predicted.
+- Batch-progress throttle (`postprocess/post_detector.dart`): progress
+  callbacks now fire at most once per 200 ms (static `progressMinInterval`,
+  @visibleForTesting so tests can pin it); the FIRST and the FINAL/cancel
+  updates always fire (the UI's last state must show true totals);
+  cancellation stays per-photo and unthrottled. The analysis screen needed no
+  change. 3 deterministic tests (interval huge -> first+final only, interval
+  zero -> old per-photo cadence, cancelled run ends on true totals).
+- flutter analyze clean; suite 432 tests green; debug APK builds (NDK
+  recompiled native-lib.cpp).
+

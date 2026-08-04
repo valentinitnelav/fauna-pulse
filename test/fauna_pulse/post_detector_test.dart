@@ -166,6 +166,63 @@ void main() {
       expect(recs.last.containsKey('phases'), isFalse);
     });
 
+    // Round 170 (perf review E7): progress is throttled to ~5 Hz, but the
+    // first and the final update always fire. Tests pin the interval so the
+    // behavior is deterministic regardless of machine speed.
+    test('throttled progress: first and final updates always fire (r170)',
+        () async {
+      PostDetector.progressMinInterval = const Duration(hours: 1);
+      addTearDown(() => PostDetector.progressMinInterval =
+          const Duration(milliseconds: 200));
+      final calls = <(int, int)>[];
+      final detector = PostDetector(predict: (_) async => fakeResult());
+      await detector.run(
+        sessionDir,
+        config: config,
+        onProgress: (done, total, avgMs) => calls.add((done, total)),
+      );
+      expect(calls, [(1, 3), (3, 3)]);
+    });
+
+    test('zero throttle interval keeps the per-photo cadence (r170)', () async {
+      PostDetector.progressMinInterval = Duration.zero;
+      addTearDown(() => PostDetector.progressMinInterval =
+          const Duration(milliseconds: 200));
+      final calls = <(int, int)>[];
+      final detector = PostDetector(predict: (_) async => fakeResult());
+      await detector.run(
+        sessionDir,
+        config: config,
+        onProgress: (done, total, avgMs) => calls.add((done, total)),
+      );
+      expect(calls, [(1, 3), (2, 3), (3, 3)]);
+    });
+
+    test('a cancelled run still delivers a final progress update (r170)',
+        () async {
+      PostDetector.progressMinInterval = const Duration(hours: 1);
+      addTearDown(() => PostDetector.progressMinInterval =
+          const Duration(milliseconds: 200));
+      var predicts = 0;
+      final calls = <(int, int)>[];
+      final detector = PostDetector(
+        predict: (_) async {
+          predicts++;
+          return fakeResult();
+        },
+      );
+      final result = await detector.run(
+        sessionDir,
+        config: config,
+        isCancelled: () => predicts >= 2,
+        onProgress: (done, total, avgMs) => calls.add((done, total)),
+      );
+      expect(result.cancelled, isTrue);
+      // Photo 1 emitted (first), photo 2 swallowed by the throttle, then the
+      // cancel exit forces the true totals out.
+      expect(calls, [(1, 3), (2, 3)]);
+    });
+
     test('post_end embeds the SAHI phase profile when one is passed (r168)',
         () async {
       final profile = SahiPhaseProfile()
