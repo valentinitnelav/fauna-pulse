@@ -24,7 +24,8 @@ dependencies:
 flutter pub get                      # after changing dependencies
 flutter analyze                      # static analysis (must be clean)
 flutter test test/fauna_pulse         # the app's unit tests
-flutter build apk --debug            # the app is deployed as a debug build
+flutter build apk --debug            # dev build (the Xiaomi dev phone runs this)
+flutter build apk --release          # release build (needs the keystore, INSTALL.md B4)
 flutter run                          # run on a connected device
 ```
 
@@ -32,30 +33,35 @@ Run `flutter analyze` and `flutter test test/fauna_pulse` before every PR.
 
 ## Testing
 
-Unit tests live in `test/fauna_pulse/` and cover the pure logic: ROI math
-(`roi_test.dart`), the ByteTrack tracker (`byte_track_test.dart`), the logger
-(`session_logger_test.dart`), config round-trip/migration
-(`session_config_test.dart`), the adaptive throttle
-(`adaptive_inference_throttle_test.dart`), and ROI capture helpers
-(`roi_capture_test.dart`).
+Unit tests live in `test/fauna_pulse/` and mirror the module map: ROI math,
+both trackers (plus the offline replay harness), the logger including its
+write-failure path, capture scheduling and crop geometry, frame processing
+(the per-frame logic extracted from the camera screen in round 73), config
+round-trip/migration, schedule and time-lapse plans, post-hoc analysis + SAHI,
+error reporting, and widget regressions. See [test/README.md](../test/README.md)
+for the commands, the replay harness, and the on-device integration tests.
 
-Known coverage gaps (see [PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md)
-§B8): the `RoiCaptureScheduler` scheduling cadence, the logger's write-failure
-path, and `camera_session_screen.dart` orchestration are not yet tested.
-
-**Benchmarking caveat:** the app deploys as a *debug* build, which runs slower
-than release. Don't quote debug FPS as the device's real speed.
+**Benchmarking caveat:** debug builds run slower than release; don't quote
+debug FPS as a device's real speed. Convention since round 158: the Samsung is
+the release-test phone, the Xiaomi stays debug/dev (so the two signatures
+never fight on one device). For any performance claim follow the paired-run
+protocol in [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) and
+summarize sessions with `dart tool/perf_summary.dart`.
 
 ## Device quirks
 
 Recorded from field testing (kept here so they're not buried in the
 Claude-facing overview):
 
-- **Xiaomi (test device `2107113SG`):** install the **debug** build, and on
-  MIUI use the **"Install via USB"** path. Its GPU has needed the crash guard.
-- **Samsung (`RF8T403A3AT`, mid-range):** camera analysis stream caps around
-  **960×720** — selecting higher silently falls back. Useful for validating the
-  "truthful stream readout" behaviour.
+- **Xiaomi (test device `2107113SG`):** the debug/dev phone. Install the
+  **debug** build, and on MIUI use the **"Install via USB"** path. Its GPU has
+  needed the crash guard. Thermal character: fast but hot (camera-first
+  throttle from ~41 °C).
+- **Samsung (`RF8T403A3AT`, mid-range):** the release-test phone (round 158).
+  Camera analysis stream caps around **960×720** (selecting higher silently
+  falls back), useful for validating the "truthful stream readout" behaviour.
+  Its `battery_current_ua` reading is broken (wrong scale), so compare energy
+  by battery-percent drop, never `power_w`.
 
 ## Project rules (please follow)
 
@@ -68,13 +74,14 @@ Claude-facing overview):
   already does it (see ARCHITECTURE.md §2).
 - **Respect the keep-in-sync pairs** (ARCHITECTURE.md §4): ROI ÷32 snapping
   across all three crop paths, and the Dart↔Kotlin crop rotation.
-- **Adding a custom model:** models are `.tflite` files (git-ignored — large
-  and some are collaborators'). They must match the detector's expected input
-  size and class labels. Note the engine implication: whether a model runs on
-  GPU or CPU is decided by whether the GPU backend can compile the model's op
-  graph, **not** simply by int8 vs fp16. See INSTALL.md for how users import
-  models, and `python_scripts/README_int8_export.md` for the INT8 export
-  process.
+- **Adding a custom model:** accepted formats are `.tflite` (including the
+  official `format=litert` exports) and `*_qnn.onnx` Snapdragon-NPU context
+  binaries; plain `.onnx` is rejected everywhere. Model files are git-ignored
+  (large, and some are collaborators'). The full export/conversion guide is
+  [MODEL_CONVERSION.md](MODEL_CONVERSION.md); INSTALL.md covers how users
+  import models. Note the engine implication: whether a model runs on GPU or
+  CPU is decided by whether the GPU backend can compile the model's op graph,
+  **not** simply by int8 vs fp16.
 
 ## Documentation maintenance
 
@@ -109,8 +116,12 @@ retains its own `LICENSE`. Contributions are made under AGPL-3.0.
 | [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md) | field researcher | What every setting does. |
 | [DATA_GUIDE.md](DATA_GUIDE.md) | researcher / analyst | `session.jsonl` data dictionary; compute visitation rates (R/Python). |
 | [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md) | advanced user | Why a small ROI still yields sharp photos. |
+| [MODEL_CONVERSION.md](MODEL_CONVERSION.md) | collaborator | Accepted model formats; export/convert a trained model for the app. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | developer | Build/test, conventions, this index. |
+| [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) | developer | How to measure performance honestly (paired-run protocol, `tool/perf_summary.dart`). |
+| [../packages/ultralytics_yolo/FAUNAPULSE_FORK.md](../packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
-| [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | AI grounding | Current-state snapshot (rewrite in place). |
+| [RELEASE_PLAN.md](RELEASE_PLAN.md) | maintainer | Phased checklist for the first public release (DOI, GitHub/Obtainium, Play). |
+| [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) | AI grounding | Current-state snapshot (rewrite in place). |
 | [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | maintainer | Append-only development journal. |

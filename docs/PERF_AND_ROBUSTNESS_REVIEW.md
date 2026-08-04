@@ -1333,7 +1333,7 @@ un-splittable native decode share inside `tile_predict_ms`) against
   tradeoff.
 - Cost: 0.5-2 days each.
 
-### E10. [ ] Documentation truth pass
+### E10. [x] Documentation truth pass (round 169)
 
 - Add `packages/ultralytics_yolo/FAUNAPULSE_FORK.md`: upstream base (commit
   `22b2e5d`, label 0.6.4) vs last audited version/date (0.6.10 Part C/D,
@@ -1370,7 +1370,35 @@ un-splittable native decode share inside `tile_predict_ms`) against
 - Benefit: less onboarding ambiguity for users, reviewers, and future agents.
   Cost: ~1 day.
 
-### Part E interfaces, acceptance, and order
+**Done (round 169).** All five bullets landed:
+`packages/ultralytics_yolo/FAUNAPULSE_FORK.md` written (provenance/base
+`22b2e5d` 0.6.4, audit table C/D/E incl. the PR-#526 OrtQnn adoption, change
+list with rounds, fork-only invariants, 5-step re-audit checklist) + fork
+banner atop the plugin README (rest kept upstream-verbatim on purpose, for
+diffability). `lib/fauna_pulse/README.md` replaced (was the Phase-1 snapshot
+claiming "the plugin itself is untouched" and a pre-r69 schema; now a
+directory map of all ten module folders, current session-folder layout, and a
+DATA_GUIDE pointer instead of a duplicated record dictionary).
+`test/README.md` replaced (was upstream boilerplate pointing at a nonexistent
+`example/`; now the real commands: unit suite, replay harness with the
+REPLAY_SESSION define, the three integration tests with the exact-spelling
+`=true` dart-defines, benchmarking pointer). CONTRIBUTING: debug-build claims
+corrected (Samsung = release-test phone since r158), coverage-gaps paragraph
+removed (all three named gaps have had tests for many rounds), model section
+now points at MODEL_CONVERSION.md (the referenced `python_scripts/` no longer
+exists), device quirks refreshed, doc index fixed (duplicate AGENT_CHANGELOG
+row → OVERVIEW; rows added for MODEL_CONVERSION, PERFORMANCE_BENCHMARKING,
+FAUNAPULSE_FORK, RELEASE_PLAN). FIELD_GUIDE: calibrating banner no longer
+claims an automatic engine benchmark (user-triggered only, r76). DATA_GUIDE:
+the `fps` record now documents the r77 gate-idle omission semantics (fields
+absent + `gate_idle: true`, never zeros); the r149 always-on note was already
+correct. RELEASE_PLAN: both "detects insects out of the box" verification
+lines aligned with the honest r158 README wording (AI pipeline runs; COCO
+model knows no insects), APK figures updated to the r160 116.5 MB. Beyond the
+listed bullets, ARCHITECTURE was touched for the same reason: §5 now points
+at FAUNAPULSE_FORK.md and names the funnel/scheduler/lifecycle changes, §6 no
+longer calls the camera screen a "god class slated for extraction" (the r73
+`session/` split did it), and the `rawRectForUprightRect` name was corrected.
 
 - New user settings only if their experiments pass: `timeLapseCameraSleep`
   (default false), `reduceCameraFpsWhileMotionGateIdle` (default false); both

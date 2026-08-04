@@ -128,9 +128,11 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   - **red** — recording,
   - **a brief flash** — a photo was just saved (this is only a visual cue at
     photo cadence; it never affects the frame rate; you can disable it).
-- **"Calibrating…" banner** — shown briefly at startup while the app measures
-  the camera and benchmarks the engine. Wait for it to clear before relying on
-  the readouts.
+- **"Calibrating…" banner** — shown briefly at startup while the app probes
+  the camera (first analysis frame, photo resolution, stream ceiling); the
+  probe results are cached, so later launches clear it faster. Wait for it to
+  clear before relying on the readouts. (The GPU-vs-CPU engine benchmark is
+  never automatic; run it yourself from Settings → AI if you want it.)
 
 ## 4. Power-saving (blackout) during long sessions
 

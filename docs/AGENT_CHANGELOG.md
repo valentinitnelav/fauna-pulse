@@ -5885,3 +5885,49 @@ analysis run's total duration.
   against elapsed_ms; under 15% closes E6 as a skipped lead.
 - flutter analyze clean; suite 425 tests green.
 
+## Round 169 (2026-08-04): E10 documentation truth pass
+
+Perf review E10, docs only (no code, no behavior change). Every stale claim was
+verified against the code/tests before editing.
+
+- NEW `packages/ultralytics_yolo/FAUNAPULSE_FORK.md`: fork provenance (base
+  `22b2e5d`, upstream label 0.6.4; iOS untouched and unmaintained), upstream
+  audit table (0.6.10 Parts C/D, 0.6.11 glance r160, OrtQnn adopted early from
+  upstream PR #526), headline change list with rounds (ROI-crop inference, fast
+  crop, MotionGate, interop funnel + AE logging, preview detach, deadline
+  scheduler, GPU blocklist, NCHW, includeAnnotatedImage, r161 lifecycle, r151
+  load-failure signal, FRAMEPERF/sensor timestamps), fork-only invariants, and
+  a 5-step re-audit checklist. Plugin README gains a fork banner at the top;
+  the rest stays upstream-verbatim deliberately (diffability).
+- `lib/fauna_pulse/README.md` REPLACED: was the Phase-1 snapshot ("plugin
+  untouched", pre-r69 per-track `detection` schema, 12-file code map). Now:
+  what the app does, a one-line-per-directory map of all ten module folders,
+  current session-folder layout (gt_frames, post_detections.jsonl, logcats,
+  filename format), DATA_GUIDE pointer instead of a duplicate dictionary.
+- `test/README.md` REPLACED: was upstream boilerplate ("cd example"). Now: the
+  unit suite, the tracker replay harness (REPLAY_SESSION define), the three
+  integration tests incl. the exact-spelling `=true` dart-defines (r160), and
+  the PERFORMANCE_BENCHMARKING pointer.
+- CONTRIBUTING: "app deploys as debug" corrected (Samsung = release-test phone
+  since r158, benchmarking points at the E1 protocol); the "known coverage
+  gaps" paragraph removed (scheduler cadence, logger write-failure and the
+  screen orchestration all have tests: roi_capture_scheduler_test,
+  session_logger_test onWriteError cases, frame_processor_test since r73);
+  model bullet now points at MODEL_CONVERSION.md (python_scripts/ no longer
+  exists) and states accepted formats; device quirks refreshed; doc index
+  fixed (dup AGENT_CHANGELOG row -> AGENT_CHANGELOG_OVERVIEW; rows added:
+  MODEL_CONVERSION, PERFORMANCE_BENCHMARKING, FAUNAPULSE_FORK, RELEASE_PLAN).
+- ARCHITECTURE: §5 now defers to FAUNAPULSE_FORK.md and names the missing
+  headline changes; §6 "god class slated for extraction" replaced with the
+  real r73 `session/` split + the "new logic goes in session/" rule;
+  `rawRectForUprightRect` name fixed.
+- FIELD_GUIDE: calibrating banner text no longer claims an automatic engine
+  benchmark (it is user-triggered only, r76); notes probe caching (r121).
+- DATA_GUIDE: `fps` record now documents the r77 gate-idle omission semantics
+  (fields absent + `gate_idle: true`, never zero readings; graphs break).
+- RELEASE_PLAN: both "detects insects out of the box" verification lines
+  aligned with the honest r158 wording (AI pipeline runs, COCO model knows no
+  insects); APK size figures updated to the r160 116.5 MB (IzzyOnDroid line +
+  a remeasured note on the 2026-07-28 122.1 MB record).
+- flutter analyze clean; suite green (no code touched).
+

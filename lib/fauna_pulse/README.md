@@ -1,58 +1,71 @@
-# FaunaPulse (Phase 1)
+# FaunaPulse app code (`lib/fauna_pulse/`)
 
-Field app for detecting and timing flower-visiting insects, built on the
-Ultralytics YOLO Flutter plugin. This folder holds all the app-specific code;
-the plugin itself (camera, detector, GPU/CPU) is untouched.
+Field app for detecting and timing flower-visiting insects. This folder holds
+all app-specific Dart code; `lib/main.dart` points at the home screen. The app
+sits on a **vendored, modified** Ultralytics YOLO plugin
+(`packages/ultralytics_yolo/`, camera + on-device detector; see
+`packages/ultralytics_yolo/FAUNAPULSE_FORK.md` for what the fork changed) plus
+a small native app shell (`android/.../MainActivity.kt`, high-res crop +
+device/thermal/keep-alive channels).
 
-## What Phase 1 does
-- Live camera preview with on-device YOLO detection (plugin).
-- A **draggable square ROI** (region of interest) over the flower. Only
-  detections whose centre is inside the ROI are kept.
-- A **pure-Dart ByteTrack-style tracker** assigns each insect a stable
-  `track id` across frames (this is what makes visitation rate measurable).
-- **Time-lapse JPEG capture** of the ROI while a visit is active (first photo on
-  appearance, then every `step` seconds for up to `duration` seconds per track;
-  simultaneous tracks share one photo).
-- An **append-only `session.jsonl` log** (one JSON object per line) that survives
-  crashes — a missing `end_of_session` line means the session ended abnormally.
-- An **end-of-session summary**: unique track count + a visit-duration bar chart.
+How a frame becomes a logged visit, and the native/Dart contract:
+[`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). Current defaults and
+invariants: [`docs/AGENT_CHANGELOG_OVERVIEW.md`](../../docs/AGENT_CHANGELOG_OVERVIEW.md).
 
-Deferred to Phase 2 (see the plan): native crop-to-model ROI for better
-small-insect recall, the CPU-vs-GPU startup benchmark, and the screen-dim
-power-saving mode.
+## What the app does
 
-## Code map
-```
-models/roi.dart            square ROI math (resolution-independent)
-models/track.dart          Track + Detection types
-models/session_config.dart user/default settings (+ SharedPreferences)
-tracking/byte_track.dart   the tracker
-logging/session_logger.dart append-only JSONL writer
-capture/roi_capture.dart   time-lapse scheduler + ROI crop (background isolate)
-widgets/roi_overlay.dart   draggable square overlay
-widgets/track_box_painter.dart  boxes labelled with track id
-screens/home_screen.dart        entry + camera permission
-screens/camera_session_screen.dart  the orchestrator
-screens/settings_sheet.dart     all settings
-screens/session_summary_screen.dart dashboard
-```
+- Live on-device detection inside a draggable square **ROI** (region of
+  interest) over a flower, with a pure-Dart tracker (ByteTrack-style default,
+  C-BIoU alternative) assigning stable **track ids** (visits).
+- Three capture modes: **detector-triggered** photos, **motion-triggered**
+  (no AI at runtime), and **time-lapse** bursts (no AI, optional camera
+  parking between bursts).
+- Everything is logged to an append-only `session.jsonl`; photos are ROI
+  crops saved as JPEGs; optional scheduled recording windows, blackout
+  power-save, one-fix GPS location, reference ("ground truth") frames.
+- After a session, an on-device batch detector can re-analyze the saved
+  photos (optionally SAHI tiling for small insects) and triage storage.
+
+## Code map (one line per directory)
+
+| Directory | Purpose |
+|---|---|
+| `models/` | Square ROI math (`roi.dart`), track/detection types, `session_config.dart` (all user settings + persistence), model catalog |
+| `tracking/` | `InsectTracker` interface, ByteTrack-style + C-BIoU-style trackers, offline replay harness |
+| `logging/` | Append-only JSONL writer, thermal/power readers, session-log index, error reporting, crash store |
+| `capture/` | Photo scheduling + ROI crop paths (fast live-frame vs high-res), crop/gallery export |
+| `session/` | Recording lifecycle split out of the screen (round 73): per-frame processing, recorder, camera probes/calibration cache, schedule plan, time-lapse camera parking, location fix |
+| `screens/` | Home, camera session (UI orchestration only), settings sheet, session summary, post-hoc analysis |
+| `widgets/` | ROI overlay, track boxes, preview coordinate mapping, setting fields |
+| `postprocess/` | Batch detector over saved photos, SAHI tiling + phase profile, keep/cleanup triage |
+| `perf/` | Adaptive inference throttle (heat management) |
+| `services/` | Keep-alive foreground service binding |
+
+Unit tests mirror these modules in `test/fauna_pulse/` (see
+[`test/README.md`](../../test/README.md)).
 
 ## Output layout (per session)
-```
-<external files>/sessions/<folder>/
-  session.jsonl          append-only log (read with jsonlines / read_json(lines=True))
-  roi_frames/roi_<sessionId>_<epochMs>.jpg
-```
-On Android this is `Android/data/<package>/files/sessions/...`, visible over USB.
 
-## session.jsonl record types
-Every line has `type`, `time_ms`, `time_iso` (ISO-8601 with ms + UTC offset).
-- `start_of_session` — device, battery_percent, model/params, tracker_params, initial `roi`.
-- `roi_update` — new `roi` whenever the user adjusts the box.
-- `detection` — `track_id`, `class_name`, `confidence`, `box_in_roi`
-  (coordinates 0..1 *inside the ROI*), and `jpeg` (filename or null).
-- `end_of_session` — `ended_normally` (true only on a clean stop), battery, count.
+```
+<external files>/sessions/<session folder>/
+  session.jsonl            append-only log, one JSON object per line
+  roi_frames/              ROI photos: roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg
+                           (+ optional trigger-moment companions *_live.jpg)
+  gt_frames/               reference photos (gt_... prefix), if enabled
+  post_detections.jsonl    batch-analysis results, if the user ran one
+  logcat_start.txt / logcat_end.txt   diagnostic log snapshots
+  crops/                   fallback folder for exported crops (< Android 10)
+```
 
-Reading in R: `jsonlines::read_json_lines("session.jsonl")` or
-`jsonlite::stream_in(file(...))`. In Python:
-`pandas.read_json("session.jsonl", lines=True)`.
+On Android that root is `Android/data/com.faunapulse.app/files/sessions/`,
+visible over USB. The filename stamp is the capture TRIGGER moment in local
+time, so within a session path sort equals capture order.
+
+## Reading the data
+
+The full record dictionary (record types, field meanings, historical format
+changes such as the round-69 switch to one `detections` record per frame) and
+ready-made R/Python snippets for visitation rates live in
+[`docs/DATA_GUIDE.md`](../../docs/DATA_GUIDE.md). Quick start:
+`pandas.read_json("session.jsonl", lines=True)` or
+`jsonlines::read_json_lines()` in R.

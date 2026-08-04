@@ -1,34 +1,53 @@
-<a href="https://www.ultralytics.com/"><img src="https://raw.githubusercontent.com/ultralytics/assets/main/logo/Ultralytics_Logotype_Original.svg" width="320" alt="Ultralytics logo"></a>
+# Tests
 
-# Example Test Notes
+FaunaPulse's tests, replacing the upstream plugin's test notes (this repo has
+no `example/` app).
 
-This directory contains tests and helper entry points for validating the Flutter example app and the plugin integration around it.
-
-## 🧪 What The Tests Cover
-
-- widget behavior
-- plugin integration
-- example app flows
-- multi-instance behavior where relevant
-
-## 🚀 Running Tests
+## Unit + widget tests (no device needed)
 
 ```bash
-flutter test
+flutter test test/fauna_pulse
 ```
 
-For example-specific test entry points:
+Pure-Dart coverage of the app's logic, mirroring `lib/fauna_pulse/`: ROI math,
+both trackers, the session logger (including the write-failure path), capture
+scheduling and crop geometry, frame processing, config round-trips/migrations,
+schedule and time-lapse plans, post-hoc analysis + SAHI, error reporting, and
+widget regressions (e.g. the bottom-inset pattern in
+`summary_bottom_inset_test.dart`, which also documents the widget-test async
+traps). Run `flutter analyze` alongside it; both must be clean before a PR.
+
+## Tracker replay harness (offline accuracy, not speed)
+
+Replays a real session's logged raw detections (the "Log raw detections"
+setting) through both trackers and prints a variant comparison matrix:
 
 ```bash
-cd example
-flutter test
+flutter test test/fauna_pulse/tracker_replay_test.dart \
+  --dart-define=REPLAY_SESSION=/absolute/path/to/session.jsonl
 ```
 
-## 📦 Model Assumptions
+Skipped when the define is missing. Judge results against a hand count from
+the session's `gt_frames/` photos (rounds 105/108 workflow), not against MOT
+benchmarks.
 
-Tests should prefer:
+## Integration tests (device attached)
 
-- official model IDs when the scenario is about resolver behavior
-- explicit custom asset paths when the scenario is about local asset handling
+```bash
+flutter test integration_test/app_launch_test.dart -d <device>   # app-launch smoke
+flutter test integration_test/qnn_smoke_test.dart -d <device>    # QNN runtime presence
+flutter test integration_test/qnn_benchmark_test.dart -d <device> \
+  --dart-define=RUN_BENCH=true   # optional: --dart-define=RUN_SOAK=true
+```
 
-Avoid reintroducing example-only model tables or stale hardcoded model naming in new tests.
+The QNN benchmark needs network access (downloads models and a test image) and
+a QNN-capable Snapdragon (Hexagon v73+; the SD888 Xiaomi test phone is v68 and
+cannot run the pinned assets, round 151). The opt-in flags are exact-spelling
+booleans: `=true` works, `=1` silently does nothing (round 160).
+
+## Performance measurements
+
+Do not quote debug-build FPS or one-off runs. The honest protocol
+(device/build matrix, paired cooled runs, acceptance criteria) is
+[`docs/PERFORMANCE_BENCHMARKING.md`](../docs/PERFORMANCE_BENCHMARKING.md),
+with `dart tool/perf_summary.dart` to summarize a session log.

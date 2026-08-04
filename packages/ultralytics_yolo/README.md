@@ -1,3 +1,12 @@
+> **FaunaPulse fork notice.** This is a **vendored, modified fork** of the official
+> [Ultralytics YOLO Flutter plugin](https://github.com/ultralytics/yolo-flutter-app)
+> (upstream base commit `22b2e5d`, label 0.6.4), maintained inside the FaunaPulse
+> app repository. The Android (Kotlin) side is substantially modified; see
+> [FAUNAPULSE_FORK.md](FAUNAPULSE_FORK.md) for what changed, the upstream audit
+> history, and the re-audit checklist. The rest of this README is kept as upstream
+> wrote it for easy diffing, so parts of it (pub.dev install instructions, the
+> example app) do not apply to this vendored copy. License: AGPL-3.0, unchanged.
+
 <a href="https://www.ultralytics.com/"><img src="https://raw.githubusercontent.com/ultralytics/assets/main/logo/Ultralytics_Logotype_Original.svg" width="320" alt="Ultralytics logo"></a>
 
 [English](README.md) | [简体中文](README.zh-CN.md)

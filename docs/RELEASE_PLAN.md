@@ -20,7 +20,9 @@ yet, no release keystore, docs written for researchers.
 - **Free distribution channel: GitHub Releases + Obtainium** (an Android app that installs
   and auto-updates apps directly from a project's GitHub releases; needs nothing from us
   beyond tagged releases with stable APK file names). IzzyOnDroid is ruled out (approx.
-  30 MB APK limit vs our approx. 129 MB). F-Droid main repo is an optional later phase.
+  30 MB APK limit vs our 116.5 MB universal release APK, round-160 measurement; the
+  QNN runtime alone is ~76 MB of that, see review E8). F-Droid main repo is an
+  optional later phase.
 - **Signing strategy (irreversible, do first):** generate and keep OUR own keystore (the
   key file that signs every APK; Android only installs an update if it is signed with the
   same key as the installed version). Upload that key to Play App Signing so a Play
@@ -105,7 +107,8 @@ in README (§Models).
       owner has (mount model, distance in cm, lighting/glare, wind) (round 158).
 - [x] Start a human-facing `CHANGELOG.md` (round 158).
 - [x] Rebuild and smoke-test a release APK with the new keystore on a device
-      (2026-07-28: 122.1 MB release APK built and installed on the Samsung; the first
+      (2026-07-28: 122.1 MB release APK built and installed on the Samsung, remeasured
+      116.5 MB in round 160; the first
       install attempt failed with INSTALL_FAILED_UPDATE_INCOMPATIBLE because the phone
       still carried a debug-signed build, expected one-time step, resolved by
       uninstalling first). Convention going forward: Samsung = release-test phone,
@@ -133,7 +136,9 @@ Repo steps:
       direct-APK route.
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
-the arm64 APK and detects insects with the bundled model out of the box.
+the arm64 APK and the AI pipeline runs with the bundled model out of the box (the
+bundled yolo26n knows COCO objects, not insects; real insect detections still need a
+model the user obtains, see the open owner question above).
 
 ## Phase 2: citizen-scientist documentation (~2 rounds + owner screenshots)
 
@@ -244,8 +249,9 @@ supported by F-Droid.
 ## Verification (end-to-end)
 
 - `flutter analyze` clean and `flutter test test/fauna_pulse` green after every round.
-- Fresh clone builds a release APK that installs and detects with the bundled model
-  (validates the Phase 0 build fixes).
+- Fresh clone builds a release APK that installs and runs the AI pipeline with the
+  bundled model (validates the Phase 0 build fixes; the bundled COCO model does not
+  detect insects, see the open owner question).
 - DOI badge resolves; `CITATION.cff` validates (cffconvert); Obtainium picks up a new
   tagged release within a day.
 - Play pre-launch report (Google's automatic device-farm test of the uploaded build) on

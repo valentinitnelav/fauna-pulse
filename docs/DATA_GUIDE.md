@@ -282,7 +282,11 @@ the visit timeline) are unaffected either way.
   `thermal_headroom`, `power_w` (derived), and since round 68
   `free_storage_bytes` / `total_storage_bytes` (so the session's disk fill
   rate can be plotted against its photo cadence).
-- `fps`: `fps` (detector FPS) plus per-second camera/detector/pipeline rates,
+- `fps`: while the motion gate is idle (round 77) the record carries
+  `gate_idle: true` and OMITS every inference-derived field — an absent field
+  means the detector was off, never a zero reading; summary graphs break
+  their lines across such gaps. While awake: `fps` (detector FPS) plus
+  per-second camera/detector/pipeline rates,
   inference timing breakdown, and applied throttle cap.
 - `power`: `power_w`, `battery_current_ua`, `battery_voltage_mv`,
   `charge_counter_uah`, `is_charging`.

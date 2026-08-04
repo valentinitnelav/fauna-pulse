@@ -98,7 +98,7 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
   `models/roi.dart` (`Roi.snapSideToGrid`, `snapToMultipleOf32`). Don't
   "fix" snapping in one place only.
 - **Rotation/mirror of the saved crop.** Only the small ROI square is rotated,
-  not the full frame — the Dart side (`rawRectForUpright` / `uprightHighResDims`
+  not the full frame — the Dart side (`rawRectForUprightRect` / `uprightHighResDims`
   in `roi_capture.dart`) and the Kotlin mirror in `MainActivity.kt` must
   agree. Do **not** reintroduce full-frame `normalizeJpegOrientation`.
 - **ROI box geometry lives in one scale** (the analysis/stream grid). The
@@ -109,27 +109,39 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
 ## 5. What the plugin fork changed vs upstream
 
 The vendored `packages/ultralytics_yolo/` is **not** stock — a new developer
-reading its (upstream) docs won't see these. Forked from `22b2e5d`, with:
+reading its (upstream) docs won't see these. The authoritative fork document
+(upstream base and audit history, the full change list, fork-only invariants,
+and the re-audit checklist) is
+[`packages/ultralytics_yolo/FAUNAPULSE_FORK.md`](../packages/ultralytics_yolo/FAUNAPULSE_FORK.md).
+The headline changes:
 
-- **GPU-crash guard** (`LiteRtModel.kt`): a 2-strike blocklist that drops a
-  model to CPU permanently if it crashes the GPU compile, plus a GPU program
-  cache. See the [litert-gpu memory] rationale in AGENT_CHANGELOG.md.
 - **ROI-crop inference**: the detector runs on the cropped ROI square (better
   small-insect recall) instead of the whole letterboxed frame.
 - **Fast ROI capture** from the live analysis frame (no camera stall).
 - **Motion gate** (`MotionGate.kt`, opt-in): native brightness-diff gate that
   sleeps the detector on a still ROI.
+- **GPU-crash guard** (`LiteRtModel.kt`): a 2-strike blocklist that drops a
+  model to CPU permanently if it crashes the GPU compile, plus a GPU program
+  cache.
+- **Camera2 interop funnel + power controls** (round 82): manual focus and the
+  camera-hardware FPS cap applied in one place (`applyInteropOptions`),
+  preview detach for blackout, and the round-129 inference deadline scheduler.
+- **Native lifecycle overhaul** (round 161): real model/instance disposal,
+  plugin-owned coroutine scope, terminal `YOLOView.release()`.
 
 ## 6. Session lifecycle (Dart)
 
-`camera_session_screen.dart` orchestrates a session: it opens the
-`SessionLogger`, writes `start_of_session`, wires up the `RoiCaptureScheduler`,
-starts the wakelock + keep-alive foreground service and the sample timers
-(thermal/FPS/power), processes every frame in `_onStreamingData`, and on stop
-writes `end_of_session` and tears everything down in `dispose()`. This file is
-large and slated for extraction — see the "god-class split" item in
-[PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md) before adding to
-it.
+`camera_session_screen.dart` orchestrates a session: it receives every frame
+in `_onStreamingData` and owns the UI, but since round 73 the actual logic
+lives in `session/`: `frame_processor.dart` (per-frame ROI mapping, tracking,
+gate-idle state), `session_recorder.dart` (recording lifecycle: folder,
+logger, photos, keep-alive, stop order), plus the camera probes, schedule
+plan, and time-lapse camera parking. A recording opens the `SessionLogger`,
+writes `start_of_session`, wires the `RoiCaptureScheduler`, starts the
+wakelock + keep-alive foreground service and the sample timers
+(thermal/FPS/power), and on stop writes `end_of_session` and tears down in
+order. Rule: new session logic goes into `session/` (unit-testable), not into
+the screen.
 
 ## 7. Where to look next
 
