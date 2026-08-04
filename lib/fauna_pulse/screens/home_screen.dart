@@ -10,9 +10,11 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../capture/crop_export.dart';
 import '../logging/app_error_hooks.dart';
@@ -65,7 +67,7 @@ class _PastSession {
 /// settings sheet in round 159 — it is an app-level preference, and this menu
 /// is the established home for those (session settings stay on the camera
 /// screen, which needs the live camera).
-enum _HomeMenuAction { toggleSetupTips, deleteAllSessions }
+enum _HomeMenuAction { about, toggleSetupTips, deleteAllSessions }
 
 /// Per-session actions in the gear menu on each "Previous sessions" row
 /// (round 182). The gear replaced a decorative histogram icon; it groups
@@ -702,12 +704,85 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// The top-right "⋮" menu (a PopupMenuButton — Android's standard
   /// "more actions" button) for actions that affect all sessions at once.
+  /// The ⋮ menu's About dialog (round 183; replaced the landing-screen
+  /// tagline): a condensed version of the README's Overview, the app version
+  /// (from the build, so it can never drift) and a link to the public GitHub
+  /// repository. `showAboutDialog` also provides the standard "View
+  /// licenses" page, which an AGPL app should expose anyway.
+  Future<void> _showAbout() async {
+    PackageInfo? info;
+    try {
+      info = await PackageInfo.fromPlatform();
+    } catch (e) {
+      logSwallowed('about_package_info', e);
+    }
+    if (!mounted) return;
+    showAboutDialog(
+      context: context,
+      applicationName: 'FaunaPulse',
+      applicationVersion: info != null
+          ? 'v${info.version} (build ${info.buildNumber})'
+          : null,
+      applicationIcon: const Icon(
+        Icons.emoji_nature,
+        size: 40,
+        color: Colors.amber,
+      ),
+      children: [
+        const SizedBox(height: 8),
+        const Text(
+          'A passive, non-invasive field tool for monitoring flower-visiting '
+          'insects (and, with a suitable detection model, other wildlife) at '
+          'a fixed spot. Place the square region of interest over a flower: '
+          'FaunaPulse detects, tracks and photographs visitors fully '
+          'on-device (no internet needed) and logs every visit with '
+          'timestamps, so visitation rates can be computed afterwards in R '
+          'or Python. AI-free motion-triggered and time-lapse capture, '
+          'scheduled multi-day runs and post-capture AI analysis of saved '
+          'photos are built in.',
+          style: TextStyle(fontSize: 13),
+        ),
+        const SizedBox(height: 14),
+        InkWell(
+          onTap: () async {
+            try {
+              await launchUrl(
+                Uri.parse(ErrorReporter.githubRepoUrl),
+                mode: LaunchMode.externalApplication,
+              );
+            } catch (e) {
+              logSwallowed('about_open_github', e);
+            }
+          },
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.code, size: 18, color: Colors.lightBlueAccent),
+              SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'github.com/valentinitnelav/fauna-pulse',
+                  style: TextStyle(
+                    color: Colors.lightBlueAccent,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _overflowMenu() {
     return PopupMenuButton<_HomeMenuAction>(
       icon: const Icon(Icons.more_vert, color: Colors.white70),
       tooltip: 'All-session actions',
       onSelected: (action) {
         switch (action) {
+          case _HomeMenuAction.about:
+            _showAbout();
           case _HomeMenuAction.toggleSetupTips:
             _toggleSetupTips();
           case _HomeMenuAction.deleteAllSessions:
@@ -715,6 +790,17 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: _HomeMenuAction.about,
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 20, color: Colors.white70),
+              SizedBox(width: 10),
+              Text('About FaunaPulse'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
         CheckedPopupMenuItem(
           value: _HomeMenuAction.toggleSetupTips,
           checked: _showSetupTips,
@@ -751,30 +837,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Column(
               children: [
                 const SizedBox(height: 24),
-                // Wrap the two icons in a Row to arrange them horizontally
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
-                    SizedBox(
-                      width: 16,
-                    ), // Adds horizontal space between the two icons
-                    Icon(Icons.local_see, size: 56, color: Colors.amber),
-                  ],
-                ),
+                // One nature icon only (round 183): the camera icon that
+                // used to sit beside it read as a "take a photo" button.
+                // The old tagline is gone too — what the app does now lives
+                // in the ⋮ menu's About dialog.
+                const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
                 const SizedBox(height: 8),
                 const Text(
                   'FaunaPulse',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    'Detect and time flower-visiting insects in real time.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70),
-                  ),
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
@@ -799,13 +870,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 6),
                 // Always-available entry point so a problem can be reported even after
                 // the app restarts (e.g. following a crash) — the report still captures
-                // the recent technical log.
-                TextButton.icon(
+                // the recent technical log. Outlined like the analyze button
+                // above it (round 183): a bare text label did not read as
+                // tappable.
+                OutlinedButton.icon(
                   onPressed: _reportProblem,
                   icon: const Icon(Icons.bug_report_outlined, size: 18),
                   label: const Text('Report a problem'),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
+                // A full-width rule marks where the action block ends and
+                // the session history begins (round 183).
+                const Divider(height: 1, color: Colors.white24),
+                const SizedBox(height: 10),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(

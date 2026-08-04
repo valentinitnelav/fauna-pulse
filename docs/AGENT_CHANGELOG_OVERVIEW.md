@@ -463,6 +463,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   checked right after `predict`) so the ROI is copied out of the camera frame once per
   frame; idle and FPS-capped frames keep the gate's own direct draw (no model raster
   exists there), so the gate still sees every converted frame while awake.
+- **Home screen look (round 183).** One nature icon (the camera icon read as a
+  capture button), no tagline — what the app is lives in the ⋮ menu's "About
+  FaunaPulse" (`_showAbout`: condensed README overview, live app version via
+  package_info_plus, GitHub repo link via url_launcher — NEW dep + an https
+  VIEW `<queries>` entry in the manifest — and the standard licenses page).
+  "Report a problem" is an OutlinedButton like its neighbours; a white24
+  divider separates the action block from "Previous sessions".
+  `ErrorReporter.githubRepoUrl` is the repo-link constant.
 - **Session rename + per-session gear menu (round 182).** Each Previous-sessions
   row's leading icon is a gear `PopupMenuButton` (replaced the decorative
   histogram icon): Rename / Export photos to Gallery / Analyze photos / Delete;

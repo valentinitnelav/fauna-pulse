@@ -38,6 +38,7 @@ dependencies:
   share_plus: ^12.0.0
   ultralytics_yolo:
     path: packages/ultralytics_yolo
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   # Deterministic timer control for the ROI-update debouncer tests (already a

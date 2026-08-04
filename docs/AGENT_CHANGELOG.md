@@ -6447,3 +6447,28 @@ renamed to avoid confusion with the live settings sheet and moved last
 - Docs: DATA_GUIDE `session_renamed` section + Setup-tab mention; overview
   doc new r182 bullet + tab-order update; FIELD_GUIDE gear-menu mention.
 
+## Round 183 (2026-08-05): home-screen visual polish + About dialog
+
+Owner's aesthetic pass over the landing screen (5 requests; #2, renaming
+"Analyze saved photos", is PENDING — naming suggestions were offered, the
+owner picks, then the term changes on the home button, the gear-menu entry,
+the analysis screen title and in the docs).
+
+- Top block: the `Icons.local_see` camera icon is gone (it read as a
+  "take a photo" button); only the amber `emoji_nature` icon remains above
+  the app name. The tagline under the name is gone too.
+- NEW "About FaunaPulse" in the home ⋮ menu (top entry): `showAboutDialog`
+  with a condensed version of the README's Overview paragraph, the live app
+  version + build number (package_info_plus), a tappable GitHub repo link
+  (new `ErrorReporter.githubRepoUrl`) and the framework's "View licenses"
+  page (worth exposing for an AGPL app).
+- New dependency `url_launcher` for that link (LaunchMode.externalApplication)
+  + an `https` VIEW intent added to the manifest's existing `<queries>` block
+  (Android 11+ package-visibility rule).
+- "Report a problem" upgraded from a bare TextButton to an OutlinedButton,
+  matching "Analyze saved photos" (a bare text label did not read as
+  tappable).
+- A `Divider` (white24) now separates the action block from the "Previous
+  sessions" list header.
+- Suite green (475 passed); analyzer clean.
+

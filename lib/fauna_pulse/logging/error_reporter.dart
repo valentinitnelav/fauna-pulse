@@ -52,6 +52,11 @@ class ErrorReporter {
   static const String githubIssuesUrl =
       'https://github.com/valentinitnelav/fauna-pulse/issues';
 
+  /// The public project repository, linked from the home screen's About
+  /// dialog (round 183).
+  static const String githubRepoUrl =
+      'https://github.com/valentinitnelav/fauna-pulse';
+
   /// Where the "Email…" button sends reports. Deliberately empty by default —
   /// the address is handed to testers privately, never shipped in the app —
   /// and stored app-wide (shared_preferences), NOT in SessionConfig, so it can
