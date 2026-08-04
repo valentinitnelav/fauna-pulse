@@ -48,6 +48,28 @@ String pairBase(String name) => name.endsWith('_live.jpg')
     ? '${name.substring(0, name.length - '_live.jpg'.length)}.jpg'
     : name;
 
+/// Number of PHOTOS (capture moments) among [jpegNames]: a high-res photo and
+/// its `_live.jpg` companion count as ONE — they show the same moment, and
+/// this is the unit the session summary's Photos tab displays — while an
+/// orphan companion (its high-res write failed, round 108) counts as its own
+/// photo. Round 172: the analysis screen used to label the raw FILE count
+/// "photos", so a 63-photo high-res session read "126 photos" there while its
+/// summary said 63.
+int photoUnitCount(Iterable<String> jpegNames) =>
+    jpegNames.map(pairBase).toSet().length;
+
+/// How many photos (in [photoUnitCount] units) are FULLY analyzed: every file
+/// of the pair has a record in [doneFiles]. A half-analyzed pair (a run
+/// stopped between the two members) still counts as pending.
+int analyzedPhotoUnitCount(Iterable<String> jpegNames, Set<String> doneFiles) {
+  final allDoneByBase = <String, bool>{};
+  for (final n in jpegNames) {
+    final base = pairBase(n);
+    allDoneByBase[base] = (allDoneByBase[base] ?? true) && doneFiles.contains(n);
+  }
+  return allDoneByBase.values.where((allDone) => allDone).length;
+}
+
 /// Parses every `post_detection` record of [jsonlContent]; when a photo was
 /// recorded more than once (a re-run with another model), the LAST record wins.
 List<PhotoOutcome> photoOutcomesFromJsonl(String jsonlContent) {

@@ -6000,3 +6000,33 @@ changed; the accepted single QNN-inclusive release stands.
   E8 marked done.
 - Docs-only round; analyze/tests untouched (last verified green in r170).
 
+## Round 172 (2026-08-04): photo-count consistency fix (owner-reported, session_18)
+
+Owner bug report: session_18's summary Photos tab says "63 of 63 saved photos"
+while the analysis screen's session dropdown said "126 photos". Root cause: the
+session is from the r108 high-res era, every photo has a `_live.jpg`
+trigger-moment companion (63 pairs = 126 files). The SUMMARY counts photo
+ENTRIES (a pair is one entry, the r111/112 viewer design with the lightning-bolt toggle); the
+ANALYSIS screen counted raw jpg FILES and labeled them "photos" (its
+_AnalyzableSession doc comment even claimed companions were excluded, stale
+since r137 made both pair members analyzable). Fix follows the ui-numbers-one-
+scale rule: one meaning per label, derived counts labeled separately.
+
+- New single-source helpers next to `pairBase` in postprocess/photo_keep.dart:
+  `photoUnitCount` (capture moments: a pair counts once, an orphan `_live`
+  counts as its own photo) and `analyzedPhotoUnitCount` (a photo counts as
+  analyzed only when EVERY pair member has a record; half-analyzed pairs stay
+  pending). 3 unit tests.
+- `_AnalyzableSession` now carries BOTH units (photoCount/donePhotoCount in
+  photos, fileCount/doneFileCount in files) with a doc comment naming the rule.
+- Labels: dropdown shows "63 photos (+63 live copies, N analyzed)" (photo
+  units, matching the summary; the surplus disclosed); start button "Analyze
+  63 photos (126 files)" (file suffix only when they differ); progress panel,
+  completion snackbar, cleanup section, delete-confirm dialog and
+  deleted-toast all say "files" (that is the unit the driver/cleanup actually
+  walks and deletes). Internal `_total` seeding switched to file units (it
+  must match the driver's onProgress).
+- No wire/log change; sessions without companions read exactly as before
+  (photos == files, suffix suppressed).
+- flutter analyze clean; suite 435 tests green; debug APK builds.
+

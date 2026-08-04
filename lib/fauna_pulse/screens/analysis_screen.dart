@@ -36,21 +36,30 @@ import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import 'session_summary_screen.dart';
 
-/// One analyzable session folder: its name, folder, how many photos it holds
-/// (companion `_live.jpg` duplicates already excluded), how many of those an
-/// earlier run has already processed, and how the session captured its photos
-/// ([live] — AI-free motion/time-lapse sessions are this screen's real target).
+/// One analyzable session folder. Counts come in TWO units (round 172):
+/// [photoCount]/[donePhotoCount] are PHOTOS (capture moments — a high-res
+/// photo and its `_live.jpg` companion count as one, exactly like the session
+/// summary's Photos tab), while [fileCount]/[doneFileCount] are the JPEG
+/// FILES the analysis driver actually walks (both pair members are analyzed
+/// since round 137). Labels must say which unit they show — a 63-photo
+/// high-res session has 126 files, and displaying the file count as "photos"
+/// was the round-172 owner-reported bug. [live] says how the session captured
+/// its photos (AI-free motion/time-lapse sessions are this screen's target).
 class _AnalyzableSession {
   final String name;
   final Directory dir;
   final int photoCount;
-  final int doneCount;
+  final int fileCount;
+  final int donePhotoCount;
+  final int doneFileCount;
   final LiveSessionInfo? live;
   const _AnalyzableSession(
     this.name,
     this.dir,
     this.photoCount,
-    this.doneCount,
+    this.fileCount,
+    this.donePhotoCount,
+    this.doneFileCount,
     this.live,
   );
 
@@ -214,7 +223,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   /// section can size keep/delete counts. Null when there are no results yet.
   Future<void> _loadOutcomes() async {
     final session = _session;
-    if (session == null || session.doneCount == 0) {
+    if (session == null || session.doneFileCount == 0) {
       setState(() => _outcomes = null);
       return;
     }
@@ -284,7 +293,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           _AnalyzableSession(
             entity.path.split('/').last,
             entity,
+            photoUnitCount(photos),
             photos.length,
+            analyzedPhotoUnitCount(photos, done),
             photos.where(done.contains).length,
             live,
           ),
@@ -318,9 +329,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _running = true;
       _cancelRequested = false;
       _done = 0;
+      // FILE units: the driver walks every JPEG (both members of a high-res/
+      // live pair), and its progress callback reports in the same unit.
       _total = _forceReanalyze
-          ? session.photoCount
-          : session.photoCount - session.doneCount;
+          ? session.fileCount
+          : session.fileCount - session.doneFileCount;
       _avgMs = 0;
     });
     await WakelockPlus.enable();
@@ -403,9 +416,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final message = failure != null
         ? 'Analysis failed: $failure'
         : result!.cancelled
-        ? 'Stopped — ${result.processed} photos analyzed '
+        ? 'Stopped — ${result.processed} files analyzed '
               'in ${_fmtElapsed(result.elapsed)} (resumable).'
-        : 'Done: ${result.processed} photos analyzed '
+        : 'Done: ${result.processed} files analyzed '
               'in ${_fmtElapsed(result.elapsed)}'
               '${result.failed > 0 ? ', ${result.failed} failed' : ''}'
               '${result.skippedDone > 0 ? ' (${result.skippedDone} were already done)' : ''}.';
@@ -483,7 +496,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   onChanged: (v) => setState(() => _iou = v),
                 ),
                 _sahiSection(),
-                if (_session != null && _session!.doneCount > 0)
+                if (_session != null && _session!.doneFileCount > 0)
                   CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
@@ -541,8 +554,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           DropdownMenuItem(
             value: s,
             child: Text(
+              // Photo units first (the same count the session summary shows);
+              // the live-copy surplus is disclosed separately so the file
+              // total stays explainable (round 172).
               '${s.name} [${s.modeTag}] — ${s.photoCount} photos'
-              '${s.doneCount > 0 ? ' (${s.doneCount} analyzed)' : ''}',
+              '${_sessionExtras(s)}',
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -555,6 +571,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               _loadPhotoDims();
             },
     );
+  }
+
+  /// Parenthesized dropdown extras: "(+63 live copies)", "(12 analyzed)", or
+  /// both joined with a comma. Empty for the common no-pair, nothing-done case.
+  String _sessionExtras(_AnalyzableSession s) {
+    final extras = <String>[
+      if (s.fileCount != s.photoCount)
+        '+${s.fileCount - s.photoCount} live copies',
+      if (s.donePhotoCount > 0) '${s.donePhotoCount} analyzed',
+    ];
+    return extras.isEmpty ? '' : ' (${extras.join(', ')})';
   }
 
   /// Shown for sessions that already ran the detector live: re-analysis with
@@ -794,12 +821,21 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
   Widget _startButton() {
     final session = _session;
+    // Photo units on the button (matching the dropdown and the summary); the
+    // file total is appended only when a session has live copies, so the
+    // running panel's file-based progress stays explainable.
     final pending = session == null
         ? 0
         : _forceReanalyze
         ? session.photoCount
-        : session.photoCount - session.doneCount;
-    final nothingToDo = session != null && pending == 0;
+        : session.photoCount - session.donePhotoCount;
+    final pendingFiles = session == null
+        ? 0
+        : _forceReanalyze
+        ? session.fileCount
+        : session.fileCount - session.doneFileCount;
+    final filesSuffix = pendingFiles != pending ? ' ($pendingFiles files)' : '';
+    final nothingToDo = session != null && pendingFiles == 0;
     // An AI-live session must not be re-run with the very model it already
     // used — that can only reproduce the live result.
     final sameModelAsLive =
@@ -824,8 +860,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 : sameModelAsLive
                 ? 'Same model as the live session — pick another'
                 : _forceReanalyze
-                ? 'Re-analyze $pending photos'
-                : 'Analyze $pending photos',
+                ? 'Re-analyze $pending photos$filesSuffix'
+                : 'Analyze $pending photos$filesSuffix',
           ),
         ),
       ],
@@ -859,7 +895,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Of ${outcomes.length} analyzed photos, $withBoxes contain a '
+          // File units throughout this section: the cleanup keeps/deletes
+          // FILES (a high-res/live pair moves as one but counts as two files).
+          'Of ${outcomes.length} analyzed files, $withBoxes contain a '
           'detection. With a ${formatKeepWindow(_keepGap)} keep window: '
           '$kept kept ($keptPct%), $deleted deleted ($deletedPct%).',
           style: const TextStyle(fontSize: 13),
@@ -912,7 +950,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           label: Text(
             plan.deleteNames.isEmpty
                 ? 'Nothing to delete'
-                : 'Delete ${plan.deleteNames.length} photos '
+                : 'Delete ${plan.deleteNames.length} files '
                       '(${formatBytes(plan.deleteBytes)})…',
           ),
         ),
@@ -929,10 +967,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete photos without detections?'),
         content: Text(
-          'This permanently deletes ${plan.deleteNames.length} photos '
+          'This permanently deletes ${plan.deleteNames.length} files '
           '(${formatBytes(plan.deleteBytes)}) from "${session.name}" — the '
           'ones with no detection and no detection nearby. '
-          '${plan.keepCount} photos stay. The session log keeps its records; '
+          '${plan.keepCount} files stay. The session log keeps its records; '
           'this cannot be undone.',
           style: const TextStyle(fontSize: 13),
         ),
@@ -960,7 +998,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     if (!mounted) return;
     setState(() => _cleanupBusy = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Deleted $deleted photos.')),
+      SnackBar(content: Text('Deleted $deleted files.')),
     );
     // Photo counts changed; rescan and re-derive the cleanup numbers.
     final sessions = await _scanSessions();
@@ -984,8 +1022,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          '$_done / $_total photos'
-          '${_avgMs > 0 ? ' — ${_avgMs.round()} ms/photo, ${_eta()}' : ''}',
+          // "files", not "photos": a high-res/live pair is two analyzed files
+          // but one photo, and this counter walks files (round 172).
+          '$_done / $_total files'
+          '${_avgMs > 0 ? ' — ${_avgMs.round()} ms/file, ${_eta()}' : ''}',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),

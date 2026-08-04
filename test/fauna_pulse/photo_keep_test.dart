@@ -265,4 +265,44 @@ void main() {
       expect(liveSessionInfoFromLogHead('{"type":"fps"}'), isNull);
     });
   });
+
+  // Round 172: the analysis screen showed the raw FILE count as "photos"
+  // (126 for a 63-photo high-res session whose summary says 63). These
+  // helpers are the single source of the photo-unit counting it now uses.
+  group('photoUnitCount / analyzedPhotoUnitCount', () {
+    const names = [
+      'roi_a_2026-07-17_100000_000.jpg',
+      'roi_a_2026-07-17_100000_000_live.jpg', // pair with the one above
+      'roi_a_2026-07-17_100001_000.jpg', // plain photo, no companion
+      'roi_a_2026-07-17_100002_000_live.jpg', // orphan (high-res write failed)
+    ];
+
+    test('a high-res/live pair counts as ONE photo, an orphan as its own', () {
+      expect(photoUnitCount(names), 3);
+    });
+
+    test('sessions without companions count 1:1', () {
+      expect(
+        photoUnitCount(['a.jpg', 'b.jpg', 'c.jpg']),
+        3,
+      );
+    });
+
+    test('a photo is analyzed only when EVERY pair member is done', () {
+      // Only the high-res member of the pair is done: the pair stays pending.
+      expect(
+        analyzedPhotoUnitCount(names, {'roi_a_2026-07-17_100000_000.jpg'}),
+        0,
+      );
+      // Both members done + the orphan done = 2 of 3 photos analyzed.
+      expect(
+        analyzedPhotoUnitCount(names, {
+          'roi_a_2026-07-17_100000_000.jpg',
+          'roi_a_2026-07-17_100000_000_live.jpg',
+          'roi_a_2026-07-17_100002_000_live.jpg',
+        }),
+        2,
+      );
+    });
+  });
 }
