@@ -28,6 +28,7 @@ import '../models/session_config.dart';
 
 import 'app_error_hooks.dart';
 import 'crash_store.dart';
+import 'report_bundle.dart';
 import 'diagnostics.dart';
 
 /// A saved error report on disk, plus its size for showing the user.
@@ -35,15 +36,31 @@ class ErrorReport {
   final File file;
   final int sizeBytes;
 
-  /// Screenshot copies saved next to the .txt (round 190) — attached
-  /// alongside it when the report is shared.
+  /// Screenshot copies saved next to the .txt (round 190).
   final List<File> attachments;
+
+  /// The single shareable bundle (round 191): .txt + screenshots + sampled
+  /// session files, zipped. Built whenever the report has more than the bare
+  /// .txt — sharing several files of mixed types made some targets (the
+  /// owner's WhatsApp test) drop ALL attachments, so Share always sends
+  /// either the .txt alone or this one zip. Null when nothing else exists
+  /// or zipping failed.
+  final File? bundleZip;
+
+  /// Zip member names beyond the .txt itself (screenshots + samples) — for
+  /// the saved-dialog summary.
+  final List<String> bundledNames;
 
   const ErrorReport({
     required this.file,
     required this.sizeBytes,
     this.attachments = const [],
+    this.bundleZip,
+    this.bundledNames = const [],
   });
+
+  /// What Share actually sends: the bundle when one exists, else the .txt.
+  File get shareFile => bundleZip ?? file;
 
   /// Size in human-readable units (e.g. "1.8 MB", "742 KB").
   String get humanSize {
@@ -208,20 +225,58 @@ class ErrorReporter {
       }
     }
 
+    // Sampled session files (round 191): when the report is about a session,
+    // its saved logcats / event records / analysis-run summaries travel as
+    // separate bundle members — sampled, so a multi-hour session still
+    // yields a small report (see report_bundle.dart for what is kept).
+    final extras = sessionLog != null && sessionLog.existsSync()
+        ? await collectSessionExtras(sessionLog.parent)
+        : const <ReportExtra>[];
+    if (extras.isNotEmpty) {
+      b.writeln();
+      b.writeln('-- Bundled session file samples (${extras.length}) --');
+      for (final e in extras) {
+        b.writeln(e.name);
+      }
+    }
+
     await file.writeAsString(b.toString());
     final size = await file.length();
-    return ErrorReport(file: file, sizeBytes: size, attachments: attachments);
+
+    // One shareable file (round 191): zip whenever anything beyond the bare
+    // .txt exists. On failure the report still stands — Share then sends
+    // the .txt alone (screenshots stay on disk next to it).
+    File? zip;
+    if (attachments.isNotEmpty || extras.isNotEmpty) {
+      zip = await writeReportZip(
+        File('${dir.path}/report_$stamp.zip'),
+        reportTxt: file,
+        screenshots: attachments,
+        extras: extras,
+      );
+    }
+    return ErrorReport(
+      file: file,
+      sizeBytes: size,
+      attachments: attachments,
+      bundleZip: zip,
+      bundledNames: [
+        for (final f in attachments) f.uri.pathSegments.last,
+        for (final e in extras) e.name,
+      ],
+    );
   }
 
   /// Opens the OS share sheet (email, Drive, etc.) with the report attached.
   static Future<void> share(ErrorReport report) async {
+    // ONE file, always (round 191): the r190 multi-file share (.txt +
+    // images) made WhatsApp deliver only the caption with every attachment
+    // dropped (owner field test) — mixed MIME types are the suspect. The
+    // bundle zip (or the bare .txt when there is nothing else) is a single
+    // attachment of a single type, which every target handles.
     await SharePlus.instance.share(
       ShareParams(
-        files: [
-          XFile(report.file.path),
-          // Screenshot copies ride along (round 190).
-          for (final f in report.attachments) XFile(f.path),
-        ],
+        files: [XFile(report.shareFile.path)],
         subject: 'FaunaPulse error report',
         text: 'FaunaPulse error report attached.',
       ),

@@ -18,33 +18,47 @@ import 'package:url_launcher/url_launcher.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 
+/// One pickable session for the "Include session data" dropdown (round 191).
+typedef ReportSessionOption = ({String name, String logPath});
+
 /// What the editor returns: the user's words plus any screenshots they picked
-/// (round 190). The paths point at the photo picker's temp copies — the
-/// report builder must copy them somewhere durable before they expire.
+/// (round 190) and the session whose data should ride along (round 191,
+/// null = none). The screenshot paths point at the photo picker's temp
+/// copies — the report builder must copy them somewhere durable before they
+/// expire.
 class ProblemDescriptionResult {
   final String description;
   final List<String> screenshotPaths;
+  final String? sessionLogPath;
   const ProblemDescriptionResult({
     required this.description,
     this.screenshotPaths = const [],
+    this.sessionLogPath,
   });
 }
 
-/// Opens the editor and returns the trimmed description (+ screenshots), or
-/// null if cancelled.
+/// Opens the editor and returns the trimmed description (+ screenshots +
+/// session choice), or null if cancelled. [sessions] fills the "Include
+/// session data" dropdown (newest first; the first entry is preselected —
+/// most reports ARE about the last session, but the user can switch to any
+/// other or to "No session data"). An empty list hides the dropdown; the
+/// caller then decides itself (the in-session flow always uses the live
+/// session).
 Future<ProblemDescriptionResult?> showProblemDescriptionEditor(
-  BuildContext context,
-) {
+  BuildContext context, {
+  List<ReportSessionOption> sessions = const [],
+}) {
   return Navigator.of(context).push<ProblemDescriptionResult>(
     MaterialPageRoute<ProblemDescriptionResult>(
       fullscreenDialog: true,
-      builder: (_) => const ProblemDescriptionScreen(),
+      builder: (_) => ProblemDescriptionScreen(sessions: sessions),
     ),
   );
 }
 
 class ProblemDescriptionScreen extends StatefulWidget {
-  const ProblemDescriptionScreen({super.key});
+  final List<ReportSessionOption> sessions;
+  const ProblemDescriptionScreen({super.key, this.sessions = const []});
 
   @override
   State<ProblemDescriptionScreen> createState() =>
@@ -62,6 +76,19 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
   // folder by ErrorReporter.build.
   final List<XFile> _shots = [];
   bool _picking = false;
+
+  // The session whose data goes into the report (round 191): preselect the
+  // newest — the common case — but the choice is the user's (they may be
+  // reporting something unrelated to any session).
+  String? _sessionLogPath;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sessions.isNotEmpty) {
+      _sessionLogPath = widget.sessions.first.logPath;
+    }
+  }
 
   @override
   void dispose() {
@@ -101,6 +128,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
       ProblemDescriptionResult(
         description: text,
         screenshotPaths: [for (final s in _shots) s.path],
+        sessionLogPath: _sessionLogPath,
       ),
     );
   }
@@ -247,6 +275,53 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                     ],
                   ),
                 ),
+              // Which session's data rides along (round 191, owner request):
+              // the report used to silently sample the NEWEST session's log,
+              // but a problem may concern an older session or none at all —
+              // so the choice is visible and editable.
+              if (widget.sessions.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text(
+                      'Include session data: ',
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        value: _sessionLogPath,
+                        isExpanded: true,
+                        isDense: true,
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text(
+                              'No session data',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          for (final s in widget.sessions)
+                            DropdownMenuItem<String?>(
+                              value: s.logPath,
+                              child: Text(
+                                s.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                        ],
+                        onChanged: (v) => setState(() => _sessionLogPath = v),
+                      ),
+                    ),
+                  ],
+                ),
+                const Text(
+                  'Pick the session your problem is about — its settings and '
+                  'samples of its technical logs are added to the report. '
+                  'Choose "No session data" if the problem is unrelated.',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [

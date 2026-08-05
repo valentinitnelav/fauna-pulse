@@ -6721,3 +6721,46 @@ Owner requests, all on the problem-report flow:
   (copy + naming + skip-missing + footer wording; no-attachment case).
   Full suite green (499).
 
+## Round 191 (2026-08-05): report bundle zip + user-chosen session data (owner field test)
+
+Owner tested r190 via WhatsApp: sharing the .txt ALONE worked, but with
+screenshots attached WhatsApp delivered only the caption text — every file
+dropped. Mixed MIME types in one multi-file share (text/plain + image/*) is
+the suspect. Owner also flagged that the report silently sampled the NEWEST
+session's log, though a problem may concern an older session or none.
+
+- ONE shareable file: `logging/report_bundle.dart` `writeReportZip` bundles
+  report.txt + screenshot copies + sampled session files into
+  `report_<stamp>.zip` (NEW direct dep `archive` ^4.0.7 — already in the
+  tree via `image`). `ErrorReport` gains `bundleZip`/`bundledNames`/
+  `shareFile`; `ErrorReporter.share` now always sends exactly one file
+  (zip when it exists, else the bare .txt — which keeps the plain
+  txt-only report as readable as before). Zip failure degrades to
+  txt-only sharing, never blocks the report.
+- Session choice: the describe screen gains an "Include session data"
+  dropdown (newest preselected, "No session data" option; home passes its
+  session list as `ReportSessionOption`s; the in-session camera flow keeps
+  the live session automatically). The .txt's embedded 30+200 session.jsonl
+  sample follows the user's choice.
+- Sampled session files (bundle members), designed from the owner's two
+  example sessions (session_3: 18.7k-line/6.8 MB session.jsonl, 96%
+  detections/track_event; logcats 71–93% one repeated CameraX
+  `updateAcquireFence` line + per-second PERF/FRAMEPERF telemetry that
+  duplicates the fps records; post_detections.jsonl 99% per-photo lines):
+  - `session_events_sample.jsonl.txt` — drops flood types (detections,
+    detection, track_event, raw_detections, capture, gt_capture,
+    motion_capture, timelapse_capture), KEEPS unknown/future types,
+    redactLocation applied, head 100 + tail 300 (session_3: 546 kept → 400);
+  - `logcat_start_sample.txt` / `logcat_end_sample.txt` — noise filter +
+    head/tail 150 each;
+  - `post_detections_runs.jsonl.txt` — post_start/post_end/post_cleanup
+    only, head/tail 40.
+  `sampleFilteredFile` streams with bounded memory (head list + tail ring),
+  caps 2000-char lines, returns '' for missing files, never throws.
+- "Report saved" dialog names the bundle and its contents count.
+- Tests: report_bundle_test.dart NEW (filters incl. keep-unknown-types rule,
+  head/tail marker, redaction, zip round-trip via ZipDecoder);
+  error_reporter_test extended (zip built with screenshots, bare-txt case,
+  chosen-session samples land in zip + are listed in the .txt). Suite green
+  (509).
+

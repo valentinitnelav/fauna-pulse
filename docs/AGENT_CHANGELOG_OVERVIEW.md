@@ -323,8 +323,20 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   2000 logcat lines. r190: the describe screen can attach SCREENSHOTS
   (image_picker `pickMultiImage`; `ProblemDescriptionResult` carries paths; build()
   copies them into `error_reports/` as `report_<stamp>_screenshotN.<ext>` — the only
-  FileProvider-served folder — lists them in the .txt and shares them WITH it).
-  Send = share sheet or the GitHub issue link (r189, shown on the describe screen +
+  FileProvider-served folder). r191: Share always sends ONE file — `report_<stamp>.zip`
+  (txt + screenshots + sampled session files) when anything beyond the .txt exists,
+  else the bare .txt; the r190 multi-file mixed-type share made WhatsApp drop ALL
+  attachments (owner test). r191: WHICH session's data rides along is a visible
+  dropdown on the describe screen (newest preselected, "No session data" available;
+  home passes `_sessions`, the in-session flow keeps the live session) — the embedded
+  30+200 session.jsonl sample follows the choice, PLUS `logging/report_bundle.dart`
+  samples that session's files into zip members: `session_events_sample.jsonl.txt`
+  (flood types detections/track_event/raw_detections/capture* dropped, location
+  redacted, head 100 + tail 300), `logcat_{start,end}_sample.txt` (drops
+  `updateAcquireFence` + PERF/FRAMEPERF noise — measured 71–93% of those files —
+  head/tail 150), `post_detections_runs.jsonl.txt` (per-run summaries only). NEW
+  direct dep `archive` (was transitive via image). Send = share sheet or the GitHub
+  issue link (r189, shown on the describe screen +
   "Report saved" dialog + .txt footer). The r118 "Email…" option is GONE from the UI
   (r190 owner decision: don't encourage mailed reports) — `ErrorReporter.emailTo`,
   the `report_recipient_email` pref and native `sendFileByEmail` (via the

@@ -649,8 +649,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the app's recent technical log. Saves it locally and offers to send it.
   Future<void> _reportProblem() async {
     // Ask the user to describe the problem first (required; screenshots
-    // optional since round 190). Cancelling aborts.
-    final input = await showProblemDescriptionEditor(context);
+    // optional since round 190; the session whose data rides along is the
+    // user's visible choice since round 191 — newest preselected).
+    // Cancelling aborts.
+    final input = await showProblemDescriptionEditor(
+      context,
+      sessions: [
+        for (final s in _sessions) (name: s.name, logPath: s.logFile.path),
+      ],
+    );
     if (input == null || !mounted) return;
 
     showDialog<void>(
@@ -661,12 +668,14 @@ class _HomeScreenState extends State<HomeScreen> {
     ErrorReport? report;
     try {
       final config = await SessionConfig.load();
-      final lastLog = _sessions.isNotEmpty ? _sessions.first.logFile : null;
+      final pickedLog = input.sessionLogPath == null
+          ? null
+          : File(input.sessionLogPath!);
       report = await ErrorReporter.build(
         trigger: 'User-initiated report (Report a problem)',
         userDescription: input.description,
         config: config,
-        sessionLog: lastLog,
+        sessionLog: pickedLog,
         attachmentPaths: input.screenshotPaths,
       );
     } catch (e) {
@@ -1266,7 +1275,18 @@ class ReportSavedDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final zip = report.bundleZip;
     final shots = report.attachments.length;
+    final samples = report.bundledNames.length - shots;
+    // Round 191: with screenshots/session samples everything is zipped into
+    // ONE shareable file (multi-file mixed-type shares were dropped whole
+    // by some targets — owner's WhatsApp test).
+    final bundleNote = zip == null
+        ? ''
+        : 'Share sends everything as one bundle '
+              '(${zip.uri.pathSegments.last}: the report'
+              '${shots > 0 ? ' + $shots screenshot${shots == 1 ? '' : 's'}' : ''}'
+              '${samples > 0 ? ' + $samples session file sample${samples == 1 ? '' : 's'}' : ''}). ';
     return AlertDialog(
       title: const Text('Report saved'),
       content: Column(
@@ -1276,8 +1296,7 @@ class ReportSavedDialog extends StatelessWidget {
           Text(
             'Saved a ${report.humanSize} report to:\n\n'
             '${report.file.path}\n\n'
-            '${shots > 0 ? '$shots screenshot${shots == 1 ? '' : 's'} saved '
-                  'next to it (shared together with the report). ' : ''}'
+            '$bundleNote'
             'You can send it now, or find it later over USB.',
             style: const TextStyle(fontSize: 13),
           ),

@@ -4,6 +4,7 @@
 
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/crash_store.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/error_reporter.dart';
@@ -296,14 +297,55 @@ void main() {
       // The footer suggests the issue tracker, never a direct email.
       expect(txt, contains('Open a GitHub issue'));
       expect(txt, isNot(contains('Send this file to:')));
+
+      // Round 191: anything beyond the bare .txt ships as ONE zip (mixed
+      // multi-file shares were dropped whole by WhatsApp — owner test).
+      expect(report.bundleZip, isNotNull);
+      expect(report.shareFile.path, endsWith('.zip'));
+      final names = ZipDecoder()
+          .decodeBytes(report.bundleZip!.readAsBytesSync())
+          .files
+          .map((f) => f.name)
+          .toList();
+      expect(names, hasLength(3)); // .txt + 2 screenshots
+      expect(names.first, endsWith('.txt'));
     });
 
-    test('no attachments: no screenshots section, empty list', () async {
+    test('no attachments, no session: bare txt, no zip', () async {
       final report = await ErrorReporter.build(trigger: 'test');
       expect(report.attachments, isEmpty);
+      expect(report.bundleZip, isNull);
+      expect(report.shareFile.path, endsWith('.txt'));
       expect(
         report.file.readAsStringSync(),
         isNot(contains('Attached screenshots')),
+      );
+    });
+
+    test('chosen session: sampled files land in the bundle', () async {
+      final session = Directory('${tmp.path}/sessions/s1')
+        ..createSync(recursive: true);
+      final log = File('${session.path}/session.jsonl')
+        ..writeAsStringSync([
+          '{"type":"start_of_session","time_ms":1,"model_path":"m"}',
+          '{"type":"detections","tracks":[]}',
+          '{"type":"end_of_session","ended_normally":true}',
+        ].join('\n'));
+      File('${session.path}/logcat_start.txt')
+          .writeAsStringSync('I/YOLOView: Camera fps cap: requested=15');
+
+      final report = await ErrorReporter.build(trigger: 'test', sessionLog: log);
+      expect(report.bundleZip, isNotNull);
+      final names = ZipDecoder()
+          .decodeBytes(report.bundleZip!.readAsBytesSync())
+          .files
+          .map((f) => f.name)
+          .toList();
+      expect(names, contains('session_events_sample.jsonl.txt'));
+      expect(names, contains('logcat_start_sample.txt'));
+      expect(
+        report.file.readAsStringSync(),
+        contains('-- Bundled session file samples (2) --'),
       );
     });
   });
