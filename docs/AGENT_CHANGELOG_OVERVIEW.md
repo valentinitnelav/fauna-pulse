@@ -478,8 +478,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   `ErrorReporter.githubRepoUrl` is the repo-link constant.
 - **Session rename + per-session gear menu (round 182).** Each Previous-sessions
   row's leading icon is a gear `PopupMenuButton` (replaced the decorative
-  histogram icon): Rename / Export photos to Gallery / Run AI on photos
-  (r184 wording) / Delete;
+  histogram icon): Rename / Copy photos to Gallery (r187 wording, was
+  "Export…") / Run AI on photos (r184 wording) / Delete (since r187 the ONLY
+  per-session delete — the summary's red button retired with its Overview tab);
   opening the summary stays the row tap, analyze stays on long-press too.
   Rename = `renameSession` (`logging/session_rename.dart`): renames the folder,
   rewrites `config.folderName` in the start record (streamed to a temp file +
@@ -489,14 +490,32 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   name: photos and post_detections.jsonl reference bare file names, and the
   gallery album name derives from the folder at export time.
   `scanSessionPhotos` (crop_export.dart) is the shared photo-list scan behind
-  both gallery-export entry points (summary Overview button + gear menu).
-- **Session summary is tabbed (round 60; r182 label+order):** Overview | Photos |
-  Graphs | Setup (`DefaultTabController`, `session_summary_screen.dart`). The last
-  tab was "Settings" in slot 1 until r182 — `initialTabIndex` callers use the NEW
-  indices (Photos 1, Graphs 2, Setup 3). The Setup tab reads the
-  `config` block from the start record, so every new `SessionConfig` field appears in
-  the JSON automatically — but add a display row in `_settingsSection()` when adding
-  a setting. r84: the power (W) graph + energy numbers render only for sessions with
+  both gallery-copy entry points (summary Photos-tab button + gear menu).
+- **Session summary is tabbed (round 60; r187 layout):** Photos | Graphs |
+  Setup (`DefaultTabController`, `session_summary_screen.dart`). The Overview
+  tab was REMOVED r187 (redundant with Setup): its date/battery/storage rows
+  now LEAD the Setup tab as an "Overview" block, the visit count sits on the
+  Graphs tab as "Insect visits (track IDs)" right above the timeline, gallery
+  copying moved to Photos, and Delete lives only in the home gear menu.
+  `initialTabIndex` callers use the r187 indices (Photos 0, Graphs 1, Setup 2).
+  Setup's full settings record sits behind a "▸ All session settings" reveal
+  and, since r187, lists EVERY recorded setting: the r147 mode-collapse is now
+  display-only dimming (`_stat(dim:)` + a "not applicable — recorded values"
+  note per inert group; e.g. detector rows in no-AI sessions, time-lapse rows
+  in AI sessions, gate tunables when the gate was off). The tab reads the
+  `config` block from the start record, so every new `SessionConfig` field
+  appears in the JSON automatically — but add a display row in
+  `_settingsSection()` when adding a setting (mind its `na:` flag).
+  Graphs r187: below the timeline, a visit-length histogram (bin-width
+  dropdown 1 s–1 h, pref `summary_duration_bin_s`; pure math in
+  `logging/visit_stats.dart`, ≤60 bars + "≥" overflow bar) and a per-session
+  "Visits by time of day" (both drawn by `widgets/mini_bar_chart.dart`,
+  extracted from the r186 Dashboard — same visual language).
+  Photos r187: a RANDOM sample of ≤10 photos auto-loads (no more count
+  slider/Show buttons); "Show all N photos" warns first above 300 photos
+  (slow on phone, USB copy suggested); "Copy photos to gallery" block at the
+  tab's bottom (HelpLabel ⓘ: extra storage, gallery-app indexing lag, copies
+  carry no boxes/metadata). r84: the power (W) graph + energy numbers render only for sessions with
   NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
   flags as fallback for older logs) — battery-terminal current measures charging, not
   consumption, while plugged in, so a note replaces the graph. Raw `power` records are
@@ -559,16 +578,18 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   each otherwise wins drags meant as photo panning); ‹ › buttons change photo
   (resetting zoom first), a chip shows the zoom mode, a 4-arrow pan pad nudges the
   view without any drag gesture, and `_BoxPainter` divides stroke/label size by the
-  zoom so boxes stay thin on screen. r90: Overview shows Date/Start/End (home-list
-  formats) above Duration, plus a storage section (session folder size via shared
-  `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free GB)
-  and a red confirm-guarded "Delete session" button (recursive folder delete →
-  pops; home list rescans on return from a summary). r103: the home screen has
+  zoom so boxes stay thin on screen. r90 rows (Date/Start/End in home-list
+  formats above Duration + storage: session folder size via shared
+  `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free
+  GB) lead Setup's Overview block since r187; the r90 red "Delete session"
+  button is gone (home gear menu covers it; the home list still rescans on
+  return from a summary). r103: the home screen has
   a top-right ⋮ overflow menu (`_HomeMenuAction` — the intended home for future
   all-session bulk actions) with a type-to-confirm "Delete all sessions"
   (user must type `delete`; deletes each recognized session folder, never the
-  `sessions/` root). r93 "Export photos to
-  Gallery" (Overview button): batch-copies the session's `roi_frames/*.jpg`
+  `sessions/` root). r93 gallery copy ("Copy photos" on the Photos tab since
+  r187; user-facing wording is "copy", not "export"):
+  batch-copies the session's `roi_frames/*.jpg`
   into the shared album `Pictures/FaunaPulse/<session>` so the phone's
   own Gallery shows each session as an album — `saveImagesToGallery` on
   `faunapulse/crop` takes file PATHS (never bytes; Kotlin reads the JPEGs

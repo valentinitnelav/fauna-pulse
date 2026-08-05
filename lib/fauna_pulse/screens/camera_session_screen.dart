@@ -3508,7 +3508,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                               ),
                               // Live count of insects currently on the flower, plus the
                               // running total of unique insects confirmed so far this
-                              // session (same figure as the summary's "Unique insects").
+                              // session (same figure as the summary Graphs tab's
+                              // "Insect visits (track IDs)").
                               // Both sit in one per-frame builder, so the total stays live
                               // without a separate notifier. Hidden in the no-AI modes,
                               // same as the detector/pipeline fps lines above — no

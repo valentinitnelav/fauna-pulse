@@ -162,15 +162,24 @@ Press stop (or let the session timer expire). The app writes a final
 `end_of_session` record, then opens the **session summary**, organized into
 tabs:
 
-- **Overview** — unique insect (track) count and headline numbers.
-- **Settings** — every setting this session actually used (useful for your
-  methods write-up).
 - **Photos** — browse the saved ROI JPEGs; each shows its exact saved pixel
-  size. Reference photos (see below) are mixed in chronologically and marked
-  with a "Reference photo" chip; they have no detection boxes by design.
-- **Graphs** — the visit timeline (your visitation-rate result), shown
+  size. A random sample of at most 10 loads by itself; **Show all photos**
+  loads the rest (a long session can hold thousands, so expect that to be
+  slow — for big sessions, copying the folder to a computer over USB is
+  easier, see §6). Reference photos (see below) are mixed in chronologically
+  and marked with a "Reference photo" chip; they have no detection boxes by
+  design. **Copy photos to gallery** at the bottom copies the session's
+  photos into the phone's own Gallery app (details in §6).
+- **Graphs** — the insect visit count (track IDs), the visit timeline (your
+  visitation-rate result), a visit-length histogram with a selectable bin
+  width, and a per-session "Visits by time of day" chart, all shown
   automatically. Temperature, FPS and battery/power are always recorded and
   sit under a tap-to-expand "Extra graphs" section for when you need them.
+- **Setup** — the headline numbers (date, times, duration, battery used,
+  storage) plus, behind "All session settings", every setting this session
+  recorded (useful for your methods write-up). Settings that had no effect
+  in the session's capture mode are listed anyway, dimmed and marked not
+  applicable.
 
 If you open a past session and the summary flags it as ended abnormally, that
 means the `end_of_session` line is missing — the app was killed or crashed. The
@@ -206,7 +215,7 @@ is app-scoped external storage, which is visible over USB.
 **Viewing a session's photos in the phone's own Gallery app:** the session
 folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
-summary → Overview tab → **Export photos to Gallery** (or the ⚙ gear menu on
+summary → Photos tab → **Copy photos** (or the ⚙ gear menu on
 the session's row in the home screen's Previous sessions list, which also
 offers **Rename session**, **Run AI on photos** and **Delete session**). This
 copies every saved

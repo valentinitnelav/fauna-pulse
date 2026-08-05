@@ -12,10 +12,8 @@
 // JSON makes opening instant. Aggregation is pure and synchronous, so the
 // period selector re-renders without touching the disk.
 //
-// Chart style follows the app's dark theme: single-series amber bars
-// (magnitude = one hue), recessive white24 baseline and white38 axis text,
-// value label on the peak bar only, legend-free (the card title names the
-// single series).
+// Chart style: see widgets/mini_bar_chart.dart (extracted round 187 so the
+// per-session summary shares the same bars).
 
 import 'dart:io';
 
@@ -24,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/dashboard_stats.dart';
+import '../widgets/mini_bar_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -128,7 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _chartCard(
                 title: 'Visits by time of day',
                 subtitle: 'When your visitors were active (visit starts)',
-                child: _BarChart(
+                child: MiniBarChart(
                   values: agg.visitsByHour,
                   xLabelFor: (i) => switch (i) {
                     0 || 6 || 12 || 18 => '$i h',
@@ -145,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   subtitle: agg.weeklyBuckets
                       ? 'Long period — each bar is one week'
                       : null,
-                  child: _BarChart(
+                  child: MiniBarChart(
                     values: [for (final b in agg.activity) b.count],
                     xLabelFor: (i) {
                       // First, last, and (when room) the middle bucket.
@@ -323,109 +322,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// A minimal single-series bar chart: amber bars over a white24 baseline,
-/// sparse x labels via [xLabelFor], and the value drawn above the tallest
-/// bar only (selective direct labeling — a number on every bar is noise).
-class _BarChart extends StatelessWidget {
-  final List<int> values;
-  final String? Function(int index) xLabelFor;
-
-  const _BarChart({required this.values, required this.xLabelFor});
-
-  @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: _BarChartPainter(values, xLabelFor));
-}
-
-class _BarChartPainter extends CustomPainter {
-  final List<int> values;
-  final String? Function(int index) xLabelFor;
-
-  _BarChartPainter(this.values, this.xLabelFor);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const labelBand = 14.0; // x-label strip under the baseline
-    const peakBand = 12.0; // room for the peak count above the bars
-    final plotH = size.height - labelBand - peakBand;
-    final baselineY = peakBand + plotH;
-    final n = values.length;
-    if (n == 0 || plotH <= 0) return;
-
-    final baseline = Paint()
-      ..color = Colors.white24
-      ..strokeWidth = 1;
-    canvas.drawLine(
-      Offset(0, baselineY),
-      Offset(size.width, baselineY),
-      baseline,
-    );
-
-    final maxV = values.reduce((a, b) => a > b ? a : b);
-    final slot = size.width / n;
-    final barW = (slot * 0.7).clamp(1.0, 24.0);
-    final bar = Paint()..color = Colors.amber;
-    int? peakIndex;
-    for (var i = 0; i < n; i++) {
-      final v = values[i];
-      if (v > 0 && (peakIndex == null || v > values[peakIndex])) peakIndex = i;
-      if (v > 0) {
-        final h = maxV == 0 ? 0.0 : plotH * v / maxV;
-        final x = slot * i + (slot - barW) / 2;
-        canvas.drawRRect(
-          RRect.fromRectAndCorners(
-            Rect.fromLTWH(x, baselineY - h, barW, h),
-            topLeft: const Radius.circular(2),
-            topRight: const Radius.circular(2),
-          ),
-          bar,
-        );
-      }
-      final label = xLabelFor(i);
-      if (label != null) {
-        _text(
-          canvas,
-          label,
-          Offset(slot * i + slot / 2, baselineY + 2),
-          anchorCenterX: true,
-          color: Colors.white38,
-          clampWidth: size.width,
-        );
-      }
-    }
-    if (peakIndex != null) {
-      _text(
-        canvas,
-        '${values[peakIndex]}',
-        Offset(slot * peakIndex + slot / 2, 0),
-        anchorCenterX: true,
-        color: Colors.white70,
-        clampWidth: size.width,
-      );
-    }
-  }
-
-  void _text(
-    Canvas canvas,
-    String s,
-    Offset topCenter, {
-    required bool anchorCenterX,
-    required Color color,
-    required double clampWidth,
-  }) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: s,
-        style: TextStyle(color: color, fontSize: 10),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    var x = anchorCenterX ? topCenter.dx - tp.width / 2 : topCenter.dx;
-    x = x.clamp(0.0, (clampWidth - tp.width).clamp(0.0, clampWidth));
-    tp.paint(canvas, Offset(x, topCenter.dy));
-  }
-
-  @override
-  bool shouldRepaint(_BarChartPainter old) =>
-      old.values != values || old.xLabelFor != xLabelFor;
-}

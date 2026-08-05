@@ -425,10 +425,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Whole-session gallery export from the gear menu (round 182): the same
-  /// scan → confirm → copy flow as the summary's Overview button (shared
-  /// `scanSessionPhotos` / `exportPhotosToGallery` helpers), with the
-  /// progress shown as a modal dialog since this screen has no inline slot.
+  /// Whole-session gallery copy from the gear menu (round 182): the same
+  /// scan → confirm → copy flow as the summary's Photos-tab "Copy photos"
+  /// button (shared `scanSessionPhotos` / `exportPhotosToGallery` helpers),
+  /// with the progress shown as a modal dialog since this screen has no
+  /// inline slot.
   Future<void> _exportSessionPhotos(_PastSession s) async {
     final scan = await scanSessionPhotos(s.logFile.parent.path);
     if (!mounted) return;
@@ -445,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Export ${scan.files.length} photos to Gallery?'),
+        title: Text('Copy ${scan.files.length} photos to Gallery?'),
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
           'Gallery app, as the album "Pictures/FaunaPulse/$album". '
@@ -454,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     'was detected). ' : ''}'
           'The copies take about ${formatBytes(scan.bytes)} of extra '
           'storage; the originals stay in the session folder. Photos '
-          'already exported are skipped, so re-running is safe.',
+          'already copied are skipped, so re-running is safe.',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -465,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
-              'Export',
+              'Copy',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -486,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) => AlertDialog(
-          title: const Text('Exporting photos…'),
+          title: const Text('Copying photos…'),
           content: StatefulBuilder(
             builder: (ctx, setSt) {
               progressUpdate = setSt;
@@ -517,10 +518,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
     final msg = !res.supported
-        ? 'Export to Gallery needs Android 10 or newer — this phone runs an '
+        ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
               'older Android. The photos are still on the phone in the '
               'session folder (reachable over USB).'
-        : 'Exported ${res.exported} photos to Gallery ▸ '
+        : 'Copied ${res.exported} photos to Gallery ▸ '
               'Pictures/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
               '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
@@ -528,8 +529,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSessions();
   }
 
-  /// Delete ONE session from the gear menu (round 182) — same confirmation
-  /// language and delete call as the summary's red button (round 90).
+  /// Delete ONE session from the gear menu (round 182) — since round 187
+  /// (the summary's red button retired with its Overview tab) the only
+  /// per-session delete entry point.
   Future<void> _confirmDeleteSession(_PastSession s) async {
     final size = s.sizeBytes > 0 ? ' (${formatBytes(s.sizeBytes)})' : '';
     final sure = await showDialog<bool>(
@@ -1069,7 +1071,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.photo_library_outlined),
-                    title: Text('Export photos to Gallery'),
+                    title: Text('Copy photos to Gallery'),
                   ),
                 ),
                 PopupMenuItem(

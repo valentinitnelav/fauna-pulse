@@ -1,16 +1,23 @@
 // FaunaPulse — end-of-session dashboard.
 //
-// Two stages, to stay fast even after a long, busy session:
-//  1. Headline numbers shown immediately — unique insect count, session length,
-//     model used, and where the data was saved. These are read cheaply from just
-//     the first and last lines of the log (the session start/end records).
+// Three tabs since round 187 (Photos | Graphs | Setup — the old Overview tab
+// was redundant with Setup and is gone: its dates/battery/storage rows lead
+// the Setup tab, the visit count sits above the Graphs tab's timeline, the
+// gallery export lives on the Photos tab, and Delete stayed only in the home
+// list's per-session gear menu).
+//
+// Two loading stages, to stay fast even after a long, busy session:
+//  1. Headline stats read cheaply from just the first and last lines of the
+//     log (the session start/end records).
 //  2. Graphs: a Gantt/phenology-style visit timeline (one lane per track id)
-//     rendered up front, plus — behind a tap-to-expand "Extra graphs" section
-//     (round 148) — phone temperature, frames-per-second and power over time,
-//     each with its average/median/min/max printed underneath. One full-log
-//     parse fills all of them when the Graphs tab opens; the stats are derived
-//     live from the per-sample records already in the log, so they work for
-//     past sessions too.
+//     rendered up front — with the visit count, a visit-length histogram and
+//     a per-session visits-by-hour chart (round 187) — plus, behind a
+//     tap-to-expand "Extra graphs" section (round 148), phone temperature,
+//     frames-per-second and power over time, each with its
+//     average/median/min/max printed underneath. One full-log parse fills all
+//     of them when the Graphs tab opens; the stats are derived live from the
+//     per-sample records already in the log, so they work for past sessions
+//     too.
 
 import 'dart:convert';
 import 'dart:io';
@@ -30,15 +37,19 @@ import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
 import '../logging/session_log_index.dart';
 import '../logging/device_storage.dart';
+import '../logging/visit_stats.dart';
+import '../widgets/mini_bar_chart.dart';
+import '../widgets/setting_help.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
 
-  /// Tab shown first (0 Overview, 1 Photos, 2 Graphs, 3 Setup — round 182
-  /// order): the analysis screen's "Review photos before deleting" jumps
-  /// straight to the Photos tab (round 137).
+  /// Tab shown first (0 Photos, 1 Graphs, 2 Setup — round 187 order, the
+  /// Overview tab is gone): the analysis screen's "Review photos before
+  /// deleting" opens on the Photos tab (round 137), which is also the
+  /// default landing.
   final int initialTabIndex;
 
   const SessionSummaryScreen({
@@ -83,6 +94,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       (p) => p.setBool(_extraGraphsExpandedKey, _extraGraphsExpanded),
     );
   }
+
+  // Visit-length histogram bin width in seconds (round 187). A viewing
+  // preference like the "Extra graphs" state (SharedPreferences, never
+  // SessionConfig — it changes how recorded data is displayed, not what is
+  // recorded), so the ecologist's preferred bin sticks across sessions.
+  static const String _durationBinKey = 'summary_duration_bin_s';
+  static const List<int> _durationBinChoices = [
+    1, 2, 3, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, //
+  ];
+  int _durationBinSeconds = 1;
+
+  void _setDurationBin(int seconds) {
+    setState(() => _durationBinSeconds = seconds);
+    SharedPreferences.getInstance().then(
+      (p) => p.setInt(_durationBinKey, seconds),
+    );
+  }
+
+  // "All session settings" disclosure on the Setup tab (round 187): the tab
+  // leads with the short Overview block; the full settings record unfolds on
+  // tap. Deliberately ephemeral (opens collapsed every time).
+  bool _setupSettingsExpanded = false;
 
   // --- Stage 1: cheap headline stats (from first/last log lines) ---
   bool _loadingStats = true;
@@ -134,13 +167,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   double? _energyTotalWh;
   double? _powerAvg, _powerMedian, _powerMin, _powerMax;
 
-  // --- Sample photos (full parse, on demand) ---
-  int _sampleCount = 5;
+  // --- Sample photos (round 187: auto-loaded, random) ---
+  // The tab shows up to [_randomSampleCount] RANDOM photos by default — a
+  // long session can hold thousands, and loading them all unasked would be
+  // slow. "Show all photos" loads everything (with a warning first when the
+  // session is large).
+  static const int _randomSampleCount = 10;
+  static const int _showAllWarnThreshold = 300;
   int _totalSavedPhotos = 0;
   // How many of those are reference photos (gt_frames/, periodic clock).
   int _totalReferencePhotos = 0;
   bool _photosRequested = false;
   bool _photosLoading = false;
+  // True once the user chose "Show all photos" — kept so a reload after a
+  // post-hoc cleanup restores the same view, not a fresh random sample.
+  bool _photosShowAll = false;
   List<_PhotoSample> _photos = const [];
 
   // True while the photo viewer is zoomed in: the TabBarView and the Photos
@@ -161,9 +202,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   int? _sessionSizeBytes;
   StorageReading _storage = const StorageReading();
 
-  // Gallery export (round 93): busy flag + progress ticks for the Overview
-  // "Export photos to Gallery" button. While busy, Delete is disabled too —
-  // deleting the folder mid-copy would only produce confusing "failed" counts.
+  // Gallery export (round 93): busy flag + progress ticks for the Photos
+  // tab's "Copy photos" button (moved there from the retired Overview tab,
+  // round 187).
   bool _galleryExportBusy = false;
   int _galleryExportDone = 0;
   int _galleryExportTotal = 0;
@@ -266,7 +307,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
   }
 
-  /// Loads the Overview's storage section: the session folder's total size
+  /// Loads the Setup tab's storage rows: the session folder's total size
   /// (same scan as the home history list, so the numbers match) and the
   /// phone's free storage (same source as the recording screen's readout).
   Future<void> _loadStorageInfo() async {
@@ -316,8 +357,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Future<void> _init() async {
     SharedPreferences.getInstance().then((p) {
       final expanded = p.getBool(_extraGraphsExpandedKey) ?? false;
-      if (mounted && expanded != _extraGraphsExpanded) {
-        setState(() => _extraGraphsExpanded = expanded);
+      final bin = p.getInt(_durationBinKey);
+      if (mounted &&
+          (expanded != _extraGraphsExpanded ||
+              (bin != null && _durationBinChoices.contains(bin)))) {
+        setState(() {
+          _extraGraphsExpanded = expanded;
+          if (bin != null && _durationBinChoices.contains(bin)) {
+            _durationBinSeconds = bin;
+          }
+        });
       }
     });
     await _loadStats();
@@ -540,8 +589,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// Fills the Photos tab from the shared [SessionLogIndex] (round 163, E5):
   /// maps each saved photo's indexed record to the viewer's display types,
-  /// then samples [_sampleCount] of them spread evenly across the session
-  /// (or takes all), so the user can eyeball whether detections look right.
+  /// then picks up to [_randomSampleCount] of them AT RANDOM (round 187 —
+  /// or takes all), so the user can eyeball whether detections look right.
   /// The heavy log parse — previously a full `readAsLines()` plus a second
   /// full re-scan for high-res box time-matching, all on the UI isolate —
   /// lives in [SessionLogIndex.build] now.
@@ -549,6 +598,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     setState(() {
       _photosRequested = true;
       _photosLoading = true;
+      _photosShowAll = all;
     });
     var order = const <String>[];
     var photosByName = const <String, IndexedPhoto>{};
@@ -646,21 +696,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     final picked = <_PhotoSample>[];
     if (order.isNotEmpty) {
-      if (all) {
-        for (final name in order) {
-          final p = photosByName[name];
-          final file = fileFor(name);
-          if (p != null && file.existsSync()) picked.add(sampleFor(p, file));
-        }
-      } else {
-        final n = _sampleCount.clamp(1, order.length);
-        for (var i = 0; i < n; i++) {
-          final idx = n == 1 ? 0 : ((i * (order.length - 1)) / (n - 1)).round();
-          final name = order[idx];
-          final p = photosByName[name];
-          final file = fileFor(name);
-          if (p != null && file.existsSync()) picked.add(sampleFor(p, file));
-        }
+      // Either every photo, or a random sample of up to [_randomSampleCount].
+      // The picked names keep their capture order either way, so swiping
+      // through the viewer always moves forward in time.
+      List<String> names = order;
+      if (!all && order.length > _randomSampleCount) {
+        final indices = List<int>.generate(order.length, (i) => i)
+          ..shuffle(Random());
+        names = (indices.take(_randomSampleCount).toList()..sort())
+            .map((i) => order[i])
+            .toList();
+      }
+      for (final name in names) {
+        final p = photosByName[name];
+        final file = fileFor(name);
+        if (p != null && file.existsSync()) picked.add(sampleFor(p, file));
       }
     }
     if (mounted) {
@@ -826,15 +876,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// shown so the details of a past run can be recalled at a glance. Read entirely
   /// from the start record (no extra file work). Rows whose value wasn't recorded
   /// (e.g. settings added after an older session) are simply omitted.
+  ///
+  /// Round 187 (owner request): EVERY recorded setting is listed — including
+  /// the ones the session's capture mode made inert (e.g. detector settings
+  /// in a time-lapse session, or the time-lapse settings in an AI session).
+  /// Those render dimmed under a short "not applicable" note instead of
+  /// being hidden (as rounds 147–186 did), so the full record is always
+  /// visible in one place.
   List<Widget> _settingsSection() {
-    const header = Text(
-      'Session settings',
-      style: TextStyle(fontWeight: FontWeight.bold),
-    );
     if (_startRec == null) {
       return const [
-        header,
-        SizedBox(height: 4),
         Text(
           'No start record found, so the settings could not be read.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -843,8 +894,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     final rows = <Widget>[];
-    // Adds a label/value row only when [value] is non-null (and non-empty text).
-    void add(String label, Object? value, {String suffix = ''}) {
+    // Adds a label/value row only when [value] is non-null (and non-empty
+    // text). [na] dims the row: recorded but had no effect in this mode.
+    void add(String label, Object? value, {String suffix = '', bool na = false}) {
       if (value == null) return;
       final text = value is bool
           ? (value ? 'Yes' : 'No')
@@ -852,16 +904,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? _numStr(value)
           : value.toString();
       if (text.isEmpty) return;
-      rows.add(_stat(label, '$text$suffix'));
+      rows.add(_stat(label, '$text$suffix', dim: na));
     }
 
-    // Capture-mode awareness (round 147): in the no-AI sessions the detector
-    // never ran, so the AI-only blocks collapse to one plain "not applicable"
-    // note instead of listing values that had no effect. Every value is still
-    // registered in the log's config block (see config_not_applicable there),
-    // so nothing is lost for analysis — this is display only.
+    // Capture-mode awareness (round 147, presentation reworked round 187):
+    // the "not applicable" notes below mark whole groups the session's mode
+    // made inert; their rows follow dimmed. The log's config block registers
+    // every value regardless (see config_not_applicable there).
     final noAi = _motionOnlySession || _timeLapseSession;
-    final modeName = _timeLapseSession ? 'time-lapse' : 'motion-trigger';
+    final modeName = _timeLapseSession
+        ? 'time-lapse'
+        : _motionOnlySession
+        ? 'motion-trigger'
+        : 'AI-detector';
     void addNote(String text) {
       rows.add(
         Padding(
@@ -879,29 +934,34 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (noAi) {
       addNote(
         'Not applicable — the detector never ran in this session '
-        '($modeName mode).',
-      );
-    } else {
-      add('Model', _setting('modelPath', 'model_path'));
-      add('Task', _setting('task', 'task'));
-      add('GPU requested', _setting('useGpu', 'use_gpu'));
-      add('CPU threads (0 = automatic)', _setting('cpuThreads', 'cpu_threads'));
-      add('Inference engine used', _accelerator);
-      add(
-        'Confidence threshold',
-        _setting('confidenceThreshold', 'confidence_threshold'),
-      );
-      add('IoU threshold', _setting('iouThreshold', 'iou_threshold'));
-      final infFps = _setting('inferenceFps', 'inference_fps');
-      add(
-        'Inference rate cap',
-        infFps == null
-            ? null
-            : (infFps is num && infFps == 0
-                  ? 'uncapped (max)'
-                  : '${_numStr(infFps)} /s'),
+        '($modeName mode). Recorded values:',
       );
     }
+    add('Model', _setting('modelPath', 'model_path'), na: noAi);
+    add('Task', _setting('task', 'task'), na: noAi);
+    add('GPU requested', _setting('useGpu', 'use_gpu'), na: noAi);
+    add(
+      'CPU threads (0 = automatic)',
+      _setting('cpuThreads', 'cpu_threads'),
+      na: noAi,
+    );
+    add('Inference engine used', _accelerator, na: noAi);
+    add(
+      'Confidence threshold',
+      _setting('confidenceThreshold', 'confidence_threshold'),
+      na: noAi,
+    );
+    add('IoU threshold', _setting('iouThreshold', 'iou_threshold'), na: noAi);
+    final infFps = _setting('inferenceFps', 'inference_fps');
+    add(
+      'Inference rate cap',
+      infFps == null
+          ? null
+          : (infFps is num && infFps == 0
+                ? 'uncapped (max)'
+                : '${_numStr(infFps)} /s'),
+      na: noAi,
+    );
 
     // --- Heat management ---
     // Only for sessions that recorded these fields (config block, round 44+).
@@ -920,48 +980,65 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       if (noAi) {
         addNote(
-          'Inference auto-throttle — not applicable (no detector running).',
+          'Inference auto-throttle — not applicable (no detector running). '
+          'Recorded values:',
         );
-      } else {
-        add('Auto-throttle', _setting('autoThrottle'));
-        add('Min inference rate', _setting('minInferenceFps'), suffix: ' /s');
-        add('Throttle duty target', _setting('throttleDutyTarget'));
       }
+      add('Auto-throttle', _setting('autoThrottle'), na: noAi);
+      add(
+        'Min inference rate',
+        _setting('minInferenceFps'),
+        suffix: ' /s',
+        na: noAi,
+      );
+      add('Throttle duty target', _setting('throttleDutyTarget'), na: noAi);
       // Motion-only capture: photos on ROI motion, detector never ran.
       add('Motion-only capture (detector off)', _setting('motionOnlyCapture'));
       // Motion gate (round 58+): detector sleeps while nothing moves in the
-      // ROI. In a motion session these rows ARE the capture sensitivity, so
-      // they stay; in time-lapse the gate is forced off natively — the config
-      // may still carry motionGateEnabled=true, so the rows would mislead.
-      if (_timeLapseSession) {
-        addNote('Motion gate — not used in time-lapse mode.');
-      } else {
-        add('Motion gate', _setting('motionGateEnabled'));
-        if (_setting('motionGateEnabled') == true) {
-          add('Gate pixel sensitivity', _setting('motionGatePixelDelta'));
-          final area = _setting('motionGateAreaFraction');
-          add(
-            'Gate trigger area',
-            area is num ? area * 100 : null,
-            suffix: ' %',
-          );
-          add(
-            'Gate wake duration',
-            _setting('motionGateWakeSeconds'),
-            suffix: ' s',
-          );
-          add(
-            'Gate grid resolution',
-            _setting('motionGateGridSize'),
-            suffix: ' cells',
-          );
-          add(
-            'Gate idle check rate',
-            _setting('motionGateIdleFps'),
-            suffix: ' fps',
-          );
-        }
+      // ROI. In a motion session these rows ARE the capture sensitivity; in
+      // time-lapse the gate is forced off natively — the config may still
+      // carry motionGateEnabled=true, so those rows render dimmed. The gate
+      // tunables also show (dimmed) when the gate itself was off: recorded,
+      // no effect.
+      final gateNa = _timeLapseSession;
+      final gateOn = _setting('motionGateEnabled') == true;
+      if (gateNa) {
+        addNote(
+          'Motion gate — not used in time-lapse mode. Recorded values:',
+        );
       }
+      add('Motion gate', _setting('motionGateEnabled'), na: gateNa);
+      final gateDetailNa = gateNa || !gateOn;
+      add(
+        'Gate pixel sensitivity',
+        _setting('motionGatePixelDelta'),
+        na: gateDetailNa,
+      );
+      final area = _setting('motionGateAreaFraction');
+      add(
+        'Gate trigger area',
+        area is num ? area * 100 : null,
+        suffix: ' %',
+        na: gateDetailNa,
+      );
+      add(
+        'Gate wake duration',
+        _setting('motionGateWakeSeconds'),
+        suffix: ' s',
+        na: gateDetailNa,
+      );
+      add(
+        'Gate grid resolution',
+        _setting('motionGateGridSize'),
+        suffix: ' cells',
+        na: gateDetailNa,
+      );
+      add(
+        'Gate idle check rate',
+        _setting('motionGateIdleFps'),
+        suffix: ' fps',
+        na: gateDetailNa,
+      );
     }
 
     // --- Photos & capture ---
@@ -973,33 +1050,51 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // The session's operating mode (round 97 enum; older sessions carry the
     // motion-only bool shown in Heat management instead — add() skips null).
     add('Capture trigger', _setting('captureTrigger'));
-    if (_timeLapseSession) {
-      // Round 174: the key became a BREAK between bursts. Pre-174 sessions
-      // carry the old start-to-start key instead — show whichever exists,
-      // labeled with its true meaning (never relabel old data).
-      add('Time between bursts', _setting('timeLapseGapSeconds'), suffix: ' s');
-      add(
-        'Burst repeat interval (start-to-start, pre-r174)',
-        _setting('timeLapseIntervalSeconds'),
-        suffix: ' s',
+    // Time-lapse settings (round 97+). Shown in EVERY mode since round 187
+    // — dimmed under a note when the session didn't run in time-lapse.
+    final tlNa = !_timeLapseSession;
+    if (tlNa &&
+        (_setting('timeLapseGapSeconds') != null ||
+            _setting('timeLapseIntervalSeconds') != null)) {
+      addNote(
+        'Time-lapse settings — not applicable ($modeName mode). '
+        'Recorded values:',
       );
-      // Round 163 (E3): camera parking between bursts. Sessions recorded
-      // before the setting existed carry no key — add() skips null.
-      add('Camera off between bursts', _setting('timeLapseCameraSleep'));
-      if (_setting('timeLapseCameraSleep') == true) {
-        add(
-          'Camera wake lead',
-          _setting('timeLapseWakeLeadSeconds'),
-          suffix: ' s',
-        );
-      }
-      // Round 180: nocturnal torch. Older sessions carry no key — add()
-      // skips null.
-      add('Torch during bursts', _setting('timeLapseTorch'));
-      if (_setting('timeLapseTorch') == true) {
-        add('Torch lead', _setting('timeLapseTorchLeadSeconds'), suffix: ' s');
-      }
     }
+    // Round 174: the key became a BREAK between bursts. Pre-174 sessions
+    // carry the old start-to-start key instead — show whichever exists,
+    // labeled with its true meaning (never relabel old data).
+    add(
+      'Time between bursts',
+      _setting('timeLapseGapSeconds'),
+      suffix: ' s',
+      na: tlNa,
+    );
+    add(
+      'Burst repeat interval (start-to-start, pre-r174)',
+      _setting('timeLapseIntervalSeconds'),
+      suffix: ' s',
+      na: tlNa,
+    );
+    // Round 163 (E3): camera parking between bursts. Sessions recorded
+    // before the setting existed carry no key — add() skips null. The lead
+    // rows are dimmed whenever their parent toggle was off, too.
+    add('Camera off between bursts', _setting('timeLapseCameraSleep'), na: tlNa);
+    add(
+      'Camera wake lead',
+      _setting('timeLapseWakeLeadSeconds'),
+      suffix: ' s',
+      na: tlNa || _setting('timeLapseCameraSleep') != true,
+    );
+    // Round 180: nocturnal torch. Older sessions carry no key — add()
+    // skips null.
+    add('Torch during bursts', _setting('timeLapseTorch'), na: tlNa);
+    add(
+      'Torch lead',
+      _setting('timeLapseTorchLeadSeconds'),
+      suffix: ' s',
+      na: tlNa || _setting('timeLapseTorch') != true,
+    );
     add(
       'Photo step interval',
       _setting('stepSeconds', 'step_seconds'),
@@ -1020,13 +1115,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // Reference photos (wire keys stay gt_* from the r107 "ground-truth
     // frames" original): periodic photos independent of detections, active in
     // every mode except time-lapse (where the whole session is already
-    // clock-driven photos).
-    if (_timeLapseSession && _setting('gtFramesEnabled') == true) {
-      addNote('Reference photos — not used in time-lapse mode.');
-    } else if (_setting('gtFramesEnabled') == true) {
+    // clock-driven photos) — there the row renders dimmed (round 187).
+    if (_setting('gtFramesEnabled') != null) {
       add(
         'Reference photos',
-        'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)',
+        _setting('gtFramesEnabled') == true
+            ? 'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)'
+                  '${_timeLapseSession ? ' — not used in time-lapse mode' : ''}'
+            : 'off',
+        na: _timeLapseSession || _setting('gtFramesEnabled') != true,
       );
     }
     // Round 108: high-res photos get a trigger-moment live crop next to them
@@ -1186,54 +1283,64 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // that had no effect.
     final isCbiou = _trackerAlgorithm == 'cbiou';
     rows.add(
-      _subhead(
-        noAi
-            ? 'Visit tracking'
-            : 'Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
-      ),
+      _subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'),
     );
     if (noAi) {
       addNote(
-        'Not applicable — no tracking without the detector ($modeName mode).',
+        'Not applicable — no tracking without the detector ($modeName mode). '
+        'Recorded values:',
       );
-    } else {
-      add('Occlusion tolerance', _setting('occlusionSeconds'), suffix: ' s');
-      // Min visit length: prefer the seconds the user set (newer sessions);
-      // fall back to the raw frame count logged by older sessions.
-      final tp = _trackerParams;
-      final minHitsSeconds = _setting('minHitsSeconds');
-      if (minHitsSeconds != null) {
-        add('Minimum visit length', minHitsSeconds, suffix: ' s');
-      } else if (tp != null) {
-        add('Minimum visit length', tp['minHitsToConfirm'], suffix: ' frames');
+    }
+    add(
+      'Occlusion tolerance',
+      _setting('occlusionSeconds'),
+      suffix: ' s',
+      na: noAi,
+    );
+    // Min visit length: prefer the seconds the user set (newer sessions);
+    // fall back to the raw frame count logged by older sessions.
+    final tp = _trackerParams;
+    final minHitsSeconds = _setting('minHitsSeconds');
+    if (minHitsSeconds != null) {
+      add('Minimum visit length', minHitsSeconds, suffix: ' s', na: noAi);
+    } else if (tp != null) {
+      add(
+        'Minimum visit length',
+        tp['minHitsToConfirm'],
+        suffix: ' frames',
+        na: noAi,
+      );
+    }
+    if (isCbiou) {
+      final cbp = _cbiouParams;
+      if (cbp != null) {
+        add('Search margin — pass 1', cbp['bufferScale1'], na: noAi);
+        add('Search margin — pass 2', cbp['bufferScale2'], na: noAi);
+        add('High-score threshold', cbp['highThresh'], na: noAi);
       }
-      if (isCbiou) {
-        final cbp = _cbiouParams;
-        if (cbp != null) {
-          add('Search margin — pass 1', cbp['bufferScale1']);
-          add('Search margin — pass 2', cbp['bufferScale2']);
-          add('High-score threshold', cbp['highThresh']);
-        }
-      } else if (tp != null) {
-        add('Match overlap (IoU)', tp['matchThresh']);
-        add('Low-score association', tp['lowMatchThresh']);
-        add('Velocity smoothing', tp['velocitySmoothing']);
-        // The frame-count buffer actually used by the tracker (derived from
-        // the seconds above at the session's frame rate).
-        add('Occlusion buffer (derived)', tp['trackBuffer'], suffix: ' frames');
-        add('High-score threshold', tp['highThresh']);
-      }
-      // Only worth a row when it was on (it changes what the log contains).
-      if (_setting('logRawDetections') == true) {
-        add('Log raw detections', 'on (replayable session)');
-      }
+    } else if (tp != null) {
+      add('Match overlap (IoU)', tp['matchThresh'], na: noAi);
+      add('Low-score association', tp['lowMatchThresh'], na: noAi);
+      add('Velocity smoothing', tp['velocitySmoothing'], na: noAi);
+      // The frame-count buffer actually used by the tracker (derived from
+      // the seconds above at the session's frame rate).
+      add(
+        'Occlusion buffer (derived)',
+        tp['trackBuffer'],
+        suffix: ' frames',
+        na: noAi,
+      );
+      add('High-score threshold', tp['highThresh'], na: noAi);
+    }
+    // Only worth a row when it was on (it changes what the log contains).
+    if (_setting('logRawDetections') == true) {
+      add('Log raw detections', 'on (replayable session)', na: noAi);
     }
     return [
-      header,
-      const SizedBox(height: 4),
       const Text(
         'Everything chosen at the start of this session, so the run can be '
-        'reproduced or recalled later.',
+        'reproduced or recalled later. Dimmed rows were recorded but had no '
+        'effect in this session\'s capture mode (marked not applicable).',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 8),
@@ -1254,22 +1361,23 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Four tabs keep the summary uncluttered: headline numbers, the
-    // saved-photo browser, the graphs and the full settings record each get
-    // their own page instead of one very long scroll. Tab order + the
-    // "Setup" label are round 182 (owner request): the settings record is
-    // consulted least, so it sits last, and "Setup" avoids confusion with
-    // the live settings sheet (these rows are the read-only record of what
-    // the session ran with).
+    // Three tabs keep the summary uncluttered: the saved-photo browser, the
+    // graphs and the setup record each get their own page instead of one
+    // very long scroll. The old Overview tab is gone (round 187, owner
+    // request — it was redundant with Setup): its rows lead the Setup tab
+    // now, the visit count sits above the Graphs timeline, and the gallery
+    // export moved to Photos. "Setup" sits last (round 182: the settings
+    // record is consulted least; the label avoids confusion with the live
+    // settings sheet — these rows are the read-only record of what the
+    // session ran with).
     return DefaultTabController(
-      length: 4,
-      initialIndex: widget.initialTabIndex.clamp(0, 3),
+      length: 3,
+      initialIndex: widget.initialTabIndex.clamp(0, 2),
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Session summary'),
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Overview'),
               Tab(text: 'Photos'),
               Tab(text: 'Graphs'),
               Tab(text: 'Setup'),
@@ -1286,12 +1394,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 physics: _photoViewerZoomed
                     ? const NeverScrollableScrollPhysics()
                     : null,
-                children: [
-                  _overviewTab(),
-                  _photosTab(),
-                  _graphsTab(),
-                  _setupTab(),
-                ],
+                children: [_photosTab(), _graphsTab(), _setupTab()],
               ),
       ),
     );
@@ -1312,8 +1415,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     64 + MediaQuery.paddingOf(context).bottom,
   );
 
-  /// Headline numbers: the quick "how did it go" read.
-  Widget _overviewTab() {
+  /// The quick "how did it go" rows that used to be the Overview tab (round
+  /// 187): dates, duration, battery and storage — leading the Setup tab.
+  List<Widget> _overviewSection() {
     // Same date/time formats as the home history list: yyyy-mm-dd, hh:mm:ss.
     final start = _startMs != null
         ? DateTime.fromMillisecondsSinceEpoch(_startMs!)
@@ -1328,99 +1432,54 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         : (start != null && _dateOnly(end) != _dateOnly(start))
         ? '${_dateOnly(end)}, ${_timeOnly(end)}'
         : _timeOnly(end);
-    return ListView(
-      padding: _tabPadding,
-      children: [
-        _stat(
-          'Unique insects (track ids)',
-          _motionOnlySession
-              ? 'n/a (motion-only capture — detector off)'
-              : _timeLapseSession
-              ? 'n/a (time-lapse — detector off)'
-              : _uniqueTracks?.toString() ?? 'unknown',
-        ),
-        _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
-        _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
-        _stat('End time', endLabel),
-        // Round 126: the session's single location fix, when one was set.
-        if (SessionLocation.fromJson(
-              (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
-            )
-            case final SessionLocation loc)
-          _stat('Location', '${loc.label} (${loc.source})'),
-        _stat('Session duration', _durationLabel),
-        _stat('Model', _model ?? 'unknown'),
-        if (_accelerator != null && _accelerator!.isNotEmpty)
-          _stat('Inference engine', _accelerator!),
-        _stat(
-          'Ended normally',
-          _endedNormally ? 'Yes' : 'No (crash / forced stop)',
-        ),
-        _stat('Battery used', _batteryUsedLabel),
-        if (_chargingDuringSession)
-          const Padding(
-            padding: EdgeInsets.only(top: 2, bottom: 6),
-            child: Text(
-              '⚠ The phone was plugged in during (part of) this session, so '
-              'the power/energy graph is hidden — the battery sensor would '
-              'measure charging, not consumption. Measure unplugged.',
-              style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
-            ),
-          ),
-        _stat('Saved to', widget.logFile.parent.path),
-        // --- Storage & cleanup (round 90) ---
-        const Divider(height: 32, color: Colors.white24),
-        _stat(
-          'Session storage',
-          _sessionSizeBytes != null
-              ? formatBytes(_sessionSizeBytes!)
-              : 'measuring…',
-        ),
-        _stat(
-          'Phone storage free',
-          _storage.freeGb != null
-              ? '${_storage.isLow ? '⚠ ' : ''}'
-                    '${_storage.freeGb!.toStringAsFixed(1)} GB'
-              : 'unknown',
-        ),
-        const SizedBox(height: 12),
-        // --- Export photos to the phone's own Gallery app (round 93) ---
-        if (_galleryExportBusy) ...[
-          LinearProgressIndicator(
-            value: _galleryExportTotal == 0
-                ? null
-                : _galleryExportDone / _galleryExportTotal,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Exporting photo $_galleryExportDone of $_galleryExportTotal…',
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-        ],
-        Center(
-          child: FilledButton.tonalIcon(
-            onPressed: _galleryExportBusy
-                ? null
-                : _confirmExportPhotosToGallery,
-            icon: const Icon(Icons.photo_library),
-            label: const Text('Export photos to Gallery'),
+    return [
+      const Text('Overview', style: TextStyle(fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
+      _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
+      _stat('End time', endLabel),
+      // Round 126: the session's single location fix, when one was set.
+      if (SessionLocation.fromJson(
+            (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
+          )
+          case final SessionLocation loc)
+        _stat('Location', '${loc.label} (${loc.source})'),
+      _stat('Session duration', _durationLabel),
+      _stat('Model', _model ?? 'unknown'),
+      if (_accelerator != null && _accelerator!.isNotEmpty)
+        _stat('Inference engine', _accelerator!),
+      _stat(
+        'Ended normally',
+        _endedNormally ? 'Yes' : 'No (crash / forced stop)',
+      ),
+      _stat('Battery used', _batteryUsedLabel),
+      if (_chargingDuringSession)
+        const Padding(
+          padding: EdgeInsets.only(top: 2, bottom: 6),
+          child: Text(
+            '⚠ The phone was plugged in during (part of) this session, so '
+            'the power/energy graph is hidden — the battery sensor would '
+            'measure charging, not consumption. Measure unplugged.',
+            style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
           ),
         ),
-        const SizedBox(height: 12),
-        Center(
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: _galleryExportBusy ? null : _confirmDeleteSession,
-            icon: const Icon(Icons.delete_forever),
-            label: const Text('Delete session'),
-          ),
-        ),
-      ],
-    );
+      _stat('Saved to', widget.logFile.parent.path),
+      // --- Storage (round 90; Delete moved to the home list's per-session
+      // gear menu when the Overview tab was retired, round 187) ---
+      _stat(
+        'Session storage',
+        _sessionSizeBytes != null
+            ? formatBytes(_sessionSizeBytes!)
+            : 'measuring…',
+      ),
+      _stat(
+        'Phone storage free',
+        _storage.freeGb != null
+            ? '${_storage.isLow ? '⚠ ' : ''}'
+                  '${_storage.freeGb!.toStringAsFixed(1)} GB'
+            : 'unknown',
+      ),
+    ];
   }
 
   /// The calendar date, e.g. `2026-06-22` — same format as the home list.
@@ -1433,54 +1492,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   String _timeOnly(DateTime d) {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
-  }
-
-  /// Asks for confirmation, then deletes the WHOLE session folder (log,
-  /// metadata, photos, diagnostic files) and leaves the summary. The home
-  /// list rescans on return, and the recording screen's free-storage readout
-  /// polls the OS, so both show the freed space without extra plumbing.
-  Future<void> _confirmDeleteSession() async {
-    final size = _sessionSizeBytes != null
-        ? ' (${formatBytes(_sessionSizeBytes!)})'
-        : '';
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this session?'),
-        content: Text(
-          'This permanently deletes the whole session$size from the phone — '
-          'the data log, all metadata and every saved photo. '
-          'This cannot be undone.',
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (sure != true || !mounted) return;
-    try {
-      await widget.logFile.parent.delete(recursive: true);
-    } catch (e) {
-      logSwallowed('session_delete', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete the session.')),
-        );
-      }
-      return;
-    }
-    if (mounted) Navigator.of(context).pop();
   }
 
   /// Lists the session's saved photos, asks for confirmation (count + the
@@ -1515,7 +1526,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Export ${files.length} photos to Gallery?'),
+        title: Text('Copy ${files.length} photos to Gallery?'),
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
           'Gallery app, as the album "Pictures/FaunaPulse/$album". '
@@ -1524,7 +1535,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     'shots, taken whether or not anything was detected). ' : ''}'
           'The copies take about ${formatBytes(bytes)} of extra storage; '
           'the originals stay in the session folder. Photos already '
-          'exported are skipped, so re-running is safe.',
+          'copied are skipped, so re-running is safe.',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -1535,7 +1546,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
-              'Export',
+              'Copy',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -1569,19 +1580,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
     if (!mounted) return;
     final msg = !res.supported
-        ? 'Export to Gallery needs Android 10 or newer — this phone runs an '
+        ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
               'older Android. The photos are still on the phone in the '
               'session folder (reachable over USB).'
-        : 'Exported ${res.exported} photos to Gallery ▸ '
+        : 'Copied ${res.exported} photos to Gallery ▸ '
               'Pictures/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
               '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// The "Setup" tab (labeled "Settings" before round 182): every parameter
-  /// the user chose at session start (from the log's config block), grouped —
-  /// its own tab so the overview stays scannable.
+  /// The "Setup" tab (labeled "Settings" before round 182). Round 187: it
+  /// leads with the Overview rows (dates, battery, storage — the retired
+  /// Overview tab's content), then the full settings record unfolds behind a
+  /// tap-to-show header so the quick read stays scannable.
   Widget _setupTab() {
     // Lazy one-shot scan for mid-session ROI changes (round 109): kicked off
     // the first time this tab builds so the fast head/tail stats load is
@@ -1590,16 +1602,47 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _roiHistoryRequested = true;
       _loadRoiHistory();
     }
-    return ListView(padding: _tabPadding, children: _settingsSection());
+    return ListView(
+      padding: _tabPadding,
+      children: [
+        ..._overviewSection(),
+        const Divider(height: 32, color: Colors.white24),
+        InkWell(
+          onTap: () => setState(
+            () => _setupSettingsExpanded = !_setupSettingsExpanded,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              _setupSettingsExpanded
+                  ? '▾ All session settings'
+                  : '▸ All session settings (tap to show)',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+        if (_setupSettingsExpanded) ..._settingsSection(),
+      ],
+    );
   }
 
-  Widget _photosTab() => ListView(
-    padding: _tabPadding,
-    // Frozen while a photo is zoomed: the list's vertical drag otherwise
-    // wins vertical/diagonal photo pans and scrolls the viewer away.
-    physics: _photoViewerZoomed ? const NeverScrollableScrollPhysics() : null,
-    children: _photoSection(),
-  );
+  Widget _photosTab() {
+    // Auto-load the default random sample once (round 187 — the tab used to
+    // wait for a "Show" button press). Fields are set directly (we are mid-
+    // build, setState would assert); the microtask does the real work.
+    if (!_photosRequested) {
+      _photosRequested = true;
+      _photosLoading = true;
+      Future.microtask(_loadPhotos);
+    }
+    return ListView(
+      padding: _tabPadding,
+      // Frozen while a photo is zoomed: the list's vertical drag otherwise
+      // wins vertical/diagonal photo pans and scrolls the viewer away.
+      physics: _photoViewerZoomed ? const NeverScrollableScrollPhysics() : null,
+      children: _photoSection(),
+    );
+  }
 
   Widget _graphsTab() {
     // Recompute timeline visibility after this frame lays out, so the floating
@@ -1651,6 +1694,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   List<Widget> _graphs() => [
+    // The session's headline number (moved here from the retired Overview
+    // tab, round 187): one track id = one recorded visit, so it belongs
+    // right above the timeline it summarizes.
+    _stat(
+      'Insect visits (track IDs)',
+      _motionOnlySession
+          ? 'n/a (motion-only capture — detector off)'
+          : _timeLapseSession
+          ? 'n/a (time-lapse — detector off)'
+          : _uniqueTracks?.toString() ?? 'unknown',
+    ),
+    const SizedBox(height: 8),
     const Text(
       'Visit timeline (each lane is one insect)',
       style: TextStyle(fontWeight: FontWeight.bold),
@@ -1663,6 +1718,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ),
     const SizedBox(height: 12),
     _timeline(),
+    if (_spans.isNotEmpty) ..._visitCharts(),
     const SizedBox(height: 28),
     // Everything below is diagnostics (round 148): hidden behind a
     // tap-to-expand header so the visitation-rate deliverable above stays
@@ -1787,6 +1843,111 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ],
   ];
 
+  /// The two per-session visit charts (round 187), between the timeline and
+  /// the "Extra graphs" disclosure: how long visits lasted (histogram with a
+  /// user-picked bin width) and at which hours they started (the Dashboard's
+  /// "Visits by time of day", now also available per session). Only rendered
+  /// when the session has visits — no-AI sessions already explain themselves
+  /// in the timeline area.
+  List<Widget> _visitCharts() {
+    final durationsMs = [for (final s in _spans.values) s.$2 - s.$1];
+    final hist = visitDurationHistogram(durationsMs, _durationBinSeconds);
+    final n = hist.values.length;
+    // Sparse x labels: the first, middle and last bin's lower edge; the
+    // overflow bin (everything at/over the last bar) reads "≥ …".
+    String? histLabel(int i) {
+      if (i != 0 && i != n - 1 && i != n ~/ 2) return null;
+      final s = compactSecondsLabel(hist.binStartSeconds(i));
+      return (hist.overflow && i == n - 1) ? '≥$s' : s;
+    }
+
+    final byHour = visitsByHour([for (final s in _spans.values) s.$1]);
+    final durationStats = _seriesStats([
+      for (final ms in durationsMs) (0, ms / 1000.0),
+    ]);
+    return [
+      const SizedBox(height: 28),
+      const Text(
+        'Visit length distribution',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'How long the visits lasted: each bar counts the visits whose length '
+        'falls in that time bin — so you can see at a glance whether visits '
+        'cluster around one typical length or spread out.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 4),
+      Row(
+        children: [
+          const Text('Bin width: ', style: TextStyle(color: Colors.white70)),
+          DropdownButton<int>(
+            value: _durationBinSeconds,
+            isDense: true,
+            items: [
+              for (final s in _durationBinChoices)
+                DropdownMenuItem(
+                  value: s,
+                  child: Text(
+                    s < 60
+                        ? '$s s'
+                        : s < 3600
+                        ? '${s ~/ 60} min'
+                        : '${s ~/ 3600} h',
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) _setDurationBin(v);
+            },
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 120,
+        width: double.infinity,
+        child: MiniBarChart(values: hist.values, xLabelFor: histLabel),
+      ),
+      if (durationStats != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            '${durationsMs.length} visit${durationsMs.length == 1 ? '' : 's'}; '
+            'average ${durationStats.mean.toStringAsFixed(1)} s '
+            '(median ${durationStats.median.toStringAsFixed(1)} s); '
+            'shortest ${durationStats.min.toStringAsFixed(1)} s, '
+            'longest ${durationStats.max.toStringAsFixed(1)} s.',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+      const SizedBox(height: 28),
+      const Text(
+        'Visits by time of day',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'When this session\'s visitors arrived (visit starts per hour, local '
+        'time) — the same chart the Dashboard shows across all sessions.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        height: 120,
+        width: double.infinity,
+        child: MiniBarChart(
+          values: byHour,
+          xLabelFor: (i) => switch (i) {
+            0 || 6 || 12 || 18 => '$i h',
+            _ => null,
+          },
+        ),
+      ),
+    ];
+  }
+
   /// A small grey line printed under a graph with the series' average, median,
   /// minimum and maximum — the same shape of summary the power graph already
   /// shows. [decimals] controls the precision and [unit] is appended to every
@@ -1812,16 +1973,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<Widget> _photoSection() {
     return [
       const Text(
-        'Sample saved photos (with detection boxes)',
+        'Saved photos (with detection boxes)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
-        'Pick how many ROI photos to preview, spread evenly across the session. '
-        'Each is shown with the detection boxes recorded for it, so you can check '
-        'the results make visual sense. Swipe left/right to step through them. '
-        'Reference photos — taken on a fixed clock regardless of detections — '
-        'are mixed in and marked with a chip; they have no boxes by design.',
+        'Up to $_randomSampleCount photos, picked at random across the '
+        'session, are shown with the detection boxes recorded for each — a '
+        'quick check that the results make visual sense. Swipe left/right to '
+        'step through them (always in capture order). Reference photos — '
+        'taken on a fixed clock regardless of detections — are mixed in and '
+        'marked with a chip; they have no boxes by design.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 4),
@@ -1847,39 +2009,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
       ),
       const SizedBox(height: 8),
-      Row(
-        children: [
-          const Text('Photos: ', style: TextStyle(color: Colors.white70)),
-          Expanded(
-            child: Slider(
-              value: _sampleCount.toDouble(),
-              min: 1,
-              max: 10,
-              divisions: 9,
-              label: '$_sampleCount',
-              onChanged: (v) => setState(() => _sampleCount = v.round()),
-            ),
+      // Round 187: the sample-size slider is gone — a random sample of up to
+      // 10 loads by itself; "Show all" is the single remaining choice.
+      if (_photosRequested &&
+          !_photosLoading &&
+          !_photosShowAll &&
+          _totalSavedPhotos > _photos.length)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _confirmShowAllPhotos,
+            icon: const Icon(Icons.grid_view, size: 18),
+            label: Text('Show all $_totalSavedPhotos photos'),
           ),
-          Text('$_sampleCount', style: const TextStyle(color: Colors.white)),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _photosLoading ? null : () => _loadPhotos(),
-            child: const Text('Show'),
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton(
-            onPressed: _photosLoading ? null : () => _loadPhotos(all: true),
-            child: const Text('All'),
-          ),
-        ],
-      ),
+        ),
       if (_photosRequested && !_photosLoading)
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             'Showing ${_photos.length} of $_totalSavedPhotos saved photo'
             '${_totalSavedPhotos == 1 ? '' : 's'} this session'
-            '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}.',
+            '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}'
+            '${_photos.length < _totalSavedPhotos ? ' — picked at random' : ''}.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -1945,7 +2096,82 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             }
           },
         ),
+      // --- Copy photos to the phone's own Gallery app (round 93; moved here
+      // from the retired Overview tab, round 187) ---
+      const Divider(height: 32, color: Colors.white24),
+      const HelpLabel(
+        label: 'Copy photos to gallery',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        helperText:
+            'Copies every saved photo of this session into the phone\'s own '
+            'Gallery app, as one album under Pictures/FaunaPulse. Useful when '
+            'you want the images alongside your normal photos — but the '
+            'copies take extra storage (the originals always stay in the '
+            'session folder). Two things to know: some gallery apps take a '
+            'while to notice newly added albums, and the copies are plain '
+            'photos — the detection boxes and the extra information you see '
+            'in this app\'s photo viewer are not part of the image files.',
+      ),
+      const SizedBox(height: 8),
+      if (_galleryExportBusy) ...[
+        LinearProgressIndicator(
+          value: _galleryExportTotal == 0
+              ? null
+              : _galleryExportDone / _galleryExportTotal,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Copying photo $_galleryExportDone of $_galleryExportTotal…',
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+      ],
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.tonalIcon(
+          onPressed: _galleryExportBusy ? null : _confirmExportPhotosToGallery,
+          icon: const Icon(Icons.photo_library),
+          label: const Text('Copy photos'),
+        ),
+      ),
     ];
+  }
+
+  /// "Show all photos", with a heads-up first when the session is large:
+  /// thousands of photos load lazily as the user swipes, but building the
+  /// list still takes noticeably long on a phone.
+  Future<void> _confirmShowAllPhotos() async {
+    if (_totalSavedPhotos <= _showAllWarnThreshold) {
+      await _loadPhotos(all: true);
+      return;
+    }
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Show all $_totalSavedPhotos photos?'),
+        content: const Text(
+          'This session has a lot of photos, so loading and swiping through '
+          'all of them on the phone can be slow. For big sessions it is '
+          'usually easier to connect the phone to a computer over USB and '
+          'copy the session folder there.',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Show all',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (sure == true && mounted) await _loadPhotos(all: true);
   }
 
   /// The Photos tab's post-hoc block: shown only when this session has
@@ -2052,9 +2278,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       context,
     ).showSnackBar(SnackBar(content: Text('Deleted $deleted photos.')));
     await _loadPostHoc();
-    // The photo list still points at deleted files; reload it and the
-    // Overview's storage numbers.
-    if (_photosRequested) await _loadPhotos();
+    // The photo list still points at deleted files; reload it (keeping the
+    // user's sample/all choice) and the Setup tab's storage numbers.
+    if (_photosRequested) await _loadPhotos(all: _photosShowAll);
     await _loadStorageInfo();
   }
 
@@ -2140,20 +2366,27 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _stat(String label, String value) => Padding(
+  /// One label/value row. [dim] renders it muted — used for recorded
+  /// settings that had no effect in the session's mode (round 187).
+  Widget _stat(String label, String value, {bool dim = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           flex: 2,
-          child: Text(label, style: const TextStyle(color: Colors.white70)),
+          child: Text(
+            label,
+            style: TextStyle(color: dim ? Colors.white38 : Colors.white70),
+          ),
         ),
         Expanded(
           flex: 3,
           child: Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            style: dim
+                ? const TextStyle(color: Colors.white38)
+                : const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
       ],

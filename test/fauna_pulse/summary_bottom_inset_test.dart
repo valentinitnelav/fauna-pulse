@@ -90,18 +90,22 @@ String detectionsLine(int timeMs, List<int> ids) =>
 /// frames until the graphs content is on screen.
 Future<void> pumpSummaryGraphs(WidgetTester tester, File log) async {
   await tester.pumpWidget(
-    MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 2)),
+    // Graphs tab is index 1 since round 187 (Photos | Graphs | Setup).
+    MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
   );
+  // Readiness marker: the timeline header leads the tab, so it is always
+  // built — the 'Extra graphs' header may sit below the lazy ListView's fold
+  // since the round-187 visit charts made the tab taller.
   for (var i = 0; i < 250; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump();
-    if (find.textContaining('Extra graphs').evaluate().isNotEmpty) break;
+    if (find.textContaining('Visit timeline').evaluate().isNotEmpty) break;
   }
   expect(
-    find.textContaining('Extra graphs'),
-    findsOneWidget,
+    find.textContaining('Visit timeline'),
+    findsWidgets,
     reason: 'graphs content never appeared — fixture/load problem',
   );
   // One more frame so the post-frame timeline-visibility check has run.

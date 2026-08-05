@@ -6551,3 +6551,58 @@ note with a pointer to "Run AI on photos".
   doctored cache, invalidation on log growth, aiMode false for time-lapse,
   crashed-session end fallback, missing log). Full suite green (487).
 
+## Round 187 (2026-08-05): summary Overview tab retired; richer Graphs, random Photos sample
+
+Owner request: the summary's Overview tab was largely redundant with Setup and
+added visual complexity. Reorganized the session summary to three tabs
+(Photos | Graphs | Setup) and enriched Graphs and Photos.
+
+- Overview tab removed (`session_summary_screen.dart`); its content moved:
+  - Date / Start / End / Location / Duration / Model / Engine / Ended
+    normally / Battery used (+ charging warning) / Saved to / Session
+    storage / Phone storage free now LEAD the Setup tab as an "Overview"
+    block.
+  - "Unique insects (track ids)" renamed "Insect visits (track IDs)" and
+    moved to the Graphs tab, directly above the visit timeline (same n/a
+    wording in no-AI modes).
+  - Gallery export moved to the Photos tab as "Copy photos to gallery"
+    (HelpLabel ⓘ explains: extra storage, some gallery apps index new albums
+    slowly, copies carry no detection boxes / in-app metadata) with a "Copy
+    photos" button. All user-facing wording switched Export→Copy, including
+    the home gear menu ("Copy photos to Gallery") and both confirm dialogs.
+  - The red "Delete session" button dropped without replacement — the home
+    list's per-session gear menu (r182) is the only delete entry point now.
+  - `initialTabIndex` mapping is now Photos 0, Graphs 1, Setup 2 (analysis
+    screen's review jump updated; default landing = Photos).
+- Setup tab: below the Overview block, the full settings record sits behind a
+  "▸ All session settings (tap to show)" reveal. Owner decision reversing the
+  r147 display collapse: EVERY recorded setting is listed in every mode; the
+  ones the capture mode made inert render dimmed (`_stat(dim:)`) under short
+  "not applicable — recorded values:" notes. Concretely: detector + tracking
+  blocks dimmed in motion/time-lapse sessions, time-lapse block shown (dimmed)
+  in non-time-lapse sessions, motion-gate rows dimmed in time-lapse, gate
+  tunables also dimmed when the gate itself was off, reference photos row now
+  also shows "off". Log content unchanged (config_not_applicable etc. as
+  before) — display only.
+- Graphs tab additions (below the timeline, above "Extra graphs"; only when
+  the session has visits): a visit-length histogram with a bin-width dropdown
+  (1 s…1 h presets, persisted as pref `summary_duration_bin_s`; ≤60 bars,
+  tail collapses into a "≥" overflow bar; count/mean/median/min/max line
+  underneath) and a per-session "Visits by time of day" chart (visit starts
+  per local hour — same definition as the r186 Dashboard, so numbers agree).
+  Pure math in new `logging/visit_stats.dart` (unit tests
+  `visit_stats_test.dart`); the Dashboard's private bar chart extracted to
+  shared `widgets/mini_bar_chart.dart` (`MiniBarChart`) and reused for both.
+- Photos tab: the sample-count slider + Show/All buttons are gone. Up to 10
+  RANDOM photos auto-load when the summary opens (shown in capture order;
+  status line says "picked at random"); "Show all N photos" loads everything,
+  with a confirm dialog above 300 photos warning it can be slow and pointing
+  to USB copy on a computer. A post-hoc cleanup reload keeps the user's
+  sample/all choice.
+- Tests: summary_tabs_test.dart NEW (random-10 + Show all; Setup reveal with
+  n/a marking for both a time-lapse and an AI session), visit_stats_test.dart
+  NEW; summary_posthoc_boxes_test + summary_bottom_inset_test updated to the
+  new indices/auto-load (the inset test's readiness marker is now the
+  timeline header — 'Extra graphs' can start below the lazy ListView's fold
+  since the tab grew). FIELD_GUIDE §5/§6 updated. Full suite green (496).
+

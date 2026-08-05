@@ -61,20 +61,12 @@ void main() {
         MaterialApp(
           home: SessionSummaryScreen(
             logFile: File('${tmp.path}/session.jsonl'),
-            initialTabIndex: 1, // Photos tab (r182 order) — review-before-delete
+            initialTabIndex: 0, // Photos tab (r187 order) — review-before-delete
           ),
         ),
       );
-      // Wait for the tab chrome (the "All" button), then request the photos
-      // exactly like the owner does, and wait for the viewer.
-      for (var i = 0; i < 250; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (find.text('All').evaluate().isNotEmpty) break;
-      }
-      await tester.tap(find.text('All'));
+      // The photos auto-load since round 187 (random sample ≤ 10, which with
+      // one photo is everything) — just wait for the viewer.
       for (var i = 0; i < 250; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -165,18 +157,11 @@ void main() {
         MaterialApp(
           home: SessionSummaryScreen(
             logFile: File('${tmp.path}/session.jsonl'),
-            initialTabIndex: 1,
+            initialTabIndex: 0,
           ),
         ),
       );
-      for (var i = 0; i < 250; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (find.text('All').evaluate().isNotEmpty) break;
-      }
-      await tester.tap(find.text('All'));
+      // Photos auto-load since round 187 — wait for the viewer directly.
       for (var i = 0; i < 250; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),

@@ -335,8 +335,8 @@ class SessionPhotoScan {
 /// every file. Sorted by full path: within one session every file shares the
 /// session token prefix and the capture timestamp is fixed-width (see
 /// roiPhotoFileName), so this groups gt_frames/ before roi_frames/ and keeps
-/// each group in capture order. Shared by the summary Overview button and the
-/// home screen's per-session gear menu (round 182).
+/// each group in capture order. Shared by the summary Photos tab's "Copy
+/// photos" button and the home screen's per-session gear menu (round 182).
 Future<SessionPhotoScan> scanSessionPhotos(String sessionPath) async {
   final files = <File>[];
   var bytes = 0;
