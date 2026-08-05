@@ -2212,7 +2212,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 padding: EdgeInsets.only(bottom: 4),
                 child: Text(
                   'Selfie-facing cameras. Field monitoring uses the rear cameras, '
-                  'so these aren\'t selectable. Some phones (e.g. this Samsung) '
+                  'so these aren\'t selectable. Some phones '
                   'report a second, duplicate front camera — that\'s a firmware '
                   'quirk, not an extra physical lens.',
                   style: TextStyle(color: Colors.white54, fontSize: 12),
