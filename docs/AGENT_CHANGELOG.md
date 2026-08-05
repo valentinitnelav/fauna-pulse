@@ -6660,3 +6660,27 @@ power math with the app's corrections — its columns feed benchmarking records
 and must not change silently; do it as its own round with a flag or a note in
 the output.
 
+## Round 189 (2026-08-05): About without third-party license list; GitHub issues linked in report flow
+
+- About dialog (home ⋮ menu): the muted "Third-party licenses" action is
+  removed entirely (owner decision, overriding the r184 keep-it-reachable
+  note). The license line now reads "Open source under the AGPL-3.0 license
+  (full text, and the licenses of the third-party packages used, in the
+  repository)". FACTS RECORDED for the future: the removed page was Flutter's
+  auto-generated LicensePage (built from the bundled packages at compile
+  time, zero maintenance — the "hard to maintain" premise did not apply),
+  and several bundled BSD/MIT/Apache packages expect their attribution to
+  ship WITH distributed binaries, so a store release needs an answer;
+  RELEASE_PLAN.md carries the checklist item (cheapest fix: restore the one
+  muted button).
+- Report-a-problem flow now surfaces the public issue tracker
+  (`ErrorReporter.githubIssuesUrl`, already printed in the .txt footer since
+  r134) in the UI too: a tappable link line on the "Describe the problem"
+  screen ("Problems can also be reported as a GitHub issue: …") and in the
+  "Report saved" dialog ("You can also open a GitHub issue and paste the
+  report's text there: …"). Both open externally via url_launcher (manifest
+  https VIEW query exists since r183).
+- Files: home_screen.dart (_showAbout, ReportSavedDialog),
+  problem_description_screen.dart (new url_launcher/error_reporter imports).
+  No wire/log changes. Full suite green (497).
+

@@ -69,6 +69,14 @@ Still open:
   at most 1 MB (recompress).
 - [ ] Universal APK ships 4 ABIs (CPU architectures); GitHub releases should use
   `--split-per-abi` so each APK is far smaller.
+- [ ] Third-party license attribution (round 189): the About dialog's
+  "Third-party licenses" page (Flutter's auto-generated LicensePage) was removed
+  by owner decision; the About now points at the repository. Several bundled
+  BSD/MIT/Apache packages expect their license text to accompany distributed
+  binaries, so before the Play/store release decide how to satisfy that
+  (cheapest: restore the one muted LicensePage button — it is auto-generated,
+  zero maintenance; alternatives: a THIRD_PARTY_NOTICES file linked from the
+  Play listing/README).
 
 ## Open question for the owner
 

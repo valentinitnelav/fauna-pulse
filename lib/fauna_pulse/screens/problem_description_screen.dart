@@ -12,6 +12,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../logging/app_error_hooks.dart';
+import '../logging/error_reporter.dart';
 
 /// Opens the editor and returns the trimmed description, or null if cancelled.
 Future<String?> showProblemDescriptionEditor(BuildContext context) {
@@ -69,6 +73,36 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                 'were doing, what you expected, and what happened instead. This '
                 'is required and helps with debugging.',
                 style: TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+              const SizedBox(height: 6),
+              // Round 189 (owner request): point at the public issue tracker
+              // as an alternative reporting channel, up front.
+              InkWell(
+                onTap: () async {
+                  try {
+                    await launchUrl(
+                      Uri.parse(ErrorReporter.githubIssuesUrl),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  } catch (e) {
+                    logSwallowed('describe_open_issues', e);
+                  }
+                },
+                child: const Text.rich(
+                  TextSpan(
+                    style: TextStyle(fontSize: 12, color: Colors.black45),
+                    children: [
+                      TextSpan(
+                        text: 'Problems can also be reported as a GitHub '
+                            'issue: ',
+                      ),
+                      TextSpan(
+                        text: ErrorReporter.githubIssuesUrl,
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               // Edit / Preview toggle.

@@ -713,9 +713,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// repository. Round 184: a custom dialog instead of `showAboutDialog` —
   /// its mandatory "View licenses" button drowned the About in hundreds of
   /// framework/package entries (owner feedback). The app's OWN license
-  /// (AGPL-3.0) is stated directly; the third-party list stays reachable
-  /// (BSD/MIT dependencies require the attribution to ship with the app)
-  /// but demoted to one muted link.
+  /// (AGPL-3.0) is stated directly. Round 189 (owner decision): the muted
+  /// "Third-party licenses" action (Flutter's auto-generated LicensePage)
+  /// was removed too — the About now points at the repository for package
+  /// licenses instead. Caveat recorded in the changelog: several bundled
+  /// BSD/MIT/Apache packages expect their attribution to ship with the
+  /// binary, so revisit before a store release.
   Future<void> _showAbout() async {
     PackageInfo? info;
     try {
@@ -798,7 +801,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Open source under the AGPL-3.0 license (full text in the '
+                'Open source under the AGPL-3.0 license (full text, and the '
+                'licenses of the third-party packages used, in the '
                 'repository).',
                 style: TextStyle(fontSize: 12, color: Colors.white54),
               ),
@@ -806,23 +810,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
-          // Attribution for bundled BSD/MIT packages must stay reachable,
-          // but muted — the auto-generated list is hundreds of entries.
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.white54),
-            onPressed: () => Navigator.of(ctx).push(
-              MaterialPageRoute(
-                builder: (_) => LicensePage(
-                  applicationName: 'FaunaPulse',
-                  applicationVersion: version,
-                ),
-              ),
-            ),
-            child: const Text(
-              'Third-party licenses',
-              style: TextStyle(fontSize: 12),
-            ),
-          ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Close'),
@@ -1334,6 +1321,36 @@ class _ReportSavedDialogState extends State<ReportSavedDialog> {
             '${widget.report.file.path}\n\n'
             'You can send it now, or find it later over USB.',
             style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          // Round 189 (owner request): the public issue tracker as a third
+          // way to report — open an issue and paste the report's text there.
+          InkWell(
+            onTap: () async {
+              try {
+                await launchUrl(
+                  Uri.parse(ErrorReporter.githubIssuesUrl),
+                  mode: LaunchMode.externalApplication,
+                );
+              } catch (e) {
+                logSwallowed('report_open_issues', e);
+              }
+            },
+            child: const Text.rich(
+              TextSpan(
+                style: TextStyle(fontSize: 12, color: Colors.white54),
+                children: [
+                  TextSpan(
+                    text: 'You can also open a GitHub issue (and paste the '
+                        'report\'s text there): ',
+                  ),
+                  TextSpan(
+                    text: ErrorReporter.githubIssuesUrl,
+                    style: TextStyle(color: Colors.lightBlueAccent),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
