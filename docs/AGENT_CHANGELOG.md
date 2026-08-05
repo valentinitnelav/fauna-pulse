@@ -6684,3 +6684,40 @@ the output.
   problem_description_screen.dart (new url_launcher/error_reporter imports).
   No wire/log changes. Full suite green (497).
 
+## Round 190 (2026-08-05): report flow rework — contrast fix, screenshots, no email, ⋮ menu entry
+
+Owner requests, all on the problem-report flow:
+
+- CONTRAST BUG (owner report): the describe-the-problem screen's helper texts
+  (and the r189 GitHub line) used black54/black45/black26 — near-invisible on
+  the app's dark theme (`ThemeData.dark`, main.dart). All switched to the
+  white70/white54/white24 palette the rest of the app uses; the GitHub link
+  is lightBlueAccent like other links.
+- SCREENSHOT ATTACHMENTS: "Attach screenshots…" on the describe screen
+  (image_picker `pickMultiImage` — system photo picker, no storage
+  permission; chips with per-file remove). `showProblemDescriptionEditor`
+  now returns `ProblemDescriptionResult` {description, screenshotPaths};
+  both callers (home + in-session camera flow) pass them to
+  `ErrorReporter.build(attachmentPaths:)`, which copies each into
+  `error_reports/` next to the .txt (`report_<stamp>_screenshotN.<ext>`,
+  numbering keeps input positions; missing/failed files logged + skipped),
+  lists them in a "-- Attached screenshots (N) --" section and returns them
+  on `ErrorReport.attachments`; `share` sends .txt + screenshots together
+  (share_plus multi-file). Picker copies are temp-cache files, so the copy
+  happens at build time, before they can expire.
+- EMAIL REMOVED FROM UI (owner decision: don't encourage mailed reports,
+  mail-server load): ReportSavedDialog lost the developer-email field and
+  "Email…" action (now a plain StatelessWidget popping true=Share;
+  `ReportSendChoice` deleted); the .txt footer leads with the GitHub issue
+  link and never prints "Send this file to:". DORMANT, kept for a possible
+  revival: `ErrorReporter.emailTo`, `saveRecipientEmail`/`loadRecipientEmail`
+  (+ the `report_recipient_email` pref) and native `sendFileByEmail` — note
+  a revival must extend the native intent to carry the new attachments.
+- MENU MOVE: "Report a problem" left the landing screen's action block for
+  the ⋮ menu, directly above "Delete all sessions…" (`_HomeMenuAction.
+  reportProblem`); the action stack is New session / Run AI on photos now.
+- Testability: `ErrorReporter.debugDirOverride` (CrashStore's pattern) makes
+  `build()` unit-testable; error_reporter_test gains the attachment group
+  (copy + naming + skip-missing + footer wording; no-attachment case).
+  Full suite green (499).
+

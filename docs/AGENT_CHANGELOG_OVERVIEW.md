@@ -315,13 +315,23 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   C-BIoU fragmented 3–6× on identical input; dtAware didn't reliably help
   and bIoU-fb over-merged r106 data — ByteTrack stays default, no variant
   adopted.
-- **Problem reports & crash files (round 118).** "Report a problem" (home screen) builds a
-  `.txt` into `error_reports/`: app/device info, user text, up to 3 recent crash files,
-  settings, a HEAD+TAIL sample of the latest session.jsonl (30 + 200 lines, lines capped
-  2000 chars — `headTailSample` in `error_reporter.dart`), last 2000 logcat lines. Send =
-  share sheet OR "Email…" (recipient typed once, persisted in shared_preferences
-  `report_recipient_email` — NEVER SessionConfig/JSONL; native `sendFileByEmail` via the
-  `<appId>.reports.fileprovider` FileProvider, which serves ONLY `error_reports/`).
+- **Problem reports & crash files (round 118; reworked r190).** "Report a problem"
+  (home ⋮ menu since r190, above "Delete all sessions…"; was a landing-screen button)
+  builds a `.txt` into `error_reports/`: app/device info, user text, up to 3 recent
+  crash files, settings, a HEAD+TAIL sample of the latest session.jsonl (30 + 200
+  lines, lines capped 2000 chars — `headTailSample` in `error_reporter.dart`), last
+  2000 logcat lines. r190: the describe screen can attach SCREENSHOTS
+  (image_picker `pickMultiImage`; `ProblemDescriptionResult` carries paths; build()
+  copies them into `error_reports/` as `report_<stamp>_screenshotN.<ext>` — the only
+  FileProvider-served folder — lists them in the .txt and shares them WITH it).
+  Send = share sheet or the GitHub issue link (r189, shown on the describe screen +
+  "Report saved" dialog + .txt footer). The r118 "Email…" option is GONE from the UI
+  (r190 owner decision: don't encourage mailed reports) — `ErrorReporter.emailTo`,
+  the `report_recipient_email` pref and native `sendFileByEmail` (via the
+  `<appId>.reports.fileprovider` FileProvider, serves ONLY `error_reports/`) stay
+  DORMANT in code; a revival must add multi-attachment support to the native intent.
+  The describe screen's helper texts are white70/white54 (r190 — the original
+  black54/black45 was near-invisible on the app's dark theme).
   Uncaught errors persist as `crashes/crash_<yyyy-MM-dd>_<HHmmss>.txt` (newest 20 kept):
   Dart `crash_store.dart` (both global hooks) + Kotlin uncaught-handler in `MainActivity`
   (KEEP `writeCrashFile` ↔ `crashFileBody` IN SYNC); C++ signal crashes aren't captured.
@@ -475,10 +485,12 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   caveat (BSD/MIT attribution should ship with store binaries) is a
   RELEASE_PLAN checklist item now. r189: the report-a-problem flow (describe
   screen + "Report saved" dialog) links `ErrorReporter.githubIssuesUrl` as
-  an alternative reporting channel. "Report a problem" is
-  an OutlinedButton like its neighbours; a white24 divider separates the
-  action block from "Previous sessions"; the ⋮ setup-tips toggle draws an
-  explicit checkbox glyph (blank unchecked state was ambiguous).
+  an alternative reporting channel. r190: "Report a problem" moved from the
+  action block into the ⋮ menu (above "Delete all sessions…"), so the landing
+  screen has two buttons (New session / Run AI on photos); a white24 divider
+  separates the action block from "Previous sessions"; the ⋮ setup-tips
+  toggle draws an explicit checkbox glyph (blank unchecked state was
+  ambiguous).
   `ErrorReporter.githubRepoUrl` is the repo-link constant.
 - **Session rename + per-session gear menu (round 182).** Each Previous-sessions
   row's leading icon is a gear `PopupMenuButton` (replaced the decorative

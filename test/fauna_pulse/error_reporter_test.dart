@@ -248,4 +248,63 @@ void main() {
       expect(redactLocation(broken), broken);
     });
   });
+
+  group('screenshot attachments (round 190)', () {
+    late Directory tmp;
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      tmp = Directory.systemTemp.createTempSync('report_attach');
+      ErrorReporter.debugDirOverride = tmp;
+      CrashStore.debugDirOverride = tmp;
+    });
+    tearDown(() {
+      ErrorReporter.debugDirOverride = null;
+      CrashStore.debugDirOverride = null;
+      tmp.deleteSync(recursive: true);
+    });
+
+    test('build copies picked files next to the .txt and lists them', () async {
+      // Two "screenshots" as the photo picker would hand them out (temp
+      // copies elsewhere on disk), plus one path that no longer exists —
+      // the report must never fail because a screenshot did.
+      final src = Directory('${tmp.path}/picker_cache')..createSync();
+      final a = File('${src.path}/Screenshot_1.png')
+        ..writeAsBytesSync([1, 2, 3]);
+      final b = File('${src.path}/photo.jpg')..writeAsBytesSync([4, 5]);
+
+      final report = await ErrorReporter.build(
+        trigger: 'test',
+        userDescription: 'something broke',
+        attachmentPaths: [a.path, '${src.path}/gone.png', b.path],
+      );
+
+      expect(report.attachments, hasLength(2));
+      // Copies live in error_reports/ (the FileProvider-served folder),
+      // share the .txt's stamp, and keep their extension.
+      final reportDir = report.file.parent.path;
+      expect(reportDir, endsWith('error_reports'));
+      expect(report.attachments[0].parent.path, reportDir);
+      expect(report.attachments[0].path, endsWith('_screenshot1.png'));
+      // Numbering follows the input positions (the missing middle file was
+      // skipped), so the second surviving copy is _screenshot3.
+      expect(report.attachments[1].path, endsWith('_screenshot3.jpg'));
+      expect(report.attachments[0].readAsBytesSync(), [1, 2, 3]);
+
+      final txt = report.file.readAsStringSync();
+      expect(txt, contains('-- Attached screenshots (2) --'));
+      expect(txt, contains('_screenshot1.png'));
+      // The footer suggests the issue tracker, never a direct email.
+      expect(txt, contains('Open a GitHub issue'));
+      expect(txt, isNot(contains('Send this file to:')));
+    });
+
+    test('no attachments: no screenshots section, empty list', () async {
+      final report = await ErrorReporter.build(trigger: 'test');
+      expect(report.attachments, isEmpty);
+      expect(
+        report.file.readAsStringSync(),
+        isNot(contains('Attached screenshots')),
+      );
+    });
+  });
 }

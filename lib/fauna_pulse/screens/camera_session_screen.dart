@@ -4025,9 +4025,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             onPressed: () async {
               Navigator.of(ctx).pop();
               // Ask the user to describe the problem first (required).
-              final description = await showProblemDescriptionEditor(context);
-              if (description == null || !mounted) return;
-              await _createReport(message, description);
+              final input = await showProblemDescriptionEditor(context);
+              if (input == null || !mounted) return;
+              await _createReport(message, input);
             },
             child: const Text(
               'Create report',
@@ -4040,7 +4040,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   }
 
   /// Builds and saves the report, then shows its size and offers to send it.
-  Future<void> _createReport(String message, String description) async {
+  Future<void> _createReport(
+    String message,
+    ProblemDescriptionResult input,
+  ) async {
     // Brief progress indicator — capturing logcat spawns a process.
     showDialog<void>(
       context: context,
@@ -4051,9 +4054,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     try {
       report = await ErrorReporter.build(
         trigger: message,
-        userDescription: description,
+        userDescription: input.description,
         config: _config,
         sessionLog: _logger?.file,
+        attachmentPaths: input.screenshotPaths,
       );
     } catch (e) {
       report = null;

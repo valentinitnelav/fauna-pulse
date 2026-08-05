@@ -68,7 +68,7 @@ class _PastSession {
 /// settings sheet in round 159 — it is an app-level preference, and this menu
 /// is the established home for those (session settings stay on the camera
 /// screen, which needs the live camera).
-enum _HomeMenuAction { about, toggleSetupTips, deleteAllSessions }
+enum _HomeMenuAction { about, toggleSetupTips, reportProblem, deleteAllSessions }
 
 /// Per-session actions in the gear menu on each "Previous sessions" row
 /// (round 182). The gear replaced a decorative histogram icon; it groups
@@ -648,9 +648,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// restart): the last-used settings, the most recent session log if any, and
   /// the app's recent technical log. Saves it locally and offers to send it.
   Future<void> _reportProblem() async {
-    // Ask the user to describe the problem first (required). Cancelling aborts.
-    final description = await showProblemDescriptionEditor(context);
-    if (description == null || !mounted) return;
+    // Ask the user to describe the problem first (required; screenshots
+    // optional since round 190). Cancelling aborts.
+    final input = await showProblemDescriptionEditor(context);
+    if (input == null || !mounted) return;
 
     showDialog<void>(
       context: context,
@@ -663,9 +664,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final lastLog = _sessions.isNotEmpty ? _sessions.first.logFile : null;
       report = await ErrorReporter.build(
         trigger: 'User-initiated report (Report a problem)',
-        userDescription: description,
+        userDescription: input.description,
         config: config,
         sessionLog: lastLog,
+        attachmentPaths: input.screenshotPaths,
       );
     } catch (e) {
       logSwallowed('error_report_build', e);
@@ -680,29 +682,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final saved = report;
-    // The developer's address is handed out privately and typed once; it is
-    // remembered app-wide (never in SessionConfig — see ErrorReporter).
-    final knownEmail = await ErrorReporter.loadRecipientEmail();
-    if (!mounted) return;
-    final choice = await showDialog<ReportSendChoice>(
+    // Round 190 (owner decision): no email option here anymore — the share
+    // sheet and the GitHub issue link are the offered channels (the dormant
+    // email plumbing stays in ErrorReporter for a possible revival).
+    final share = await showDialog<bool>(
       context: context,
-      builder: (_) =>
-          ReportSavedDialog(report: saved, initialEmail: knownEmail),
+      builder: (_) => ReportSavedDialog(report: saved),
     );
-    if (choice == null || !mounted) return;
-    if (choice.viaEmail) {
-      await ErrorReporter.saveRecipientEmail(choice.email);
-      final opened = await ErrorReporter.emailTo(saved, choice.email);
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No email app found — use Share instead.'),
-          ),
-        );
-      }
-    } else {
-      await ErrorReporter.share(saved);
-    }
+    if (share == true && mounted) await ErrorReporter.share(saved);
   }
 
   /// The top-right "⋮" menu (a PopupMenuButton — Android's standard
@@ -829,6 +816,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _showAbout();
           case _HomeMenuAction.toggleSetupTips:
             _toggleSetupTips();
+          case _HomeMenuAction.reportProblem:
+            _reportProblem();
           case _HomeMenuAction.deleteAllSessions:
             _confirmDeleteAllSessions();
         }
@@ -865,6 +854,19 @@ class _HomeScreenState extends State<HomeScreen> {
               const Flexible(
                 child: Text('Show setup tips at session start'),
               ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        // Moved here from the landing screen's action block (round 190,
+        // owner request) — still always available, one tap further away.
+        const PopupMenuItem(
+          value: _HomeMenuAction.reportProblem,
+          child: Row(
+            children: [
+              Icon(Icons.bug_report_outlined, size: 20, color: Colors.white70),
+              SizedBox(width: 10),
+              Text('Report a problem'),
             ],
           ),
         ),
@@ -945,18 +947,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           label: const Text('Run AI on photos'),
                         ),
-                        const SizedBox(height: 6),
-                        // Always-available entry point so a problem can be
-                        // reported even after the app restarts (e.g.
-                        // following a crash) — the report still captures the
-                        // recent technical log. Outlined like the analyze
-                        // button above it (round 183): a bare text label did
-                        // not read as tappable.
-                        OutlinedButton.icon(
-                          onPressed: _reportProblem,
-                          icon: const Icon(Icons.bug_report_outlined, size: 18),
-                          label: const Text('Report a problem'),
-                        ),
+                        // "Report a problem" moved into the ⋮ menu
+                        // (round 190, owner request — above Delete all
+                        // sessions); it stays reachable after a crash and
+                        // restart, just one tap further away.
                       ],
                     ),
                   ),
@@ -1260,56 +1254,19 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
   }
 }
 
-/// What the user chose in [ReportSavedDialog]. [viaEmail] sends to [email]
-/// (a non-empty address); otherwise the generic OS share sheet opens.
-/// The dialog pops null for "Done" (keep the file, send nothing).
-class ReportSendChoice {
-  final String email;
-  const ReportSendChoice.share() : email = '';
-  const ReportSendChoice.email(this.email);
-  bool get viaEmail => email.isNotEmpty;
-}
-
-/// Shown after a problem report is written to disk: where it landed, an
-/// optional developer email (typed once, remembered) and the two ways to
-/// send it. A real StatefulWidget for the same teardown-order reason as
-/// [DeleteAllSessionsDialog] (its class comment has the crash story).
-class ReportSavedDialog extends StatefulWidget {
+/// Shown after a problem report is written to disk: where it landed (with
+/// any screenshot copies), the GitHub issue link and the share action.
+/// Pops true to open the share sheet, null/false for "Done" (keep the file,
+/// send nothing). Round 190: the developer-email field and "Email…" action
+/// are gone (owner decision — don't encourage emailed reports); with no
+/// TextEditingController left this is a plain StatelessWidget again.
+class ReportSavedDialog extends StatelessWidget {
   final ErrorReport report;
-  final String initialEmail;
-  const ReportSavedDialog({
-    super.key,
-    required this.report,
-    required this.initialEmail,
-  });
-
-  @override
-  State<ReportSavedDialog> createState() => _ReportSavedDialogState();
-}
-
-class _ReportSavedDialogState extends State<ReportSavedDialog> {
-  late final TextEditingController _email = TextEditingController(
-    text: widget.initialEmail,
-  );
-
-  @override
-  void dispose() {
-    _email.dispose();
-    super.dispose();
-  }
-
-  /// Loose "looks like an address" check — just enough to keep the Email
-  /// button disabled on obvious typos; the email app validates for real.
-  bool get _emailPlausible =>
-      RegExp(r'^\S+@\S+\.\S+$').hasMatch(_email.text.trim());
-
-  void _close(ReportSendChoice? result) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    Navigator.of(context).pop(result);
-  }
+  const ReportSavedDialog({super.key, required this.report});
 
   @override
   Widget build(BuildContext context) {
+    final shots = report.attachments.length;
     return AlertDialog(
       title: const Text('Report saved'),
       content: Column(
@@ -1317,14 +1274,16 @@ class _ReportSavedDialogState extends State<ReportSavedDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Saved a ${widget.report.humanSize} report to:\n\n'
-            '${widget.report.file.path}\n\n'
+            'Saved a ${report.humanSize} report to:\n\n'
+            '${report.file.path}\n\n'
+            '${shots > 0 ? '$shots screenshot${shots == 1 ? '' : 's'} saved '
+                  'next to it (shared together with the report). ' : ''}'
             'You can send it now, or find it later over USB.',
             style: const TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 10),
-          // Round 189 (owner request): the public issue tracker as a third
-          // way to report — open an issue and paste the report's text there.
+          // Round 189 (owner request): the public issue tracker as the
+          // suggested channel — open an issue and paste the report's text.
           InkWell(
             onTap: () async {
               try {
@@ -1352,31 +1311,15 @@ class _ReportSavedDialogState extends State<ReportSavedDialog> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-              labelText: 'Developer email (optional)',
-              helperText: 'Ask the developer for it — remembered next time.',
-              helperMaxLines: 2,
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => _close(null), child: const Text('Done')),
         TextButton(
-          onPressed: _emailPlausible
-              ? () => _close(ReportSendChoice.email(_email.text.trim()))
-              : null,
-          child: const Text('Email…'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
         ),
         TextButton(
-          onPressed: () => _close(const ReportSendChoice.share()),
+          onPressed: () => Navigator.of(context).pop(true),
           child: const Text(
             'Share…',
             style: TextStyle(fontWeight: FontWeight.bold),

@@ -12,15 +12,31 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 
-/// Opens the editor and returns the trimmed description, or null if cancelled.
-Future<String?> showProblemDescriptionEditor(BuildContext context) {
-  return Navigator.of(context).push<String>(
-    MaterialPageRoute<String>(
+/// What the editor returns: the user's words plus any screenshots they picked
+/// (round 190). The paths point at the photo picker's temp copies — the
+/// report builder must copy them somewhere durable before they expire.
+class ProblemDescriptionResult {
+  final String description;
+  final List<String> screenshotPaths;
+  const ProblemDescriptionResult({
+    required this.description,
+    this.screenshotPaths = const [],
+  });
+}
+
+/// Opens the editor and returns the trimmed description (+ screenshots), or
+/// null if cancelled.
+Future<ProblemDescriptionResult?> showProblemDescriptionEditor(
+  BuildContext context,
+) {
+  return Navigator.of(context).push<ProblemDescriptionResult>(
+    MaterialPageRoute<ProblemDescriptionResult>(
       fullscreenDialog: true,
       builder: (_) => const ProblemDescriptionScreen(),
     ),
@@ -40,6 +56,13 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
   // false = Edit tab, true = Preview tab.
   bool _previewing = false;
 
+  // Screenshots the user attaches to the report (round 190, optional).
+  // Picked via the system photo picker (no storage permission needed), which
+  // hands back temp-cache copies — kept as paths and copied into the report
+  // folder by ErrorReporter.build.
+  final List<XFile> _shots = [];
+  bool _picking = false;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -48,10 +71,38 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
 
   bool get _hasText => _controller.text.trim().isNotEmpty;
 
+  Future<void> _pickScreenshots() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final picked = await ImagePicker().pickMultiImage();
+      if (!mounted) return;
+      setState(() {
+        // Skip files already in the list (same temp path = same pick).
+        final have = _shots.map((s) => s.path).toSet();
+        _shots.addAll(picked.where((p) => !have.contains(p.path)));
+      });
+    } catch (e) {
+      logSwallowed('report_pick_screenshots', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the photo picker.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
   void _continue() {
     final text = _controller.text.trim();
     if (text.isEmpty) return; // Required — guarded by the disabled button too.
-    Navigator.of(context).pop(text);
+    Navigator.of(context).pop(
+      ProblemDescriptionResult(
+        description: text,
+        screenshotPaths: [for (final s in _shots) s.path],
+      ),
+    );
   }
 
   @override
@@ -68,11 +119,15 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Round 190: the app runs its dark theme, so the helper texts
+              // on this screen use the white70/white54 palette every other
+              // screen uses — the original black54/black45 (and the r189
+              // GitHub line) were near-invisible dark-on-dark (owner report).
               const Text(
                 'Please describe what went wrong in your own words — what you '
                 'were doing, what you expected, and what happened instead. This '
                 'is required and helps with debugging.',
-                style: TextStyle(fontSize: 13, color: Colors.black54),
+                style: TextStyle(fontSize: 13, color: Colors.white70),
               ),
               const SizedBox(height: 6),
               // Round 189 (owner request): point at the public issue tracker
@@ -90,7 +145,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                 },
                 child: const Text.rich(
                   TextSpan(
-                    style: TextStyle(fontSize: 12, color: Colors.black45),
+                    style: TextStyle(fontSize: 12, color: Colors.white54),
                     children: [
                       TextSpan(
                         text: 'Problems can also be reported as a GitHub '
@@ -98,7 +153,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                       ),
                       TextSpan(
                         text: ErrorReporter.githubIssuesUrl,
-                        style: TextStyle(color: Colors.blue),
+                        style: TextStyle(color: Colors.lightBlueAccent),
                       ),
                     ],
                   ),
@@ -131,7 +186,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.black26),
+                    border: Border.all(color: Colors.white24),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: _previewing ? _preview() : _editor(),
@@ -141,8 +196,57 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
               const Text(
                 'Markdown is allowed — e.g. **bold**, *italic*, or "- " for a '
                 'bulleted list.',
-                style: TextStyle(fontSize: 11, color: Colors.black45),
+                style: TextStyle(fontSize: 11, color: Colors.white54),
               ),
+              const SizedBox(height: 8),
+              // Screenshots (round 190, optional): picked here, copied into
+              // the report folder by ErrorReporter.build, and attached
+              // alongside the .txt when the report is shared.
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _picking ? null : _pickScreenshots,
+                    icon: const Icon(Icons.add_photo_alternate_outlined,
+                        size: 18),
+                    label: Text(
+                      _shots.isEmpty
+                          ? 'Attach screenshots…'
+                          : 'Add more screenshots…',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_shots.isNotEmpty)
+                    Text(
+                      '${_shots.length} attached',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white54,
+                      ),
+                    ),
+                ],
+              ),
+              if (_shots.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final s in _shots)
+                        InputChip(
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 140),
+                            child: Text(
+                              s.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          onDeleted: () => setState(() => _shots.remove(s)),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -190,7 +294,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
       return const Center(
         child: Text(
           'Nothing to preview yet.',
-          style: TextStyle(color: Colors.black45),
+          style: TextStyle(color: Colors.white54),
         ),
       );
     }

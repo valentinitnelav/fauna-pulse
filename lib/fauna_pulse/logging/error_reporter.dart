@@ -16,6 +16,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -32,7 +34,16 @@ import 'diagnostics.dart';
 class ErrorReport {
   final File file;
   final int sizeBytes;
-  const ErrorReport({required this.file, required this.sizeBytes});
+
+  /// Screenshot copies saved next to the .txt (round 190) — attached
+  /// alongside it when the report is shared.
+  final List<File> attachments;
+
+  const ErrorReport({
+    required this.file,
+    required this.sizeBytes,
+    this.attachments = const [],
+  });
 
   /// Size in human-readable units (e.g. "1.8 MB", "742 KB").
   String get humanSize {
@@ -72,6 +83,7 @@ class ErrorReporter {
     String? errorDetail,
     SessionConfig? config,
     File? sessionLog,
+    List<String> attachmentPaths = const [],
     int logcatLines = 2000,
     int sessionLogHeadLines = 30,
     int sessionLogTailLines = 200,
@@ -144,19 +156,21 @@ class ErrorReporter {
     );
     b.writeln();
 
+    // Round 190: email is deliberately NOT suggested (owner decision — no
+    // mail-server load); the issue tracker leads, the share sheet / USB copy
+    // follow. The dormant email plumbing (emailTo + the recipient pref)
+    // stays in code for a possible later revival.
     b.writeln('==== How to send this report ====');
-    b.writeln(
-      'Send this report to the developer using email or any messaging '
-      'app of your choice (share it from the app, or copy it off the phone '
-      'over USB).',
-    );
-    final recipient = await loadRecipientEmail();
-    if (recipient.isNotEmpty) {
-      b.writeln('Send this file to: $recipient');
-    }
     if (githubIssuesUrl.isNotEmpty) {
-      b.writeln('Or open a GitHub issue: $githubIssuesUrl');
+      b.writeln(
+        'Open a GitHub issue and paste this report\'s text (attach the '
+        'screenshots if any): $githubIssuesUrl',
+      );
     }
+    b.writeln(
+      'Or share it from the app with any messaging app of your choice, '
+      'or copy it off the phone over USB.',
+    );
 
     final dir = await _reportsDir();
     final stamp = now
@@ -164,26 +178,65 @@ class ErrorReporter {
         .replaceAll(':', '-')
         .replaceAll('.', '-');
     final file = File('${dir.path}/report_$stamp.txt');
+
+    // Screenshot attachments (round 190): the picker hands out temp-cache
+    // copies that expire, so each is copied NOW into error_reports/ (the only
+    // folder the report FileProvider serves) next to the .txt, sharing its
+    // stamp. Failures are logged and skipped — the report itself must never
+    // fail because a screenshot did.
+    final attachments = <File>[];
+    for (var i = 0; i < attachmentPaths.length; i++) {
+      try {
+        final src = File(attachmentPaths[i]);
+        if (!src.existsSync()) continue;
+        final dotExt = attachmentPaths[i].contains('.')
+            ? attachmentPaths[i].substring(attachmentPaths[i].lastIndexOf('.'))
+            : '.jpg';
+        final copy = await src.copy(
+          '${dir.path}/report_${stamp}_screenshot${i + 1}$dotExt',
+        );
+        attachments.add(copy);
+      } catch (e) {
+        logSwallowed('report_attach_copy', e);
+      }
+    }
+    if (attachments.isNotEmpty) {
+      b.writeln();
+      b.writeln('-- Attached screenshots (${attachments.length}) --');
+      for (final f in attachments) {
+        b.writeln(f.uri.pathSegments.last);
+      }
+    }
+
     await file.writeAsString(b.toString());
     final size = await file.length();
-    return ErrorReport(file: file, sizeBytes: size);
+    return ErrorReport(file: file, sizeBytes: size, attachments: attachments);
   }
 
   /// Opens the OS share sheet (email, Drive, etc.) with the report attached.
   static Future<void> share(ErrorReport report) async {
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(report.file.path)],
+        files: [
+          XFile(report.file.path),
+          // Screenshot copies ride along (round 190).
+          for (final f in report.attachments) XFile(f.path),
+        ],
         subject: 'FaunaPulse error report',
         text: 'FaunaPulse error report attached.',
       ),
     );
   }
 
-  /// Opens an email app with the recipient, subject and the report already
-  /// attached (share_plus cannot pre-fill a recipient, so this goes through
-  /// the native `sendEmail` — see diagnostics.dart). Returns false when no
-  /// email app could be opened.
+  /// DORMANT since round 190 (owner decision: don't encourage emailed
+  /// reports — mail-server load). No UI calls this anymore; kept, with the
+  /// recipient-email prefs pair below, in case a direct-email channel is
+  /// revived later. Opens an email app with the recipient, subject and the
+  /// report already attached (share_plus cannot pre-fill a recipient, so
+  /// this goes through the native `sendEmail` — see diagnostics.dart).
+  /// Returns false when no email app could be opened. Note it attaches only
+  /// the .txt — a revival must extend the native intent for the round-190
+  /// screenshot attachments.
   static Future<bool> emailTo(ErrorReport report, String recipient) async {
     return Diagnostics.sendEmail(
       path: report.file.path,
@@ -227,16 +280,26 @@ class ErrorReporter {
     return files;
   }
 
+  /// Redirects reports to a plain directory so unit tests never need the
+  /// platform channels behind path_provider (same pattern as CrashStore).
+  @visibleForTesting
+  static Directory? debugDirOverride;
+
   static Future<Directory> _reportsDir() async {
     Directory base;
-    try {
-      base =
-          (await getExternalStorageDirectory()) ??
-          await getApplicationDocumentsDirectory();
-    } catch (e) {
-      // Reports land in the internal dir instead (not browsable over USB).
-      logSwallowed('reports_dir_external', e);
-      base = await getApplicationDocumentsDirectory();
+    final override = debugDirOverride;
+    if (override != null) {
+      base = override;
+    } else {
+      try {
+        base =
+            (await getExternalStorageDirectory()) ??
+            await getApplicationDocumentsDirectory();
+      } catch (e) {
+        // Reports land in the internal dir instead (not browsable over USB).
+        logSwallowed('reports_dir_external', e);
+        base = await getApplicationDocumentsDirectory();
+      }
     }
     final dir = Directory('${base.path}/error_reports');
     if (!await dir.exists()) await dir.create(recursive: true);
