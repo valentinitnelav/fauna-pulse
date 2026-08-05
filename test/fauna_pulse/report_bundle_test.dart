@@ -2,6 +2,7 @@
 // samplers (what is kept vs. the measured flood/noise lines) and the single
 // shareable zip.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -105,6 +106,24 @@ void main() {
       expect(out, 'A\nB');
     });
 
+    test('jsonl omission marker keeps the sample valid JSON Lines', () async {
+      final lines = [for (var i = 0; i < 30; i++) '{"type":"fps","n":$i}'];
+      final out = await sampleFilteredFile(
+        write(lines),
+        keep: (_) => true,
+        omissionMarker: jsonlOmissionMarker,
+        head: 5,
+        tail: 5,
+      );
+      // Every line — including the marker — must parse as JSON (round 192,
+      // owner request: the member is named .jsonl, so it must BE jsonl).
+      for (final l in out.split('\n')) {
+        expect(() => jsonDecode(l), returnsNormally, reason: l);
+      }
+      expect(out, contains('"type":"sample_omitted"'));
+      expect(out, contains('"omitted_lines":20'));
+    });
+
     test('missing file yields empty string', () async {
       final out = await sampleFilteredFile(
         File('${tmp.path}/nope.txt'),
@@ -145,7 +164,7 @@ void main() {
 
       final extras = await collectSessionExtras(tmp);
       expect(extras.map((e) => e.name), [
-        'session_events_sample.jsonl.txt',
+        'session_events_sample.jsonl',
         'logcat_start_sample.txt',
       ]);
       final events = extras[0].content;

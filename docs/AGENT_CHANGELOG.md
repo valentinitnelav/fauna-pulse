@@ -6764,3 +6764,30 @@ session's log, though a problem may concern an older session or none.
   chosen-session samples land in zip + are listed in the .txt). Suite green
   (509).
 
+## Round 192 (2026-08-05): report polish after owner's zip test (.jsonl names, no duplicate excerpt)
+
+Owner whatsapped himself a real bundle (report_2026-08-05T14-18-03-479627,
+kept under sessions/error_reports/Xiaomi/): the zip worked as designed. Two
+review points, both deliberate r191 choices rather than bugs, both changed:
+
+- `.jsonl` members are named `.jsonl` again: `session_events_sample.jsonl`,
+  `post_detections_runs.jsonl` (the r191 `.jsonl.txt` suffix marked them as
+  not-strictly-valid JSONL because of the plain-text omission marker). To
+  make the name honest, the marker inside them is now itself a JSON record:
+  `{"type":"sample_omitted","omitted_lines":N}` (`jsonlOmissionMarker`,
+  optional param on `sampleFilteredFile`) — the samples parse as JSON Lines
+  end to end (pandas-friendly). Logcat samples stay `.txt`.
+- The .txt's embedded "-- Session log: … (first 30 + last 200 lines) --"
+  excerpt was redundant next to the zip's event sample (owner was right).
+  Now: extras are collected BEFORE the body is composed; when they exist the
+  .txt carries only a "-- Session data: <folder> --" pointer to the zip
+  members; the classic excerpt is APPENDED only when zip creation fails
+  (the shared .txt must stay self-sufficient in that fallback).
+- Same redundancy class, same round: the .txt's LIVE logcat capture now
+  drops the `updateAcquireFence` noise line (`keepLiveLogcatLine`) — it was
+  the bulk of the 2000 captured lines on the test device. PERF/FRAMEPERF
+  deliberately STAY in the live capture: with "No session data" chosen they
+  are the report's only performance record.
+- Tests updated (member names, valid-JSONL marker round-trip via jsonDecode,
+  .txt points-at-zip assertion). Suite green (510).
+

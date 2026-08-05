@@ -341,12 +341,15 @@ void main() {
           .files
           .map((f) => f.name)
           .toList();
-      expect(names, contains('session_events_sample.jsonl.txt'));
+      expect(names, contains('session_events_sample.jsonl'));
       expect(names, contains('logcat_start_sample.txt'));
-      expect(
-        report.file.readAsStringSync(),
-        contains('-- Bundled session file samples (2) --'),
-      );
+      final txt = report.file.readAsStringSync();
+      expect(txt, contains('-- Bundled session file samples (2) --'));
+      // Round 192 (owner review): with the samples in the zip, the old
+      // embedded head+tail log excerpt is gone — the .txt only points at
+      // the bundle members.
+      expect(txt, contains('-- Session data:'));
+      expect(txt, isNot(contains('-- Session log:')));
     });
   });
 }

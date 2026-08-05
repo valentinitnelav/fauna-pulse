@@ -61,21 +61,35 @@ bool keepLogcatLine(String line) =>
     !line.contains(' PERF ') &&
     !line.contains('FRAMEPERF');
 
+/// Noise filter for the report's LIVE logcat capture (round 192) — only the
+/// pure CameraX noise is dropped there. PERF/FRAMEPERF stay: when the user
+/// picks "No session data" the live capture is the report's only
+/// performance record, so those lines can be the signal.
+bool keepLiveLogcatLine(String line) => !line.contains('updateAcquireFence');
+
 /// post_detections.jsonl lines worth carrying: the per-run summaries
 /// (`post_start` / `post_end` / `post_cleanup`), not the per-photo records.
 bool keepPostDetectionLine(String line) =>
     !line.contains('"type":"post_detection"');
 
+/// Omission marker for `.jsonl` samples (round 192): itself a valid JSON
+/// line, so the sampled file parses as real JSON Lines end to end (the owner
+/// reads these with pandas — a plain-text marker would break `read_json`).
+String jsonlOmissionMarker(int omitted) =>
+    '{"type":"sample_omitted","omitted_lines":$omitted}';
+
 /// Streams [file] line by line, keeps only lines passing [keep] (blank lines
 /// always dropped), passes each kept line through [map] (e.g. location
 /// redaction), and returns the first [head] + last [tail] of them with an
-/// omission marker in between. Bounded memory (head list + tail ring buffer),
-/// overlong lines capped like the report's other samplers. Returns '' for a
-/// missing file and an error note instead of throwing.
+/// omission marker in between ([omissionMarker] overrides the plain-text
+/// default — see [jsonlOmissionMarker]). Bounded memory (head list + tail
+/// ring buffer), overlong lines capped like the report's other samplers.
+/// Returns '' for a missing file and an error note instead of throwing.
 Future<String> sampleFilteredFile(
   File file, {
   required bool Function(String) keep,
   String Function(String)? map,
+  String Function(int omitted)? omissionMarker,
   int head = 150,
   int tail = 150,
   int maxLineChars = 2000,
@@ -111,7 +125,8 @@ Future<String> sampleFilteredFile(
   }
   return [
     ...headLines,
-    if (omitted > 0) '… $omitted lines omitted …',
+    if (omitted > 0)
+      omissionMarker?.call(omitted) ?? '… $omitted lines omitted …',
     ...tailBuf,
   ].join('\n');
 }
@@ -127,6 +142,7 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
     String memberName,
     bool Function(String) keep, {
     String Function(String)? map,
+    String Function(int)? omissionMarker,
     int head = 150,
     int tail = 150,
   }) async {
@@ -134,6 +150,7 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
       File('${sessionDir.path}/$fileName'),
       keep: keep,
       map: map,
+      omissionMarker: omissionMarker,
       head: head,
       tail: tail,
     );
@@ -143,11 +160,14 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
   // Event records: config + end + every rare record (motion_gate,
   // camera_sleep, app_error, roi_update, fps/thermal/power series…).
   // Location is redacted, as in every report sample (protected sites, r126).
+  // Member keeps the .jsonl extension (round 192, owner request) — the JSON
+  // omission marker keeps the sample valid JSON Lines throughout.
   await add(
     'session.jsonl',
-    'session_events_sample.jsonl.txt',
+    'session_events_sample.jsonl',
     keepSessionEventLine,
     map: redactLocation,
+    omissionMarker: jsonlOmissionMarker,
     head: 100,
     tail: 300,
   );
@@ -159,8 +179,9 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
   await add('logcat_end.txt', 'logcat_end_sample.txt', keepLogcatLine);
   await add(
     'post_detections.jsonl',
-    'post_detections_runs.jsonl.txt',
+    'post_detections_runs.jsonl',
     keepPostDetectionLine,
+    omissionMarker: jsonlOmissionMarker,
     head: 40,
     tail: 40,
   );

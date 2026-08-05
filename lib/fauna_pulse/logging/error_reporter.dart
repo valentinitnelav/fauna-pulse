@@ -155,21 +155,52 @@ class ErrorReporter {
       b.writeln();
     }
 
+    // Sampled session files (round 191): when the report is about a session,
+    // its event records / saved logcats / analysis-run summaries travel as
+    // separate bundle members (see report_bundle.dart for what is kept).
+    // Collected here, BEFORE the body's session section, because they decide
+    // its shape (round 192, owner review): with samples in the zip the old
+    // embedded head+tail log excerpt is redundant, so the .txt only points
+    // at them — it is embedded only as the no-zip fallback further down.
+    final extras = sessionLog != null && sessionLog.existsSync()
+        ? await collectSessionExtras(sessionLog.parent)
+        : const <ReportExtra>[];
     if (sessionLog != null && sessionLog.existsSync()) {
-      b.writeln(
-        '-- Session log: ${sessionLog.path} '
-        '(first $sessionLogHeadLines + last $sessionLogTailLines lines) --',
-      );
-      b.writeln(
-        await _sampledLog(sessionLog, sessionLogHeadLines, sessionLogTailLines),
-      );
-      b.writeln();
+      if (extras.isNotEmpty) {
+        b.writeln('-- Session data: ${sessionLog.parent.path} --');
+        b.writeln(
+          'Sampled files from this session travel as separate members of '
+          'the report zip (list at the end of this report).',
+        );
+        b.writeln();
+      } else {
+        b.writeln(
+          '-- Session log: ${sessionLog.path} '
+          '(first $sessionLogHeadLines + last $sessionLogTailLines lines) --',
+        );
+        b.writeln(
+          await _sampledLog(
+            sessionLog,
+            sessionLogHeadLines,
+            sessionLogTailLines,
+          ),
+        );
+        b.writeln();
+      }
     }
 
-    b.writeln('-- Logcat (last $logcatLines app log lines) --');
+    // Live logcat of the current app run. Round 192: the pure CameraX noise
+    // line is filtered out (it was most of the capture on the test device);
+    // PERF/FRAMEPERF stay — with "No session data" chosen they are the
+    // report's only performance record.
     b.writeln(
-      await Diagnostics.captureLogcat(maxLines: logcatLines) ??
-          '(logcat unavailable on this platform)',
+      '-- Logcat (last $logcatLines app log lines; camera noise removed) --',
+    );
+    final liveLogcat = await Diagnostics.captureLogcat(maxLines: logcatLines);
+    b.writeln(
+      liveLogcat == null
+          ? '(logcat unavailable on this platform)'
+          : liveLogcat.split('\n').where(keepLiveLogcatLine).join('\n'),
     );
     b.writeln();
 
@@ -225,13 +256,6 @@ class ErrorReporter {
       }
     }
 
-    // Sampled session files (round 191): when the report is about a session,
-    // its saved logcats / event records / analysis-run summaries travel as
-    // separate bundle members — sampled, so a multi-hour session still
-    // yields a small report (see report_bundle.dart for what is kept).
-    final extras = sessionLog != null && sessionLog.existsSync()
-        ? await collectSessionExtras(sessionLog.parent)
-        : const <ReportExtra>[];
     if (extras.isNotEmpty) {
       b.writeln();
       b.writeln('-- Bundled session file samples (${extras.length}) --');
@@ -241,7 +265,6 @@ class ErrorReporter {
     }
 
     await file.writeAsString(b.toString());
-    final size = await file.length();
 
     // One shareable file (round 191): zip whenever anything beyond the bare
     // .txt exists. On failure the report still stands — Share then sends
@@ -255,6 +278,27 @@ class ErrorReporter {
         extras: extras,
       );
     }
+    // Round 192: if zipping failed, the shared .txt would carry NO session
+    // data (its body only points at the zip members) — append the classic
+    // embedded log excerpt so the fallback file stays self-sufficient.
+    if (zip == null && extras.isNotEmpty && sessionLog != null) {
+      final fb = StringBuffer()
+        ..writeln()
+        ..writeln(
+          '-- Session log (bundle zip failed; embedded fallback): '
+          '${sessionLog.path} '
+          '(first $sessionLogHeadLines + last $sessionLogTailLines lines) --',
+        )
+        ..writeln(
+          await _sampledLog(
+            sessionLog,
+            sessionLogHeadLines,
+            sessionLogTailLines,
+          ),
+        );
+      await file.writeAsString(fb.toString(), mode: FileMode.append);
+    }
+    final size = await file.length();
     return ErrorReport(
       file: file,
       sizeBytes: size,
