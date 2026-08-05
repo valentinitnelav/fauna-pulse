@@ -25,6 +25,7 @@ import '../models/session_config.dart';
 import '../postprocess/post_detector.dart';
 import 'analysis_screen.dart';
 import 'camera_session_screen.dart';
+import 'dashboard_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_summary_screen.dart';
 
@@ -975,15 +976,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 // A full-width rule marks where the action block ends and
                 // the session history begins (round 183).
                 const Divider(height: 1, color: Colors.white24),
-                const SizedBox(height: 10),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Previous sessions',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                const SizedBox(height: 2),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Previous sessions',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      // Cross-session totals + activity charts (round 186).
+                      TextButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DashboardScreen(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.insights, size: 18),
+                        label: const Text('Dashboard'),
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(child: _sessionList()),

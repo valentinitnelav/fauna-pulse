@@ -6506,3 +6506,48 @@ Owner feedback on round 183 + the pending rename decision.
   the block reads as one unit regardless of label lengths (no hard-coded
   width). Suite green (475), analyzer clean.
 
+## Round 186 (2026-08-05): cross-session Dashboard (visits, activity by hour/day)
+
+Owner idea: a "Dashboard" summarizing across saved sessions — total track ids
+over a period, activity across the time of day, "anything entertaining for
+the citizen scientist". Only AI-mode sessions count (track ids exist only
+where the tracker ran); motion/time-lapse sessions appear as a "not counted"
+note with a pointer to "Run AI on photos".
+
+- Entry point: a "Dashboard" TextButton (insights icon) in the home screen's
+  "Previous sessions" header row (a pushed screen, not a literal tab — the
+  home has no tab bar; can become one later if the owner prefers).
+- `logging/dashboard_stats.dart`:
+  - `SessionDashboardStats` per session: start/end ms, aiMode (from
+    `config.captureTrigger`, legacy `motionOnlyCapture`, pre-r95 = AI), and
+    per-track (first, last) ms spans, derived via `SessionLogIndex.build`
+    (the summary's parser — legacy `detection` format parity for free) plus
+    the cheap tail read for `end_of_session`; crashed sessions fall back to
+    the last track activity.
+  - `DashboardStatsCache.forSession`: caches the stats as
+    `<session>/dashboard_stats.json` keyed by log size+mtime — first
+    Dashboard visit scans each log once (progress bar), afterwards opening
+    is instant. The r182 rename rewrite changes size/mtime → one recompute.
+    Never throws; unreadable sessions yield an inert non-AI object.
+  - Pure `aggregateDashboard(sessions, sinceMs)`: visit totals, watch time,
+    visits/hour rate, mean + longest visit, visit-start histogram per LOCAL
+    hour of day (the biological question is local time), contiguous per-day
+    activity (zero-filled; switches to 7-day buckets past a ~2-month span),
+    busiest hour + record day, AI vs other session counts.
+- `screens/dashboard_screen.dart`: period SegmentedButton (7 days / 30 days
+  / all time — instant, aggregation is pure), 2×3 stat-tile grid (visit
+  total is the amber hero; watch time, visits/hour, AI sessions, average +
+  longest visit), 🏆 busiest-hour / 📅 record-day lines, and two single-series
+  bar charts ("Visits by time of day", "Visits by day/week") drawn by one
+  `_BarChartPainter`: amber bars, recessive white24 baseline, sparse white38
+  x-labels (0/6/12/18 h; first/middle/last date), value label on the peak
+  bar only, legend-free (single series; per-dataviz-skill guidance). Body in
+  SafeArea (r165 inset rule). Empty state explains WHY a period may be empty.
+- DATA_GUIDE §7 "Derived cache files": dashboard_stats.json is app cache,
+  safe to delete, not part of the scientific record.
+- Tests: `dashboard_stats_test.dart` (12 cases — aggregation: hour buckets,
+  busiest hour, rates, period filter, non-AI exclusion, zero-filled days,
+  weekly switch, empty input; cache: compute-from-log, cache hit proven by
+  doctored cache, invalidation on log growth, aiMode false for time-lapse,
+  crashed-session end fallback, missing log). Full suite green (487).
+

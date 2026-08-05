@@ -634,3 +634,13 @@ publication-grade boxes re-run offline (§5b). The tiling is FaunaPulse's own pu
 (`lib/fauna_pulse/postprocess/sahi.dart`), not an external library — concept
 background and per-setting docs are in
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).
+
+## 7. Derived cache files (safe to ignore)
+
+`<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
+home screen's cross-session Dashboard: the session's start/end, whether the
+AI detector ran, and each track id's first/last timestamp — all re-derivable
+from `session.jsonl`. It is keyed to the log's size and mtime, so deleting it
+is always safe (the app just recomputes it on the next Dashboard visit). It
+is NOT part of the scientific record; analysis workflows should read
+`session.jsonl` (and `post_detections.jsonl`) only.
