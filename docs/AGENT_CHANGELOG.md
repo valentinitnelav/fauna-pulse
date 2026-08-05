@@ -6791,3 +6791,38 @@ review points, both deliberate r191 choices rather than bugs, both changed:
 - Tests updated (member names, valid-JSONL marker round-trip via jsonDecode,
   .txt points-at-zip assertion). Suite green (510).
 
+
+## Round 193 (2026-08-05): release-plan build-config items + Zenodo/Pages recipes
+
+Owner directive: work through what is left in RELEASE_PLAN.md, most important first.
+Code/asset changes land now; Phase 1 (Zenodo) and the Pages site got step-by-step
+recipes the owner executes later (the repo goes public at a time of their choosing).
+
+- Third-party licenses page RESTORED (owner decision reversing r189, for the store
+  release: bundled BSD/MIT/Apache packages require their license text to accompany
+  the distributed binary). The About dialog gains a muted "Third-party licenses"
+  TextButton that PUSHES Flutter's auto-generated LicensePage on top of the dialog
+  (no pop, backing out returns to the About; `applicationLegalese` warns the list
+  is long). Nothing is listed in the About itself, so it stays discreet for end
+  users. The dialog is now the extracted public `AboutFaunaPulseDialog` widget
+  (version string param), same pattern as `DeleteAllSessionsDialog`, with 3 new
+  widget tests (`home_about_dialog_test.dart`; the LicensePage assertions avoid
+  pumpAndSettle because its license-loading spinner may never settle, and the
+  root-navigator pop uses `find.byType(Navigator).first` because LicensePage
+  nests its own Navigator).
+- Manifest camera features decided (Play device eligibility): `android.hardware.camera`
+  stays `required="true"` (camera-trap app, useless without one);
+  `android.hardware.camera.autofocus` is `required="false"` (manual focus only
+  since r164, preset clamps to the lens range, fixed-focus devices work).
+- Play listing icon: `ic_launcher-playstore.png` resized 1254x1254/1.17 MB to the
+  Play-required 512x512 32-bit PNG (~218 KB); original recoverable from git.
+- New `scripts/build_release_apks.sh`: `flutter build apk --release --split-per-abi`
+  and stages `dist/faunapulse-v<version>-<abi>.apk` (arm64-v8a + armeabi-v7a) under
+  stable Obtainium-friendly names; `dist/` git-ignored.
+- RELEASE_PLAN.md: Phase 1 rewritten as a numbered 10-step recipe (make-repo-public
+  pre-flight, Zenodo toggle BEFORE tagging, publish-release fires the webhook,
+  concept DOI into CITATION.cff); Phase 2 reworked per owner decisions of
+  2026-08-05 (QUICK_START.md dropped, FIELD_GUIDE.md is the quick start; new
+  GitHub Pages recipe: MkDocs Material deployed via LOCAL `mkdocs gh-deploy`, so
+  no CI runs on the owner's several-pushes-a-day workflow; CI itself deferred to
+  near v1.0, tag-triggered if revived); Build-config "Still open" items all ticked.

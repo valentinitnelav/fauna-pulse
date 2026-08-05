@@ -77,3 +77,6 @@ key.properties
 # Keep the asset folders themselves (so Flutter's declared asset dirs exist on clone):
 !assets/models/.gitkeep
 !assets/models/custom/.gitkeep
+
+# Per-ABI release APKs staged for GitHub release upload (scripts/build_release_apks.sh)
+/dist/

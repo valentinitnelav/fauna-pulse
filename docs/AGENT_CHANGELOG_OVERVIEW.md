@@ -498,11 +498,13 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   version via package_info_plus, GitHub repo link via url_launcher — NEW dep
   + an https VIEW `<queries>` entry in the manifest). r184: custom dialog,
   NOT `showAboutDialog` (its mandatory View-licenses button overwhelmed);
-  states the app's own AGPL-3.0 license. r189 (owner decision, overriding
-  the r184 keep-it note): the muted "Third-party licenses" action is GONE —
-  the About's license line points at the repository instead; compliance
-  caveat (BSD/MIT attribution should ship with store binaries) is a
-  RELEASE_PLAN checklist item now. r189: the report-a-problem flow (describe
+  states the app's own AGPL-3.0 license. r189 removed the muted
+  "Third-party licenses" action; r193 (owner decision, store compliance:
+  bundled BSD/MIT/Apache texts must ship with the binary) brought it BACK
+  as a muted TextButton that PUSHES the auto-generated LicensePage over the
+  dialog (no pop; page header warns the list is long). The dialog is the
+  extracted public `AboutFaunaPulseDialog` widget (version param), tested
+  in `home_about_dialog_test.dart`. r189: the report-a-problem flow (describe
   screen + "Report saved" dialog) links `ErrorReporter.githubIssuesUrl` as
   an alternative reporting channel. r190: "Report a problem" moved from the
   action block into the ⋮ menu (above "Delete all sessions…"), so the landing

@@ -711,10 +711,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// framework/package entries (owner feedback). The app's OWN license
   /// (AGPL-3.0) is stated directly. Round 189 (owner decision): the muted
   /// "Third-party licenses" action (Flutter's auto-generated LicensePage)
-  /// was removed too — the About now points at the repository for package
-  /// licenses instead. Caveat recorded in the changelog: several bundled
-  /// BSD/MIT/Apache packages expect their attribution to ship with the
-  /// binary, so revisit before a store release.
+  /// was removed too. Round 193 (owner decision, for the store release):
+  /// the action is BACK, as a muted TextButton: several bundled
+  /// BSD/MIT/Apache packages require their license text to accompany the
+  /// distributed binary, and the auto-generated page is the zero-maintenance
+  /// way to satisfy that. It stays discreet: the page opens only on demand
+  /// and its header warns that the list is long.
   Future<void> _showAbout() async {
     PackageInfo? info;
     try {
@@ -728,90 +730,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : null;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.emoji_nature, size: 32, color: Colors.amber),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('FaunaPulse'),
-                if (version != null)
-                  Text(
-                    version,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white54,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-          'A passive, non-invasive field tool for monitoring flower-visiting '
-          'insects (and, with a suitable detection model, other wildlife) at '
-          'a fixed spot. Place the square region of interest over a flower: '
-          'FaunaPulse detects, tracks and photographs visitors fully '
-          'on-device (no internet needed) and logs every visit with '
-          'timestamps, so visitation rates can be computed afterwards in R '
-          'or Python. AI-free motion-triggered and time-lapse capture, '
-          'scheduled multi-day runs and post-capture AI analysis of saved '
-                'photos are built in.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 14),
-              InkWell(
-                onTap: () async {
-                  try {
-                    await launchUrl(
-                      Uri.parse(ErrorReporter.githubRepoUrl),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  } catch (e) {
-                    logSwallowed('about_open_github', e);
-                  }
-                },
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.code, size: 18, color: Colors.lightBlueAccent),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'github.com/valentinitnelav/fauna-pulse',
-                        style: TextStyle(
-                          color: Colors.lightBlueAccent,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Open source under the AGPL-3.0 license (full text, and the '
-                'licenses of the third-party packages used, in the '
-                'repository).',
-                style: TextStyle(fontSize: 12, color: Colors.white54),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+      builder: (_) => AboutFaunaPulseDialog(version: version),
     );
   }
 
@@ -1343,6 +1262,119 @@ class ReportSavedDialog extends StatelessWidget {
             'Share…',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The ⋮ menu's About dialog content (extracted as a public widget in round
+/// 193 so it can be widget-tested standalone, like [DeleteAllSessionsDialog]).
+/// [version] is the display string from the build (null when PackageInfo
+/// failed). The "Third-party licenses" action PUSHES the auto-generated
+/// LicensePage on top of this dialog (no pop, backing out of the long list
+/// returns here).
+class AboutFaunaPulseDialog extends StatelessWidget {
+  final String? version;
+  const AboutFaunaPulseDialog({super.key, this.version});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.emoji_nature, size: 32, color: Colors.amber),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('FaunaPulse'),
+              if (version != null)
+                Text(
+                  version!,
+                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+            ],
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'A passive, non-invasive field tool for monitoring '
+              'flower-visiting insects (and, with a suitable detection '
+              'model, other wildlife) at a fixed spot. Place the square '
+              'region of interest over a flower: FaunaPulse detects, tracks '
+              'and photographs visitors fully on-device (no internet '
+              'needed) and logs every visit with timestamps, so visitation '
+              'rates can be computed afterwards in R or Python. AI-free '
+              'motion-triggered and time-lapse capture, scheduled multi-day '
+              'runs and post-capture AI analysis of saved photos are built '
+              'in.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              onTap: () async {
+                try {
+                  await launchUrl(
+                    Uri.parse(ErrorReporter.githubRepoUrl),
+                    mode: LaunchMode.externalApplication,
+                  );
+                } catch (e) {
+                  logSwallowed('about_open_github', e);
+                }
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.code, size: 18, color: Colors.lightBlueAccent),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'github.com/valentinitnelav/fauna-pulse',
+                      style: TextStyle(
+                        color: Colors.lightBlueAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Open source under the AGPL-3.0 license (full text in the '
+              'repository).',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            showLicensePage(
+              context: context,
+              applicationName: 'FaunaPulse',
+              applicationVersion: version,
+              applicationLegalese:
+                  'FaunaPulse itself is AGPL-3.0. Below is the '
+                  'auto-generated license text of every third-party '
+                  'package bundled in the app (a long list).',
+            );
+          },
+          child: const Text(
+            'Third-party licenses',
+            style: TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
         ),
       ],
     );

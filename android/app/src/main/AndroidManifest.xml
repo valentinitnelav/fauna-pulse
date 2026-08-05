@@ -5,8 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Camera permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" />
-    <uses-feature android:name="android.hardware.camera.autofocus" />
+    <!-- Round 193 (release plan, Play device eligibility): the back camera IS
+         genuinely required (the whole app is a fixed-spot camera trap), so it
+         stays required=true (a camera-less device would get a broken install).
+         Autofocus hardware is NOT required: the app uses manual focus only
+         (round 164), and the focus preset clamps to whatever range the lens
+         reports, so fixed-focus devices still work. -->
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <!-- Keep long (hours/days) recording sessions alive: a foreground service with
          an ongoing notification (so the OS won't reclaim the process), a partial
          wake lock, the notification permission (Android 13+), and the ability to

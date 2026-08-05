@@ -2,7 +2,7 @@
 
 A living checklist for taking FaunaPulse from working prototype to a citable, publicly
 distributed app. Tick boxes as work lands; each implementation batch is a numbered round in
-`AGENT_CHANGELOG.md`. A new Claude session working on release topics should re-ground by
+`AGENT_CHANGELOG.md`. A new code-agent session working on release topics should re-ground by
 reading THIS file (not the full changelog).
 
 Created 2026-07-28 (round 157). App state at that date: v0.6.4+10, AGPL-3.0, no git tags
@@ -63,20 +63,26 @@ Still open:
   compilation, with instructions).
 - [x] The stale `build/.../app-release.apk` with the old id `com.pollinatormonitor.app`
   was overwritten by the 2026-07-28 rebuild (now `com.faunapulse.app`, release-signed).
-- [ ] The two camera `uses-feature` manifest entries default to required=true (narrows Play
-  device eligibility; decide whether to mark them `android:required="false"`).
-- [ ] `ic_launcher-playstore.png` is 1.1 MB; the Play listing icon must be 512x512 and
-  at most 1 MB (recompress).
-- [ ] Universal APK ships 4 ABIs (CPU architectures); GitHub releases should use
-  `--split-per-abi` so each APK is far smaller.
-- [ ] Third-party license attribution (round 189): the About dialog's
-  "Third-party licenses" page (Flutter's auto-generated LicensePage) was removed
-  by owner decision; the About now points at the repository. Several bundled
-  BSD/MIT/Apache packages expect their license text to accompany distributed
-  binaries, so before the Play/store release decide how to satisfy that
-  (cheapest: restore the one muted LicensePage button — it is auto-generated,
-  zero maintenance; alternatives: a THIRD_PARTY_NOTICES file linked from the
-  Play listing/README).
+- [x] The two camera `uses-feature` entries decided and set (round 193): the back
+  camera stays `android:required="true"` (the app is unusable without it, so hiding
+  it from camera-less devices on Play is correct); `autofocus` is now
+  `android:required="false"` because the app uses manual focus only (round 164) and
+  clamps its focus preset to whatever range the lens reports, so fixed-focus
+  devices still work.
+- [x] `ic_launcher-playstore.png` recompressed (round 193): 1254x1254 at 1.17 MB down
+  to the Play-required 512x512 32-bit PNG, now ~218 KB (the original stays in git
+  history).
+- [x] Per-ABI release APKs scripted (round 193): `scripts/build_release_apks.sh` runs
+  `flutter build apk --release --split-per-abi` and stages
+  `dist/faunapulse-v<version>-<abi>.apk` (arm64-v8a and armeabi-v7a) under the
+  stable Obtainium-friendly names; `dist/` is git-ignored. Used in Phase 1 step 7.
+- [x] Third-party license attribution (round 193, owner decision reversing round 189
+  for the store release): the About dialog carries a muted "Third-party licenses"
+  button again. It opens Flutter's auto-generated LicensePage (zero maintenance,
+  satisfies the BSD/MIT/Apache accompany-the-binary clauses) and stays discreet:
+  nothing is listed in the About itself, the page opens only on demand, and its
+  header warns that the list is long. Extracted `AboutFaunaPulseDialog` widget,
+  covered by `test/fauna_pulse/home_about_dialog_test.dart`.
 
 ## Open question for the owner
 
@@ -124,24 +130,55 @@ in README (§Models).
 
 ## Phase 1: v0.7.0 GitHub release + Zenodo DOI (~1 round + owner web steps)
 
-Owner web steps (Claude prepares text, owner clicks):
-- [ ] zenodo.org: log in via GitHub, link ORCID in the Zenodo profile, open the GitHub
-      settings page, Sync, toggle `fauna-pulse` ON. Must happen BEFORE tagging.
-- [ ] datacite.org (DataCite Profiles): enable "ORCID Auto-Update" once, so the Zenodo DOI
-      is pushed to the ORCID record automatically. Works only when the ORCID iD is in the
-      CITATION.cff authors (it is).
+Step-by-step recipe (round 193). Order matters: public repo first, then the Zenodo
+toggle, then the tag/release. Zenodo can only archive releases published AFTER its
+webhook exists. The owner does the web steps when ready; Agent can do the repo steps
+on request.
 
-Repo steps:
-- [ ] Bump version to `0.7.0+11`, tag `v0.7.0`, create a GitHub Release with release notes.
-- [ ] Attach release-key-signed APKs: `flutter build apk --release --split-per-abi`;
-      upload `arm64-v8a` (covers virtually all modern phones) and optionally
-      `armeabi-v7a`. Keep asset names stable across releases
-      (e.g. `faunapulse-v0.7.0-arm64-v8a.apk`) so Obtainium users' filters keep working.
-- [ ] After Zenodo processes the release: put the CONCEPT DOI (the all-versions DOI) into
-      `CITATION.cff`, and add DOI + license + version badges to the README (the DOI badge
-      slot is already reserved as an HTML comment near README line 180).
-- [ ] INSTALL.md Track A: add an "install via Obtainium" subsection next to the
-      direct-APK route.
+Owner web steps:
+
+1. [ ] Make the GitHub repo public. Quick pre-flight before flipping the switch:
+       - confirm no signing secrets are tracked: `git ls-files | grep -iE "\.jks|key.properties"`
+         must show only `android/key.properties.example` (the real `key.properties`
+         and the keystore are git-ignored by round-158 design);
+       - skim the git history once for private data (personal emails, collaborator
+         model files); README, PRIVACY_POLICY.md and CITATION.cff were already
+         written for a public audience in round 158;
+       - GitHub: repo Settings > General > Danger Zone > "Change visibility" >
+         "Make public".
+2. [ ] zenodo.org: "Log in with GitHub" (authorizes Zenodo's OAuth app). In the
+       Zenodo profile settings, link the ORCID iD.
+3. [ ] Zenodo > account menu > GitHub (https://zenodo.org/account/settings/github/):
+       press "Sync now", then flip the switch next to `fauna-pulse` ON. This installs
+       the webhook. MUST happen before step 6 publishes the release.
+4. [ ] datacite.org (DataCite Profiles): sign in with the ORCID iD and enable
+       "ORCID Auto-Update" once, so every Zenodo DOI is pushed to the ORCID record
+       automatically. Works because the ORCID iD is in CITATION.cff's authors.
+
+Repo steps (Code-agent prepares, owner reviews and pushes):
+
+5. [ ] Bump version to `0.7.0+11` in pubspec.yaml, update CHANGELOG.md, commit, then
+       `git tag v0.7.0` and `git push origin main v0.7.0`.
+6. [ ] GitHub > Releases > "Draft a new release": pick tag `v0.7.0`, title
+       "FaunaPulse v0.7.0", paste release notes (Code-agent prepares them from
+       CHANGELOG.md). PUBLISHING the release (not the tag alone) fires the Zenodo
+       webhook. Zenodo takes its metadata from `CITATION.cff` (or a `.zenodo.json`
+       if one existed; we deliberately keep CITATION.cff as the single source).
+7. [ ] Attach the per-ABI APKs: run `bash scripts/build_release_apks.sh` (round 193)
+       and upload the two files from `dist/`. `faunapulse-v0.7.0-arm64-v8a.apk`
+       covers virtually all modern phones; `...-armeabi-v7a.apk` the old 32-bit
+       ones. Keep these asset names stable across releases so Obtainium users'
+       filters keep working.
+8. [ ] Wait a few minutes, then reload Zenodo's GitHub page: the release should show
+       a DOI badge. Open the Zenodo record and copy the CONCEPT DOI (the "Cite all
+       versions" one, which always resolves to the newest release), not the
+       single-version DOI.
+9. [ ] Put the concept DOI into `CITATION.cff` (the line left commented in round
+       158) and add DOI + license + version badges to the README (the DOI badge slot
+       is reserved as an HTML comment near README line 180). Commit; no new tag
+       needed for this.
+10. [ ] INSTALL.md Track A: add an "install via Obtainium" subsection next to the
+        direct-APK route.
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
 the arm64 APK and the AI pipeline runs with the bundled model out of the box (the
@@ -150,18 +187,26 @@ model the user obtains, see the open owner question above).
 
 ## Phase 2: citizen-scientist documentation (~2 rounds + owner screenshots)
 
-- [ ] `docs/QUICK_START.md`: one page, plain language, zero jargon: install, point at a
-      flower, drag the box, press REC, look at your photos. Linked first in the README.
-      Owner captures 6-10 screenshots on-device (also reused for the Play listing).
+Owner decisions 2026-08-05 (round 193): no separate QUICK_START.md, `docs/FIELD_GUIDE.md`
+already plays that role and keeps being updated; screenshots and video are better hosted
+on a GitHub Pages documentation site built from the existing docs (recipe below); CI is
+deferred (see the last item).
+
+- [x] ~~`docs/QUICK_START.md`~~ dropped (owner decision 2026-08-05): FIELD_GUIDE.md is
+      the quick start. When reordering the README, link it first and label it
+      accordingly ("Field guide (start here)"). The owner still captures 6-10
+      on-device screenshots (reused for the Pages site AND the Play listing).
+- [ ] GitHub Pages documentation site: see the recipe below.
 - [ ] README: reorder for two audiences ("I want to use it" first, "I want the
       science/code" second); demote the 3 agent-facing docs to a footnote; add a
-      screenshots section.
+      screenshots section; link the Pages site in the header once it exists.
 - [ ] Strip internal "(round N)" references from user docs (39 in DATA_GUIDE, 14 in
       SETTINGS_REFERENCE, 3 in FIELD_GUIDE, header of HOW_PHOTO_RESOLUTION_WORKS);
       relabel HOW_PHOTO_RESOLUTION_WORKS as advanced-user (currently "Developer", but it
-      is the friendliest explainer in the repo).
-- [ ] Short glossary (ROI, model, confidence, track/visit, JSONL) in QUICK_START or
-      README; define terms at first use elsewhere.
+      is the friendliest explainer in the repo). Doing this BEFORE the first Pages
+      deploy pays double: the site publishes the cleaned pages.
+- [ ] Short glossary (ROI, model, confidence, track/visit, JSONL) in FIELD_GUIDE or the
+      Pages site's landing page; define terms at first use elsewhere.
 - [ ] CONTRIBUTING: add non-code contribution paths (bug reports via the in-app problem
       report, field observations, doc fixes); add `CODE_OF_CONDUCT.md`
       (Contributor Covenant).
@@ -169,8 +214,49 @@ model the user obtains, see the open owner question above).
       `short_description.txt` under 80 chars, `full_description.txt`, icon,
       `images/phoneScreenshots/`, `changelogs/<versionCode>.txt`). Written once, it
       serves the Play listing AND the F-Droid/IzzyOnDroid conventions.
-- [ ] Optional, recommended: GitHub Actions CI running
-      `flutter analyze` + `flutter test` on push, APK build on tag.
+- [ ] GitHub Actions CI (`flutter analyze` + `flutter test` on push, APK build on tag):
+      DEFERRED (owner decision 2026-08-05): the repo sees several pushes a day during
+      active development and the owner does not want a build per push. Revisit near
+      v1.0; if revived, trigger it on tag pushes (and optionally pull requests) only,
+      never on every push to main.
+
+### GitHub Pages recipe (docs site with screenshots and video, no CI involved)
+
+Recommended tooling: **MkDocs with the Material theme** (Python, `pip install`, fits the
+owner's toolchain; renders the existing markdown as-is). Publishing is a LOCAL command,
+`mkdocs gh-deploy`: it builds the site on the owner's machine and pushes only the built
+HTML to a `gh-pages` branch. No GitHub Actions run at all, nothing builds on the daily
+development pushes, and the site changes only when the owner deliberately deploys.
+
+One-time setup (owner, ~30 min; Code-agent can prepare steps 2-3 in a round):
+
+1. [ ] `pip install mkdocs-material` (brings mkdocs itself).
+2. [ ] Create `mkdocs.yml` at the repo root: `site_name: FaunaPulse`,
+       `docs_dir: docs`, `theme: {name: material}`, a `nav:` listing ONLY the
+       user-facing pages (a new landing page, FIELD_GUIDE, INSTALL,
+       SETTINGS_REFERENCE, DATA_GUIDE, HOW_PHOTO_RESOLUTION_WORKS, PRIVACY_POLICY),
+       and `exclude_docs:` globs for the agent/internal docs (AGENT_*, RELEASE_PLAN,
+       MODEL_CONVERSION, LEAN_QNN_PACKAGING) so they are not published as pages
+       (they stay visible in the repo itself, which is public anyway).
+3. [ ] Add `docs/index.md` as the site landing page: two sentences on what the app is,
+       an install link, the screenshot strip, the glossary.
+4. [ ] Screenshots: commit them under `docs/images/` (PNG, phone-portrait) and
+       reference them as `![caption](images/name.png)`; the same files feed fastlane
+       and the Play listing later. Keep each under ~500 KB (resize to ~1080 px wide).
+5. [ ] Video: host on YouTube (an unlisted video is fine) and link or embed it from
+       the page. Never commit video files (repo bloat, GitHub rejects files over
+       100 MB, and Zenodo would archive them into every release snapshot).
+6. [ ] Preview locally with `mkdocs serve` (http://127.0.0.1:8000, live-reloads on
+       edit), then publish with `mkdocs gh-deploy` (creates/updates the `gh-pages`
+       branch).
+7. [ ] GitHub: Settings > Pages > Source "Deploy from a branch" > branch `gh-pages`,
+       folder `/ (root)`. The site appears at
+       https://<github-user>.github.io/fauna-pulse/ (requires the repo to be public,
+       which Phase 1 step 1 does). Add that URL to the repo's About sidebar and the
+       README header.
+
+Update cadence afterwards: edit docs, `mkdocs serve` to check, `mkdocs gh-deploy` to
+publish. Nothing happens automatically.
 
 ## Phase 3: settings UX reorganization (4 rounds, design agreed)
 
@@ -229,8 +315,8 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
 - [ ] Play App Signing: upload OUR keystore (from Phase 0) as the app signing key, so
       GitHub and Play builds stay cross-updatable.
 - [ ] Build config: `flutter build appbundle` (AAB, the publishing format Play requires;
-      Play generates per-device APKs from it); confirm targetSdk 36; decide
-      `android:required="false"` for the two camera uses-feature entries; keep
+      Play generates per-device APKs from it); confirm targetSdk 36; the camera
+      uses-feature decision is done (round 193: camera required, autofocus not); keep
       `useLegacyPackaging` (the QNN/NPU runtime needs real file paths) and accept the
       size cost. (A lean two-artifact alternative is documented, not implemented, in
       [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) — review E8, round 171 — with the
