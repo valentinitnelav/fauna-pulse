@@ -175,6 +175,12 @@ tabs:
   width, and a per-session "Visits by time of day" chart, all shown
   automatically. Temperature, FPS and battery/power are always recorded and
   sit under a tap-to-expand "Extra graphs" section for when you need them.
+  Note: the power (W) graph only renders for sessions recorded fully on
+  battery — plugged in (even on a power bank with a full battery), the
+  battery sensor measures the charger, not consumption, so the app hides it.
+  The inference-time graph there is the detector model's own run time only
+  (image preparation and box post-processing are logged separately, see
+  [DATA_GUIDE.md](DATA_GUIDE.md)).
 - **Setup** — the headline numbers (date, times, duration, battery used,
   storage) plus, behind "All session settings", every setting this session
   recorded (useful for your methods write-up). Settings that had no effect

@@ -36,9 +36,16 @@ class ThermalReading {
   /// across a session is the reliable basis for the total energy estimate.
   final int? chargeCounterUah;
 
-  /// Whether the phone was plugged in (charging/full) at the moment of the
-  /// reading — an energy estimate is only valid while unplugged.
+  /// Whether the battery reported itself charging (or full) at the moment of
+  /// the reading — an energy estimate is only valid while unplugged.
   final bool? isCharging;
+
+  /// Whether ANY power source was attached (AC/USB/wireless), round 188.
+  /// Distinct from [isCharging]: a full battery on a power bank reports
+  /// NOT_CHARGING while still plugged — the charger then carries the load and
+  /// the current sensor reads ~nothing, so power data is meaningless there
+  /// too. The summary invalidates its energy series on either flag.
+  final bool? isPlugged;
 
   /// "Thermal headroom" (0 = cool, 1 = at the throttling threshold; can briefly
   /// exceed 1). A fast, cross-device measure of how close the phone is to slowing
@@ -53,6 +60,7 @@ class ThermalReading {
     this.batteryVoltageMv,
     this.chargeCounterUah,
     this.isCharging,
+    this.isPlugged,
     this.thermalHeadroom,
   });
 
@@ -71,6 +79,7 @@ class ThermalReading {
     'battery_voltage_mv': batteryVoltageMv,
     'charge_counter_uah': chargeCounterUah,
     'is_charging': isCharging,
+    'is_plugged': isPlugged,
     'thermal_headroom': thermalHeadroom,
     // Derived (so downstream R/Python don't have to recompute it).
     'power_w': powerW,
@@ -145,6 +154,7 @@ class DeviceThermal {
               batteryVoltageMv: (res['batteryVoltageMv'] as num?)?.toInt(),
               chargeCounterUah: (res['chargeCounterUah'] as num?)?.toInt(),
               isCharging: res['isCharging'] as bool?,
+              isPlugged: res['isPlugged'] as bool?,
               thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
             );
       _cached = reading;

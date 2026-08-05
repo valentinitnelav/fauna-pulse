@@ -437,10 +437,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// Notes whether the phone was plugged in (from a start/end record's nested
   /// `thermal` block) — if it was, the energy estimate isn't meaningful.
+  /// `is_plugged` (round 188) catches the power-bank case Android reports as
+  /// NOT_CHARGING with a full battery: plugged, but `is_charging` false —
+  /// the charger then carries the load and the sensor reads ~nothing, so the
+  /// series must be invalidated on either flag.
   void _readChargingFlag(Map<String, dynamic>? rec) {
     final th = rec?['thermal'];
     if (th is! Map) return;
-    if (th['is_charging'] == true) _chargingDuringSession = true;
+    if (th['is_charging'] == true || th['is_plugged'] == true) {
+      _chargingDuringSession = true;
+    }
   }
 
   /// Battery percentage drop over the session, or null if not both known.
@@ -493,12 +499,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // Battery-terminal readings only measure the PHONE's consumption while it
     // is discharging: plugged in, the sensor sees the charging current (or ~0
     // once the battery is full and the charger carries the load). Any charging
-    // anywhere in the session — per-sample flags (round 84), or the start/end
-    // flags already read by [_readChargingFlag] (the only signal on older logs
-    // whose power records lack `is_charging`) — invalidates the whole series,
-    // so nothing is built and no misleading W/Wh number can surface. The
-    // Graphs tab shows an explanatory note instead.
-    if (raw.any((s) => s.isCharging == true)) _chargingDuringSession = true;
+    // anywhere in the session — per-sample flags (round 84; round 188 also
+    // `is_plugged`, which catches the full-battery-on-power-bank case Android
+    // reports as NOT_CHARGING), or the start/end flags already read by
+    // [_readChargingFlag] (the only signal on older logs whose power records
+    // lack the keys) — invalidates the whole series, so nothing is built and
+    // no misleading W/Wh number can surface. The Graphs tab shows an
+    // explanatory note instead.
+    if (raw.any((s) => s.isCharging == true || s.isPlugged == true)) {
+      _chargingDuringSession = true;
+    }
     if (_chargingDuringSession) return;
     if (raw.length < 2) return;
 
@@ -552,6 +562,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (w != null && w >= 0) pts.add((s.ms, w));
     }
     if (pts.isEmpty) return;
+    // A phone whose battery sensor reports no current AND whose charge
+    // counter never moves yields an all-zero series (round 188): a flat 0 W
+    // line with a confident "0.00 Wh" caption would be pure fiction, so the
+    // graph shows its "Not enough samples." placeholder instead.
+    if (pts.every((p) => p.$2 == 0)) return;
 
     // A light 3-point moving average smooths the jitter from coarse current /
     // charge-counter steps, so the line is readable without hiding the trend.
@@ -1791,15 +1806,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (_infMs.length >= 2) ...[
         const SizedBox(height: 28),
         const Text(
-          'Inference time over the session (ms) — throttle signal',
+          'Detector inference time (ms) — throttle signal',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
+        // Precision matters here (round 188, owner question): the plotted
+        // `inf_ms` is the native timer around rtModel.run() ONLY — tensor
+        // upload, interpreter run, output read-back. Image prep (`pre_ms`)
+        // and box post-processing/NMS (`post_ms`) are logged in the same fps
+        // records but are NOT in this graph. Raw per-frame values, never
+        // smoothed. Keep this text in sync with ObjectDetector.kt's timing.
         const Text(
-          'Milliseconds the model takes per frame. It climbs when the chip slows '
+          'Milliseconds the detector model itself needs per frame: only the '
+          'neural-network run on the chip (including handing the prepared '
+          'image in and reading the results out). Image preparation before '
+          'it and detection-box post-processing after it are NOT included — '
+          'they are recorded separately in the data log (pre_ms and post_ms) '
+          'and are normally much smaller. Each point is a raw single-frame '
+          'value, not an average. This number climbs when the chip slows '
           'itself to cool off (thermal throttling) — often before battery '
-          'temperature moves — which is what makes the FPS above drop. Read it '
-          'against the FPS and temperature graphs on the same left→right time axis.',
+          'temperature moves — which is what makes the FPS above drop. Read '
+          'it against the FPS and temperature graphs on the same left→right '
+          'time axis.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
         ),
         const SizedBox(height: 12),
@@ -1821,9 +1849,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
         )
       else ...[
+        // Honesty text (round 188, owner question): name the estimate's
+        // source and the silent corrections, and frame the battery-% drop
+        // as the cross-check. Keep in sync with [_buildEnergySeries].
         const Text(
-          'Watts (W) = how fast energy is being used right now '
-          '(battery current × voltage). Higher = more drain.',
+          'Watts (W) = how fast energy is being used right now. Estimated '
+          'from the phone\'s own battery sensors (current × voltage, '
+          'lightly smoothed); the app corrects known phone quirks (some '
+          'report milliamps instead of microamps, some report a doubled '
+          'two-cell voltage). Phone battery sensors are coarse, so treat '
+          'this as a good indication rather than a lab measurement — the '
+          'battery-percentage drop below is an independent cross-check.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
         ),
         const SizedBox(height: 12),
@@ -1835,7 +1871,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             '(median ${_powerMedian!.toStringAsFixed(2)} W; '
             'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
             'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
-            '(= average power × duration); battery level dropped $_batteryUsedLabel.',
+            '(the power curve summed over the session); '
+            'battery level dropped $_batteryUsedLabel.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],

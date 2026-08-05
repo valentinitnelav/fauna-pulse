@@ -49,8 +49,13 @@ class IndexedPowerSample {
   /// Power computed at capture time (last-resort fallback).
   final double? loggedW;
 
-  /// Plugged in at sample time (null on older logs).
+  /// Battery reported charging/full at sample time (null on older logs).
   final bool? isCharging;
+
+  /// A power source was attached at sample time (round 188; null on older
+  /// logs). Catches the full-battery-on-power-bank case that reports
+  /// NOT_CHARGING while plugged — either flag invalidates the energy series.
+  final bool? isPlugged;
 
   const IndexedPowerSample({
     required this.ms,
@@ -59,6 +64,7 @@ class IndexedPowerSample {
     required this.chargeUah,
     required this.loggedW,
     required this.isCharging,
+    this.isPlugged,
   });
 }
 
@@ -397,6 +403,7 @@ class _IndexBuilder {
             chargeUah: (rec['charge_counter_uah'] as num?)?.toInt(),
             loggedW: (rec['power_w'] as num?)?.toDouble(),
             isCharging: rec['is_charging'] as bool?,
+            isPlugged: rec['is_plugged'] as bool?,
           ),
         );
       case 'capture':

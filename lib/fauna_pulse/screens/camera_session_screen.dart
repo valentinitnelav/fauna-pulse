@@ -731,6 +731,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       'battery_voltage_mv': reading.batteryVoltageMv,
       'charge_counter_uah': reading.chargeCounterUah,
       'is_charging': reading.isCharging,
+      // Round 188: any attached power source (a full battery on a power bank
+      // reports NOT_CHARGING while plugged) — either flag invalidates the
+      // summary's energy series.
+      'is_plugged': reading.isPlugged,
     });
   }
 

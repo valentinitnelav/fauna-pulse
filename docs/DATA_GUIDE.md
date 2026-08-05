@@ -317,18 +317,57 @@ setting, not a logging failure — the detection-derived records (and therefore
 the visit timeline) are unaffected either way.
 
 - `thermal`: `battery_temp_c`, `thermal_status`, `battery_current_ua`,
-  `battery_voltage_mv`, `charge_counter_uah`, `is_charging`,
-  `thermal_headroom`, `power_w` (derived), and since round 68
+  `battery_voltage_mv`, `charge_counter_uah`, `is_charging`, `is_plugged`
+  (round 188+, see the power note below), `thermal_headroom`, `power_w`
+  (derived — see the caveat below), and since round 68
   `free_storage_bytes` / `total_storage_bytes` (so the session's disk fill
   rate can be plotted against its photo cadence).
 - `fps`: while the motion gate is idle (round 77) the record carries
   `gate_idle: true` and OMITS every inference-derived field — an absent field
   means the detector was off, never a zero reading; summary graphs break
   their lines across such gaps. While awake: `fps` (detector FPS) plus
-  per-second camera/detector/pipeline rates,
-  inference timing breakdown, and applied throttle cap.
-- `power`: `power_w`, `battery_current_ua`, `battery_voltage_mv`,
-  `charge_counter_uah`, `is_charging`.
+  per-second camera/detector/pipeline rates, the applied throttle cap
+  (`applied_cap_fps`) and the per-stage timing breakdown:
+  - `pre_ms` — image preparation: ROI crop, rotate, resize to the model
+    input and packing into the input tensor;
+  - `inf_ms` — the detector model run ONLY (handing the tensor to the
+    LiteRT/NPU interpreter, the network forward pass, reading the outputs
+    back). This is what the summary's "Detector inference time" throttle
+    graph plots;
+  - `post_ms` — output decoding, non-maximum suppression and mapping boxes
+    back to image coordinates;
+  - `track_ms` — the Dart-side tracker update.
+  All four are raw single-frame values captured when the sampler fires, not
+  averages; `throttle_inf_ms_ema` is the smoothed inference time the
+  auto-throttle controller acts on. (The camera-to-bitmap conversion happens
+  before this pipeline and is in none of them.)
+- `power`: `power_w`, `battery_current_ua`, `battery_voltage_mv` (mV),
+  `charge_counter_uah` (µAh remaining), `is_charging`, `is_plugged`
+  (round 188+: any attached power source, even when the battery reports
+  "not charging" because it is full — e.g. on a power bank).
+
+**Power & energy: how to read them (accuracy caveats).** The `power` fields
+are the phone's own battery-sensor values, logged RAW:
+
+- `battery_current_ua` is microamps per the Android spec, but several phones
+  (e.g. the Samsung test device) actually report **milliamps** in this field —
+  the raw `power_w` derived from it is then ~1000× too LOW. Other phones
+  (e.g. the Xiaomi test device) report a 2-cell series voltage (~8.8 V), which
+  makes raw `power_w` ~2× too HIGH.
+- The app's summary graph corrects both before plotting: it multiplies the
+  current by 1000 when the session's median magnitude says milliamps, halves
+  any voltage above 4.6 V down to a single-cell value, lightly smooths
+  (3-point moving average), and integrates the corrected curve for the Wh
+  total. If you analyse the JSONL yourself, apply the same corrections — or
+  sidestep the sensors entirely and use the battery-percent drop
+  (`battery_percent` in the start/end records), which is coarse but
+  unit-safe on every device.
+- Any sample with `is_charging: true` OR `is_plugged: true` makes the whole
+  session's power series meaningless as a consumption measure: plugged in,
+  the sensor sees the charging current (or ~0 once the charger carries the
+  load). The summary hides the graph in that case; do the same in your own
+  analysis. Field sessions on a power bank therefore have no valid power
+  data by design — record on battery when you want the graph.
 
 ### `capture` — one per ROI-photo save
 

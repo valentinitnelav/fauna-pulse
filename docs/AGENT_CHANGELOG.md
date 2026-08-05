@@ -6606,3 +6606,57 @@ added visual complexity. Reorganized the session summary to three tabs
   timeline header — 'Extra graphs' can start below the lazy ListView's fold
   since the tab grew). FIELD_GUIDE §5/§6 updated. Full suite green (496).
 
+## Round 188 (2026-08-05): inference-time + power graphs verified; wording honesty + is_plugged guard
+
+Owner asked whether the summary's "Inference time (ms)" graph is real (and what
+it measures) and how accurate the "Power draw (W)" graph is. Both were traced
+end-to-end (plugin Kotlin → streaming map → fps/power records → SessionLogIndex
+→ graphs) before touching any wording.
+
+Verified facts:
+- `inf_ms` (the inference graph) is the native timer around `rtModel.run()`
+  ONLY: input-tensor copy, LiteRT/QNN interpreter run, output read-back
+  (ObjectDetector.kt). ROI crop/resize/tensor packing = `pre_ms`; decode +
+  C++ NMS + box mapping = `post_ms`; camera-to-bitmap conversion is before all
+  of them. Raw per-frame value at each fps-sampler tick, never smoothed
+  (`throttle_inf_ms_ema` is the smoothed one).
+- The W graph = |battery current| × voltage from the phone's own sensors with
+  summary-side corrections (median-magnitude mA-vs-µA ×1000; >4.6 V halved to
+  a single cell; 3.85 V fallback; charge-counter delta fallback; 3-point
+  smoothing; trapezoid Wh). Corrections were documented only in developer
+  docs; raw logged `power_w` is uncorrected.
+
+Changes:
+- Graphs tab wording: title "Detector inference time (ms) — throttle signal";
+  explanation states it is the neural-network run only, that pre_ms/post_ms
+  exist in the log, and that points are raw single-frame values. Power text
+  names the sensor source, the silent corrections, and frames the battery-%
+  drop as the independent cross-check; caption now says "power curve summed
+  over the session" (the code integrates, it never multiplied avg × duration).
+- NEW `is_plugged` (additive wire key): MainActivity.readThermal() reads
+  EXTRA_PLUGGED; ThermalReading/DeviceThermal, power records, and
+  IndexedPowerSample carry it; the summary invalidates the energy series on
+  `is_charging OR is_plugged` (start/end thermal blocks too). Closes the real
+  field hole: a full battery on a power bank reports NOT_CHARGING while
+  plugged, so the old flag missed it and a bogus graph could render. Old logs
+  (no key) behave exactly as before.
+- All-zero W series (no current + stuck charge counter) is no longer rendered
+  as a confident flat 0 W / "0.00 Wh" — the "Not enough samples." placeholder
+  shows instead.
+- Docs: DATA_GUIDE defines pre/inf/post/track_ms and gains a "Power & energy:
+  how to read them" caveat block (raw power_w is uncorrected: ~1000× low on
+  mA-reporting phones, ~2× high on 2-cell-voltage phones; correction recipe;
+  prefer battery-% drop cross-device; plugged sessions have no valid power
+  data). FIELD_GUIDE §5 notes the W graph needs a battery-only session and
+  that inference time is model-run-only. PERFORMANCE_BENCHMARKING warns that
+  perf_summary.dart's W/Wh columns are RAW (fine for paired same-device runs,
+  not for absolute numbers). Overview doc: Xiaomi 2-cell quirk recorded.
+- Tests: session_log_index_test parses `is_plugged`; summary_tabs_test proves
+  a plugged-but-not-charging session hides the W graph and computes no
+  average-power caption. Full suite green (497).
+
+RECORDED FOLLOW-UP (deliberately not done): align `tool/perf_summary.dart`'s
+power math with the app's corrections — its columns feed benchmarking records
+and must not change silently; do it as its own round with a flag or a note in
+the output.
+

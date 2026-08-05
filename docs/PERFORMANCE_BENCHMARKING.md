@@ -98,6 +98,16 @@ Headline columns to compare in a paired test: sustained `pipe fps med`,
 sustained `inf ms med/p95`, `temp start→max`, `power W med` / `energy Wh`
 (unplugged runs only), `cap chg` (auto-throttle interventions), and `errors`.
 
+⚠ **`power W` / `energy Wh` here are computed from the RAW logged `power_w`**
+(round 188 note): unlike the app's summary graph, `perf_summary.dart` applies
+NO unit correction (mA-scale current ⇒ ~1000× low on Samsung-class phones) and
+NO 2-cell voltage halving (⇒ ~2× high on Xiaomi-class phones), so its absolute
+W/Wh can disagree with the app for the same session. They are still fine for
+PAIRED comparisons on the SAME device (both runs are wrong by the same factor);
+for absolute numbers use the app summary or the battery-% drop. Aligning the
+tool with the app's corrections is a recorded follow-up — its output feeds
+benchmarking records, so its math must not change silently.
+
 ## Acceptance criteria (when is an optimization real?)
 
 Adopt a change only when BOTH hold:

@@ -169,6 +169,58 @@ void main() {
   );
 
   testWidgets(
+    'plugged-but-not-charging session hides the power graph (round 188)',
+    (tester) async {
+      // A power bank with a full battery reports NOT_CHARGING while plugged:
+      // is_charging false, is_plugged true. The energy series must still be
+      // invalidated (the sensor sees the charger's load, not consumption).
+      SharedPreferences.setMockInitialValues({'extra_graphs_expanded': true});
+      final tmp = Directory.systemTemp.createTempSync('summary_plugged');
+      addTearDown(() {
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      File('${tmp.path}/session.jsonl').writeAsStringSync([
+        '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
+            '"config":{"captureTrigger":"detector"}}',
+        '{"type":"power","time_ms":2000,"battery_current_ua":500000,'
+            '"battery_voltage_mv":3900,"power_w":1.95,'
+            '"is_charging":false,"is_plugged":true}',
+        '{"type":"power","time_ms":12000,"battery_current_ua":500000,'
+            '"battery_voltage_mv":3900,"power_w":1.95,'
+            '"is_charging":false,"is_plugged":true}',
+        '{"type":"end_of_session","time_ms":60000,"ended_normally":true,'
+            '"unique_track_count":0}',
+      ].join('\n'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            logFile: File('${tmp.path}/session.jsonl'),
+            initialTabIndex: 1, // Graphs
+          ),
+        ),
+      );
+      await pumpUntilFound(tester, find.textContaining('Visit timeline'));
+
+      final scrollable = find.descendant(
+        of: find.byType(ListView).first,
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('Not shown: the phone was plugged in'),
+        200,
+        scrollable: scrollable,
+      );
+      // And no W caption was computed from the meaningless samples.
+      expect(find.textContaining('Average power'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'Setup tab, AI session: time-lapse settings listed as not applicable',
     (tester) async {
       SharedPreferences.setMockInitialValues({});

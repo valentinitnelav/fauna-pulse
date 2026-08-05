@@ -71,7 +71,7 @@ void main() {
             '"inf_ms":55.0}',
         '{"type":"power","time_ms":6000,"battery_current_ua":500000,'
             '"battery_voltage_mv":3900,"charge_counter_uah":1200000,'
-            '"power_w":1.95,"is_charging":false}',
+            '"power_w":1.95,"is_charging":false,"is_plugged":true}',
         // No-AI-mode photo discovery lines.
         '{"type":"motion_capture","time_ms":7000,"jpeg":"roi_m.jpg",'
             '"captured_at_ms":6990,"motion_score":0.02}',
@@ -115,6 +115,9 @@ void main() {
       expect(p.chargeUah, 1200000);
       expect(p.loggedW, 1.95);
       expect(p.isCharging, false);
+      // Round 188: the plugged-but-not-charging flag (power-bank, battery
+      // full) parses too; older logs without the key read as null.
+      expect(p.isPlugged, true);
     });
 
     test('photo discovery in log order across all trigger kinds', () {

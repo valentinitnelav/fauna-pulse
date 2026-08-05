@@ -604,16 +604,22 @@ class MainActivity : FlutterFragmentActivity() {
 
         // Whether the phone is plugged in / charging. An energy estimate is only
         // meaningful while UNplugged (in the field), so the app warns if a session
-        // ran on AC/USB power.
+        // ran on AC/USB power. EXTRA_PLUGGED (round 188) is read separately:
+        // a full battery on a power bank reports status NOT_CHARGING while still
+        // plugged — isCharging alone would let that session's meaningless power
+        // readings pass as consumption data.
         val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         out["isCharging"] = status == BatteryManager.BATTERY_STATUS_CHARGING ||
             status == BatteryManager.BATTERY_STATUS_FULL
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        out["isPlugged"] = plugged > 0
 
         // Instantaneous current (microamps) and remaining charge (microamp-hours)
         // from BatteryManager. CURRENT_NOW's sign and exact units vary by phone
-        // model, so the Dart side takes the magnitude; CHARGE_COUNTER is the
-        // reliable basis for the session-total energy. Both can be absent on some
-        // devices, so null-guard the sentinel Long.MIN_VALUE.
+        // model, so the Dart side takes the magnitude (and unit-corrects by
+        // magnitude); CHARGE_COUNTER is only a fallback — on several test phones
+        // it updates too coarsely, so the summary integrates the power curve
+        // instead. Both can be absent, so null-guard the sentinel Long.MIN_VALUE.
         val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
         if (bm != null) {
             val currentUa = bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
