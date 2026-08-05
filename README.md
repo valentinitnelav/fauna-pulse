@@ -9,7 +9,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  A smartphone field application for detecting, tracking and documenting pollinators (and other lovely animals) using on-device artificial intelligence, motion-trigger or time-lapse image capture (including nocturnal mode).
+  A smartphone field application for detecting, tracking and documenting pollinators and other fauna using on-device artificial intelligence, motion-trigger or time-lapse image capture (including nocturnal mode).
 </p>
 
 <p align="center">
@@ -63,7 +63,7 @@ A short path from install to first data. See the linked guides for detail.
 
 1. **Install the app.** Download the latest APK from the [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page, or build from source — both are covered in the [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** A general-purpose model is bundled, so the app runs immediately after install, but it does **not** recognise insects. To detect insects you need a purpose-trained model, added with **Download…** (a link) or **Import…** (a file) in the model picker. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
+3. **Choose a detection model.** A general-purpose model is bundled, so the app runs immediately after install, but it does **not** recognize insects. To detect insects you need a purpose-trained model, added with **Download…** (a link) or **Import…** (a file) in the model picker. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your flower or observation area and drag the square region of interest (ROI) over it — see the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -133,7 +133,7 @@ Although FaunaPulse began as a pollinator-monitoring tool, I gradually realised 
 
 ## AI-assisted development and transparency
 
-FaunaPulse also began as a personal experiment in what is called **“vibe coding”**. Developing a custom Android field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
+FaunaPulse also began as a personal experiment in what is called **“vibe coding”**. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
 
 I am a scientist with experience in R, Python, statistics and computer vision, but I am not a professional mobile-app developer. Most software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognise that access to paid AI tools is not equally available.
 
@@ -166,10 +166,10 @@ If you use FaunaPulse in your research, please cite it using the metadata in [`C
 <!-- Once the first release is archived on Zenodo, add the DOI badge here and the
      versioned DOI to CITATION.cff. -->
 
-Example (update the year, version and DOI once released):
+Example:
 
-> Ștefan, V. et al. (2026). *FaunaPulse: an Android field application for on-device
-> detection, tracking and documentation of flower-visiting insects* (version 0.6.4)
+> Ștefan, V. et al. (2026). *FaunaPulse: a smartphone field application for on-device
+> detection, tracking and documentation of flower-visiting arthropods and other fauna* (version ?)
 > [Computer software]. https://github.com/valentinitnelav/fauna-pulse
 
 ## Privacy

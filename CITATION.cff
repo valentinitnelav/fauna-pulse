@@ -1,12 +1,12 @@
 cff-version: 1.2.0
 message: "If you use FaunaPulse in your research, please cite it using these metadata."
-title: "FaunaPulse: an Android field application for on-device detection, tracking and documentation of flower-visiting insects"
+title: "FaunaPulse: a smartphone field application for on-device detection, tracking and documentation of flower-visiting arthropods and other fauna"
 abstract: >-
-  FaunaPulse is an offline Android field application that detects, tracks and
-  documents flower-visiting insects (and other moving organisms) in real time
+  FaunaPulse is an offline smartphone field application that detects, tracks and
+  documents flower-visiting arthropods and other moving organisms in real time
   using on-device object detection, and logs each visit to estimate visitation
   rates. It supports configurable detection models, a user-defined region of
-  interest, motion-triggered capture and time-lapse capture.
+  interest, motion-triggered capture and time-lapse capture (including nocturnal mode).
 type: software
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
@@ -16,13 +16,14 @@ version: "0.6.4"
 date-released: "2026-07-20"
 keywords:
   - pollinators
-  - visitation rate
   - pollination ecology
   - on-device AI
   - object detection
+  - biodiversity monitoring
   - insect monitoring
+  - pollinator monitoring
   - camera trap
-  - Android
+  - smartphone
 authors:
   - family-names: "Ștefan"
     given-names: "Valentin"
