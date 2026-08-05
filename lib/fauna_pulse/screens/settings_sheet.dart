@@ -416,9 +416,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
         minSeconds: 1,
         maxSeconds: 86400,
         helperText:
-            'How long photos keep being saved — per track id (AI detector), '
+            'How long photos keep being saved — per track id (AI detector on), '
             'per motion event (motion trigger; a new event starts once the '
-            'gate has slept and motion returns), or per time-lapse burst. '
+            'gate has slept and motion returns), or per time-lapse burst (burst duration). '
             'Should be a whole multiple of the step.',
         onChanged: (v) => setState(() => _c = _c.copyWith(durationSeconds: v)),
       ),
