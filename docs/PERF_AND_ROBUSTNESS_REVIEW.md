@@ -521,9 +521,11 @@ speed; see C5.
 ### C2. [x] Parity benchmark against the Ultralytics demo (no code — owner-run)
 
 To compare our app to the demo apples-to-apples, reproduce its conditions in
-FaunaPulse settings: **inference cap 0** (uncapped benchmark mode), **camera
-cap 0** (device default ~30 fps), **stream 640×480** (explicit pick),
-**motion gate off**, engine **GPU**. Expected: ≈11–12 FPS, same as the demo.
+current FaunaPulse settings: **inference cap 120 FPS** (effectively uncapped
+against a ~30 FPS camera), **camera cap 0** (device full rate), **stream
+640×480** (explicit pick), **motion gate off**, engine **GPU**. Builds before
+round 195 used inference cap 0 for the same experiment. Expected: ≈11–12 FPS,
+same as the demo.
 Record the measured number here afterwards. If it matches, the "gap" is fully
 explained by C1 + C3 and no pipeline work is owed. If it falls clearly short
 (say ≤9), reopen this part — that residue would point at our divergent frame
@@ -1511,7 +1513,7 @@ longer calls the camera screen a "god class slated for extraction" (the r73
   `isQnnRuntimeAvailable()` (E8, only if split packaging is ever adopted).
 - `SessionLogIndex` stays internal and must read every existing session schema
   without migration. No model, session folder, or existing JSONL is rewritten.
-- Preserve: detection-only behavior, the 15 camera / 10 inference defaults,
+- Preserve: detection-only behavior, the 15 camera / 15 inference defaults,
   blackout, capture modes, scheduling, model recovery, all completed Parts
   A-D work. Measure live/thermal changes on both test phones; benchmark
   offline SAHI and lifecycle changes separately from the live pipeline.

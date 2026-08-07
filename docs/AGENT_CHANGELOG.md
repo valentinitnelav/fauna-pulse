@@ -6859,3 +6859,30 @@ INT8 and float16 MegaDetector models (3 categories: animal, person, vehicle).
   signed `flutter build apk --release` succeeded (124.2 MB) with no fetch
   script output. Direct APK inspection found exactly the two intended MDV6
   weight files and no YOLO26 or other local test weights.
+
+
+## Round 195 (2026-08-07): explicit linked camera and inference FPS caps
+
+Owner report: Power tab called inference value `0` "Max" but auto-throttle
+actually interpreted it as a fixed 15 FPS ceiling, while the same input
+accepted explicit higher rates. The two rate controls also allowed an
+impossible inference ceiling above the positive camera hardware cap.
+
+- Confirmed the distinction in the pipeline: inference FPS is the number of
+  delivered camera frames per second that the AI model may analyze. The camera
+  cap limits the frames the hardware supplies, so a positive camera cap is a
+  real upper bound on inference FPS.
+- Both defaults are now 15 FPS. Max inference rate is an explicit 5 to 120 FPS
+  value with no `0 = Max` shortcut; legacy saved inference `0` migrates to 15.
+  Camera `0` keeps its existing meaning, remove the hardware cap.
+- Power-tab fields now show `FPS`. Their info text explains inference FPS and
+  the dependency. Inference input is limited by a positive camera cap; lowering
+  the camera cap automatically lowers inference FPS and, if necessary, the
+  auto-throttle minimum. With camera cap `0`, inference can be raised to 120.
+- Centralized the linked-cap normalization in `SessionConfig`, including saved
+  config migration and live-screen initialization. Added regression tests for
+  defaults, legacy `0`, positive-cap limiting, uncapped camera behavior, and
+  lowering both the inference ceiling and throttle floor.
+- Updated SETTINGS_REFERENCE, PERF_AND_ROBUSTNESS_REVIEW, and the current-state
+  overview. Verification: `flutter analyze` clean; focused config tests 59/59;
+  full `flutter test test/fauna_pulse` 521 passed, 1 replay test skipped.

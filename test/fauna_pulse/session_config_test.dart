@@ -92,12 +92,53 @@ void main() {
     expect(restored.motionGateGridSize, 48);
   });
 
-  test('default inference cap is a deliberate 10/s (0 stays uncapped)', () {
-    expect(const SessionConfig().inferenceFps, 10);
-    // An explicitly saved 0 (uncapped) must survive the round-trip — only a
-    // MISSING key falls back to the new default.
-    expect(SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps, 0);
-    expect(SessionConfig.fromJson(const {}).inferenceFps, 10);
+  group('linked inference and camera FPS caps', () {
+    test('both defaults are explicit 15 FPS', () {
+      expect(const SessionConfig().inferenceFps, 15);
+      expect(const SessionConfig().cameraFpsCap, 15);
+      expect(SessionConfig.fromJson(const {}).inferenceFps, 15);
+    });
+
+    test('legacy inference 0 migrates to the explicit 15 FPS default', () {
+      expect(
+        SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps,
+        15,
+      );
+    });
+
+    test('inference cannot exceed a positive camera cap', () {
+      final defaultCamera = const SessionConfig().withInferenceFps(30);
+      expect(defaultCamera.inferenceFps, 15);
+
+      final fasterCamera = const SessionConfig()
+          .withCameraFpsCap(30)
+          .withInferenceFps(30);
+      expect(fasterCamera.inferenceFps, 30);
+
+      final restored = SessionConfig.fromJson(const {
+        'inferenceFps': 60,
+        'cameraFpsCap': 24,
+      });
+      expect(restored.inferenceFps, 24);
+    });
+
+    test('camera 0 removes its cap and keeps a separate inference ceiling', () {
+      final uncappedCamera = const SessionConfig()
+          .withCameraFpsCap(0)
+          .withInferenceFps(200);
+      expect(uncappedCamera.cameraFpsCap, 0);
+      expect(uncappedCamera.inferenceFps, 120);
+    });
+
+    test('lowering camera cap also lowers inference ceiling and floor', () {
+      final lowered = const SessionConfig(
+        inferenceFps: 30,
+        cameraFpsCap: 30,
+        minInferenceFps: 20,
+      ).withCameraFpsCap(12);
+      expect(lowered.inferenceFps, 12);
+      expect(lowered.minInferenceFps, 12);
+    });
   });
 
   test('velocity smoothing round-trips through the config JSON', () {
@@ -384,8 +425,8 @@ void main() {
       const SessionConfig().copyWith(cameraFpsCap: 24).toJson(),
     );
     expect(restored.cameraFpsCap, 24);
-    // An explicitly saved 0 (device default) must survive the round-trip —
-    // only a MISSING key falls back to the 15 default (mirrors inferenceFps).
+    // An explicitly saved 0 (device default) must survive the round-trip;
+    // only a missing camera key falls back to the app's 15 FPS default.
     expect(SessionConfig.fromJson(const {'cameraFpsCap': 0}).cameraFpsCap, 0);
     expect(SessionConfig.fromJson(const {}).cameraFpsCap, 15);
   });

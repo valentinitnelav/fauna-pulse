@@ -118,7 +118,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
   @override
   void initState() {
     super.initState();
-    _c = widget.config;
+    _c = widget.config.normalizedFpsCaps();
     _folder = TextEditingController(text: _c.folderName);
     // Show whole hours when the saved length divides cleanly into hours
     // (e.g. 120 → "2 h"); otherwise show minutes.
@@ -1757,42 +1757,28 @@ class _SettingsSheetState extends State<SettingsSheet> {
             : null,
       ),
       if (_c.detectorEnabled) ...[
-
-        // 0 = uncapped (Max); 5..120 caps the rate. With auto-adjust on this is the
-        // ceiling the throttle will not exceed. The cap is only a ceiling: the real
-        // rate can't exceed what the camera delivers.
+        // This is the inference-FPS ceiling. A positive camera cap is also the
+        // input's upper bound because the model cannot analyze absent frames.
         NumericSettingField(
           label: _c.autoThrottle ? 'Max inference rate' : 'Detector rate cap',
           value: _c.inferenceFps.toDouble(),
-          min: 0,
-          max: 120,
+          min: SessionConfig.minimumInferenceFps.toDouble(),
+          max: _c.maximumAllowedInferenceFps.toDouble(),
           isInt: true,
-          unitSuffix: '/s',
+          unitSuffix: 'FPS',
           // The "ceiling, not a guarantee" paragraph used to sit as its own
           // text block under this section; merged into the ⓘ (round 181).
           helperText:
-              '${_c.autoThrottle
-                  ? 'Upper limit the auto-adjust will not exceed (0 = let '
-                        'it use up to 15/s). It will run at or below this, '
-                        'lower when the phone is hot.'
-                  : (_c.inferenceFps == 0
-                        ? 'Currently Max (uncapped, highest FPS). Type 0 for '
-                              'Max, or 5–120 to cap the rate (lower = '
-                              'cooler).'
-                        : 'Type 0 for Max (uncapped), or 5–120 to cap the '
-                              'rate (lower = cooler).')} '
-              'The rate is a ceiling, not a guarantee: the real rate is '
-              'also limited by how fast the camera delivers frames and how '
-              'fast the model runs. For insect visits (seconds long) even '
-              '~10/s is usually plenty, and a lower steady rate beats a '
-              'high rate that collapses.',
+              'Maximum number of camera frames per second the AI detector '
+              'may analyze. This is inference FPS, not the camera preview '
+              'frame rate. ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
+              '${_c.cameraFpsCap > 0 ? 'It cannot be set above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS). ' : 'The camera cap below is removed, so this field may be set up to ${SessionConfig.maximumInferenceFps} FPS. '}'
+              'This is a ceiling, not a guaranteed speed: the real rate is '
+              'also limited by the camera, the phone, and the selected '
+              'model. The app starts at 15 FPS; lower rates use less power '
+              'and are often steadier during long sessions.',
           onChanged: (v) {
-            final r = v.round();
-            // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 stays "Max".
-            setState(
-              () =>
-                  _c = _c.copyWith(inferenceFps: r == 0 ? 0 : (r < 5 ? 5 : r)),
-            );
+            setState(() => _c = _c.withInferenceFps(v.round()));
           },
         ),
         // Floor + duty target are expert tuning, folded (round 159); the Max
@@ -1808,15 +1794,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 label: 'Min inference rate',
                 value: _c.minInferenceFps.toDouble(),
                 min: 1,
-                max: 15,
+                max: _c.inferenceFps.toDouble(),
                 isInt: true,
-                unitSuffix: '/s',
+                unitSuffix: 'FPS',
                 helperText:
                     'The lowest the auto-adjust will drop to when the phone is hot, so '
                     'a session stays usable. Default 3.',
                 onChanged: (v) => setState(
-                  () =>
-                      _c = _c.copyWith(minInferenceFps: v.round().clamp(1, 15)),
+                  () => _c = _c.copyWith(
+                    minInferenceFps: v.round().clamp(1, _c.inferenceFps),
+                  ),
                 ),
               ),
               NumericSettingField(
@@ -1847,9 +1834,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
         label: 'Camera frame rate cap',
         value: _c.cameraFpsCap.toDouble(),
         min: 0,
-        max: 30,
+        max: SessionConfig.maximumCameraFpsCap.toDouble(),
         isInt: true,
-        unitSuffix: '/s',
+        unitSuffix: 'FPS',
         // Round 110 wording: the old text said "0 = device default" and then
         // "Default 15", using "default" for two different things (the
         // camera's own uncapped rate vs the app's factory setting) — the
@@ -1858,23 +1845,20 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'How many frames per second the camera itself captures. Enter 0 '
             'to remove the cap — the camera then runs at its own full rate '
-            '(~30/s on most phones). Without a cap the sensor and image '
+            '(~30 FPS on most phones). Without a cap the sensor and image '
             'processor run at that full rate the whole session, even while '
             'the motion gate has the detector asleep — the main reason a '
             '"sleeping" phone still warms up. Lower = cooler phone but a '
-            'less smooth preview; detection is unaffected as long as this '
-            'stays at or above the inference rate cap. The phone only '
+            'less smooth preview. The Max inference rate above cannot be '
+            'higher than this camera cap; lowering the camera cap also '
+            'lowers the inference cap to match. The phone only '
             'supports certain rates, so the nearest supported one is used. '
-            'The app ships set to 15/s (cooler); note that capping also '
+            'The app ships set to 15 FPS (cooler); note that capping also '
             'delays high-res photos — measured on the test phone, a '
             'high-res photo shows the scene ~0.4 s after its trigger at '
-            '15/s vs ~0.17 s uncapped.',
+            '15 FPS vs ~0.17 s uncapped.',
         onChanged: (v) {
-          final r = v.round();
-          // Snap 1..4 up to 5 so the lowest real cap is 5/s; 0 = device default.
-          setState(
-            () => _c = _c.copyWith(cameraFpsCap: r == 0 ? 0 : (r < 5 ? 5 : r)),
-          );
+          setState(() => _c = _c.withCameraFpsCap(v.round()));
         },
       ),
       const Divider(color: Colors.white24),
@@ -2557,7 +2541,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Text(text, style: const TextStyle(color: Colors.white70)),
   );
-
 }
 
 /// Asks for a direct link to a model file (e.g. a GitHub release asset),

@@ -534,7 +534,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Observe app lifecycle so we can re-assert the screen-on wakelock when the
     // app returns to the foreground mid-session (belt-and-suspenders for long runs).
     WidgetsBinding.instance.addObserver(this);
-    _config = widget.initialConfig;
+    _config = widget.initialConfig.normalizedFpsCaps();
     // Restore the info-panel expansion preference (round 124).
     SharedPreferences.getInstance()
         .then((p) {
@@ -709,8 +709,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       'engine': _accelerator,
       'analysis_w': _imageWidth,
       'analysis_h': _imageHeight,
-      // Auto-throttle state: the applied inference-rate cap (0 = uncapped) and
-      // the smoothed inference time it is acting on, so the controller's
+      // Auto-throttle state: the applied inference-rate cap and the smoothed
+      // inference time it is acting on, so the controller's
       // behaviour is visible in the log and the throttle graph.
       'applied_cap_fps': _appliedCapFps ?? 0,
       if (_throttle != null) 'throttle_inf_ms_ema': _throttle!.infMsEma,
@@ -2312,14 +2312,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
-  /// The inference-rate ceiling (fps): the user's manual cap, or a sane 15 fps
-  /// when they left it uncapped (0) — used as the auto-throttle's upper bound.
-  int get _inferenceCeilFps =>
-      _config.inferenceFps > 0 ? _config.inferenceFps : 15;
+  /// The explicit user-selected inference-rate ceiling (FPS).
+  int get _inferenceCeilFps => _config.inferenceFps;
 
   /// (Re)builds the auto-throttle from the current config and seeds the applied
   /// cap. Called at init and whenever settings change. When auto-throttle is off
-  /// the cap is the plain manual value (null = uncapped), preserving old behaviour.
+  /// the cap is the plain manual value.
   void _rebuildThrottle() {
     if (_config.autoThrottle) {
       _throttle = AdaptiveInferenceThrottle(
@@ -2332,7 +2330,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _appliedCapFps = _inferenceCeilFps;
     } else {
       _throttle = null;
-      _appliedCapFps = _config.inferenceFps > 0 ? _config.inferenceFps : null;
+      _appliedCapFps = _config.inferenceFps;
     }
   }
 
@@ -3213,7 +3211,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             streamingConfig: YOLOStreamingConfig.custom(
               // Rate cap fed to the native detector. With auto-throttle on this
               // is managed live by the AdaptiveInferenceThrottle; with it off it
-              // is the manual cap (null = uncapped). Changing it re-sends the
+              // is the manual cap. Changing it re-sends the
               // config (no camera rebind — analysis resolution is unchanged).
               inferenceFrequency: _appliedCapFps,
               includeOriginalImage: false,

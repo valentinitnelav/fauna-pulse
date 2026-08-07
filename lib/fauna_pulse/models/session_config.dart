@@ -194,6 +194,15 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
 }
 
 class SessionConfig {
+  /// User-facing inference-rate bounds. A positive camera cap is an upstream
+  /// ceiling because the detector can only analyze frames the camera supplies.
+  static const int defaultInferenceFps = 15;
+  static const int minimumInferenceFps = 5;
+  static const int maximumInferenceFps = 120;
+  static const int defaultCameraFpsCap = 15;
+  static const int minimumCameraFpsCap = 5;
+  static const int maximumCameraFpsCap = 30;
+
   /// Model identifier or path (e.g. a bundled "yolo26n" id, or a path to a
   /// user-placed .tflite file).
   final String modelPath;
@@ -268,14 +277,11 @@ class SessionConfig {
   /// Settings to see what this device actually gains before raising it.
   final int cpuThreads;
 
-  /// Cap on how many times per second the detector runs ("inference").
-  /// **0 means uncapped** — run as fast as the device can. A positive value
-  /// throttles inference to that rate to cut heat and battery (the model is the
-  /// hot part); the camera preview stays smooth regardless. For timing insect
-  /// visits (which last seconds) ~10/s is plenty, so the default is now 10:
-  /// under field sun the phone throttles itself within ~30 s when uncapped,
-  /// whereas a deliberate cap holds a steady rate far longer. Set 0 only for
-  /// benchmarking the device's raw speed.
+  /// Cap on how many camera frames per second the detector analyzes. This is
+  /// the inference FPS, not the camera preview FPS. It is always a positive,
+  /// explicit value so the setting never needs an ambiguous "0 = Max" mode.
+  /// A positive [cameraFpsCap] is its upper bound because the detector cannot
+  /// analyze frames the camera did not capture. Default 15 FPS.
   final int inferenceFps;
 
   /// Cap on the CAMERA's own frame rate (round 82). Unlike [inferenceFps] —
@@ -286,15 +292,15 @@ class SessionConfig {
   /// "sleeping" phone still warms up. Lower = cooler but a less smooth
   /// preview. 0 = device default (uncapped). The phone only supports certain
   /// rates; the closest supported one at or below this is used. Default 15:
-  /// comfortably above the 10/s inference default, roughly half the standing
-  /// camera heat.
+  /// it matches the inference default and roughly halves the standing camera
+  /// load on phones whose uncapped camera runs at ~30 FPS.
   final int cameraFpsCap;
 
   /// When true (default), the app **automatically** adjusts the inference rate
   /// during a session to keep the CPU cool enough to hold a steady frame rate,
   /// instead of running flat-out and overheating into a ~3 fps collapse. When
   /// on, [inferenceFps] acts as the *maximum* rate (the ceiling); when off,
-  /// [inferenceFps] is a fixed manual cap (0 = uncapped) as before.
+  /// [inferenceFps] is a fixed manual cap.
   final bool autoThrottle;
 
   /// Lowest inference rate the auto-throttle will fall to (fps). Keeps a session
@@ -588,13 +594,11 @@ class SessionConfig {
     this.flashOnCapture = true,
     this.useGpu = true,
     this.cpuThreads = 0,
-    this.inferenceFps =
-        10, // deliberate default cap: plenty for second-scale insect visits,
-    // and it delays the thermal collapse under field sun. 0 = uncapped
-    // (raw benchmark mode).
+    this.inferenceFps = defaultInferenceFps,
     // Low default stream (≈ model input) so inference runs at full speed like the
     // original; the stream-resolution setting can raise it for bigger fast crops.
-    this.cameraFpsCap = 15, // camera hardware rate; 0 = device default (~30)
+    this.cameraFpsCap =
+        defaultCameraFpsCap, // 0 removes the camera hardware cap
     this.autoThrottle = true,
     this.minInferenceFps = 3,
     this.throttleDutyTarget = 0.5,
@@ -792,6 +796,50 @@ class SessionConfig {
     highResSyncCompanion: highResSyncCompanion ?? this.highResSyncCompanion,
   );
 
+  /// Highest inference FPS the settings UI may accept for this camera cap.
+  /// When the camera cap is removed (`0`), the inference field keeps its own
+  /// generous safety bound instead of guessing the device's hardware maximum.
+  int get maximumAllowedInferenceFps => cameraFpsCap > 0
+      ? cameraFpsCap.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
+      : maximumInferenceFps;
+
+  /// Applies a user-entered inference cap while keeping the throttle floor and
+  /// camera/inference relationship valid.
+  SessionConfig withInferenceFps(int requested) {
+    final fps = requested
+        .clamp(minimumInferenceFps, maximumAllowedInferenceFps)
+        .toInt();
+    return copyWith(
+      inferenceFps: fps,
+      minInferenceFps: minInferenceFps.clamp(1, fps).toInt(),
+    );
+  }
+
+  /// Applies a user-entered camera cap. Lowering a positive camera cap also
+  /// lowers inference FPS when needed, because the detector cannot run more
+  /// often than the camera supplies frames. Camera `0` remains uncapped.
+  SessionConfig withCameraFpsCap(int requested) {
+    final cameraFps = requested <= 0
+        ? 0
+        : requested.clamp(minimumCameraFpsCap, maximumCameraFpsCap).toInt();
+    final inferenceMax = cameraFps > 0 ? cameraFps : maximumInferenceFps;
+    final currentInference = inferenceFps > 0
+        ? inferenceFps
+        : defaultInferenceFps;
+    final normalizedInference = currentInference
+        .clamp(minimumInferenceFps, inferenceMax)
+        .toInt();
+    return copyWith(
+      cameraFpsCap: cameraFps,
+      inferenceFps: normalizedInference,
+      minInferenceFps: minInferenceFps.clamp(1, normalizedInference).toInt(),
+    );
+  }
+
+  /// Migrates old/invalid combinations into the explicit linked-cap model.
+  /// In particular, the former inference value `0` becomes the 15 FPS default.
+  SessionConfig normalizedFpsCaps() => withCameraFpsCap(cameraFpsCap);
+
   Map<String, dynamic> toJson() => {
     'modelPath': modelPath,
     'task': task.name,
@@ -873,8 +921,8 @@ class SessionConfig {
     flashOnCapture: j['flashOnCapture'] as bool? ?? true,
     useGpu: j['useGpu'] as bool? ?? true,
     cpuThreads: (j['cpuThreads'] as num?)?.toInt() ?? 0,
-    inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? 10,
-    cameraFpsCap: (j['cameraFpsCap'] as num?)?.toInt() ?? 15,
+    inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? defaultInferenceFps,
+    cameraFpsCap: (j['cameraFpsCap'] as num?)?.toInt() ?? defaultCameraFpsCap,
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,
@@ -944,7 +992,7 @@ class SessionConfig {
     gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? true,
     gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 30.0,
     highResSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
-  );
+  ).normalizedFpsCaps();
 
   static const String _prefsKey = 'faunapulse_session_config';
 
