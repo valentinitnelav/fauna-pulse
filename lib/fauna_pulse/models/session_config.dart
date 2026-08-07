@@ -6,6 +6,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 
@@ -14,6 +15,7 @@ import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
 
 import '../logging/app_error_hooks.dart';
+import 'bundled_models.dart';
 import 'schedule_window.dart';
 
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
@@ -80,6 +82,21 @@ RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
 ///    (round 174; 0 = continuous). The cheapest mode — meant for later
 ///    offline detection/tracking on the saved photos.
 enum CaptureTrigger { detector, motion, timelapse }
+
+/// Moves missing and obsolete model selections to the current bundled MDV6
+/// default. YOLO26 remains selectable for the project owner's debug builds,
+/// but an upgraded release must not try to download that retired default.
+String migrateModelPath(String? stored, {bool releaseMode = kReleaseMode}) {
+  const legacyPlaceholderIds = {'yolo26s', 'yolo26m', 'yolo26l', 'yolo26x'};
+  if (stored == null || legacyPlaceholderIds.contains(stored)) {
+    return kDefaultBundledModelPath;
+  }
+  if (releaseMode &&
+      (stored == kLocalYolo26ModelId || stored == kLocalYolo26ModelPath)) {
+    return kDefaultBundledModelPath;
+  }
+  return stored;
+}
 
 /// Reads the capture trigger from a saved config, accepting both the new
 /// `captureTrigger` string and the legacy round-95 `motionOnlyCapture` boolean
@@ -554,7 +571,7 @@ class SessionConfig {
   final bool highResSyncCompanion;
 
   const SessionConfig({
-    this.modelPath = 'yolo26n',
+    this.modelPath = kDefaultBundledModelPath,
     this.task = YOLOTask.detect,
     this.confidenceThreshold = 0.25,
     this.iouThreshold = 0.7,
@@ -838,21 +855,8 @@ class SessionConfig {
     'stillSyncCompanion': highResSyncCompanion,
   };
 
-  /// Pre-r119 configs could hold a YOLO26 size that was only ever a dropdown
-  /// placeholder — no file existed, detection silently ran nano. r119 removed
-  /// those entries from the picker (ModelCatalog.officialModels), so such a
-  /// stored id now loads as the nano that was actually running. Frozen
-  /// historical set — never extend it.
-  static String _migrateModelPath(String? stored) {
-    const legacyPlaceholderIds = {'yolo26s', 'yolo26m', 'yolo26l', 'yolo26x'};
-    if (stored == null || legacyPlaceholderIds.contains(stored)) {
-      return 'yolo26n';
-    }
-    return stored;
-  }
-
   factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
-    modelPath: _migrateModelPath(j['modelPath'] as String?),
+    modelPath: migrateModelPath(j['modelPath'] as String?),
     task: YOLOTaskParsing.tryParse(j['task'] as String?) ?? YOLOTask.detect,
     confidenceThreshold: (j['confidenceThreshold'] as num?)?.toDouble() ?? 0.25,
     iouThreshold: (j['iouThreshold'] as num?)?.toDouble() ?? 0.7,

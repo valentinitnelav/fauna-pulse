@@ -40,19 +40,19 @@ yet, no release keystore, docs written for researchers.
 
 ## Build-config state
 
-Fixed in round 158:
+Fixed in rounds 158 and 194:
 
 - [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
   Flutter SDK was installed. The Play API-36 deadline is therefore already met.
-- [x] `fetchBundledModels` now runs `fauna-pulse/scripts/fetch_bundled_models.sh` (new,
-  ours) and downloads ONLY the default `yolo26n_int8.tflite` into `assets/models/`.
-  It used to point outside the repo at the plugin's script, which writes into the
-  plugin's own example app and pulls six unused task variants.
-- [x] Release builds are blocked when the bundled model is missing (escape hatch:
-  `-PallowMissingBundledModels`). Note the ordering: `fetchBundledModels` runs first,
-  so on an online machine the model is simply downloaded and the guard never fires; it
-  is an offline/failed-download backstop.
+- [x] Round 194 removed `fetchBundledModels` from the build graph. The retained
+  `scripts/fetch_bundled_models.sh` is a manual example only and is never executed by
+  `flutter build`.
+- [x] Release builds require both tester weights (escape hatch:
+  `-PallowMissingBundledModels`) and package only
+  `MDV6-yolov10-c_int8_256.tflite` plus
+  `MDV6-yolov10-c_float16_256.tflite`. YOLO26 and all other local debug weights are
+  excluded from the APK without deleting the source files.
 - [x] `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
   section B4 make signing setup a one-command step.
 
@@ -107,8 +107,8 @@ in README (§Models).
       means no user can ever update the app.
 - [x] Pin `minSdk 24` / `targetSdk 36` / `compileSdk 36` (round 158; verified in the
       built APK, tests and analyze clean).
-- [x] Fix `fetchBundledModels` and block release builds with no bundled model
-      (round 158).
+- [x] Release bundling finalized: automatic fetching removed; both MDV6 tester
+      models required; release copy allowlisted to those two weights (round 194).
 - [x] `PRIVACY_POLICY.md` at the repo root (round 158): offline processing, permission
       table, the two model-download exceptions, problem reports with location
       redaction, protected-species note.
@@ -181,9 +181,8 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
         direct-APK route.
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
-the arm64 APK and the AI pipeline runs with the bundled model out of the box (the
-bundled yolo26n knows COCO objects, not insects; real insect detections still need a
-model the user obtains, see the open owner question above).
+the arm64 APK and the AI pipeline runs with the bundled MegaDetector v6 (MDV6) model out of
+the box.
 
 ## Phase 2: citizen-scientist documentation (~2 rounds + owner screenshots)
 

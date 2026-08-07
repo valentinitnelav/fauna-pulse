@@ -329,13 +329,16 @@ void main() {
       expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.fast);
     });
 
-    test('pre-r119 placeholder model ids load as the nano that really ran', () {
+    test('obsolete YOLO placeholders load as the current MDV6 default', () {
       for (final id in ['yolo26s', 'yolo26m', 'yolo26l', 'yolo26x']) {
-        expect(SessionConfig.fromJson({'modelPath': id}).modelPath, 'yolo26n');
+        expect(
+          SessionConfig.fromJson({'modelPath': id}).modelPath,
+          'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+        );
       }
     });
 
-    test('real model paths are NOT touched by the r119 migration', () {
+    test('real model paths are not touched', () {
       const kept = [
         'yolo26n',
         'assets/models/custom/arthropod_yolov11_int8.tflite',
@@ -344,6 +347,32 @@ void main() {
       for (final path in kept) {
         expect(SessionConfig.fromJson({'modelPath': path}).modelPath, path);
       }
+    });
+
+    test(
+      'release migrates the retired YOLO default but keeps other models',
+      () {
+        const mdv6 = 'assets/models/custom/MDV6-yolov10-c_int8_256.tflite';
+        expect(migrateModelPath('yolo26n', releaseMode: true), mdv6);
+        expect(
+          migrateModelPath(
+            'assets/models/yolo26n_int8.tflite',
+            releaseMode: true,
+          ),
+          mdv6,
+        );
+        expect(
+          migrateModelPath('/models/my_detector.tflite', releaseMode: true),
+          '/models/my_detector.tflite',
+        );
+      },
+    );
+
+    test('new configs use the bundled MDV6 INT8 model', () {
+      expect(
+        const SessionConfig().modelPath,
+        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+      );
     });
   });
 

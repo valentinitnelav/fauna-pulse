@@ -21,7 +21,7 @@ usefulness today:
   round-151 finding is that the pinned v0.3.5 release assets (v73/v81) can
   never run on the SD888 Xiaomi test phone (v68). So no current test device
   benefits from shipping QNN.
-- Everything else (the bundled yolo26n, imported `.tflite` models) runs on
+- Everything else (the bundled MDV6 models, imported `.tflite` models) runs on
   LiteRT and does not touch QNN at all. QNN is pure opt-in capability.
 
 Measured cost (round 160, release APK 116.5 MB):

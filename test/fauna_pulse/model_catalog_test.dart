@@ -88,14 +88,17 @@ void main() {
       expect(r.toBundledDefault, isFalse);
     });
 
-    test('initial-load failure (nothing loaded) falls back to bundled nano', () {
+    test('initial-load failure falls back to bundled MDV6 INT8', () {
       final r = modelLoadRecovery(
         failedPath: qnn,
         currentConfigPath: qnn,
         loadedModelPath: '',
       );
       expect(r, isNotNull);
-      expect(r!.revertToPath, 'yolo26n');
+      expect(
+        r!.revertToPath,
+        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+      );
       expect(r.toBundledDefault, isTrue);
     });
 
@@ -120,7 +123,10 @@ void main() {
     test('official id matches its resolved bundled asset, not lookalikes', () {
       // "yolo26n" must equal its real asset file...
       expect(
-        sameModelFile('yolo26n', 'flutter_assets/assets/models/yolo26n_int8.tflite'),
+        sameModelFile(
+          'yolo26n',
+          'flutter_assets/assets/models/yolo26n_int8.tflite',
+        ),
         isTrue,
       );
       // ...but NOT another file that merely starts with the id.
@@ -139,12 +145,42 @@ void main() {
 
     test('other failures get no hint', () {
       expect(modelLoadHint('/m/x.tflite', 'file not found'), isEmpty);
-      expect(modelLoadHint('/m/yolo26n_v73_qnn.onnx', 'file not found'), isEmpty);
+      expect(
+        modelLoadHint('/m/yolo26n_v73_qnn.onnx', 'file not found'),
+        isEmpty,
+      );
     });
   });
 
-  test('the dropdown offers no phantom official sizes (r119)', () {
+  test('debug keeps only the real local YOLO official entry', () {
     expect(ModelCatalog.officialModels.keys, ['yolo26n']);
     expect(ModelCatalog.bundledIds, {'yolo26n'});
+  });
+
+  test('release exposes only the two tester MDV6 assets', () {
+    final visible = visibleBundledCustomAssets(const [
+      'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+      'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
+      'assets/models/custom/MDV6-yolov10-c_int8_640.tflite',
+      'assets/models/custom/arthropod_yolov11_int8.tflite',
+      'assets/models/yolo26n_int8.tflite',
+    ], releaseMode: true);
+    expect(visible, [
+      'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
+      'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+    ]);
+  });
+
+  test('debug exposes every supported custom test asset', () {
+    final visible = visibleBundledCustomAssets(const [
+      'assets/models/custom/z.tflite',
+      'assets/models/custom/a_qnn.onnx',
+      'assets/models/custom/readme.txt',
+      'assets/models/top-level.tflite',
+    ], releaseMode: false);
+    expect(visible, [
+      'assets/models/custom/a_qnn.onnx',
+      'assets/models/custom/z.tflite',
+    ]);
   });
 }

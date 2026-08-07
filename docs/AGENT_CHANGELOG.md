@@ -6826,3 +6826,36 @@ recipes the owner executes later (the repo goes public at a time of their choosi
   GitHub Pages recipe: MkDocs Material deployed via LOCAL `mkdocs gh-deploy`, so
   no CI runs on the owner's several-pushes-a-day workflow; CI itself deferred to
   near v1.0, tag-triggered if revived); Build-config "Still open" items all ticked.
+
+
+## Round 194 (2026-08-07): tester MDV6 bundle replaces release YOLO26
+
+Owner decision: the general-purpose `yolo26n_int8.tflite` remains available
+locally for project-owner testing but must not be downloaded, required, or
+included in release APKs. Tester releases currently ship only the 256 px MDV6
+INT8 and float16 MegaDetector models (3 categories: animal, person, vehicle).
+
+- Removed the Android `fetchBundledModels` task and its `preBuild` dependency.
+  `scripts/fetch_bundled_models.sh` remains as a clearly marked, manually run
+  historical example.
+- Added a release-only asset allowlist in `android/app/build.gradle`. Flutter
+  still sees all ignored local model files for debug development, but
+  `copyFlutterAssetsRelease` copies only
+  `MDV6-yolov10-c_int8_256.tflite` and
+  `MDV6-yolov10-c_float16_256.tflite` into the release asset tree. Local
+  source weights are never deleted or modified.
+- The release preflight now checks for those two tester weights, never YOLO26.
+  The existing `-PallowMissingBundledModels` escape hatch remains for an
+  intentionally model-free build.
+- The new default is the MDV6 INT8 256 px asset. Release builds hide local test
+  weights from the picker and migrate saved `yolo26n` selections to the new
+  default, preventing an upgraded installation from attempting a runtime YOLO
+  download. Debug builds retain the YOLO entry and all custom test models.
+- Centralized the Dart release/default paths in
+  `lib/fauna_pulse/models/bundled_models.dart`; its allowlist must stay in
+  sync with Gradle's matching list.
+- Verification: `flutter analyze` clean; focused model/config tests 74/74;
+  full `flutter test test/fauna_pulse` 517 passed, 1 replay test skipped;
+  signed `flutter build apk --release` succeeded (124.2 MB) with no fetch
+  script output. Direct APK inspection found exactly the two intended MDV6
+  weight files and no YOLO26 or other local test weights.

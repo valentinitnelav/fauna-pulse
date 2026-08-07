@@ -65,7 +65,7 @@ Caveats, and why it's not the default recommendation:
 The app's model picker accepts `*_qnn.onnx` through the same Import…
 and Download… buttons as `.tflite`. When a QNN model cannot run on the phone,
 the app shows an error dialog explaining why and automatically switches back to
-a model that works (the previously loaded one, or the bundled nano).
+a model that works (the previously loaded one, or the bundled MDV6 INT8 default).
 
 ## Converting: `.pt` → `.tflite` (the recommended route)
 

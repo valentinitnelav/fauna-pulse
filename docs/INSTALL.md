@@ -199,7 +199,6 @@ flutter build apk --release     # or: flutter build apk --debug (but slower app 
 
 # Expected output if success:
 
-#   fetch_bundled_models: have yolo26n_int8.tflite
 #   Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 9532 bytes (99.4% reduction). 
 #   Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
 #   Running Gradle task 'assembleRelease'...                          232.1s
@@ -288,9 +287,12 @@ be redistributed**.
 - To use a model, load it with the in-app **Import…** button or USB drag-drop
   (Track A3). The app lists any `.tflite` it finds; nothing else is required.
 
-The in-app model picker is built **dynamically** from whatever `.tflite` files it finds. 
-Models can also be placed in `assets/models/` / `assets/models/custom/` before building and running the app (those folders stay
-git-ignored).
+Imported models are discovered dynamically on the phone. For local development,
+models can also be placed in `assets/models/` / `assets/models/custom/` before a
+debug build (those folders stay git-ignored). Release builds deliberately package
+only the two tester models listed in
+`lib/fauna_pulse/models/bundled_models.dart`; keep the matching allowlist in
+`android/app/build.gradle` synchronized when the release model set changes.
 
 ## S2. Pulling data from the smartphone
 

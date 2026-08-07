@@ -928,13 +928,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ),
-      // Covers a pre-r119 placeholder id AND an imported model whose file was
-      // deleted from the phone — anything selected that isn't on the device.
+      // Covers an imported model whose file was deleted from the phone, or a
+      // local test model that is deliberately absent from a release build.
       if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
-            '⚠ This model isn\'t on the device — the bundled nano runs '
+            '⚠ This model isn\'t available in this build — the bundled MDV6 '
+            'INT8 model runs '
             'instead. Use Download… or Import… above to add it.',
             style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),

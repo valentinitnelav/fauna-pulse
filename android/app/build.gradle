@@ -97,26 +97,30 @@ android {
     }
 }
 
-// Fail fast — before any compilation — when a release build is requested without
-// release signing, or without the bundled detection model. Attached to
-// preReleaseBuild (an early step that only runs for release variants), so debug and
-// profile builds are completely unaffected.
-def bundledDefaultModel = new File(rootProject.projectDir, "../assets/models/yolo26n_int8.tflite")
-def allowMissingBundledModel = project.hasProperty("allowMissingBundledModels")
+// These are the only model weights intentionally shipped to testers. Model
+// binaries remain git-ignored, so the maintainer places both files locally before
+// a release build. Keep this list in sync with kReleaseBundledModelPaths in
+// lib/fauna_pulse/models/bundled_models.dart.
+def releaseBundledModels = [
+    "assets/models/custom/MDV6-yolov10-c_int8_256.tflite",
+    "assets/models/custom/MDV6-yolov10-c_float16_256.tflite",
+]
+def allowMissingBundledModels = project.hasProperty("allowMissingBundledModels")
+
+// Fail fast before compilation when release signing or either tester model is
+// missing. Debug and profile builds are unaffected.
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {
-        // A release APK without the bundled model still runs, but every user would
-        // need internet on first launch to fetch it — unacceptable for a field app
-        // that is meant to work offline. fetchBundledModels normally supplies it.
-        if (!bundledDefaultModel.exists() && !allowMissingBundledModel) {
+        def missingModels = releaseBundledModels.findAll {
+            !new File(rootProject.projectDir, "../${it}").isFile()
+        }
+        if (!missingModels.isEmpty() && !allowMissingBundledModels) {
             throw new GradleException(
-                "The default detection model is missing, refusing to build a release " +
-                "APK that needs a first-run download.\n\n" +
-                "Expected: assets/models/yolo26n_int8.tflite\n\n" +
-                "Fix: run the fetch script (it needs internet once)\n" +
-                "    bash scripts/fetch_bundled_models.sh\n\n" +
-                "or, to build anyway (the app will download the model on first use):\n" +
+                "Required tester model(s) are missing, refusing to build the release APK.\n\n" +
+                "Place these files at the listed paths before building:\n    " +
+                missingModels.join("\n    ") + "\n\n" +
+                "or, to build intentionally without them:\n" +
                 "    flutter build apk --release -PallowMissingBundledModels"
             )
         }
@@ -153,17 +157,20 @@ dependencies {
     implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
 }
 
-// Bundle the default detection model into the app at build time. Model binaries are NOT committed to git (large
-// files, and some collaborator detectors are not redistributable), so a fresh clone has none; this fetches the one
-// default model into assets/models/ before assets are merged, so the installed app works with no network. The
-// resolver checks assets/models/ before downloading, so a bundled model means no first-run network fetch.
-// Best-effort: the script always exits 0, so an offline debug build still succeeds and falls back to the runtime
-// download (release builds are blocked instead, see the preReleaseBuild guard above).
-// Round 158 fix: the path used to point outside the repository (../../scripts) at the plugin's script, which writes
-// into the PLUGIN's example app and pulls six unused task variants; both were silently swallowed by ignoreExitValue.
-tasks.register("fetchBundledModels", Exec) {
-    workingDir = rootProject.projectDir
-    commandLine "bash", "${rootProject.projectDir}/../scripts/fetch_bundled_models.sh"
-    ignoreExitValue = true
+// pubspec.yaml declares the model directories so local debug builds can use any
+// ignored test weight without editing source. For release builds, filter the
+// Flutter asset copy to the explicit tester allowlist above. The source files are
+// untouched, and yolo26n_int8.tflite is neither required nor shipped.
+tasks.matching { it.name == "copyFlutterAssetsRelease" }.configureEach {
+    eachFile { details ->
+        def path = details.path.replace('\\', '/')
+        def prefix = "flutter_assets/"
+        def modelPrefix = "${prefix}assets/models/"
+        if (path.startsWith(modelPrefix)) {
+            def assetPath = path.substring(prefix.length())
+            if (!releaseBundledModels.contains(assetPath)) {
+                details.exclude()
+            }
+        }
+    }
 }
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("fetchBundledModels") }

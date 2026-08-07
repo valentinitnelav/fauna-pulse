@@ -1,7 +1,7 @@
 // FaunaPulse — the catalog of detection models the user can choose from.
 //
 // Three kinds of model can appear in the picker:
-//   * official  — the YOLO26 sizes the plugin can fetch/bundle (only nano ships).
+//   * official  — the local YOLO26 test model (debug builds only).
 //   * bundled   — custom model files shipped inside the app (assets/models/custom/).
 //   * imported  — custom model files the user dropped onto the phone and imported
 //                 at runtime (e.g. from the Downloads folder) via the file picker.
@@ -27,11 +27,13 @@
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
+import 'bundled_models.dart';
 
 enum ModelSource { official, bundled, imported }
 
@@ -79,16 +81,17 @@ class ModelEntry {
 }
 
 class ModelCatalog {
-  /// Official entries: ONLY the bundled nano (round 119). The other YOLO26
-  /// sizes used to be listed as "(add file)" placeholders, but a dropdown
-  /// entry with no file behind it only invited a pick that silently kept
-  /// running nano — larger models are now added via Download…/Import instead.
-  static const officialModels = {'yolo26n': 'YOLO26 nano — fastest (bundled)'};
+  /// Local development entry. YOLO26 is not shown in release builds and its
+  /// weight is removed from release APKs (round 194); keeping this entry for
+  /// debug builds lets the project owner continue general detector tests.
+  static const officialModels = {
+    kLocalYolo26ModelId: 'YOLO26 nano (local test model)',
+  };
 
-  // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load as nano —
-  // the migration set lives in SessionConfig.fromJson.
+  // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load as the
+  // current MDV6 default; the migration lives in SessionConfig.fromJson.
 
-  static const bundledIds = {'yolo26n'};
+  static const bundledIds = {kLocalYolo26ModelId};
 
   /// Folder (inside the app bundle) holding custom detectors shipped with the app.
   /// Every supported model file here is offered automatically — see
@@ -97,18 +100,12 @@ class ModelCatalog {
 
   static final _channel = ChannelConfig.createSingleImageChannel();
 
-  /// Lists every bundled custom-model asset by reading the build's AssetManifest,
-  /// so any supported model file dropped into [bundledCustomDir] appears in the
-  /// app without a code change (just rebuild). Sorted for a stable menu order.
+  /// Lists bundled custom-model assets by reading the build's AssetManifest.
+  /// Debug builds expose every local test weight. Release builds expose only
+  /// [kReleaseBundledModelPaths], matching the Android APK asset allowlist.
   static Future<List<String>> _bundledCustomAssets() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    return manifest
-        .listAssets()
-        .where(
-          (p) => p.startsWith(bundledCustomDir) && isSupportedModelFileName(p),
-        )
-        .toList()
-      ..sort();
+    return visibleBundledCustomAssets(manifest.listAssets());
   }
 
   /// The app's own models folder (created if missing). Imported models are
@@ -174,26 +171,23 @@ class ModelCatalog {
       );
     }
 
-    for (final entry in officialModels.entries) {
-      final id = entry.key;
-      final isBundled = bundledIds.contains(id);
-      // Only the bundled nano is on the device, so only it can be inspected for
-      // input size/task. Inspect it via its real asset file (the detection export
-      // is the int8 file under assets/models/), not the bare "yolo26n" id — the
-      // bare id can't be located on disk, so it would read back as "unknown".
-      final meta = isBundled
-          ? await _inspect('assets/models/${id}_int8.tflite')
-          : const <String, dynamic>{};
-      entries.add(
-        ModelEntry(
-          id: id,
-          name: entry.value,
-          source: ModelSource.official,
-          precision: isBundled ? 'int8' : null,
-          inputSize: _imgszFrom(meta),
-          task: meta['task'] as String?,
-        ),
-      );
+    // The general-purpose YOLO26 model is retained only for the project
+    // owner's local tests. Do not inspect it or offer it to release users.
+    if (!kReleaseMode) {
+      for (final entry in officialModels.entries) {
+        final id = entry.key;
+        final meta = await _inspect(kLocalYolo26ModelPath);
+        entries.add(
+          ModelEntry(
+            id: id,
+            name: entry.value,
+            source: ModelSource.official,
+            precision: 'int8',
+            inputSize: _imgszFrom(meta),
+            task: meta['task'] as String?,
+          ),
+        );
+      }
     }
 
     return entries;
@@ -315,13 +309,13 @@ class ModelCatalog {
 
   /// Input resolution (square side, px) for a single model path, or null when
   /// the model's metadata doesn't carry it. Applies the same official-id →
-  /// bundled-asset mapping [build] uses, so e.g. "yolo26n" (a bare id with no
-  /// file on disk) resolves to its real asset before inspection. Lets screens
+  /// local-test mapping [build] uses, so e.g. "yolo26n" (a bare id with no file
+  /// on disk) resolves to its real asset before inspection. Lets screens
   /// other than the settings sheet show a model's input size without rebuilding
   /// the whole catalog.
   static Future<int?> inputSizeOf(String modelPath) async {
     final probe = bundledIds.contains(modelPath)
-        ? 'assets/models/${modelPath}_int8.tflite'
+        ? kLocalYolo26ModelPath
         : modelPath;
     return _imgszFrom(await _inspect(probe));
   }
@@ -384,6 +378,21 @@ bool isSupportedModelFileName(String name) {
   return n.endsWith('.tflite') || n.endsWith('_qnn.onnx');
 }
 
+/// Filters and sorts custom assets for the current build type. This is public
+/// only so the release allowlist can be unit-tested without building an APK.
+List<String> visibleBundledCustomAssets(
+  Iterable<String> assets, {
+  bool releaseMode = kReleaseMode,
+}) {
+  final visible = assets.where(
+    (p) =>
+        p.startsWith(ModelCatalog.bundledCustomDir) &&
+        isSupportedModelFileName(p) &&
+        (!releaseMode || kReleaseBundledModelPaths.contains(p)),
+  );
+  return visible.toList()..sort();
+}
+
 /// True when [path] is a Snapdragon-NPU QNN model (`*_qnn.onnx`). These always
 /// run on the NPU — the GPU-vs-CPU engine benchmark and the CPU-thread setting
 /// don't apply to them.
@@ -392,8 +401,8 @@ bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
 /// How the camera screen recovers after a model failed to load (round 151).
 /// [revertToPath] is what `SessionConfig.modelPath` should point at again;
 /// [toBundledDefault] is true when nothing was running natively (a failed
-/// initial load), so the recovery falls back to the always-present bundled
-/// nano instead of a previously loaded model.
+/// initial load), so the recovery falls back to the release's bundled MDV6
+/// model instead of a previously loaded model.
 class ModelLoadRecovery {
   final String revertToPath;
   final bool toBundledDefault;
@@ -422,7 +431,7 @@ ModelLoadRecovery? modelLoadRecovery({
   required String failedPath,
   required String currentConfigPath,
   required String loadedModelPath,
-  String bundledDefault = 'yolo26n',
+  String bundledDefault = kDefaultBundledModelPath,
 }) {
   if (!sameModelFile(failedPath, currentConfigPath)) return null;
   if (loadedModelPath.isNotEmpty &&

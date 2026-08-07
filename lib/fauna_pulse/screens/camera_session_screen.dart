@@ -2402,7 +2402,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final failedName = failedPath.split('/').last;
     final hint = modelLoadHint(failedPath, reason);
     final revertName = recovery.toBundledDefault
-        ? 'the bundled YOLO26 nano'
+        ? 'the bundled ${recovery.revertToPath.split('/').last}'
         : recovery.revertToPath.split('/').last;
     try {
       await showDialog<void>(
