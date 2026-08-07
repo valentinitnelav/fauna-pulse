@@ -1854,9 +1854,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'lowers the inference cap to match. The phone only '
             'supports certain rates, so the nearest supported one is used. '
             'The app ships set to 15 FPS (cooler); note that capping also '
-            'delays high-res photos — measured on the test phone, a '
-            'high-res photo shows the scene ~0.4 s after its trigger at '
-            '15 FPS vs ~0.17 s uncapped.',
+            'delays high-res photos in the rare cases when those are needed.',
         onChanged: (v) {
           setState(() => _c = _c.withCameraFpsCap(v.round()));
         },
