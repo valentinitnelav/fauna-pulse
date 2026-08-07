@@ -19,7 +19,7 @@ Supplementary sections are marked with **S**.
 
 ### A1. Get the app file (`.apk`) on your phone
 
-Save the `.apk` file to your phone: download it directly on the phone from a provided link, or copy it over USB from your computer (e.g. in the phones' `Download` folder).
+Save the `.apk` file to your phone: download it directly on the phone from a provided link (e.g. [Releases](https://github.com/valentinitnelav/fauna-pulse/releases)), or copy it over USB from your computer (e.g. in the phones' `Download` folder).
 
 ### A2. Install it
 
