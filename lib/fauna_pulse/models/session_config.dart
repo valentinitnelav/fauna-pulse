@@ -198,7 +198,7 @@ class SessionConfig {
   /// ceiling because the detector can only analyze frames the camera supplies.
   static const int defaultInferenceFps = 15;
   static const int minimumInferenceFps = 5;
-  static const int maximumInferenceFps = 120;
+  static const int maximumInferenceFps = 30;
   static const int defaultCameraFpsCap = 15;
   static const int minimumCameraFpsCap = 5;
   static const int maximumCameraFpsCap = 30;
@@ -797,8 +797,8 @@ class SessionConfig {
   );
 
   /// Highest inference FPS the settings UI may accept for this camera cap.
-  /// When the camera cap is removed (`0`), the inference field keeps its own
-  /// generous safety bound instead of guessing the device's hardware maximum.
+  /// When the camera cap is removed (`0`), inference keeps the shared 30 FPS
+  /// user-facing maximum instead of guessing the device's hardware maximum.
   int get maximumAllowedInferenceFps => cameraFpsCap > 0
       ? cameraFpsCap.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
       : maximumInferenceFps;

@@ -6886,3 +6886,23 @@ impossible inference ceiling above the positive camera hardware cap.
 - Updated SETTINGS_REFERENCE, PERF_AND_ROBUSTNESS_REVIEW, and the current-state
   overview. Verification: `flutter analyze` clean; focused config tests 59/59;
   full `flutter test test/fauna_pulse` 521 passed, 1 replay test skipped.
+
+
+## Round 196 (2026-08-07): align camera and inference maxima at 30 FPS
+
+Owner follow-up after Round 195 was committed: a 120 FPS inference choice was
+misleading beside the camera control's 30 FPS maximum and could encourage an
+unnecessarily high live-analysis setting.
+
+- Kept both factory defaults at 15 FPS, which remains the intended balance for
+  pollinator and wildlife monitoring.
+- Reduced `SessionConfig.maximumInferenceFps` from 120 to 30, matching
+  `maximumCameraFpsCap`. Camera `0` still removes the hardware cap, but the
+  inference input remains limited to 30 FPS.
+- Preserved the Round 195 dependency: a positive camera cap below 30 is the
+  tighter inference maximum, and lowering it also lowers the auto-throttle
+  minimum when necessary.
+- Updated the Power-tab help through the shared maximum, user documentation,
+  performance benchmark guidance, overview, and regression tests.
+- Verification: `flutter analyze` clean; focused config tests 59/59; full
+  `flutter test test/fauna_pulse` 521 passed, 1 replay test skipped.

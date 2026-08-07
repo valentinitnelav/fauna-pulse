@@ -521,8 +521,8 @@ speed; see C5.
 ### C2. [x] Parity benchmark against the Ultralytics demo (no code — owner-run)
 
 To compare our app to the demo apples-to-apples, reproduce its conditions in
-current FaunaPulse settings: **inference cap 120 FPS** (effectively uncapped
-against a ~30 FPS camera), **camera cap 0** (device full rate), **stream
+current FaunaPulse settings: **inference cap 30 FPS** (the app's live-analysis
+maximum), **camera cap 0** (device full rate), **stream
 640×480** (explicit pick), **motion gate off**, engine **GPU**. Builds before
 round 195 used inference cap 0 for the same experiment. Expected: ≈11–12 FPS,
 same as the demo.

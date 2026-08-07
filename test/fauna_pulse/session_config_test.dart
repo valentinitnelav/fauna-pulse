@@ -97,6 +97,10 @@ void main() {
       expect(const SessionConfig().inferenceFps, 15);
       expect(const SessionConfig().cameraFpsCap, 15);
       expect(SessionConfig.fromJson(const {}).inferenceFps, 15);
+      expect(
+        SessionConfig.maximumInferenceFps,
+        SessionConfig.maximumCameraFpsCap,
+      );
     });
 
     test('legacy inference 0 migrates to the explicit 15 FPS default', () {
@@ -122,12 +126,12 @@ void main() {
       expect(restored.inferenceFps, 24);
     });
 
-    test('camera 0 removes its cap and keeps a separate inference ceiling', () {
+    test('camera 0 removes its cap but inference keeps the shared maximum', () {
       final uncappedCamera = const SessionConfig()
           .withCameraFpsCap(0)
-          .withInferenceFps(200);
+          .withInferenceFps(60);
       expect(uncappedCamera.cameraFpsCap, 0);
-      expect(uncappedCamera.inferenceFps, 120);
+      expect(uncappedCamera.inferenceFps, 30);
     });
 
     test('lowering camera cap also lowers inference ceiling and floor', () {
