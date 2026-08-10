@@ -33,7 +33,7 @@ dependencies:
   # preview. (The original `flutter_markdown` was discontinued by the Flutter
   # team in 2025; `flutter_markdown_plus` is the maintained drop-in fork.)
   # "Markdown" = a plain-text way to mark up formatting, e.g. **bold** or - lists.
-  flutter_markdown_plus: ^1.0.3
+  flutter_markdown_plus: ^1.0.12
   # Pinned to ^12.x: share_plus 13.x ships a Swift Package umbrella that fails framework module verification under
   # Xcode 26.5 ("'Flutter/Flutter.h' file not found", "double-quoted include in framework header"). Revisit once the
   # upstream package re-publishes with a compatible module map.
