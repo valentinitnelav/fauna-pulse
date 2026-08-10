@@ -276,7 +276,7 @@ To understand the difference between **debug** & **release**, imagine preparing 
 
 ## S1. Getting the models
 
-Model weights (`.tflite` files) are **deliberately not stored in this repository**, for
+Model weights (`.tflite` files) are **deliberately not stored in this online repository**, for
 two reasons: they are large, and **some detectors belong to collaborators and must not
 be redistributed**.
 
@@ -289,7 +289,7 @@ be redistributed**.
 
 Imported models are discovered dynamically on the phone. For local development,
 models can also be placed in `assets/models/` / `assets/models/custom/` before a
-debug build (those folders stay git-ignored).
+debug or release build (those folders stay git-ignored).
 
 For a release build, `assets/models/bundled_models.txt` is the single list of
 weights to package. Put one repository-relative model path on each line. Blank
@@ -306,11 +306,11 @@ Then build normally:
 flutter build apk --release
 ```
 
-Only existing, listed files under `assets/models/` or
-`assets/models/custom/` are included and offered in the release app's model
-picker. Other local test weights remain untouched but are left out of the APK.
-If a listed weight cannot be found, the terminal prints its path and explains
-that it was skipped; this warning does not stop the build. Before sharing an
+Only existing `*.tflite` model weights listed in `fauna-pulse/assets/models/bundled_models.txt` 
+are included in the release app's model picker. 
+Other local test weights remain untouched but are left out of the APK file.
+If a listed weight cannot be found, the terminal prints its path with an warning and
+this warning does not stop the build. Before sharing an
 APK, make sure every listed model is licensed or otherwise permitted for
 redistribution.
 
