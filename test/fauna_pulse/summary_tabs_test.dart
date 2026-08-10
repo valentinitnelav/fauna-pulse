@@ -30,9 +30,34 @@ Future<void> pumpUntilFound(WidgetTester tester, Finder ready) async {
   expect(ready, findsWidgets, reason: 'content never appeared: $ready');
 }
 
+Future<void> expectSummaryRowValue(
+  WidgetTester tester,
+  Finder scrollable, {
+  required String label,
+  required String value,
+}) async {
+  final labelFinder = find.text(label);
+  await tester.scrollUntilVisible(
+    labelFinder,
+    200,
+    scrollable: scrollable,
+  );
+  final row = find
+      .ancestor(of: labelFinder, matching: find.byType(Row))
+      .first;
+  expect(
+    find.descendant(of: row, matching: find.text(value)),
+    findsOneWidget,
+  );
+}
+
 /// A session folder whose log records [photoCount] time-lapse photos, each
 /// with a real (tiny) JPEG on disk.
-Directory writeTimeLapseSession(int photoCount, {String? configExtra}) {
+Directory writeTimeLapseSession(
+  int photoCount, {
+  String? configExtra,
+  String? startExtra,
+}) {
   final tmp = Directory.systemTemp.createTempSync('summary_tabs');
   addTearDown(() {
     try {
@@ -56,7 +81,7 @@ Directory writeTimeLapseSession(int photoCount, {String? configExtra}) {
   }
   File('${tmp.path}/session.jsonl').writeAsStringSync([
     '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
-        '"battery_percent":80,'
+        '"battery_percent":80${startExtra ?? ''},'
         '"config":{"captureTrigger":"timelapse"${configExtra ?? ''}}}',
     ...captureLines,
     '{"type":"end_of_session","time_ms":60000,"ended_normally":true,'
@@ -158,6 +183,24 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(
+        find.text('Bounding box colors (if AI was used):'),
+        findsOneWidget,
+      );
+      final triggerLegend = find.textContaining(
+        'insect whose photo schedule triggered this shot',
+        findRichText: true,
+      );
+      final coDetectedLegend = find.textContaining(
+        'other insect detected in the same frame',
+        findRichText: true,
+      );
+      expect(triggerLegend, findsOneWidget);
+      expect(coDetectedLegend, findsOneWidget);
+      expect(
+        tester.getTopLeft(triggerLegend).dy,
+        lessThan(tester.getTopLeft(coDetectedLegend).dy),
+      );
 
       // 15 photos is under the slowness-warning threshold: the button loads
       // everything without a confirmation dialog.
@@ -175,14 +218,18 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       // A time-lapse session that ALSO carries detector/gate settings in its
-      // config (as every real config block does): those must be listed after
-      // the reveal, under "not applicable" notes — not hidden (round 187).
+      // config (as every real config block does): inert rows remain listed,
+      // but their saved defaults must read "Not applicable".
       final tmp = writeTimeLapseSession(
         1,
+        startExtra:
+            ',"camera_full_width_px":4000,"camera_full_height_px":3000',
         configExtra:
             ',"modelPath":"yolo26n","confidenceThreshold":0.25,'
             '"autoThrottle":true,"motionGateEnabled":true,'
-            '"timeLapseGapSeconds":30',
+            '"timeLapseGapSeconds":30,"scheduleEnabled":false,'
+            '"scheduleWindows":[{"start":360,"end":600}],'
+            '"scheduleDays":1',
       );
 
       await tester.pumpWidget(
@@ -218,22 +265,49 @@ void main() {
         scrollable: scrollable,
       );
       expect(find.textContaining('the detector never ran'), findsOneWidget);
-      // The detector settings are listed anyway (dimmed), not hidden.
+      // Inert rows remain visible but never show misleading saved defaults.
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Confidence threshold',
+        value: 'Not applicable',
+      );
       await tester.scrollUntilVisible(
-        find.text('Confidence threshold'),
+        find.textContaining('Motion gate was not applicable'),
         200,
         scrollable: scrollable,
       );
-      await tester.scrollUntilVisible(
-        find.textContaining('Motion gate — not used in time-lapse mode'),
-        200,
-        scrollable: scrollable,
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Time between bursts',
+        value: '30 s',
       );
-      await tester.scrollUntilVisible(
-        find.text('Time between bursts'),
-        200,
-        scrollable: scrollable,
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Maximum camera resolution this phone can deliver',
+        value: '4000 × 3000 px',
       );
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Scheduled recording',
+        value: 'No',
+      );
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Schedule windows',
+        value: 'Not applicable',
+      );
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Schedule days',
+        value: 'Not applicable',
+      );
+      expect(find.textContaining('06:00'), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
     },
@@ -330,14 +404,15 @@ void main() {
       await tester.tap(find.textContaining('All session settings'));
       await tester.pump();
       await tester.scrollUntilVisible(
-        find.textContaining('Time-lapse settings — not applicable'),
+        find.textContaining('Time-lapse settings were not applicable'),
         200,
         scrollable: scrollable,
       );
-      await tester.scrollUntilVisible(
-        find.text('Time between bursts'),
-        200,
-        scrollable: scrollable,
+      await expectSummaryRowValue(
+        tester,
+        scrollable,
+        label: 'Time between bursts',
+        value: 'Not applicable',
       );
 
       await tester.pumpWidget(const SizedBox());

@@ -538,16 +538,21 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   Round 197: Setup's Overview starts with "Capture mode" (AI detector,
   motion-triggered photos without AI, or time-lapse photo bursts without AI)
   before the date rows. In both no-AI modes, Model reads "Not applicable (no
-  AI detector used)" and Inference engine is omitted; the full recorded model
-  and engine settings remain available and dimmed in "All session settings".
-  Setup's full settings record sits behind a "▸ All session settings" reveal
-  and, since r187, lists EVERY recorded setting: the r147 mode-collapse is now
-  display-only dimming (`_stat(dim:)` + a "not applicable — recorded values"
-  note per inert group; e.g. detector rows in no-AI sessions, time-lapse rows
-  in AI sessions, gate tunables when the gate was off). The tab reads the
-  `config` block from the start record, so every new `SessionConfig` field
-  appears in the JSON automatically — but add a display row in
-  `_settingsSection()` when adding a setting (mind its `na:` flag).
+  AI detector used)" and Inference engine is omitted.
+  Round 198: "All session settings" still keeps rows for recorded settings,
+  but `add(na: true)` replaces every inert saved default with a muted
+  "Not applicable" value; the JSON record itself remains untouched. Current
+  dependencies include detector/tracker rows in no-AI modes, time-lapse rows
+  outside time-lapse, gate details while the gate is off, wake/torch leads
+  while their parent toggle is off, and the high-res companion in fast-photo
+  mode. Reference photos still show "off" when deliberately disabled.
+  Scheduled recording = No makes Schedule windows/days not applicable instead
+  of exposing their 06:00-10:00 defaults; when scheduling is on, Max session
+  length is not applicable. The camera row is labeled "Maximum camera
+  resolution this phone can deliver". The tab reads the `config` block from
+  the start record, so every new `SessionConfig` field appears in the JSON
+  automatically; add a display row in `_settingsSection()` when adding a
+  setting and mark dependencies with its `na:` flag.
   Graphs r187: below the timeline, a visit-length histogram (bin-width
   dropdown 1 s–1 h, pref `summary_duration_bin_s`; pure math in
   `logging/visit_stats.dart`, ≤60 bars + "≥" overflow bar) and a per-session
@@ -557,7 +562,10 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   slider/Show buttons); "Show all N photos" warns first above 300 photos
   (slow on phone, USB copy suggested); "Copy photos to gallery" block at the
   tab's bottom (HelpLabel ⓘ: extra storage, gallery-app indexing lag, copies
-  carry no boxes/metadata). r84: the power (W) graph + energy numbers render only for sessions with
+  carry no boxes/metadata). Round 198: the bounding-box legend is introduced
+  by "Bounding box colors (if AI was used)" and each color explanation is its
+  own wrapping line, never a combined truncated line.
+  r84: the power (W) graph + energy numbers render only for sessions with
   NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
   flags as fallback for older logs) — battery-terminal current measures charging, not
   consumption, while plugged in, so a note replaces the graph. Raw `power` records are

@@ -6924,3 +6924,30 @@ did not state the session's operating mode near the headline details.
 - Added a widget regression test covering row order and all three capture
   modes. Verification: `flutter test test/fauna_pulse/summary_tabs_test.dart`
   passed (5 tests).
+
+## Round 198 (2026-08-10): make summary applicability and photo legend explicit
+
+Owner review found two remaining sources of ambiguity in the Session summary:
+the Photos legend was compressed into one line, and muted Setup values could
+still look like settings that had affected the recorded session.
+
+- Clarified the Photos introduction for sessions without live AI. Added the
+  heading "Bounding box colors (if AI was used)" and placed the trigger-insect
+  and co-detected-insect explanations on separate wrapping lines.
+- Changed every existing `na:` settings row to display the literal value "Not
+  applicable" in the muted style instead of its stored default. The underlying
+  JSON remains unchanged, so scientific provenance and reproducibility are
+  preserved without exposing inactive defaults as if they were used.
+- Kept deliberate off states meaningful: Reference photos = off remains "off".
+  The high-res sync companion is now not applicable in fast-photo mode.
+- Made scheduling dependencies explicit. Scheduled recording = No now makes
+  Schedule windows and Schedule days not applicable, hiding the unused
+  06:00-10:00 default. When scheduling is enabled, Max session length is not
+  applicable because each schedule window controls the session.
+- Renamed "Camera resolution" to "Maximum camera resolution this phone can
+  deliver".
+- Expanded `summary_tabs_test.dart` to verify both legend lines and their
+  vertical order, explicit mode-dependent values, active time-lapse values,
+  the camera label, and disabled-schedule values. Verification:
+  `flutter test test/fauna_pulse/summary_tabs_test.dart` passed (5 tests);
+  `flutter analyze` found no issues.

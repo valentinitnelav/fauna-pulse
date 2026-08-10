@@ -921,7 +921,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     final rows = <Widget>[];
     // Adds a label/value row only when [value] is non-null (and non-empty
-    // text). [na] dims the row: recorded but had no effect in this mode.
+    // text). [na] replaces an inert recorded default with an explicit label,
+    // so it cannot be mistaken for a value that affected this session.
     void add(String label, Object? value, {String suffix = '', bool na = false}) {
       if (value == null) return;
       final text = value is bool
@@ -930,13 +931,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? _numStr(value)
           : value.toString();
       if (text.isEmpty) return;
-      rows.add(_stat(label, '$text$suffix', dim: na));
+      rows.add(_stat(label, na ? 'Not applicable' : '$text$suffix', dim: na));
     }
 
     // Capture-mode awareness (round 147, presentation reworked round 187):
     // the "not applicable" notes below mark whole groups the session's mode
-    // made inert; their rows follow dimmed. The log's config block registers
-    // every value regardless (see config_not_applicable there).
+    // made inert; each affected value reads "Not applicable". The log's config
+    // block still registers every value (see config_not_applicable there).
     final noAi = _motionOnlySession || _timeLapseSession;
     final modeName = _timeLapseSession
         ? 'time-lapse'
@@ -959,8 +960,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     rows.add(_subhead('Model & detection'));
     if (noAi) {
       addNote(
-        'Not applicable — the detector never ran in this session '
-        '($modeName mode). Recorded values:',
+        'Not applicable: the detector never ran in this session '
+        '($modeName mode).',
       );
     }
     add('Model', _setting('modelPath', 'model_path'), na: noAi);
@@ -1006,8 +1007,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       if (noAi) {
         addNote(
-          'Inference auto-throttle — not applicable (no detector running). '
-          'Recorded values:',
+          'Inference auto-throttle was not applicable because no detector '
+          'was running.',
         );
       }
       add('Auto-throttle', _setting('autoThrottle'), na: noAi);
@@ -1029,9 +1030,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final gateNa = _timeLapseSession;
       final gateOn = _setting('motionGateEnabled') == true;
       if (gateNa) {
-        addNote(
-          'Motion gate — not used in time-lapse mode. Recorded values:',
-        );
+        addNote('Motion gate was not applicable in time-lapse mode.');
       }
       add('Motion gate', _setting('motionGateEnabled'), na: gateNa);
       final gateDetailNa = gateNa || !gateOn;
@@ -1076,15 +1075,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // The session's operating mode (round 97 enum; older sessions carry the
     // motion-only bool shown in Heat management instead — add() skips null).
     add('Capture trigger', _setting('captureTrigger'));
-    // Time-lapse settings (round 97+). Shown in EVERY mode since round 187
-    // — dimmed under a note when the session didn't run in time-lapse.
+    // Time-lapse settings (round 97+). Shown in every mode since round 187,
+    // with explicit not-applicable values outside time-lapse.
     final tlNa = !_timeLapseSession;
     if (tlNa &&
         (_setting('timeLapseGapSeconds') != null ||
             _setting('timeLapseIntervalSeconds') != null)) {
       addNote(
-        'Time-lapse settings — not applicable ($modeName mode). '
-        'Recorded values:',
+        'Time-lapse settings were not applicable in $modeName mode.',
       );
     }
     // Round 174: the key became a BREAK between bursts. Pre-174 sessions
@@ -1149,7 +1147,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ? 'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)'
                   '${_timeLapseSession ? ' — not used in time-lapse mode' : ''}'
             : 'off',
-        na: _timeLapseSession || _setting('gtFramesEnabled') != true,
+        na: _timeLapseSession,
       );
     }
     // Round 108: high-res photos get a trigger-moment live crop next to them
@@ -1158,6 +1156,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add(
         'Sync companion (high-res)',
         _setting('stillSyncCompanion') == true ? 'on' : 'off',
+        na:
+            _setting('captureMode') == 'fast' ||
+            (_setting('captureMode') == null &&
+                _setting('fullResPhotos') == false),
       );
     }
     // Crop-and-export 1:1 lock (round 91) — only sessions recorded since then
@@ -1175,7 +1177,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Full-resolution photos', _setting('fullResPhotos'));
     }
     add(
-      'Camera resolution',
+      'Maximum camera resolution this phone can deliver',
       _dims(
         _startRec?['camera_full_width_px'],
         _startRec?['camera_full_height_px'],
@@ -1248,15 +1250,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // --- Session & sampling ---
     rows.add(_subhead('Session & sampling'));
+    final scheduleEnabled = _setting('scheduleEnabled');
     add(
       'Max session length',
       _setting('sessionMinutes', 'session_minutes'),
       suffix: ' min',
+      na: scheduleEnabled == true,
     );
     // Scheduled recording (only sessions recorded with the feature carry the
     // keys; add() skips null). The `schedule` block on the start record marks
     // which slot of a run THIS session was.
-    add('Scheduled recording', _setting('scheduleEnabled'));
+    add('Scheduled recording', scheduleEnabled);
     final schedWindows = _setting('scheduleWindows');
     if (schedWindows is List) {
       final labels = <String>[
@@ -1265,9 +1269,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             '${ScheduleWindow.hhmm((w['start'] as num).toInt())}–'
                 '${ScheduleWindow.hhmm((w['end'] as num).toInt())}',
       ];
-      if (labels.isNotEmpty) add('Schedule windows', labels.join(', '));
+      if (labels.isNotEmpty) {
+        add(
+          'Schedule windows',
+          labels.join(', '),
+          na: scheduleEnabled != true,
+        );
+      }
     }
-    add('Schedule days', _setting('scheduleDays'));
+    add(
+      'Schedule days',
+      _setting('scheduleDays'),
+      na: scheduleEnabled != true,
+    );
     final sched = _startRec?['schedule'];
     if (sched is Map) {
       add(
@@ -1313,8 +1327,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     if (noAi) {
       addNote(
-        'Not applicable — no tracking without the detector ($modeName mode). '
-        'Recorded values:',
+        'Not applicable: tracking requires the detector ($modeName mode).',
       );
     }
     add(
@@ -1365,8 +1378,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return [
       const Text(
         'Everything chosen at the start of this session, so the run can be '
-        'reproduced or recalled later. Dimmed rows were recorded but had no '
-        'effect in this session\'s capture mode (marked not applicable).',
+        'reproduced or recalled later. "Not applicable" means a saved default '
+        'did not affect this session because of its mode or another setting.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 8),
@@ -1730,7 +1743,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // tab, round 187): one track id = one recorded visit, so it belongs
     // right above the timeline it summarizes.
     _stat(
-      'Insect visits (track IDs)',
+      'Visits (track IDs)',
       _motionOnlySession
           ? 'n/a (motion-only capture — detector off)'
           : _timeLapseSession
@@ -1739,13 +1752,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ),
     const SizedBox(height: 8),
     const Text(
-      'Visit timeline (each lane is one insect)',
+      'Visit timeline (each lane is one tracked object)',
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 4),
     const Text(
-      'Time runs left → right across the session. A bar shows when an insect was '
-      'on the flower; overlapping bars were on it at the same time.',
+      'Time runs left → right across the session. A bar shows when an object was '
+      'within the ROI; overlapping bars were on it at the same time.',
       style: TextStyle(color: Colors.white70, fontSize: 12),
     ),
     const SizedBox(height: 12),
@@ -2027,23 +2040,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<Widget> _photoSection() {
     return [
       const Text(
-        'Saved photos (with detection boxes)',
+        'Saved photos (with detection boxes if AI was used)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
         'Up to $_randomSampleCount photos, picked at random across the '
-        'session, are shown with the detection boxes recorded for each — a '
-        'quick check that the results make visual sense. Swipe left/right to '
-        'step through them (always in capture order). Reference photos — '
-        'taken on a fixed clock regardless of detections — are mixed in and '
-        'marked with a chip; they have no boxes by design.',
+        'session, are shown. If AI was applied, predicted boxes are displayed too. '
+        'Swipe left/right, or use the navigation arrows to '
+        'step through them (always in capture order). Reference photos '
+        '(taken on a fixed clock regardless of detections) are mixed in and '
+        'marked; they have no prediction boxes by design.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 4),
-      // Box-color legend (round 86): a photo shows EVERY insect detected in
+      // Box-color legend (round 86): a photo shows EVERY object detected in
       // the frame that scheduled it, not only the one(s) whose time-lapse
       // step was due.
+      const Text(
+        'Bounding box colors (if AI was used):',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 2),
       const Text.rich(
         TextSpan(
           style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -2052,13 +2070,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               text: '■ ',
               style: TextStyle(color: _BoxPainter.triggerColor),
             ),
-            TextSpan(text: 'insect whose photo schedule triggered this shot'),
-            TextSpan(text: '   '),
+            TextSpan(text: 'tracked object whose photo schedule triggered this shot'),
+          ],
+        ),
+      ),
+      const Text.rich(
+        TextSpan(
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+          children: [
             TextSpan(
               text: '■ ',
               style: TextStyle(color: _BoxPainter.coDetectedColor),
             ),
-            TextSpan(text: 'other insect detected in the same frame'),
+            TextSpan(text: 'other target objects detected in the same frame'),
           ],
         ),
       ),
@@ -2106,16 +2130,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'high-res photo itself, plus a lower-resolution "_live" '
             'companion — the same ROI cropped from the fast camera stream '
             'at the exact trigger moment. The viewer shows the companion '
-            'first (the detection boxes match the insect\'s real position '
+            'first (the detection boxes match the object\'s real position '
             'there); the ⚡ button above the photo switches to the high-res '
             'one, which is sharper but shows the scene a fraction of a '
-            'second later (its "Lag" row), so a fast insect can have moved '
+            'second later (its "Lag" row), so a fast objects can have moved '
             'or left. On the high-res view the boxes are re-matched by time '
             'to the photo\'s real content moment when the log carries the '
             'needed timestamps (recorded from this app version on). Taking '
             'a high-res photo briefly pauses the detector, so there is '
             'often no frame at the photo\'s exact moment — the app then '
-            'estimates each insect\'s position by interpolating between '
+            'estimates each object\'s position by interpolating between '
             'the frames just before and after the pause, or shows the '
             'nearest available frame; the "Boxes" row states exactly what '
             'was used.',
@@ -2368,7 +2392,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         key: _timelineKey,
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          'Visit timeline hidden — ${ids.length} insect'
+          'Visit timeline hidden — ${ids.length} object track ID'
           '${ids.length == 1 ? '' : 's'}. Use the button below to show it.',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
@@ -2420,8 +2444,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  /// One label/value row. [dim] renders it muted — used for recorded
-  /// settings that had no effect in the session's mode (round 187).
+  /// One label/value row. [dim] renders explicit "Not applicable" rows muted.
   Widget _stat(String label, String value, {bool dim = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Row(
@@ -2472,8 +2495,8 @@ class _DetBox {
   final double left, top, right, bottom;
   final String label;
 
-  /// True when this insect's time-lapse schedule is what triggered the photo;
-  /// false for insects that simply happened to be detected in the same frame.
+  /// True when this object's time-lapse schedule is what triggered the photo;
+  /// false for target objects that simply happened to be detected in the same frame.
   final bool triggered;
 
   /// True for boxes found by the post-hoc analysis run (round 137) — drawn
@@ -2635,7 +2658,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// (round 111, ⚡ tool button). Viewer-wide like [_showBoxes]; photos
   /// without a companion (fast-path photos are already live crops) keep
   /// showing their own file. Defaults to the companion (round 112): it is
-  /// the exact trigger moment, so the detection boxes match the insect's
+  /// the exact trigger moment, so the detection boxes match the object's
   /// position — the later high-res photo is one tap away.
   bool _showLive = true;
 
@@ -2744,7 +2767,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       });
 
   /// Applies zoom factor [s] around the point currently at the viewport
-  /// centre — so slider zooming doesn't jump away from an insect the user
+  /// centre — so slider zooming doesn't jump away from an object the user
   /// pinch-panned to — clamping the pan so the photo keeps covering the
   /// viewport (InteractiveViewer only enforces its boundary during gestures,
   /// not for programmatic transforms).
@@ -3004,7 +3027,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     final hasRect = _cropSceneRect != null;
     final String label;
     if (!hasRect) {
-      label = 'Drag a box around the insect';
+      label = 'Drag a box around the target to crop it out of the photo';
     } else if (size == null) {
       label = 'Crop set';
     } else {
@@ -3106,14 +3129,14 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             ),
             // Round 111/112: flip between a high-res photo and its `_live` companion —
             // only offered when this session saved any. The companion is the
-            // default view (boxes match the insect's true position).
+            // default view (boxes match the target object's true position).
             if (widget.photos.any((p) => p.liveFile != null))
               _toolButton(
                 icon: Icons.bolt,
                 tooltip:
                     'Switch between the trigger-moment "_live" crop (shown '
                     'by default — lower resolution, but the detection boxes '
-                    'match the insect\'s real position) and the '
+                    'match the object\'s real position) and the '
                     'high-resolution photo (sharper, but shows the scene a '
                     'fraction of a second later).',
                 active: _showLive,
@@ -3122,7 +3145,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             _toolButton(
               icon: Icons.crop,
               tooltip:
-                  'Crop & export: drag a box around an insect, '
+                  'Crop & export: drag a box around a target object, '
                   'then save it to the Gallery or share it to an '
                   'identification app (zoom in first if needed)',
               active: _cropMode,
@@ -3222,7 +3245,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                               // Two-finger pinch zooms/pans (InteractiveViewer);
                               // double-tap resets to 1×. The box overlay sits
                               // INSIDE the transformed child so it scales/pans
-                              // with the photo and stays glued to the insects.
+                              // with the photo and stays glued to the tracked objects.
                               GestureDetector(
                                 onDoubleTap: () => _setZoom(1),
                                 child: InteractiveViewer(
@@ -3408,7 +3431,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                               // the export rectangle. Points are converted to
                               // the photo's scene coordinates immediately
                               // (toScene), so the rectangle stays glued to the
-                              // insect however the view is zoomed or panned.
+                              // tracked object however the view is zoomed or panned.
                               if (_cropMode && i == _page)
                                 GestureDetector(
                                   behavior: HitTestBehavior.opaque,
@@ -3484,7 +3507,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                         ),
                         child: Text(
                           _cropSceneRect == null
-                              ? 'Crop: drag a box around the insect'
+                              ? 'Crop: drag a box around the object'
                               : 'Crop: drag inside the box to move it, '
                                     'outside to redraw',
                           style: const TextStyle(
@@ -3756,15 +3779,15 @@ class _BoxPainter extends CustomPainter {
   /// photo's (pre-zoom) coordinates, so stroke width and label size are
   /// divided by this to keep a constant ON-SCREEN thickness at any zoom —
   /// otherwise an 8× zoom turns the 2 px border into a fat 16 px band and the
-  /// label into a banner covering the insect.
+  /// label into a banner covering the target object.
   final double zoom;
   _BoxPainter(this.boxes, [this.zoom = 1]);
 
-  /// Box color of the insect(s) whose time-lapse schedule triggered the photo
+  /// Box color of the object(s) whose time-lapse schedule triggered the photo
   /// (the color all boxes used before round 86).
   static const triggerColor = Color(0xFF00E5FF);
 
-  /// Box color of insects that were detected in the same frame but did not
+  /// Box color of objects that were detected in the same frame but did not
   /// trigger the photo themselves.
   static const coDetectedColor = Color(0xFFFFC107);
 
