@@ -5,6 +5,7 @@
 // stays rejected because the native layer cannot run it.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/models/bundled_models.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 
 void main() {
@@ -157,30 +158,59 @@ void main() {
     expect(ModelCatalog.bundledIds, {'yolo26n'});
   });
 
-  test('release exposes only the two tester MDV6 assets', () {
-    final visible = visibleBundledCustomAssets(const [
-      'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
-      'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
-      'assets/models/custom/MDV6-yolov10-c_int8_640.tflite',
-      'assets/models/custom/arthropod_yolov11_int8.tflite',
+  test('bundled-model manifest ignores comments and normalizes paths', () {
+    final paths = parseBundledModelsManifest('''
+# release tester weights
+/fauna-pulse/assets/models/yolo26n_int8.tflite
+assets/models/custom/a.tflite
+./assets/models/custom/b_qnn.onnx
+
+''');
+    expect(paths, {
       'assets/models/yolo26n_int8.tflite',
-    ], releaseMode: true);
+      'assets/models/custom/a.tflite',
+      'assets/models/custom/b_qnn.onnx',
+    });
+  });
+
+  test('release exposes only assets selected by the text manifest', () {
+    final visible = visibleBundledModelAssets(
+      const [
+        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+        'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
+        'assets/models/custom/MDV6-yolov10-c_int8_640.tflite',
+        'assets/models/custom/arthropod_yolov11_int8.tflite',
+        'assets/models/yolo26n_int8.tflite',
+      ],
+      releaseMode: true,
+      releaseBundledModelPaths: const {
+        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+        'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
+        'assets/models/yolo26n_int8.tflite',
+      },
+    );
     expect(visible, [
       'assets/models/custom/MDV6-yolov10-c_float16_256.tflite',
       'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
+      'assets/models/yolo26n_int8.tflite',
     ]);
   });
 
-  test('debug exposes every supported custom test asset', () {
-    final visible = visibleBundledCustomAssets(const [
-      'assets/models/custom/z.tflite',
-      'assets/models/custom/a_qnn.onnx',
-      'assets/models/custom/readme.txt',
-      'assets/models/top-level.tflite',
-    ], releaseMode: false);
-    expect(visible, [
-      'assets/models/custom/a_qnn.onnx',
-      'assets/models/custom/z.tflite',
-    ]);
-  });
+  test(
+    'debug exposes supported local weights except its special YOLO entry',
+    () {
+      final visible = visibleBundledModelAssets(const [
+        'assets/models/custom/z.tflite',
+        'assets/models/custom/a_qnn.onnx',
+        'assets/models/custom/readme.txt',
+        'assets/models/top-level.tflite',
+        'assets/models/yolo26n_int8.tflite',
+      ], releaseMode: false);
+      expect(visible, [
+        'assets/models/custom/a_qnn.onnx',
+        'assets/models/custom/z.tflite',
+        'assets/models/top-level.tflite',
+      ]);
+    },
+  );
 }

@@ -6951,3 +6951,29 @@ still look like settings that had affected the recorded session.
   the camera label, and disabled-schedule values. Verification:
   `flutter test test/fauna_pulse/summary_tabs_test.dart` passed (5 tests);
   `flutter analyze` found no issues.
+
+## Round 199 (2026-08-10): manifest-controlled release model bundle
+
+Release APK model selection is no longer duplicated as a hard-coded Gradle and
+Dart allowlist. The maintainer can now change the tester model set by editing
+`assets/models/bundled_models.txt` and running the normal release command.
+
+- Gradle reads one path per nonblank, non-comment line. It accepts both
+  `assets/models/...` and `/fauna-pulse/assets/models/...` forms.
+- `copyFlutterAssetsRelease` keeps the manifest and only its listed model
+  weights. Source weights remain untouched. Missing listed files print a clear
+  warning and the release build continues with the remaining models.
+- `ModelCatalog` reads the bundled manifest in release mode, so supported
+  listed weights directly under `assets/models/` and in `custom/` are
+  selectable in the app. Debug builds still expose all supported local weights,
+  with YOLO26 retaining its special debug entry.
+- Added unit coverage for path normalization, comment handling, top-level model
+  support and manifest-based release visibility. Updated INSTALL.md,
+  RELEASE_PLAN.md and AGENT_CHANGELOG_OVERVIEW.md.
+- Verification: Gradle preflight found 3 of 3 listed files. A temporary missing
+  entry printed the intended warning and the task still ended with
+  `BUILD SUCCESSFUL`. The 20 focused model-catalog tests passed and
+  `flutter analyze` found no issues. `flutter build apk --release` built a
+  127.1 MB APK. Archive inspection found exactly the manifest, YOLO26 INT8,
+  MDV6 INT8 256 and MDV6 float16 256. Unlisted ArthroNat and 320 px weights
+  were absent.

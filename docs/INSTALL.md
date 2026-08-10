@@ -205,7 +205,7 @@ flutter build apk --release     # or: flutter build apk --debug (but slower app 
 #   ✓ Built build/app/outputs/flutter-apk/app-release.apk (122.2MB)
 ```
 
-The file appears at `.../build/app/outputs/flutter-apk/` 
+The file appears at `.../fauna-pulse/build/app/outputs/flutter-apk/`
 (e.g.: `app-release.apk` and `app-release.apk.sha1`).
 Note that these files are overwritten. 
 That's exactly the file used in **Track A**. Share it via a GitHub Release or a private link.
@@ -289,10 +289,30 @@ be redistributed**.
 
 Imported models are discovered dynamically on the phone. For local development,
 models can also be placed in `assets/models/` / `assets/models/custom/` before a
-debug build (those folders stay git-ignored). Release builds deliberately package
-only the two tester models listed in
-`lib/fauna_pulse/models/bundled_models.dart`; keep the matching allowlist in
-`android/app/build.gradle` synchronized when the release model set changes.
+debug build (those folders stay git-ignored).
+
+For a release build, `assets/models/bundled_models.txt` is the single list of
+weights to package. Put one repository-relative model path on each line. Blank
+lines and lines beginning with `#` are ignored. Both of these path styles work:
+
+```text
+assets/models/my_model.tflite
+/fauna-pulse/assets/models/custom/my_other_model.tflite
+```
+
+Then build normally:
+
+```bash
+flutter build apk --release
+```
+
+Only existing, listed files under `assets/models/` or
+`assets/models/custom/` are included and offered in the release app's model
+picker. Other local test weights remain untouched but are left out of the APK.
+If a listed weight cannot be found, the terminal prints its path and explains
+that it was skipped; this warning does not stop the build. Before sharing an
+APK, make sure every listed model is licensed or otherwise permitted for
+redistribution.
 
 ## S2. Pulling data from the smartphone
 

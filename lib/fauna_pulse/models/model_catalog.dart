@@ -93,19 +93,32 @@ class ModelCatalog {
 
   static const bundledIds = {kLocalYolo26ModelId};
 
-  /// Folder (inside the app bundle) holding custom detectors shipped with the app.
-  /// Every supported model file here is offered automatically — see
-  /// [_bundledCustomAssets].
-  static const bundledCustomDir = 'assets/models/custom/';
+  /// Parent folder for both top-level and custom bundled model assets.
+  static const bundledModelsDir = 'assets/models/';
 
   static final _channel = ChannelConfig.createSingleImageChannel();
 
-  /// Lists bundled custom-model assets by reading the build's AssetManifest.
-  /// Debug builds expose every local test weight. Release builds expose only
-  /// [kReleaseBundledModelPaths], matching the Android APK asset allowlist.
-  static Future<List<String>> _bundledCustomAssets() async {
+  /// Lists bundled model assets by reading Flutter's AssetManifest. Debug builds
+  /// expose all local weights (with YOLO26 kept as its special official entry).
+  /// Release builds read the same text allowlist used by the Android asset copy.
+  static Future<List<String>> _bundledAssets() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    return visibleBundledCustomAssets(manifest.listAssets());
+    var releaseBundledModelPaths = const <String>{};
+    if (kReleaseMode) {
+      try {
+        releaseBundledModelPaths = parseBundledModelsManifest(
+          await rootBundle.loadString(kBundledModelsManifestPath),
+        );
+      } catch (e) {
+        // A malformed/missing manifest yields no bundled picker entries. The
+        // release build already prints a warning explaining how to fix it.
+        logSwallowed('bundled_models_manifest', e);
+      }
+    }
+    return visibleBundledModelAssets(
+      manifest.listAssets(),
+      releaseBundledModelPaths: releaseBundledModelPaths,
+    );
   }
 
   /// The app's own models folder (created if missing). Imported models are
@@ -133,7 +146,7 @@ class ModelCatalog {
   static Future<List<ModelEntry>> build() async {
     final entries = <ModelEntry>[];
 
-    for (final asset in await _bundledCustomAssets()) {
+    for (final asset in await _bundledAssets()) {
       final name = asset.split('/').last;
       final meta = await _inspect(asset);
       entries.add(
@@ -378,17 +391,21 @@ bool isSupportedModelFileName(String name) {
   return n.endsWith('.tflite') || n.endsWith('_qnn.onnx');
 }
 
-/// Filters and sorts custom assets for the current build type. This is public
-/// only so the release allowlist can be unit-tested without building an APK.
-List<String> visibleBundledCustomAssets(
+/// Filters and sorts bundled model assets for the current build type. This is
+/// public only so the manifest-based release policy can be unit-tested without
+/// building an APK.
+List<String> visibleBundledModelAssets(
   Iterable<String> assets, {
   bool releaseMode = kReleaseMode,
+  Set<String> releaseBundledModelPaths = const {},
 }) {
   final visible = assets.where(
     (p) =>
-        p.startsWith(ModelCatalog.bundledCustomDir) &&
+        p.startsWith(ModelCatalog.bundledModelsDir) &&
         isSupportedModelFileName(p) &&
-        (!releaseMode || kReleaseBundledModelPaths.contains(p)),
+        (releaseMode
+            ? releaseBundledModelPaths.contains(p)
+            : p != kLocalYolo26ModelPath),
   );
   return visible.toList()..sort();
 }

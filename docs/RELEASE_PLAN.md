@@ -40,7 +40,7 @@ yet, no release keystore, docs written for researchers.
 
 ## Build-config state
 
-Fixed in rounds 158 and 194:
+Fixed in rounds 158, 194 and 199:
 
 - [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
@@ -48,11 +48,11 @@ Fixed in rounds 158 and 194:
 - [x] Round 194 removed `fetchBundledModels` from the build graph. The retained
   `scripts/fetch_bundled_models.sh` is a manual example only and is never executed by
   `flutter build`.
-- [x] Release builds require both tester weights (escape hatch:
-  `-PallowMissingBundledModels`) and package only
-  `MDV6-yolov10-c_int8_256.tflite` plus
-  `MDV6-yolov10-c_float16_256.tflite`. YOLO26 and all other local debug weights are
-  excluded from the APK without deleting the source files.
+- [x] Round 199 made `assets/models/bundled_models.txt` the single release
+  allowlist. The normal `flutter build apk --release` command packages each
+  existing listed weight from `assets/models/` or `assets/models/custom/`;
+  missing entries warn without failing, and unlisted local weights are excluded
+  without deleting the source files. The release model picker uses the same list.
 - [x] `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
   section B4 make signing setup a one-command step.
 

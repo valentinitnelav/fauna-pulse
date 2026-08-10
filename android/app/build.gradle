@@ -97,33 +97,80 @@ android {
     }
 }
 
-// These are the only model weights intentionally shipped to testers. Model
-// binaries remain git-ignored, so the maintainer places both files locally before
-// a release build. Keep this list in sync with kReleaseBundledModelPaths in
-// lib/fauna_pulse/models/bundled_models.dart.
-def releaseBundledModels = [
-    "assets/models/custom/MDV6-yolov10-c_int8_256.tflite",
-    "assets/models/custom/MDV6-yolov10-c_float16_256.tflite",
-]
-def allowMissingBundledModels = project.hasProperty("allowMissingBundledModels")
-
-// Fail fast before compilation when release signing or either tester model is
-// missing. Debug and profile builds are unaffected.
-
-tasks.matching { it.name == "preReleaseBuild" }.configureEach {
-    doFirst {
-        def missingModels = releaseBundledModels.findAll {
-            !new File(rootProject.projectDir, "../${it}").isFile()
+// Model weights remain git-ignored. For a release APK, the maintainer chooses
+// exactly which local weights to ship by listing their repository-relative paths
+// in assets/models/bundled_models.txt. Paths may start with either
+// "assets/models/..." or "/fauna-pulse/assets/models/...".
+def bundledModelsManifestPath = "assets/models/bundled_models.txt"
+def bundledModelsManifest = new File(
+    rootProject.projectDir,
+    "../${bundledModelsManifestPath}"
+)
+def flutterProjectDirName = rootProject.projectDir.parentFile.name
+def normalizeBundledModelPath = { String listedPath ->
+    def path = listedPath.trim().replace('\\', '/')
+    while (path.startsWith("./")) path = path.substring(2)
+    while (path.startsWith("/")) path = path.substring(1)
+    if (path.startsWith("${flutterProjectDirName}/")) {
+        path = path.substring(flutterProjectDirName.length() + 1)
+    }
+    return path
+}
+def releaseBundledModelEntries = []
+if (bundledModelsManifest.isFile()) {
+    bundledModelsManifest.eachLine { line ->
+        def listedPath = line.trim()
+        if (listedPath && !listedPath.startsWith("#")) {
+            releaseBundledModelEntries.add([
+                listedPath: listedPath,
+                assetPath: normalizeBundledModelPath(listedPath),
+            ])
         }
-        if (!missingModels.isEmpty() && !allowMissingBundledModels) {
-            throw new GradleException(
-                "Required tester model(s) are missing, refusing to build the release APK.\n\n" +
-                "Place these files at the listed paths before building:\n    " +
-                missingModels.join("\n    ") + "\n\n" +
-                "or, to build intentionally without them:\n" +
-                "    flutter build apk --release -PallowMissingBundledModels"
+    }
+}
+def releaseBundledModels = releaseBundledModelEntries.collect {
+    it.assetPath
+}.toSet()
+
+// Check the manifest before a release build. A missing weight is intentionally
+// only a warning: the APK still builds, and every other listed model is bundled.
+tasks.register("checkReleaseBundledModels") {
+    doLast {
+        if (!bundledModelsManifest.isFile()) {
+            logger.warn(
+                "WARNING: ${bundledModelsManifestPath} was not found. " +
+                "No local model weights will be bundled in this release APK."
+            )
+            return
+        }
+
+        def missingEntries = releaseBundledModelEntries.findAll {
+            !new File(rootProject.projectDir, "../${it.assetPath}").isFile()
+        }
+        missingEntries.each { entry ->
+            logger.warn(
+                "WARNING: A model weight listed in ${bundledModelsManifestPath} " +
+                "does not exist and will not be bundled:\n" +
+                "    ${entry.listedPath}\n" +
+                "Check the path in ${bundledModelsManifestPath} or place the " +
+                "model file at that location. The release build will continue."
             )
         }
+
+        def foundCount = releaseBundledModelEntries.size() - missingEntries.size()
+        logger.lifecycle(
+            "Release model bundle: ${foundCount} of " +
+            "${releaseBundledModelEntries.size()} listed model file(s) found."
+        )
+    }
+}
+
+// Fail fast before compilation only when release signing is missing. Debug and
+// profile builds are unaffected; missing model weights are handled above.
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn("checkReleaseBundledModels")
+    doFirst {
         if (!hasReleaseSigning) {
             throw new GradleException(
                 "Release signing is not configured, refusing to build a release APK " +
@@ -157,10 +204,11 @@ dependencies {
     implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
 }
 
-// pubspec.yaml declares the model directories so local debug builds can use any
+// pubspec.yaml declares both model directories so local debug builds can use any
 // ignored test weight without editing source. For release builds, filter the
-// Flutter asset copy to the explicit tester allowlist above. The source files are
-// untouched, and yolo26n_int8.tflite is neither required nor shipped.
+// Flutter asset copy to the paths read from bundled_models.txt. Keep the manifest
+// itself in the APK so the Dart model catalog can apply the same list at runtime.
+// Source model files are never changed or removed.
 tasks.matching { it.name == "copyFlutterAssetsRelease" }.configureEach {
     eachFile { details ->
         def path = details.path.replace('\\', '/')
@@ -168,7 +216,8 @@ tasks.matching { it.name == "copyFlutterAssetsRelease" }.configureEach {
         def modelPrefix = "${prefix}assets/models/"
         if (path.startsWith(modelPrefix)) {
             def assetPath = path.substring(prefix.length())
-            if (!releaseBundledModels.contains(assetPath)) {
+            if (assetPath != bundledModelsManifestPath &&
+                !releaseBundledModels.contains(assetPath)) {
                 details.exclude()
             }
         }
