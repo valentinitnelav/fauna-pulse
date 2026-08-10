@@ -67,6 +67,77 @@ Directory writeTimeLapseSession(int photoCount, {String? configExtra}) {
 
 void main() {
   testWidgets(
+    'Setup Overview starts with capture mode and reports a model only for AI',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final cases = <({String trigger, String label, bool usesAi})>[
+        (trigger: 'detector', label: 'AI detector', usesAi: true),
+        (
+          trigger: 'motion',
+          label: 'Motion-triggered photos (no AI)',
+          usesAi: false,
+        ),
+        (
+          trigger: 'timelapse',
+          label: 'Time-lapse photo bursts (no AI)',
+          usesAi: false,
+        ),
+      ];
+
+      for (final c in cases) {
+        final tmp = Directory.systemTemp.createTempSync(
+          'summary_overview_${c.trigger}',
+        );
+        addTearDown(() {
+          try {
+            tmp.deleteSync(recursive: true);
+          } catch (_) {}
+        });
+        const modelPath = '/models/field_detector.tflite';
+        File('${tmp.path}/session.jsonl').writeAsStringSync(
+          [
+            '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
+                '"model_path":"$modelPath","accelerator":"GPU",'
+                '"config":{"captureTrigger":"${c.trigger}",'
+                '"modelPath":"$modelPath"}}',
+            '{"type":"end_of_session","time_ms":60000,'
+                '"ended_normally":true,"unique_track_count":0}',
+          ].join('\n'),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionSummaryScreen(
+              logFile: File('${tmp.path}/session.jsonl'),
+              initialTabIndex: 2,
+            ),
+          ),
+        );
+        await pumpUntilFound(tester, find.text('Overview'));
+
+        expect(find.text(c.label), findsOneWidget);
+        expect(
+          find.text(
+            c.usesAi ? modelPath : 'Not applicable (no AI detector used)',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Inference engine'),
+          c.usesAi ? findsOneWidget : findsNothing,
+        );
+        expect(
+          tester.getTopLeft(find.text('Capture mode')).dy,
+          lessThan(tester.getTopLeft(find.text('Date')).dy),
+        );
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      }
+    },
+  );
+
+  testWidgets(
     'Photos tab auto-loads a random sample of 10 and "Show all" loads the rest',
     (tester) async {
       SharedPreferences.setMockInitialValues({});

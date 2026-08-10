@@ -819,6 +819,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// detector, no motion check.
   bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
+  /// Plain-language mode shown first in Setup's Overview. Sessions older
+  /// than the capture-trigger setting were AI-detector sessions unless they
+  /// carry the legacy motion-only flag handled above.
+  String get _captureModeLabel => _timeLapseSession
+      ? 'Time-lapse photo bursts (no AI)'
+      : _motionOnlySession
+      ? 'Motion-triggered photos (no AI)'
+      : 'AI detector';
+
+  bool get _noAiSession => _motionOnlySession || _timeLapseSession;
+
   /// True only for sessions recorded with the short-lived round-148 build,
   /// where diagnostic logging was opt-in and off by default: those logs have
   /// no temperature/FPS/power records by design, so the Extra graphs section
@@ -1450,6 +1461,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return [
       const Text('Overview', style: TextStyle(fontWeight: FontWeight.bold)),
       const SizedBox(height: 4),
+      _stat('Capture mode', _captureModeLabel),
       _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
       _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
       _stat('End time', endLabel),
@@ -1460,8 +1472,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           case final SessionLocation loc)
         _stat('Location', '${loc.label} (${loc.source})'),
       _stat('Session duration', _durationLabel),
-      _stat('Model', _model ?? 'unknown'),
-      if (_accelerator != null && _accelerator!.isNotEmpty)
+      _stat(
+        'Model',
+        _noAiSession
+            ? 'Not applicable (no AI detector used)'
+            : _model ?? 'unknown',
+      ),
+      if (!_noAiSession && _accelerator != null && _accelerator!.isNotEmpty)
         _stat('Inference engine', _accelerator!),
       _stat(
         'Ended normally',

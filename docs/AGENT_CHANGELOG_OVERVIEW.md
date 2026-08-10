@@ -535,6 +535,11 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   Graphs tab as "Insect visits (track IDs)" right above the timeline, gallery
   copying moved to Photos, and Delete lives only in the home gear menu.
   `initialTabIndex` callers use the r187 indices (Photos 0, Graphs 1, Setup 2).
+  Round 197: Setup's Overview starts with "Capture mode" (AI detector,
+  motion-triggered photos without AI, or time-lapse photo bursts without AI)
+  before the date rows. In both no-AI modes, Model reads "Not applicable (no
+  AI detector used)" and Inference engine is omitted; the full recorded model
+  and engine settings remain available and dimmed in "All session settings".
   Setup's full settings record sits behind a "▸ All session settings" reveal
   and, since r187, lists EVERY recorded setting: the r147 mode-collapse is now
   display-only dimming (`_stat(dim:)` + a "not applicable — recorded values"

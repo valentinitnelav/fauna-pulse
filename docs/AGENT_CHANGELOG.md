@@ -6906,3 +6906,21 @@ unnecessarily high live-analysis setting.
   performance benchmark guidance, overview, and regression tests.
 - Verification: `flutter analyze` clean; focused config tests 59/59; full
   `flutter test test/fauna_pulse` 521 passed, 1 replay test skipped.
+
+## Round 197 (2026-08-10): make session-summary mode and model use explicit
+
+The Setup tab's short Overview could show a configured model path for motion
+and time-lapse sessions even though neither mode ran the AI detector. It also
+did not state the session's operating mode near the headline details.
+
+- Added Capture mode as the first Overview row, using plain-language values
+  consistent with Setup: AI detector, Motion-triggered photos (no AI), or
+  Time-lapse photo bursts (no AI).
+- AI sessions continue to show the model and inference engine actually loaded.
+  Motion and time-lapse sessions now show Model as "Not applicable (no AI
+  detector used)" and omit the inapplicable Inference engine row.
+- Kept the complete recorded configuration unchanged in "All session settings",
+  where model and detector values remain visible but dimmed for no-AI sessions.
+- Added a widget regression test covering row order and all three capture
+  modes. Verification: `flutter test test/fauna_pulse/summary_tabs_test.dart`
+  passed (5 tests).
