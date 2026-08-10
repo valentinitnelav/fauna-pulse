@@ -24,7 +24,7 @@ dependencies:
   battery_plus: ^6.0.0 # battery level logged at session start/stop
   device_info_plus: ^11.0.0 # phone model / device id for session metadata
   screen_brightness: ^2.1.0 # dim-to-black power-saving mode
-  permission_handler: ^11.3.0 # request camera permission from Flutter
+  permission_handler: ^13.0.0 # request camera permission from Flutter
   geolocator: ^13.0.1 # one stable GPS fix per session (no continuous tracking)
   shared_preferences: ^2.3.0 # persist session settings across app restarts
   wakelock_plus: ^1.2.0 # keep the screen awake while a session records
