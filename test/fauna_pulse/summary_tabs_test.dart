@@ -188,11 +188,11 @@ void main() {
         findsOneWidget,
       );
       final triggerLegend = find.textContaining(
-        'insect whose photo schedule triggered this shot',
+        'tracked object whose photo schedule triggered this shot',
         findRichText: true,
       );
       final coDetectedLegend = find.textContaining(
-        'other insect detected in the same frame',
+        'other target objects detected in the same frame',
         findRichText: true,
       );
       expect(triggerLegend, findsOneWidget);

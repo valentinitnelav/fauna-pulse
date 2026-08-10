@@ -85,7 +85,10 @@ android {
     }
 
     lint {
-        checkReleaseBuilds false
+        // Release lint is a safety gate: API compatibility and manifest errors
+        // must fail the build instead of reaching testers or Google Play.
+        checkReleaseBuilds true
+        abortOnError true
     }
 
     // The Hexagon DSP loads QNN Skel libraries via filesystem paths (ADSP_LIBRARY_PATH), so they must exist as
@@ -94,6 +97,76 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+
+    // Flutter 3.44 generates one shared Java plugin registrant containing dev
+    // plugins, while its Gradle plugin correctly removes dev dependencies from
+    // the release classpath. Compile variant-specific generated copies so release
+    // builds omit IntegrationTestPlugin instead of shipping test code or failing.
+    sourceSets {
+        main.java.exclude("io/flutter/plugins/GeneratedPluginRegistrant.java")
+        debug.java.srcDir("$buildDir/generated/fauna_pulse_registrant/debug")
+        profile.java.srcDir("$buildDir/generated/fauna_pulse_registrant/profile")
+        release.java.srcDir("$buildDir/generated/fauna_pulse_registrant/release")
+    }
+}
+
+def flutterPluginRegistrant = file(
+    "src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+)
+[
+    Debug: false,
+    Profile: false,
+    Release: true,
+].each { variant, removeIntegrationTest ->
+    def variantLower = variant.toLowerCase()
+    def outputDir = file(
+        "$buildDir/generated/fauna_pulse_registrant/$variantLower"
+    )
+    def generateRegistrant = tasks.register(
+        "generateFaunaPulse${variant}PluginRegistrant"
+    ) {
+        inputs.file(flutterPluginRegistrant)
+        outputs.dir(outputDir)
+        doLast {
+            def source = flutterPluginRegistrant.getText("UTF-8")
+            def lines = source.readLines()
+            def filtered = []
+            def index = 0
+            while (index < lines.size()) {
+                def isIntegrationTestBlock =
+                    removeIntegrationTest &&
+                    index + 4 < lines.size() &&
+                    lines[index].trim() == "try {" &&
+                    lines[index + 1].contains("IntegrationTestPlugin") &&
+                    lines[index + 2].contains("catch (Exception e)") &&
+                    lines[index + 3].contains("integration_test")
+                if (isIntegrationTestBlock) {
+                    index += 5
+                    continue
+                }
+                filtered.add(lines[index])
+                index++
+            }
+            if (removeIntegrationTest &&
+                filtered.any { it.contains("IntegrationTestPlugin") }) {
+                throw new GradleException(
+                    "Could not remove IntegrationTestPlugin from release registrant."
+                )
+            }
+            def outputFile = new File(
+                outputDir,
+                "io/flutter/plugins/GeneratedPluginRegistrant.java"
+            )
+            outputFile.parentFile.mkdirs()
+            outputFile.setText(filtered.join("\n") + "\n", "UTF-8")
+        }
+    }
+    tasks.matching {
+        it.name == "compile${variant}JavaWithJavac" ||
+            it.name == "compile${variant}Kotlin"
+    }.configureEach {
+        dependsOn(generateRegistrant)
     }
 }
 

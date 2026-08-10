@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 7-11 backup policy. Only small user preferences are eligible for
+     Google backup/device transfer. Session photos/logs, imported models and
+     diagnostics are intentionally excluded by not including their domains. -->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+</full-backup-content>

@@ -283,10 +283,11 @@ your target saved photo size. Move closer or use a zoom lens — this cannot be
 fixed in software.
 
 **Battery drains fast / phone got killed mid-session.** Long sessions are
-demanding. On first record the app asks to be exempted from battery
-optimization and runs a foreground service (that's the ongoing notification) so
-the OS doesn't kill it — accept those prompts. Some phones (aggressive OEM
-battery managers) still need the app manually whitelisted in system settings.
+demanding. On first record the app offers to open Android's battery settings.
+Find FaunaPulse and choose **Unrestricted** or **Don't optimize** if reliable
+unattended recording matters. The app also runs a foreground service (the
+ongoing notification) while recording. Some phones with aggressive manufacturer
+battery managers additionally need FaunaPulse enabled under **Autostart**.
 
 **Where did my photos go / storage full.** See §6 for the path. If storage
 fills mid-session, saving fails — keep comfortable free space for the session

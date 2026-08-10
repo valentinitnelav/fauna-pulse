@@ -5,8 +5,8 @@
 //   * bundled   — custom model files shipped inside the app (assets/models/custom/).
 //   * imported  — custom model files the user dropped onto the phone and imported
 //                 at runtime (e.g. from the Downloads folder) via the file picker.
-//                 These live in the app's own models folder, which is also visible
-//                 over USB at Android/data/<package>/files/models/.
+//                 These live in the app's private internal models folder; use the
+//                 in-app Import or Download controls to add them.
 //
 // Accepted file formats (round 150, see docs/MODEL_CONVERSION.md): `.tflite`
 // (any precision — the normal case) and `*_qnn.onnx` (an Ultralytics Snapdragon
@@ -27,15 +27,28 @@
 
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart' show rootBundle, AssetManifest;
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
 import 'bundled_models.dart';
 
+import 'model_file_security.dart';
+export 'model_file_security.dart';
+
 enum ModelSource { official, bundled, imported }
+
+/// Result of a multi-file import. Rejections are returned to the settings UI
+/// instead of becoming uncaught errors or silently accepting unsafe files.
+class ModelImportResult {
+  final int imported;
+  final List<String> rejected;
+
+  const ModelImportResult({required this.imported, this.rejected = const []});
+}
 
 /// One selectable model plus whatever we could learn about it cheaply.
 class ModelEntry {
@@ -121,22 +134,51 @@ class ModelCatalog {
     );
   }
 
-  /// The app's own models folder (created if missing). Imported models are
-  /// copied here; it is browsable over USB for drag-and-drop too.
+  static bool _legacyModelMigrationAttempted = false;
+
+  /// Private app-internal model storage (created if missing). Keeping parser
+  /// inputs internal prevents another storage-enabled app from replacing them
+  /// on Android 7-9. Import and Download remain the supported ways to add files.
   static Future<Directory> modelsDir() async {
     Directory base;
     try {
-      base =
-          (await getExternalStorageDirectory()) ??
-          await getApplicationDocumentsDirectory();
+      base = await getApplicationSupportDirectory();
     } catch (e) {
-      // Models land in the internal dir instead (not browsable over USB).
-      logSwallowed('models_dir_external', e);
+      logSwallowed('models_dir_internal', e);
       base = await getApplicationDocumentsDirectory();
     }
     final dir = Directory('${base.path}/models');
     if (!await dir.exists()) await dir.create(recursive: true);
+    await _migrateLegacyExternalModels(dir);
     return dir;
+  }
+
+  static Future<void> _migrateLegacyExternalModels(Directory targetDir) async {
+    if (_legacyModelMigrationAttempted) return;
+    _legacyModelMigrationAttempted = true;
+    try {
+      final legacyBase = await getExternalStorageDirectory();
+      if (legacyBase == null) return;
+      final legacyDir = Directory('${legacyBase.path}/models');
+      if (!await legacyDir.exists() ||
+          legacyDir.absolute.path == targetDir.absolute.path) {
+        return;
+      }
+      await for (final entity in legacyDir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!isSafeModelBaseName(name)) continue;
+        final target = safeModelTarget(targetDir, name);
+        if (await target.exists()) continue;
+        try {
+          await copyAndValidateModel(entity, target, name);
+        } catch (e) {
+          logSwallowed('legacy_model_migration', e);
+        }
+      }
+    } catch (e) {
+      logSwallowed('legacy_models_dir', e);
+    }
   }
 
   /// Builds the full list: bundled custom models, then imported ones (scanned
@@ -217,28 +259,38 @@ class ModelCatalog {
     return seen.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
   }
 
-  /// Opens the system file picker so the user can choose one or more model
-  /// files (.tflite or *_qnn.onnx) from anywhere on the phone (Downloads, a
-  /// folder they pick, etc.) and copies them into the app's models folder.
-  /// Returns how many were imported.
-  static Future<int> importModels() async {
+  /// Opens the system file picker and copies validated models into private
+  /// storage. Each file is streamed through the same size and structure checks
+  /// as a download, so a document provider cannot smuggle a path or huge file.
+  static Future<ModelImportResult> importModels() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return 0;
+    if (result == null) return const ModelImportResult(imported: 0);
     final dir = await modelsDir();
     var imported = 0;
+    final rejected = <String>[];
     for (final picked in result.files) {
+      final displayName = safeModelDisplayName(picked.name);
       final path = picked.path;
-      if (path == null) continue;
-      if (!isSupportedModelFileName(path)) continue;
+      if (path == null) {
+        rejected.add('$displayName: the selected file could not be read.');
+        continue;
+      }
+      final name = picked.name;
+      if (!isSafeModelBaseName(name)) {
+        rejected.add('$displayName: unsafe or unsupported file name.');
+        continue;
+      }
       try {
-        await File(path).copy('${dir.path}/${picked.name}');
+        final source = File(path);
+        final target = safeModelTarget(dir, name);
+        await copyAndValidateModel(source, target, name);
         imported++;
       } catch (e) {
-        // Skip files we can't read/copy; the rest still import.
+        rejected.add('$displayName: ${plainModelError(e)}');
         logSwallowed('model_import_copy', e);
       }
     }
-    return imported;
+    return ModelImportResult(imported: imported, rejected: rejected);
   }
 
   /// Downloads a model file from [url] into the imported-models folder, so
@@ -254,26 +306,44 @@ class ModelCatalog {
     String url, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     bool Function()? isCancelled,
+    String? expectedSha256,
   }) async {
     final name = modelFileNameFromUrl(url);
     if (name == null) {
       throw Exception(
-        'The link must point to a .tflite or *_qnn.onnx model file.',
+        'Use an HTTPS link to a safely named .tflite or *_qnn.onnx file.',
       );
     }
+    final parsedUrl = Uri.parse(url.trim());
+    final maxBytes = maxModelBytesForName(name);
+    if (expectedSha256 != null && !isValidSha256(expectedSha256)) {
+      throw Exception('The expected SHA-256 value must contain 64 hex digits.');
+    }
     final dir = await modelsDir();
-    final partFile = File('${dir.path}/$name.part');
+    final targetFile = safeModelTarget(dir, name);
+    final partFile = File('${targetFile.path}.part');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20);
     try {
       // GitHub asset links redirect to the real file host; HttpClient follows
       // redirects on GET by default.
-      final request = await client.getUrl(Uri.parse(url));
+      final request = await client.getUrl(parsedUrl);
       final response = await request.close();
+      if (!redirectChainStaysHttps(parsedUrl, response.redirects)) {
+        throw Exception(
+          'The model link redirected to an insecure non-HTTPS address.',
+        );
+      }
       if (response.statusCode != HttpStatus.ok) {
         throw Exception('Download failed (HTTP ${response.statusCode}).');
       }
       final total = response.contentLength > 0 ? response.contentLength : null;
+      if (total != null && total > maxBytes) {
+        throw Exception(modelSizeLimitMessage(name));
+      }
+      if (total != null) {
+        await ensureModelStorageAvailable(dir.path, total);
+      }
       var received = 0;
       final sink = partFile.openWrite();
       try {
@@ -288,15 +358,33 @@ class ModelCatalog {
           if (isCancelled?.call() ?? false) {
             throw Exception('Download cancelled.');
           }
+          final nextReceived = received + chunk.length;
+          if (nextReceived > maxBytes) {
+            throw Exception(modelSizeLimitMessage(name));
+          }
           sink.add(chunk);
-          received += chunk.length;
+          received = nextReceived;
           onProgress?.call(received, total);
         }
         await sink.flush();
       } finally {
         await sink.close();
       }
-      final saved = await partFile.rename('${dir.path}/$name');
+      if (received == 0) {
+        throw Exception('The server returned an empty model file.');
+      }
+      await validateModelFile(partFile, name);
+      if (expectedSha256 != null) {
+        final actual = (await sha256.bind(partFile.openRead()).first)
+            .toString();
+        if (actual.toLowerCase() != expectedSha256.toLowerCase()) {
+          throw Exception(
+            'The downloaded model did not match its SHA-256 hash.',
+          );
+        }
+      }
+      if (await targetFile.exists()) await targetFile.delete();
+      final saved = await partFile.rename(targetFile.path);
       return saved.path;
     } catch (e) {
       try {
@@ -368,16 +456,16 @@ class ModelCatalog {
 }
 
 /// The model file name a download URL points at (query string ignored), or
-/// null when the link is not an http(s) URL ending in a supported model
-/// extension (`.tflite` or `_qnn.onnx`).
+/// null when it is not an HTTPS URL with a safe supported base name. Uri
+/// pathSegments are decoded, so this also rejects encoded traversal/separators.
 String? modelFileNameFromUrl(String url) {
   final uri = Uri.tryParse(url.trim());
-  if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
+  if (uri == null || !uri.isScheme('https') || uri.host.isEmpty) {
     return null;
   }
   if (uri.pathSegments.isEmpty) return null;
   final name = uri.pathSegments.last;
-  if (!isSupportedModelFileName(name)) return null;
+  if (!isSafeModelBaseName(name)) return null;
   return name;
 }
 
@@ -386,10 +474,6 @@ String? modelFileNameFromUrl(String url) {
 /// (`*_qnn.onnx` — Snapdragon NPU only). Plain `.onnx` files are rejected;
 /// the native layer cannot run them (docs/MODEL_CONVERSION.md explains why
 /// and how to convert instead).
-bool isSupportedModelFileName(String name) {
-  final n = name.toLowerCase();
-  return n.endsWith('.tflite') || n.endsWith('_qnn.onnx');
-}
 
 /// Filters and sorts bundled model assets for the current build type. This is
 /// public only so the manifest-based release policy can be unit-tested without
@@ -409,11 +493,6 @@ List<String> visibleBundledModelAssets(
   );
   return visible.toList()..sort();
 }
-
-/// True when [path] is a Snapdragon-NPU QNN model (`*_qnn.onnx`). These always
-/// run on the NPU — the GPU-vs-CPU engine benchmark and the CPU-thread setting
-/// don't apply to them.
-bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
 
 /// How the camera screen recovers after a model failed to load (round 151).
 /// [revertToPath] is what `SessionConfig.modelPath` should point at again;

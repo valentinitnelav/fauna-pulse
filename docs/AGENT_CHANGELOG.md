@@ -6977,3 +6977,48 @@ Dart allowlist. The maintainer can now change the tester model set by editing
   127.1 MB APK. Archive inspection found exactly the manifest, YOLO26 INT8,
   MDV6 INT8 256 and MDV6 float16 256. Unlisted ArthroNat and 320 px weights
   were absent.
+
+## Round 200 (2026-08-10): Google Play security hardening
+
+Implemented the seven release-security areas from the pre-Play review while
+keeping all new runtime checks outside the live camera and inference paths.
+
+- Hardened the Android manifest and storage boundary. Cleartext networking is
+  disabled; backup is explicitly settings-only; session photos/logs, models,
+  crash files and reports are excluded. Reports and crashes now live in private
+  internal storage, and the report FileProvider exposes only report folders.
+- Hardened user model intake. Imported models now use private storage, strict
+  safe base names, path-containment checks, temporary-file promotion, available
+  storage checks, non-empty checks and TFLite `TFL3` validation. TFLite is capped
+  at 30 MiB at `kMaxTfliteModelBytes` in
+  `lib/fauna_pulse/models/model_file_security.dart`; QNN remains separately
+  capped at 256 MiB. Valid legacy external models migrate once without deleting
+  the originals.
+- Hardened model downloads in both FaunaPulse and the vendored resolver. Only
+  HTTPS is accepted, redirect downgrades are rejected, connection/stall timeouts
+  are bounded, declared and streamed sizes are capped, partial files are cleaned
+  up, TFLite headers are checked and trusted callers may supply SHA-256.
+- Bounded native model metadata parsing before allocation: 2 MiB metadata/text
+  ceilings, 128 ONNX properties, safe long-to-int handling and bounded ZIP/YAML
+  reads. Added native regression tests for exact-limit, over-limit and hostile
+  ONNX length cases.
+- Reduced permission and battery risk. Removed the direct battery-optimization
+  exemption and unused data-sync foreground-service permissions; the UI opens
+  Android's general settings instead. The recording wake lock now has a
+  30-minute fail-safe renewed every 25 minutes during an active service, and the
+  service no longer restarts alone after its camera Activity is killed.
+- Enabled failing release lint and fixed release compilation so
+  IntegrationTestPlugin remains debug-only. Added explicit API-29 style
+  resources, a signed local AAB release gate, GitHub security checks and weekly
+  Dependabot checks for Pub and Gradle.
+- Updated the privacy policy, install/field/test guides, release plan and
+  current-state overview. The policy discloses that Android backup may include
+  settings and the last optional GPS coordinates while field data and
+  diagnostics remain excluded.
+
+Verification: `flutter analyze` clean; app suite 532 passed with one intentional
+tracker-replay skip; vendored plugin suite 173 passed; native security tests
+3 passed; `:app:lintRelease` passed with 0 errors (7 unrelated warnings);
+signed `flutter build appbundle --release` built a 163.8 MB AAB and
+`jarsigner -verify` reported `jar verified`. Final AAB SHA-256:
+`eee5ec668ecfecaaf9610f62e491d61975bb35fcf237e43e90a7445d3e4b128a`.

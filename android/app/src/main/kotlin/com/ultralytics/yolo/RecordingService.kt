@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 
 /**
@@ -35,15 +37,18 @@ import android.os.PowerManager
  */
 class RecordingService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val renewWakeLock = Runnable { refreshWakeLock() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startInForeground()
         acquireWakeLock()
-        // START_STICKY: if the OS ever kills and recreates us, come back up (the
-        // Activity, if still alive, keeps recording; otherwise this is harmless).
-        return START_STICKY
+        // The camera belongs to the Activity. If Android kills the process, a
+        // service-only restart cannot resume recording and would only waste
+        // battery with an orphan notification and wake lock.
+        return START_NOT_STICKY
     }
 
     private fun startInForeground() {
@@ -75,10 +80,10 @@ class RecordingService : Service() {
             .setOngoing(true)
             .build()
 
-        // On Android 10+ pass the explicit foreground-service type; on 14+ this
-        // typed call is mandatory. The `camera` type matches the ongoing camera
+        // On Android 11+ pass the explicit foreground-service type. The
+        // `camera` type matches the ongoing camera
         // session the app runs in the Activity.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
@@ -94,10 +99,24 @@ class RecordingService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG).apply {
             setReferenceCounted(false)
-            // No timeout: the lock is held for the life of the service and released
-            // in onDestroy. The Activity's FLAG_KEEP_SCREEN_ON keeps the screen on;
-            // this just guards the CPU against momentary blips.
-            acquire()
+        }
+        refreshWakeLock()
+    }
+
+    /**
+     * Keeps multi-day sessions supported while making an orphaned lock
+     * self-releasing. One renewal every 25 minutes is negligible next to the
+     * continuously running camera and inference workload.
+     */
+    private fun refreshWakeLock() {
+        val lock = wakeLock ?: return
+        mainHandler.removeCallbacks(renewWakeLock)
+        try {
+            if (lock.isHeld) lock.release()
+            lock.acquire(WAKELOCK_TIMEOUT_MS)
+            mainHandler.postDelayed(renewWakeLock, WAKELOCK_RENEW_MS)
+        } catch (_: RuntimeException) {
+            // Best effort: the foreground service still protects the process.
         }
     }
 
@@ -107,12 +126,8 @@ class RecordingService : Service() {
         } catch (_: Exception) {
         }
         wakeLock = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        mainHandler.removeCallbacks(renewWakeLock)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
@@ -120,5 +135,7 @@ class RecordingService : Service() {
         private const val CHANNEL_ID = "faunapulse_recording"
         private const val NOTIFICATION_ID = 4711
         private const val WAKELOCK_TAG = "FaunaPulse::RecordingWakeLock"
+        private const val WAKELOCK_TIMEOUT_MS = 30L * 60L * 1000L
+        private const val WAKELOCK_RENEW_MS = 25L * 60L * 1000L
     }
 }

@@ -152,15 +152,21 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   Future<void> _importModels() async {
-    final n = await ModelCatalog.importModels();
+    final result = await ModelCatalog.importModels();
     if (!mounted) return;
+    final imported = result.imported;
+    final base = imported == 0
+        ? 'No model files imported.'
+        : 'Imported $imported model${imported == 1 ? '' : 's'}.';
+    final rejected = result.rejected.isEmpty
+        ? ''
+        : ' Rejected ${result.rejected.length}: ${result.rejected.first}';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          n == 0
-              ? 'No model files imported (.tflite or *_qnn.onnx).'
-              : 'Imported $n model${n == 1 ? '' : 's'}.',
-        ),
+        content: Text('$base$rejected'),
+        duration: result.rejected.isEmpty
+            ? const Duration(seconds: 4)
+            : const Duration(seconds: 8),
       ),
     );
     await _reloadModels();

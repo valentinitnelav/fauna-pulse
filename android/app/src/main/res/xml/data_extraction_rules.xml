@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ backup policy. Backups remain useful for settings (including a
+     remembered optional session position), while large/scientific session data,
+     model weights and diagnostic files stay out of cloud/device-transfer copies. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

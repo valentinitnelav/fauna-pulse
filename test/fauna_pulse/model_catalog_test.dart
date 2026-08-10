@@ -1,8 +1,10 @@
-// Tests for the download-model URL helper (round 119): only http(s) links that
+// Tests for the download-model URL helper: only safe HTTPS links that
 // point at a supported model file yield a file name; everything else is
 // rejected so the dialog's Download button stays disabled. Round 150 widened
 // "supported" to .tflite OR *_qnn.onnx (Snapdragon NPU exports) — plain .onnx
 // stays rejected because the native layer cannot run it.
+
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/models/bundled_models.dart';
@@ -42,15 +44,72 @@ void main() {
       );
     });
 
-    test('rejects unsupported links, non-http schemes and garbage', () {
+    test('rejects unsupported links, non-HTTPS schemes and garbage', () {
       expect(modelFileNameFromUrl('https://host/model.zip'), isNull);
       expect(modelFileNameFromUrl('https://github.com/user/repo'), isNull);
+      expect(modelFileNameFromUrl('http://host/m.tflite'), isNull);
       expect(modelFileNameFromUrl('ftp://host/m.tflite'), isNull);
       expect(modelFileNameFromUrl('file:///sdcard/m.tflite'), isNull);
+      expect(modelFileNameFromUrl('https:///m.tflite'), isNull);
       expect(modelFileNameFromUrl('not a url'), isNull);
       expect(modelFileNameFromUrl(''), isNull);
       // A plain ONNX export is NOT runnable by the native layer.
       expect(modelFileNameFromUrl('https://host/m.onnx'), isNull);
+    });
+
+    test('rejects decoded traversal, separators and unsafe names', () {
+      expect(
+        modelFileNameFromUrl('https://host/%2e%2e%2fsessions%2fevil.tflite'),
+        isNull,
+      );
+      expect(modelFileNameFromUrl('https://host/a%5Cb.tflite'), isNull);
+      expect(modelFileNameFromUrl('https://host/model%20one.tflite'), isNull);
+      expect(modelFileNameFromUrl('https://host/model..tflite'), isNull);
+    });
+  });
+
+  group('model file security', () {
+    test('safe names and format-specific limits are explicit', () {
+      expect(isSafeModelBaseName('pollinator_v2-int8.tflite'), isTrue);
+      expect(isSafeModelBaseName('detector_qnn.onnx'), isTrue);
+      expect(isSafeModelBaseName('../detector.tflite'), isFalse);
+      expect(isSafeModelBaseName('folder/detector.tflite'), isFalse);
+      expect(kMaxTfliteModelBytes, 30 * 1024 * 1024);
+      expect(kMaxQnnModelBytes, greaterThan(kMaxTfliteModelBytes));
+      expect(maxModelBytesForName('m.tflite'), kMaxTfliteModelBytes);
+      expect(maxModelBytesForName('m_qnn.onnx'), kMaxQnnModelBytes);
+    });
+
+    test('target containment and SHA-256 syntax are checked', () {
+      final dir = Directory.systemTemp.createTempSync('model_security_');
+      try {
+        expect(
+          safeModelTarget(dir, 'safe.tflite').parent.absolute.path,
+          dir.absolute.path,
+        );
+        expect(() => safeModelTarget(dir, '../escape.tflite'), throwsException);
+        expect(isValidSha256(List.filled(64, 'a').join()), isTrue);
+        expect(isValidSha256('not-a-hash'), isFalse);
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
+    });
+
+    test('TFLite header is accepted and malformed input is rejected', () async {
+      final dir = Directory.systemTemp.createTempSync('model_header_');
+      final valid = File('${dir.path}/valid.tflite')
+        ..writeAsBytesSync([0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33]);
+      final invalid = File('${dir.path}/invalid.tflite')
+        ..writeAsBytesSync([0, 0, 0, 0, 0, 0, 0, 0]);
+      try {
+        await expectLater(validateModelFile(valid, valid.path), completes);
+        await expectLater(
+          validateModelFile(invalid, invalid.path),
+          throwsException,
+        );
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
     });
   });
 

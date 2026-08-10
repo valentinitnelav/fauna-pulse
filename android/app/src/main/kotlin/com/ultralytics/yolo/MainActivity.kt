@@ -11,7 +11,6 @@ import android.graphics.BitmapRegionDecoder
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
-import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -42,7 +41,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val diagnosticsChannel = "faunapulse/diagnostics"
 
     // Channel for keeping long sessions alive: start/stop the recording foreground
-    // service, and check/request exemption from battery optimization (RecordingKeepAlive).
+    // service, and check/open battery settings (RecordingKeepAlive).
     private val keepAliveChannel = "faunapulse/keepalive"
     private val cropExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -87,8 +86,9 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun writeCrashFile(e: Throwable, threadName: String) {
-        val base = getExternalFilesDir(null) ?: filesDir
-        val dir = java.io.File(base, "crashes").apply { mkdirs() }
+        // Internal storage is private even on Android 7-9. Reports can include
+        // these files explicitly, but other storage-enabled apps cannot.
+        val dir = java.io.File(filesDir, "crashes").apply { mkdirs() }
         val now = java.util.Date()
         val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HHmmss", java.util.Locale.US).format(now)
         val iso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US).format(now)
@@ -283,27 +283,17 @@ class MainActivity : FlutterFragmentActivity() {
         return pm.isIgnoringBatteryOptimizations(packageName)
     }
 
-    /// Opens the system dialog asking the user to allow this app to run without
-    /// battery restrictions. Falls back to the app's battery-optimization settings
-    /// list if the direct request intent isn't available on the device. Returns
-    /// whether an intent could be launched.
+    /// Opens Android's general battery-optimization settings. The user may choose
+    /// unrestricted operation there, without FaunaPulse requesting the privileged
+    /// direct-exemption permission that Google Play restricts. Returns whether the
+    /// settings screen could be launched.
     private fun requestIgnoreBatteryOptimizations(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
         return try {
-            startActivity(
-                Intent(
-                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:$packageName"),
-                ),
-            )
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             true
         } catch (e: Exception) {
-            try {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                true
-            } catch (e2: Exception) {
-                false
-            }
+            false
         }
     }
 
@@ -638,7 +628,9 @@ class MainActivity : FlutterFragmentActivity() {
         } else {
             null
         }
-        out["thermalStatus"] = if (pm != null) {
+        out["thermalStatus"] = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && pm != null
+        ) {
             when (pm.currentThermalStatus) {
                 PowerManager.THERMAL_STATUS_NONE -> "none"
                 PowerManager.THERMAL_STATUS_LIGHT -> "light"

@@ -4,9 +4,9 @@
 // app_error_hooks.dart), so a crash outside a recording — or a crash that
 // killed the process before anything was written — left no trace a later
 // error report could pick up. This store writes each uncaught error to its
-// own small timestamped text file under `crashes/` in the app's external
-// files directory (browsable over USB, same root as `error_reports/`), and
-// the error report embeds the most recent ones automatically.
+// own small timestamped text file under `crashes/` in the app's private
+// internal files directory. The error report embeds the most recent ones
+// automatically.
 //
 // The native (Kotlin) side writes the SAME file format into the SAME folder
 // from its process-wide uncaught-exception handler (MainActivity.kt,
@@ -100,13 +100,7 @@ class CrashStore {
     if (override != null) {
       base = override;
     } else {
-      try {
-        base =
-            (await getExternalStorageDirectory()) ??
-            await getApplicationDocumentsDirectory();
-      } catch (_) {
-        base = await getApplicationDocumentsDirectory();
-      }
+      base = await getApplicationSupportDirectory();
     }
     final dir = Directory('${base.path}/crashes');
     if (!await dir.exists()) await dir.create(recursive: true);

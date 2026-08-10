@@ -17,6 +17,18 @@ widget regressions (e.g. the bottom-inset pattern in
 `summary_bottom_inset_test.dart`, which also documents the widget-test async
 traps). Run `flutter analyze` alongside it; both must be clean before a PR.
 
+
+## Security and release gate
+
+CI runs app and plugin tests, native model-metadata bounds tests, Android lint,
+and an unsigned debug App Bundle packaging check. Before uploading to Google
+Play, run the signed local gate with the real release keystore:
+
+```bash
+scripts/security_release_gate.sh
+```
+
+The final command builds `build/app/outputs/bundle/release/app-release.aab`.
 ## Tracker replay harness (offline accuracy, not speed)
 
 Replays a real session's logged raw detections (the "Log raw detections"

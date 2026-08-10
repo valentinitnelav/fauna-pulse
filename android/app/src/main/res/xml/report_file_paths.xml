@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Paths the report FileProvider may serve (see AndroidManifest.xml). Only the
-     error_reports/ folder under the app's external files dir — the session data
-     folders are deliberately NOT shareable this way. -->
+<!-- Paths the report FileProvider may serve (see AndroidManifest.xml). New
+     reports live in internal app storage. The external entry only keeps reports
+     made by older app versions shareable after an upgrade. Session folders are
+     deliberately NOT shareable through this provider. -->
 <paths>
-    <external-files-path name="error_reports" path="error_reports/" />
+    <files-path name="internal_error_reports" path="error_reports/" />
+    <external-files-path name="legacy_error_reports" path="error_reports/" />
 </paths>

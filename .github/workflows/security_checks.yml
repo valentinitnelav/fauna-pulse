@@ -1,0 +1,59 @@
+name: Security and release checks
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.8"
+          channel: stable
+          cache: true
+
+      - name: Resolve application dependencies
+        run: flutter pub get
+
+      - name: Analyze application
+        run: flutter analyze
+
+      - name: Run application regression tests
+        run: flutter test test/fauna_pulse
+
+      - name: Run vendored Flutter plugin tests
+        working-directory: packages/ultralytics_yolo
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: Run native metadata security tests and Android lint
+        working-directory: android
+        run: ./gradlew :ultralytics_yolo:testDebugUnitTest :app:lintDebug
+
+      - name: Build debug app bundle as an unsigned compile/package check
+        run: flutter build appbundle --debug
+
+      - name: Explain signed release gate
+        run: |
+          echo "Run scripts/security_release_gate.sh locally with the real"
+          echo "release keystore before uploading an AAB to Google Play."

@@ -390,15 +390,8 @@ class ErrorReporter {
     if (override != null) {
       base = override;
     } else {
-      try {
-        base =
-            (await getExternalStorageDirectory()) ??
-            await getApplicationDocumentsDirectory();
-      } catch (e) {
-        // Reports land in the internal dir instead (not browsable over USB).
-        logSwallowed('reports_dir_external', e);
-        base = await getApplicationDocumentsDirectory();
-      }
+      // Share grants temporary access to the chosen report only.
+      base = await getApplicationSupportDirectory();
     }
     final dir = Directory('${base.path}/error_reports');
     if (!await dir.exists()) await dir.create(recursive: true);
@@ -543,10 +536,11 @@ Future<String> boundedHeadTailSample(
         : const LineSplitter().convert(tailChunk.substring(firstNewline + 1));
 
     final keptHead = headLines.take(head).map(keep);
-    final keptTail = (tailLines.length <= tail
-            ? tailLines
-            : tailLines.sublist(tailLines.length - tail))
-        .map(keep);
+    final keptTail =
+        (tailLines.length <= tail
+                ? tailLines
+                : tailLines.sublist(tailLines.length - tail))
+            .map(keep);
     // The total line count is unknown without reading the middle, so the
     // marker reports the file size instead of an exact omitted-line count.
     final marker =

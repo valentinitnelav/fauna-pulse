@@ -1364,12 +1364,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   }
 
   /// SharedPreferences key remembering that we've already shown the
-  /// battery-optimization explanation, so it isn't shown before every session.
+  /// battery-settings explanation, so it isn't shown before every session.
   static const String _batteryOptPromptedKey = 'faunapulse_batteryopt_prompted';
 
   /// If the app isn't already exempt from battery optimization, explain once (per
   /// install) why that matters for long unattended field sessions and offer to open
-  /// the system dialog. Never blocks recording: whatever the user chooses, the
+  /// system settings. Never blocks recording: whatever the user chooses, the
   /// session still starts. Skipped entirely on devices already exempt.
   Future<void> _ensureUnrestricted() async {
     if (await RecordingKeepAlive.isUnrestricted()) return;
@@ -1384,8 +1384,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           'For long or unattended sessions (hours/days), Android — and especially '
           'some phone makers’ "battery managers" — can stop the app in the '
           'background and end your recording.\n\n'
-          'To prevent that, allow this app to run without battery restrictions on '
-          'the next screen. On some phones you may also need to enable "Autostart" '
+          'On the next screen, find FaunaPulse and choose "Unrestricted" or '
+          '"Don’t optimize" if reliable unattended recording matters. '
+          'On some phones you may also need to enable "Autostart" '
           'for this app in the system settings.',
           style: TextStyle(fontSize: 13),
         ),
@@ -1397,7 +1398,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
-              'Allow',
+              'Open settings',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),

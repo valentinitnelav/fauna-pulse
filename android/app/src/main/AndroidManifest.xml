@@ -1,6 +1,7 @@
 <!-- Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license -->
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Internet permission for downloading models -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Camera permissions -->
@@ -15,15 +16,21 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <!-- Keep long (hours/days) recording sessions alive: a foreground service with
          an ongoing notification (so the OS won't reclaim the process), a partial
-         wake lock, the notification permission (Android 13+), and the ability to
-         ask the user to exempt the app from battery optimization (so OEM
-         "battery managers" don't kill it). The foreground-service type is `camera`
-         because the protected work is the continuous camera session. -->
+         wake lock, and the notification permission (Android 13+). The app may open
+         Android's general battery settings, where the user can choose unrestricted
+         operation, but it does not request the policy-sensitive direct-exemption
+         permission. The foreground-service type is camera because the protected
+         work is the continuous camera session. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- LiteRT declares dataSync for its optional AI Pack downloader. FaunaPulse
+         bundles models or imports/downloads ordinary files and never uses AI Packs,
+         so remove the unused permission from the merged Play manifest. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
     <!-- One GPS fix per session (round 126): read once at session setup while
          the app is in the foreground, then the subscription stops. No
          background/continuous tracking, so no FOREGROUND_SERVICE_LOCATION. -->
@@ -33,7 +40,11 @@
     <application
         android:label="FaunaPulse"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

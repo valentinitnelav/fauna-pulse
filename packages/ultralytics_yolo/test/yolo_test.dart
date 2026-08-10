@@ -1089,8 +1089,8 @@ void main() {
           'https://example.test/model.tflite': _FakeHttpResponse(
             statusCode: HttpStatus.ok,
             chunks: [
-              [1, 2],
-              [3],
+              [0, 0, 0, 0],
+              [0x54, 0x46, 0x4c, 0x33],
             ],
           ),
           'https://example.test/remote.mlpackage.zip': _FakeHttpResponse(
@@ -1105,6 +1105,11 @@ void main() {
             statusCode: HttpStatus.ok,
             chunks: [],
           ),
+          'https://example.test/oversized.tflite': _FakeHttpResponse(
+            statusCode: HttpStatus.ok,
+            chunks: [],
+            declaredContentLength: 512 * 1024 * 1024 + 1,
+          ),
         });
 
         await HttpOverrides.runZoned(() async {
@@ -1112,7 +1117,16 @@ void main() {
             'https://example.test/model.tflite',
           );
           expect(modelPath, '/tmp/yolo_test/model.tflite');
-          expect(File(modelPath).readAsBytesSync(), [1, 2, 3]);
+          expect(File(modelPath).readAsBytesSync(), [
+            0,
+            0,
+            0,
+            0,
+            84,
+            70,
+            76,
+            51,
+          ]);
           expect(
             await YOLOModelResolver.preparePath(
               'https://example.test/model.tflite',
@@ -1144,6 +1158,26 @@ void main() {
             throwsA(isA<ModelLoadingException>()),
           );
         }, createHttpClient: (_) => client);
+        await expectLater(
+          YOLOModelResolver.preparePath(
+            'https://example.test/oversized.tflite',
+          ),
+          throwsA(isA<ModelLoadingException>()),
+        );
+        await expectLater(
+          YOLOModelResolver.preparePath('http://example.test/model.tflite'),
+          throwsA(isA<ModelLoadingException>()),
+        );
+        await expectLater(
+          YOLOModelResolver.preparePath(
+            'https://example.test/%2e%2e%2fsessions%2fevil.tflite',
+          ),
+          throwsA(isA<ModelLoadingException>()),
+        );
+        await expectLater(
+          YOLOModelResolver.preparePath('https://example.test/not-a-model.zip'),
+          throwsA(isA<ModelLoadingException>()),
+        );
       });
     });
   });
@@ -1182,6 +1216,9 @@ class _FakeHttpClient implements HttpClient {
   final requestedUrls = <String>[];
 
   @override
+  set connectionTimeout(Duration? value) {}
+
+  @override
   Future<HttpClientRequest> getUrl(Uri url) async {
     requestedUrls.add(url.toString());
     return _FakeHttpClientRequest(
@@ -1211,15 +1248,22 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 
 class _FakeHttpResponse extends StreamView<List<int>>
     implements HttpClientResponse {
-  _FakeHttpResponse({required this.statusCode, required List<List<int>> chunks})
-    : contentLength = chunks.fold(0, (total, chunk) => total + chunk.length),
-      super(Stream<List<int>>.fromIterable(chunks));
+  _FakeHttpResponse({
+    required this.statusCode,
+    required List<List<int>> chunks,
+    int? declaredContentLength,
+  }) : contentLength =
+           declaredContentLength ??
+           chunks.fold(0, (total, chunk) => total + chunk.length),
+       super(Stream<List<int>>.fromIterable(chunks));
 
   @override
   final int statusCode;
 
   @override
   final int contentLength;
+  @override
+  final List<RedirectInfo> redirects = const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

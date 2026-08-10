@@ -40,7 +40,7 @@ yet, no release keystore, docs written for researchers.
 
 ## Build-config state
 
-Fixed in rounds 158, 194 and 199:
+Fixed in rounds 158, 194, 199 and 200:
 
 - [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
@@ -55,6 +55,13 @@ Fixed in rounds 158, 194 and 199:
   without deleting the source files. The release model picker uses the same list.
 - [x] `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
   section B4 make signing setup a one-command step.
+- [x] Round 200 added the Play security baseline: HTTPS-only model downloads,
+  bounded and validated private model imports (30 MiB TFLite ceiling), bounded
+  native metadata parsing, settings-only Android backup rules, private
+  diagnostics, cleartext blocking, minimum manifest permissions, release lint,
+  automated dependency updates, CI security regressions, and
+  `scripts/security_release_gate.sh` for the signed AAB. The recording wake lock
+  also has a renewable timeout and cannot restart as an orphan service.
 
 Still open:
 
@@ -114,6 +121,10 @@ in README (§Models).
       redaction, protected-species note.
 - [x] `CITATION.cff`: stale TODO comments removed (round 158); DOI line stays commented
       until Phase 1.
+- [x] Release security hardening and checks (round 200): model and metadata input
+      limits, private model/diagnostic storage, explicit settings-only backup,
+      cleartext disabled, restricted battery and unused data-sync permissions
+      removed, release lint and signed local AAB gate.
 - [x] README: bundled model explained honestly ("runs out of the box, does not know
       insects"); INSTALL.md A3 aligned (round 158).
 - [x] `docs/FIELD_GUIDE.md`: title typo fixed, physical-setup section written from what
@@ -313,8 +324,10 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       verification). This also satisfies the new Android developer-verification program.
 - [ ] Play App Signing: upload OUR keystore (from Phase 0) as the app signing key, so
       GitHub and Play builds stay cross-updatable.
-- [ ] Build config: `flutter build appbundle` (AAB, the publishing format Play requires;
-      Play generates per-device APKs from it); confirm targetSdk 36; the camera
+- [x] Build config: `scripts/security_release_gate.sh` ends with a signed
+      `flutter build appbundle --release` (AAB, the publishing format Play
+      requires; Play generates per-device APKs from it); targetSdk 36 and release
+      lint are enforced; the camera
       uses-feature decision is done (round 193: camera required, autofocus not); keep
       `useLegacyPackaging` (the QNN/NPU runtime needs real file paths) and accept the
       size cost. (A lean two-artifact alternative is documented, not implemented, in
@@ -322,9 +335,12 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       reopen triggers; this bullet's decision stands until one fires.)
 - [ ] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
       screenshots (from Phase 2); recompress the 1.1 MB playstore icon to at most 1 MB;
-      privacy policy URL (Phase 0 file); Data safety form ("no data collected":
-      everything stays on-device; declare and justify camera, location, foreground
-      service, and battery-optimization exemption); content rating questionnaire.
+      privacy policy URL (Phase 0 file); complete the Data safety form against the
+      actual settings-only Android backup and the current Play Console wording.
+      FaunaPulse itself has no analytics or user-data upload. Declare and justify
+      camera, optional location, notifications, and the camera foreground service.
+      There is no direct battery-exemption or data-sync permission. Complete the
+      content rating questionnaire.
       (Exact asset specs are long-standing but re-verify in the Console during setup.)
 - [ ] Closed testing: recruit 12+ testers (iDiv/UFZ colleagues, field assistants), keep
       them opted in for 14 continuous days, then "Apply for production" (decision usually

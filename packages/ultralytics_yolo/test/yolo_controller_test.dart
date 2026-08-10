@@ -227,7 +227,12 @@ void main() {
       YOLOTestHelpers.assertMethodCalled(
         log,
         'setModel',
-        arguments: {'modelPath': 'test_model.tflite', 'task': 'detect'},
+        arguments: {
+          'modelPath': 'test_model.tflite',
+          'task': 'detect',
+          'useGpu': true,
+          'cpuThreads': 0,
+        },
       );
       YOLOTestHelpers.assertMethodCalled(log, 'inspectModel');
     });

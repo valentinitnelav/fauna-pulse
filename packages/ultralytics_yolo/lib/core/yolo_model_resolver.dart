@@ -46,6 +46,12 @@ class YOLOModelResolver {
   static const String _iosModelReleaseBaseUrl =
       'https://github.com/ultralytics/yolo-ios-app/releases/download/v8.3.0';
   static bool get _isIosLikePlatform => Platform.isIOS || Platform.isMacOS;
+  // Generic vendored resolver ceiling. FaunaPulse's user-facing catalog applies
+  // the stricter 30 MiB TFLite limit in model_file_security.dart.
+  static const int _maxRemoteArtifactBytes = 512 * 1024 * 1024;
+  static final RegExp _safeRemoteBaseName = RegExp(
+    r'^[A-Za-z0-9][A-Za-z0-9._-]*$',
+  );
 
   static const List<String> _yolo26Sizes = ['n', 's', 'm', 'l', 'x'];
   static const List<({YOLOTask task, String suffix})> _yolo26Tasks = [
@@ -163,7 +169,12 @@ class YOLOModelResolver {
     }
 
     final uri = Uri.tryParse(source);
-    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    if (uri != null && uri.scheme == 'http') {
+      throw ModelLoadingException(
+        'Remote models require HTTPS; insecure HTTP links are not accepted.',
+      );
+    }
+    if (uri != null && uri.scheme == 'https') {
       return _downloadRemoteModel(uri);
     }
 
@@ -293,8 +304,11 @@ class YOLOModelResolver {
   }
 
   static Future<String> _downloadRemoteModel(Uri uri) async {
+    final fileName = _safeRemoteFileName(uri);
+    if (fileName == null) {
+      throw ModelLoadingException('Remote model URL has an unsafe file name.');
+    }
     final documents = await getApplicationDocumentsDirectory();
-    final fileName = uri.pathSegments.isEmpty ? 'model' : uri.pathSegments.last;
 
     if (_isIosLikePlatform && fileName.endsWith('.mlpackage.zip')) {
       final modelName = fileName.replaceAll('.mlpackage.zip', '');
@@ -379,7 +393,8 @@ class YOLOModelResolver {
     String? progressId,
   }) async {
     targetFile.parent.createSync(recursive: true);
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
     Object? downloadToken;
     if (progressId != null) {
       downloadToken = YOLOModelManager.registerDownload(
@@ -401,8 +416,17 @@ class YOLOModelResolver {
         temporaryFile.deleteSync();
       }
       checkCancelled();
-      final request = await client.getUrl(Uri.parse(url));
+      final parsedUrl = Uri.parse(url);
+      if (!parsedUrl.isScheme('https')) {
+        throw ModelLoadingException('Remote models require HTTPS.');
+      }
+      final request = await client.getUrl(parsedUrl);
       final response = await request.close();
+      if (!_redirectsStayHttps(parsedUrl, response.redirects)) {
+        throw ModelLoadingException(
+          'Model download redirected to an insecure non-HTTPS address.',
+        );
+      }
       checkCancelled();
       if (response.statusCode != HttpStatus.ok) {
         throw ModelLoadingException(
@@ -416,17 +440,32 @@ class YOLOModelResolver {
       var receivedBytes = 0;
       double lastFraction = -1;
 
+      if (totalBytes > _maxRemoteArtifactBytes) {
+        throw ModelLoadingException(
+          'Remote model exceeds the 512 MiB safety limit.',
+        );
+      }
       if (progressId != null) {
         YOLOModelManager.emitProgress(progressId, 0);
       }
 
       final sink = temporaryFile.openWrite();
       try {
-        await response.forEach((chunk) {
+        final data = response.timeout(
+          const Duration(seconds: 30),
+          onTimeout: (sink) =>
+              sink.addError(ModelLoadingException('Model download stalled.')),
+        );
+        await data.forEach((chunk) {
           checkCancelled();
+          receivedBytes += chunk.length;
+          if (receivedBytes > _maxRemoteArtifactBytes) {
+            throw ModelLoadingException(
+              'Remote model exceeds the 512 MiB safety limit.',
+            );
+          }
           sink.add(chunk);
           if (progressId == null || totalBytes <= 0) return;
-          receivedBytes += chunk.length;
           // Cap the in-flight fraction at 0.99 so listeners never observe `1.0` from the streaming loop — the terminal
           // emit at `1.0` is reserved for the post-rename success path so a chip never lights up "downloaded" for a
           // transfer that turns out to be 0-byte / corrupt.
@@ -453,6 +492,9 @@ class YOLOModelResolver {
           'Downloaded 0 bytes for $url. The asset may be missing from the release.',
         );
       }
+      if (targetFile.path.toLowerCase().endsWith('.tflite')) {
+        _validateTfliteHeader(temporaryFile);
+      }
 
       if (targetFile.existsSync()) {
         targetFile.deleteSync();
@@ -477,6 +519,57 @@ class YOLOModelResolver {
         YOLOModelManager.finishDownload(progressId, downloadToken);
       }
       client.close(force: true);
+    }
+  }
+
+  static String? _safeRemoteFileName(Uri uri) {
+    if (!uri.isScheme('https') ||
+        uri.host.isEmpty ||
+        uri.pathSegments.isEmpty) {
+      return null;
+    }
+    final name = uri.pathSegments.last;
+    if (name.isEmpty ||
+        name.length > 128 ||
+        name.contains('..') ||
+        !_safeRemoteBaseName.hasMatch(name)) {
+      return null;
+    }
+    final lower = name.toLowerCase();
+    if (!lower.endsWith('.tflite') &&
+        !lower.endsWith('_qnn.onnx') &&
+        !lower.endsWith('.mlpackage.zip')) {
+      return null;
+    }
+    return name;
+  }
+
+  static bool _redirectsStayHttps(Uri original, List<RedirectInfo> redirects) {
+    var current = original;
+    for (final redirect in redirects) {
+      current = current.resolveUri(redirect.location);
+      if (!current.isScheme('https')) return false;
+    }
+    return true;
+  }
+
+  static void _validateTfliteHeader(File file) {
+    final input = file.openSync();
+    try {
+      final header = input.readSync(8);
+      final valid =
+          header.length == 8 &&
+          header[4] == 0x54 &&
+          header[5] == 0x46 &&
+          header[6] == 0x4c &&
+          header[7] == 0x33;
+      if (!valid) {
+        throw ModelLoadingException(
+          'Downloaded file does not contain a valid TFLite TFL3 header.',
+        );
+      }
+    } finally {
+      input.closeSync();
     }
   }
 

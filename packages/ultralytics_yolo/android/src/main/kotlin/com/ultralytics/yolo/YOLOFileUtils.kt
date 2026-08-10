@@ -16,6 +16,12 @@ import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
+// Metadata is tiny (usually a few KB). A hard ceiling prevents a crafted
+// appended ZIP, associated file, or ONNX length field from allocating
+// unbounded memory while a model is inspected.
+internal const val MAX_METADATA_BYTES = 2 * 1024 * 1024
+internal const val MAX_ONNX_METADATA_PROPERTIES = 128
+
 object YOLOFileUtils {
     private const val TAG = "YOLOFileUtils📁📁"
 
@@ -104,8 +110,13 @@ object YOLOFileUtils {
 
                                 val entryBos = ByteArrayOutputStream()
                                 val buffer = ByteArray(4096)
+                                var metadataBytes = 0
                                 var len: Int
                                 while (zis.read(buffer).also { len = it } > 0) {
+                                    metadataBytes += len
+                                    if (metadataBytes > MAX_METADATA_BYTES) {
+                                        throw IOException("Model metadata exceeds 2 MiB")
+                                    }
                                     entryBos.write(buffer, 0, len)
                                 }
 
@@ -183,7 +194,7 @@ object YOLOFileUtils {
         extractor.associatedFileNames?.forEach { name ->
             if (result == null) {
                 extractor.getAssociatedFile(name)?.use { stream ->
-                    result = parseMetadataYaml(String(stream.readBytes(), StandardCharsets.UTF_8))
+                    result = parseMetadataYaml(String(readBytesWithLimit(stream), StandardCharsets.UTF_8))
                 }
             }
         }
@@ -329,7 +340,7 @@ object YOLOFileUtils {
     }
 
     /** Scan top-level ONNX ModelProto fields for `metadata_props` (field 14) key/value entries. */
-    private fun readOnnxMetadataProps(stream: InputStream): Map<String, String> {
+    internal fun readOnnxMetadataProps(stream: InputStream): Map<String, String> {
         val input = BufferedInputStream(stream)
 
         fun readVarint(): Long? {
@@ -362,45 +373,57 @@ object YOLOFileUtils {
                 5 -> skipFully(4)
                 2 -> {
                     val length = readVarint() ?: break
-                    if ((tag ushr 3).toInt() == 14) { // metadata_props: StringStringEntryProto { key = 1; value = 2 }
-                        val entry = ByteArray(length.toInt())
-                        var offset = 0
-                        while (offset < entry.size) {
-                            val read = input.read(entry, offset, entry.size - offset)
-                            if (read < 0) break
-                            offset += read
-                        }
-                        var i = 0
-                        var key: String? = null
-                        var value: String? = null
-                        fun entryVarint(): Long {
-                            var result = 0L
-                            var shift = 0
-                            while (i < entry.size) {
-                                val b = entry[i].toInt()
-                                i++
-                                result = result or ((b.toLong() and 0x7F) shl shift)
-                                if (b and 0x80 == 0) break
-                                shift += 7
-                            }
-                            return result
-                        }
-                        while (i < entry.size) {
-                            val fieldTag = entryVarint()
-                            if ((fieldTag and 7L).toInt() != 2) break
-                            val textLength = entryVarint().toInt()
-                            val end = i + textLength
-                            if (end > entry.size || end < i) break
-                            val text = String(entry, i, end - i, StandardCharsets.UTF_8)
-                            i = end
-                            when ((fieldTag ushr 3).toInt()) {
-                                1 -> key = text
-                                2 -> value = text
-                            }
-                        }
-                        if (key != null && value != null) props[key] = value
-                    } else {
+                    if ((tag ushr 3).toInt() != 14) {
                         skipFully(length)
+                        continue
+                    }
+                    if (length < 0) return props
+                    if (length > MAX_METADATA_BYTES) {
+                        // Skip rather than allocate. A valid metadata_props
+                        // entry is never remotely this large.
+                        skipFully(length)
+                        continue
+                    }
+
+                    val entry = ByteArray(length.toInt())
+                    var offset = 0
+                    while (offset < entry.size) {
+                        val read = input.read(entry, offset, entry.size - offset)
+                        if (read < 0) break
+                        offset += read
+                    }
+                    var i = 0
+                    var key: String? = null
+                    var value: String? = null
+                    fun entryVarint(): Long {
+                        var result = 0L
+                        var shift = 0
+                        while (i < entry.size) {
+                            val b = entry[i].toInt()
+                            i++
+                            result = result or ((b.toLong() and 0x7F) shl shift)
+                            if (b and 0x80 == 0) break
+                            shift += 7
+                        }
+                        return result
+                    }
+                    while (i < entry.size) {
+                        val fieldTag = entryVarint()
+                        if ((fieldTag and 7L).toInt() != 2) break
+                        val textLengthLong = entryVarint()
+                        if (textLengthLong < 0 || textLengthLong > entry.size - i) break
+                        val textLength = textLengthLong.toInt()
+                        val end = i + textLength
+                        val text = String(entry, i, textLength, StandardCharsets.UTF_8)
+                        i = end
+                        when ((fieldTag ushr 3).toInt()) {
+                            1 -> key = text
+                            2 -> value = text
+                        }
+                    }
+                    if (key != null && value != null) {
+                        props[key] = value
+                        if (props.size >= MAX_ONNX_METADATA_PROPERTIES) return props
                     }
                 }
                 else -> return props // unknown wire type: stop scanning
@@ -428,6 +451,28 @@ object YOLOFileUtils {
         return map.ifEmpty { null }
     }
 
+
+    /**
+     * Reads a small metadata stream with a strict decompressed-byte ceiling.
+     * Internal visibility lets local JVM tests exercise the guard directly.
+     */
+    internal fun readBytesWithLimit(
+        stream: InputStream,
+        maxBytes: Int = MAX_METADATA_BYTES,
+    ): ByteArray {
+        require(maxBytes >= 0)
+        val output = ByteArrayOutputStream(kotlin.math.min(maxBytes, 8192))
+        val buffer = ByteArray(4096)
+        var total = 0
+        while (true) {
+            val read = stream.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > maxBytes) throw IOException("Model metadata exceeds $maxBytes bytes")
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
     private fun closeResources(afd: AssetFileDescriptor?, fis: FileInputStream?, fileChannel: FileChannel?, reason: String) {
         try { fileChannel?.close() } catch (e: IOException) { Log.e(TAG, "Error closing FileChannel", e) }
         try { fis?.close() } catch (e: IOException) { Log.e(TAG, "Error closing FileInputStream", e) }
