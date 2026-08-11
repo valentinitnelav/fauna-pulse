@@ -2,24 +2,45 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      github-actions-updates:
+        patterns: ["*"]
 
   - package-ecosystem: pub
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      app-pub-patches:
+        patterns: ["*"]
+        update-types: ["patch"]
 
   - package-ecosystem: pub
     directory: /packages/ultralytics_yolo
+    target-branch: develop
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      plugin-pub-patches:
+        patterns: ["*"]
+        update-types: ["patch"]
 
   - package-ecosystem: gradle
     directory: /android
+    target-branch: develop
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      android-build-toolchain:
+        patterns:
+          - com.android.application
+          - org.jetbrains.kotlin.android
+          - gradle-wrapper

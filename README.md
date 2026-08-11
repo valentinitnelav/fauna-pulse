@@ -165,6 +165,13 @@ If you use FaunaPulse in your research, please cite it using the metadata in [`C
 <!-- Once the first release is archived on Zenodo, add the DOI badge here and the
      versioned DOI to CITATION.cff. -->
 
+## Contributing
+
+Contributions are welcome. Start a short-lived branch from `develop` and open
+the pull request back into `develop`; `main` is kept stable for reviewed
+changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
+branch names and the dependency-update workflow.
+
 ## Privacy
 
 FaunaPulse collects and transmits nothing: no account, no analytics, no tracking. Detection runs on the phone and everything recorded stays in the app's folder on the device. See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) for the permission-by-permission detail, and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.

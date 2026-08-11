@@ -18,6 +18,61 @@ dependencies:
     path: packages/ultralytics_yolo
 ```
 
+## Branch and pull-request workflow
+
+FaunaPulse uses two long-lived branches:
+
+- `main` is the stable, public-facing branch. It should always be buildable and
+  receives changes only after review.
+- `develop` is the integration branch for ongoing work. Normal code,
+  documentation and dependency-update pull requests target `develop`.
+
+The maintainer promotes reviewed changes from `develop` to `main`. An urgent
+release or security hotfix may target `main` directly, but that is the
+exception.
+
+For a normal contribution:
+
+1. Fork the repository and synchronize your fork's `develop` branch.
+2. Create a short-lived branch from the latest `develop`:
+
+   ```bash
+   git switch develop
+   git pull --ff-only
+   git switch -c fix/short-description
+   ```
+
+3. Make one focused change and run the relevant checks.
+4. Push the branch to your fork and open a pull request with **base:
+   `develop`**.
+5. Delete the short-lived branch after the pull request is merged or closed.
+
+Use a concise branch prefix such as `fix/`, `feature/`, `docs/` or
+`test/`. Do not build new work on a Dependabot branch or delete one directly.
+Each `dependabot/...` branch belongs to an automated dependency pull request;
+review, merge or close that pull request instead.
+
+Dependabot version updates also target `develop`. Patch-level Pub updates are
+grouped to reduce noise, while Android build-toolchain updates are grouped
+together because Gradle, the Android Gradle Plugin and Kotlin must remain
+compatible. Native QNN and ONNX Runtime updates stay separate because they need
+specific on-device validation.
+
+When this policy changes, existing bot pull requests may keep their old base
+branch or grouping until Dependabot replaces them. Do not delete their branches
+manually. Close an obsolete pull request only after its replacement appears, or
+after deliberately deciding to defer that dependency version.
+
+### Maintainer repository settings
+
+Keep `main` as the default branch. In GitHub's repository settings:
+
+- Enable **Automatically delete head branches** after pull requests are merged.
+- Protect `main` with a ruleset that blocks force pushes and deletion and
+  requires a pull request plus the security/release checks.
+- Periodically run `git fetch --prune` locally to remove references to branches
+  that GitHub has already deleted.
+
 ## Everyday commands
 
 ```bash
@@ -96,9 +151,14 @@ Claude-facing overview):
 
 ## Git etiquette
 
-The project owner manages version control. **Advise on Git commands rather than
-running them** — do not commit, push, or run git operations without the owner's
-explicit consent.
+Do not force-push or delete `main` or `develop`. Contributors may rewrite
+their own unmerged short-lived branch when needed, but should avoid rebasing it
+after review has started unless they tell reviewers.
+
+Use clear, descriptive commit messages. The maintainer assigns the repository's
+`Round N` identifier when integrating or squash-merging a contribution, so an
+external contributor does not need to guess the next round number. Never commit
+private session data, signing credentials or model weights.
 
 ## License
 

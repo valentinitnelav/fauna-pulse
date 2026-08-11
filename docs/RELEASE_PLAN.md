@@ -40,7 +40,7 @@ yet, no release keystore, docs written for researchers.
 
 ## Build-config state
 
-Fixed in rounds 158, 194, 199, 200 and 201:
+Fixed in rounds 158, 194, 199, 200, 201 and 202:
 
 - [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
@@ -66,6 +66,12 @@ Fixed in rounds 158, 194, 199, 200 and 201:
   wrapper that the native-test and Flutter-build steps require. GitHub's checkout
   and Java setup actions use their Node.js 24-based v5 releases, and Dependabot
   now watches GitHub Actions as well as Pub and Gradle.
+- [x] Round 202 made repository maintenance legible to contributors:
+  `main` is stable, `develop` is the normal PR target, short-lived branches
+  are removed after review, and a PR template carries the verification
+  checklist. Dependabot version updates now target `develop`, open at most
+  three PRs per configured entry, and group only updates that should be reviewed
+  together.
 
 Still open:
 
@@ -130,6 +136,12 @@ in README (§Models).
       cleartext disabled, restricted battery and unused data-sync permissions
       removed, release lint and signed local AAB gate; CI's tracked Gradle
       wrapper and action versions were repaired in round 201.
+- [x] Branch and dependency-update workflow documented and configured (round 202):
+      contributor PRs and Dependabot version updates target `develop`; README and
+      PR template point newcomers to the same rule.
+- [ ] **OWNER: in GitHub Settings → General → Pull Requests, enable
+      "Automatically delete head branches"; add a `main` ruleset that blocks
+      force pushes/deletion and requires a PR plus the security/release check.**
 - [x] README: bundled model explained honestly ("runs out of the box, does not know
       insects"); INSTALL.md A3 aligned (round 158).
 - [x] `docs/FIELD_GUIDE.md`: title typo fixed, physical-setup section written from what

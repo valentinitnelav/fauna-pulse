@@ -7042,3 +7042,39 @@ therefore absent from a fresh checkout.
   SUCCESSFUL`, 689 tasks). The original CI error was bootstrap-only, not a
   failed security test. The workflow's later `flutter build appbundle --debug`
   gate also built `app-debug.aab` successfully.
+
+## Round 202 (2026-08-11): clarify branches and tame dependency PR noise
+
+The first Dependabot run exposed 11 remote bot branches at once. A local audit
+confirmed that the repository itself had only two local/long-lived branches
+(`main` and `develop`); the rest were unmerged dependency proposals, not
+abandoned human work.
+
+- Defined `main` as the stable default branch and `develop` as the normal
+  integration and pull-request base. Urgent maintainer-approved release or
+  security hotfixes are the only direct-`main` exception.
+- Routed all Dependabot version updates to `develop` and reduced each configured
+  entry from five open version PRs to three.
+- Grouped GitHub Actions updates, grouped patch-level Pub updates separately for
+  the app and vendored plugin, and grouped Gradle/Android Gradle Plugin/Kotlin as
+  one Android build-toolchain compatibility unit. QNN and ONNX Runtime updates
+  remain separate because they require targeted on-device validation.
+- Added a public branch workflow to the contributor guide and README: contributors
+  fork, branch from `develop`, open a focused PR back to `develop`, and delete
+  the short-lived branch afterward. Existing Dependabot branches are handled
+  through their PRs, never deleted directly.
+- Added `.github/pull_request_template.md` with target-branch, test, device-risk,
+  documentation and private-data checks. External contributors can use descriptive
+  commits; the maintainer assigns the Round id when integrating or squash-merging.
+- Recorded the remaining owner-only GitHub settings in the release plan:
+  automatically delete merged head branches and protect `main` against deletion,
+  force pushes and unchecked direct changes.
+
+No dependency proposal was merged in this round. The locally fetched bot refs are
+sufficient for reviewing their code diffs, but GitHub access is still needed for
+PR discussion/check status and server-side repository settings.
+
+Verification: Dependabot YAML parsed successfully; focused assertions confirmed
+all four entries target `develop`, use a limit of three and contain the intended
+groups; `git diff --check` was clean. App tests were not repeated because no Dart,
+Kotlin, Gradle dependency or application source file changed.
