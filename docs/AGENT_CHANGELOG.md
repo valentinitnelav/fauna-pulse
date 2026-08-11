@@ -7022,3 +7022,23 @@ tracker-replay skip; vendored plugin suite 173 passed; native security tests
 signed `flutter build appbundle --release` built a 163.8 MB AAB and
 `jarsigner -verify` reported `jar verified`. Final AAB SHA-256:
 `eee5ec668ecfecaaf9610f62e491d61975bb35fcf237e43e90a7445d3e4b128a`.
+
+## Round 201 (2026-08-11): repair security-check CI bootstrap
+
+The first Round 200 GitHub Actions run stopped before executing any native
+security assertion because the workflow called `android/gradlew`, but the app
+Gradle wrapper launcher and JAR were excluded by `android/.gitignore` and were
+therefore absent from a fresh checkout.
+
+- Restored the Gradle wrapper as tracked build infrastructure so both the direct
+  native test/lint command and Flutter's later Android bundle command work from
+  a clean clone.
+- Updated GitHub's checkout and Java setup actions from v4 to their Node.js
+  24-based v5 releases, removing the runner's Node.js 20 deprecation warnings.
+- Added the GitHub Actions ecosystem to weekly Dependabot checks alongside the
+  existing Pub and Gradle checks.
+- Verified the previously blocked command locally: all 3 native metadata
+  security tests passed and `:app:lintDebug` completed successfully (`BUILD
+  SUCCESSFUL`, 689 tasks). The original CI error was bootstrap-only, not a
+  failed security test. The workflow's later `flutter build appbundle --debug`
+  gate also built `app-debug.aab` successfully.

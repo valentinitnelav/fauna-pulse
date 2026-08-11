@@ -40,7 +40,7 @@ yet, no release keystore, docs written for researchers.
 
 ## Build-config state
 
-Fixed in rounds 158, 194, 199 and 200:
+Fixed in rounds 158, 194, 199, 200 and 201:
 
 - [x] SDK levels pinned in `android/app/build.gradle`: `minSdk 24`, `targetSdk 36`,
   `compileSdk 36` (verified in the built APK). They previously followed whichever
@@ -62,6 +62,10 @@ Fixed in rounds 158, 194, 199 and 200:
   automated dependency updates, CI security regressions, and
   `scripts/security_release_gate.sh` for the signed AAB. The recording wake lock
   also has a renewable timeout and cannot restart as an orphan service.
+- [x] Round 201 repaired the fresh-checkout CI gate by tracking the app Gradle
+  wrapper that the native-test and Flutter-build steps require. GitHub's checkout
+  and Java setup actions use their Node.js 24-based v5 releases, and Dependabot
+  now watches GitHub Actions as well as Pub and Gradle.
 
 Still open:
 
@@ -121,10 +125,11 @@ in README (§Models).
       redaction, protected-species note.
 - [x] `CITATION.cff`: stale TODO comments removed (round 158); DOI line stays commented
       until Phase 1.
-- [x] Release security hardening and checks (round 200): model and metadata input
+- [x] Release security hardening and checks (rounds 200-201): model and metadata input
       limits, private model/diagnostic storage, explicit settings-only backup,
       cleartext disabled, restricted battery and unused data-sync permissions
-      removed, release lint and signed local AAB gate.
+      removed, release lint and signed local AAB gate; CI's tracked Gradle
+      wrapper and action versions were repaired in round 201.
 - [x] README: bundled model explained honestly ("runs out of the box, does not know
       insects"); INSTALL.md A3 aligned (round 158).
 - [x] `docs/FIELD_GUIDE.md`: title typo fixed, physical-setup section written from what
