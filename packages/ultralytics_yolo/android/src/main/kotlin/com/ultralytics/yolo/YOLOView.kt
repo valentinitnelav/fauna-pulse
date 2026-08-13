@@ -54,6 +54,12 @@ data class LensInfo(
     val cameraInfo: CameraInfo? = null
 )
 
+@androidx.annotation.OptIn(
+    markerClass = [
+        androidx.camera.core.ExperimentalZeroShutterLag::class,
+        androidx.camera.camera2.interop.ExperimentalCamera2Interop::class,
+    ],
+)
 class YOLOView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
@@ -2226,6 +2232,8 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
+    // CameraX invokes this through stillCallbackExecutor; lint cannot infer that handoff.
+    @android.annotation.SuppressLint("WrongThread")
     private fun imageProxyToJpegBytes(image: ImageProxy): ByteArray? {
         return try {
             val plane = image.planes[0]
@@ -2252,6 +2260,8 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
+    // Called from the same dedicated still executor after capture.
+    @android.annotation.SuppressLint("WrongThread")
     private fun compositeOverlayOnJpeg(jpegBytes: ByteArray, rotationDegrees: Int, isFront: Boolean): ByteArray? {
         return try {
             val decoded = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return null
@@ -2288,6 +2298,8 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /** Decode + rotate/mirror a JPEG to the display-correct orientation, then re-encode. */
+    // Called from the same dedicated still executor after capture.
+    @android.annotation.SuppressLint("WrongThread")
     private fun normalizeJpegOrientation(jpegBytes: ByteArray, rotationDegrees: Int, isFront: Boolean): ByteArray? {
         if (rotationDegrees == 0 && !isFront) return jpegBytes
         return try {
@@ -2747,7 +2759,7 @@ class YOLOView @JvmOverloads constructor(
                 // Log
                 
                 // Callback
-                inferenceCallback?.invoke(resultWithOriginalImage)
+            inferenceCallback?.invoke(resultWithOriginalImage)
                 
                 // Streaming callback (with output throttling)
                 streamCallback?.let { callback ->
@@ -3604,6 +3616,8 @@ class YOLOView @JvmOverloads constructor(
      * composited on top of the preview snapshot before encoding. Used as the fallback path when [capturePhoto]'s
      * preferred ImageCapture binding is unavailable. Returns the captured image as a ByteArray (JPEG format).
      */
+    // This legacy fallback must synchronously draw the Android view before encoding.
+    @android.annotation.SuppressLint("WrongThread")
     fun captureFrame(withOverlays: Boolean = true): ByteArray? {
         try {
             // Create bitmap to hold the captured frame

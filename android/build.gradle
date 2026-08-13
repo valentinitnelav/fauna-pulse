@@ -11,6 +11,15 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    if (project.name == "geolocator_android") {
+        project.afterEvaluate {
+            // geolocator_android 4.6.2 calls NotificationManagerCompat.notify after
+            // the host app has requested POST_NOTIFICATIONS, but AGP 9 cannot infer
+            // that cross-module permission flow. Keep all other library lint enabled.
+            project.android.lint.disable.add("MissingPermission")
+        }
+    }
 }
 
 tasks.register("clean", Delete) {

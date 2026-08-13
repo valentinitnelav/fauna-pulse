@@ -7078,3 +7078,18 @@ Verification: Dependabot YAML parsed successfully; focused assertions confirmed
 all four entries target `develop`, use a limit of three and contain the intended
 groups; `git diff --check` was clean. App tests were not repeated because no Dart,
 Kotlin, Gradle dependency or application source file changed.
+
+
+
+
+## Round 203 (2026-08-13): complete Android AGP 9 release migration
+
+The Flutter 3.47 release build had moved beyond its original toolchain warnings into two hard failures: duplicate app/library namespaces and `file_picker` compiling against Android API 34 while a transitive library required API 36.
+
+- Upgraded both Gradle wrappers from 8.14 to 9.1.0, AGP from 8.11.1 to 9.0.1, and Kotlin from 2.2.20 to 2.3.20. Kept the temporary legacy Kotlin compatibility switches because several current Flutter plugins still apply KGP.
+- Gave the app module the unique `com.faunapulse.app` namespace while retaining its existing application id and the native `com.ultralytics.yolo` Kotlin package. Fully qualified `MainActivity` and `RecordingService` in the manifest so the bundled YOLO library can keep its own namespace.
+- Upgraded `file_picker` 8.3.7 to 10.3.10. This line compiles against Flutter API 36 and still supports the legacy Kotlin plugin path required by the other installed plugins; 11.x was tested and rejected because it assumes AGP built-in Kotlin.
+- Kept Android lint strict while disabling only the `geolocator_android` 4.6.2 `MissingPermission` false positive. The host app already declares and requests `POST_NOTIFICATIONS`, which library lint cannot infer across modules.
+- Fixed AGP 9 lint findings in the local YOLO fork: use the API-23-safe ONNX result index accessor, contain both CameraX experimental opt-ins inside `YOLOView`, document focused JPEG thread annotations, and correct inference callback indentation. Flutter also refreshed the fork analyzer exclusions for generated build and platform directories.
+
+Verification: `flutter analyze` reported no issues; the full Flutter test suite passed; `./gradlew lintRelease` passed across every Android subproject; `flutter build apk --release` succeeded and produced `build/app/outputs/flutter-apk/app-release.apk` at 127.3 MB. Remaining console messages are non-blocking migration warnings from Flutter and third-party plugins about legacy KGP, deprecated AGP compatibility flags, Java 8 targets, manifest package attributes, and older plugin APIs.

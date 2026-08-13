@@ -89,6 +89,17 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   and ONNX Runtime upgrades stay separate because they require targeted device
   validation. See `docs/CONTRIBUTING.md` and
   `.github/pull_request_template.md`.
+
+- **Android release toolchain (round 203).** Release builds use Gradle 9.1.0,
+  AGP 9.0.1, and Kotlin 2.3.20. The app namespace and application id are
+  `com.faunapulse.app`; native app classes and the bundled YOLO library remain
+  in `com.ultralytics.yolo`, so manifest component names are fully qualified.
+  Keep `android.builtInKotlin=false` and `android.newDsl=false` until every
+  Android plugin supports AGP built-in Kotlin. `file_picker` stays on `^10.3.10`:
+  8.x hard-coded compile SDK 34, while 11.x assumes built-in Kotlin. Root lint
+  disables only `geolocator_android` 4.6.2 `MissingPermission` false positive;
+  the host manifest and runtime flows still declare and request
+  `POST_NOTIFICATIONS`.
 - **Security and backup boundary (rounds 200-201).** Imported/downloaded models live
   in private app storage. Intake is HTTPS-only, rejects unsafe names and
   traversal, streams through a temporary file, validates the TFLite `TFL3`

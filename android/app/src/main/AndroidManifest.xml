@@ -46,7 +46,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".MainActivity"
+            android:name="com.ultralytics.yolo.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
@@ -72,7 +72,7 @@
              long field runs (see RecordingService.kt). Not exported; started only
              by this app while recording. -->
         <service
-            android:name=".RecordingService"
+            android:name="com.ultralytics.yolo.RecordingService"
             android:exported="false"
             android:foregroundServiceType="camera" />
         <!-- FileProvider: lets MainActivity.sendFileByEmail hand ONE saved error

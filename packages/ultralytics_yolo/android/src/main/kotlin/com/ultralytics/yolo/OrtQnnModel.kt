@@ -120,8 +120,8 @@ class OrtQnnModel(context: Context, modelPath: String, private val tag: String) 
         }
         OnnxTensor.createTensor(env, FloatBuffer.wrap(floats), inputShape).use { tensor ->
             session.run(mapOf(inputName to tensor)).use { results ->
-                return outputNames.mapIndexed { i, name ->
-                    readOutput(results.get(name).get() as OnnxTensor, outputs[i])
+                return outputNames.mapIndexed { i, _ ->
+                    readOutput(results.get(i) as OnnxTensor, outputs[i])
                 }
             }
         }

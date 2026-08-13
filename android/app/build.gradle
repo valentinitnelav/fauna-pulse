@@ -16,7 +16,8 @@ def hasReleaseSigning = (keystoreProperties["storeFile"] ?: System.getenv("ANDRO
     (keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD"))
 
 android {
-    namespace = "com.ultralytics.yolo"
+    // Keep the app namespace distinct from the bundled YOLO library namespace.
+    namespace = "com.faunapulse.app"
     // Pinned instead of flutter.compileSdkVersion (round 158). The Flutter-provided
     // values follow whichever Flutter SDK happens to be installed, so the API level
     // the app is built and tested against could change silently under us. Google Play
@@ -43,7 +44,7 @@ android {
         // so this app installs alongside the official Ultralytics app instead of
         // replacing it, and so saved data lives under
         // Android/data/com.faunapulse.app/ rather than a yolo path.
-        // (The internal Kotlin namespace stays com.ultralytics.yolo — it's not
+        // (The internal Kotlin package stays com.ultralytics.yolo — it's not
         // user-visible and renaming it would mean moving all native sources.)
         applicationId = "com.faunapulse.app"
         // Pinned (round 158), see the compileSdk note above.
