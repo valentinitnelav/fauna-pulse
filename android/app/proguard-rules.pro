@@ -26,3 +26,6 @@
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# Required by Room/WorkManager when optimized with newer R8 versions.
+-keep class * extends androidx.room.RoomDatabase { void <init>(); }
