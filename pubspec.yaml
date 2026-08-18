@@ -13,9 +13,9 @@ dependencies:
   cupertino_icons: ^1.0.9
   flutter:
     sdk: flutter
-  image_picker: ^1.2.1
+  image_picker: ^1.2.3
   package_info_plus: ^9.0.0
-  path_provider: ^2.1.5
+  path_provider: ^2.1.6
   # FaunaPulse additions:
   image: ^4.3.0 # pure-Dart JPEG decode/crop/encode for ROI photo cropping
   archive: ^4.0.7 # zip the problem-report bundle (txt + screenshots + samples) into ONE shareable file (r191; was already in the tree via image)
@@ -23,7 +23,7 @@ dependencies:
   fl_chart: ^0.69.0 # end-of-session activity graph
   battery_plus: ^6.0.0 # battery level logged at session start/stop
   device_info_plus: ^11.0.0 # phone model / device id for session metadata
-  screen_brightness: ^2.1.0 # dim-to-black power-saving mode
+  screen_brightness: ^2.1.11 # dim-to-black power-saving mode
   permission_handler: ^11.3.0 # request camera permission from Flutter
   geolocator: ^13.0.1 # one stable GPS fix per session (no continuous tracking)
   shared_preferences: ^2.3.0 # persist session settings across app restarts
@@ -33,7 +33,7 @@ dependencies:
   # preview. (The original `flutter_markdown` was discontinued by the Flutter
   # team in 2025; `flutter_markdown_plus` is the maintained drop-in fork.)
   # "Markdown" = a plain-text way to mark up formatting, e.g. **bold** or - lists.
-  flutter_markdown_plus: ^1.0.3
+  flutter_markdown_plus: ^1.0.12
   # Pinned to ^12.x: share_plus 13.x ships a Swift Package umbrella that fails framework module verification under
   # Xcode 26.5 ("'Flutter/Flutter.h' file not found", "double-quoted include in framework header"). Revisit once the
   # upstream package re-publishes with a compatible module map.
