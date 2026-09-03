@@ -1,6 +1,4 @@
 # Paste below the model names and their relative path to this repository
 # that will be bundled into the APK file:
 # -----------------------------------------------------------------------------
-/fauna-pulse/assets/models/custom/ArthroNat_flatbug_yolo11n_int8_640.tflite
 /fauna-pulse/assets/models/custom/MDV6-yolov10-c_int8_256.tflite
-/fauna-pulse/assets/models/custom/MDV6-yolov10-c_float16_256.tflite
