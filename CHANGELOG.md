@@ -1,9 +1,11 @@
 <!--
 Versions follow the `MAJOR.MINOR.PATCH` scheme of the `version:` field in
-`pubspec.yaml`, and each release is tagged `v<version>` on GitHub.
+`pubspec.yaml`, and each release is tagged `v<version>` on GitHub. While the app is
+an early research preview, versions carry a SemVer pre-release suffix (e.g.
+`0.7.0-alpha.1`) and the GitHub release is marked as a pre-release.
 -->
 
-## 0.7.0-alpha.1
+## 0.7.0-alpha.1 (2026-09-04)
 
 The first public, citable release: an early research preview, tagged so it can be
 archived on Zenodo with a DOI and installed from GitHub Releases.
@@ -21,4 +23,4 @@ archived on Zenodo with a DOI and installed from GitHub Releases.
   model can and cannot do.
 - For transparency, the extra-detailed AI-assisted development journal lives in [`docs/AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md)
   with an overview at [`docs/AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md).
-- The Ultralytics plugin has its own CHANGELOG.md at `./fauna-pulse/packages/ultralytics_yolo/CHANGELOG.md`
+- The vendored Ultralytics plugin keeps its own [`packages/ultralytics_yolo/CHANGELOG.md`](packages/ultralytics_yolo/CHANGELOG.md).

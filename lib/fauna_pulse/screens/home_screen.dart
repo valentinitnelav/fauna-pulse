@@ -1304,16 +1304,17 @@ class AboutFaunaPulseDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'A passive, non-invasive field tool for monitoring '
-              'flower-visiting insects (and, with a suitable detection '
-              'model, other wildlife) at a fixed spot. Place the square '
-              'region of interest over a flower: FaunaPulse detects, tracks '
-              'and photographs visitors fully on-device (no internet '
-              'needed) and logs every visit with timestamps, so visitation '
-              'rates can be computed afterwards in R or Python. AI-free '
-              'motion-triggered and time-lapse capture, scheduled multi-day '
-              'runs and post-capture AI analysis of saved photos are built '
-              'in.',
+              'A passive, non-invasive field tool that turns a smartphone '
+              'into an AI-powered wildlife camera. Place the square region '
+              'of interest over a flower, feeding site or nest entrance: '
+              'FaunaPulse detects, tracks and photographs visiting animals '
+              'fully on-device (no internet needed) and logs every visit '
+              'with timestamps, so visitation rates can be computed '
+              'afterwards in R or Python. Its first use case is '
+              'flower-visiting insects, which needs a purpose-trained '
+              'detection model. AI-free motion-triggered and time-lapse '
+              'capture, scheduled multi-day runs and post-capture AI '
+              'analysis of saved photos are built in.',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 14),

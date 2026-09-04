@@ -11,7 +11,7 @@ abstract: >-
   performing inference directly on the smartphone, FaunaPulse enables portable and
   low-cost ecological monitoring without requiring an internet connection.
 type: software
-license: AGPL-3.0-or-later
+license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
 version: "0.7.0-alpha.1"
 date-released: "2026-09-04"

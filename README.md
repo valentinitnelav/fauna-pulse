@@ -80,6 +80,8 @@ It covers both installing a ready-made app without coding and building FaunaPuls
 | Document | Main audience | Purpose |
 |---|---|---|
 | [README.md](./README.md) | Everyone | This document, project pitch, layout, license, etc. |
+| [CHANGELOG.md](./CHANGELOG.md) | Everyone | What changed between releases. |
+| [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
 | [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source; import models. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | Field researcher | Run a session, read the live screen and troubleshoot. |
 | [DATA_GUIDE.md](docs/DATA_GUIDE.md) | Researcher / analyst | Read the `session.jsonl` data dictionary and compute visitation rates in R or Python. |
@@ -88,12 +90,13 @@ It covers both installing a ready-made app without coding and building FaunaPuls
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
 | [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Export detectors to run inside FaunaPulse app. |
-| [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / Tester | `.tflite` exports of published detectors, e.g. MegaDetector V6 | 
+| [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / tester | `.tflite` exports of published detectors, e.g. MegaDetector V6. |
 | [RELEASE_PLAN.md](docs/RELEASE_PLAN.md) | Maintainer | Phased checklist for public release. |
+| [PLAY_STORE_LISTING_DRAFT.md](docs/PLAY_STORE_LISTING_DRAFT.md) | Maintainer | Draft answers for the Google Play Console forms (listing, data safety, content rating). |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | Maintainer | Review the prioritized performance and robustness roadmap. |
-| [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | developer | How to measure performance (paired-run protocol). |
-| [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact. |
-| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
+| [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
+| [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact. |
+| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |
 | [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent | Detailed append-only development journal. |
 

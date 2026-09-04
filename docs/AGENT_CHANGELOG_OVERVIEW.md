@@ -394,9 +394,16 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   Dart `crash_store.dart` (both global hooks) + Kotlin uncaught-handler in `MainActivity`
   (KEEP `writeCrashFile` ↔ `crashFileBody` IN SYNC); C++ signal crashes aren't captured.
   `ErrorReporter.githubIssuesUrl` is set to the public repo's Issues page (r134).
-- **Versioning:** pubspec `version:` (now `0.6.4+10`) is the single source of truth
+- **Versioning:** pubspec `version:` (now `0.7.0-alpha.1+11`) is the single source of truth
   (Gradle + package_info_plus derive from it). Bump the build number for every tester APK;
-  tag releases `v<version>`.
+  tag releases `v<version>` keeping any pre-release suffix (`v0.7.0-alpha.1`). Release
+  metadata that must move together: pubspec `version`, CITATION.cff `version` +
+  `date-released`, CHANGELOG.md heading, `fastlane/.../changelogs/<versionCode>.txt`.
+  `scripts/build_release_apks.sh` passes `-P force-version-code-ignoring-abi=true` so the
+  per-ABI GitHub APKs carry the SAME versionCode as the Play AAB (r205; Flutter's default
+  would stamp 2011/1011 and block GitHub → Play switches). Licence id everywhere is
+  `AGPL-3.0-only` (SPDX) / "AGPL-3.0" (prose); the one-line description lives in
+  pubspec `description` == CITATION.cff `title`.
 - **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
 - **Camera2 interop options go through ONE funnel (round 82).**
   `applyInteropOptions()` in `YOLOView.kt` is the only place

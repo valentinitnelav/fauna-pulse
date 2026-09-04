@@ -24,7 +24,13 @@ if [ -z "$version" ]; then
 fi
 
 echo "Building per-ABI release APKs for v${version}..."
-flutter build apk --release --split-per-abi
+# By default Flutter stamps each split APK with versionCode = ABI index * 1000 +
+# the pubspec build number (arm64-v8a -> 2011, armeabi-v7a -> 1011 for build 11).
+# A phone that installed such a GitHub APK would then refuse the Google Play
+# build of the same release (same app, LOWER versionCode). The flag below keeps
+# the pubspec build number unchanged, so GitHub APKs and the Play AAB share one
+# versionCode and can update each other (RELEASE_PLAN.md, signing strategy).
+flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true
 
 out="build/app/outputs/flutter-apk"
 mkdir -p dist

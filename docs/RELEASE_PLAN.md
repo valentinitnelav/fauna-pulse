@@ -40,7 +40,7 @@ yet, no release keystore, docs written for researchers.
 
 | What | When | Why |
 |---|---|---|
-| Target API 36 (Android 16) | new Play apps from **2026-08-31** | Play requirement; currently not pinned in build.gradle |
+| Target API 36 (Android 16) | new Play apps from **2026-08-31** | Play requirement; pinned in build.gradle since round 158 (done) |
 | Play closed test: **12 testers, 14 continuous days** | before production access | rule for personal developer accounts created after Nov 2023 |
 | Zenodo webhook enabled | **before the first git tag** | Zenodo cannot mint DOIs for pre-existing releases |
 | Android developer verification | enforcement 2026-09-30 (BR, ID, SG, TH), global 2027 | Play registration satisfies it; also protects the GitHub-APK channel on certified devices |
@@ -110,14 +110,15 @@ Still open:
 
 ## Open question for the owner
 
-The bundled `yolo26n` is a general-purpose COCO detector: it makes the AI pipeline run
-out of the box but it does **not** recognise insects. So a citizen scientist who
-installs the app today cannot detect insects without obtaining a model from somewhere.
-Decide whether an insect-trained `.tflite` may be published as a public GitHub release
-asset (licence, collaborator approval). If yes, the "Download…" button becomes a
-copy-paste step and QUICK_START can promise real detections. If no, the docs must say
-plainly that AI mode needs a model the user supplies. Marked as an OWNER TODO comment
-in README (§Models).
+The bundled MegaDetector v6 (`MDV6-yolov10-c_int8_256.tflite`, classes animal / person /
+vehicle; rounds 194 and 199) makes the AI pipeline run out of the box but it does **not**
+recognise insects specifically. So a citizen scientist who installs the app today cannot
+detect insects without obtaining a model from somewhere. Decide whether an insect-trained
+`.tflite` may be published as a public GitHub release asset (licence, collaborator
+approval). If yes, the "Download…" button becomes a copy-paste step and the Field Guide
+can promise real detections. If no, the docs keep saying plainly that insect work needs a
+model the user supplies (README §Models, INSTALL.md A3 and the Play full description
+already do).
 
 ---
 
@@ -178,7 +179,10 @@ Owner web steps:
          and the keystore are git-ignored by round-158 design);
        - skim the git history once for private data (personal emails, collaborator
          model files); README, PRIVACY_POLICY.md and CITATION.cff were already
-         written for a public audience in round 158;
+         written for a public audience in round 158. Re-verified in round 205: the
+         only author/committer address in the history is the GitHub noreply one,
+         no keystore or `key.properties` is tracked, and the largest tracked file
+         is 492 KB (no model binaries);
        - GitHub: repo Settings > General > Danger Zone > "Change visibility" >
          "Make public".
 2. [ ] zenodo.org: "Log in with GitHub" (authorizes Zenodo's OAuth app). In the
@@ -194,19 +198,39 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
 
 5. [x] Bump version to `0.7.0-alpha.1+11` in pubspec.yaml, update CHANGELOG.md,
        CITATION.cff and this doc (round 204, prepared on branch
-       `release/v0.7.0-alpha.1`). [ ] Owner still needs to review, merge to `main`,
-       then `git tag v0.7.0-alpha.1` and `git push origin main v0.7.0-alpha.1`.
+       `release/v0.7.0-alpha.1`; round 205 made version, licence id and description
+       consistent across every metadata file). [ ] Owner: merge the release branch
+       into `develop`, then `develop` into `main`; on `main` create an annotated tag
+       and push both:
+       `git tag -a v0.7.0-alpha.1 -m "FaunaPulse v0.7.0-alpha.1"` then
+       `git push origin main v0.7.0-alpha.1`. If publishing slips past 2026-09-04,
+       first update `date-released` in CITATION.cff and the date in CHANGELOG.md.
 6. [ ] GitHub > Releases > "Draft a new release" (or `gh release create`): pick tag
        `v0.7.0-alpha.1`, title "FaunaPulse v0.7.0-alpha.1", **check "Set as a
-       pre-release"**, paste release notes (Code-agent prepared a draft from
-       CHANGELOG.md). PUBLISHING the release (not the tag alone) fires the Zenodo
-       webhook. Zenodo takes its metadata from `CITATION.cff` (or a `.zenodo.json`
-       if one existed; we deliberately keep CITATION.cff as the single source).
+       pre-release"**, paste release notes (round 205 draft in
+       `dist/RELEASE_NOTES_v0.7.0-alpha.1.md`, git-ignored: the CHANGELOG.md
+       section plus install lines). PUBLISHING the release (not the tag alone) fires
+       the Zenodo webhook. Zenodo's docs say nothing about pre-releases; its GitHub
+       integration code ignores only DRAFT releases, so the pre-release flag is
+       fine. If no DOI badge appears within ~15 minutes, open the release's
+       "Errors" fold on Zenodo's GitHub page (metadata errors can be fixed and the
+       release re-published). Zenodo takes its metadata from `CITATION.cff` (a
+       `.zenodo.json`, if one existed, would override it entirely; we deliberately
+       keep CITATION.cff as the single source): title, authors (ORCID,
+       affiliation), abstract, keywords, licence id and version come from there,
+       not from the GitHub release form.
 7. [ ] Attach the per-ABI APKs: run `bash scripts/build_release_apks.sh` (round 193)
        and upload the two files from `dist/`. `faunapulse-v0.7.0-alpha.1-arm64-v8a.apk`
        covers virtually all modern phones; `...-armeabi-v7a.apk` the old 32-bit
        ones. Keep these asset names stable across releases so Obtainium users'
-       filters keep working.
+       filters keep working. Round 205: the script passes
+       `-P force-version-code-ignoring-abi=true`, so both APKs carry versionCode 11,
+       identical to the Play AAB. Without it Flutter stamps 2011 (arm64) / 1011
+       (armeabi) and a phone that installed the GitHub APK could never switch to the
+       Play build (Android refuses a lower versionCode), defeating the
+       cross-updatable-channels decision above. Verify after the build with aapt2
+       from the SDK build-tools:
+       `aapt2 dump badging dist/faunapulse-v0.7.0-alpha.1-arm64-v8a.apk | grep versionCode`.
 8. [ ] Wait a few minutes, then reload Zenodo's GitHub page: the release should show
        a DOI badge. Open the Zenodo record and copy the CONCEPT DOI (the "Cite all
        versions" one, which always resolves to the newest release), not the
@@ -246,10 +270,12 @@ deferred (see the last item).
 - [ ] CONTRIBUTING: add non-code contribution paths (bug reports via the in-app problem
       report, field observations, doc fixes); add `CODE_OF_CONDUCT.md`
       (Contributor Covenant).
-- [ ] `fastlane/metadata/android/en-US/` (a standard folder layout for store texts:
-      `short_description.txt` under 80 chars, `full_description.txt`, icon,
-      `images/phoneScreenshots/`, `changelogs/<versionCode>.txt`). Written once, it
-      serves the Play listing AND the F-Droid/IzzyOnDroid conventions.
+- [x] `fastlane/metadata/android/en-US/` texts (round 204): `short_description.txt`
+      (60 chars, limit 80), `full_description.txt` (2.3 k chars, limit 4000),
+      `changelogs/11.txt` (472 chars, limit 500). Written once, they serve the Play
+      listing AND the F-Droid/IzzyOnDroid conventions. [ ] Still missing (owner
+      assets): `images/icon.png`, `images/featureGraphic.png` (1024x500),
+      `images/phoneScreenshots/` (the Phase 2 screenshots).
 - [ ] GitHub Actions CI (`flutter analyze` + `flutter test` on push, APK build on tag):
       DEFERRED (owner decision 2026-08-05): the repo sees several pushes a day during
       active development and the owner does not want a build per push. Revisit near
@@ -349,7 +375,11 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
 - [ ] Owner registers a personal Play developer account ($25 one-time, government-ID
       verification). This also satisfies the new Android developer-verification program.
 - [ ] Play App Signing: upload OUR keystore (from Phase 0) as the app signing key, so
-      GitHub and Play builds stay cross-updatable.
+      GitHub and Play builds stay cross-updatable. This choice is offered ONCE, when
+      the app is created in the Console and before the first AAB upload: App integrity
+      > "Choose signing key" > "Use a different key" > "Export and upload a key from
+      Java keystore" (Google's PEPK tool wraps the key). If the first AAB is uploaded
+      without doing this, Google generates its own key and the channels split forever.
 - [x] Build config: `scripts/security_release_gate.sh` ends with a signed
       `flutter build appbundle --release` (AAB, the publishing format Play
       requires; Play generates per-device APKs from it); targetSdk 36 and release
@@ -360,9 +390,11 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) — review E8, round 171 — with the
       reopen triggers; this bullet's decision stands until one fires.)
 - [ ] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
-      screenshots (from Phase 2); recompress the 1.1 MB playstore icon to at most 1 MB;
-      privacy policy URL (Phase 0 file); complete the Data safety form against the
-      actual settings-only Android backup and the current Play Console wording.
+      screenshots (from Phase 2); the 512x512 Play icon is ready (round 193);
+      privacy policy URL (the public repo's PRIVACY_POLICY.md); complete the Data
+      safety form against the actual settings-only Android backup and the current
+      Play Console wording. Draft answers for all of these forms are in
+      `docs/PLAY_STORE_LISTING_DRAFT.md` (round 204).
       FaunaPulse itself has no analytics or user-data upload. Declare and justify
       camera, optional location, notifications, and the camera foreground service.
       There is no direct battery-exemption or data-sync permission. Complete the
@@ -387,8 +419,10 @@ supported by F-Droid.
 
 - `flutter analyze` clean and `flutter test test/fauna_pulse` green after every round.
 - Fresh clone builds a release APK that installs and runs the AI pipeline with the
-  bundled model (validates the Phase 0 build fixes; the bundled COCO model does not
-  detect insects, see the open owner question).
+  bundled model (validates the Phase 0 build fixes; the bundled MegaDetector model
+  does not detect insects specifically, see the open owner question). A fresh clone
+  has NO model files (they are git-ignored), so this check needs the listed
+  `MDV6-yolov10-c_int8_256.tflite` placed in `assets/models/custom/` first.
 - DOI badge resolves; `CITATION.cff` validates (cffconvert); Obtainium picks up a new
   tagged release within a day.
 - Play pre-launch report (Google's automatic device-farm test of the uploaded build) on

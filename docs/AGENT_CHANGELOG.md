@@ -7130,12 +7130,15 @@ merged or pushed; owner reviews and handles the tag/push/publish steps).
 - `docs/RELEASE_PLAN.md`: recorded the tag-scheme decision, updated the Phase 1
   recipe's version references to `v0.7.0-alpha.1`, and ticked off the parts of
   steps 5 and 10 done this round (tag/push/publish remain owner steps).
-- Drafted (not committed; owner/Play-Console-facing, kept as local scratch files
-  outside the repo) release notes for the GitHub release description, plus a
-  `fastlane/metadata/android/en-US/` skeleton and a Play Data-safety/content-rating
-  answer draft for Phase 4, grounded in `PRIVACY_POLICY.md`'s actual permission
-  table (camera, optional one-shot GPS, notifications, camera foreground service;
-  no analytics, no data upload, no third-party sharing).
+- Added a `fastlane/metadata/android/en-US/` skeleton (short/full description,
+  `changelogs/11.txt`) and `docs/PLAY_STORE_LISTING_DRAFT.md`, a Play
+  Data-safety/content-rating answer draft for Phase 4, grounded in
+  `PRIVACY_POLICY.md`'s actual permission table (camera, optional one-shot GPS,
+  notifications, camera foreground service; no analytics, no data upload, no
+  third-party sharing). (Correction, round 205: this entry originally said these
+  were kept outside the repo; they were committed in 41bfc12.) The GitHub
+  release-notes draft existed only as a session scratch file; round 205 regenerated
+  it as git-ignored `dist/RELEASE_NOTES_v0.7.0-alpha.1.md`.
 
 Not done this round (owner-only, in order): merge this branch and tag/push
 `v0.7.0-alpha.1`; make the GitHub repo public; enable the Zenodo GitHub webhook
@@ -7147,3 +7150,61 @@ is the longest pole for Play).
 Verification: `flutter analyze` and `flutter test test/fauna_pulse` run clean on
 the branch (no Dart/Kotlin/Gradle source changed, only docs/metadata); `cffconvert`
 validates the updated `CITATION.cff`.
+
+## Round 205 (2026-09-04): release-readiness audit for v0.7.0-alpha.1 (Zenodo + Play)
+
+Owner asked for a final consistency check of branch `release/v0.7.0-alpha.1` before
+publishing (Zenodo DOI first, GitHub release with APKs, then Google Play). Docs and
+metadata only, plus one About-dialog string and one build-script flag; no
+SessionConfig/wire change. Owner merges and commits (nothing committed here).
+
+- Version references: pubspec, CITATION.cff, CHANGELOG.md and
+  `fastlane/.../changelogs/11.txt` already agreed on `0.7.0-alpha.1(+11)`. Fixed the
+  two stale ones: the AGENT_CHANGELOG_OVERVIEW "Versioning" invariant (still said
+  `0.6.4+10`) and the bug-report issue template example. Test fixtures that say
+  `0.6.4` are fixture data and were left alone.
+- Licence identifier: CITATION.cff said `AGPL-3.0-or-later` while README,
+  CONTRIBUTING, the About dialog, the Play description and the inherited Ultralytics
+  licence all say AGPL-3.0 with no "or later". A downstream cannot add "or later" to
+  upstream code, so the SPDX id is now `AGPL-3.0-only` (Zenodo copies this id onto
+  the DOI record; owner can revert if "or later" was intended).
+- Description consistency: pubspec `description` == CITATION.cff `title`
+  (one-liner); README tagline == fastlane short description. The in-app About
+  paragraph was the only user-facing text still framed insects-first; reworded to the
+  wildlife-camera framing with flower-visiting insects as the first use case
+  (`home_about_dialog_test` does not pin the paragraph, still passes).
+- New finding, per-ABI versionCode: Flutter's `--split-per-abi` stamps
+  versionCode = ABI index * 1000 + build number (verified in flutter_tools
+  `FlutterPlugin.kt`, Flutter 3.47.2), i.e. 2011 (arm64) / 1011 (armeabi) while the
+  Play AAB carries 11. A phone that installed the GitHub APK could then never switch
+  to the Play build (lower versionCode), defeating the cross-updatable-channels
+  decision. `scripts/build_release_apks.sh` now passes
+  `-P force-version-code-ignoring-abi=true`; RELEASE_PLAN step 7 documents the
+  aapt2 check.
+- CHANGELOG.md: header explains the pre-release suffix; heading carries the release
+  date; plugin changelog path fixed (was `./fauna-pulse/...`; the repo root IS
+  fauna-pulse).
+- README Documentation table: added CHANGELOG.md, PRIVACY_POLICY.md and
+  PLAY_STORE_LISTING_DRAFT.md rows (every file in `docs/` is now listed), normalised
+  audience casing.
+- RELEASE_PLAN.md: removed stale statements (targetSdk "not pinned", bundled
+  `yolo26n`/COCO wording, 1.1 MB icon), ticked the fastlane texts (Play limits
+  checked: 60/80, 2329/4000, 472/500 chars), spelled out the owner's merge order
+  (release branch > develop > main > annotated tag), the once-only Play App Signing
+  "use my own key" moment, the Zenodo pre-release note with fallback, and that a
+  fresh clone has no model files.
+- Round 204 entry corrected in place: the fastlane texts and
+  `docs/PLAY_STORE_LISTING_DRAFT.md` WERE committed (41bfc12). The GitHub
+  release-notes draft is regenerated as git-ignored
+  `dist/RELEASE_NOTES_v0.7.0-alpha.1.md`.
+- Pre-flight re-verified: git history has only the GitHub noreply address; no
+  keystore or `key.properties` tracked; largest tracked file 492 KB (no model
+  binaries); `bundled_models.txt`'s `/fauna-pulse/...` path is normalised by both
+  the Gradle and the Dart parser, so the MDV6 model ships.
+- Zenodo: its CITATION.cff help page confirms it reads title, version, license,
+  type, abstract, message, authors (names/affiliation/orcid) and keywords, all
+  present; a `.zenodo.json` would override the CFF entirely, so none is added. The
+  docs are silent on pre-releases; the integration code skips only DRAFT releases.
+
+Verification: `flutter analyze` no issues; `flutter test test/fauna_pulse` 532
+passed, 1 skipped; `cffconvert --validate` OK on the updated CITATION.cff.
