@@ -68,7 +68,10 @@ FaunaPulse is an **early research preview (alpha)**, provided as a free, experim
 
 ## Getting started
 
-1. **Install the app.** Download the latest APK file from the [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page, or build from source - both are covered in the [Installation & Testing Guide](docs/INSTALL.md).
+1. **Install the app.** Currently there are several options, see [Installation & Testing Guide](docs/INSTALL.md):
+  - 1.1. Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page; WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). This does not come with auto-updates - see next option with Obtainium for that.
+  - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases.  
+  - 1.3. For advanced users: build from source - see [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
 3. **Choose a detection model.** Some general detectors can be bundled with the app, so the AI-mode can run immediately after install. A purpose-trained model can be added with **Download…** (a link) or **Import…** (a file) in the model picker. Motion-triggered and time-lapse capture need no AI model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).

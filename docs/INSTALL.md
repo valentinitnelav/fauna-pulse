@@ -27,20 +27,24 @@ On the phone, open your **File Manager** app, tap the downloaded `.apk` file, an
 Because this is an app outside the Play Store (for now), you will get security warnings that make the installation not a very smooth process. 
 Google Play intends it in this way, but the app is safe to install.
 
-### A2b. Optional: install & auto-update via Obtainium
+WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android)
+
+### A2b. Install & auto-update via Obtainium
 
 [Obtainium](https://github.com/ImranR98/Obtainium) is a free Android app that installs
 and auto-updates apps straight from a project's GitHub releases, so you don't have to
 manually re-download the `.apk` every time a new version comes out.
 
 1. Install Obtainium itself (see its own [installation instructions](https://github.com/ImranR98/Obtainium#installation)).
-2. In Obtainium, tap **Add App** and paste the FaunaPulse repository URL:
+2. In Obtainium, tap **+ Add** (usually down-right corner of your screen) and 
+   paste the FaunaPulse repository URL:
    `https://github.com/valentinitnelav/fauna-pulse`
 3. **Switch on "Include prereleases"** in the app's settings on that same screen
-   before tapping Add. Every FaunaPulse release is published as a GitHub
+   before tapping Add / +. Every FaunaPulse release is published as a GitHub
    pre-release while the app is an early research preview (tags like
    `v0.7.0-alpha.1`), and Obtainium skips pre-releases unless this switch is on,
    so without it Obtainium reports that the repository has no releases.
+   Then tap Add or +, usually on the right side of where you pasted the URL above.
 4. Obtainium then detects the GitHub releases and lets you pick which release asset
    to track. Choose the `.apk` matching your phone's processor architecture:
    - `arm64-v8a`: virtually all phones from the last several years.
