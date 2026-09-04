@@ -20,6 +20,12 @@
   On-device AI · Real-time tracking · Custom models · Works offline
 </p>
 
+<p align="center">
+  <a href="https://doi.org/10.5281/zenodo.22309221"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22309221.svg" alt="DOI"></a>
+  <a href="https://github.com/valentinitnelav/fauna-pulse/releases"><img src="https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases" alt="GitHub release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
+</p>
+
 ## Overview
 
 The first and primary scientific use case of FaunaPulse is estimating *visitation rates* in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
@@ -164,18 +170,12 @@ FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv]
 
 Future work may include (on-device or computer / server) taxonomic identification using classification models, including vision foundation models such as [BioCLIP][bioclip], and further analytical reporting derived from visitation and classification data.
 
-<!--
-Badges reserved for round 204+ (docs/RELEASE_PLAN.md Phase 1 step 9): once the
-first GitHub release is published and Zenodo mints a DOI, add badges here, e.g.:
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases)](https://github.com/valentinitnelav/fauna-pulse/releases)
--->
-
 ## Citation
 
 If you use FaunaPulse in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff). 
 GitHub renders a ready-made "Cite this repository" button from that file (top-right of the repository page).
+
+Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`.
 
 ## Contributing & Maintenance
 

@@ -38,9 +38,13 @@ authors:
     given-names: "Tiffany"
     affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany & Martin Luther University, Halle, Germany & National Tropical Botanical Garden, Kalāheo, US"
     orcid: "https://orcid.org/0000-0003-0318-1567"
-# Add the Zenodo DOI here once the first release is archived (use the concept DOI,
-# the one that always resolves to the newest version):
-# identifiers:
-#   - type: doi
-#     value: "10.5281/zenodo.XXXXXXX"
-#     description: "Concept DOI: all versions of FaunaPulse"
+# Concept DOI: fixed for the lifetime of the project, always resolves to the newest
+# Zenodo version. The version DOI below changes with every release.
+doi: 10.5281/zenodo.22309221
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22309221"
+    description: "Concept DOI: all versions of FaunaPulse (resolves to the newest release)"
+  - type: doi
+    value: "10.5281/zenodo.22309222"
+    description: "Version DOI: FaunaPulse v0.7.0-alpha.1"

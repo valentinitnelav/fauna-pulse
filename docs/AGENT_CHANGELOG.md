@@ -7232,3 +7232,34 @@ passed, 1 skipped; `cffconvert --validate` OK on the updated CITATION.cff.
 
 Verification: docs-only change in the tree; the release build and the aapt2 /
 apksigner / unzip checks above are the verification.
+
+## Round 207 (2026-09-04): Zenodo DOI into CITATION.cff and README
+
+First public release is out: repo public, Zenodo webhook armed (after a "Sync now"
+400 error that was fixed by disconnecting and reconnecting the GitHub linked account
+on Zenodo), annotated tag `v0.7.0-alpha.1` at 532dbdb, GitHub pre-release published
+with both per-ABI APKs (94.1 MB arm64-v8a, 16.5 MB armeabi-v7a), Zenodo record
+minted. Concept DOI `10.5281/zenodo.22309221` (all versions), version DOI
+`10.5281/zenodo.22309222` (this release).
+
+- Verified the Zenodo record against CITATION.cff via the public API: title,
+  abstract, the three authors with ORCIDs and affiliations, keywords and type
+  `software` came through verbatim; stored rights are `agpl-3.0-only` ("GNU Affero
+  General Public License v3.0 only"). Zenodo's legacy JSON reports the licence as
+  `apgl-v3`, an alias that is not in its vocabulary; the RDM JSON and the record
+  page show the correct licence, so no action. Version on Zenodo is `v0.7.0-alpha.1`
+  (taken from the tag, with the `v`), CFF stays `0.7.0-alpha.1`.
+- CITATION.cff: top-level `doi:` = concept DOI (so GitHub's "Cite this repository",
+  APA and BibTeX renderings carry it); `identifiers` lists the concept DOI and this
+  release's version DOI. Rule from now on: each release bumps the version-DOI entry
+  together with `version` and `date-released`; the concept DOI never changes.
+- README: DOI, release and licence badges in the centred header (replacing the
+  round-204 HTML placeholder comment above Citation); the Citation section names
+  the concept DOI and explains concept vs version DOI.
+- RELEASE_PLAN Phase 1: steps 1, 3, 5-9 ticked with dates, DOIs and the Zenodo
+  sync gotcha; steps 2 (ORCID link on Zenodo) and 4 (DataCite ORCID auto-update)
+  stay owner-optional. AGENT_CHANGELOG_OVERVIEW "Versioning" invariant extended
+  with the version-DOI entry.
+
+Verification: `cffconvert --validate` OK; `cffconvert -f apalike` and `-f bibtex`
+both print `10.5281/zenodo.22309221`; no code changed.

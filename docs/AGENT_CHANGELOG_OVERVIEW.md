@@ -398,7 +398,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   (Gradle + package_info_plus derive from it). Bump the build number for every tester APK;
   tag releases `v<version>` keeping any pre-release suffix (`v0.7.0-alpha.1`). Release
   metadata that must move together: pubspec `version`, CITATION.cff `version` +
-  `date-released`, CHANGELOG.md heading, `fastlane/.../changelogs/<versionCode>.txt`.
+  `date-released` + the version-DOI `identifiers` entry (the concept DOI
+  `10.5281/zenodo.22309221` in `doi:` and the README badge NEVER changes; r207),
+  CHANGELOG.md heading, `fastlane/.../changelogs/<versionCode>.txt`.
   `scripts/build_release_apks.sh` passes `-P force-version-code-ignoring-abi=true` so the
   per-ABI GitHub APKs carry the SAME versionCode as the Play AAB (r205; Flutter's default
   would stamp 2011/1011 and block GitHub → Play switches). Licence id everywhere is

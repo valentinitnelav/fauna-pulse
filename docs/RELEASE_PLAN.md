@@ -173,7 +173,7 @@ on request.
 
 Owner web steps:
 
-1. [ ] Make the GitHub repo public. Quick pre-flight before flipping the switch:
+1. [x] Make the GitHub repo public (done 2026-09-04). Quick pre-flight before flipping the switch:
        - confirm no signing secrets are tracked: `git ls-files | grep -iE "\.jks|key.properties"`
          must show only `android/key.properties.example` (the real `key.properties`
          and the keystore are git-ignored by round-158 design);
@@ -187,9 +187,13 @@ Owner web steps:
          "Make public".
 2. [ ] zenodo.org: "Log in with GitHub" (authorizes Zenodo's OAuth app). In the
        Zenodo profile settings, link the ORCID iD.
-3. [ ] Zenodo > account menu > GitHub (https://zenodo.org/account/settings/github/):
+3. [x] Zenodo > account menu > GitHub (https://zenodo.org/account/settings/github/):
        press "Sync now", then flip the switch next to `fauna-pulse` ON. This installs
-       the webhook. MUST happen before step 6 publishes the release.
+       the webhook. MUST happen before step 6 publishes the release. Done 2026-09-04.
+       Gotcha met on the way: "Sync now" failed with "Request failed with status
+       code: 400" (stale GitHub token on Zenodo's side, zenodo-rdm issue #849);
+       fixed via Zenodo profile > Linked accounts > Disconnect GitHub > Connect
+       again, then "Sync now".
 4. [ ] datacite.org (DataCite Profiles): sign in with the ORCID iD and enable
        "ORCID Auto-Update" once, so every Zenodo DOI is pushed to the ORCID record
        automatically. Works because the ORCID iD is in CITATION.cff's authors.
@@ -199,13 +203,13 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
 5. [x] Bump version to `0.7.0-alpha.1+11` in pubspec.yaml, update CHANGELOG.md,
        CITATION.cff and this doc (round 204, prepared on branch
        `release/v0.7.0-alpha.1`; round 205 made version, licence id and description
-       consistent across every metadata file). [ ] Owner: merge the release branch
+       consistent across every metadata file). [x] Owner: merge the release branch
        into `develop`, then `develop` into `main`; on `main` create an annotated tag
-       and push both:
+       and push both (done 2026-09-04, tag at 532dbdb):
        `git tag -a v0.7.0-alpha.1 -m "FaunaPulse v0.7.0-alpha.1"` then
        `git push origin main v0.7.0-alpha.1`. If publishing slips past 2026-09-04,
        first update `date-released` in CITATION.cff and the date in CHANGELOG.md.
-6. [ ] GitHub > Releases > "Draft a new release" (or `gh release create`): pick tag
+6. [x] (published 2026-09-04 as a pre-release) GitHub > Releases > "Draft a new release" (or `gh release create`): pick tag
        `v0.7.0-alpha.1`, title "FaunaPulse v0.7.0-alpha.1", **check "Set as a
        pre-release"**, paste release notes (round 205 draft in
        `dist/RELEASE_NOTES_v0.7.0-alpha.1.md`, git-ignored: the CHANGELOG.md
@@ -219,7 +223,7 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
        keep CITATION.cff as the single source): title, authors (ORCID,
        affiliation), abstract, keywords, licence id and version come from there,
        not from the GitHub release form.
-7. [ ] Attach the per-ABI APKs: run `bash scripts/build_release_apks.sh` (round 193)
+7. [x] (both APKs attached 2026-09-04, versionCode 11 verified) Attach the per-ABI APKs: run `bash scripts/build_release_apks.sh` (round 193)
        and upload the two files from `dist/`. `faunapulse-v0.7.0-alpha.1-arm64-v8a.apk`
        covers virtually all modern phones; `...-armeabi-v7a.apk` the old 32-bit
        ones. Keep these asset names stable across releases so Obtainium users'
@@ -231,14 +235,18 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
        cross-updatable-channels decision above. Verify after the build with aapt2
        from the SDK build-tools:
        `aapt2 dump badging dist/faunapulse-v0.7.0-alpha.1-arm64-v8a.apk | grep versionCode`.
-8. [ ] Wait a few minutes, then reload Zenodo's GitHub page: the release should show
+8. [x] Wait a few minutes, then reload Zenodo's GitHub page: the release should show
        a DOI badge. Open the Zenodo record and copy the CONCEPT DOI (the "Cite all
        versions" one, which always resolves to the newest release), not the
-       single-version DOI.
-9. [ ] Put the concept DOI into `CITATION.cff` (the line left commented in round
-       158) and fill in the DOI + license + version badges reserved as an HTML
-       comment in the README, just above the Citation section (added round 204).
-       Commit; no new tag needed for this.
+       single-version DOI. Minted 2026-09-04: concept DOI `10.5281/zenodo.22309221`,
+       version DOI `10.5281/zenodo.22309222` (record
+       https://zenodo.org/records/22309222).
+9. [x] (round 207) Put the concept DOI into `CITATION.cff` (top-level `doi` plus an
+       `identifiers` list with the concept DOI and this release's version DOI) and
+       the DOI / release / licence badges into the README header; the Citation
+       section names the concept DOI. Commit; no new tag needed for this. From now
+       on, every release bumps the version-DOI entry in CITATION.cff together with
+       `version` and `date-released`; the concept DOI never changes.
 10. [x] INSTALL.md Track A2b "install via Obtainium" subsection added (round 204).
        Round 206 correction, verified in Obtainium's source (`github.dart`,
        `includePrereleases` defaults to false and pre-releases are skipped): users
