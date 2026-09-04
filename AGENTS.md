@@ -60,9 +60,9 @@ always use keywords search and do not read entire large txt files as some of the
 
 Git related:
 - Do not perform destructive Git operations without explicit approval.
-- Do not commit or push changes unless requested by project owner.
-- Never push to main branch and never force push. 
-- When you implement code changes, git brach into `develop` then project owner will merge to the main after review.
+- Do not git commit or git push changes unless requested by project owner via prompts.
+- Never git push to main branch and never force push. 
+- When you implement code changes, and git is on main, then git brach into `develop`, but do not git commit the changes.
 
 If code changes happened, then suggest also clear, readable git message.
 That message must start with "Round <counter>" (e.g. Round 76) where <counter> 

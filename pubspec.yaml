@@ -1,7 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 name: fauna_pulse
-description: "FaunaPulse: real-time field app that detects flower-visiting insects and logs visitation rates. Built on the ultralytics_yolo plugin (vendored in packages/)."
+description: "FaunaPulse: a smartphone application for on-device detection and tracking of animals."
 publish_to: "none"
 version: 0.7.0-alpha.1+11
 
