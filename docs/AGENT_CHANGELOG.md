@@ -7093,3 +7093,57 @@ The Flutter 3.47 release build had moved beyond its original toolchain warnings 
 - Fixed AGP 9 lint findings in the local YOLO fork: use the API-23-safe ONNX result index accessor, contain both CameraX experimental opt-ins inside `YOLOView`, document focused JPEG thread annotations, and correct inference callback indentation. Flutter also refreshed the fork analyzer exclusions for generated build and platform directories.
 
 Verification: `flutter analyze` reported no issues; the full Flutter test suite passed; `./gradlew lintRelease` passed across every Android subproject; `flutter build apk --release` succeeded and produced `build/app/outputs/flutter-apk/app-release.apk` at 127.3 MB. Remaining console messages are non-blocking migration warnings from Flutter and third-party plugins about legacy KGP, deprecated AGP compatibility flags, Java 8 targets, manifest package attributes, and older plugin APIs.
+
+## Round 204 (2026-09-04): v0.7.0-alpha.1 release prep (Zenodo + Play, repo-side)
+
+Owner is ready to do the first-ever Zenodo release and start the Google Play
+submission process. `docs/RELEASE_PLAN.md` (round 157) already had the full
+recipe; this round executes the repo-side parts of Phase 1 and starts Phase 4's
+store-listing content, on branch `release/v0.7.0-alpha.1` off `develop` (not
+merged or pushed; owner reviews and handles the tag/push/publish steps).
+
+- Owner decision: the first tag is `v0.7.0-alpha.1`, not a bare `v0.7.0` as the
+  round-157 recipe assumed. README already calls FaunaPulse an "early research
+  preview (alpha)"; the tag now says so explicitly via the standard SemVer
+  pre-release suffix, paired with GitHub's "Set as a pre-release" checkbox.
+- Pre-flight secret scan (Phase 1 step 1) run early: `git ls-files` confirms only
+  `android/key.properties.example` is tracked (no real keystore or
+  `key.properties`), and `git log --all --format="%ae %ce"` shows only GitHub
+  noreply addresses, no personal emails to redact before making the repo public.
+- Version bump: `pubspec.yaml` to `0.7.0-alpha.1+11`. Verified empirically (a
+  throwaway `pub_semver` 2.2.0 script — the exact version flutter_tools uses) that
+  `Version.parse('0.7.0-alpha.1+11').toString()` round-trips unchanged, so
+  `FlutterManifest.buildName`/`buildNumber`'s naive split on `+` still yields
+  versionName `0.7.0-alpha.1` and versionCode `11`; Android only requires
+  versionCode to increase, and versionName is an unrestricted string.
+- `CHANGELOG.md`: renamed the `0.0.0` placeholder heading to `0.7.0-alpha.1` and
+  added a one-line release framing sentence.
+- `CITATION.cff`: `version` bumped to `0.7.0-alpha.1` (the DOI `identifiers` block
+  stays commented until Zenodo mints one, per Phase 1 step 9).
+- `README.md`: added the DOI/license/version badge placeholder (as an HTML
+  comment) just above the Citation section — RELEASE_PLAN.md step 9 assumed this
+  already existed near line 180; it didn't, so it's added now for a later round
+  to fill in.
+- `docs/INSTALL.md`: added Track A2b, an "install via Obtainium" subsection
+  (Phase 1 step 10), noting FaunaPulse's alpha releases are GitHub pre-releases
+  and how to restrict Obtainium to stable releases once that changes.
+- `docs/RELEASE_PLAN.md`: recorded the tag-scheme decision, updated the Phase 1
+  recipe's version references to `v0.7.0-alpha.1`, and ticked off the parts of
+  steps 5 and 10 done this round (tag/push/publish remain owner steps).
+- Drafted (not committed; owner/Play-Console-facing, kept as local scratch files
+  outside the repo) release notes for the GitHub release description, plus a
+  `fastlane/metadata/android/en-US/` skeleton and a Play Data-safety/content-rating
+  answer draft for Phase 4, grounded in `PRIVACY_POLICY.md`'s actual permission
+  table (camera, optional one-shot GPS, notifications, camera foreground service;
+  no analytics, no data upload, no third-party sharing).
+
+Not done this round (owner-only, in order): merge this branch and tag/push
+`v0.7.0-alpha.1`; make the GitHub repo public; enable the Zenodo GitHub webhook
+and link ORCID before publishing the release; publish the GitHub release
+(`--prerelease`) with the built per-ABI APKs attached; register a Play Console
+developer account and start recruiting the 12 closed-test testers (14-day clock
+is the longest pole for Play).
+
+Verification: `flutter analyze` and `flutter test test/fauna_pulse` run clean on
+the branch (no Dart/Kotlin/Gradle source changed, only docs/metadata); `cffconvert`
+validates the updated `CITATION.cff`.

@@ -3,7 +3,7 @@
 name: fauna_pulse
 description: "FaunaPulse: real-time field app that detects flower-visiting insects and logs visitation rates. Built on the ultralytics_yolo plugin (vendored in packages/)."
 publish_to: "none"
-version: 0.6.4+10
+version: 0.7.0-alpha.1+11
 
 environment:
   sdk: ^3.8.1

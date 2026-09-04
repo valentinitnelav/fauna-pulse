@@ -13,6 +13,13 @@ yet, no release keystore, docs written for researchers.
 - **Sequence:** quick hygiene fixes first, then an early `v0.7.0` tag with a Zenodo DOI,
   then docs + UX polish, then Google Play. Reason: Zenodo only archives releases created
   AFTER its webhook is enabled (no retroactive DOIs).
+- **Tag scheme, updated (owner, 2026-09-04):** the first tag is `v0.7.0-alpha.1`, not a
+  bare `v0.7.0`. README already describes FaunaPulse as an "early research preview
+  (alpha)" (Project status section); the owner wants that reflected in the tag itself,
+  not left implicit in SemVer's 0.x convention. Standard SemVer pre-release suffix,
+  paired with checking GitHub's "Set as a pre-release" box when publishing. Every
+  `v0.7.0` reference below now means `v0.7.0-alpha.1`; future alphas bump to
+  `-alpha.2`, etc., and the suffix drops once the app is no longer alpha.
 - **Heat/performance controls move to a renamed "Power" tab**, not the AI tab: the AI tab
   is fully greyed out in the no-AI capture modes (round 147 mechanism), but the motion
   gate must stay editable in motion mode, where its sensitivity fields ARE the capture
@@ -156,7 +163,7 @@ in README (§Models).
       uninstalling first). Convention going forward: Samsung = release-test phone,
       Xiaomi = debug/dev phone, so the two signatures never fight on the same device.
 
-## Phase 1: v0.7.0 GitHub release + Zenodo DOI (~1 round + owner web steps)
+## Phase 1: v0.7.0-alpha.1 GitHub release + Zenodo DOI (~1 round + owner web steps)
 
 Step-by-step recipe (round 193). Order matters: public repo first, then the Zenodo
 toggle, then the tag/release. Zenodo can only archive releases published AFTER its
@@ -185,15 +192,18 @@ Owner web steps:
 
 Repo steps (Code-agent prepares, owner reviews and pushes):
 
-5. [ ] Bump version to `0.7.0+11` in pubspec.yaml, update CHANGELOG.md, commit, then
-       `git tag v0.7.0` and `git push origin main v0.7.0`.
-6. [ ] GitHub > Releases > "Draft a new release": pick tag `v0.7.0`, title
-       "FaunaPulse v0.7.0", paste release notes (Code-agent prepares them from
+5. [x] Bump version to `0.7.0-alpha.1+11` in pubspec.yaml, update CHANGELOG.md,
+       CITATION.cff and this doc (round 204, prepared on branch
+       `release/v0.7.0-alpha.1`). [ ] Owner still needs to review, merge to `main`,
+       then `git tag v0.7.0-alpha.1` and `git push origin main v0.7.0-alpha.1`.
+6. [ ] GitHub > Releases > "Draft a new release" (or `gh release create`): pick tag
+       `v0.7.0-alpha.1`, title "FaunaPulse v0.7.0-alpha.1", **check "Set as a
+       pre-release"**, paste release notes (Code-agent prepared a draft from
        CHANGELOG.md). PUBLISHING the release (not the tag alone) fires the Zenodo
        webhook. Zenodo takes its metadata from `CITATION.cff` (or a `.zenodo.json`
        if one existed; we deliberately keep CITATION.cff as the single source).
 7. [ ] Attach the per-ABI APKs: run `bash scripts/build_release_apks.sh` (round 193)
-       and upload the two files from `dist/`. `faunapulse-v0.7.0-arm64-v8a.apk`
+       and upload the two files from `dist/`. `faunapulse-v0.7.0-alpha.1-arm64-v8a.apk`
        covers virtually all modern phones; `...-armeabi-v7a.apk` the old 32-bit
        ones. Keep these asset names stable across releases so Obtainium users'
        filters keep working.
@@ -202,11 +212,10 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
        versions" one, which always resolves to the newest release), not the
        single-version DOI.
 9. [ ] Put the concept DOI into `CITATION.cff` (the line left commented in round
-       158) and add DOI + license + version badges to the README (the DOI badge slot
-       is reserved as an HTML comment near README line 180). Commit; no new tag
-       needed for this.
-10. [ ] INSTALL.md Track A: add an "install via Obtainium" subsection next to the
-        direct-APK route.
+       158) and fill in the DOI + license + version badges reserved as an HTML
+       comment in the README, just above the Citation section (added round 204).
+       Commit; no new tag needed for this.
+10. [x] INSTALL.md Track A2b "install via Obtainium" subsection added (round 204).
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
 the arm64 APK and the AI pipeline runs with the bundled MegaDetector v6 (MDV6) model out of

@@ -13,7 +13,7 @@ abstract: >-
 type: software
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
-version: "0.6.4"
+version: "0.7.0-alpha.1"
 date-released: "2026-09-04"
 keywords:
   - pollinators

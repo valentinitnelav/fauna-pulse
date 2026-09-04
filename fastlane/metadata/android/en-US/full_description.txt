@@ -1,0 +1,27 @@
+FaunaPulse turns your Android phone into an AI-powered wildlife camera for ecological field research.
+
+Point your phone's camera at a flower, feeding site, nest entrance, or any area of interest, and FaunaPulse detects, tracks, and photographs visiting animals in real time - fully on-device, with no internet connection required.
+
+KEY FEATURES
+- Real-time AI object detection and tracking using a configurable on-device model
+- Motion-triggered image capture
+- Time-lapse image capture, including a night mode using the phone's flashlight
+- Post-capture AI detection on already-captured images, with an optional tiling mode (SAHI) to reduce empty frames
+- A draggable region of interest (ROI) to focus monitoring on a specific spot
+- End-of-session dashboard with visitation-rate graphs and image review
+- Works fully offline: no account, no ads, no analytics, no data ever leaves your phone
+
+WHO IT'S FOR
+FaunaPulse was built for ecological research, especially estimating visitation rates of flower-visiting animals such as pollinators, but it can be configured with different detection models for other wildlife-monitoring use cases.
+
+BRING YOUR OWN MODEL
+The app ships with a general-purpose object-detection model, so it works immediately, but that model does not specifically recognize insects. For insect monitoring you will need to add a purpose-trained .tflite detection model of your own or from a collaborator (see the project's GitHub page for details).
+
+IMPORTANT: EARLY RESEARCH PREVIEW (ALPHA)
+FaunaPulse is an early-stage, experimental research tool. Validation is ongoing. Detection and tracking accuracy depend on your model, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.
+
+PRIVACY
+FaunaPulse collects and transmits nothing. There is no account, no analytics and no tracking. All processing happens on your device, and everything recorded stays in the app's local storage unless you choose to export or share it. Full privacy policy on the project's GitHub page.
+
+OPEN SOURCE
+FaunaPulse is free, open-source research software (AGPL-3.0). Source code, documentation and issue reporting are available on GitHub: https://github.com/valentinitnelav/fauna-pulse

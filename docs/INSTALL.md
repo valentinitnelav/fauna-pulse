@@ -27,6 +27,26 @@ On the phone, open your **File Manager** app, tap the downloaded `.apk` file, an
 Because this is an app outside the Play Store (for now), you will get security warnings that make the installation not a very smooth process. 
 Google Play intends it in this way, but the app is safe to install.
 
+### A2b. Optional: install & auto-update via Obtainium
+
+[Obtainium](https://github.com/ImranR98/Obtainium) is a free Android app that installs
+and auto-updates apps straight from a project's GitHub releases, so you don't have to
+manually re-download the `.apk` every time a new version comes out.
+
+1. Install Obtainium itself (see its own [installation instructions](https://github.com/ImranR98/Obtainium#installation)).
+2. In Obtainium, tap **Add App** and paste the FaunaPulse repository URL:
+   `https://github.com/valentinitnelav/fauna-pulse`
+3. Obtainium detects the GitHub releases and lets you pick which release asset to
+   track. Choose the `.apk` matching your phone's processor architecture:
+   - `arm64-v8a` — virtually all phones from the last several years.
+   - `armeabi-v7a` — older 32-bit devices only.
+4. From then on, Obtainium checks for and offers new tagged releases automatically.
+
+Note: FaunaPulse's early releases are tagged as pre-releases (e.g. `v0.7.0-alpha.1`)
+while the app is an early research preview; Obtainium's default settings pick up
+pre-releases too, but you can restrict it to stable releases only in the per-app
+settings once FaunaPulse reaches a stable `v1.0.0`.
+
 ### A3. Add detection models
 
 The app ships with one **general-purpose** model, so it runs immediately, but that

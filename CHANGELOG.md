@@ -3,9 +3,11 @@ Versions follow the `MAJOR.MINOR.PATCH` scheme of the `version:` field in
 `pubspec.yaml`, and each release is tagged `v<version>` on GitHub.
 -->
 
-## 0.0.0 
+## 0.7.0-alpha.1
 
-- Towards the first public release
+The first public, citable release: an early research preview, tagged so it can be
+archived on Zenodo with a DOI and installed from GitHub Releases.
+
 - The app ships with a general-purpose detection model, so it works straight
   after installation and needs no download in the field. Insect detection still
   requires a purpose-trained model (see the README).

@@ -161,6 +161,14 @@ FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv]
 
 Future work may include (on-device or computer / server) taxonomic identification using classification models, including vision foundation models such as [BioCLIP][bioclip], and further analytical reporting derived from visitation and classification data.
 
+<!--
+Badges reserved for round 204+ (docs/RELEASE_PLAN.md Phase 1 step 9): once the
+first GitHub release is published and Zenodo mints a DOI, add badges here, e.g.:
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases)](https://github.com/valentinitnelav/fauna-pulse/releases)
+-->
+
 ## Citation
 
 If you use FaunaPulse in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff). 
