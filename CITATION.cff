@@ -1,19 +1,20 @@
 cff-version: 1.2.0
-message: "If you use FaunaPulse in your research, please cite it using these metadata."
-title: "FaunaPulse: a smartphone field application for on-device detection, tracking and documentation of flower-visiting arthropods and other fauna"
+message: "If you use FaunaPulse in your research, please cite the software using the metadata provided below."
+title: "FaunaPulse: a smartphone application for on-device detection and tracking of animals"
 abstract: >-
-  FaunaPulse is an offline smartphone field application that detects, tracks and
-  documents flower-visiting arthropods and other moving organisms in real time
-  using on-device object detection, and logs each visit to estimate visitation
-  rates. It supports configurable detection models, a user-defined region of
-  interest, motion-triggered capture and time-lapse capture (including nocturnal mode).
+  FaunaPulse is an offline smartphone application for monitoring animal activity
+  using on-device computer vision. It detects and tracks moving organisms in real
+  time using configurable object-detection models and records visits to a
+  user-defined region of interest, enabling estimation of visitation frequency and
+  duration. The application supports user-provided detection models,
+  motion-triggered and time-lapse image capture with nocturnal monitoring. By
+  performing inference directly on the smartphone, FaunaPulse enables portable and
+  low-cost ecological monitoring without requiring an internet connection.
 type: software
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
-url: "https://github.com/valentinitnelav/fauna-pulse"
-# Keep `version` and `date-released` in step with each tagged release.
 version: "0.6.4"
-date-released: "2026-07-20"
+date-released: "2026-09-04"
 keywords:
   - pollinators
   - pollination ecology
@@ -39,4 +40,7 @@ authors:
     orcid: "https://orcid.org/0000-0003-0318-1567"
 # Add the Zenodo DOI here once the first release is archived (use the concept DOI,
 # the one that always resolves to the newest version):
-# doi: "10.5281/zenodo.XXXXXXX"
+# identifiers:
+#   - type: doi
+#     value: "10.5281/zenodo.XXXXXXX"
+#     description: "Concept DOI: all versions of FaunaPulse"

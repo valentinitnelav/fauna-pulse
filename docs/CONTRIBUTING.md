@@ -140,14 +140,15 @@ Claude-facing overview):
 
 ## Documentation maintenance
 
-- **[AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md)** is the current-state
-  snapshot — **rewrite it in place, never append**, and keep it short. Update
-  it whenever a change alters a default, invariant, or the file map.
-- **[AGENT_CHANGELOG.md](AGENT_CHANGELOG.md)** is the append-only
-  development journal — add a round entry describing what changed and why.
+- See documentation table in [/README.md](../README.md). Keep it up to date.
 - Keep the human-facing docs (this file, ARCHITECTURE, FIELD_GUIDE,
   SETTINGS_REFERENCE, DATA_GUIDE) accurate when behaviour changes; they are the
   durable references, whereas OVERVIEW is primarily for AI-assisted grounding.
+- [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) is the current-state
+  snapshot — **rewrite it in place, never append**, and keep it short. Update
+  it whenever a change alters a default, invariant, or the file map.
+- [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) is the append-only
+  development journal — add a round entry describing what changed and why.
 
 ## Git etiquette
 
@@ -165,24 +166,3 @@ private session data, signing credentials or model weights.
 The project is **AGPL-3.0** (see [`LICENSE`](../LICENSE)), inherited from the
 Ultralytics `ultralytics_yolo` plugin it builds upon. The vendored plugin
 retains its own `LICENSE`. Contributions are made under AGPL-3.0.
-
-## Documentation index
-
-| Doc | Audience | Purpose |
-|---|---|---|
-| [README.md](../README.md) | everyone | Project pitch, layout, license. |
-| [INSTALL.md](INSTALL.md) | tester / collaborator | Install a ready-made APK or build from source; import models. |
-| [FIELD_GUIDE.md](FIELD_GUIDE.md) | field researcher | Run a session, read the live screen, troubleshoot. |
-| [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md) | field researcher | What every setting does. |
-| [DATA_GUIDE.md](DATA_GUIDE.md) | researcher / analyst | `session.jsonl` data dictionary; compute visitation rates (R/Python). |
-| [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md) | advanced user | Why a small ROI still yields sharp photos. |
-| [MODEL_CONVERSION.md](MODEL_CONVERSION.md) | collaborator | Accepted model formats; export/convert a trained model for the app. |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | developer | Data flow, native↔Dart contract, keep-in-sync pairs. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | developer | Build/test, conventions, this index. |
-| [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) | developer | How to measure performance honestly (paired-run protocol, `tool/perf_summary.dart`). |
-| [../packages/ultralytics_yolo/FAUNAPULSE_FORK.md](../packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
-| [PERF_AND_ROBUSTNESS_REVIEW.md](PERF_AND_ROBUSTNESS_REVIEW.md) | maintainer | Prioritized speed/robustness roadmap. |
-| [RELEASE_PLAN.md](RELEASE_PLAN.md) | maintainer | Phased checklist for the first public release (DOI, GitHub/Obtainium, Play). |
-| [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) | maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact; reopen triggers. |
-| [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) | AI grounding | Current-state snapshot (rewrite in place). |
-| [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) | maintainer | Append-only development journal. |
