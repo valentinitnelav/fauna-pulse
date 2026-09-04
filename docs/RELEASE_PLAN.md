@@ -240,6 +240,12 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
        comment in the README, just above the Citation section (added round 204).
        Commit; no new tag needed for this.
 10. [x] INSTALL.md Track A2b "install via Obtainium" subsection added (round 204).
+       Round 206 correction, verified in Obtainium's source (`github.dart`,
+       `includePrereleases` defaults to false and pre-releases are skipped): users
+       must switch on "Include prereleases" when adding the app, otherwise Obtainium
+       finds no FaunaPulse release at all. Also note that GitHub's
+       `/releases/latest` URL ignores pre-releases; link the releases list or the
+       tag URL, never `/releases/latest`, while the app is alpha.
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
 the arm64 APK and the AI pipeline runs with the bundled MegaDetector v6 (MDV6) model out of

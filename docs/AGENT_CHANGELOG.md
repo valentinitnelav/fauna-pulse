@@ -7208,3 +7208,27 @@ SessionConfig/wire change. Owner merges and commits (nothing committed here).
 
 Verification: `flutter analyze` no issues; `flutter test test/fauna_pulse` 532
 passed, 1 skipped; `cffconvert --validate` OK on the updated CITATION.cff.
+
+## Round 206 (2026-09-04): Obtainium pre-release fix + first per-ABI release build
+
+- INSTALL.md A2b claimed Obtainium picks up pre-releases by default. Verified
+  against Obtainium's source (`lib/app_sources/github.dart`): `includePrereleases`
+  defaults to false and pre-releases are skipped, so a user following the old text
+  would have seen "no releases" for FaunaPulse (every alpha is a GitHub
+  pre-release). The section now tells users to switch on "Include prereleases"
+  when adding the app. RELEASE_PLAN step 10 records the correction and the related
+  GitHub caveat that `/releases/latest` ignores pre-releases (link the releases
+  list or the tag URL while the app is alpha).
+- First real run of `scripts/build_release_apks.sh` with the round-205
+  `-P force-version-code-ignoring-abi=true` flag, from the merged `main` (4415f0b):
+  `dist/faunapulse-v0.7.0-alpha.1-arm64-v8a.apk` (94.1 MB) and
+  `...-armeabi-v7a.apk` (16.5 MB; the QNN runtime is arm64-only, hence the gap).
+  aapt2: both `versionCode='11' versionName='0.7.0-alpha.1'`, compile/target SDK
+  36. apksigner: signed with the release certificate (CN=Valentin Stefan), not
+  the debug key. Both contain `MDV6-yolov10-c_int8_256.tflite` and no yolo26n.
+  `dist/` is git-ignored; the owner uploads the two APKs as release assets.
+  Release-notes draft `dist/RELEASE_NOTES_v0.7.0-alpha.1.md` gained the Obtainium
+  switch line.
+
+Verification: docs-only change in the tree; the release build and the aapt2 /
+apksigner / unzip checks above are the verification.

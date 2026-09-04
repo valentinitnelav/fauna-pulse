@@ -36,16 +36,18 @@ manually re-download the `.apk` every time a new version comes out.
 1. Install Obtainium itself (see its own [installation instructions](https://github.com/ImranR98/Obtainium#installation)).
 2. In Obtainium, tap **Add App** and paste the FaunaPulse repository URL:
    `https://github.com/valentinitnelav/fauna-pulse`
-3. Obtainium detects the GitHub releases and lets you pick which release asset to
-   track. Choose the `.apk` matching your phone's processor architecture:
-   - `arm64-v8a` — virtually all phones from the last several years.
-   - `armeabi-v7a` — older 32-bit devices only.
-4. From then on, Obtainium checks for and offers new tagged releases automatically.
-
-Note: FaunaPulse's early releases are tagged as pre-releases (e.g. `v0.7.0-alpha.1`)
-while the app is an early research preview; Obtainium's default settings pick up
-pre-releases too, but you can restrict it to stable releases only in the per-app
-settings once FaunaPulse reaches a stable `v1.0.0`.
+3. **Switch on "Include prereleases"** in the app's settings on that same screen
+   before tapping Add. Every FaunaPulse release is published as a GitHub
+   pre-release while the app is an early research preview (tags like
+   `v0.7.0-alpha.1`), and Obtainium skips pre-releases unless this switch is on,
+   so without it Obtainium reports that the repository has no releases.
+4. Obtainium then detects the GitHub releases and lets you pick which release asset
+   to track. Choose the `.apk` matching your phone's processor architecture:
+   - `arm64-v8a`: virtually all phones from the last several years.
+   - `armeabi-v7a`: older 32-bit devices only.
+5. From then on, Obtainium checks for and offers new tagged releases automatically.
+   Once FaunaPulse reaches a stable `v1.0.0` you can switch "Include prereleases"
+   off again to follow stable releases only.
 
 ### A3. Add detection models
 
