@@ -1,6 +1,6 @@
 # Installing & testing FaunaPulse app
 
-A step-by-step guide for collaborators.
+A step-by-step guide for collaborators and testers.
 
 For contributing to this repository, please first fork it and then work on that forked repository in parallel. When happy with your implementations, then ask for a pull request. See also the guidelines suggested by GitHub - [Contributing to a project](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project)
 
@@ -19,7 +19,9 @@ Supplementary sections are marked with **S**.
 
 ### A1. Get the app file (`.apk`) on your phone
 
-Save the `.apk` file to your phone: download it directly on the phone from a provided link (e.g. [Releases](https://github.com/valentinitnelav/fauna-pulse/releases)), or copy it over USB from your computer (e.g. in the phones' `Download` folder).
+Save the `.apk` file to your phone: download it directly on the phone from a provided link (e.g. [Releases](https://github.com/valentinitnelav/fauna-pulse/releases)), or copy it over USB from your computer (e.g. in the phones' `Download` folder). The APK files are usually located at the "Assets" section of the [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) - for example:
+
+<img height="170" alt="Image" src="https://github.com/user-attachments/assets/0a614eea-354a-44ef-b3c8-41aee7a601f4" />
 
 ### A2. Install it
 
@@ -27,7 +29,88 @@ On the phone, open your **File Manager** app, tap the downloaded `.apk` file, an
 Because this is an app outside the Play Store (for now), you will get security warnings that make the installation not a very smooth process. 
 Google Play intends it in this way, but the app is safe to install.
 
-WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android)
+WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android).
+
+#### Installation Guide (Example on a Samsung device)
+
+Below is an example on a test Samsung model.
+
+Once the APK file is downloaded, try to press "Open" if asked, otherwise navigate to the Downloads folder or the location where the file was downloaded by default on your smartphone and tap on the APK file. The icon of the app should be already visible, the name of the APK file varies with each release. Below it is name "app-release.apk" as an example:
+
+<table width="50%">
+  <thead>
+    <tr>
+      <th width="2%" align="center">Step</th>
+      <th width="53%">Instructions</th>
+      <!-- ADJUST SINGLE WIDTH HERE (e.g., width="46%" or width="300px") -->
+      <th width="45%" align="center">Screenshot</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><b>1</b></td>
+      <td>
+        <b>Open Downloaded File</b><br>
+        Once the APK file is downloaded, tap <b>Open</b> in the prompt, or navigate to your smartphone's <b>Downloads</b> folder (or default download location) and tap the file.<br><br>
+        <i>(Note: The app icon will be visible; file names vary per release, e.g., <code>app-release.apk</code>).</i>
+      </td>
+      <td align="center">
+        <!-- apk-file-downloaded -->
+        <img width="100%" alt="APK Downloaded" src="https://github.com/user-attachments/assets/5510226c-e77a-4b86-9d07-716f080c8076" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><b>2</b></td>
+      <td>
+        <b>Access Installation Settings</b><br>
+        When prompted, allow your file manager (e.g., "My Files") to install unknown apps by tapping <b>Settings</b>.
+      </td>
+      <td align="center">
+        <!-- apk-file-settings -->
+        <img width="100%" alt="Settings Prompt" src="https://github.com/user-attachments/assets/fe77df85-c746-457c-86bc-38bc0c97402e" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><b>3</b></td>
+      <td>
+        <b>Enable Unknown App Installation</b><br>
+      </td>
+      <td align="center">
+        <!-- allow-install-1 -->
+        <img width="100%" alt="Allow Installation Toggle" src="https://github.com/user-attachments/assets/359dad08-897b-4152-bfdd-c2bd1f49fc96" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><b>4</b></td>
+      <td>
+        <b>Confirm Installation</b><br>
+      </td>
+      <td align="center">
+        <!-- allow-install-2 -->
+        <img width="100%" alt="Confirm Install" src="https://github.com/user-attachments/assets/9356acf7-6fa0-42bd-90f6-ec39e0b2e9cc" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><b>5</b></td>
+      <td>
+        <b>Open the app and then grant camera permissions</b><br>
+      </td>
+      <td align="center">
+        <img width="100%" alt="Camera Permission" src="https://github.com/user-attachments/assets/eb2426dd-feed-4ad1-9525-5f749520ee4e" />
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><b>6</b></td>
+      <td>
+        <b>Grant camera & location permissions</b><br>
+        Also, if prompted for location access, select your preferred permission level (e.g., "While using the app").
+      </td>
+      <td align="center">
+        <img width="100%" alt="Location Permission" src="https://github.com/user-attachments/assets/739d2ecd-0a66-4e1f-a31c-4e95f1ff6043" />
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ### A2b. Install & auto-update via Obtainium
 
