@@ -81,7 +81,11 @@ FaunaPulse is an **early research preview (alpha)**, provided as a free, experim
 - Detection accuracy and tracking performance depend on the model, smartphone, target organism and field setup, including weather conditions. Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
 - **Device temperature** can vary substantially between phone models. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly. Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the device hardware, operating system, operation conditions and handling and cannot be guaranteed for every device. Some phone models can also overheat faster while charging. **If your device becomes excessively hot or displays a thermal warning (even when using cooling options / thermal casing), stop it's usage and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
 
-## Getting started
+## Getting started / Install APK file
+
+NOTE:
+
+> FaunaPulse is currently in early development and active field testing. To keep this research tool completely open-source during testing and avoid commercial app store registration fees and restrictions, it is not currently published on Google Play. You can install the app directly on your Android device using the released APK file by following the steps below.
 
 1. **Install the app.** Currently there are several options - from [Installation & Testing Guide](docs/INSTALL.md):
   - 1.1. Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page; WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). See also "Track A" in [Installation & Testing Guide](docs/INSTALL.md) for a guide example with screenshots. However, this option does not come with auto-updates - see next option with Obtainium for that.
