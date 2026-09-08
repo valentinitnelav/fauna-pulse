@@ -15,7 +15,14 @@
   &nbsp;&nbsp;
   <img
     src="https://github.com/user-attachments/assets/178e2b09-df9c-4c1b-b8f9-db6c357ed9d5"
-    alt="Example of detection & tracking"
+    alt="Pollinator detection & tracking"
+    height="200"
+    align="middle"
+  />
+  &nbsp;&nbsp;
+  <img
+    src="https://github.com/user-attachments/assets/f4706303-bc0f-4e12-a307-1cd60436d3fd"
+    alt="Wildlife detection & tracking"
     height="200"
     align="middle"
   />
