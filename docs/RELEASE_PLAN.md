@@ -386,14 +386,24 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
 
 ## Phase 4: Google Play (can start alongside Phase 2; live in ~4-6 weeks)
 
-- [ ] Owner registers a personal Play developer account ($25 one-time, government-ID
+- [x] Owner registers a personal Play developer account ($25 one-time, government-ID
       verification). This also satisfies the new Android developer-verification program.
-- [ ] Play App Signing: upload OUR keystore (from Phase 0) as the app signing key, so
-      GitHub and Play builds stay cross-updatable. This choice is offered ONCE, when
-      the app is created in the Console and before the first AAB upload: App integrity
-      > "Choose signing key" > "Use a different key" > "Export and upload a key from
-      Java keystore" (Google's PEPK tool wraps the key). If the first AAB is uploaded
-      without doing this, Google generates its own key and the channels split forever.
+      (Done 2026-09-10; app `com.faunapulse.app` created in the Console.)
+- [x] Play App Signing: upload OUR keystore (from Phase 0) as the app signing key, so
+      GitHub and Play builds stay cross-updatable. (Done 2026-09-10. The Console flow
+      has changed: a new app is auto-enrolled with a Google-generated key, and the
+      swap is made AFTER the first bundle upload but BEFORE any open-testing or
+      production rollout: Protected with Play > "Protect app signing key" > "Change
+      app signing key" > "Export and upload a key from Java keystore" (PEPK tool;
+      `--keystore-pass` avoids the hidden prompt). Verified by pulling the Play-installed
+      APK from the Xiaomi: signer SHA-256 ...61:34:46:C7 = our keystore. Side effect:
+      the pre-swap release, versionCode 11, stayed frozen with Google's key and Play
+      never accepts a version code twice, so Play starts at versionCode 12 (same
+      0.7.0-alpha.1 content as the GitHub v0.7.0-alpha.1 release, which keeps 11).
+      OWNER TODO: check Protected with Play > "Automatic protection > Prevent
+      unofficial installs" and switch it OFF. Google enables it by default; it
+      injects an installer check into the Play build, which is at odds with
+      the GitHub/Play interchangeability and the privacy policy.)
 - [x] Build config: `scripts/security_release_gate.sh` ends with a signed
       `flutter build appbundle --release` (AAB, the publishing format Play
       requires; Play generates per-device APKs from it); targetSdk 36 and release
