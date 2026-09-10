@@ -17,12 +17,12 @@ While a session records, FaunaPulse writes field data to its own folder
 
 | What | Contents |
 |---|---|
-| Session photos | JPEG crops of the region you selected, plus optional reference frames |
+| Session photos | JPEG crops of the region you selected (ROI), plus optional reference frames |
 | `session.jsonl` | Session log: timestamps, detections, track identifiers, box coordinates, settings used, phone model, battery and temperature readings, and the session position if you set one |
 
-Imported models, crash files and problem reports are kept in private internal
-storage. Other apps cannot browse these files. A problem report becomes readable
-to the app you choose only when you explicitly use Share.
+Imported models, crash files and problem reports are kept in the app's internal
+storage. A problem report becomes readable
+to the app you choose only when you explicitly use a sharing option.
 
 Uninstalling FaunaPulse deletes its external and private app storage. You can also
 delete individual sessions, or all of them, from inside the app.
@@ -46,8 +46,8 @@ and cannot control whether you enable Google's system backup.
 | Permission | Why |
 |---|---|
 | Camera | The core function: the live preview and the on-device detector |
-| Location (precise / approximate) | Optional. One single position fix per session, so recorded visits can be placed on a map later. FaunaPulse never tracks you continuously, and you can type coordinates by hand or skip location entirely |
-| Internet | Only for downloading a detection model when you ask for one (see below). No other network use |
+| Location (precise / approximate) | Optional. One single position fix per data recording session, so recorded visits / sampled site can be placed on a map later. FaunaPulse never tracks you continuously, and you can type coordinates by hand or skip location entirely |
+| Internet | For downloading a detection model when you ask for one (see below). No network use ruining automatically |
 | Notifications | To show the ongoing notification of the recording service, so Android does not stop a long session |
 | Foreground service (camera) | Keeps a session recording reliably while the screen is off or another app is in front |
 | Prevent sleeping | Keeps long field sessions running instead of being suspended by the system |
@@ -62,8 +62,7 @@ FaunaPulse is designed to run fully offline, and normal recording never touches 
 network. There are exactly two exceptions, both about detection models:
 
 1. You paste an HTTPS link into **Settings, Download model**, and the app fetches that file.
-2. You select a standard model that is not bundled in your build, and the underlying
-   Ultralytics component downloads it once over HTTPS from its public release page.
+2. You select a standard model that is not bundled in your build, and it is downloaded once over HTTPS from its public release page.
 
 Both are model downloads only. Nothing about you, your sessions, your photos or your
 location is sent anywhere in the process.
@@ -103,8 +102,3 @@ history is the record.
 
 Questions or concerns: open an issue at
 <https://github.com/valentinitnelav/fauna-pulse/issues>.
-
-<!-- OWNER TODO (round 158): Google Play's Data safety form also asks for a contact
-     e-mail address, which is entered in the Play Console and does not have to appear
-     here. Decide whether you also want a contact e-mail in this public file (an
-     institutional address is safer than a personal one). -->

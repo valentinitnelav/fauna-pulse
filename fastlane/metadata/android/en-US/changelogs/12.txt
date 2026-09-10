@@ -1,0 +1,6 @@
+First public release (v0.7.0-alpha.1) - early research preview.
+- Real-time on-device AI detection & tracking, motion-triggered and time-lapse capture, plus an optional post-capture AI-detection tiling mode.
+- Region-of-interest based visitation-rate tracking with an end-of-session dashboard.
+- Fully offline: no account, no analytics, no data leaves your phone.
+- Signed release build with a dedicated release key.
+Full details: see CHANGELOG.md on the project's GitHub page.

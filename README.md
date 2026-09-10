@@ -110,10 +110,10 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 | Document | Main audience | Purpose |
 |---|---|---|
-| [README.md](./README.md) | Everyone | This document, project pitch, layout, license, etc. |
+| [README.md](./README.md) | Everyone | This document |
+| [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source; import models. |
 | [CHANGELOG.md](./CHANGELOG.md) | Everyone | What changed between releases. |
 | [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
-| [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source; import models. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | Field researcher | Run a session, read the live screen and troubleshoot. |
 | [DATA_GUIDE.md](docs/DATA_GUIDE.md) | Researcher / analyst | Read the `session.jsonl` data dictionary and compute visitation rates in R or Python. |
 | [SETTINGS_REFERENCE.md](docs/SETTINGS_REFERENCE.md) | Field researcher | Understand every user setting. |
