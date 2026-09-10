@@ -68,17 +68,17 @@ FaunaPulse supports several **modes of operation**:
 
 Modes 1-3 can also be **scheduled** - for example 1st run 9:00-12:00, 2nd run 13:00-17:00, daily; or with over night time if the smartphone(s) are deployed over multiple days or for recording in time-lapse mode for nocturnal activity.
 
-## Examples of usage
+## Broad examples of usage
 
-- **Pollination research:** measure and compare flower-visitation rates among plant species, (e.g., across habitats, land-management practices / intensity, environmental conditions / gradients, research treatments, etc.).
-- **Citizen science:** observe flower visitors, garden wildlife and other local fauna using an ordinary smartphone.
-- **Wildlife and activity monitoring:** record when, how often and for how long organisms appear within a selected observation area.
-- **Biodiversity documentation:** capture fauna occurrences or events using AI detection, motion triggering or time-lapse capture.
-- **Model-based wildlife surveys:** monitor wildlife categories supported by a compatible object-detection model.
+- **Pollination questions / research:** measure and compare flower-visitation rates among plant species, floral patches, (e.g., across habitats, habitat restoration, patch structure, land-management practices and intensity, agriculture, environmental conditions / gradients, research treatments, etc.).
+- **Citizen science:** collect observations on flower visitors, wildlife and other fauna using an ordinary smartphone.
+- **Wildlife activity:** record when, how often and for how long fauna/organisms appear within a selected observation area.
+- **Biodiversity documentation:** capture fauna occurrences or events using AI detection, motion triggering or time-lapse capture across various habitats.
+- **Model-based wildlife surveys:** monitor wildlife categories supported by a compatible object-detection model; train your custom model and deploy it on the app.
 
 ## Project status & General limitations
 
-FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly:
+FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own AI models.
@@ -103,12 +103,6 @@ NOTE:
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
-
-## Build and run on Android
-
-For testers and collaborators, see the step-by-step [Installation & Testing Guide](docs/INSTALL.md).
-
-It covers both installing a ready-made app without coding and building FaunaPulse from source.
 
 ## Documentation
 
