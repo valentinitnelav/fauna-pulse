@@ -70,13 +70,21 @@ Modes 1-3 can also be **scheduled** - for example 1st run 9:00-12:00, 2nd run 13
 
 ## Broad examples of usage
 
+<details>
+	<summary>Expand:</summary>
+
 - **Pollination questions / research:** measure and compare flower-visitation rates among plant species, floral patches, (e.g., across habitats, habitat restoration, patch structure, land-management practices and intensity, agriculture, environmental conditions / gradients, research treatments, etc.).
 - **Citizen science:** collect observations on flower visitors, wildlife and other fauna using an ordinary smartphone.
 - **Wildlife activity:** record when, how often and for how long fauna/organisms appear within a selected observation area.
 - **Biodiversity documentation:** capture fauna occurrences or events using AI detection, motion triggering or time-lapse capture across various habitats.
 - **Model-based wildlife surveys:** monitor wildlife categories supported by a compatible object-detection model; train your custom model and deploy it on the app.
 
+</details>
+
 ## Project status & General limitations
+
+<details>
+	<summary>Expand:</summary>
 
 FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
@@ -88,7 +96,12 @@ FaunaPulse is an **early research preview (alpha)**, provided as a free, experim
 - Detection accuracy and tracking performance depend on the model, smartphone, target organism and field setup, including weather conditions. Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
 - **Device temperature** can vary substantially between phone models. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly. Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the device hardware, operating system, operation conditions and handling and cannot be guaranteed for every device. Some phone models can also overheat faster while charging. **If your device becomes excessively hot or displays a thermal warning (even when using cooling options / thermal casing), stop it's usage and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
 
+</details>
+
 ## Getting started / Install APK file
+
+<details>
+	<summary>Expand:</summary>
 
 NOTE:
 
@@ -104,7 +117,12 @@ NOTE:
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
 
+</details>
+
 ## Documentation
+
+<details>
+	<summary>Expand:</summary>
 
 Documentation is work in progress and very time-consuming so LLMs were often used for language edits. Coding agents will also be pointed to these documentation files to get an "understanding" of the repository.
 
@@ -131,13 +149,23 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |
 | [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent | Detailed append-only development journal. |
 
+</details>
+
 ## Technical foundation
+
+<details>
+	<summary>Expand:</summary>
 
 FaunaPulse is built on Ultralytics' open-source [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app), forked from upstream commit `22b2e5d`.
 
 The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](packages/ultralytics_yolo/) and remains subject to its own `LICENSE`.
 
+</details>
+
 ## Models
+
+<details>
+	<summary>Expand:</summary>
 
 At the moment, the app comes together with one general-purpose detector for popular wildlife - [MegaDetector v6][mgdetv6] with 3 classes: *animal, person, vehicle*.
 
@@ -153,7 +181,12 @@ Motion-triggered and time-lapse capture record without any detection model.
 
 Model weights are not stored in this repository. They can be too large to keep in Git history, and some test detectors belong to research collaborators and must not be redistributed without approval, so all model binaries stay Git-ignored. See the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
 
+</details>
+
 ## Why I built FaunaPulse
+
+<details>
+	<summary>Expand:</summary>
 
 The idea for FaunaPulse grew from my research at the Helmholtz Centre for Environmental Research [(UFZ)][ufz] and the German Centre for Integrative Biodiversity Research [(iDiv)][idiv].
 
@@ -165,7 +198,12 @@ While this was ok, it quickly highlighted some core challenges that motivated th
 - **Focusing AI on ecological context (Region of Interest - ROI)**: As first suggested in [Ștefan et al. 2025][stefan-2025-a], focusing the camera on a target area (for example, a single flower), it reduces background clutter and matches the square input format standard in object-detection models.
 - **Democratizing wildlife monitoring through accessible and affordable hardware**: Commercial camera traps, microcomputers or other gadgets are not available on all markets at all time, some are expensive and some can also be complex to work with. Modern smartphones are powerful, globally accessible microcomputers and almost everyone understands nowadays how to use one. By releasing FaunaPulse as free and open-source software, I want to enable citizen scientists, students, and under-funded research groups to turn everyday phones into tailored camera traps for documenting local biodiversity.
 
+</details>
+
 ## AI-assisted development and transparency
+
+<details>
+	<summary>Expand:</summary>
 
 FaunaPulse also began as a personal experiment in what is called **“vibe coding”**. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
 
@@ -178,6 +216,8 @@ Scientific literature was located using [Google Scholar](https://scholar.google.
 For transparency, the development process is documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
 
 I hope the community can pick on this project and carry its development further.
+
+</details>
 
 ## Related research
 
@@ -204,6 +244,9 @@ Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](h
 
 ## Contributing & Maintenance
 
+<details>
+	<summary>Expand:</summary>
+
 FaunaPulse is developed as an open research project. 
 While I intend to continue its development, future maintenance and development cannot be guaranteed. 
 I hope the community will pick up the project, contribute improvements, and help carry its development further.
@@ -213,12 +256,19 @@ the pull request back into `develop`; `main` is kept stable for reviewed
 changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
 branch names and the dependency-update workflow.
 
+</details>
+
 ## Privacy
+
+<details>
+	<summary>Expand:</summary>
 
 FaunaPulse collects and transmits nothing: no account, no analytics, no tracking. 
 Detection runs on the phone and everything recorded stays in the app's folder on the device. 
 See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) for the permission-by-permission detail, 
 and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.
+
+</details>
 
 ## License
 
