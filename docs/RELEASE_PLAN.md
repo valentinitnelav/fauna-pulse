@@ -400,10 +400,10 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       the pre-swap release, versionCode 11, stayed frozen with Google's key and Play
       never accepts a version code twice, so Play starts at versionCode 12 (same
       0.7.0-alpha.1 content as the GitHub v0.7.0-alpha.1 release, which keeps 11).
-      OWNER TODO: check Protected with Play > "Automatic protection > Prevent
-      unofficial installs" and switch it OFF. Google enables it by default; it
-      injects an installer check into the Play build, which is at odds with
-      the GitHub/Play interchangeability and the privacy policy.)
+      Protected with Play > "Automatic protection > Prevent unofficial installs"
+      is OFF (confirmed 2026-09-11). Google enables it by default; it injects an
+      installer check into the Play build, at odds with GitHub/Play
+      interchangeability and the privacy policy.)
 - [x] Build config: `scripts/security_release_gate.sh` ends with a signed
       `flutter build appbundle --release` (AAB, the publishing format Play
       requires; Play generates per-device APKs from it); targetSdk 36 and release
