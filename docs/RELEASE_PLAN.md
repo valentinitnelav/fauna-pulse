@@ -413,8 +413,16 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       size cost. (A lean two-artifact alternative is documented, not implemented, in
       [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) — review E8, round 171 — with the
       reopen triggers; this bullet's decision stands until one fires.)
-- [ ] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
+- [x] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
       screenshots (from Phase 2); the 512x512 Play icon is ready (round 193);
+      (DONE 2026-09-11, submitted for Google review together with the Alpha release
+      and all App content declarations. Category Tools, tags Camera / Measurement /
+      Science education; Data safety = no collection; target age 18+; foreground
+      service = "Background camera streaming" + screen-recorded demo video. Assets
+      and a reusable ImageMagick guide live OUTSIDE git in
+      `~/./InsectDetectApp_backups/Screenshots_videos/app_play_assets/`.
+      When the pollinator model ships, replace the "Bring your own model" paragraph
+      in `fastlane/.../full_description.txt` AND on Play in the same release.)
       privacy policy URL (the public repo's PRIVACY_POLICY.md); complete the Data
       safety form against the actual settings-only Android backup and the current
       Play Console wording. Draft answers for all of these forms are in
@@ -427,6 +435,12 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
 - [ ] Closed testing: recruit 12+ testers (iDiv/UFZ colleagues, field assistants), keep
       them opted in for 14 continuous days, then "Apply for production" (decision usually
       within ~7 days).
+      (IN PROGRESS 2026-09-11: track "Alpha" created with versionCode 12, all
+      countries, testers managed by a Google Group
+      (anyone can join, members hidden), feedback = GitHub issues; submitted for
+      review. After approval the "Join on Android/web" links appear on the Testers
+      tab; send the tester invitation then. The owner's own account is on the
+      internal track and therefore cannot count as a closed tester.)
 - [ ] After production: Play badge in README; keep GitHub releases in lockstep with Play
       (same versionCode, same signing key).
 
