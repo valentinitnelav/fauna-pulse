@@ -235,3 +235,24 @@ session. The newest result per photo wins downstream (see
 Settings control here, persistence in `SessionConfig` (JSON round-trip + test),
 and a row in the end-of-session summary — in the same round it's introduced.
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Identification (Identify organisms screen → Advanced)
+
+Round 208. These settings belong to the identification job, not to a recording; they are
+stored on the phone (`identify_*`) and echoed into the `identify_start` record of every run.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Use the GPU when it can run the model | on | GPU first (fast for fp16 models), automatic CPU fallback; off = CPU only (int8 models, comparisons). |
+| CPU threads | 0 (automatic) | Threads for the CPU path; fewer = cooler and slower. |
+| Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
+| Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
+| Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |
+| Confidence needed to call a rank identified | 0.80 | The deepest rank whose probability mass reaches this value becomes the identification (the full ladder is always shown). |
+| "No organism" threshold | 0.50 | Mass on the "none of these" entries above which a visit is reported as no organism. |
+| Pause above battery temperature | 40 °C | The run pauses at this battery temperature and resumes 3 °C lower. |
+| Rank for the CSV "pred" columns | family | Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` in `tracks_<pack>.csv` (the other ranks are in their own columns anyway). |
+
+Model and label pack are chosen on the same screen (Import… copies the files into the app's
+private storage). `docs/IDENTIFICATION.md` explains where the files come from and how the
+answer is computed.

@@ -683,3 +683,70 @@ from `session.jsonl`. It is keyed to the log's size and mtime, so deleting it
 is always safe (the app just recomputes it on the next Dashboard visit). It
 is NOT part of the scientific record; analysis workflows should read
 `session.jsonl` (and `post_detections.jsonl`) only.
+
+## 8. Identification output (`identification/`, round 208+)
+
+"Identify organisms" (session gear menu, or the summary's Photos tab) runs the BioCLIP
+image tower over the crops of every tracked visit and writes its files into
+`<session>/identification/`. All `.jsonl` files are strict one-object-per-line;
+`docs/IDENTIFICATION.md` explains the method, `README_identification.txt` inside the
+folder repeats the column dictionary for whoever gets the folder later.
+
+### `embeddings_<model>.jsonl` + `embeddings_<model>.bin`
+
+Append-only (resumable). Records:
+
+| `type` | Fields |
+|---|---|
+| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version` |
+| `crop` | `key` (resume key: source|track|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
+| `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
+| `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms`, `avg_embed_ms`, `error` |
+
+The `.bin` holds row-major float32 little-endian unit vectors (`dim` per row). Read in
+Python: `np.fromfile(path, dtype='<f4').reshape(-1, dim)`.
+
+### `predictions_<pack>.jsonl`
+
+One `prediction` per crop: `key`, `src`, `track_id`, `weight` (the crop's quality weight
+in the visit average) and `top[]` = the five most probable pack rows with `name`
+(Genus epithet, or the "none" key), `family`, `order`, `p`.
+
+### `tracks_<pack>.csv` and `tracks_<pack>.json`
+
+One row (CSV) / object (JSON) per visit (track id); crops without a track id (post-hoc
+boxes of no-AI sessions) get one row each with an empty `track_id`.
+
+| Column | Meaning |
+|---|---|
+| `device_id`, `session_id`, `track_id` | identifiers |
+| `track_imgs` | crops used |
+| `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and its probability mass |
+| `pred_imgs`, `pred_prob_mean` | crops whose top-5 rows include that taxon, and their mean mass under it (approximation of `insect-detect-post`'s columns of the same name) |
+| `start_time`, `end_time`, `duration_s` | the track's first/last detection (ISO local time) |
+| `det_conf_mean` | mean detector confidence of the crops |
+| `bioclip_kingdom` … `bioclip_species` | the taxon chosen at each rank on a consistent top-down path (species as "Genus epithet") |
+| `p_kingdom` … `p_species` | probability mass of that taxon (sum of the species under it) |
+| `identified_rank`, `headline` | deepest rank whose mass reached `tau`; the taxon there, or `unidentified` / `no organism` |
+| `support_<rank>` | share of crops whose own top-1 falls under that taxon |
+| `n_crops_used`, `none_p` | crops in the average; mass on the "none of these" rows |
+| `best_view_photo`, `best_view_species`, `best_view_p` | the single crop with the most confident species suggestion |
+| `flags` | `none`, `unidentified`, `path_conflict` (a rank's best taxon is not under the rank above), `rule_conflict` (the mean-of-probabilities cross-check disagrees at the target rank), `single_crop` |
+| `model_id`, `pack_id` | provenance |
+
+The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `support`), every crop with its
+weight and own top-1, `best_view`, `flags`, and the run `settings`.
+
+### `summary_<pack>.json`
+
+Counts for the app: `tracks_total`, `by_identified_rank`, `none`, `unidentified`,
+`taxa_order`, `taxa_family` (visits per taxon among the visits identified at least to that
+rank), a compact `tracks[]` list and the run's provenance.
+
+R sketch:
+
+```r
+tr <- read.csv("identification/tracks_<pack>.csv")
+table(tr$identified_rank)
+aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = length)
+```

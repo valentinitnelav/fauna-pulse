@@ -22,10 +22,12 @@ import '../logging/device_storage.dart';
 import '../logging/error_reporter.dart';
 import '../logging/session_rename.dart';
 import '../models/session_config.dart';
+import '../identification/identification_store.dart';
 import '../postprocess/post_detector.dart';
 import 'analysis_screen.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
+import 'identification_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_summary_screen.dart';
 
@@ -49,6 +51,10 @@ class _PastSession {
   /// this session (round 135) — shown as a small badge on the row.
   final bool hasAnalysis;
 
+  /// Whether identification results (identification/summary_*.json) exist
+  /// for this session (round 208) — a second badge on the row.
+  final bool hasIdentification;
+
   const _PastSession(
     this.name,
     this.logFile,
@@ -58,6 +64,7 @@ class _PastSession {
     this.endedNormally = false,
     this.sizeBytes = 0,
     this.hasAnalysis = false,
+    this.hasIdentification = false,
   });
 }
 
@@ -75,7 +82,7 @@ enum _HomeMenuAction { about, toggleSetupTips, reportProblem, deleteAllSessions 
 /// everything that manages ONE session without opening its summary: rename,
 /// gallery export, post-hoc analysis (same as the row long-press) and
 /// delete. Opening the summary stays the row tap.
-enum _SessionAction { rename, exportPhotos, analyze, delete }
+enum _SessionAction { rename, exportPhotos, analyze, identify, delete }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -161,6 +168,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 hasAnalysis: File(
                   '${entity.path}/${PostDetector.outputFileName}',
                 ).existsSync(),
+                hasIdentification: IdentificationPaths(
+                  entity,
+                ).existingSummaries().isNotEmpty,
               ),
             );
           }
@@ -318,6 +328,17 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AnalysisScreen(initialSessionPath: sessionDirPath),
+      ),
+    );
+    _loadSessions();
+  }
+
+  /// Opens the identification screen for one session (round 208); rescans
+  /// on return so the row's badge appears after a finished run.
+  Future<void> _openIdentification(_PastSession s) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => IdentificationScreen(sessionDir: s.logFile.parent),
       ),
     );
     _loadSessions();
@@ -960,6 +981,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     _exportSessionPhotos(s);
                   case _SessionAction.analyze:
                     _openAnalysis(s.logFile.parent.path);
+                  case _SessionAction.identify:
+                    _openIdentification(s);
                   case _SessionAction.delete:
                     _confirmDeleteSession(s);
                 }
@@ -993,6 +1016,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 PopupMenuItem(
+                  value: _SessionAction.identify,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.biotech_outlined),
+                    title: Text('Identify organisms'),
+                  ),
+                ),
+                PopupMenuItem(
                   value: _SessionAction.delete,
                   child: ListTile(
                     dense: true,
@@ -1018,6 +1050,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         Icons.auto_awesome,
                         size: 14,
                         color: Colors.lightBlueAccent,
+                      ),
+                    ),
+                  ),
+                if (s.hasIdentification)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Tooltip(
+                      message: 'Identification results exist',
+                      child: Icon(
+                        Icons.biotech,
+                        size: 14,
+                        color: Colors.greenAccent,
                       ),
                     ),
                   ),

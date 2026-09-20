@@ -7263,3 +7263,141 @@ minted. Concept DOI `10.5281/zenodo.22309221` (all versions), version DOI
 
 Verification: `cffconvert --validate` OK; `cffconvert -f apalike` and `-f bibtex`
 both print `10.5281/zenodo.22309221`; no code changed.
+
+## Round 208 (2026-09-20): on-device identification with BioCLIP (first working slice)
+
+Owner request: identify the tracked organisms on the phone, in bulk after a day of
+recording, with the BioCLIP models Max Sittinger's `insect-detect-post` uses on a PC
+(design notes in the owner's `BIOCLIP_ON_DEVICE_PLAN.md`, outside the repo). This
+round ships the whole vertical slice; nothing here touches the live camera path.
+
+**PC side (`tool/bioclip_export/`, Python, MIT/CC0 inputs):**
+- `export_image_tower.py`: downloads the OpenCLIP checkpoint (BioCLIP 2 / 2.5 / 1),
+  wraps the image tower (CLIP mean/std normalisation and L2 norm baked into the graph,
+  input RGB 0..1 NCHW), converts with `litert-torch` to `.tflite` (fp16 default, int8
+  dynamic-range, or fp32) and writes a `.json` manifest (dim, input size, logit scale,
+  sha256). Optional `--onnx`.
+- `build_label_pack.py` + `fpack.py`: reads the TreeOfLife-200M species text embeddings
+  (2.66 GB, CC0) once from Hugging Face, filters by class / order / species CSV (Max's
+  GBIF country lists plug in here), embeds six "none of these" sink prompts (flower,
+  leaf, shadow, debris, blurry, web) with the text tower, and writes ONE `.fpack` file:
+  `FPK1` magic + uint32 header length + JSON header (pack_id, model_id, dim, rows,
+  dtype f16|f32, logit_scale, temperature, ranks, sink_rows, labels[rows][8]) + the
+  row-major matrix. The Dart reader is tested against a fixture written by this module
+  (`test/fauna_pulse/fixtures/tiny_pack.fpack`).
+- `verify_parity.py`: PyTorch vs TFLite embeddings on a crop folder (cosine, family and
+  species top-1 agreement against a pack); acceptance >= 0.99 / >= 95 %.
+- `README.md` + `requirements.txt`. None of this could be run here (no torch on this
+  machine); syntax-checked only. Owner runs it on a PC.
+
+**Native (plugin):** `Embedder.kt` wraps `InferenceModel.create` (so the LiteRT GPU
+ladder, crash blocklist and CPU threads apply) for an RGB-in / unit-vector-out model;
+`YOLOPlugin.kt` gains `embedderLoad` / `embedderRun` / `embedderClose` on the default
+channel, all work serialised on a dedicated `yolo-embedder` thread, replies on the main
+looper, released on engine detach. Dart API `ImageEmbedder` (plugin
+`lib/core/image_embedder.dart`, exported): `load(path, useGpu, cpuThreads)` →
+accelerator/input size/dim, `embed(List<Uint8List> rgb)` → flat Float32List batch, `close()`.
+
+**App (`lib/fauna_pulse/identification/`):**
+- `label_pack.dart`: fpack reader (half-float decode, taxonomy rows with hierarchy keys,
+  sink rows = kingdom `none`), `readHeader` for listings, `load` off the UI isolate.
+- `crop_planner.dart`: crop tasks from `SessionLogIndex` (one per photo per track id;
+  the `_live` companion is preferred when present since the logged boxes were observed
+  on it), `post_detections.jsonl` fallback for no-AI sessions (no track ids), per-track
+  sampling (largest boxes first).
+- `crop_worker.dart`: pure geometry `planSquareCrop` (square on the longer side + margin,
+  centred, CLIP-mean padding at photo edges instead of shifting), `laplacianVariance`
+  sharpness, `cropBatchSync` (decode once per photo, direct antialiased resize to the
+  model input) on a worker isolate.
+- `track_fusion.dart`: `qualityWeight` (size × sharpness × det conf × (1 − pad), clipped
+  0.05..1), `Scorer` (softmax over the pack with logit_scale / temperature; top-k;
+  taxonomy roll-up; `fuse` = quality-weighted mean embedding scored once, consistent
+  top-down ladder with mass and support, identified rank at tau, sink mass, mean-of-
+  probabilities cross-check → `rule_conflict`, `path_conflict`, best single view).
+- `identification_store.dart`: `<session>/identification/` layout, `EmbeddingRecord` /
+  `EmbeddingIndex` (resume state, contiguity check), float32 `.bin` I/O, `writeOutputs`
+  (predictions jsonl, tracks json + Max-compatible CSV with per-rank p/support columns,
+  summary json, README).
+- `identification_job.dart`: driver. Plan → resume filter (inconsistent files are
+  redone; an orphan vector after a kill is truncated) → per photo: crop isolate → native
+  embed in batches of 8 → append vector then record → progress (throttled), cancel
+  between photos, thermal governor (pause at `thermal_limit_c`, resume 3 °C lower,
+  `identify_end` counts the pauses) → scoring in its own isolate (`scoreSession`; also
+  callable alone = "Re-score with this pack").
+- `identification_assets.dart`: private `identification/models` + `packs` dirs, file
+  picker import through the shared streamed checks (`copyAndValidateModel` gained an
+  optional `maxBytes`; `kMaxIdentificationFileBytes` = 2 GiB; packs must parse),
+  `IdentifyPrefs` (`identify_*` shared_preferences: model, pack, GPU, threads, margin
+  0.15, min crop 48 px, crops per visit 10, tau 0.8, none threshold 0.5, thermal limit
+  40 °C, target rank family) and the per-model measured ms/crop for the estimate.
+- Screens: `identification_screen.dart` (model/pack pickers + Import, crop count and
+  time estimate, plugged-in hint, Advanced fold with every tunable, run with progress /
+  ETA / battery temp / cancel, completion card, re-score, results, share CSV) and
+  `identification_results_screen.dart` (counts, visits per order/family bars, per-visit
+  list with min-confidence slider, ladder sheet with support, best view photo, crops).
+- Entry points: home gear menu "Identify organisms" (+ green biotech badge when
+  `identification/summary_*.json` exists), summary Photos tab button.
+
+**Docs:** new `docs/IDENTIFICATION.md`; DATA_GUIDE §8; SETTINGS_REFERENCE
+"Identification"; THIRD_PARTY_MODELS BioCLIP 2 (MIT) entry + citation; README wording;
+`.gitignore` for the Python venv/outputs.
+
+**Tests (+5 files, 26 tests):** label pack fixture round-trip and half floats; fusion
+math (weights, softmax, roll-up, ladder, sink, unsure, conflicts); crop planner (index,
+live preference, post-hoc, sampling); crop worker (geometry, padding, sharpness, real
+JPEG batch); job end-to-end with a fake embedder (plan → embed → score → CSV/JSON,
+resume, cancel, thermal pause, skips).
+
+**Deliberately not in this round:** URL download of model/pack (Import only; the
+files are made on the owner's PC), blackout screen during the run (wakelock + normal
+screen; brightness is the user's), bulk "identify all sessions", track merging (plan
+11.14), calibration temperature fitting (the pack carries `temperature` = 1.0), native
+scoring for packs > 100 k rows (Dart softmax ≈ 50 ms per crop per 30 k rows).
+
+**Not verified on a device yet:** the litert-torch export of ViT-L/14 and its GPU
+compile on the Xiaomi are exactly what Phase 0 of the plan measures; the CPU int8 path
+is the fallback. First on-device checks: `verify_parity.py` on the PC, then a small
+orders-only pack on a short session.
+
+
+Same-day follow-up (owner's PC run): `pip install -r requirements.txt` brought
+litert-torch 0.9.4, which no longer uses TensorFlow's converter, so the original
+`_ai_edge_converter_flags` approach failed with `No module named 'tensorflow'`.
+`export_image_tower.py` now converts to float32 with `litert_torch.convert(...,
+lightweight_conversion=True)` and applies fp16 (ai-edge-quantizer FLOAT_CASTING on
+FULLY_CONNECTED + CONV_2D weights) or int8 (`recipe.dynamic_wi8_afp32()`) afterwards,
+deleting the float32 intermediate unless `--keep-fp32`; `--no-lightweight` is the
+fallback switch. `build_label_pack.py` gained `--families` so the first phone test can
+use a pack of a few tens of MB. Disk note: the owner's home had 3.6 GB free; the pip
+download cache (4 GB) was purged to make room for the 1.2 GB intermediate + outputs.
+Second follow-up: the float32 conversion itself succeeded on the owner's PC (1.16 GB,
+35 s; input `serving_default_args_0` [1,3,224,224], output
+`serving_default_output_0_output` [1,768], unit-norm output verified with
+ai-edge-litert, 4.4 s/inference on 4 PC threads), but ai-edge-quantizer 0.9.0 with
+flatbuffers 25.12 fails inside its weight transformations (`tensor.name + b'_dequant'`
+with a `str` name). `export_image_tower.py` now normalises tensor names to bytes by
+wrapping `tfl_flatbuffer_utils.read_model` before quantising. The TreeOfLife-200M json
+structure was confirmed as `[[kingdom..epithet], common_name]` (867,455 rows; Insecta
+264,036, Arachnida 16,406). First test pack: 32 flower-visitor families
+(`bioclip2_flower_visitors_32fam_v1`, ~38.5 k rows + 6 sink rows).
+Third follow-up (export finished on the owner's PC): the first fp16 file came out LARGER
+than float32 (1,317 vs 1,216 MB). `inspect_tflite.py` (new helper) showed why: with
+`lightweight_conversion=True` litert-torch folds the LayerNorm scale into the next
+linear layer algebraically but leaves the product `W × gamma` as a runtime MUL over
+705 MB of constants (48 of the 144 FULLY_CONNECTED ops got "computed" weights), which
+ai-edge-quantizer cannot cast. Full constant folding (now the default; `--lightweight`
+is opt-in) gives 97 constant-weight FULLY_CONNECTED ops, float32 1,216 MB in 74 s
+(~7 GB RAM), fp16 609 MB via FLOAT_CASTING in 6 s. The str/bytes workaround now also
+wraps `duplicate_tensor` (its f-string rename). Final artifacts in
+`tool/bioclip_export/out/` (git-ignored): `bioclip-2_image_fp32.tflite` (1,160 MiB,
+parity cosine 1.0000 / 100 % agreement vs PyTorch on 6 synthetic images),
+`bioclip-2_image_fp16.tflite` (581 MiB) + `.json` manifest, and the first pack
+`bioclip2_flower_visitors_32fam_v1.fpack` (59.8 MiB, 38,570 species of 32 flower-visitor
+families + 6 sink rows, logit scale 100.0).
+Reproducibility (owner request): `tool/bioclip_export/README.md` rewritten as a
+step-by-step guide (requirements, environment, export, pack, verification, copy to the
+phone, troubleshooting, licenses) with the measured sizes and times; `requirements.txt`
+now installs the CPU build of PyTorch via `--extra-index-url` (the default CUDA build
+cost 3 GB of disk for nothing); `requirements-lock.txt` holds the exact 77 verified
+package versions (Ubuntu 24.04, Python 3.12.3, minus the nvidia-*/triton CUDA
+packages). New `inspect_tflite.py` documented.

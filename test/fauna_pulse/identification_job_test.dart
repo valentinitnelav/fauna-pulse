@@ -1,0 +1,203 @@
+// End-to-end test of the identification job (round 208) with a fake embedder:
+// planning from a synthetic session, cropping real JPEGs, resumable records,
+// scoring against the Python-written fixture pack, outputs, cancel, thermal
+// pause. No native channel involved.
+
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:fauna_pulse/fauna_pulse/identification/crop_worker.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/identification_store.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
+
+const _log = '''
+{"type":"start_of_session","time_ms":1000,"config":{},"device":{"model":"TestPhone"}}
+{"type":"detections","time_ms":2000,"tracks":[{"track_id":1,"confidence":0.9,"box_in_roi":{"left":0.2,"top":0.2,"right":0.6,"bottom":0.6},"jpeg":"roi_t_2026-07-14_120000_000.jpg"}]}
+{"type":"detections","time_ms":2500,"tracks":[{"track_id":1,"confidence":0.8,"box_in_roi":{"left":0.25,"top":0.2,"right":0.65,"bottom":0.6},"jpeg":"roi_t_2026-07-14_120000_500.jpg"}]}
+{"type":"detections","time_ms":3000,"tracks":[{"track_id":2,"confidence":0.7,"box_in_roi":{"left":0.3,"top":0.3,"right":0.7,"bottom":0.7},"jpeg":"roi_t_2026-07-14_120001_000.jpg"}]}
+{"type":"end_of_session","time_ms":4000,"ended_normally":true}
+''';
+
+Uint8List _jpeg(int r, int g, int b) {
+  final im = img.Image(width: 160, height: 160, numChannels: 3);
+  img.fill(im, color: img.ColorRgb8(r, g, b));
+  return Uint8List.fromList(img.encodeJpg(im, quality: 90));
+}
+
+void main() {
+  late Directory tmp;
+  late File packFile;
+  late LabelPack pack;
+
+  setUp(() async {
+    tmp = await Directory.systemTemp.createTemp('identify_job_test');
+    packFile = File('test/fauna_pulse/fixtures/tiny_pack.fpack');
+    pack = LabelPack.parseBytes(packFile.readAsBytesSync());
+  });
+  tearDown(() async {
+    await tmp.delete(recursive: true);
+  });
+
+  Directory makeSession(String name) {
+    final dir = Directory('${tmp.path}/$name')..createSync();
+    File('${dir.path}/session.jsonl').writeAsStringSync(_log);
+    final frames = Directory('${dir.path}/roi_frames')..createSync();
+    File('${frames.path}/roi_t_2026-07-14_120000_000.jpg').writeAsBytesSync(_jpeg(220, 30, 30));
+    File('${frames.path}/roi_t_2026-07-14_120000_500.jpg').writeAsBytesSync(_jpeg(200, 40, 40));
+    File('${frames.path}/roi_t_2026-07-14_120001_000.jpg').writeAsBytesSync(_jpeg(30, 30, 220));
+    return dir;
+  }
+
+  /// Red crops embed as pack row 0 (Eristalis tenax), blue as row 2 (Apis).
+  Future<List<Float32List>> fakeEmbed(List<Uint8List> rgb) async {
+    return [
+      for (final buf in rgb)
+        Float32List.sublistView(pack.matrix, (buf[0] > buf[2] ? 0 : 2) * pack.dim, ((buf[0] > buf[2] ? 0 : 2) + 1) * pack.dim),
+    ];
+  }
+
+  IdentifyRunSettings settings() => const IdentifyRunSettings(
+    modelName: 'fake_model.tflite',
+    modelId: 'fake',
+    packName: 'tiny_pack.fpack',
+    inputSize: 32,
+    dim: 4,
+    accelerator: 'CPU',
+    minCropPx: 16,
+  );
+
+  test('plans, embeds, scores and writes outputs; a second run resumes', () async {
+    final session = makeSession('s1');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final progress = <IdentifyProgress>[];
+    final r = await job.run(
+      session,
+      settings: settings(),
+      packFile: packFile,
+      appVersion: '0.7.0+12',
+      onProgress: progress.add,
+    );
+    expect(r.error, isNull);
+    expect(r.planned, 3);
+    expect(r.embedded, 3);
+    expect(r.skipped, 0);
+    expect(r.cancelled, isFalse);
+    expect(progress.map((p) => p.stage), contains('scoring'));
+    expect(progress.last.stage, 'done');
+
+    final paths = IdentificationPaths(session);
+    final index = EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync());
+    expect(index.rows, 3);
+    expect(index.contiguous, isTrue);
+    expect(index.dim, 4);
+    expect(paths.embeddingsBin('fake_model').lengthSync(), 3 * 4 * 4);
+    expect(index.records.first.trackId, 1);
+    expect(index.records.first.cropPx, 64); // 0.4 × 160
+    expect(index.records.first.boxSource, 'trigger');
+
+    final summary = r.summary!;
+    expect(summary['tracks_total'], 2);
+    expect((summary['by_identified_rank'] as Map)['species'], 2);
+    expect(summary['none'], 0);
+
+    final tracks = (jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+    expect(tracks.length, 2);
+    expect(tracks[0]['track_id'], 1);
+    expect(tracks[0]['headline'], 'Eristalis tenax');
+    expect((tracks[0]['crops'] as List).length, 2);
+    expect(tracks[1]['headline'], 'Apis mellifera');
+    expect((tracks[0]['ladder'] as List).length, 7);
+    expect(tracks[0]['start_ms'], 2000);
+    expect(tracks[0]['end_ms'], 2500);
+
+    final csvLines = paths.tracksCsv('tiny_pack').readAsLinesSync();
+    expect(csvLines.length, 3);
+    expect(csvLines.first, startsWith('device_id,session_id,track_id,track_imgs,pred_imgs,pred,pred_prob_weighted,pred_prob_mean,'));
+    expect(csvLines.first, contains('bioclip_species'));
+    expect(csvLines[1], contains('TestPhone,s1,1,2,'));
+    expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
+    expect(paths.readme.existsSync(), isTrue);
+    expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().length, 3);
+    expect(paths.existingSummaries().length, 1);
+
+    // Resume: nothing new to embed, outputs rewritten.
+    final r2 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r2.embedded, 0);
+    expect(r2.resumedDone, 3);
+    expect(r2.summary!['tracks_total'], 2);
+    expect(EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
+  });
+
+  test('cancel before the first photo keeps files consistent and skips scoring', () async {
+    final session = makeSession('s2');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile, isCancelled: () => true);
+    expect(r.cancelled, isTrue);
+    expect(r.embedded, 0);
+    expect(r.summary, isNull);
+    final paths = IdentificationPaths(session);
+    final index = EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync());
+    expect(index.rows, 0);
+    expect(paths.embeddingsJsonl('fake_model').readAsStringSync(), contains('"identify_end"'));
+  });
+
+  test('a warm battery pauses the run until it cools', () async {
+    final session = makeSession('s3');
+    var calls = 0;
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => ThermalReading(batteryTempC: ++calls <= 2 ? 45 : 30),
+      pausePoll: const Duration(milliseconds: 1),
+    );
+    final stages = <String>[];
+    final r = await job.run(
+      session,
+      settings: settings(),
+      packFile: packFile,
+      onProgress: (p) => stages.add(p.stage),
+    );
+    expect(r.thermalPauses, 1);
+    expect(stages, contains('paused'));
+    expect(r.embedded, 3);
+  });
+
+  test('tiny boxes are skipped and recorded, not embedded', () async {
+    final session = makeSession('s4');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(
+      session,
+      settings: const IdentifyRunSettings(
+        modelName: 'fake_model.tflite',
+        modelId: 'fake',
+        packName: 'tiny_pack.fpack',
+        inputSize: 32,
+        dim: 4,
+        accelerator: 'CPU',
+        minCropPx: 100, // boxes are 64 px
+      ),
+      packFile: packFile,
+    );
+    expect(r.embedded, 0);
+    expect(r.skipped, 3);
+    final index = EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync());
+    expect(index.skippedKeys.length, 3);
+  });
+}

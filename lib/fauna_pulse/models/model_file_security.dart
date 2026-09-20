@@ -70,6 +70,10 @@ String modelSizeLimitMessage(String name) {
       'The limit is documented in model_file_security.dart.';
 }
 
+/// Size message for a caller-supplied cap (identification files).
+String sizeLimitMessage(int maxBytes) =>
+    'The file is larger than the ${maxBytes ~/ (1024 * 1024)} MiB limit.';
+
 String plainModelError(Object error) =>
     '$error'.replaceFirst('Exception: ', '');
 
@@ -101,11 +105,16 @@ Future<void> ensureModelStorageAvailable(String path, int incomingBytes) async {
 /// is protobuf and has no equally stable magic value, so its protection is the
 /// strict name, non-empty file, size ceiling, private storage, and native
 /// metadata bounds.
-Future<void> validateModelFile(File file, String name) async {
+///
+/// [maxBytes] overrides the per-name detector limit; the identification
+/// feature (round 208) passes its own, larger cap for embedding models and
+/// label packs without weakening the detector limits above.
+Future<void> validateModelFile(File file, String name, {int? maxBytes}) async {
+  final cap = maxBytes ?? maxModelBytesForName(name);
   final length = await file.length();
   if (length <= 0) throw Exception('The model file is empty.');
-  if (length > maxModelBytesForName(name)) {
-    throw Exception(modelSizeLimitMessage(name));
+  if (length > cap) {
+    throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
   }
   if (!name.toLowerCase().endsWith('.tflite')) return;
 
@@ -128,11 +137,17 @@ Future<void> validateModelFile(File file, String name) async {
 
 /// Streams through a temporary file, so rejected or interrupted imports never
 /// replace an existing usable model with a partial file.
-Future<File> copyAndValidateModel(File source, File target, String name) async {
+Future<File> copyAndValidateModel(
+  File source,
+  File target,
+  String name, {
+  int? maxBytes,
+}) async {
+  final cap = maxBytes ?? maxModelBytesForName(name);
   final sourceBytes = await source.length();
   if (sourceBytes <= 0) throw Exception('The selected model file is empty.');
-  if (sourceBytes > maxModelBytesForName(name)) {
-    throw Exception(modelSizeLimitMessage(name));
+  if (sourceBytes > cap) {
+    throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
   }
   await ensureModelStorageAvailable(target.parent.path, sourceBytes);
 
@@ -144,8 +159,8 @@ Future<File> copyAndValidateModel(File source, File target, String name) async {
     try {
       await for (final chunk in source.openRead()) {
         copied += chunk.length;
-        if (copied > maxModelBytesForName(name)) {
-          throw Exception(modelSizeLimitMessage(name));
+        if (copied > cap) {
+          throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
         }
         sink.add(chunk);
       }
@@ -154,7 +169,7 @@ Future<File> copyAndValidateModel(File source, File target, String name) async {
       await sink.close();
     }
 
-    await validateModelFile(part, name);
+    await validateModelFile(part, name, maxBytes: maxBytes);
     if (await target.exists()) await target.delete();
     return await part.rename(target.path);
   } catch (_) {

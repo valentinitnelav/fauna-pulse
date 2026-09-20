@@ -42,6 +42,7 @@ import '../widgets/mini_bar_chart.dart';
 import '../widgets/setting_help.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
+import 'identification_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
@@ -2210,6 +2211,34 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           onPressed: _galleryExportBusy ? null : _confirmExportPhotosToGallery,
           icon: const Icon(Icons.photo_library),
           label: const Text('Copy photos'),
+        ),
+      ),
+      // --- Identify organisms (round 208): per-visit taxonomic identification
+      // with the BioCLIP image tower, run on the phone from the saved photos.
+      const Divider(height: 32, color: Colors.white24),
+      const HelpLabel(
+        label: 'Identify organisms',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        helperText:
+            'Runs an identification model (BioCLIP) over the saved photos of every '
+            'tracked insect and combines the photos of each visit into one answer '
+            'with a confidence per rank (order, family, genus, species). Needs a '
+            'model file and a label pack made on a PC (docs/IDENTIFICATION.md); '
+            'takes minutes to hours, best with the phone plugged in. Results land '
+            'in the session folder as CSV and JSON.',
+      ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.tonalIcon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  IdentificationScreen(sessionDir: widget.logFile.parent),
+            ),
+          ),
+          icon: const Icon(Icons.biotech_outlined),
+          label: const Text('Identify organisms'),
         ),
       ),
     ];

@@ -39,6 +39,14 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
   // detaches rather than outliving the plugin.
   private lateinit var pluginScope: CoroutineScope
 
+  // FaunaPulse (round 208): the identification embedder (see Embedder.kt). One at a time,
+  // owned by the plugin, all work serialized on its own background thread so a 0.5-4 s
+  // ViT inference never touches the platform thread. The Dart side (ImageEmbedder in the
+  // plugin's lib/core/image_embedder.dart) awaits every call, so calls never overlap.
+  private var embedder: Embedder? = null
+  private val embedderExecutor: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "yolo-embedder") }
+
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // Store application context and binary messenger for later use
@@ -98,6 +106,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     // Round 161 (perf review E2): release every YOLO instance's native model on engine detach —
     // pre-r161 this leaked them ("YOLO class doesn't need explicit release" was wrong).
     YOLOInstanceManager.shared.disposeAll()
+    embedderExecutor.execute { runCatching { embedder?.close() }; embedder = null }
+    embedderExecutor.shutdown()
   }
   
   /**
@@ -788,6 +798,87 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         }
       }
       
+      // FaunaPulse (round 208): identification embedder. Loads a TFLite image-embedding
+      // model (BioCLIP image tower export), embeds batches of pre-cropped RGB images, and
+      // releases it. Replies come back on the main looper; the work runs on the embedder
+      // thread so compile (seconds for a 0.6 GB model) and inference never block the UI.
+      "embedderLoad" -> {
+        val args = call.arguments as? Map<*, *>
+        val modelPath = args?.get("modelPath") as? String
+        val useGpu = args?.get("useGpu") as? Boolean ?: true
+        val cpuThreads = (args?.get("cpuThreads") as? Number)?.toInt() ?: 0
+        if (modelPath == null) {
+          result.error("bad_args", "embedderLoad needs modelPath", null)
+          return
+        }
+        val reply = android.os.Handler(android.os.Looper.getMainLooper())
+        embedderExecutor.execute {
+          val t0 = System.nanoTime()
+          val outcome = runCatching {
+            runCatching { embedder?.close() }
+            embedder = null
+            val e = Embedder(applicationContext, resolveModelPath(modelPath), useGpu, cpuThreads)
+            embedder = e
+            mapOf(
+              "accelerator" to e.accelerator,
+              "inputWidth" to e.inputWidth,
+              "inputHeight" to e.inputHeight,
+              "dim" to e.dim,
+              "loadMs" to (System.nanoTime() - t0) / 1e6,
+            )
+          }
+          reply.post {
+            outcome.fold(
+              onSuccess = { result.success(it) },
+              onFailure = { e ->
+                Log.e(TAG, "Embedder load failed", e)
+                result.error("embedder_load_error", e.message ?: e.javaClass.simpleName, null)
+              },
+            )
+          }
+        }
+      }
+
+      "embedderRun" -> {
+        val args = call.arguments as? Map<*, *>
+        val images = (args?.get("images") as? List<*>)?.mapNotNull { it as? ByteArray }
+        if (images == null || images.isEmpty()) {
+          result.error("bad_args", "embedderRun needs a non-empty images list", null)
+          return
+        }
+        val reply = android.os.Handler(android.os.Looper.getMainLooper())
+        embedderExecutor.execute {
+          val outcome = runCatching {
+            val e = embedder ?: throw IllegalStateException("No embedder loaded; call embedderLoad first")
+            val t0 = System.nanoTime()
+            val flat = FloatArray(images.size * e.dim)
+            for ((i, rgb) in images.withIndex()) {
+              val v = e.embed(rgb)
+              System.arraycopy(v, 0, flat, i * e.dim, e.dim)
+            }
+            mapOf("dim" to e.dim, "count" to images.size, "vectors" to flat, "ms" to (System.nanoTime() - t0) / 1e6)
+          }
+          reply.post {
+            outcome.fold(
+              onSuccess = { result.success(it) },
+              onFailure = { e ->
+                Log.e(TAG, "Embedder run failed", e)
+                result.error("embedder_run_error", e.message ?: e.javaClass.simpleName, null)
+              },
+            )
+          }
+        }
+      }
+
+      "embedderClose" -> {
+        val reply = android.os.Handler(android.os.Looper.getMainLooper())
+        embedderExecutor.execute {
+          runCatching { embedder?.close() }
+          embedder = null
+          reply.post { result.success(null) }
+        }
+      }
+
       else -> result.notImplemented()
     }
   }
