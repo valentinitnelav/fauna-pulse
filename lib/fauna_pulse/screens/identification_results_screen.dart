@@ -1,10 +1,14 @@
-// FaunaPulse (round 208): results of an identification run for one session.
+// FaunaPulse (round 208, reworked round 209): results of an identification
+// run for one session.
 //
 // Reads tracks_<pack>.json (full detail) and summary_<pack>.json (counts).
-// Shows the counts, the taxa with the most visits, and one row per track
-// id; tapping a row opens the "ladder" (kingdom .. species with the model's
-// confidence and how many crops agree), the crops with their weights and
-// the best single view. Percentages are model confidence, not accuracy.
+// The centre piece is a per-taxon TABLE (one row per identified taxon with
+// visits, time and median confidence) so a session with thousands of
+// visits still fits on one screen; the visits behind a row open on tap in a
+// lazily built sheet, and a visit opens its "ladder" (kingdom .. species
+// with the model's confidence and how many crops agree), the crops with
+// their weights and the best single view. Percentages are model
+// confidence, not accuracy.
 
 import 'dart:convert';
 import 'dart:io';
@@ -12,6 +16,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../identification/label_pack.dart' show kRankNames;
+import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
 import '../widgets/setting_help.dart';
 
@@ -34,10 +40,16 @@ class IdentificationResultsScreen extends StatefulWidget {
 }
 
 class _IdentificationResultsScreenState extends State<IdentificationResultsScreen> {
+  /// Rows shown before "Show all rows" is tapped: keeps a 200-taxon pack
+  /// from producing a page-long table by default.
+  static const int _rowsFolded = 25;
+
   Map<String, dynamic>? _summary;
   List<Map<String, dynamic>> _tracks = const [];
+  List<TaxonRow> _rows = const [];
+  String _groupRank = kGroupAsIdentified;
+  bool _allRows = false;
   String? _error;
-  double _minP = 0;
 
   @override
   void initState() {
@@ -54,11 +66,20 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       setState(() {
         _summary = summary;
         _tracks = tracks;
+        _rows = aggregateTracks(tracks, groupRank: _groupRank);
       });
     } catch (e) {
       logSwallowed('identify_results_load', e);
       if (mounted) setState(() => _error = '$e');
     }
+  }
+
+  void _setGroup(String rank) {
+    setState(() {
+      _groupRank = rank;
+      _allRows = false;
+      _rows = aggregateTracks(_tracks, groupRank: rank);
+    });
   }
 
   double? _identifiedP(Map<String, dynamic> t) {
@@ -89,21 +110,22 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           ),
         ],
       ),
-      body: _error != null
-          ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
-          : s == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                ..._header(s),
-                const Divider(height: 32, color: Colors.white24),
-                ..._taxaBars('Visits per order', s['taxa_order'] as Map),
-                ..._taxaBars('Visits per family', s['taxa_family'] as Map),
-                const Divider(height: 32, color: Colors.white24),
-                ..._trackList(),
-              ],
-            ),
+      // SafeArea + bottom padding: the app is edge-to-edge, an explicitly
+      // padded ListView otherwise hides its last row under the system bar.
+      body: SafeArea(
+        child: _error != null
+            ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+            : s == null
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  ..._header(s),
+                  const Divider(height: 32, color: Colors.white24),
+                  ..._table(),
+                ],
+              ),
+      ),
     );
   }
 
@@ -111,7 +133,8 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     final byRank = (s['by_identified_rank'] as Map).cast<String, dynamic>();
     return [
       Text(
-        'Model ${s['model_id']} · pack ${s['pack_id']} (${s['pack_rows']} names) · ${s['generated_iso'].toString().substring(0, 16).replaceFirst('T', ' ')}',
+        'Model ${s['model_id']} · pack ${s['pack_id']} (${s['pack_rows']} names) · '
+        '${s['generated_iso'].toString().substring(0, 16).replaceFirst('T', ' ')}',
         style: helperTextStyle,
       ),
       const SizedBox(height: 8),
@@ -134,81 +157,157 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     ];
   }
 
-  List<Widget> _taxaBars(String title, Map counts) {
-    if (counts.isEmpty) return const [];
-    final entries = counts.entries.map((e) => MapEntry('${e.key}', (e.value as num).toInt())).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final maxV = entries.first.value;
+  List<Widget> _table() {
+    final shown = _allRows ? _rows : _rows.take(_rowsFolded).toList();
     return [
-      Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      const HelpLabel(
+        label: 'Visits per taxon',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        helperText:
+            '"As identified" gives one row per answer at the rank the model was sure about '
+            '(a visit identified only to genus Bombus and one identified to Bombus terrestris '
+            'are two rows). Pick a rank to count every visit under its order, family, genus or '
+            'species instead; visits the model did not resolve that deep land in a '
+            '"not resolved" row. Time = the visits\' durations added up; Conf. = median '
+            'confidence of the row\'s visits. Tap a row for its visits, a visit for its full ladder.',
+      ),
       const SizedBox(height: 6),
-      for (final e in entries.take(12))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            children: [
-              SizedBox(width: 140, child: Text(e.key, style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis)),
-              Expanded(
-                child: LinearProgressIndicator(value: e.value / maxV, minHeight: 10, backgroundColor: Colors.white12),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(width: 36, child: Text('${e.value}', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white))),
-            ],
-          ),
+      Wrap(
+        spacing: 6,
+        runSpacing: 0,
+        children: [
+          for (final (value, label) in [
+            (kGroupAsIdentified, 'As identified'),
+            for (final r in kRankNames.skip(3)) (r, r[0].toUpperCase() + r.substring(1)),
+          ])
+            ChoiceChip(
+              label: Text(label),
+              selected: _groupRank == value,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => _setGroup(value),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      _tableHeader(),
+      const Divider(height: 8, color: Colors.white24),
+      for (final r in shown) _taxonRow(r),
+      if (_rows.length > shown.length)
+        TextButton(
+          onPressed: () => setState(() => _allRows = true),
+          child: Text('Show all ${_rows.length} rows'),
         ),
+      if (_rows.isEmpty) const Text('No visits.', style: helperTextStyle),
       const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: _tracks.isEmpty ? null : () => _showVisits('All visits', _tracks),
+          icon: const Icon(Icons.list),
+          label: Text('All ${_tracks.length} visits'),
+        ),
+      ),
     ];
   }
 
-  List<Widget> _trackList() {
-    final shown = _tracks.where((t) {
-      final p = _identifiedP(t);
-      return _minP == 0 || (p != null && p >= _minP);
-    }).toList();
-    return [
-      Row(
-        children: [
-          const Text('Visits', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          const Text('min. confidence', style: helperTextStyle),
-          Slider(
-            value: _minP,
-            min: 0,
-            max: 0.95,
-            divisions: 19,
-            label: _pct(_minP),
-            onChanged: (v) => setState(() => _minP = v),
-          ),
-        ],
-      ),
-      for (final t in shown)
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: SizedBox(
-            width: 44,
-            child: Text(
-              t['track_id'] == null ? '·' : '#${t['track_id']}',
-              style: const TextStyle(color: Colors.white70),
+  static const _colVisits = 52.0, _colTime = 58.0, _colConf = 50.0;
+
+  Widget _tableHeader() => const Row(
+    children: [
+      Expanded(child: Text('Taxon', style: helperTextStyle)),
+      SizedBox(width: _colVisits, child: Text('Visits', textAlign: TextAlign.right, style: helperTextStyle)),
+      SizedBox(width: _colTime, child: Text('Time', textAlign: TextAlign.right, style: helperTextStyle)),
+      SizedBox(width: _colConf, child: Text('Conf.', textAlign: TextAlign.right, style: helperTextStyle)),
+    ],
+  );
+
+  Widget _taxonRow(TaxonRow r) {
+    final dim = r.isBucket;
+    final title = r.isBucket ? r.taxon : '${r.taxon}  (${r.rank})';
+    return InkWell(
+      onTap: () => _showVisits(r.isBucket ? r.taxon : '${r.taxon} (${r.rank})', r.tracks),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(color: dim ? Colors.white54 : Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  if (r.lineage.isNotEmpty)
+                    Text(r.lineage.join(' › '), style: helperTextStyle, overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-          ),
-          title: Text(
-            '${t['headline']}'
-            '${t['identified_rank'] != null ? ' (${t['identified_rank']}, ${_pct(_identifiedP(t))})' : ''}',
-            style: TextStyle(
-              color: t['headline'] == 'no organism' || t['headline'] == 'unidentified' ? Colors.white54 : Colors.white,
+            SizedBox(width: _colVisits, child: Text('${r.visits}', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white))),
+            SizedBox(
+              width: _colTime,
+              child: Text(formatVisitTime(r.totalS), textAlign: TextAlign.right, style: const TextStyle(color: Colors.white70)),
             ),
-          ),
-          subtitle: Text(
-            '${(t['crops'] as List).length} crops'
-            '${t['duration_s'] != null ? ' · ${(t['duration_s'] as num).toStringAsFixed(1)} s' : ''}'
-            '${(t['flags'] as List).isNotEmpty ? ' · ${(t['flags'] as List).join(', ')}' : ''}',
-            style: helperTextStyle,
-          ),
-          onTap: () => _showTrack(t),
+            SizedBox(
+              width: _colConf,
+              child: Text(_pct(r.medianP), textAlign: TextAlign.right, style: const TextStyle(color: Colors.white70)),
+            ),
+          ],
         ),
-      if (shown.isEmpty) const Text('No visits above this confidence.', style: helperTextStyle),
-    ];
+      ),
+    );
+  }
+
+  /// The visits behind one table row (or all of them), built lazily so a
+  /// thousand-visit session opens instantly.
+  void _showVisits(String title, List<Map<String, dynamic>> tracks) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        builder: (_, controller) => ListView.builder(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          itemCount: tracks.length + 1,
+          itemBuilder: (_, i) {
+            if (i == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('$title · ${tracks.length} visits', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              );
+            }
+            return _visitTile(tracks[i - 1]);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _visitTile(Map<String, dynamic> t) {
+    final dim = t['headline'] == 'no organism' || t['headline'] == 'unidentified';
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: SizedBox(
+        width: 48,
+        child: Text(t['track_id'] == null ? 'crop' : '#${t['track_id']}', style: const TextStyle(color: Colors.white70)),
+      ),
+      title: Text(
+        '${t['headline']}'
+        '${t['identified_rank'] != null ? ' (${t['identified_rank']}, ${_pct(_identifiedP(t))})' : ''}',
+        style: TextStyle(color: dim ? Colors.white54 : Colors.white),
+      ),
+      subtitle: Text(
+        '${(t['crops'] as List).length} crops'
+        '${t['duration_s'] != null ? ' · ${(t['duration_s'] as num).toStringAsFixed(1)} s' : ''}'
+        '${(t['flags'] as List).isNotEmpty ? ' · ${(t['flags'] as List).join(', ')}' : ''}',
+        style: helperTextStyle,
+      ),
+      onTap: () => _showTrack(t),
+    );
   }
 
   void _showTrack(Map<String, dynamic> t) {
@@ -224,7 +323,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         initialChildSize: 0.75,
         builder: (_, controller) => ListView(
           controller: controller,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             Text(
               t['track_id'] == null ? 'Crop' : 'Visit #${t['track_id']}: ${t['headline']}',
@@ -239,6 +338,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
                   Expanded(
                     child: Text(
                       '${s['taxon']}',
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: s['rank'] == t['identified_rank'] ? FontWeight.bold : FontWeight.normal,
                       ),

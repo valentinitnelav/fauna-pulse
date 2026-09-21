@@ -461,6 +461,9 @@ Map<String, dynamic> writeOutputs({
               ? null
               : (t['ladder'] as List).cast<Map<String, dynamic>>().firstWhere((s) => s['rank'] == t['identified_rank'])['p'],
           'n_crops': (t['crops'] as List).length,
+          // No-AI sessions have no track id: the crop's photo name is the key
+          // the Photos tab uses instead (round 209).
+          if (t['track_id'] == null) 'src': (t['crops'] as List).first['src'],
         },
     ],
   };
@@ -529,3 +532,60 @@ tower; a track's crops are averaged (quality-weighted: size, sharpness, detector
 confidence, padding), the average is scored against the pack, and species masses are
 summed up the taxonomy. Percentages are model confidence, not accuracy.
 ''';
+
+/// One visit's identification as the Photos tab shows it (round 209): read
+/// from the compact `tracks` list of the newest `summary_<pack>.json`, so the
+/// session summary never parses the full per-crop tracks file.
+class TrackIdentity {
+  final String headline;
+  final String? rank;
+  final double? p;
+  const TrackIdentity({required this.headline, this.rank, this.p});
+
+  /// "Bombus (genus, 87 %)", "no organism", "unidentified".
+  String get label => rank == null ? headline : '$headline ($rank, ${((p ?? 0) * 100).round()} %)';
+}
+
+class LatestIdentification {
+  final String packId;
+  final String generatedIso;
+
+  /// AI sessions: by track id. No-AI sessions: by photo file name.
+  final Map<int, TrackIdentity> byTrack;
+  final Map<String, TrackIdentity> byPhoto;
+  const LatestIdentification({
+    required this.packId,
+    required this.generatedIso,
+    required this.byTrack,
+    required this.byPhoto,
+  });
+
+  /// The newest summary in `<session>/identification/`, or null when the
+  /// session was never identified (or the file is unreadable).
+  static Future<LatestIdentification?> load(Directory sessionDir) async {
+    final summaries = IdentificationPaths(sessionDir).existingSummaries();
+    if (summaries.isEmpty) return null;
+    final s = jsonDecode(await summaries.first.readAsString()) as Map<String, dynamic>;
+    final byTrack = <int, TrackIdentity>{};
+    final byPhoto = <String, TrackIdentity>{};
+    for (final t in (s['tracks'] as List? ?? const []).cast<Map<String, dynamic>>()) {
+      final id = TrackIdentity(
+        headline: '${t['headline']}',
+        rank: t['identified_rank'] as String?,
+        p: (t['p'] as num?)?.toDouble(),
+      );
+      final trackId = (t['track_id'] as num?)?.toInt();
+      if (trackId != null) {
+        byTrack[trackId] = id;
+      } else if (t['src'] != null) {
+        byPhoto['${t['src']}'] = id;
+      }
+    }
+    return LatestIdentification(
+      packId: '${s['pack_id']}',
+      generatedIso: '${s['generated_iso']}',
+      byTrack: byTrack,
+      byPhoto: byPhoto,
+    );
+  }
+}

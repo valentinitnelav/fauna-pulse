@@ -39,8 +39,10 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
    estimated remainder and the battery temperature. The run pauses by itself above the
    temperature limit (default 40 °C) and resumes 3 °C lower. **Cancel** keeps everything
    done so far; **Continue** resumes where it stopped (the files are append-only).
-4. When finished, **View results** lists every visit with its identification, and **Share CSV**
-   hands the table to another app.
+4. When finished, **View results** shows a table with one row per taxon (visits, total
+   time, median confidence); tap a row for its visits and a visit for its full ladder.
+   **Share CSV** hands the per-visit table to another app. The session summary's
+   Photos tab then shows each visit's identification under its photos.
 
 **Re-score with this pack** repeats only the last step (seconds): the stored embeddings are
 compared against a different label pack, e.g. a country-restricted one, without running
@@ -50,6 +52,18 @@ No-AI sessions (motion / time-lapse) have no track ids. Run "Run AI on photos" f
 post-hoc boxes are then identified one by one (no per-visit combination).
 
 ## Reading the results
+
+The results screen aggregates per taxon. **As identified** (default) makes one row per
+answer at the rank the model was sure about: visits identified only to the genus *Bombus*
+are one row, visits identified to *Bombus terrestris* another. Choosing **Order**,
+**Family**, **Genus** or **Species** counts every visit under its taxon at that rank; visits
+the model did not resolve that deep land in a "not resolved to ..." row. *Time* adds up the
+visits' durations, *Conf.* is the median confidence of the row's visits. The same numbers
+can be reproduced from `tracks_<pack>.csv` (`bioclip_<rank>` / `p_<rank>` columns).
+
+One identification belongs to one **visit** (track id), combining all of that visit's
+photos; the Photos tab of the session summary shows it under every photo of that track id.
+It is not a per-photo answer (the per-crop guesses are in `predictions_<pack>.jsonl`).
 
 Each visit gets a **ladder**: the taxon chosen at every rank on a consistent path from
 kingdom to species, with the model's probability mass for it and the share of crops

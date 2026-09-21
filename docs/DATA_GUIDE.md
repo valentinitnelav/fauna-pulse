@@ -741,7 +741,10 @@ weight and own top-1, `best_view`, `flags`, and the run `settings`.
 
 Counts for the app: `tracks_total`, `by_identified_rank`, `none`, `unidentified`,
 `taxa_order`, `taxa_family` (visits per taxon among the visits identified at least to that
-rank), a compact `tracks[]` list and the run's provenance.
+rank), a compact `tracks[]` list (`track_id`, `headline`, `identified_rank`, `p`, `n_crops`;
+plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's
+provenance. The app's session summary reads this list to label photos, never the full
+tracks file.
 
 R sketch:
 

@@ -7424,3 +7424,48 @@ lose species-level fidelity (FastViT student 71.7 % top-1 agreement with its tea
 ConvNeXt-tiny + KD 64.7 % vs BioCLIP 2 88.3 % without field labels, Gardiner et al.
 ICCVW 2025). Recorded in `tool/bioclip_export/README.md` ("Why the full model...") with
 the drop-in path for a BioCLIP 2 student should real-time or weak-phone use become a goal.
+
+## Round 209 (2026-09-21): identification results table, taxa under photos, layout fixes
+
+First owner feedback on the round-208 Identify screens (device test with the
+`bioclip2_flower_visitors_32fam_v1.fpack` pack).
+
+- **Layout bugs (identification_screen.dart):** "right overflow by 40 pixels" came from
+  the model / label-pack `DropdownButtonFormField`s sizing to their longest item (long
+  pack file name); fixed with `isExpanded: true` (also on the CSV rank dropdown). The
+  unreachable last row of the unfolded Advanced settings was the round-165 edge-to-edge
+  trap again (explicitly padded ListView, no SafeArea); fixed with `SafeArea` + bottom
+  padding 32, same on the results screen and its bottom sheets. The OVERVIEW now carries a
+  NEW-SCREEN LAYOUT CHECKLIST next to the r165 invariant, and a memory note was saved,
+  because the owner flagged this as recurrent.
+- **Results screen rework (identification_results_screen.dart + new
+  `identification/taxa_table.dart`):** the per-visit list with a "min. confidence" slider
+  (unclear to the owner, and unusable with thousands of tracks) is replaced by a per-taxon
+  table: `aggregateTracks()` groups the tracks JSON "as identified" (one row per answer at
+  its identified rank: genus Bombus and Bombus terrestris are two rows) or by a fixed rank
+  (order/family/genus/species; visits not resolved that deep fall into a "not resolved to
+  <rank>" bucket); columns = visits, summed duration, median confidence; rows sorted by
+  visits, buckets last, folded at 25 rows with "Show all N rows". Tapping a row opens the
+  visits behind it in a lazily built sheet (ListView.builder), tapping a visit opens the
+  existing ladder/crops sheet; "All N visits" button for the full list. The order/family
+  bar charts are gone (the table by rank covers them). Pure-Dart test `taxa_table_test.dart`;
+  widget test `identification_results_screen_test.dart` (360-px screen, long names, bottom
+  inset, grouping).
+- **Taxa under photos (session_summary_screen.dart):** `LatestIdentification.load()`
+  (identification_store.dart) reads the compact `tracks[]` list of the newest
+  `summary_<pack>.json` (never the full per-crop tracks file) into maps by track id and, for
+  no-AI sessions, by photo name (`summary_<pack>.json` `tracks[]` entries now carry `src`
+  when the track id is null). The viewer's info panel gains an "Identified" row:
+  "#12 Bombus (genus, 87 %), #13 no organism"; the tab header names the pack and run time
+  and says the answer is per visit (all photos of the track id combined), not per photo.
+  Reloaded when the Identify screen is closed. Test `summary_identified_row_test.dart`.
+- **Photo sample size:** default stays a random 10; a chip row "Sample: 10 · 50 · 100 ·
+  All (N)" offers only the sizes below the session's photo count (no chips at all for ≤ 10
+  photos), plus a dice button for a fresh random draw. "All" keeps the > 300 confirm
+  dialog. `_photoSampleSize` (null = all) replaces `_photosShowAll`; a reload after a
+  cleanup keeps the chosen size. `summary_tabs_test.dart` updated.
+- Not yet device-verified this round (owner installs and tests).
+
+Ideas for later (not built): a "only photos of identified visits" or per-taxon photo
+filter on the Photos tab (the identification maps are already loaded there); persisting
+the chosen sample size; a per-taxon export (the CSV already allows it in R).

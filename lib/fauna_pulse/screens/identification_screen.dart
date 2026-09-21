@@ -392,24 +392,29 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final prefs = _prefs;
     return Scaffold(
       appBar: AppBar(title: Text('Identify organisms — $_sessionName')),
-      body: prefs == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (_running) ..._progressSection() else ...[
-                  ..._filesSection(prefs),
-                  const Divider(height: 32, color: Colors.white24),
-                  ..._preflightSection(prefs),
-                  if (_result != null || _error != null) ...[
+      // SafeArea + bottom padding (round 209): the app is edge-to-edge, so an
+      // explicitly padded ListView otherwise hides its last row (the end of
+      // the unfolded Advanced settings) under the system navigation bar.
+      body: SafeArea(
+        child: prefs == null
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  if (_running) ..._progressSection() else ...[
+                    ..._filesSection(prefs),
                     const Divider(height: 32, color: Colors.white24),
-                    ..._completionSection(),
+                    ..._preflightSection(prefs),
+                    if (_result != null || _error != null) ...[
+                      const Divider(height: 32, color: Colors.white24),
+                      ..._completionSection(),
+                    ],
+                    const Divider(height: 32, color: Colors.white24),
+                    _advancedSection(prefs),
                   ],
-                  const Divider(height: 32, color: Colors.white24),
-                  _advancedSection(prefs),
                 ],
-              ],
-            ),
+              ),
+      ),
     );
   }
 
@@ -429,8 +434,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'private storage; the originals can then be deleted.',
       ),
       const SizedBox(height: 8),
+      // isExpanded (round 209): without it the field takes the width of its
+      // longest item, and a long pack file name overflowed the screen.
       DropdownButtonFormField<String>(
         initialValue: _model?.path,
+        isExpanded: true,
         decoration: const InputDecoration(labelText: 'Model (.tflite)'),
         items: [for (final f in _models) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
         onChanged: (p) {
@@ -441,6 +449,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         initialValue: _pack?.path,
+        isExpanded: true,
         decoration: const InputDecoration(labelText: 'Label pack (.fpack)'),
         items: [for (final f in _packs) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
         onChanged: (p) => _selectPack(_packs.firstWhere((f) => f.path == p)),
@@ -723,6 +732,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: DropdownButtonFormField<String>(
             initialValue: prefs.targetRank,
+            isExpanded: true,
             decoration: const InputDecoration(labelText: 'Rank for the CSV "pred" columns'),
             items: [for (final r in kRankNames.skip(3)) DropdownMenuItem(value: r, child: Text(r))],
             onChanged: (v) {

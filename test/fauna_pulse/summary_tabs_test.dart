@@ -4,7 +4,7 @@
 //    mode-inapplicable settings are listed anyway (dimmed + a "not
 //    applicable" note) instead of hidden;
 //  * the Photos tab auto-loads a RANDOM sample of at most 10 photos and
-//    offers "Show all N photos".
+//    offers the 10 / 50 / 100 / All sample chips (round 209).
 //
 // Follows summary_bottom_inset_test.dart's async recipe (sync fixture IO,
 // runAsync/pump interleave — see that file's header for why).
@@ -202,11 +202,17 @@ void main() {
         lessThan(tester.getTopLeft(coDetectedLegend).dy),
       );
 
-      // 15 photos is under the slowness-warning threshold: the button loads
-      // everything without a confirmation dialog.
-      await tester.tap(find.text('Show all 15 photos'));
+      // Round 209 sample chips: only sizes below the photo count are
+      // offered (10), plus "All". 15 photos is under the slowness-warning
+      // threshold: "All" loads everything without a confirmation dialog.
+      expect(find.text('10'), findsOneWidget);
+      expect(find.text('50'), findsNothing);
+      expect(find.text('100'), findsNothing);
+      await tester.tap(find.text('All (15)'));
       await pumpUntilFound(tester, find.textContaining('Showing 15 of 15'));
-      expect(find.text('Show all 15 photos'), findsNothing);
+      // Back to a fresh 10-photo sample via the chip.
+      await tester.tap(find.text('10'));
+      await pumpUntilFound(tester, find.textContaining('Showing 10 of 15'));
 
       await tester.pumpWidget(const SizedBox());
     },
