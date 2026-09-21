@@ -41,12 +41,32 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
    done so far; **Continue** resumes where it stopped (the files are append-only).
 4. When finished, **View results** shows a table with one row per taxon (visits, total
    time, median confidence); tap a row for its visits and a visit for its full ladder.
-   **Share CSV** hands the per-visit table to another app. The session summary's
+   **Share results (CSV file)** hands the per-visit table to another app (the same file
+   stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
    Photos tab then shows each visit's identification under its photos.
 
 **Re-score with this pack** repeats only the last step (seconds): the stored embeddings are
 compared against a different label pack, e.g. a country-restricted one, without running
 the model again.
+
+**What a re-run recomputes (round 213).** The model output for every crop is stored in
+`embeddings_<model>.jsonl/.bin`, keyed by photo, track id and box. "Continue / re-run" runs
+the model only on crops without a stored vector (new photos, or crops that a lower
+"smallest box" setting now admits) and then re-scores everything, which is why a re-run
+on an unchanged session takes seconds. Confidence and "no organism" thresholds, the CSV
+rank, the merge settings and the suspect flags are all applied at scoring, so changing them
+never re-runs the model. The **crop margin** is the exception: it changes what the model
+saw, but the stored vectors do not know it; when the margin differs from the one the stored
+crops were cut with, Start asks whether to keep the stored crops (fast) or recompute all of
+them (a full run). "Smallest box" and "crops per visit" only add or remove crops.
+
+**Aligning with the detection data in R or Python.** Both sides share the same keys: the
+session id (folder name) and the track id (`track_id` in `tracks_<pack>.csv`, `track_id`
+inside the `detections` records of `session.jsonl`), and, per crop, the photo file name
+(`src` in `tracks_<pack>.json` and `predictions_<pack>.jsonl`, `jpeg` in the log's
+detection records) together with the box coordinates. A merged visit lists all its ids in
+`merged_track_ids`. So a join on `track_id` (or on file name for per-crop work) lines up
+detections, photos and identifications without any extra bookkeeping.
 
 No-AI sessions (motion / time-lapse) have no track ids. Run "Run AI on photos" first; the
 post-hoc boxes are then identified one by one (no per-visit combination).

@@ -736,6 +736,12 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `merged_track_ids` | round 210, trailing column: every track id of the visit, semicolon-separated (one id unless "Merge consecutive visits" was on; `flags` then also holds `merged`) |
 | `n_detections`, `suspect` | round 212: detector frames the track id(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
 
+To align identifications with the recording: join on `track_id` (the same id as in the
+`detections` records of `session.jsonl`; a merged visit lists every member id in
+`merged_track_ids`) or, per crop, on the photo file name (`src` here, `jpeg` in the log)
+plus box coordinates. Identification results deliberately stay in their own files instead
+of `session.jsonl` (raw log vs derived, re-runnable data).
+
 The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `support`), every crop with its
 weight and own top-1, `best_view`, `flags`, and the run `settings`.
 

@@ -212,10 +212,41 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     await p.save();
   }
 
+  /// Round 213: the resume key (photo, track, box) does not see the crop
+  /// margin, so stored vectors cut with another margin would silently be
+  /// reused. Asks the user to keep them or recompute everything. Returns
+  /// null when cancelled, true = start over.
+  Future<bool?> _confirmCropSettings(IdentifyPrefs prefs, String modelName) async {
+    final stored = await IdentificationJob.storedIndex(widget.sessionDir, modelName);
+    if (stored == null || stored.records.isEmpty || stored.margin == null) return false;
+    if ((stored.margin! - prefs.margin).abs() < 1e-6) return false;
+    if (!mounted) return null;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Crop margin changed'),
+        content: Text(
+          'The ${stored.records.length} stored crops of this session were cut with a margin of '
+          '${stored.margin!.toStringAsFixed(2)}; the setting is now ${prefs.margin.toStringAsFixed(2)}. '
+          'Keep the stored crops (fast; only new photos use the new margin) or recompute all of '
+          'them with the model (slow, like a first run)?',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Keep stored crops')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Recompute all crops')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _start() async {
     final model = _model, pack = _pack, prefs = _prefs;
     if (model == null || pack == null || prefs == null) return;
     await _savePrefs();
+    final restart = await _confirmCropSettings(prefs, model.path.split('/').last);
+    if (restart == null || !mounted) return;
     setState(() {
       _running = true;
       _loadingModel = true;
@@ -279,6 +310,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         ),
         packFile: pack,
         appVersion: '${pinfo.version}+${pinfo.buildNumber}',
+        restart: restart,
         isCancelled: () => _cancel,
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
@@ -611,7 +643,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          FilledButton.icon(
+          OutlinedButton.icon(
             onPressed: ready && !_testingSpeed ? _start : null,
             icon: const Icon(Icons.biotech),
             label: Text(_hasEmbeddings ? 'Continue / re-run' : 'Start'),
@@ -628,13 +660,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               label: const Text('Re-score with this pack'),
             ),
           if (_summaries.isNotEmpty)
-            OutlinedButton.icon(
+            FilledButton.icon(
               onPressed: () => _openResults(),
               icon: const Icon(Icons.table_rows_outlined),
               label: const Text('View results'),
             ),
         ],
       ),
+      if (_hasEmbeddings)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Continue / re-run only runs the model on crops that have no stored result yet; '
+            'threshold, merge and flag settings are applied to the stored results in seconds.',
+            style: helperTextStyle,
+          ),
+        ),
       if (_speedResult != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -764,7 +805,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           Wrap(
             spacing: 8,
             children: [
-              FilledButton.tonalIcon(
+              FilledButton.icon(
                 onPressed: () => _openResults(),
                 icon: const Icon(Icons.table_rows_outlined),
                 label: const Text('View results'),
@@ -772,7 +813,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               OutlinedButton.icon(
                 onPressed: _shareCsv,
                 icon: const Icon(Icons.share_outlined),
-                label: const Text('Share CSV'),
+                label: const Text('Share results (CSV file)'),
               ),
             ],
           ),

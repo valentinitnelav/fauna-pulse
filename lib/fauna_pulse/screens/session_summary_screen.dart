@@ -42,7 +42,8 @@ import '../widgets/mini_bar_chart.dart';
 import '../widgets/setting_help.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
-import '../identification/identification_store.dart' show LatestIdentification;
+import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
+import 'identification_results_screen.dart';
 import 'identification_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
@@ -2255,20 +2256,42 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'in the session folder as CSV and JSON.',
       ),
       const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: FilledButton.tonalIcon(
-          onPressed: () => Navigator.of(context)
-              .push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      IdentificationScreen(sessionDir: widget.logFile.parent),
-                ),
-              )
-              .then((_) => _loadIdentification()),
-          icon: const Icon(Icons.biotech_outlined),
-          label: const Text('Identify organisms'),
-        ),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(context)
+                .push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        IdentificationScreen(sessionDir: widget.logFile.parent),
+                  ),
+                )
+                .then((_) => _loadIdentification()),
+            icon: const Icon(Icons.biotech_outlined),
+            label: const Text('Identify organisms'),
+          ),
+          // Round 213: straight to the newest results when a run exists.
+          if (_identification case final id?)
+            FilledButton.icon(
+              onPressed: () {
+                final paths = IdentificationPaths(widget.logFile.parent);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => IdentificationResultsScreen(
+                      sessionDir: widget.logFile.parent,
+                      tracksJson: paths.tracksJson(id.packStem),
+                      summaryJson: id.summaryFile,
+                      tracksCsv: paths.tracksCsv(id.packStem),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.table_rows_outlined),
+              label: const Text('View results'),
+            ),
+        ],
       ),
     ];
   }

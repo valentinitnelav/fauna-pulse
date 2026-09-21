@@ -199,6 +199,36 @@ void main() {
     expect(r.skipped, 3);
     final index = EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync());
     expect(index.skippedKeys.length, 3);
+    expect(index.tooSmallPx.length, 3);
+    expect(index.minCropPx, 100);
+
+    // Round 213: lowering the threshold retries the too-small crops instead
+    // of keeping them skipped forever.
+    final r2 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r2.embedded, 3);
+    expect(r2.skipped, 0);
+  });
+
+  test('restart recomputes every crop; the index remembers the margin (round 213)', () async {
+    final session = makeSession('s5');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r1 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r1.embedded, 3);
+    final stored = await IdentificationJob.storedIndex(session, 'fake_model.tflite');
+    expect(stored!.margin, closeTo(0.15, 1e-9));
+    // A plain re-run reuses everything.
+    final r2 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r2.embedded, 0);
+    expect(r2.resumedDone, 3);
+    // A restart starts from an empty file.
+    final r3 = await job.run(session, settings: settings(), packFile: packFile, restart: true);
+    expect(r3.embedded, 3);
+    expect(r3.resumedDone, 0);
+    expect(EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
   });
 
   // Round 210: opt-in joining of consecutive track ids. Tracks 1 and 3 are

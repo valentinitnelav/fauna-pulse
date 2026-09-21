@@ -122,7 +122,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         ),
         actions: [
           IconButton(
-            tooltip: 'Share the CSV',
+            tooltip: 'Share results (CSV file)',
             icon: const Icon(Icons.share_outlined),
             onPressed: widget.tracksCsv.existsSync()
                 ? () => SharePlus.instance.share(ShareParams(files: [XFile(widget.tracksCsv.path)]))

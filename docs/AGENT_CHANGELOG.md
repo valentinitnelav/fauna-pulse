@@ -7582,3 +7582,34 @@ non-destructive flags at scoring (option 1), with all parameters exposed.
   so the time gap is what does); suspect defaults `flag_min_det_conf` 0.3 → **0.2**,
   `flag_min_order_p` 0.6 → **0.5**; citation corrected to the insect-detect-post software
   record (Sittinger 2026, Zenodo) rather than the 2024 paper.
+
+## Round 213 (2026-09-21): re-run correctness (margin, too-small retries), View results shortcuts, wording
+
+Owner questions after r212: why "Continue / re-run" is orders of magnitude faster than a
+first run, whether settings changes re-run BioCLIP, where the CSV lives, and whether the
+identification results should live inside `session.jsonl`.
+
+- **Answers recorded:** the model runs only on crops without a stored vector; every other
+  setting (thresholds, CSV rank, merge, suspect flags) is applied at scoring in seconds;
+  all outputs are in `<session>/identification/` (USB copy works). Results stay OUT of
+  `session.jsonl` (raw append-only log vs derived, re-runnable data; multiple runs would
+  pile up; MB-sized JSON would slow every summary open; the Photos tab reads only the small
+  summary). Alignment is by `track_id` / photo file name, documented in IDENTIFICATION.md
+  and DATA_GUIDE §8.
+- **Bug found during the check, fixed:** the resume key is (photo, track, box), so (a) a
+  changed crop margin silently reused vectors cut with the old margin and (b) crops skipped
+  as too small were never retried after lowering "Smallest box". `EmbeddingIndex` now
+  keeps the first `identify_start`'s `margin`/`min_crop_px` and a `tooSmallPx` map from the
+  `crop_skipped` records; `skippedFor(minCropPx)` re-admits too-small crops that would now
+  pass; `run(restart: true)` deletes the embeddings files first. The Identify screen's
+  Start compares the stored margin with the current one and asks "Keep stored crops" /
+  "Recompute all crops" (plain dialog buttons, no filled style per owner). A helper line
+  under the buttons explains what a re-run recomputes. Tests: too-small retry in the
+  existing skip test; new restart/margin test.
+- **Buttons (owner):** Start / Continue are outlined; "View results" is the filled one
+  (pre-flight and Last-run card). The summary Photos tab gets a filled "View results"
+  beside "Identify organisms" whenever a summary exists (`LatestIdentification.summaryFile`,
+  `packStem`), so the user no longer goes through the Identify screen to see results.
+- **Wording:** "Share CSV" → "Share results (CSV file)" (button, results-screen tooltip,
+  docs; the doc also says the file stays in the session folder).
+- Not device-verified.

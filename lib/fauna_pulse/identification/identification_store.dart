@@ -140,12 +140,32 @@ class EmbeddingIndex {
   final int? dim;
   final String? modelId;
 
+  /// Crop settings of the FIRST run that wrote this file (round 213): the
+  /// stored vectors were cut with this margin, so a different margin now
+  /// means the caller must choose between keeping them and starting over.
+  final double? margin;
+  final int? minCropPx;
+
+  /// Crops skipped as too small, with the box size that was measured: they
+  /// are retried when the "smallest box" setting is lowered below it.
+  final Map<String, int> tooSmallPx;
+
   const EmbeddingIndex({
     required this.records,
     required this.skippedKeys,
     required this.dim,
     required this.modelId,
+    this.margin,
+    this.minCropPx,
+    this.tooSmallPx = const {},
   });
+
+  /// Keys to leave alone for a run with [minCropPx]: everything skipped
+  /// before, except too-small crops that would now pass the threshold.
+  Set<String> skippedFor(int minCropPx) => {
+    for (final k in skippedKeys)
+      if (tooSmallPx[k] == null || tooSmallPx[k]! < minCropPx) k,
+  };
 
   Set<String> get doneKeys => {for (final r in records) r.key};
 
@@ -160,8 +180,11 @@ class EmbeddingIndex {
   static EmbeddingIndex parse(String jsonl) {
     final records = <EmbeddingRecord>[];
     final skipped = <String>{};
+    final tooSmall = <String, int>{};
     int? dim;
     String? modelId;
+    double? margin;
+    int? minCropPx;
     for (final line in const LineSplitter().convert(jsonl)) {
       if (line.trim().isEmpty) continue;
       Map<String, dynamic> rec;
@@ -176,13 +199,27 @@ class EmbeddingIndex {
           if (r != null) records.add(r);
         case 'crop_skipped':
           final k = rec['key'];
-          if (k is String) skipped.add(k);
+          if (k is String) {
+            skipped.add(k);
+            final px = (rec['crop_px'] as num?)?.toInt();
+            if (rec['reason'] == 'too_small' && px != null) tooSmall[k] = px;
+          }
         case 'identify_start':
           dim ??= (rec['dim'] as num?)?.toInt();
           modelId ??= rec['model'] as String?;
+          margin ??= (rec['margin'] as num?)?.toDouble();
+          minCropPx ??= (rec['min_crop_px'] as num?)?.toInt();
       }
     }
-    return EmbeddingIndex(records: records, skippedKeys: skipped, dim: dim, modelId: modelId);
+    return EmbeddingIndex(
+      records: records,
+      skippedKeys: skipped,
+      dim: dim,
+      modelId: modelId,
+      margin: margin,
+      minCropPx: minCropPx,
+      tooSmallPx: tooSmall,
+    );
   }
 }
 
@@ -604,15 +641,26 @@ class LatestIdentification {
   final String packId;
   final String generatedIso;
 
+  /// The summary file itself (round 213: the Photos tab opens the results
+  /// screen from it; the pack stem is in its name).
+  final File summaryFile;
+
   /// AI sessions: by track id. No-AI sessions: by photo file name.
   final Map<int, TrackIdentity> byTrack;
   final Map<String, TrackIdentity> byPhoto;
   const LatestIdentification({
     required this.packId,
     required this.generatedIso,
+    required this.summaryFile,
     required this.byTrack,
     required this.byPhoto,
   });
+
+  /// `summary_<pack>.json` → `<pack>`.
+  String get packStem {
+    final name = summaryFile.path.split('/').last;
+    return name.substring('summary_'.length, name.length - '.json'.length);
+  }
 
   /// The newest summary in `<session>/identification/`, or null when the
   /// session was never identified (or the file is unreadable).
@@ -642,6 +690,7 @@ class LatestIdentification {
     return LatestIdentification(
       packId: '${s['pack_id']}',
       generatedIso: '${s['generated_iso']}',
+      summaryFile: summaries.first,
       byTrack: byTrack,
       byPhoto: byPhoto,
     );

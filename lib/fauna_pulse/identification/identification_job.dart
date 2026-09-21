@@ -206,6 +206,7 @@ class IdentificationJob {
     bool Function()? isCancelled,
     String appVersion = '',
     bool scoreAfter = true,
+    bool restart = false,
   }) async {
     final started = DateTime.now();
     final paths = IdentificationPaths(sessionDir);
@@ -213,6 +214,12 @@ class IdentificationJob {
     final modelStem = stemOf(settings.modelName);
     final jsonlFile = paths.embeddingsJsonl(modelStem);
     final binFile = paths.embeddingsBin(modelStem);
+    // Round 213: the caller chose to recompute every crop (e.g. after a
+    // margin change, which the resume key does not see).
+    if (restart) {
+      if (jsonlFile.existsSync()) jsonlFile.deleteSync();
+      if (binFile.existsSync()) binFile.deleteSync();
+    }
 
     onProgress?.call(const IdentifyProgress(stage: 'planning', done: 0, total: 0, avgMs: 0));
     final tasks = await planSession(sessionDir, maxCropsPerTrack: settings.maxCropsPerTrack);
@@ -240,7 +247,8 @@ class IdentificationJob {
       }
     }
     final done = existing.doneKeys;
-    final skippedBefore = existing.skippedKeys;
+    // Too-small crops are retried when the threshold was lowered (round 213).
+    final skippedBefore = existing.skippedFor(settings.minCropPx);
     final pending = tasks.where((t) => !done.contains(t.key) && !skippedBefore.contains(t.key)).toList();
     var nextRow = existing.rows;
 
@@ -456,6 +464,15 @@ class IdentificationJob {
       summary: summary,
       error: error,
     );
+  }
+
+  /// The crop settings the stored embeddings of [modelName] were made with
+  /// (round 213), or null when there are none. The screen compares them with
+  /// the current settings before a re-run.
+  static Future<EmbeddingIndex?> storedIndex(Directory sessionDir, String modelName) async {
+    final f = IdentificationPaths(sessionDir).embeddingsJsonl(stemOf(modelName));
+    if (!f.existsSync()) return null;
+    return EmbeddingIndex.parse(await f.readAsString());
   }
 
   /// Phase 2 alone: fuse every track from the stored embeddings and write the
