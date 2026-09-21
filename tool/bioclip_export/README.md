@@ -166,6 +166,52 @@ and *Import label pack…*. The app copies both files into its private storage; 
 Downloads copies can be deleted afterwards. `docs/IDENTIFICATION.md` explains the run and
 the results.
 
+## Why the full model on the phone, and not a distilled one (for now)
+
+Distillation (training a small "student" network / model to imitate the BioCLIP image tower - the "teacher")
+was considered and is deliberately not used yet.
+
+The reasoning:
+
+- FaunaPulse is aimed to use identification **after** recording, in bulk, on a 
+  plugged-in phone (e.g. overnight session). Speed is not the main goal there, accuracy is. 
+  The "teacher" (the full BioCLIP 2 image tower, ~600 MiB fp16) is the accuracy ceiling
+  and needs no training data.
+- Published "students" lose fidelity, mostly at species level: 
+  - the [BioCLIP 2.5 to FastViT-SA12 student][nate_distill] of Nate Hamilton (24 MB,
+  label-free MobileCLIP-style recipe) agrees with its teacher on 71.7 % of top-1 and
+  88.8 % of top-5 answers on plants; 
+  - the "ConvNeXt-tiny+KD" student model of [Gardiner et al.][gardiner_2025]
+  (ICCVW 2025, 101 moth species) reaches 64.7 % top-1 target accuracy with no 
+  field labels against 88.3 % for BioCLIP 2 (Table 1 in manuscript), 
+  and needs about 50% data mix with expert-labelled field data to catch up.
+  Those authors recommend BioCLIP 2 itself when compute allows and labelled field data
+  are scarce, which is mostly FaunaPulse situation (at least for now).
+
+If it becomes a goal, the path is ready because the app is model-agnostic (any `.tflite` that maps
+RGB to an embedding in a pack's space, declared in the manifest). So a student model
+distilled from **BioCLIP 2** can be used (keeping the 768-dimension text space, so the packs stay
+valid). The label-free recipe of [Nate Hamilton][nate_distill] (MIT; cache teacher
+embeddings of insect images and of FaunaPulse's own crops, train a FastViT-class
+student with a cosine loss) applies unchanged; export with
+`export_image_tower.py` (timm models convert the same way) and check agreement with
+the teacher on real crops with `verify_parity.py`.
+Vasu et al. (2024) MobileCLIP, presents the distillation recipe.
+
+A related, non-distillation idea worth keeping in mind
+is a small insect-versus-background head trained on stored embeddings, as in
+https://github.com/lollogiro/zero-shot-insect-detection (the app's "none of these"
+rows are the zero-shot version of it).
+
+References:
+
+> Gardiner, R. J., Mougeot, G., Rowlands, S., Simmons, B. I., Helsing, F., & Høye, T. T. (2025, October). Bridging Domain Gaps for Fine-Grained Moth Classification Through Expert-Informed Adaptation and Foundation Model Priors. In 2025 IEEE/CVF International Conference on Computer Vision Workshops (ICCVW) (pp. 5169-5174). IEEE. https://doi.org/10.1109/ICCVW69036.2025.00538;
+
+> Vasu, P. K. A., Pouransari, H., Faghri, F., Vemulapalli, R., & Tuzel, O. (2024, June). Mobileclip: Fast image-text models through multi-modal reinforced training. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (pp. 15963-15974). IEEE. https://doi.org/10.1109/CVPR52733.2024.01511
+
+[nate_distill]: https://github.com/CrazedCoderNate/bioclip-mobile-distill
+[gardiner_2025]: https://doi.org/10.1109/ICCVW69036.2025.00538
+
 ## Troubleshooting
 
 - `ModuleNotFoundError: No module named 'tensorflow'`: an old copy of the script;

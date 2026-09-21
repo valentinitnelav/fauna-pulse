@@ -7417,3 +7417,10 @@ native scorer). `catalog.example.json` sketches the download catalogue for the p
 in-app "Download…" menu (HTTPS + sha256, hosted on Hugging Face / GitHub Releases, Zenodo
 for the DOI copy; Play bundling ruled out by the 200 MB base limit and Play-only asset
 delivery).
+Distillation considered, not adopted (2026-09-21, after Maximilian Sittinger's references): the full
+BioCLIP 2 image tower stays the on-phone model because identification runs after
+recording in bulk (accuracy over speed, no labelled field data). Published students
+lose species-level fidelity (FastViT student 71.7 % top-1 agreement with its teacher;
+ConvNeXt-tiny + KD 64.7 % vs BioCLIP 2 88.3 % without field labels, Gardiner et al.
+ICCVW 2025). Recorded in `tool/bioclip_export/README.md` ("Why the full model...") with
+the drop-in path for a BioCLIP 2 student should real-time or weak-phone use become a goal.
