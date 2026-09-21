@@ -113,6 +113,7 @@ void main() {
     expect(tracks.length, 2);
     expect(tracks[0]['track_id'], 1);
     expect(tracks[0]['headline'], 'Eristalis tenax');
+    expect((tracks[0]['crops'] as List).first['agrees'], isTrue); // round 214
     expect((tracks[0]['crops'] as List).length, 2);
     expect(tracks[1]['headline'], 'Apis mellifera');
     expect((tracks[0]['ladder'] as List).length, 7);

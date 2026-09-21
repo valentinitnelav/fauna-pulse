@@ -250,6 +250,9 @@ Uint8List vectorBytes(Float32List v) {
 String _iso(int? ms) =>
     ms == null ? '' : DateTime.fromMillisecondsSinceEpoch(ms).toIso8601String();
 
+bool _cropAgrees(LabelRow top1, String key, int rankIdx) =>
+    top1.ranks[rankIdx].isNotEmpty && top1.keyAt(rankIdx) == key;
+
 String _csvCell(Object? v) {
   final s = v == null ? '' : '$v';
   if (s.contains(',') || s.contains('"') || s.contains('\n')) {
@@ -509,6 +512,12 @@ Map<String, dynamic> writeOutputs({
         for (var i = 0; i < t.crops.length; i++)
           {
             'src': t.crops[i].source,
+            // Round 214: does this crop's own best guess fall under the
+            // reported taxon? (null when nothing was identified). The
+            // ladder's "agree" count at that rank is the sum of these.
+            'agrees': f.identifiedRank == null
+                ? null
+                : _cropAgrees(pack.labels[f.perCrop[i].rows.first], f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)),
             'box': t.crops[i].box,
             'weight': double.parse(f.weights[i].toStringAsFixed(3)),
             'crop_px': t.crops[i].cropPx,

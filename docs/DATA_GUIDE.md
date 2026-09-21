@@ -743,7 +743,8 @@ plus box coordinates. Identification results deliberately stay in their own file
 of `session.jsonl` (raw log vs derived, re-runnable data).
 
 The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `support`), every crop with its
-weight and own top-1, `best_view`, `flags`, and the run `settings`.
+weight, own top-1 and `agrees` (round 214: whether that top-1 falls under the reported
+taxon; the ladder's `support` at the identified rank is the share of `agrees == true`), `best_view`, `flags`, and the run `settings`.
 
 ### `summary_<pack>.json`
 

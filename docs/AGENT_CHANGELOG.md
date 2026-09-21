@@ -7613,3 +7613,55 @@ identification results should live inside `session.jsonl`.
 - **Wording:** "Share CSV" → "Share results (CSV file)" (button, results-screen tooltip,
   docs; the doc also says the file stays in the session folder).
 - Not device-verified.
+
+## Round 214 (2026-09-21): identification results screen aesthetics
+
+Owner's itemised review of the results screen (device test of session_2).
+
+- **Header:** key/value rows "Model", "Label pack (n names)", "Date run yyyy-mm-dd hh:mm",
+  "Visits" (with the joined-visit note); the "n identified to genus · m to family …"
+  sentence is gone (redundant with the table, messy for hundreds of visits).
+- **Table kit** (`_Col`, `_SortHeader`, `_TableRow` in the screen file): a header with bold
+  labels, ▲/▼ on the active column and a thicker rule; rows with a thin divider; a
+  highlighted variant for the chosen/selected row. Tapping a header sorts (second tap flips).
+  Used for every table on the screen so alignment is by construction.
+- **Taxon table:** header "Visits per taxon / rank" whose info text now carries the
+  confidence explanation (no "probability mass") and one line per column (Rank, Visits, Time,
+  Conf.); Rank is its own column; a "Rank filter" dropdown (all / each rank present / not
+  resolved) when more than one rank is present; sortable by Taxon, Rank, Visits, Time, Conf.
+- **Visits sheets** (row tap and "All n visits"): numbered "No." column 1..N plus a "Track id"
+  column (#id, "#12+2" for joined visits), taxon with rank + flags under it, crops, time,
+  conf.; sortable; a note explains No. vs Track id (ids jump because the tracker assigns them).
+- **Visit sheet:** ladder as an aligned table (Rank / Taxon / Conf. / Agree) with the
+  reported rank's whole row bold on a light background with a brighter underline; info text
+  defines Conf. and Agree ("crops agreeing" = share of crops whose own best guess falls under
+  the taxon). Flags line becomes a collapsible glossary (merged, short, low_det, weak_id,
+  suspect, none, unidentified, path_conflict, rule_conflict, single_crop). Photo section:
+  info text defines the best single view; the image (square ROI photo) gets the detector
+  box (amber) and the square crop actually given to the model (cyan; recomputed with
+  `planSquareCrop` on a virtual 1000-px square using the run's margin), an eye button to
+  hide the boxes, pinch/double-tap zoom via `InteractiveViewer` and a reset button (a
+  small self-contained viewer rather than the summary screen's `_PhotoViewer`, which is
+  private to that file and carries crop-export state). Crops table: No. / Side px / Weight /
+  Conf. / Best guess with the file name on a second, dimmer line (fits 360 px), sortable,
+  info text defines side, weight and best guess; tapping a row shows that crop in the photo
+  (highlighted row).
+- Widget test updated (header rows, separate rank cell, header sort, visits sheet columns).
+- Not device-verified.
+- Owner follow-ups (2026-09-22): the confidence sentence now says the model scores every
+  pack name and FaunaPulse adds them up the tree (genus = sum of its species, family = sum of
+  its genera …), which is what `Scorer.rollUp` does; fixed columns narrowed and the taxon /
+  lineage cells wrap (2 / 3 lines) in every table; "Agree" is shown as a count "3/5"
+  (support × crops) with a rewritten explanation, and the crops table gets an "Agree" ✓/–
+  column from a new per-crop `agrees` field in `tracks_<pack>.json` (own top-1 under the
+  reported taxon; older result files show "?"); the visit header says "n detector frames ·
+  m photos (crops)" with a line explaining why they differ (frames = every detector hit,
+  photos = the schedule's saves); sheets pad their list bottom with
+  `MediaQuery.paddingOf(context).bottom` so the crops table scrolls fully above the
+  navigation bar (the modal sheet is edge-to-edge too).
+- Same day: an 8-px gutter between all table columns (`_gutter` in the header and row
+  widgets; a right-aligned number next to a left-aligned text read as one string), fixed
+  widths trimmed to pay for it on 360 px; an amber hint under the crops table when
+  `agrees` is missing (result file older than this build) pointing to "Re-score".
+- Same day: the rank · flags line under the taxon in the visits sheet wraps instead of
+  ellipsising ("class · short, pa…" was unreadable).

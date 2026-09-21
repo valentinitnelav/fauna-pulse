@@ -78,18 +78,40 @@ void main() {
     for (var i = 0; i < 100; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
-      if (find.textContaining('Bombus  (genus)').evaluate().isNotEmpty) break;
+      if (find.text('Bombus').evaluate().isNotEmpty) break;
     }
-    // One aggregated row for the 40 Bombus visits, one for the long family.
-    expect(find.textContaining('Bombus  (genus)'), findsOneWidget);
+    // Key/value header (round 214), one aggregated row for the 40 Bombus
+    // visits (taxon and rank in separate cells), one for the long family.
+    expect(find.text('Model'), findsOneWidget);
+    expect(find.text('Label pack'), findsOneWidget);
+    expect(find.text('Date run'), findsOneWidget);
+    expect(find.text('2026-09-21 10:00'), findsOneWidget);
+    expect(find.text('Bombus'), findsOneWidget);
+    expect(find.text('genus'), findsWidgets);
     expect(find.text('40'), findsOneWidget);
-    expect(find.textContaining('$longName  (family)'), findsOneWidget);
+    expect(find.text(longName), findsOneWidget);
+
+    // Sort by taxon (tap the header): the long Diptera family sorts first.
+    await tester.tap(find.text('Taxon'));
+    await tester.pump();
+    expect(tester.getTopLeft(find.text(longName)).dy, lessThan(tester.getTopLeft(find.text('Bombus')).dy));
 
     // Group by order: both rows collapse into their orders.
     await tester.tap(find.text('Order'));
     await tester.pump();
-    expect(find.textContaining('Hymenoptera  (order)'), findsOneWidget);
-    expect(find.textContaining('Diptera  (order)'), findsOneWidget);
+    expect(find.text('Hymenoptera'), findsOneWidget);
+    expect(find.text('Diptera'), findsOneWidget);
+
+    // Rank filter dropdown appears only when several ranks are present (not
+    // here: both rows are orders), so the visits sheet is checked instead.
+    await tester.tap(find.text('Hymenoptera'));
+    await tester.pumpAndSettle();
+    expect(find.text('Track id'), findsOneWidget);
+    expect(find.text('No. ▲'), findsOneWidget); // default sort column
+    expect(find.text('#1'), findsOneWidget); // first visible row (lazy list)
+    // Close the sheet.
+    await tester.tapAt(const Offset(180, 20));
+    await tester.pumpAndSettle();
 
     final scrollable = tester.state<ScrollableState>(
       find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),

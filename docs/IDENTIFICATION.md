@@ -81,6 +81,14 @@ the model did not resolve that deep land in a "not resolved to ..." row. *Time* 
 visits' durations, *Conf.* is the median confidence of the row's visits. The same numbers
 can be reproduced from `tracks_<pack>.csv` (`bioclip_<rank>` / `p_<rank>` columns).
 
+The table (round 214) is sortable by tapping a column header, has the rank in its own
+column and a rank filter (e.g. only rows that reached species), and a row opens its visits
+as a numbered list (No. is the row number; Track id is the tracker's id, which can jump).
+A visit's detail sheet shows the ladder as an aligned table with the reported rank
+highlighted, the flags with their meanings, the photo of the best single view with the
+detector box (yellow) and the square crop given to the model (cyan; toggle, zoom), and the
+crops table (side in pixels, weight, own best guess); tapping a crop shows that photo.
+
 One identification belongs to one **visit** (track id), combining all of that visit's
 photos; the Photos tab of the session summary shows it under every photo of that track id.
 It is not a per-photo answer (the per-crop guesses are in `predictions_<pack>.jsonl`).
