@@ -200,4 +200,83 @@ void main() {
     final index = EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync());
     expect(index.skippedKeys.length, 3);
   });
+
+  // Round 210: opt-in joining of consecutive track ids. Tracks 1 and 3 are
+  // both red (Eristalis) with a 1 s gap and same-size boxes; track 2 (blue,
+  // Apis) sits between them in id but AFTER them in time.
+  const mergeLog = '''
+{"type":"start_of_session","time_ms":1000,"config":{},"device":{"model":"TestPhone"}}
+{"type":"detections","time_ms":2000,"tracks":[{"track_id":1,"confidence":0.9,"box_in_roi":{"left":0.2,"top":0.2,"right":0.6,"bottom":0.6},"jpeg":"roi_t_2026-07-14_120000_000.jpg"}]}
+{"type":"detections","time_ms":2500,"tracks":[{"track_id":1,"confidence":0.8,"box_in_roi":{"left":0.25,"top":0.2,"right":0.65,"bottom":0.6},"jpeg":"roi_t_2026-07-14_120000_500.jpg"}]}
+{"type":"detections","time_ms":3500,"tracks":[{"track_id":3,"confidence":0.85,"box_in_roi":{"left":0.3,"top":0.3,"right":0.7,"bottom":0.7},"jpeg":"roi_t_2026-07-14_120001_500.jpg"}]}
+{"type":"detections","time_ms":9000,"tracks":[{"track_id":2,"confidence":0.7,"box_in_roi":{"left":0.3,"top":0.3,"right":0.7,"bottom":0.7},"jpeg":"roi_t_2026-07-14_120001_000.jpg"}]}
+{"type":"end_of_session","time_ms":10000,"ended_normally":true}
+''';
+
+  Directory makeMergeSession(String name) {
+    final dir = Directory('${tmp.path}/$name')..createSync();
+    File('${dir.path}/session.jsonl').writeAsStringSync(mergeLog);
+    final frames = Directory('${dir.path}/roi_frames')..createSync();
+    File('${frames.path}/roi_t_2026-07-14_120000_000.jpg').writeAsBytesSync(_jpeg(220, 30, 30));
+    File('${frames.path}/roi_t_2026-07-14_120000_500.jpg').writeAsBytesSync(_jpeg(200, 40, 40));
+    File('${frames.path}/roi_t_2026-07-14_120001_500.jpg').writeAsBytesSync(_jpeg(210, 35, 35));
+    File('${frames.path}/roi_t_2026-07-14_120001_000.jpg').writeAsBytesSync(_jpeg(30, 30, 220));
+    return dir;
+  }
+
+  Future<Map<String, dynamic>> runMerge(Directory session, {required bool merge, double gapS = 5}) async {
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(
+      session,
+      settings: IdentifyRunSettings(
+        modelName: 'fake_model.tflite',
+        modelId: 'fake',
+        packName: 'tiny_pack.fpack',
+        inputSize: 32,
+        dim: 4,
+        accelerator: 'CPU',
+        minCropPx: 16,
+        mergeVisits: merge,
+        mergeGapS: gapS,
+      ),
+      packFile: packFile,
+    );
+    expect(r.error, isNull);
+    return r.summary!;
+  }
+
+  test('merge consecutive visits joins compatible, non-overlapping track ids', () async {
+    final session = makeMergeSession('m1');
+    final off = await runMerge(session, merge: false);
+    expect(off['tracks_total'], 3);
+    expect(off['visits_merged'], 0);
+
+    final on = await runMerge(session, merge: true);
+    expect(on['tracks_total'], 2);
+    expect(on['visits_merged'], 1);
+    expect(on['tracks_before_merge'], 3);
+    final paths = IdentificationPaths(session);
+    final tracks = (jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+    final joined = tracks.firstWhere((t) => (t['track_ids'] as List).length > 1);
+    expect(joined['track_ids'], [1, 3]);
+    expect(joined['track_id'], 1);
+    expect(joined['headline'], 'Eristalis tenax');
+    expect((joined['crops'] as List).length, 3);
+    expect(joined['flags'], contains('merged'));
+    expect(joined['duration_s'], closeTo(1.5, 1e-6)); // 2000 .. 3500 ms
+    final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
+    expect(csv.split('\n').first, endsWith(',merged_track_ids'));
+    expect(csv, contains('1;3'));
+    // The compact summary list carries the ids for the Photos tab.
+    final lite = (on['tracks'] as List).cast<Map<String, dynamic>>();
+    expect(lite.firstWhere((t) => t['track_id'] == 1)['track_ids'], [1, 3]);
+
+    // A gap shorter than the real one (1 s) keeps them apart.
+    final tight = await runMerge(session, merge: true, gapS: 0.5);
+    expect(tight['tracks_total'], 3);
+  });
 }

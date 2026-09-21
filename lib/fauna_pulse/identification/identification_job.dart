@@ -19,6 +19,7 @@ import 'dart:typed_data';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
+import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
 import '../postprocess/post_detector.dart' show PostDetector;
 import 'crop_planner.dart';
@@ -68,6 +69,8 @@ class IdentifyRunSettings {
   final double noneThreshold;
   final double thermalLimitC;
   final String targetRank;
+  final bool mergeVisits;
+  final double mergeGapS;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -85,6 +88,8 @@ class IdentifyRunSettings {
     this.noneThreshold = 0.5,
     this.thermalLimitC = 40,
     this.targetRank = 'family',
+    this.mergeVisits = false,
+    this.mergeGapS = 5,
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -103,6 +108,8 @@ class IdentifyRunSettings {
     'none_threshold': noneThreshold,
     'thermal_limit_c': thermalLimitC,
     'target_rank': targetRank,
+    'merge_visits': mergeVisits,
+    'merge_gap_s': mergeGapS,
     ...extra,
   };
 }
@@ -271,10 +278,12 @@ class IdentificationJob {
           cancelled = true;
           break;
         }
-        // Thermal governor: pause while the battery is warm.
+        // Thermal governor: pause while the battery is warm. The reading is
+        // also shown during normal embedding (round 210 temperature gauge).
+        double? temp;
         try {
           var reading = await thermal();
-          var temp = reading.batteryTempC;
+          temp = reading.batteryTempC;
           if (temp != null && temp >= settings.thermalLimitC) {
             pauses++;
             while (temp != null && temp > settings.thermalLimitC - 3) {
@@ -374,7 +383,9 @@ class IdentificationJob {
             embedded++;
           }
         }
-        if (clock.elapsed - lastEmit > const Duration(milliseconds: 300)) emit('embedding');
+        // Progress is reported per PHOTO (all its crops at once), so the
+        // counter can advance by more than one.
+        if (clock.elapsed - lastEmit > const Duration(milliseconds: 300)) emit('embedding', tempC: temp);
       }
       emit('embedding');
     } catch (e) {
@@ -527,7 +538,7 @@ class IdentificationJob {
     final scorer = Scorer(pack);
     final tau = (settings['tau'] as num?)?.toDouble() ?? 0.8;
     final targetRank = (settings['target_rank'] as String?) ?? 'family';
-    final scored = <ScoredTrack>[];
+    var scored = <ScoredTrack>[];
     for (final g in order) {
       final recs = groups[g]!;
       final crops = [
@@ -551,6 +562,31 @@ class IdentificationJob {
           crops: recs,
           startMs: span?.$1 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a < b ? a : b)),
           endMs: span?.$2 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a > b ? a : b)),
+        ),
+      );
+    }
+    if (settings['merge_visits'] == true) {
+      final gapS = (settings['merge_gap_s'] as num?)?.toDouble() ?? 5;
+      final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
+      scored = mergeConsecutiveVisits(
+        scored,
+        gapMs: (gapS * 1000).round(),
+        noneThreshold: noneThreshold,
+        refuse: (recs) => scorer.fuse(
+          [
+            for (final r in recs)
+              CropEmbedding(
+                jpeg: r.source,
+                trackId: r.trackId,
+                vector: Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
+                cropPx: r.cropPx,
+                sharpness: r.sharpness,
+                detConf: r.detConf,
+                padFrac: r.padFrac,
+              ),
+          ],
+          tau: tau,
+          userRank: targetRank,
         ),
       );
     }

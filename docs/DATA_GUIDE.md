@@ -733,15 +733,17 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `best_view_photo`, `best_view_species`, `best_view_p` | the single crop with the most confident species suggestion |
 | `flags` | `none`, `unidentified`, `path_conflict` (a rank's best taxon is not under the rank above), `rule_conflict` (the mean-of-probabilities cross-check disagrees at the target rank), `single_crop` |
 | `model_id`, `pack_id` | provenance |
+| `merged_track_ids` | round 210, trailing column: every track id of the visit, semicolon-separated (one id unless "Merge consecutive visits" was on; `flags` then also holds `merged`) |
 
 The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `support`), every crop with its
 weight and own top-1, `best_view`, `flags`, and the run `settings`.
 
 ### `summary_<pack>.json`
 
-Counts for the app: `tracks_total`, `by_identified_rank`, `none`, `unidentified`,
+Counts for the app: `tracks_total` (visits after the optional merge), `visits_merged`,
+`tracks_before_merge` (round 210), `by_identified_rank`, `none`, `unidentified`,
 `taxa_order`, `taxa_family` (visits per taxon among the visits identified at least to that
-rank), a compact `tracks[]` list (`track_id`, `headline`, `identified_rank`, `p`, `n_crops`;
+rank), a compact `tracks[]` list (`track_id`, `track_ids`, `headline`, `identified_rank`, `p`, `n_crops`;
 plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's
 provenance. The app's session summary reads this list to label photos, never the full
 tracks file.

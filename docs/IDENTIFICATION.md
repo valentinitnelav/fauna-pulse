@@ -109,6 +109,22 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 See `SETTINGS_REFERENCE.md` → "Identification". Defaults come from the literature,
 from BioCLIP's documentation and from the `insect-detect-post` pipeline; all are logged
 in the `identify_start` record.
+Settings are saved as you change them (round 210).
+
+Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
+at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per
+visit 10** keeps a visit's ten LARGEST boxes when it has more photos (the photo count per
+visit comes from the session's photo schedule: AI-mode default one photo per second for
+10 s, so the cap rarely removes anything and only bounds the runtime of long bursts).
+
+**Merge consecutive visits** (off by default, round 210): the tracker sometimes loses an
+insect for a moment and gives it a new track id. When on, a track id that starts within
+the set gap after the previous one ended, with a compatible identification (same taxon at
+the shallower of the two identified ranks, e.g. Apidae then Bombus) and a similar mean
+box size (within 2x), is joined to it and the union of their crops is identified again.
+Track ids that overlap in time are never joined (two insects at once are two visits). The
+outputs then carry `track_ids` (JSON) / `merged_track_ids` (CSV, semicolon list), the
+`merged` flag, and the summary counts `visits_merged` and `tracks_before_merge`.
 
 ## Attribution
 

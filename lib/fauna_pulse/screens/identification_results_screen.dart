@@ -99,7 +99,13 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     final name = widget.sessionDir.path.split('/').last;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Identification — $name'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Identification'),
+            Text(name, style: const TextStyle(fontSize: 13, color: Colors.white70), overflow: TextOverflow.ellipsis),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Share the CSV',
@@ -138,7 +144,11 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         style: helperTextStyle,
       ),
       const SizedBox(height: 8),
-      Text('${s['tracks_total']} visits', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+      Text(
+        '${s['tracks_total']} visits'
+        '${(s['visits_merged'] as num? ?? 0) > 0 ? ' (${s['visits_merged']} joined from consecutive track ids, ${s['tracks_before_merge']} track ids in all)' : ''}',
+        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+      ),
       const SizedBox(height: 4),
       Text(
         [
@@ -302,12 +312,20 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       ),
       subtitle: Text(
         '${(t['crops'] as List).length} crops'
+        '${_mergedIds(t)}'
         '${t['duration_s'] != null ? ' · ${(t['duration_s'] as num).toStringAsFixed(1)} s' : ''}'
         '${(t['flags'] as List).isNotEmpty ? ' · ${(t['flags'] as List).join(', ')}' : ''}',
         style: helperTextStyle,
       ),
       onTap: () => _showTrack(t),
     );
+  }
+
+  /// " · joined #13, #14" for a merged visit, else "".
+  String _mergedIds(Map<String, dynamic> t) {
+    final ids = (t['track_ids'] as List?)?.cast<num>() ?? const [];
+    if (ids.length < 2) return '';
+    return ' · joined ${ids.skip(1).map((i) => '#${i.toInt()}').join(', ')}';
   }
 
   void _showTrack(Map<String, dynamic> t) {
@@ -326,7 +344,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             Text(
-              t['track_id'] == null ? 'Crop' : 'Visit #${t['track_id']}: ${t['headline']}',
+              t['track_id'] == null ? 'Crop' : 'Visit #${t['track_id']}${_mergedIds(t).replaceFirst(' · ', ' (')}${_mergedIds(t).isEmpty ? '' : ')'}: ${t['headline']}',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),

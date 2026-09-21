@@ -7469,3 +7469,45 @@ First owner feedback on the round-208 Identify screens (device test with the
 Ideas for later (not built): a "only photos of identified visits" or per-taxon photo
 filter on the Photos tab (the identification maps are already loaded there); persisting
 the chosen sample size; a per-taxon export (the CSV already allows it in R).
+
+## Round 210 (2026-09-21): Identify screen wording + settings fixes, temperature gauge, opt-in visit merge
+
+Second owner feedback pass on the Identify screen (device test).
+
+- **Title:** "Identify organisms — <session>" was ellipsised into "…"; the AppBar title
+  is now two rows (screen name, session name smaller below). Same on the results screen.
+- **Advanced settings did not take typed values (bug):** the r208 handlers assigned
+  `prefs.x = v` without a rebuild, so the `NumericSettingField` kept its stale `value` and
+  its blur-time snap rewrote the box to the OLD number (the value was in fact stored and
+  reappeared after reopening). All handlers now go through `_edit()` = `setState` + save;
+  the "Save settings" button is gone (subtitle "Saved as you change them").
+- **Helper texts rewritten in plain language (owner):** no "probability mass" (now
+  "probability", with the sum-over-species explanation); "full ladder is always shown"
+  replaced by "deeper ranks are still listed as suggestions"; "no organism" threshold
+  explained via the pack's "none of these" entries; the CSV `pred` rank explained as the
+  one-rank columns of Sittinger's `insect-detect-post` format; model/pack text shortened
+  with the GitHub repository reference; the Run text says identification happens on the
+  phone with no data transfer, that crops are combined per visit as a quality-weighted
+  average (not a vote), that track ids are not joined unless the merge is on, and that the
+  pause temperature is set under Advanced; the 48 px default explained (224 px model input,
+  >4x enlargement below 48 px is blur); "Crops per visit" explained as the LARGEST boxes
+  cap, related to the AI-mode photo schedule (1 s step, 10 s duration ≈ 10 photos, so the
+  default cap of 10 rarely bites). Default kept at 10 (bounds runtime for long bursts); 0 =
+  all.
+- **Progress:** the counter advances per photo (all crops of that photo), stated on
+  screen; the battery temperature is now reported during embedding (not only while paused)
+  and drawn as a green/amber/red bar against the pause limit, with cooling advice while
+  paused (cool hard surface, out of the sun, fan, no case).
+- **Opt-in visit merge (`identification/visit_merge.dart`):** the owner asked whether
+  "combining" meant joining track ids and wanted the user to decide. Combining per track
+  id is unchanged (quality-weighted mean embedding). NEW "Merge consecutive visits" (off)
+  + "Largest gap" (5 s): after per-track fusion, a track starting within the gap after the
+  previous one ended, with a compatible identification (identical taxon key at the
+  shallower of the two identified ranks) and mean crop size within 2x, is joined; the
+  union of crops is fused again. Overlapping tracks never merge. Outputs: `track_ids`,
+  CSV trailing `merged_track_ids`, flag `merged`, summary `visits_merged` /
+  `tracks_before_merge`; the results header and visit tiles show the joined ids; the
+  Photos tab maps every member id to the merged answer. Test added to
+  `identification_job_test.dart` (merge on/off, gap too short).
+- Docs: IDENTIFICATION.md (defaults rationale, merge), DATA_GUIDE §8 (new columns/fields).
+- Not device-verified this round.

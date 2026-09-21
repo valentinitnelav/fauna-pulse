@@ -129,6 +129,9 @@ class IdentifyPrefs {
   double noneThreshold;
   double thermalLimitC;
   String targetRank;
+  // Round 210: opt-in joining of consecutive track ids into one visit.
+  bool mergeVisits;
+  double mergeGapS;
 
   IdentifyPrefs({
     this.modelName,
@@ -142,6 +145,8 @@ class IdentifyPrefs {
     this.noneThreshold = 0.5,
     this.thermalLimitC = 40,
     this.targetRank = 'family',
+    this.mergeVisits = false,
+    this.mergeGapS = 5,
   });
 
   static const _kModel = 'identify_model';
@@ -155,6 +160,8 @@ class IdentifyPrefs {
   static const _kNone = 'identify_none_threshold';
   static const _kThermal = 'identify_thermal_limit_c';
   static const _kRank = 'identify_target_rank';
+  static const _kMerge = 'identify_merge_visits';
+  static const _kMergeGap = 'identify_merge_gap_s';
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -175,6 +182,8 @@ class IdentifyPrefs {
       noneThreshold: p.getDouble(_kNone) ?? 0.5,
       thermalLimitC: p.getDouble(_kThermal) ?? 40,
       targetRank: p.getString(_kRank) ?? 'family',
+      mergeVisits: p.getBool(_kMerge) ?? false,
+      mergeGapS: p.getDouble(_kMergeGap) ?? 5,
     );
   }
 
@@ -199,6 +208,8 @@ class IdentifyPrefs {
     await p.setDouble(_kNone, noneThreshold);
     await p.setDouble(_kThermal, thermalLimitC);
     await p.setString(_kRank, targetRank);
+    await p.setBool(_kMerge, mergeVisits);
+    await p.setDouble(_kMergeGap, mergeGapS);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -214,5 +225,7 @@ class IdentifyPrefs {
     'none_threshold': noneThreshold,
     'thermal_limit_c': thermalLimitC,
     'target_rank': targetRank,
+    'merge_visits': mergeVisits,
+    'merge_gap_s': mergeGapS,
   };
 }

@@ -227,12 +227,17 @@ class ScoredTrack {
   final List<EmbeddingRecord> crops;
   final int? startMs;
   final int? endMs;
-  const ScoredTrack({
+
+  /// Every track id in this visit: one normally, several after the opt-in
+  /// merge (round 210); empty for a no-AI per-photo crop.
+  final List<int> trackIds;
+  ScoredTrack({
     required this.fused,
     required this.crops,
     required this.startMs,
     required this.endMs,
-  });
+    List<int>? trackIds,
+  }) : trackIds = trackIds ?? (fused.trackId == null ? const [] : [fused.trackId!]);
 }
 
 /// Writes predictions/tracks/summary/README for one pack. Returns the summary
@@ -314,8 +319,12 @@ Map<String, dynamic> writeOutputs({
     'flags',
     'model_id',
     'pack_id',
+    // Round 210 (trailing so the leading columns keep the insect-detect-post
+    // layout): all track ids of a merged visit, semicolon-separated.
+    'merged_track_ids',
   ];
   csv.writeln(header.join(','));
+  var visitsMerged = 0, tracksBeforeMerge = 0;
   final byRank = <String, int>{};
   final taxaOrder = <String, int>{};
   final taxaFamily = <String, int>{};
@@ -363,7 +372,10 @@ Map<String, dynamic> writeOutputs({
     final detConfMean = t.crops.isEmpty
         ? 0.0
         : t.crops.map((c) => c.detConf).reduce((a, b) => a + b) / t.crops.length;
+    tracksBeforeMerge += t.trackIds.length;
+    if (t.trackIds.length > 1) visitsMerged++;
     final flags = <String>[
+      if (t.trackIds.length > 1) 'merged',
       if (isNone) 'none',
       if (f.identifiedRank == null && !isNone) 'unidentified',
       if (f.pathConflict) 'path_conflict',
@@ -403,10 +415,12 @@ Map<String, dynamic> writeOutputs({
       flags.join(';'),
       modelId,
       pack.packId,
+      t.trackIds.join(';'),
     ];
     csv.writeln(row.map(_csvCell).join(','));
     jsonTracks.add({
       'track_id': f.trackId,
+      'track_ids': t.trackIds,
       'headline': headline,
       'identified_rank': f.identifiedRank,
       'none_p': double.parse(f.noneMass.toStringAsFixed(4)),
@@ -446,6 +460,8 @@ Map<String, dynamic> writeOutputs({
     'pack_rows': pack.rows,
     'settings': settings,
     'tracks_total': tracks.length,
+    'visits_merged': visitsMerged,
+    'tracks_before_merge': tracksBeforeMerge,
     'by_identified_rank': byRank,
     'none': noneCount,
     'unidentified': unidentified,
@@ -455,6 +471,7 @@ Map<String, dynamic> writeOutputs({
       for (final t in jsonTracks)
         {
           'track_id': t['track_id'],
+          'track_ids': t['track_ids'],
           'headline': t['headline'],
           'identified_rank': t['identified_rank'],
           'p': t['identified_rank'] == null
@@ -575,8 +592,11 @@ class LatestIdentification {
         p: (t['p'] as num?)?.toDouble(),
       );
       final trackId = (t['track_id'] as num?)?.toInt();
-      if (trackId != null) {
-        byTrack[trackId] = id;
+      final ids = (t['track_ids'] as List?)?.cast<num>().map((n) => n.toInt()).toList() ?? [?trackId];
+      if (ids.isNotEmpty) {
+        for (final id0 in ids) {
+          byTrack[id0] = id;
+        }
       } else if (t['src'] != null) {
         byPhoto['${t['src']}'] = id;
       }

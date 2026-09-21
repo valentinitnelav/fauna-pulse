@@ -261,6 +261,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           noneThreshold: prefs.noneThreshold,
           thermalLimitC: prefs.thermalLimitC,
           targetRank: prefs.targetRank,
+          mergeVisits: prefs.mergeVisits,
+          mergeGapS: prefs.mergeGapS,
           extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads},
         ),
         packFile: pack,
@@ -391,7 +393,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   Widget build(BuildContext context) {
     final prefs = _prefs;
     return Scaffold(
-      appBar: AppBar(title: Text('Identify organisms — $_sessionName')),
+      // Two rows (round 210): one row ellipsised the session name away.
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Identify organisms'),
+            Text(_sessionName, style: const TextStyle(fontSize: 13, color: Colors.white70), overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
       // SafeArea + bottom padding (round 209): the app is edge-to-edge, so an
       // explicitly padded ListView otherwise hides its last row (the end of
       // the unfolded Advanced settings) under the system navigation bar.
@@ -426,12 +437,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Model and label pack',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Two files made on a PC with tool/bioclip_export (see docs/IDENTIFICATION.md). '
-            'The MODEL is the BioCLIP image tower (0.3 to 1.3 GB, downloaded once, it turns a '
-            'crop into numbers). The LABEL PACK holds the names the model may choose from '
-            '(a few MB for some orders, up to ~0.6 GB for all insects and spiders) plus their '
-            'taxonomy and a few "none of these" entries. Import copies them into the app\'s '
-            'private storage; the originals can then be deleted.',
+            'The MODEL (BioCLIP image tower, 0.3 to 1.3 GB) turns a crop into numbers; the '
+            'LABEL PACK holds the names it may choose from, with their taxonomy. Both are '
+            'made on a PC with the scripts in the FaunaPulse repository '
+            '(github.com/valentinitnelav/fauna-pulse, docs/IDENTIFICATION.md). Import copies '
+            'them into the app; the originals can then be deleted.',
       ),
       const SizedBox(height: 8),
       // isExpanded (round 209): without it the field takes the width of its
@@ -496,10 +506,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
-            'the model; the crops of one track id are then combined into one identification '
-            'with a confidence per taxonomic rank. Nothing is uploaded. The run can take from '
-            'minutes to hours; it can be cancelled and resumed at any time, and it pauses by '
-            'itself while the phone is warm. Plug the phone in for long runs.',
+            'the model. The crops of one track id are then combined into ONE answer per visit: '
+            'a quality-weighted average of what the model saw in each crop (sharper and larger '
+            'crops weigh more), not a vote per photo, giving a probability per rank. Track ids '
+            'are not joined unless "Merge consecutive visits" is on (Advanced settings). '
+            'Identification runs on this phone with the chosen model and label pack; no image '
+            'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
+            'resumed at any time, and pauses when the battery gets warmer than the temperature '
+            'set under Advanced settings. Plug the phone in for long runs.',
       ),
       const SizedBox(height: 6),
       Text(
@@ -577,13 +591,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       ),
       const SizedBox(height: 8),
       if (p != null && total > 0)
-        Text('$done of $total crops', style: const TextStyle(color: Colors.white)),
+        Text('$done of $total crops (counted per photo: a photo with several insects adds several crops at once)',
+            style: const TextStyle(color: Colors.white)),
       Text('Elapsed ${_fmtDuration(elapsed)}'
           '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
           '${p != null && p.avgMs > 0 ? ' — ${(p.avgMs / 1000).toStringAsFixed(1)} s per crop' : ''}',
           style: helperTextStyle),
-      if (p?.tempC != null)
-        Text('Battery ${p!.tempC!.toStringAsFixed(1)} °C', style: helperTextStyle),
+      if (p?.tempC != null) ..._temperatureGauge(p!.tempC!, p.stage == 'paused'),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerLeft,
@@ -593,6 +607,50 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           label: Text(_cancel ? 'Stopping after this photo…' : 'Cancel (keeps what is done)'),
         ),
       ),
+    ];
+  }
+
+  /// Battery temperature against the pause limit (round 210): a bar that
+  /// turns from green to amber to red, and cooling advice while paused.
+  List<Widget> _temperatureGauge(double tempC, bool paused) {
+    final limit = _prefs?.thermalLimitC ?? 40;
+    const floor = 25.0;
+    final frac = ((tempC - floor) / (limit - floor)).clamp(0.0, 1.0);
+    final color = tempC >= limit
+        ? Colors.redAccent
+        : tempC >= limit - 4
+        ? Colors.amber
+        : Colors.lightGreen;
+    return [
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Icon(Icons.device_thermostat, size: 18, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(value: frac, minHeight: 8, color: color, backgroundColor: Colors.white12),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('${tempC.toStringAsFixed(1)} °C', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+      Text(
+        'Battery temperature; the run pauses at ${limit.toStringAsFixed(0)} °C and resumes below '
+        '${(limit - 3).toStringAsFixed(0)} °C (limit under Advanced settings).',
+        style: helperTextStyle,
+      ),
+      if (paused)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Cooling down. Put the phone on a cool, hard surface out of the sun (or in front of a '
+            'fan); a case traps heat. It resumes by itself.',
+            style: TextStyle(color: Colors.amber, fontSize: 12),
+          ),
+        ),
     ];
   }
 
@@ -640,15 +698,23 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     ];
   }
 
+  /// Applies one settings change: rebuild (so the number box shows the typed
+  /// value when it loses focus, round 210 bug) and persist right away.
+  void _edit(VoidCallback change) {
+    setState(change);
+    _savePrefs();
+  }
+
   Widget _advancedSection(IdentifyPrefs prefs) {
     return ExpansionTile(
       title: const Text('Advanced settings', style: TextStyle(color: Colors.white)),
+      subtitle: const Text('Saved as you change them', style: helperTextStyle),
       childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: [
         HelpSwitchTile(
           title: 'Use the GPU when it can run the model',
           value: prefs.useGpu,
-          onChanged: (v) => setState(() => prefs.useGpu = v),
+          onChanged: (v) => _edit(() => prefs.useGpu = v),
           helperText:
               'GPU is usually faster for the fp16 model; the app falls back to the CPU when the '
               'GPU cannot compile it. Turn off to force the CPU (int8 models, or to compare).',
@@ -659,7 +725,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           min: 0,
           max: 8,
           isInt: true,
-          onChanged: (v) => prefs.cpuThreads = v.round(),
+          onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText: 'Fewer threads run cooler and slower.',
         ),
         NumericSettingField(
@@ -668,7 +734,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           min: 0,
           max: 0.5,
           decimals: 2,
-          onChanged: (v) => prefs.margin = v,
+          onChanged: (v) => _edit(() => prefs.margin = v),
           helperText:
               'Extra border around the detector box before the square crop (0.15 = 15 % per side), '
               'so legs, wings and antennae are not cut off.',
@@ -681,10 +747,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           isInt: true,
           unitSuffix: 'px',
           onChanged: (v) {
-            prefs.minCropPx = v.round();
+            _edit(() => prefs.minCropPx = v.round());
             _plan();
           },
-          helperText: 'Boxes smaller than this (longer side, in photo pixels) are skipped as too small.',
+          helperText:
+              'Boxes smaller than this (longer side, in photo pixels) are skipped. Default 48: the '
+              'model looks at every crop at 224 px, so a smaller box is enlarged more than 4 times '
+              'and is mostly blur; raise it for fewer but cleaner crops.',
         ),
         NumericSettingField(
           label: 'Crops per visit (0 = all)',
@@ -693,10 +762,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 100,
           isInt: true,
           onChanged: (v) {
-            prefs.maxCropsPerTrack = v.round();
+            _edit(() => prefs.maxCropsPerTrack = v.round());
             _plan();
           },
-          helperText: 'Keeps the largest boxes of each track id when a visit has more photos than this.',
+          helperText:
+              'Upper limit per track id: when a visit has more photos than this, only its LARGEST '
+              'boxes are kept (not a random sample, not the first ones). How many photos a visit has '
+              'comes from the session\'s photo schedule (AI mode default: one photo every 1 s for '
+              '10 s, so about 10 per visit); with that default the limit of 10 rarely removes '
+              'anything and only bounds the runtime for long bursts. 0 = every photo.',
         ),
         NumericSettingField(
           label: 'Confidence needed to call a rank identified',
@@ -704,10 +778,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           min: 0.5,
           max: 0.99,
           decimals: 2,
-          onChanged: (v) => prefs.tau = v,
+          onChanged: (v) => _edit(() => prefs.tau = v),
           helperText:
-              'The deepest rank (order, family, genus, species) whose probability mass reaches '
-              'this value is reported as the identification. The full ladder is always shown.',
+              'The model gives every name in the label pack a probability (they add up to 100 %); '
+              'a family\'s probability is the sum of its species, and so on up to kingdom. Going '
+              'from kingdom down to species, the deepest rank whose probability still reaches this '
+              'value is reported as the answer. Deeper ranks are still listed in the results, with '
+              'their lower probabilities, as suggestions to verify.',
         ),
         NumericSettingField(
           label: '"No organism" threshold',
@@ -715,8 +792,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           min: 0.1,
           max: 0.9,
           decimals: 2,
-          onChanged: (v) => prefs.noneThreshold = v,
-          helperText: 'Mass on the "none of these" entries (flower, leaf, shadow, …) above which a track is reported as no organism.',
+          onChanged: (v) => _edit(() => prefs.noneThreshold = v),
+          helperText:
+              'The label pack also contains a few "none of these" entries (flower, leaf, shadow, empty '
+              'background). When their summed probability is above this, the visit is reported as '
+              '"no organism": the detector most likely fired on nothing.',
         ),
         NumericSettingField(
           label: 'Pause above battery temperature',
@@ -725,9 +805,33 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 45,
           decimals: 0,
           unitSuffix: '°C',
-          onChanged: (v) => prefs.thermalLimitC = v,
+          onChanged: (v) => _edit(() => prefs.thermalLimitC = v),
           helperText: 'The run pauses when the battery reaches this and resumes 3 °C lower.',
         ),
+        HelpSwitchTile(
+          title: 'Merge consecutive visits',
+          value: prefs.mergeVisits,
+          onChanged: (v) => _edit(() => prefs.mergeVisits = v),
+          helperText:
+              'Off: every track id is one visit. On: when a track id ends and a new one starts within '
+              'the gap below, with a compatible identification (same taxon on the same path, e.g. '
+              'Apidae then Bombus) and a similar box size (within 2x), the two are joined into one '
+              'visit and identified again from all their photos. Helps when the tracker lost an '
+              'insect for a moment and gave it a new id. Track ids that overlap in time are never '
+              'joined (two insects at once). Changes the visit count, so it is off by default; '
+              'the CSV lists the joined ids.',
+        ),
+        if (prefs.mergeVisits)
+          NumericSettingField(
+            label: 'Largest gap between joined visits',
+            value: prefs.mergeGapS,
+            min: 0.5,
+            max: 120,
+            decimals: 1,
+            unitSuffix: 's',
+            onChanged: (v) => _edit(() => prefs.mergeGapS = v),
+            helperText: 'Time from the end of one track id to the start of the next.',
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: DropdownButtonFormField<String>(
@@ -736,16 +840,19 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             decoration: const InputDecoration(labelText: 'Rank for the CSV "pred" columns'),
             items: [for (final r in kRankNames.skip(3)) DropdownMenuItem(value: r, child: Text(r))],
             onChanged: (v) {
-              if (v != null) setState(() => prefs.targetRank = v);
+              if (v != null) _edit(() => prefs.targetRank = v);
             },
           ),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(onPressed: () async {
-            await _savePrefs();
-            if (mounted) _snack('Settings saved');
-          }, child: const Text('Save settings')),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'The CSV\'s first columns (pred, pred_prob_weighted, pred_prob_mean) follow the '
+            'insect-detect-post format of Maximilian Sittinger and hold the answer at ONE rank; '
+            'this picks that rank (default family). All ranks are in the bioclip_<rank> and '
+            'p_<rank> columns regardless.',
+            style: helperTextStyle,
+          ),
         ),
       ],
     );
