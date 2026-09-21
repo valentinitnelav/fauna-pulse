@@ -269,6 +269,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           targetRank: prefs.targetRank,
           mergeVisits: prefs.mergeVisits,
           mergeGapS: prefs.mergeGapS,
+          mergeSizeTol: prefs.mergeSizeTol,
+          mergeMinCos: prefs.mergeMinCos,
+          flagMinDurationS: prefs.flagMinDurationS,
+          flagMinDetections: prefs.flagMinDetections,
+          flagMinDetConf: prefs.flagMinDetConf,
+          flagMinOrderP: prefs.flagMinOrderP,
           extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads},
         ),
         packFile: pack,
@@ -898,14 +904,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.mergeVisits = v),
           helperText:
               'Off: every track id is one visit. On: when a track id ends and a new one starts within '
-              'the gap below, with a compatible identification (same taxon on the same path, e.g. '
-              'Apidae then Bombus) and a similar box size (within 2x), the two are joined into one '
-              'visit and identified again from all their photos. Helps when the tracker lost an '
+              'the gap below, the two are joined into one visit (and identified again from all their '
+              'photos) if they pass three checks: a compatible identification (same taxon on the same '
+              'path, e.g. Apidae then Bombus), a similar appearance (the model\'s image embeddings, the '
+              'strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
               'insect for a moment and gave it a new id. Track ids that overlap in time are never '
-              'joined (two insects at once). Changes the visit count, so it is off by default; '
-              'the CSV lists the joined ids.',
+              'joined (two insects at once). Changes the visit count, so it is off by default; the CSV '
+              'lists the joined ids.',
         ),
-        if (prefs.mergeVisits)
+        if (prefs.mergeVisits) ...[
           NumericSettingField(
             label: 'Largest gap between joined visits',
             value: prefs.mergeGapS,
@@ -914,8 +921,90 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             decimals: 1,
             unitSuffix: 's',
             onChanged: (v) => _edit(() => prefs.mergeGapS = v),
-            helperText: 'Time from the end of one track id to the start of the next.',
+            helperText:
+                'Time from the end of one track id to the start of the next. 3 s matches the live '
+                'tracker\'s own continuity buffer (its occlusion setting, 3 s by default). Longer gaps '
+                'risk joining two different insects of the same species: the appearance check cannot '
+                'tell individuals apart, only the time gap can.',
           ),
+          NumericSettingField(
+            label: 'Appearance similarity needed',
+            value: prefs.mergeMinCos,
+            min: 0.5,
+            max: 0.99,
+            decimals: 2,
+            onChanged: (v) => _edit(() => prefs.mergeMinCos = v),
+            helperText:
+                'Cosine similarity (0 to 1) between the two visits\' combined image embeddings: 1 = the '
+                'model sees the same thing. Same species usually scores 0.8 to 0.95, different families '
+                'well below. 0.85 is a cautious default; lower it if fragments of one insect stay apart.',
+          ),
+          NumericSettingField(
+            label: 'Box size may differ by up to',
+            value: prefs.mergeSizeTol * 100,
+            min: 0,
+            max: 100,
+            decimals: 0,
+            unitSuffix: '%',
+            onChanged: (v) => _edit(() => prefs.mergeSizeTol = v / 100),
+            helperText:
+                'Mean box side of each visit, as a fraction of the ROI, compared as a percentage of the '
+                'larger one. A loose guard on purpose (wings, distance and ROI-edge cuts change box size); '
+                '100 % switches the check off.',
+          ),
+        ],
+        const SizedBox(height: 8),
+        const HelpLabel(
+          label: 'Suspect visits (flags only, nothing is deleted)',
+          labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          helperText:
+              'Very short track ids are often false detections (a moving petal, a shadow, a video '
+              'artefact), and a weak identification makes that more likely. A visit is flagged '
+              '"suspect" when it is SHORT (below the duration OR the detections below) AND weakly '
+              'supported (detector confidence below the threshold, order-level probability below the '
+              'threshold, or "no organism"). Suspect visits are hidden from the results table by default '
+              '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
+              'thresholds on your own data in R.',
+        ),
+        NumericSettingField(
+          label: 'Short: duration below',
+          value: prefs.flagMinDurationS,
+          min: 0,
+          max: 60,
+          decimals: 1,
+          unitSuffix: 's',
+          onChanged: (v) => _edit(() => prefs.flagMinDurationS = v),
+          helperText: 'From the first to the last detection of the track id. 0 = never short by duration.',
+        ),
+        NumericSettingField(
+          label: 'Short: detections below',
+          value: prefs.flagMinDetections.toDouble(),
+          min: 0,
+          max: 100,
+          isInt: true,
+          onChanged: (v) => _edit(() => prefs.flagMinDetections = v.round()),
+          helperText: 'Detector frames the track id appeared in. 0 = never short by count.',
+        ),
+        NumericSettingField(
+          label: 'Weak: detector confidence below',
+          value: prefs.flagMinDetConf,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          onChanged: (v) => _edit(() => prefs.flagMinDetConf = v),
+          helperText: 'Mean confidence of the live detector over the visit\'s crops.',
+        ),
+        NumericSettingField(
+          label: 'Weak: order probability below',
+          value: prefs.flagMinOrderP,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          onChanged: (v) => _edit(() => prefs.flagMinOrderP = v),
+          helperText:
+              'The identification\'s probability at ORDER rank (e.g. Diptera). A real insect usually gets '
+              'a confident order even when family or genus stay unsure; a blob does not.',
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: DropdownButtonFormField<String>(

@@ -243,14 +243,22 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 
 | Setting | Default | Meaning |
 |---|---|---|
-| Use the GPU when it can run the model | on | GPU first (fast for fp16 models), automatic CPU fallback; off = CPU only (int8 models, comparisons). |
-| CPU threads | 0 (automatic) | Threads for the CPU path; fewer = cooler and slower. |
+| Use the GPU when it can run the model | on | Tries a GPU compile, automatic CPU fallback with the reason shown on screen (r211). Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
+| CPU threads | 0 (automatic) | XNNPACK thread count for the CPU path; more = usually faster but warmer. Measure with "Test speed". |
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |
-| Confidence needed to call a rank identified | 0.80 | The deepest rank whose probability mass reaches this value becomes the identification (the full ladder is always shown). |
-| "No organism" threshold | 0.50 | Mass on the "none of these" entries above which a visit is reported as no organism. |
+| Confidence needed to call a rank identified | 0.80 | The deepest rank whose probability reaches this value becomes the identification; deeper ranks are still listed as suggestions. |
+| "No organism" threshold | 0.50 | Summed probability of the "none of these" entries above which a visit is reported as no organism. |
 | Pause above battery temperature | 40 °C | The run pauses at this battery temperature and resumes 3 °C lower. |
+| Merge consecutive visits | off | r210/212: join a track id to the previous one when the gap, a compatible identification, the appearance similarity and the box-size guard all pass; the union is identified again. |
+| Largest gap between joined visits | 3 s | End of one track id to the start of the next (same as the tracker's occlusion buffer). |
+| Appearance similarity needed | 0.85 | Cosine similarity of the two visits' combined image embeddings (1 = identical). |
+| Box size may differ by up to | 50 % | Mean box side relative to the ROI, as a percentage of the larger one; 100 % disables the guard. |
+| Short: duration below | 2 s | r212 suspect flags. `short` when duration is below this OR detections below the next row. |
+| Short: detections below | 3 | Detector frames the track id appeared in. |
+| Weak: detector confidence below | 0.20 | `low_det` when the mean live-detector confidence is below this (same default as the `insect-detect-post` software's track filter, Sittinger 2026, doi:10.5281/zenodo.21822140). |
+| Weak: order probability below | 0.50 | `weak_id` when the identification's ORDER-rank probability is below this. `suspect` = short AND (low_det OR weak_id OR no organism); flags only, nothing deleted. |
 | Rank for the CSV "pred" columns | family | Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` in `tracks_<pack>.csv` (the other ranks are in their own columns anyway). |
 
 Model and label pack are chosen on the same screen (Import… copies the files into the app's

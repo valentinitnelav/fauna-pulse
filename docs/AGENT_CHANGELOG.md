@@ -7537,3 +7537,48 @@ facade (the Xiaomi always ends on CPU for BioCLIP).
   pointer to Test speed.
 - Kotlin changes are compile-checked with Gradle (see the round's notes); not device-run.
 
+
+## Round 212 (2026-09-21): merge rule with embedding similarity, exposed parameters, suspect-visit flags
+
+Owner decisions (after the r211 discussion): merge on gap + box side relative to the ROI
+(within 50 %) + cosine similarity of the consecutive visits' embeddings as the stronger
+signal; no position continuity (the tracker handles it); short-lived tracks get
+non-destructive flags at scoring (option 1), with all parameters exposed.
+
+- **Merge rule (`identification/visit_merge.dart`):** the r210 "mean cropPx within 2x"
+  guard is replaced by (a) cosine similarity of the two visits' fused unit embeddings
+  ≥ `merge_min_cos` (default 0.85) and (b) mean box longer side as a fraction of the ROI
+  (from the record's normalised box) differing by at most `merge_size_tol` (default 0.5 of
+  the larger; 1.0 disables). Gap (5 s) and taxon compatibility unchanged. The three checks
+  are gates rather than a weighted score: transparent to the user, and the embedding is
+  the decisive one in practice (a different family fails it long before the size guard).
+  Position continuity deliberately not implemented (tracker buffer covers it within 3 s;
+  after a real loss the insect can re-enter anywhere).
+- **Suspect flags (`writeOutputs`):** per tracked visit `short` (duration <
+  `flag_min_duration_s` 2 s OR detections < `flag_min_detections` 3), `low_det`
+  (det_conf_mean < `flag_min_det_conf` 0.2), `weak_id` (order-rank probability <
+  `flag_min_order_p` 0.5), `suspect` = short AND (low_det OR weak_id OR none). Nothing is
+  dropped: CSV gains trailing `n_detections`, `suspect` (0/1); JSON `detections`,
+  `suspect`; summary `suspect` count and per-track `suspect` in the compact list.
+  `scoreSessionSync` now counts detector frames per track id while parsing spans
+  (`ScoredTrack.detections`, summed on merge). Literature: the duration and detector-
+  confidence criteria follow the optional track filter in `insect-detect-post`
+  software (Sittinger 2026, Zenodo doi:10.5281/zenodo.21822140, `metadata.filter_tracks`;
+  defaults 2 s, 0.2 adopted verbatim at the owner's request so the pipelines agree; credited in the docs only
+  (not on phone screens);
+  Bjerge et al. 2022 (RSEC) filter stationary repeats instead (tracker-side idea, noted).
+- **UI:** Identify → Advanced: "Appearance similarity needed", "Box size may differ by up
+  to (%)" under the merge switch; a "Suspect visits (flags only, nothing is deleted)"
+  group with the four thresholds and plain-language helpers. Results: "Include N suspect
+  visits" switch above the table (hidden by default; table, All-visits list recomputed).
+  Photos tab labels append "· suspect".
+- Prefs `identify_merge_size_tol`, `identify_merge_min_cos`, `identify_flag_*`; run
+  settings echo them. Tests: merge test updated for the new guards; new suspect-flag test.
+- Docs: IDENTIFICATION.md, SETTINGS_REFERENCE "Identification" table (also corrected the
+  r208 GPU/threads/mass wording), DATA_GUIDE §8.
+- Not device-verified.
+- Owner follow-ups the same day: merge gap default 5 s → **3 s** (matches the tracker's
+  occlusion buffer; the appearance check cannot separate two individuals of one species,
+  so the time gap is what does); suspect defaults `flag_min_det_conf` 0.3 → **0.2**,
+  `flag_min_order_p` 0.6 → **0.5**; citation corrected to the insect-detect-post software
+  record (Sittinger 2026, Zenodo) rather than the 2024 paper.

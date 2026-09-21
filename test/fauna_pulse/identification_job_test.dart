@@ -224,7 +224,12 @@ void main() {
     return dir;
   }
 
-  Future<Map<String, dynamic>> runMerge(Directory session, {required bool merge, double gapS = 5}) async {
+  Future<Map<String, dynamic>> runMerge(
+    Directory session, {
+    required bool merge,
+    double gapS = 3,
+    double flagMinDetConf = 0.2,
+  }) async {
     final job = IdentificationJob(
       embed: fakeEmbed,
       crop: (a) async => cropBatchSync(a),
@@ -242,6 +247,7 @@ void main() {
         minCropPx: 16,
         mergeVisits: merge,
         mergeGapS: gapS,
+        flagMinDetConf: flagMinDetConf,
       ),
       packFile: packFile,
     );
@@ -254,6 +260,9 @@ void main() {
     final off = await runMerge(session, merge: false);
     expect(off['tracks_total'], 3);
     expect(off['visits_merged'], 0);
+    // Every track is short here (≤ 2 detections, < 2 s) but none is weakly
+    // supported at the default thresholds, so nothing is suspect.
+    expect(off['suspect'], 0);
 
     final on = await runMerge(session, merge: true);
     expect(on['tracks_total'], 2);
@@ -269,7 +278,7 @@ void main() {
     expect(joined['flags'], contains('merged'));
     expect(joined['duration_s'], closeTo(1.5, 1e-6)); // 2000 .. 3500 ms
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids'));
+    expect(csv.split('\n').first, contains(',merged_track_ids,'));
     expect(csv, contains('1;3'));
     // The compact summary list carries the ids for the Photos tab.
     final lite = (on['tracks'] as List).cast<Map<String, dynamic>>();
@@ -278,5 +287,30 @@ void main() {
     // A gap shorter than the real one (1 s) keeps them apart.
     final tight = await runMerge(session, merge: true, gapS: 0.5);
     expect(tight['tracks_total'], 3);
+  });
+
+  // Round 212: suspect = short AND weakly supported. Raising the detector
+  // confidence threshold above track 2's 0.7 makes that single-frame track
+  // suspect; tracks 1 and 3 (0.85 / 0.9) stay clean although equally short.
+  test('suspect flags mark short, weakly supported visits without dropping them', () async {
+    final session = makeMergeSession('m2');
+    final s = await runMerge(session, merge: false, flagMinDetConf: 0.75);
+    expect(s['tracks_total'], 3);
+    expect(s['suspect'], 1);
+    final paths = IdentificationPaths(session);
+    final tracks = (jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+    final t2 = tracks.firstWhere((t) => t['track_id'] == 2);
+    expect(t2['suspect'], isTrue);
+    expect(t2['detections'], 1);
+    expect(t2['flags'], containsAll(['short', 'low_det', 'suspect']));
+    final t1 = tracks.firstWhere((t) => t['track_id'] == 1);
+    expect(t1['suspect'], isFalse);
+    expect(t1['flags'], contains('short'));
+    expect(t1['flags'], isNot(contains('suspect')));
+    final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect'));
+    // The compact summary list carries the verdict for the Photos tab.
+    final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
+    expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);
   });
 }

@@ -132,6 +132,13 @@ class IdentifyPrefs {
   // Round 210: opt-in joining of consecutive track ids into one visit.
   bool mergeVisits;
   double mergeGapS;
+  // Round 212: merge guards + "suspect visit" flag thresholds.
+  double mergeSizeTol;
+  double mergeMinCos;
+  double flagMinDurationS;
+  int flagMinDetections;
+  double flagMinDetConf;
+  double flagMinOrderP;
 
   IdentifyPrefs({
     this.modelName,
@@ -146,7 +153,13 @@ class IdentifyPrefs {
     this.thermalLimitC = 40,
     this.targetRank = 'family',
     this.mergeVisits = false,
-    this.mergeGapS = 5,
+    this.mergeGapS = 3,
+    this.mergeSizeTol = 0.5,
+    this.mergeMinCos = 0.85,
+    this.flagMinDurationS = 2,
+    this.flagMinDetections = 3,
+    this.flagMinDetConf = 0.2,
+    this.flagMinOrderP = 0.5,
   });
 
   static const _kModel = 'identify_model';
@@ -162,6 +175,12 @@ class IdentifyPrefs {
   static const _kRank = 'identify_target_rank';
   static const _kMerge = 'identify_merge_visits';
   static const _kMergeGap = 'identify_merge_gap_s';
+  static const _kMergeSize = 'identify_merge_size_tol';
+  static const _kMergeCos = 'identify_merge_min_cos';
+  static const _kFlagDur = 'identify_flag_min_duration_s';
+  static const _kFlagDet = 'identify_flag_min_detections';
+  static const _kFlagConf = 'identify_flag_min_det_conf';
+  static const _kFlagOrderP = 'identify_flag_min_order_p';
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -183,7 +202,13 @@ class IdentifyPrefs {
       thermalLimitC: p.getDouble(_kThermal) ?? 40,
       targetRank: p.getString(_kRank) ?? 'family',
       mergeVisits: p.getBool(_kMerge) ?? false,
-      mergeGapS: p.getDouble(_kMergeGap) ?? 5,
+      mergeGapS: p.getDouble(_kMergeGap) ?? 3,
+      mergeSizeTol: p.getDouble(_kMergeSize) ?? 0.5,
+      mergeMinCos: p.getDouble(_kMergeCos) ?? 0.85,
+      flagMinDurationS: p.getDouble(_kFlagDur) ?? 2,
+      flagMinDetections: p.getInt(_kFlagDet) ?? 3,
+      flagMinDetConf: p.getDouble(_kFlagConf) ?? 0.2,
+      flagMinOrderP: p.getDouble(_kFlagOrderP) ?? 0.5,
     );
   }
 
@@ -210,6 +235,12 @@ class IdentifyPrefs {
     await p.setString(_kRank, targetRank);
     await p.setBool(_kMerge, mergeVisits);
     await p.setDouble(_kMergeGap, mergeGapS);
+    await p.setDouble(_kMergeSize, mergeSizeTol);
+    await p.setDouble(_kMergeCos, mergeMinCos);
+    await p.setDouble(_kFlagDur, flagMinDurationS);
+    await p.setInt(_kFlagDet, flagMinDetections);
+    await p.setDouble(_kFlagConf, flagMinDetConf);
+    await p.setDouble(_kFlagOrderP, flagMinOrderP);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -227,5 +258,11 @@ class IdentifyPrefs {
     'target_rank': targetRank,
     'merge_visits': mergeVisits,
     'merge_gap_s': mergeGapS,
+    'merge_size_tol': mergeSizeTol,
+    'merge_min_cos': mergeMinCos,
+    'flag_min_duration_s': flagMinDurationS,
+    'flag_min_detections': flagMinDetections,
+    'flag_min_det_conf': flagMinDetConf,
+    'flag_min_order_p': flagMinOrderP,
   };
 }

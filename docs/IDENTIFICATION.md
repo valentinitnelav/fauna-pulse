@@ -131,12 +131,36 @@ visit comes from the session's photo schedule: AI-mode default one photo per sec
 
 **Merge consecutive visits** (off by default, round 210): the tracker sometimes loses an
 insect for a moment and gives it a new track id. When on, a track id that starts within
-the set gap after the previous one ended, with a compatible identification (same taxon at
-the shallower of the two identified ranks, e.g. Apidae then Bombus) and a similar mean
-box size (within 2x), is joined to it and the union of their crops is identified again.
-Track ids that overlap in time are never joined (two insects at once are two visits). The
-outputs then carry `track_ids` (JSON) / `merged_track_ids` (CSV, semicolon list), the
-`merged` flag, and the summary counts `visits_merged` and `tracks_before_merge`.
+the set gap (default 3 s, the same as the live tracker's occlusion buffer; longer gaps risk
+joining two individuals of one species, which the appearance check cannot tell apart) after the previous one ended is joined to it when three checks pass (round 212):
+a compatible identification (same taxon at the shallower of the two identified ranks, e.g.
+Apidae then Bombus); a similar appearance, i.e. the cosine similarity of the two visits'
+combined image embeddings is at least the threshold (default 0.85; this is the strong
+signal, "the model sees the same animal"); and a similar mean box side relative to the
+ROI (default within 50 % of the larger one; a loose guard, 100 % disables it). Position
+continuity is deliberately not used: within its buffer the tracker handles it, and after
+a real loss the insect may re-enter the ROI anywhere. The union of the crops is then
+identified again. Track ids that overlap in time are never joined (two insects at once
+are two visits). The outputs carry `track_ids` (JSON) / `merged_track_ids` (CSV,
+semicolon list), the `merged` flag, and the summary counts `visits_merged` and
+`tracks_before_merge`.
+
+**Suspect visits** (round 212, flags only): very short track ids are often false
+detections, and a weak identification makes that more likely. A tracked visit is flagged
+`short` when its duration is below 2 s OR it has fewer than 3 detector frames, `low_det`
+when the mean detector confidence is below 0.2, `weak_id` when the probability at ORDER
+rank is below 0.5, and `suspect` when it is short AND (low_det OR weak_id OR "no
+organism"). All four thresholds are settings. Nothing is deleted: the results table hides
+suspect visits behind a switch, the Photos tab marks them, and the CSV keeps every row
+with `n_detections` and a 0/1 `suspect` column so the thresholds can be checked on your
+own data in R. The duration and detector-confidence criteria follow the optional track
+filter of the `insect-detect-post` software (Sittinger (2026), Software for post-processing of data captured with the Insect Detect camera trap, v1.0.0, Zenodo, doi:10.5281/zenodo.21822140; `metadata.filter_tracks`, defaults
+`min_dur_s: 2`, `min_det_conf: 0.2`, adopted here on purpose so the two pipelines agree;
+that software is the post-processing companion of the Insect Detect camera trap,
+Sittinger et al. 2024, PLOS ONE 19(4): e0295474); the
+identification-strength criterion and the AND rule are FaunaPulse additions. Bjerge et
+al. (2022, Remote Sensing in Ecology and Conservation) instead removed stationary
+detections repeating at the same position, which is a tracker-side idea for later.
 
 ## Attribution
 

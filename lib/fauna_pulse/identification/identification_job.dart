@@ -71,6 +71,12 @@ class IdentifyRunSettings {
   final String targetRank;
   final bool mergeVisits;
   final double mergeGapS;
+  final double mergeSizeTol;
+  final double mergeMinCos;
+  final double flagMinDurationS;
+  final int flagMinDetections;
+  final double flagMinDetConf;
+  final double flagMinOrderP;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -89,7 +95,13 @@ class IdentifyRunSettings {
     this.thermalLimitC = 40,
     this.targetRank = 'family',
     this.mergeVisits = false,
-    this.mergeGapS = 5,
+    this.mergeGapS = 3,
+    this.mergeSizeTol = 0.5,
+    this.mergeMinCos = 0.85,
+    this.flagMinDurationS = 2,
+    this.flagMinDetections = 3,
+    this.flagMinDetConf = 0.2,
+    this.flagMinOrderP = 0.5,
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -110,6 +122,12 @@ class IdentifyRunSettings {
     'target_rank': targetRank,
     'merge_visits': mergeVisits,
     'merge_gap_s': mergeGapS,
+    'merge_size_tol': mergeSizeTol,
+    'merge_min_cos': mergeMinCos,
+    'flag_min_duration_s': flagMinDurationS,
+    'flag_min_detections': flagMinDetections,
+    'flag_min_det_conf': flagMinDetConf,
+    'flag_min_order_p': flagMinOrderP,
     ...extra,
   };
 }
@@ -492,6 +510,7 @@ class IdentificationJob {
     // only the record types the index keeps; done synchronously here because
     // we are already on a worker isolate).
     final spans = <int, (int, int)>{};
+    final detCounts = <int, int>{};
     final log = File('${sessionDir.path}/session.jsonl');
     String deviceId = '';
     if (log.existsSync()) {
@@ -511,6 +530,7 @@ class IdentificationJob {
         }
         void extend(int? id) {
           if (id == null || t == null) return;
+          detCounts[id] = (detCounts[id] ?? 0) + 1;
           final s = spans[id];
           spans[id] = s == null ? (t, t) : (s.$1 < t ? s.$1 : t, s.$2 > t ? s.$2 : t);
         }
@@ -562,15 +582,18 @@ class IdentificationJob {
           crops: recs,
           startMs: span?.$1 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a < b ? a : b)),
           endMs: span?.$2 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a > b ? a : b)),
+          detections: recs.first.trackId == null ? null : detCounts[recs.first.trackId!],
         ),
       );
     }
     if (settings['merge_visits'] == true) {
-      final gapS = (settings['merge_gap_s'] as num?)?.toDouble() ?? 5;
+      final gapS = (settings['merge_gap_s'] as num?)?.toDouble() ?? 3;
       final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
       scored = mergeConsecutiveVisits(
         scored,
         gapMs: (gapS * 1000).round(),
+        sizeTol: (settings['merge_size_tol'] as num?)?.toDouble() ?? 0.5,
+        minCos: (settings['merge_min_cos'] as num?)?.toDouble() ?? 0.85,
         noneThreshold: noneThreshold,
         refuse: (recs) => scorer.fuse(
           [

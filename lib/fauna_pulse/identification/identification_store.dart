@@ -231,12 +231,17 @@ class ScoredTrack {
   /// Every track id in this visit: one normally, several after the opt-in
   /// merge (round 210); empty for a no-AI per-photo crop.
   final List<int> trackIds;
+
+  /// Detector frames the track id(s) appeared in (from the session log);
+  /// null for no-AI crops or when the log is missing. Round 212 flags.
+  final int? detections;
   ScoredTrack({
     required this.fused,
     required this.crops,
     required this.startMs,
     required this.endMs,
     List<int>? trackIds,
+    this.detections,
   }) : trackIds = trackIds ?? (fused.trackId == null ? const [] : [fused.trackId!]);
 }
 
@@ -256,6 +261,11 @@ Map<String, dynamic> writeOutputs({
   paths.dir.createSync(recursive: true);
   final targetRank = (settings['target_rank'] as String?) ?? 'family';
   final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
+  // Round 212 "suspect visit" thresholds (flags only; nothing is dropped).
+  final flagMinDurationS = (settings['flag_min_duration_s'] as num?)?.toDouble() ?? 2;
+  final flagMinDetections = (settings['flag_min_detections'] as num?)?.toInt() ?? 3;
+  final flagMinDetConf = (settings['flag_min_det_conf'] as num?)?.toDouble() ?? 0.2;
+  final flagMinOrderP = (settings['flag_min_order_p'] as num?)?.toDouble() ?? 0.5;
   final now = DateTime.now();
 
   // --- predictions_<pack>.jsonl: per crop top rows ---
@@ -322,9 +332,12 @@ Map<String, dynamic> writeOutputs({
     // Round 210 (trailing so the leading columns keep the insect-detect-post
     // layout): all track ids of a merged visit, semicolon-separated.
     'merged_track_ids',
+    // Round 212: detector frames of the visit and the suspect verdict (0/1).
+    'n_detections',
+    'suspect',
   ];
   csv.writeln(header.join(','));
-  var visitsMerged = 0, tracksBeforeMerge = 0;
+  var visitsMerged = 0, tracksBeforeMerge = 0, suspectCount = 0;
   final byRank = <String, int>{};
   final taxaOrder = <String, int>{};
   final taxaFamily = <String, int>{};
@@ -374,18 +387,34 @@ Map<String, dynamic> writeOutputs({
         : t.crops.map((c) => c.detConf).reduce((a, b) => a + b) / t.crops.length;
     tracksBeforeMerge += t.trackIds.length;
     if (t.trackIds.length > 1) visitsMerged++;
+    final bestCrop = t.crops[f.bestViewIndex];
+    final durationS = (t.startMs != null && t.endMs != null)
+        ? (t.endMs! - t.startMs!) / 1000
+        : null;
+    // Suspect = short-lived AND weakly supported (low detector confidence,
+    // weak identification even at order rank, or "no organism"). Only for
+    // tracked visits: a no-AI crop has no duration or detection count.
+    final isTracked = t.trackIds.isNotEmpty;
+    final short = isTracked &&
+        ((durationS != null && durationS < flagMinDurationS) ||
+            (t.detections != null && t.detections! < flagMinDetections));
+    final lowDet = isTracked && detConfMean < flagMinDetConf;
+    final orderP = f.stepAt('order')?.mass ?? 0;
+    final weakId = isTracked && !isNone && orderP < flagMinOrderP;
+    final suspect = short && (lowDet || weakId || isNone);
+    if (suspect) suspectCount++;
     final flags = <String>[
       if (t.trackIds.length > 1) 'merged',
+      if (short) 'short',
+      if (lowDet) 'low_det',
+      if (weakId) 'weak_id',
+      if (suspect) 'suspect',
       if (isNone) 'none',
       if (f.identifiedRank == null && !isNone) 'unidentified',
       if (f.pathConflict) 'path_conflict',
       if (f.ruleConflict) 'rule_conflict',
       if (t.crops.length == 1) 'single_crop',
     ];
-    final bestCrop = t.crops[f.bestViewIndex];
-    final durationS = (t.startMs != null && t.endMs != null)
-        ? (t.endMs! - t.startMs!) / 1000
-        : null;
     final bio = {for (var k = 0; k < 7; k++) 'bioclip_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].taxon : ''};
     final pr = {for (var k = 0; k < 7; k++) 'p_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].mass.toStringAsFixed(4) : ''};
     final sup = {for (var k = 0; k < 7; k++) 'support_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
@@ -416,11 +445,15 @@ Map<String, dynamic> writeOutputs({
       modelId,
       pack.packId,
       t.trackIds.join(';'),
+      t.detections ?? '',
+      suspect ? 1 : 0,
     ];
     csv.writeln(row.map(_csvCell).join(','));
     jsonTracks.add({
       'track_id': f.trackId,
       'track_ids': t.trackIds,
+      'detections': t.detections,
+      'suspect': suspect,
       'headline': headline,
       'identified_rank': f.identifiedRank,
       'none_p': double.parse(f.noneMass.toStringAsFixed(4)),
@@ -462,6 +495,7 @@ Map<String, dynamic> writeOutputs({
     'tracks_total': tracks.length,
     'visits_merged': visitsMerged,
     'tracks_before_merge': tracksBeforeMerge,
+    'suspect': suspectCount,
     'by_identified_rank': byRank,
     'none': noneCount,
     'unidentified': unidentified,
@@ -472,6 +506,7 @@ Map<String, dynamic> writeOutputs({
         {
           'track_id': t['track_id'],
           'track_ids': t['track_ids'],
+          'suspect': t['suspect'],
           'headline': t['headline'],
           'identified_rank': t['identified_rank'],
           'p': t['identified_rank'] == null
@@ -557,10 +592,12 @@ class TrackIdentity {
   final String headline;
   final String? rank;
   final double? p;
-  const TrackIdentity({required this.headline, this.rank, this.p});
+  final bool suspect;
+  const TrackIdentity({required this.headline, this.rank, this.p, this.suspect = false});
 
-  /// "Bombus (genus, 87 %)", "no organism", "unidentified".
-  String get label => rank == null ? headline : '$headline ($rank, ${((p ?? 0) * 100).round()} %)';
+  /// "Bombus (genus, 87 %)", "no organism", "unidentified", "… · suspect".
+  String get label =>
+      (rank == null ? headline : '$headline ($rank, ${((p ?? 0) * 100).round()} %)') + (suspect ? ' · suspect' : '');
 }
 
 class LatestIdentification {
@@ -590,6 +627,7 @@ class LatestIdentification {
         headline: '${t['headline']}',
         rank: t['identified_rank'] as String?,
         p: (t['p'] as num?)?.toDouble(),
+        suspect: t['suspect'] == true,
       );
       final trackId = (t['track_id'] as num?)?.toInt();
       final ids = (t['track_ids'] as List?)?.cast<num>().map((n) => n.toInt()).toList() ?? [?trackId];

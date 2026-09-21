@@ -49,7 +49,14 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   List<TaxonRow> _rows = const [];
   String _groupRank = kGroupAsIdentified;
   bool _allRows = false;
+  // Round 212: suspect visits (short-lived + weakly supported) are hidden
+  // from the table by default; nothing is deleted, the CSV has them all.
+  bool _showSuspect = false;
   String? _error;
+
+  List<Map<String, dynamic>> get _visible =>
+      _showSuspect ? _tracks : _tracks.where((t) => t['suspect'] != true).toList();
+  int get _suspectCount => _tracks.where((t) => t['suspect'] == true).length;
 
   @override
   void initState() {
@@ -66,7 +73,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       setState(() {
         _summary = summary;
         _tracks = tracks;
-        _rows = aggregateTracks(tracks, groupRank: _groupRank);
+        _rows = aggregateTracks(_visible, groupRank: _groupRank);
       });
     } catch (e) {
       logSwallowed('identify_results_load', e);
@@ -78,7 +85,14 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     setState(() {
       _groupRank = rank;
       _allRows = false;
-      _rows = aggregateTracks(_tracks, groupRank: rank);
+      _rows = aggregateTracks(_visible, groupRank: rank);
+    });
+  }
+
+  void _setShowSuspect(bool v) {
+    setState(() {
+      _showSuspect = v;
+      _rows = aggregateTracks(_visible, groupRank: _groupRank);
     });
   }
 
@@ -198,6 +212,19 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             ),
         ],
       ),
+      if (_suspectCount > 0)
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          value: _showSuspect,
+          onChanged: _setShowSuspect,
+          title: Text('Include $_suspectCount suspect visits', style: const TextStyle(color: Colors.white)),
+          subtitle: const Text(
+            'Short-lived AND weakly supported (low detector confidence, weak identification or "no organism"); '
+            'likely false detections. Thresholds under Advanced settings; the CSV keeps them with a "suspect" flag.',
+            style: helperTextStyle,
+          ),
+        ),
       const SizedBox(height: 8),
       _tableHeader(),
       const Divider(height: 8, color: Colors.white24),
@@ -212,9 +239,9 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
-          onPressed: _tracks.isEmpty ? null : () => _showVisits('All visits', _tracks),
+          onPressed: _visible.isEmpty ? null : () => _showVisits('All visits', _visible),
           icon: const Icon(Icons.list),
-          label: Text('All ${_tracks.length} visits'),
+          label: Text('All ${_visible.length} visits'),
         ),
       ),
     ];
