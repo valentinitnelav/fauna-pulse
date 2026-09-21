@@ -32,6 +32,7 @@ class Embedder(
     val dim: Int
 
     val accelerator: String get() = rt.accelerator
+    val accelerationNote: String? get() = rt.accelerationNote
 
     private val nchw: Boolean = rt.inputUsesNchw
     private val input: FloatArray

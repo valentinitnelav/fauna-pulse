@@ -53,6 +53,7 @@ class LiteRtModel(
 
     /** Accelerator actually in use after the ladder resolves: "GPU" or "CPU". */
     override val accelerator: String
+    override val accelerationNote: String?
 
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3], regardless of the model's native
      *  layout (NCHW litert-torch shapes are reported transposed). Empty if the shape can't be read by any
@@ -97,6 +98,7 @@ class LiteRtModel(
         val modelKey = "${java.io.File(modelPath).name}_${java.io.File(modelPath).length()}"
         val blocked = readBlocklist(blocklistFile)
         val failCounts = readFailCounts(failCountFile)
+        var note: String? = null
 
         if (gpuCompileMarker.exists()) {
             val crashedKey = runCatching { gpuCompileMarker.readText().trim() }.getOrNull().orEmpty()
@@ -117,6 +119,7 @@ class LiteRtModel(
         val allowGpu = useGpu && modelKey !in blocked
         if (useGpu && !allowGpu) {
             Log.i(tag, "Model '$modelKey' is on the GPU blocklist; loading on CPU.")
+            note = "on the GPU blocklist after repeated failed GPU compiles"
         }
         if (allowGpu) {
             try {
@@ -132,6 +135,7 @@ class LiteRtModel(
             } catch (e: Throwable) {
                 runCatching { gpuCompileMarker.delete() }
                 Log.w(tag, "GPU accelerator could not run model, falling back to CPU: ${e.message}")
+                note = e.message?.take(200) ?: e.javaClass.simpleName
             }
         }
         if (prepared == null) {
@@ -140,6 +144,7 @@ class LiteRtModel(
         }
         model = prepared.model
         accelerator = acc
+        accelerationNote = if (acc == "GPU") null else note
 
         inputBuffers = prepared.inputBuffers
         outputBuffers = prepared.outputBuffers

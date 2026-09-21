@@ -22,6 +22,11 @@ interface InferenceModel {
     /** Accelerator in use: "NPU", "GPU" or "CPU". */
     val accelerator: String
 
+    /** Why the GPU was NOT used although it was requested (round 211: shown to the user instead of
+     *  living only in logcat), e.g. the compile error message or "blocklisted". Null when the GPU
+     *  runs the model or was not requested. */
+    val accelerationNote: String? get() = null
+
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3]. */
     val inputDims: IntArray
 

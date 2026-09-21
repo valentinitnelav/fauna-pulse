@@ -821,6 +821,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             embedder = e
             mapOf(
               "accelerator" to e.accelerator,
+              "accelerationNote" to e.accelerationNote,
               "inputWidth" to e.inputWidth,
               "inputHeight" to e.inputHeight,
               "dim" to e.dim,

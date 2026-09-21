@@ -111,6 +111,18 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline; all are
 in the `identify_start` record.
 Settings are saved as you change them (round 210).
 
+**GPU and CPU threads, honestly (round 211).** The GPU switch is real: it asks LiteRT to
+compile the model for the phone's GPU, the same path the live detector uses (verified for
+the YOLO detectors). For the BioCLIP image tower it has NOT been verified to work on any
+phone: on the owner's Xiaomi the GPU compile fails and the app falls back to the CPU. Since
+round 211 the reason is shown on the screen after loading (and in the "Last run" card)
+instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
+thread pool, so it does change how the matrix maths is spread; whether more threads are
+faster on a given phone is an empirical question. **Test speed** (Run section) loads the
+model with the current settings, embeds 8 of the session's own crops after a warm-up and
+reports seconds per crop, so GPU on/off and thread counts can be compared in a minute
+each; the app does not claim a speed it has not measured.
+
 Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per
 visit 10** keeps a visit's ten LARGEST boxes when it has more photos (the photo count per

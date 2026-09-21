@@ -7511,3 +7511,29 @@ Second owner feedback pass on the Identify screen (device test).
   `identification_job_test.dart` (merge on/off, gap too short).
 - Docs: IDENTIFICATION.md (defaults rationale, merge), DATA_GUIDE §8 (new columns/fields).
 - Not device-verified this round.
+
+## Round 211 (2026-09-21): GPU fallback reason on screen, "Test speed", honest accelerator texts
+
+Owner asked whether the Identify screen's GPU switch and CPU-thread field are real or a
+facade (the Xiaomi always ends on CPU for BioCLIP).
+
+- **Audit result:** both are real. `Embedder` uses `InferenceModel.create` → `LiteRtModel`,
+  i.e. the detector's GPU-first ladder (crash blocklist, CPU fallback) and
+  `CompiledModel.CpuOptions(numThreads)` on CPU compiles. What was NOT true: the r208 helper
+  claimed "GPU is usually faster for the fp16 model" (never measured for BioCLIP; on the
+  Xiaomi the GPU compile fails and the run silently falls back), and the fallback reason
+  lived only in logcat.
+- **Reason surfaced:** `InferenceModel.accelerationNote` (interface default null;
+  `LiteRtModel` records the compile exception text or "on the GPU blocklist…"; `OrtQnnModel`
+  untouched) → `Embedder.accelerationNote` → `embedderLoad` reply → `ImageEmbedderInfo` →
+  Identify screen: stage text "Identifying crops on the CPU (GPU not used: …)", Last-run
+  card line, and the speed-test result.
+- **"Test speed" button (Run section):** loads the model with the current GPU/thread
+  settings, crops up to 8 of the session's planned boxes (worker isolate), embeds one as
+  warm-up, times the 8, reports "x.xx s per crop on the CPU (n threads)", closes the model;
+  nothing is written. Lets the owner compare GPU on/off and thread counts per phone.
+- **Helper texts** for the GPU switch and CPU threads rewritten: what each really does
+  (LiteRT GPU compile attempt with CPU fallback; XNNPACK thread pool), no speed promise,
+  pointer to Test speed.
+- Kotlin changes are compile-checked with Gradle (see the round's notes); not device-run.
+

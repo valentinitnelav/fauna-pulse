@@ -16,6 +16,10 @@ import '../config/channel_config.dart';
 class ImageEmbedderInfo {
   /// "GPU" or "CPU" (the LiteRT ladder's choice after any fallback).
   final String accelerator;
+
+  /// Why the GPU was not used although requested (compile error text or
+  /// "blocklisted"); null on GPU or when the GPU was not requested.
+  final String? accelerationNote;
   final int inputWidth;
   final int inputHeight;
 
@@ -25,6 +29,7 @@ class ImageEmbedderInfo {
 
   const ImageEmbedderInfo({
     required this.accelerator,
+    this.accelerationNote,
     required this.inputWidth,
     required this.inputHeight,
     required this.dim,
@@ -70,6 +75,7 @@ class ImageEmbedder {
     if (r == null) throw StateError('embedderLoad returned nothing');
     return ImageEmbedderInfo(
       accelerator: (r['accelerator'] as String?) ?? '?',
+      accelerationNote: r['accelerationNote'] as String?,
       inputWidth: (r['inputWidth'] as num).toInt(),
       inputHeight: (r['inputHeight'] as num).toInt(),
       dim: (r['dim'] as num).toInt(),

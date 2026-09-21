@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../identification/crop_worker.dart';
 import '../identification/identification_assets.dart';
 import '../identification/identification_job.dart';
 import '../identification/identification_store.dart';
@@ -59,6 +60,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   DateTime? _runStarted;
   Timer? _ticker;
   String _accelerator = '';
+  // Round 211: why the GPU was not used (null when it was, or was not asked for).
+  String? _accelNote;
+  bool _testingSpeed = false;
+  String? _speedResult;
 
   String get _sessionName => widget.sessionDir.path.split('/').last;
 
@@ -237,6 +242,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       setState(() {
         _loadingModel = false;
         _accelerator = info.accelerator;
+        _accelNote = info.accelerationNote;
       });
       final pinfo = await PackageInfo.fromPlatform();
       final job = IdentificationJob(
@@ -297,6 +303,63 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _result = result;
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
+  }
+
+  /// Round 211: measures the real speed of the current model + GPU/thread
+  /// settings on this phone with a handful of the session's own crops, so the
+  /// user can compare settings instead of trusting the switch labels. Nothing
+  /// is written.
+  Future<void> _testSpeed() async {
+    final model = _model, prefs = _prefs;
+    if (model == null || prefs == null) return;
+    await _savePrefs();
+    setState(() {
+      _testingSpeed = true;
+      _speedResult = null;
+    });
+    const n = 8;
+    try {
+      final tasks = await IdentificationJob.planSession(widget.sessionDir, maxCropsPerTrack: prefs.maxCropsPerTrack);
+      final info = await ImageEmbedder.load(model.path, useGpu: prefs.useGpu, cpuThreads: prefs.cpuThreads);
+      final rgb = <Uint8List>[];
+      for (final t in tasks) {
+        if (rgb.length >= n) break;
+        final bytes = await File('${widget.sessionDir.path}/roi_frames/${t.source}').readAsBytes();
+        final res = await cropBatch(
+          CropBatchArgs(
+            jpegBytes: bytes,
+            requests: [CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
+            margin: prefs.margin,
+            minCropPx: prefs.minCropPx,
+            outSize: info.inputWidth,
+          ),
+        );
+        for (final r in res) {
+          if (r.rgb != null) rgb.add(r.rgb!);
+        }
+      }
+      if (rgb.isEmpty) throw Exception('no crops large enough to test');
+      await ImageEmbedder.embed([rgb.first]); // warm-up (first run pays one-off costs)
+      final sw = Stopwatch()..start();
+      await ImageEmbedder.embed(rgb);
+      final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
+      final threads = prefs.cpuThreads == 0 ? 'automatic' : '${prefs.cpuThreads}';
+      _speedResult =
+          '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
+          '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
+          '${info.accelerationNote != null ? '\nGPU not used: ${info.accelerationNote}.' : ''}';
+      _accelNote = info.accelerationNote;
+    } catch (e) {
+      logSwallowed('identify_speed_test', e);
+      _speedResult = 'Speed test failed: ${plainError(e)}';
+    } finally {
+      try {
+        await ImageEmbedder.close();
+      } catch (e) {
+        logSwallowed('identify_close', e);
+      }
+    }
+    if (mounted) setState(() => _testingSpeed = false);
   }
 
   /// Scores the stored embeddings again with the selected pack (no model run).
@@ -543,9 +606,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         runSpacing: 8,
         children: [
           FilledButton.icon(
-            onPressed: ready ? _start : null,
+            onPressed: ready && !_testingSpeed ? _start : null,
             icon: const Icon(Icons.biotech),
             label: Text(_hasEmbeddings ? 'Continue / re-run' : 'Start'),
+          ),
+          OutlinedButton.icon(
+            onPressed: ready && !_testingSpeed ? _testSpeed : null,
+            icon: const Icon(Icons.speed),
+            label: Text(_testingSpeed ? 'Testing…' : 'Test speed'),
           ),
           if (_hasEmbeddings && _pack != null)
             OutlinedButton.icon(
@@ -561,6 +629,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
+      if (_speedResult != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(_speedResult!, style: const TextStyle(color: Colors.white)),
+        ),
     ];
   }
 
@@ -577,7 +650,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         ? 'Loading the model (the first time can take a minute)…'
         : switch (p?.stage) {
             'planning' => 'Planning crops…',
-            'embedding' => 'Identifying crops on the $_accelerator…',
+            'embedding' => 'Identifying crops on the $_accelerator…'
+                '${_accelNote != null ? ' (GPU not used: $_accelNote)' : ''}',
             'paused' => 'Paused: ${p!.note}',
             'scoring' => 'Combining crops per visit and writing results…',
             'done' => 'Finishing…',
@@ -665,9 +739,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         if (r.cancelled) const Text('Cancelled — progress is kept; Continue resumes.', style: TextStyle(color: Colors.amber)),
         Text(
           '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
-          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(r.elapsed)}.',
+          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(r.elapsed)}'
+          '${r.embedded > 0 ? ' on the $_accelerator' : ''}.',
           style: const TextStyle(color: Colors.white),
         ),
+        if (r.embedded > 0 && _accelNote != null)
+          Text('GPU not used: $_accelNote.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(
@@ -716,8 +793,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           value: prefs.useGpu,
           onChanged: (v) => _edit(() => prefs.useGpu = v),
           helperText:
-              'GPU is usually faster for the fp16 model; the app falls back to the CPU when the '
-              'GPU cannot compile it. Turn off to force the CPU (int8 models, or to compare).',
+              'Tries to compile the model for the phone\'s GPU, the same path the live detector '
+              'uses. Large transformer models like BioCLIP often cannot be compiled by the GPU '
+              'driver or do not fit its memory; the app then falls back to the CPU and shows the '
+              'reason after loading. The GPU is not automatically faster: use "Test speed" to '
+              'compare on this phone. Off = CPU only.',
         ),
         NumericSettingField(
           label: 'CPU threads (0 = automatic)',
@@ -726,7 +806,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 8,
           isInt: true,
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
-          helperText: 'Fewer threads run cooler and slower.',
+          helperText:
+              'How many threads the CPU engine (XNNPACK) may spread the model\'s matrix maths '
+              'across; 0 = the engine\'s own default. More threads are usually faster on the big '
+              'cores but heat the phone sooner (which triggers the pause). "Test speed" shows the '
+              'real effect of a value on this phone.',
         ),
         NumericSettingField(
           label: 'Crop margin',
