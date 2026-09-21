@@ -49,16 +49,34 @@ MODEL_HUB = {
     "bioclip-2.5": "hf-hub:imageomics/bioclip-2.5-vith14",
     "bioclip-1": "hf-hub:imageomics/bioclip",
 }
-# "None of these" candidates: (key, prompt). Mirrors the none_* classes of Max
-# Sittinger's platform classifier plus FaunaPulse false-positive types.
-SINK_PROMPTS = [
-    ("flower", "a photo of a flower."),
-    ("leaf", "a photo of a leaf."),
-    ("shadow", "a photo of a shadow on a flower."),
-    ("debris", "a photo of dirt or debris."),
-    ("blurry", "a blurry photo with no animal."),
-    ("web", "a photo of a spider web."),
-]
+# "None of these" candidates: (key, prompt), per kind of detector/scene.
+# Explicit "background" classes are common practice in image classification; a
+# precedent for insect crops is the none_bg / none_dirt / none_shadow / none_bird
+# classes of the Insect Detect classification dataset (Sittinger, Uhler & Pink 2023,
+# Zenodo 10.5281/zenodo.8325384). BioCLIP and pybioclip have no such rows; embedding
+# negative prompts with the text tower next to the TreeOfLife names is FaunaPulse's
+# own use of the model. "arthropod" = flower-scene false positives, "mammal" =
+# camera-trap false positives of a MegaDetector "animal" box.
+SINK_SETS = {
+    "arthropod": [
+        ("flower", "a photo of a flower."),
+        ("leaf", "a photo of a leaf."),
+        ("shadow", "a photo of a shadow on a flower."),
+        ("debris", "a photo of dirt or debris."),
+        ("blurry", "a blurry photo with no animal."),
+        ("web", "a photo of a spider web."),
+    ],
+    "mammal": [
+        ("vegetation", "a photo of vegetation with no animal."),
+        ("ground", "a photo of bare ground, rocks or a path with no animal."),
+        ("person", "a photo of a person."),
+        ("vehicle", "a photo of a vehicle."),
+        ("shadow", "a photo of a shadow or a dark blurry shape."),
+        ("blurry", "a blurry photo with no animal."),
+    ],
+    "none": [],
+}
+SINK_PROMPTS = SINK_SETS["arthropod"]
 
 
 def load_tol(model_key: str, cache_dir: Path | None):
@@ -123,6 +141,8 @@ def main() -> int:
     ap.add_argument("--pack-id", default=None, help="identifier stored in the pack (default derived)")
     ap.add_argument("--dtype", choices=["f16", "f32"], default="f16")
     ap.add_argument("--no-sink", action="store_true", help="skip the 'none of these' rows")
+    ap.add_argument("--sink-set", choices=sorted(SINK_SETS), default="arthropod",
+                    help="which 'none of these' prompts to embed (arthropod: flower scenes; mammal: camera-trap scenes)")
     ap.add_argument("--logit-scale", type=float, default=None,
                     help="override (normally read from the model when sink rows are built; 100 otherwise)")
     ap.add_argument("--cache-dir", type=Path, default=None, help="Hugging Face download cache folder")
@@ -171,11 +191,12 @@ def main() -> int:
 
     logit_scale = args.logit_scale
     sink_rows = 0
-    if not args.no_sink:
-        sink, model_scale = sink_embeddings(args.model, [p for _, p in SINK_PROMPTS])
+    sink_prompts = [] if args.no_sink else SINK_SETS[args.sink_set]
+    if sink_prompts:
+        sink, model_scale = sink_embeddings(args.model, [p for _, p in sink_prompts])
         mat = np.concatenate([mat, sink], axis=0)
-        labels += [sink_label(k, p) for k, p in SINK_PROMPTS]
-        sink_rows = len(SINK_PROMPTS)
+        labels += [sink_label(k, p) for k, p in sink_prompts]
+        sink_rows = len(sink_prompts)
         if logit_scale is None:
             logit_scale = model_scale
     if logit_scale is None:
@@ -194,6 +215,7 @@ def main() -> int:
         "temperature": 1.0,
         "ranks": RANKS,
         "sink_rows": sink_rows,
+        "sink_set": None if not sink_prompts else args.sink_set,
         "labels": labels,
         "source": {
             "embeddings_repo": EMBEDDINGS[args.model][0],

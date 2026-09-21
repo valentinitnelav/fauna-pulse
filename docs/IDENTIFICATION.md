@@ -92,8 +92,29 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 
 ## Settings (Identify screen → Advanced)
 
-See `SETTINGS_REFERENCE.md` → "Identification". Defaults come from the literature and
-from Max Sittinger's pipeline; all are logged in the `identify_start` record.
+See `SETTINGS_REFERENCE.md` → "Identification". Defaults come from the literature,
+from BioCLIP's documentation and from the `insect-detect-post` pipeline; all are logged
+in the `identify_start` record.
+
+## Attribution
+
+From BioCLIP and pybioclip (Imageomics): the model and the TreeOfLife-200M name
+embeddings, zero-shot identification from hierarchical taxonomic names, the label-subset
+mechanism the packs implement (`--subset` / `apply_filter`), the softmax with the
+model's logit scale, the roll-up of species probabilities to higher ranks, and the
+recommendation to restrict candidates to a regional GBIF species list ("Geo-Restricted
+Taxon List Predictions" in the pybioclip docs). Cite Stevens et al. (2024) and Gu et al.
+(2025), see `THIRD_PARTY_MODELS.md`.
+
+From Max Sittinger's `insect-detect-post` (AGPL-3.0; Sittinger, M. 2026, Zenodo
+https://doi.org/10.5281/zenodo.21822140), re-implemented in FaunaPulse's own code with
+no lines copied: the API-based construction of the regional list (GBIF occurrence
+facets) and his TreeOfLife-to-GBIF key mapping, the per-visit CSV column names of his
+`_classified_final.csv`, and the square-crop rule of his `make_bbox_square()`. The
+"none of these" rows follow common practice, with the `none_*` classes of his
+classification dataset (Zenodo https://doi.org/10.5281/zenodo.8325384) as the precedent
+for insect crops. The combination of crops per visit (quality-weighted mean embedding,
+ladder, support) is FaunaPulse's own.
 
 ## Troubleshooting
 

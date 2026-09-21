@@ -2,10 +2,12 @@
 //
 // A "label pack" is one file holding, for every candidate name the model may
 // choose from, its text embedding (a unit-length vector produced once on a PC
-// by tool/bioclip_export/build_label_pack.py from the TreeOfLife embeddings)
-// plus its taxonomy (kingdom .. species epithet, common name). A few "sink"
-// rows (kingdom `none`: flower, leaf, shadow, ...) give false detections a
-// place to go. Container format ("fpack", little-endian):
+// by tool/bioclip_export/build_label_pack.py from the TreeOfLife-200M name
+// embeddings published by Imageomics) plus its taxonomy (kingdom .. species
+// epithet, common name). This is pybioclip's label-subset idea (`--subset` /
+// `apply_filter` over precomputed name embeddings) in a phone-friendly file.
+// A few "sink" rows (kingdom `none`: flower, leaf, shadow, ...) give false
+// detections a place to go. Container format ("fpack", little-endian):
 //   bytes 0..3  ASCII "FPK1"
 //   bytes 4..7  uint32 header length H
 //   8..8+H      UTF-8 JSON header (pack_id, model_id, dim, rows, dtype f16|f32,

@@ -1,7 +1,8 @@
 // FaunaPulse (round 208): cutting model-ready crops out of session photos.
 //
-// Per plan section 11.2: a square on the box's longer side plus a margin,
-// centred on the box; parts outside the photo are padded with the CLIP mean
+// Per plan section 11.2: a square on the box's longer side (the same rule as
+// `make_bbox_square()` in insect-detect-post, Sittinger 2026, re-implemented)
+// plus a margin, centred on the box; parts outside the photo are padded with the CLIP mean
 // colour (neutral after the model's normalisation) instead of shifting the
 // square; a direct antialiased resize to the model input (no centre crop,
 // matching pybioclip); and per-crop quality features (pixel size, padding

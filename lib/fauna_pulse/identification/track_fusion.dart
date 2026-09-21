@@ -2,8 +2,10 @@
 //
 // Pure Dart, no I/O, unit-tested. The math follows plan section 11.3:
 //   * per crop: softmax over the pack of (logit_scale / T) * cosine similarity
+//     (as pybioclip's predict, Imageomics)
 //   * per track: quality-weighted MEAN EMBEDDING (re-normalised), scored once,
-//     rolled up through the taxonomy (mass of a family = sum of its species)
+//     rolled up through the taxonomy (mass of a family = sum of its species,
+//     as pybioclip's format_grouped_probs)
 //   * a consistent top-down "ladder" (best child of the chosen parent) with
 //     per-rank mass and "support" (share of crops whose own top-1 agrees)
 //   * cross-check: weighted mean of the per-crop probabilities; a different

@@ -95,20 +95,50 @@ rows of the requested families are kept (867,455 species in total; Insecta 264,0
 Arachnida 16,406); the six "none of these" prompts are embedded with the BioCLIP text
 tower; everything is written as one `.fpack` file (format documented in `fpack.py`).
 
+### 3b. Regional packs (GBIF occurrence lists)
+
+`build_region_species_list.py` writes the species of chosen orders that GBIF has at
+least 3 records for in a region (a GBIF continent or a set of countries). Restricting
+the candidates to a regional GBIF species list is what BioCLIP's documentation
+recommends ("Geo-Restricted Taxon List Predictions"); the API-based way of getting that
+list and the TreeOfLife-to-GBIF key mapping (downloaded on first use) follow Max
+Sittinger's `insect-detect-post`. One GBIF request per order and region, about 10 to
+60 s each, no account needed:
+
+```bash
+python build_region_species_list.py --continent EUROPE   --orders Diptera,Hymenoptera,Coleoptera,Lepidoptera --out out/species_europe_pollinator_orders.csv
+python build_label_pack.py --model bioclip-2 --classes Insecta   --species-csv out/species_europe_pollinator_orders.csv --pack-id bioclip2_pollinator_orders_europe_v1 --out ./out
+```
+
+Countries instead of a continent: `--countries DE,AT,CH,CZ,PL` (union). Any CSV with a
+`species` column of "Genus epithet" names works as `--species-csv`, so a user-supplied
+taxon list is the same one-liner.
+
+### 3c. Packs built so far (2026-09-20)
+
+| Pack id | Selection | Names | Size | Runs in the app today |
+|---|---|---|---|---|
+| `bioclip2_flower_visitors_32fam_v1` | 32 flower-visitor families, worldwide | 38,570 | 60 MB | yes |
+| `bioclip2_pollinator_orders_europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,260 | 57 MB | yes |
+| `bioclip2_mammalia_world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
+| `bioclip2_pollinator_orders_world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
+
+Every pack ends with six "none of these" rows; `--sink-set arthropod` (default) uses
+flower-scene prompts, `--sink-set mammal` camera-trap prompts, `--no-sink` none.
+
 Other selections:
 
 ```bash
-# whole classes (large: ~280k names, ~430 MB, slow to score on the phone in this version)
+# whole classes (large: ~280k names, ~430 MB; needs the native scorer)
 python build_label_pack.py --model bioclip-2 --classes Insecta,Arachnida --out ./out
 # whole orders
 python build_label_pack.py --model bioclip-2 --orders Diptera,Hymenoptera --out ./out
-# a species list (CSV with a 'species' column of "Genus epithet"), e.g. a per-country
-# list built from GBIF occurrences with Max Sittinger's insect-detect-post
-python build_label_pack.py --model bioclip-2 --classes Insecta,Arachnida --species-csv species_DE.csv --pack-id bioclip2_insecta_arachnida_DE --out ./out
 ```
 
-Keep packs under about 100,000 names for now: the app scores them in pure Dart (about
-50 ms per crop per 30,000 names) and holds the matrix in memory (4 bytes per number).
+Keep packs under about 100,000 names for the current app version: it scores them in
+pure Dart (about 50 ms per crop per 30,000 names) and holds the matrix in memory
+(4 bytes per number). Larger packs are built the same way and wait for the native
+scorer.
 
 ## 4. Verify the export (recommended, about 3 minutes)
 
@@ -164,16 +194,55 @@ the results.
 | `export_image_tower.py` | checkpoint -> `.tflite` (+ manifest) |
 | `build_label_pack.py` | TreeOfLife embeddings + filters + sink rows -> `.fpack` |
 | `fpack.py` | the pack container format (also writes the app's test fixture) |
+| `build_region_species_list.py` | GBIF occurrence facets + TreeOfLife-to-GBIF mapping -> regional species CSV |
 | `verify_parity.py` | PyTorch vs `.tflite` comparison on real images |
 | `inspect_tflite.py` | ops, constant sizes and weight layout of a `.tflite` |
 | `requirements.txt`, `requirements-lock.txt` | packages (ranges / exact verified versions) |
+| `catalog.example.json` | example of the download catalogue the app will read (model + pack entries with URL, size, sha256) |
 | `out/`, `.venv/` | outputs and the environment (git-ignored) |
+
+## Attribution of methods and data used here
+
+Two sources are credited for different things; please keep both when citing.
+
+**From BioCLIP / pybioclip (Imageomics; model MIT, embeddings CC0, code MIT):**
+- zero-shot identification from a hierarchical taxonomic name list, and the
+  TreeOfLife-200M name embeddings the packs are cut from (Stevens et al. 2024; Gu et al. 2025);
+- the label-subset mechanism the packs implement (pybioclip's `--subset` /
+  `create_taxa_filter` / `apply_filter` over precomputed name embeddings);
+- the softmax with the model's logit scale and the roll-up of species probabilities to
+  higher ranks (pybioclip's `predict` and `format_grouped_probs`);
+- the recommendation to restrict candidates to a regional GBIF or Map of Life species
+  list ("Geo-Restricted Taxon List Predictions", https://imageomics.github.io/pybioclip/geo-restricted-taxa/).
+
+**From Max Sittinger's `insect-detect-post` (AGPL-3.0; Sittinger, M. 2026, Zenodo
+https://doi.org/10.5281/zenodo.21822140), re-implemented in our own code:**
+- the API-based way of building the regional list (GBIF occurrence facets, minimum 3
+  records) and his TreeOfLife-to-GBIF key mapping (`tol_gbif_taxon_keys_Arthropoda.csv`,
+  downloaded from his release, not redistributed);
+- the per-visit CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
+  `track_imgs`, `pred_imgs`, `bioclip_<rank>`) of his `_classified_final.csv`, so both
+  tools' outputs can be analysed with the same scripts; the app's fusion rule itself
+  differs (quality-weighted mean embedding, plan section 11.3);
+- the square-on-the-longer-side crop rule (`make_bbox_square()`); FaunaPulse adds a
+  margin and pads at photo edges instead of shifting the square.
+
+**Precedent, not origin:** the "none of these" rows follow the common practice of
+explicit background classes, as in the `none_*` classes of the Insect Detect
+classification dataset (Sittinger, Uhler & Pink 2023, https://doi.org/10.5281/zenodo.8325384).
+
+**Data:** GBIF occurrence facets and backbone taxonomy, https://www.gbif.org.
 
 ## Licenses and citation
 
 Model weights: BioCLIP 2 by Imageomics, MIT. Name embeddings: TreeOfLife-200M,
-CC0-1.0. The converted files are unofficial conversions made by you, not provided or
-endorsed by Imageomics. Cite Gu et al. (2025), *BioCLIP 2: Emergent Properties from
-Scaling Hierarchical Contrastive Learning*, NeurIPS 2025 (https://arxiv.org/abs/2505.23883),
-plus the original BioCLIP (Stevens et al., CVPR 2024) and OpenCLIP, when publishing
-results. See `docs/THIRD_PARTY_MODELS.md`.
+CC0-1.0. 
+
+Important note - the converted files are unofficial conversions, not provided or
+endorsed by Imageomics.  
+
+If you use these models, even if they were adapted for smartphone usage with FaunaPulse, 
+please note the citation suggestions of the BioCLIP2 model card on Hugging Face at
+https://huggingface.co/imageomics/bioclip-2#citation
+
+See also `docs/THIRD_PARTY_MODELS.md`.

@@ -9,8 +9,12 @@
 //                                row = the record's `row`
 //     predictions_<pack>.jsonl   per crop: top rows of the pack with probabilities
 //     tracks_<pack>.json         per track: ladder, crops, flags (full detail)
-//     tracks_<pack>.csv          one row per track, Max Sittinger's `_final.csv`
-//                                columns plus per-rank probability/support
+//     tracks_<pack>.csv          one row per track; the leading columns follow the
+//                                `_classified_final.csv` of insect-detect-post
+//                                (Sittinger 2026, AGPL-3.0, Zenodo
+//                                10.5281/zenodo.21822140) so both tools' outputs
+//                                can be analysed alike, plus per-rank
+//                                probability/support columns of our own
 //     summary_<pack>.json        counts for the results screen and home badge
 //     README_identification.txt  column dictionary + the run's parameters
 //

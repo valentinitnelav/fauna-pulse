@@ -90,7 +90,7 @@ FaunaPulse is an **early research preview (alpha)**, provided as a free, experim
 
 - Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own AI models.
-- Built-in (on device) en masse taxonomic identification is experimental (round 208): it needs a BioCLIP model file (0.3 to 1.3 GB) and a label pack prepared on a PC, runs at roughly one to several seconds per crop, and reports model confidence, not verified accuracy.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (0.3 to 1.3 GB) and a label pack prepared on a PC, runs at roughly one to several seconds per crop, and reports model confidence, not verified accuracy.
 - Visit counts may include missed, duplicated, split or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions.
 - Each scientific application should be validated under its intended field conditions before data collection at scale.
 - Detection accuracy and tracking performance depend on the model, smartphone, target organism and field setup, including weather conditions. Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
@@ -167,6 +167,8 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 <details>
 	<summary>Expand:</summary>
 
+### Detectors
+
 At the moment, the app comes together with one general-purpose detector for popular wildlife - [MegaDetector v6][mgdetv6] with 3 classes: *animal, person, vehicle*.
 
 See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
@@ -180,6 +182,13 @@ Custom AI detectors can be added:
 Motion-triggered and time-lapse capture record without any detection model.
 
 Model weights are not stored in this repository. They can be too large to keep in Git history, and some test detectors belong to research collaborators and must not be redistributed without approval, so all model binaries stay Git-ignored. See the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
+
+### Classifiers
+
+Classification models like [BioCLIP 2][bioclip] are currently under implementation for bulk classification on-device without an internet connection.
+Since FaunaPulse is designed to be used offline in the field and classify thousands of cropped images of detected and tracked organisms, having on-device classification is a key addition.
+
+Classifiers will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets that can be downloaded to the end-user's device. Links will be provided soon with the next release.
 
 </details>
 
@@ -215,8 +224,6 @@ Scientific literature was located using [Google Scholar](https://scholar.google.
 
 For transparency, the development process is documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
 
-I hope the community can pick on this project and carry its development further.
-
 </details>
 
 ## Related research
@@ -239,6 +246,10 @@ Future work includes maturing the on-device taxonomic identification (calibrated
 
 If you use FaunaPulse in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff). 
 GitHub renders a ready-made "Cite this repository" button from that file (top-right of the repository page).
+
+Example:
+
+> Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection and tracking of animals. https://doi.org/10.5281/zenodo.22309221
 
 Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`.
 

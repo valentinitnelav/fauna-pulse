@@ -7401,3 +7401,19 @@ now installs the CPU build of PyTorch via `--extra-index-url` (the default CUDA 
 cost 3 GB of disk for nothing); `requirements-lock.txt` holds the exact 77 verified
 package versions (Ubuntu 24.04, Python 3.12.3, minus the nvidia-*/triton CUDA
 packages). New `inspect_tflite.py` documented.
+Packs per category and region (owner request, same day): `build_label_pack.py` gained
+`--sink-set arthropod|mammal|none` (camera-trap sink prompts for MegaDetector boxes)
+and the new `build_region_species_list.py` derives regional species lists from GBIF
+occurrence facets (continent or country union, min 3 records, one request per order)
+intersected with the TreeOfLife-to-GBIF mapping published with insect-detect-post. The
+regional-restriction idea itself is BioCLIP's ("Geo-Restricted Taxon List Predictions"
+in the pybioclip docs); the API-based construction follows Sittinger's implementation
+(owner asked for honest two-level attribution, applied across code and docs the same
+day); Europe × the four pollinator orders
+= 35,260 species in ~70 s of API time. Built: `bioclip2_pollinator_orders_europe_v1`
+(35,260 names), `bioclip2_flower_visitors_32fam_v1` (38,570), `bioclip2_mammalia_world_v1`
+(5,999, 9.4 MB), `bioclip2_pollinator_orders_world_v1` (204,620 names, 318 MB, needs the
+native scorer). `catalog.example.json` sketches the download catalogue for the planned
+in-app "Download…" menu (HTTPS + sha256, hosted on Hugging Face / GitHub Releases, Zenodo
+for the DOI copy; Play bundling ruled out by the 200 MB base limit and Play-only asset
+delivery).
