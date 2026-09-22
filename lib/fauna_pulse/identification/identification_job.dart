@@ -530,6 +530,10 @@ class IdentificationJob {
     final detCounts = <int, int>{};
     final log = File('${sessionDir.path}/session.jsonl');
     String deviceId = '';
+    // Round 216: the session's photo schedule, so the results screen can say
+    // "one photo every 1 s during the first 10 s of a track id" with the
+    // real values instead of the defaults.
+    double? photoStepS, photoDurationS;
     if (log.existsSync()) {
       for (final line in const LineSplitter().convert(log.readAsStringSync())) {
         if (!line.contains('"track') && !line.contains('"start_of_session"')) continue;
@@ -544,6 +548,11 @@ class IdentificationJob {
           final d = rec['device'];
           if (d is Map && d['model'] != null) deviceId = '${d['model']}';
           if (deviceId.isEmpty && rec['device_model'] != null) deviceId = '${rec['device_model']}';
+          final cfg = rec['config'];
+          if (cfg is Map) {
+            photoStepS = (cfg['stepSeconds'] as num?)?.toDouble();
+            photoDurationS = (cfg['durationSeconds'] as num?)?.toDouble();
+          }
         }
         void extend(int? id) {
           if (id == null || t == null) return;
@@ -645,6 +654,7 @@ class IdentificationJob {
       tracks: scored,
       settings: settings,
       appVersion: appVersion,
+      capture: {'photo_step_s': photoStepS, 'photo_duration_s': photoDurationS},
     );
   }
 }

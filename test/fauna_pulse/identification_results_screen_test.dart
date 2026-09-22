@@ -108,7 +108,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Track id'), findsOneWidget);
     expect(find.text('No. ▲'), findsOneWidget); // default sort column
-    expect(find.text('#1'), findsOneWidget); // first visible row (lazy list)
+    // The sheet's explanation block can push the first (lazily built) row
+    // below the fold under the test font: scroll the sheet's own list.
+    await tester.dragUntilVisible(find.text('#1'), find.byType(ListView).last, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.text('#1'), findsOneWidget);
     // Close the sheet.
     await tester.tapAt(const Offset(180, 20));
     await tester.pumpAndSettle();
@@ -120,7 +124,7 @@ void main() {
     );
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
-    expectAboveBottomInset(tester, find.textContaining('All 41 visits'), label: 'last results row');
+    expectAboveBottomInset(tester, find.textContaining('All 41 track ids'), label: 'last results row');
 
     await tester.pumpWidget(const SizedBox());
   });

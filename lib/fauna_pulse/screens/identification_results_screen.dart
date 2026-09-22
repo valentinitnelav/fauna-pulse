@@ -1,27 +1,31 @@
-// FaunaPulse (round 208, reworked rounds 209, 214, 215): results of an
+// FaunaPulse (round 208, reworked rounds 209, 214, 215, 216): results of an
 // identification run for one session.
 //
 // Reads tracks_<pack>.json (full detail) and summary_<pack>.json (counts).
-// Screen = key/value header, then a per-taxon TABLE (taxon, rank, visits,
-// time, median ∑Conf.; sortable by any column, filterable by rank, grouped
-// "as identified" or by a fixed rank). A row opens the visits behind it
-// (numbered 1..N, the tracker's ids in their own column, sortable); a visit
-// opens its detail sheet: the ladder as an aligned table with the chosen
-// rank highlighted (∑Conf. from the combined embedding, Avg from the crops
-// scored one by one, Agree counts), flags with explanations, the photo with
-// the detector box and the square crop drawn (toggle, zoom), and the crops
-// table (each crop's own ∑Conf. for the reported taxon, its predicted
-// species; tap a row to show that crop).
+// Screen S2 = key/value header, then a per-taxon TABLE (taxon, rank, track
+// ids, time, median confidence; sortable, filterable by rank, grouped "as
+// identified" or by a fixed rank). A row opens sheet S3 with its track ids
+// (numbered 1..N, the tracker's ids in their own column, sortable, with the
+// median confidence stated above the table); a track id opens sheet S4:
+// the ladder (Conf. from the combined embedding, Avg from the crops scored
+// one by one, Agree counts; tap a row to select its taxon), flags with
+// explanations, the photo with the detector box and the square crop drawn
+// (toggle, zoom), and the crops table (each crop's own confidence for the
+// selected ladder taxon, its top species; tap a row to show that crop).
 //
-// Vocabulary used on every table (owner, round 215): "∑Conf." = probability
-// of a TAXON, i.e. the probabilities of all label-pack names under it added
-// up; "Conf." = probability of ONE name (a species). Percentages are model
-// confidence, not accuracy.
+// Vocabulary (owner, rounds 215/216): "track id" = one tracked organism
+// (a pollination ecologist's "visit"); "Conf." = the model's confidence
+// that a track id belongs to a TAXON (species probabilities under it added
+// up); "Species conf." = one species, one crop, nothing added up; "Med.
+// Conf." = median of Conf. across the track ids of a taxon row. Every info
+// text lists its table's columns in bold, one per line. Percentages are
+// model confidence, not accuracy.
 //
 // Column widths are MEASURED from the header and the longest cell texts
-// (TextPainter), so a sort arrow or a long number never gets ellipsised;
-// the text column takes the rest, and a table that still does not fit
-// (the crops table) scrolls sideways with a visible scrollbar.
+// (TextPainter), so a sort arrow or a long number never gets ellipsised; a
+// table with a flex column gives it the rest, a table without one stays
+// left-packed, and a table that still does not fit scrolls sideways with a
+// visible scrollbar.
 
 import 'dart:convert';
 import 'dart:io';
@@ -47,9 +51,10 @@ const double _gutter = 8;
 
 String _pct(num? v) => v == null ? '–' : '${(v * 100).round()} %';
 String _secs(num? v) => v == null ? '–' : formatVisitTime(v.toDouble());
+String _plural(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
 
 /// One column of a small table. Alignment standard for every results
-/// table: identifiers and names left, quantities right ([numeric]). Exactly
+/// table: identifiers and names left, quantities right ([numeric]). At most
 /// one column is [flex] (takes the remaining width); the others are
 /// measured from their content.
 class _Col {
@@ -93,7 +98,7 @@ double _fixedWidth(List<_Col> cols, Map<String, double> widths) {
 
 /// Lays [cells] out on [cols]: measured widths for the fixed columns, the
 /// flex column expands (or takes [flexWidth] when the table scrolls
-/// sideways).
+/// sideways). Without a flex column the row is left-packed.
 Widget _cellsRow(List<_Col> cols, Map<String, double> widths, List<Widget> cells, double? flexWidth) {
   assert(cells.length == cols.length);
   return Row(
@@ -145,17 +150,28 @@ class _SortHeader extends StatelessWidget {
   }
 }
 
-/// A data row with a thin line under it; [highlight] marks the chosen /
-/// selected row; [below] spans the whole row (a file name).
+/// A data row with a thin line under it; [highlight] marks the reported /
+/// shown row; [selected] draws a bar on the left (the ladder row whose
+/// taxon the crops table shows); [below] spans the whole row.
 class _TableRow extends StatelessWidget {
   final List<_Col> cols;
   final Map<String, double> widths;
   final List<Widget> cells;
   final bool highlight;
+  final bool selected;
   final VoidCallback? onTap;
   final Widget? below;
   final double? flexWidth;
-  const _TableRow({required this.cols, required this.widths, required this.cells, this.highlight = false, this.onTap, this.below, this.flexWidth});
+  const _TableRow({
+    required this.cols,
+    required this.widths,
+    required this.cells,
+    this.highlight = false,
+    this.selected = false,
+    this.onTap,
+    this.below,
+    this.flexWidth,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +182,10 @@ class _TableRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 5),
         decoration: BoxDecoration(
           color: highlight ? Colors.white10 : null,
-          border: Border(bottom: BorderSide(color: highlight ? Colors.white38 : Colors.white12, width: highlight ? 1 : 0.5)),
+          border: Border(
+            bottom: BorderSide(color: highlight ? Colors.white38 : Colors.white12, width: highlight ? 1 : 0.5),
+            left: selected ? const BorderSide(color: _cropBoxColor, width: 3) : BorderSide.none,
+          ),
         ),
         child: below == null ? row : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [row, below!]),
       ),
@@ -200,7 +219,8 @@ class _MiniTableState extends State<_MiniTable> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (_, box) {
-        final natural = _fixedWidth(widget.cols, widget.widths) + widget.flexMin;
+        final hasFlex = widget.cols.any((c) => c.flex);
+        final natural = _fixedWidth(widget.cols, widget.widths) + (hasFlex ? widget.flexMin : 0);
         if (natural <= box.maxWidth) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(null));
         }
@@ -213,11 +233,48 @@ class _MiniTableState extends State<_MiniTable> {
             padding: const EdgeInsets.only(bottom: 10),
             child: SizedBox(
               width: natural,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(widget.flexMin)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(hasFlex ? widget.flexMin : null)),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// An explanation block for one table (owner, round 216): an intro, then
+/// "Columns of the table below:", one line per column with the column name
+/// in bold and a little space between the lines, then an outro.
+class _ColumnsHelp extends StatelessWidget {
+  final String? intro;
+  final List<(String, String)> cols;
+  final String? outro;
+  const _ColumnsHelp({this.intro, required this.cols, this.outro});
+
+  @override
+  Widget build(BuildContext context) {
+    const bold = TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (intro != null) Text(intro!, style: helperTextStyle),
+          Padding(
+            padding: EdgeInsets.only(top: intro == null ? 0 : 6),
+            child: const Text('Columns of the table below:', style: bold),
+          ),
+          for (final (name, text) in cols)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text.rich(
+                TextSpan(children: [TextSpan(text: '$name: ', style: bold), TextSpan(text: text)]),
+                style: helperTextStyle,
+              ),
+            ),
+          if (outro != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(outro!, style: helperTextStyle)),
+        ],
+      ),
     );
   }
 }
@@ -242,6 +299,7 @@ int _cmpNum(num? a, num? b) {
   return a.compareTo(b);
 }
 
+/// A track id's Conf. at [rank] (null = its identified rank).
 double? _ladderP(Map<String, dynamic> t, String? rank) {
   final r = rank ?? t['identified_rank'];
   if (r == null) return null;
@@ -251,7 +309,12 @@ double? _ladderP(Map<String, dynamic> t, String? rank) {
   return null;
 }
 
-String _plural(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
+double? _median(List<double> xs) {
+  if (xs.isEmpty) return null;
+  final s = [...xs]..sort();
+  final n = s.length;
+  return n.isOdd ? s[n ~/ 2] : (s[n ~/ 2 - 1] + s[n ~/ 2]) / 2;
+}
 
 class IdentificationResultsScreen extends StatefulWidget {
   final Directory sessionDir;
@@ -276,9 +339,9 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   static const _cols = [
     _Col('taxon', 'Taxon', flex: true),
     _Col('rank', 'Rank'),
-    _Col('visits', 'Visits', numeric: true),
+    _Col('visits', 'Track ids', numeric: true),
     _Col('time', 'Time', numeric: true),
-    _Col('conf', '∑Conf.', numeric: true),
+    _Col('conf', 'Med. Conf.', numeric: true),
   ];
 
   Map<String, dynamic>? _summary;
@@ -295,7 +358,10 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   List<Map<String, dynamic>> get _visible =>
       _showSuspect ? _tracks : _tracks.where((t) => t['suspect'] != true).toList();
   int get _suspectCount => _tracks.where((t) => t['suspect'] == true).length;
-  double get _margin => ((_summary?['settings'] as Map?)?['margin'] as num?)?.toDouble() ?? 0.15;
+  Map<String, dynamic> get _settings => ((_summary?['settings'] as Map?) ?? const {}).cast<String, dynamic>();
+  double get _margin => (_settings['margin'] as num?)?.toDouble() ?? 0.15;
+  double? get _tau => (_settings['tau'] as num?)?.toDouble();
+  Map<String, dynamic> get _capture => ((_summary?['capture'] as Map?) ?? const {}).cast<String, dynamic>();
 
   @override
   void initState() {
@@ -416,9 +482,9 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       _kv('Label pack', '${s['pack_id']} (${s['pack_rows']} names)'),
       _kv('Date run', when),
       _kv(
-        'Visits',
+        'Track ids',
         '${s['tracks_total']}'
-        '${merged > 0 ? ' ($merged joined from consecutive track ids, ${s['tracks_before_merge']} track ids in all)' : ''}',
+        '${merged > 0 ? ' ($merged joined from consecutive track ids, ${s['tracks_before_merge']} before joining)' : ''}',
       ),
     ];
   }
@@ -440,25 +506,32 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     ], MediaQuery.textScalerOf(context));
     return [
       const HelpLabel(
-        label: 'Visits per taxon / rank',
+        label: 'Track ids per taxon / rank',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        helperText:
-            'One row per taxon. "As identified" gives one row per answer at the rank the model was '
-            'sure about (a visit identified only to genus Bombus and one identified to Bombus '
-            'terrestris are two rows). Pick a rank to count every visit under its order, family, '
-            'genus or species instead; visits the model did not resolve that deep land in a '
-            '"not resolved" row.\n'
-            'Rank: the taxonomic rank of the row\'s taxon; the Rank filter keeps only rows of one rank.\n'
-            'Visits: number of visits (track ids, or joined visits) in the row.\n'
-            'Time: the row\'s visit durations added up (first to last detector frame of each visit).\n'
-            '∑Conf.: median over the row\'s visits of each visit\'s ∑Conf. for that taxon. ∑Conf. of a '
-            'taxon = the probabilities of all label-pack names under it added up (a genus = the sum of '
-            'its species, a family = the sum of its genera, and so on). It comes from the visit\'s '
-            'combined embedding: the model turns each crop into a vector, FaunaPulse averages the '
-            'visit\'s vectors (weighted by crop quality), compares the average with every name in the '
-            'pack and turns the similarities into probabilities that sum to 100 % over the pack. It is '
-            'model confidence, not a measured accuracy: treat species-level names as suggestions.\n'
-            'Tap a column header to sort, a row to list its visits, a visit for its full ladder.',
+        helperChild: _ColumnsHelp(
+          intro:
+              'One row per taxon. A track id is one tracked organism (what a pollination ecologist '
+              'calls a visit); it has one or more crops (photos) that the model classified together '
+              'into one answer. "As identified" gives one row per answer at the rank the model was '
+              'sure about (a track id identified only to genus Bombus and one identified to Bombus '
+              'terrestris are two rows). Pick a rank to count every track id under its order, family, '
+              'genus or species instead; track ids the model did not resolve that deep land in a '
+              '"not resolved" row.',
+          cols: [
+            ('Taxon', 'the taxon of the row.'),
+            ('Rank', 'its taxonomic rank; the Rank filter above keeps only rows of one rank.'),
+            ('Track ids', 'how many track ids the row holds.'),
+            ('Time', 'the durations of those track ids added up (first to last detector frame of each).'),
+            (
+              'Med. Conf.',
+              'the median of the model\'s confidence for this taxon across the row\'s track ids, rounded '
+                  'to whole percent. It is the Conf. column of the list that opens when you tap the row, '
+                  'where confidence is explained. Model confidence, not a measured accuracy: treat '
+                  'species-level names as suggestions.',
+            ),
+          ],
+          outro: 'Tap a column header to sort, a row to list its track ids, a track id for its full ladder.',
+        ),
       ),
       const SizedBox(height: 6),
       Wrap(
@@ -491,7 +564,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             _showSuspect = v;
             _recompute();
           }),
-          title: Text('Include ${_plural(_suspectCount, 'suspect visit')}', style: const TextStyle(color: Colors.white)),
+          title: Text('Include ${_plural(_suspectCount, 'suspect track id')}', style: const TextStyle(color: Colors.white)),
           subtitle: const Text(
             'Short-lived AND weakly supported (low detector confidence, weak identification or "no organism"); '
             'likely false detections. Thresholds under Advanced settings; the CSV keeps them with a "suspect" flag.',
@@ -532,14 +605,14 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           onPressed: () => setState(() => _allRows = true),
           child: Text('Show all ${filtered.length} rows'),
         ),
-      if (filtered.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No visits.', style: helperTextStyle)),
+      if (filtered.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No track ids.', style: helperTextStyle)),
       const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
-          onPressed: _visible.isEmpty ? null : () => _showVisits('All visits', _visible, rank: null, showTaxon: true),
+          onPressed: _visible.isEmpty ? null : () => _showVisits('All track ids', _visible, rank: null, showTaxon: true),
           icon: const Icon(Icons.list),
-          label: Text('All ${_visible.length} visits'),
+          label: Text('All ${_visible.length} track ids'),
         ),
       ),
     ];
@@ -551,17 +624,11 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       cols: _cols,
       widths: widths,
       flexWidth: fw,
-      // A bucket row ("unidentified", "not resolved …") holds visits of
+      // A bucket row ("unidentified", "not resolved …") holds track ids of
       // different taxa, so its sheet keeps the taxon column.
       onTap: () => _showVisits(r.isBucket ? r.taxon : '${r.taxon} (${r.rank})', r.tracks, rank: r.isBucket ? null : r.rank, showTaxon: r.isBucket),
       cells: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _txt(r.taxon, style: style, bold: !r.isBucket, maxLines: 2),
-            if (r.lineage.isNotEmpty) _txt(r.lineage.join(' › '), style: helperTextStyle, maxLines: 3),
-          ],
-        ),
+        _txt(r.taxon, style: style, bold: !r.isBucket, maxLines: 2),
         _txt(r.isBucket ? '–' : r.rank, style: _dimCellStyle),
         _txt('${r.visits}', right: true),
         _txt(formatVisitTime(r.totalS), right: true, style: _dimCellStyle),
@@ -596,25 +663,33 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       builder: (_) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.9,
-        builder: (_, controller) => _TrackSheet(sessionDir: widget.sessionDir, track: t, margin: _margin, controller: controller),
+        builder: (_, controller) => _TrackSheet(
+          sessionDir: widget.sessionDir,
+          track: t,
+          margin: _margin,
+          tau: _tau,
+          photoStepS: (_capture['photo_step_s'] as num?)?.toDouble(),
+          photoDurationS: (_capture['photo_duration_s'] as num?)?.toDouble(),
+          controller: controller,
+        ),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Visits list: numbered rows, tracker ids in their own column, sortable.
+// S3: the track ids of one taxon row (or all): numbered, sortable.
 // ---------------------------------------------------------------------------
 
 class _VisitsSheet extends StatefulWidget {
   final String title;
   final List<Map<String, dynamic>> tracks;
 
-  /// Rank whose ∑Conf. the sheet shows (the taxon row's rank); null = each
-  /// visit's own identified rank (the "All visits" list, bucket rows).
+  /// Rank whose Conf. the sheet shows (the taxon row's rank); null = each
+  /// track id's own identified rank (the "All track ids" list, bucket rows).
   final String? rank;
 
-  /// False when every visit is the same taxon (the title says it).
+  /// False when every track id is the same taxon (the title says it).
   final bool showTaxon;
   final ScrollController controller;
   final void Function(Map<String, dynamic>) onOpen;
@@ -632,17 +707,26 @@ class _VisitsSheet extends StatefulWidget {
 }
 
 class _VisitsSheetState extends State<_VisitsSheet> {
+  // Without a taxon column there is no flex column: the table stays
+  // left-packed instead of spreading one column over the free width.
   late final List<_Col> _cols = [
     const _Col('no', 'No.'),
-    _Col('id', 'Track id', flex: !widget.showTaxon),
+    const _Col('id', 'Track id'),
     if (widget.showTaxon) const _Col('taxon', 'Taxon', flex: true),
     const _Col('crops', 'Crops', numeric: true),
     const _Col('time', 'Time', numeric: true),
-    const _Col('conf', '∑Conf.', numeric: true),
+    const _Col('conf', 'Conf.', numeric: true),
   ];
   String _sortKey = 'no';
   bool _asc = true;
   late final List<(int, Map<String, dynamic>)> _rows = [for (var i = 0; i < widget.tracks.length; i++) (i + 1, widget.tracks[i])];
+  final _h = ScrollController();
+
+  @override
+  void dispose() {
+    _h.dispose();
+    super.dispose();
+  }
 
   double? _p(Map<String, dynamic> t) => _ladderP(t, widget.rank);
 
@@ -687,6 +771,31 @@ class _VisitsSheetState extends State<_VisitsSheet> {
           _ => _pct(_p(t)),
         },
     ], MediaQuery.textScalerOf(context));
+    final taxonWord = widget.rank == null ? 'the taxon it was identified to' : widget.title.replaceAll(RegExp(r' \(.*\)$'), '');
+    final median = _median([for (final t in widget.tracks) ?_p(t)]);
+    // The list is lazy, so the sideways-scroll fallback of _MiniTable is
+    // applied to the whole list instead: when the measured columns do not
+    // fit (large system fonts, many-digit ids), the list scrolls sideways.
+    final hasFlex = _cols.any((c) => c.flex);
+    final natural = _fixedWidth(_cols, widths) + (hasFlex ? 110 : 0) + 32;
+    return LayoutBuilder(
+      builder: (_, box) {
+        final list = _list(context, widths, taxonWord, median);
+        if (natural <= box.maxWidth) return list;
+        return Scrollbar(
+          controller: _h,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _h,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: natural, child: list),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _list(BuildContext context, Map<String, double> widths, String taxonWord, double? median) {
     return ListView.builder(
       controller: widget.controller,
       padding: _sheetPadding(context),
@@ -696,14 +805,25 @@ class _VisitsSheetState extends State<_VisitsSheet> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${widget.title} · ${_plural(widget.tracks.length, 'visit')}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(
-                'No. = row number here; Track id = the id the detector and tracker gave the visit (ids can '
-                'jump). Time = first to last detector frame. ∑Conf. = the visit\'s probability for '
-                '${widget.rank == null ? 'its reported taxon' : 'this taxon'} (names under it summed). '
-                'Tap a row for the full ladder, photo and crops.',
-                style: helperTextStyle,
+              Text('${widget.title} · ${_plural(widget.tracks.length, 'track id')}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              _ColumnsHelp(
+                intro: 'One row per track id (one tracked organism, what a pollination ecologist calls a visit).',
+                cols: [
+                  ('No.', 'row number in this list.'),
+                  ('Track id', 'the id the detector and tracker gave the organism (ids can jump).'),
+                  if (widget.showTaxon) ('Taxon', 'the taxon it was identified to, with its rank.'),
+                  ('Crops', 'how many of its photos were classified.'),
+                  ('Time', 'first to last detector frame.'),
+                  (
+                    'Conf.',
+                    'the model\'s confidence that this track id belongs to $taxonWord, combining its crops '
+                        '(how it is computed is explained on the next screen).',
+                  ),
+                ],
+                outro: widget.rank == null || median == null
+                    ? 'Tap a row for the full ladder, photo and crops.'
+                    : 'Median Conf. across these ${_plural(widget.tracks.length, 'track id')}: ${_pct(median)} '
+                          '(the Med. Conf. shown in the table before). Tap a row for the full ladder, photo and crops.',
               ),
               const SizedBox(height: 6),
               _SortHeader(cols: _cols, widths: widths, sortKey: _sortKey, asc: _asc, onSort: _sort),
@@ -713,20 +833,19 @@ class _VisitsSheetState extends State<_VisitsSheet> {
         final (no, t) = _rows[i - 1];
         final dim = t['headline'] == 'no organism' || t['headline'] == 'unidentified';
         final suspect = t['suspect'] == true;
-        final idCell = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _txt(_idText(t)),
-            if (suspect && !widget.showTaxon) const Text('suspect', style: TextStyle(color: Colors.amber, fontSize: 11)),
-          ],
-        );
         return _TableRow(
           cols: _cols,
           widths: widths,
           onTap: () => widget.onOpen(t),
           cells: [
             _txt('$no', style: _dimCellStyle),
-            idCell,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _txt(_idText(t)),
+                if (suspect && !widget.showTaxon) const Text('suspect', style: TextStyle(color: Colors.amber, fontSize: 11)),
+              ],
+            ),
             if (widget.showTaxon)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -750,15 +869,26 @@ class _VisitsSheetState extends State<_VisitsSheet> {
 }
 
 // ---------------------------------------------------------------------------
-// One visit: ladder, flags, photo with boxes, crops table.
+// S4: one track id: ladder, flags, photo with boxes, crops table.
 // ---------------------------------------------------------------------------
 
 class _TrackSheet extends StatefulWidget {
   final Directory sessionDir;
   final Map<String, dynamic> track;
   final double margin;
+  final double? tau;
+  final double? photoStepS;
+  final double? photoDurationS;
   final ScrollController controller;
-  const _TrackSheet({required this.sessionDir, required this.track, required this.margin, required this.controller});
+  const _TrackSheet({
+    required this.sessionDir,
+    required this.track,
+    required this.margin,
+    required this.tau,
+    required this.photoStepS,
+    required this.photoDurationS,
+    required this.controller,
+  });
 
   @override
   State<_TrackSheet> createState() => _TrackSheetState();
@@ -768,23 +898,13 @@ class _TrackSheetState extends State<_TrackSheet> {
   static const _ladderCols = [
     _Col('rank', 'Rank'),
     _Col('taxon', 'Taxon', flex: true),
-    _Col('p', '∑Conf.', numeric: true),
+    _Col('p', 'Conf.', numeric: true),
     _Col('p_mean', 'Avg', numeric: true),
     _Col('support', 'Agree', numeric: true),
   ];
-  // What matters for tracing the answer comes first; size and weight sit
-  // to the right (the table scrolls sideways on a phone).
-  static const _cropCols = [
-    _Col('no', 'No.'),
-    _Col('mass', '∑Conf.', numeric: true),
-    _Col('agrees', 'Agree', numeric: true),
-    _Col('top1', 'Species', flex: true),
-    _Col('p', 'Conf.', numeric: true),
-    _Col('side', 'Side px', numeric: true),
-    _Col('weight', 'Weight', numeric: true),
-  ];
 
   late final List<Map<String, dynamic>> _crops = (widget.track['crops'] as List).cast<Map<String, dynamic>>();
+  late final List<Map<String, dynamic>> _ladder = (widget.track['ladder'] as List).cast<Map<String, dynamic>>();
   late final List<(int, Map<String, dynamic>)> _cropRows = [for (var i = 0; i < _crops.length; i++) (i + 1, _crops[i])];
   String _sortKey = 'no';
   bool _asc = true;
@@ -792,15 +912,31 @@ class _TrackSheetState extends State<_TrackSheet> {
   bool _showBoxes = true;
   final _zoom = TransformationController();
 
-  String? get _rank => widget.track['identified_rank'] as String?;
-  int get _rankIdx => _rank == null ? -1 : kRankNames.indexOf(_rank!);
+  /// Ladder row whose taxon the crops table's confidence column shows;
+  /// starts at the reported rank (or the deepest rank when unidentified).
+  late int _sel = _rank == null ? math.max(0, _ladder.length - 1) : kRankNames.indexOf(_rank!);
 
-  /// This crop's own ∑Conf. for the reported taxon (null for older files).
+  String? get _rank => widget.track['identified_rank'] as String?;
+  String get _selTaxon => _sel < _ladder.length ? '${_ladder[_sel]['taxon']}' : '';
+  String get _selRank => _sel < _ladder.length ? '${_ladder[_sel]['rank']}' : '';
+
+  /// This crop's own Conf. for the selected ladder taxon (null for files
+  /// written before round 215).
   double? _mass(Map<String, dynamic> c) {
     final l = (c['p_ladder'] as List?)?.cast<num>();
-    if (l == null || _rankIdx < 0 || _rankIdx >= l.length) return null;
-    return l[_rankIdx].toDouble();
+    if (l == null || _sel >= l.length) return null;
+    return l[_sel].toDouble();
   }
+
+  List<_Col> get _cropCols => [
+    const _Col('no', 'No.'),
+    _Col('mass', 'Conf. $_selTaxon', numeric: true),
+    const _Col('agrees', 'Agree', numeric: true),
+    const _Col('top1', 'Top species', flex: true),
+    const _Col('p', 'Species conf.', numeric: true),
+    const _Col('side', 'Side px', numeric: true),
+    const _Col('weight', 'Weight', numeric: true),
+  ];
 
   int _bestIndex() {
     final best = widget.track['best_view'] as Map<String, dynamic>?;
@@ -839,19 +975,41 @@ class _TrackSheetState extends State<_TrackSheet> {
     });
   }
 
+  /// "(95 % × 0.21 + 90 % × 0.10 + …) / (0.21 + 0.10 + …) = 69 %": the Avg
+  /// of the selected ladder row recomputed from the crops table, so the
+  /// user can verify it by hand.
+  String _avgExample() {
+    final parts = <String>[];
+    final ws = <String>[];
+    var numer = 0.0, den = 0.0;
+    for (var i = 0; i < _crops.length; i++) {
+      final m = _mass(_crops[i]);
+      final w = (_crops[i]['weight'] as num?)?.toDouble();
+      if (m == null || w == null) return '';
+      numer += m * w;
+      den += w;
+      if (i < 3) {
+        parts.add('${_pct(m)} × ${w.toStringAsFixed(2)}');
+        ws.add(w.toStringAsFixed(2));
+      }
+    }
+    if (den == 0) return '';
+    final more = _crops.length > 3 ? ' + …' : '';
+    return '(${parts.join(' + ')}$more) / (${ws.join(' + ')}$more) = ${_pct(numer / den)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = widget.track;
-    final ladder = (t['ladder'] as List).cast<Map<String, dynamic>>();
     final ids = (t['track_ids'] as List?)?.cast<num>() ?? const [];
     final flags = (t['flags'] as List).cast<String>();
     final title = t['track_id'] == null
         ? 'Crop'
-        : 'Visit: track id #${t['track_id']}${ids.length > 1 ? ' (joined ${ids.skip(1).map((i) => '#${i.toInt()}').join(', ')})' : ''}';
+        : 'Track id #${t['track_id']}${ids.length > 1 ? ' (joined ${ids.skip(1).map((i) => '#${i.toInt()}').join(', ')})' : ''}';
     final n = _crops.length;
     final scaler = MediaQuery.textScalerOf(context);
     final ladderWidths = _fitWidths(_ladderCols, (c) => [
-      for (final s in ladder)
+      for (final s in _ladder)
         switch (c.key) {
           'rank' => '${s['rank']}',
           'p' => _pct(s['p'] as num?),
@@ -859,6 +1017,14 @@ class _TrackSheetState extends State<_TrackSheet> {
           _ => '${((s['support'] as num? ?? 0) * n).round()}/$n',
         },
     ], scaler);
+    final step = widget.photoStepS, dur = widget.photoDurationS;
+    final schedule = step != null && dur != null
+        ? 'this session: one every ${step.toStringAsFixed(step == step.roundToDouble() ? 0 : 1)} s during the first '
+              '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)} s of a track id'
+        : 'e.g. one every second during the first 10 s of a track id';
+    final reported = _rank == null ? null : _ladder.firstWhere((s) => s['rank'] == _rank, orElse: () => const {});
+    final selStep = _sel < _ladder.length ? _ladder[_sel] : null;
+    final avgExample = _avgExample();
     return ListView(
       controller: widget.controller,
       padding: _sheetPadding(context),
@@ -872,32 +1038,46 @@ class _TrackSheetState extends State<_TrackSheet> {
           ' · ${_plural(n, 'photo')} (crops)',
           style: const TextStyle(color: Colors.white70),
         ),
-        const Text(
+        Text(
           'Time = first to last detector frame of the track id. Detector frames = every frame the live '
           'detector saw it in (several per second). Photos = the frames saved on the photo schedule '
-          '(default one per second during the first 10 s of a visit) plus frames another insect '
-          'triggered while this one was in view; each saved photo gives one crop.',
+          '($schedule) plus frames another organism triggered while this one was in view; each saved '
+          'photo gives one crop.',
           style: helperTextStyle,
         ),
         const SizedBox(height: 12),
-        const HelpLabel(
+        HelpLabel(
           label: 'Ladder',
-          labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          helperText:
-              'Rank / Taxon: the taxon chosen at every rank on one consistent path from kingdom to '
-              'species.\n'
-              '∑Conf.: the visit\'s probability for that taxon from its COMBINED embedding: the crops\' '
-              'vectors averaged with their weights, scored once against the label pack, and the '
-              'probabilities of all names under the taxon summed. This is the visit\'s answer; it can only '
-              'shrink going down the ladder.\n'
-              'Avg: the same probability the other way round: each crop scored on its own, then the '
-              'crops\' ∑Conf. values averaged with the same weights (the weighted mean of the ∑Conf. '
-              'column in the crops table). Close to ∑Conf. when the crops agree; a large gap means the '
-              'crops disagree and the averaged vector landed between them.\n'
-              'Agree: how many crops, each judged on its own, put their predicted species under that '
-              'taxon (3/5 = three of five). The Agree column of the crops table shows which.\n'
-              'Highlighted row: the deepest rank whose ∑Conf. reached the threshold = the reported '
-              'identification. Rows below it are suggestions.',
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          helperChild: _ColumnsHelp(
+            intro:
+                'The taxon chosen at every rank on one path from kingdom to species. The highlighted row is '
+                'the deepest rank whose Conf. reached the threshold'
+                '${widget.tau == null ? '' : ' (${_pct(widget.tau)})'}: the reported identification; the rows '
+                'below it are suggestions. Tap a row to make the crops table show each crop\'s own confidence '
+                'for that taxon (bar on the left = selected).',
+            cols: [
+              (
+                'Conf.',
+                'the model\'s confidence that this track id belongs to the taxon. How it is made: the model '
+                    'turns every crop into a vector; the crops\' vectors are averaged (better crops count '
+                    'more: the Weight column of the crops table); the average is compared with every species '
+                    'the model knows and converted into probabilities; the probabilities of all species '
+                    'under the taxon are added up.'
+                    '${reported == null || reported.isEmpty ? '' : ' Example: Conf. for ${reported['taxon']} = ${_pct(reported['p'] as num?)}.'}',
+              ),
+              (
+                'Avg',
+                'a cross-check computed the other way round: each crop is converted into probabilities on '
+                    'its own and the species under the taxon are added up per crop (the "Conf. $_selTaxon" '
+                    'column of the crops table); those values are then averaged with the same weights.'
+                    '${selStep == null || avgExample.isEmpty ? '' : ' Example for $_selTaxon: $avgExample.'}'
+                    ' Conf. and Avg agree when the crops agree; a gap means the crops point in different '
+                    'directions.',
+              ),
+              ('Agree', 'how many crops, each on its own, have their top species inside the taxon (e.g. 8/10).'),
+            ],
+          ),
         ),
         const SizedBox(height: 4),
         _MiniTable(
@@ -906,18 +1086,20 @@ class _TrackSheetState extends State<_TrackSheet> {
           flexMin: 110,
           build: (fw) => [
             _SortHeader(cols: _ladderCols, widths: ladderWidths, flexWidth: fw),
-            for (final s in ladder)
+            for (var k = 0; k < _ladder.length; k++)
               _TableRow(
                 cols: _ladderCols,
                 widths: ladderWidths,
                 flexWidth: fw,
-                highlight: s['rank'] == _rank,
+                highlight: _ladder[k]['rank'] == _rank,
+                selected: k == _sel,
+                onTap: () => setState(() => _sel = k),
                 cells: [
-                  _txt('${s['rank']}', style: _dimCellStyle, bold: s['rank'] == _rank),
-                  _txt('${s['taxon']}', bold: s['rank'] == _rank, maxLines: 2),
-                  _txt(_pct(s['p'] as num?), right: true, bold: s['rank'] == _rank),
-                  _txt(s['p_mean'] == null ? '?' : _pct(s['p_mean'] as num?), right: true, style: _dimCellStyle, bold: s['rank'] == _rank),
-                  _txt('${((s['support'] as num? ?? 0) * n).round()}/$n', right: true, style: _dimCellStyle, bold: s['rank'] == _rank),
+                  _txt('${_ladder[k]['rank']}', style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
+                  _txt('${_ladder[k]['taxon']}', bold: _ladder[k]['rank'] == _rank, maxLines: 2),
+                  _txt(_pct(_ladder[k]['p'] as num?), right: true, bold: _ladder[k]['rank'] == _rank),
+                  _txt(_ladder[k]['p_mean'] == null ? '?' : _pct(_ladder[k]['p_mean'] as num?), right: true, style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
+                  _txt('${((_ladder[k]['support'] as num? ?? 0) * n).round()}/$n', right: true, style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
                 ],
               ),
           ],
@@ -932,22 +1114,27 @@ class _TrackSheetState extends State<_TrackSheet> {
           HelpLabel(
             label: 'Flags: ${flags.join(', ')}',
             labelStyle: const TextStyle(color: Colors.white),
-            helperText:
-                'merged: joined from consecutive track ids.\n'
-                'short: below the duration or detections threshold.\n'
-                'low_det: mean detector confidence below the threshold.\n'
-                'weak_id: order-level ∑Conf. below the threshold.\n'
-                'suspect: short AND weakly supported; likely a false detection (kept, never deleted).\n'
-                'none: the "none of these" entries won; unidentified: not even the class reached the '
-                'threshold.\n'
-                'path_conflict: at some rank the single most probable taxon is NOT inside the taxon chosen '
-                'one rank above (say the most probable family overall belongs to a different order than '
-                'the most probable order). The ladder always follows the path from the top down, so from '
-                'that rank on it shows the best taxon inside the chosen parent, which has a lower ∑Conf. '
-                'than the one it had to skip. A sign that the crops point in two directions.\n'
-                'rule_conflict: the Avg column (crops scored one by one, then averaged) picks a different '
-                'taxon than ∑Conf. (crops averaged first) at the CSV rank.\n'
-                'single_crop: only one crop, so there is no agreement to measure.',
+            helperChild: const _ColumnsHelp(
+              cols: [
+                ('merged', 'joined from consecutive track ids.'),
+                ('short', 'below the duration or detections threshold.'),
+                ('low_det', 'mean detector confidence below the threshold.'),
+                ('weak_id', 'order-level Conf. below the threshold.'),
+                ('suspect', 'short AND weakly supported; likely a false detection (kept, never deleted).'),
+                ('none', 'the "none of these" entries won.'),
+                ('unidentified', 'not even the class reached the threshold.'),
+                (
+                  'path_conflict',
+                  'at some rank the single most probable taxon is NOT inside the taxon chosen one rank above '
+                      '(say the most probable family overall belongs to a different order than the most '
+                      'probable order). The ladder always follows the path from the top down, so from that '
+                      'rank on it shows the best taxon inside the chosen parent, which has a lower Conf. than '
+                      'the one it had to skip. A sign that the crops point in two directions.',
+                ),
+                ('rule_conflict', 'the Avg column (crops scored one by one, then averaged) picks a different taxon than Conf. (crops averaged first) at the CSV rank.'),
+                ('single_crop', 'only one crop, so there is no agreement to measure.'),
+              ],
+            ),
           ),
         ],
         const SizedBox(height: 14),
@@ -968,10 +1155,10 @@ class _TrackSheetState extends State<_TrackSheet> {
         label: 'Photo',
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Opens on the BEST VIEW: among the good-quality crops, the one whose own ∑Conf. for the '
+            'Opens on the BEST VIEW: among the good-quality crops, the one whose own Conf. for the '
             'reported taxon${_rank == null ? '' : ' ($_rank)'} is highest, i.e. the single photo that most '
-            'clearly shows what the visit was identified as (for an unidentified visit: the highest '
-            'single-species probability). Tap a row of the crops table to show that crop instead.\n'
+            'clearly shows what the track id was identified as (for an unidentified track id: the highest '
+            'species confidence). Tap a row of the crops table to show that crop instead.\n'
             'Yellow box: the detector\'s box for this organism. Cyan box: the square (box + margin) that '
             'was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
             'double-tap zooms, the reset button returns to full view.',
@@ -1029,7 +1216,8 @@ class _TrackSheetState extends State<_TrackSheet> {
   }
 
   List<Widget> _cropsSection(TextScaler scaler) {
-    final widths = _fitWidths(_cropCols, (c) => [
+    final cols = _cropCols;
+    final widths = _fitWidths(cols, (c) => [
       for (final (no, cr) in _cropRows)
         switch (c.key) {
           'no' => '$no',
@@ -1041,26 +1229,33 @@ class _TrackSheetState extends State<_TrackSheet> {
         },
     ], scaler);
     final missing = _crops.any((c) => c['agrees'] == null || _mass(c) == null);
-    final taxonText = _rank == null ? 'the reported taxon' : '${widget.track['headline']} ($_rank)';
+    final sel = _selTaxon.isEmpty ? 'the selected taxon' : '$_selTaxon ($_selRank)';
     return [
       HelpLabel(
         label: 'Crops',
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        helperText:
-            'Every photo of this visit that was shown to the model, in capture order (No.).\n'
-            '∑Conf.: this crop\'s OWN probability for $taxonText, from the crop\'s vector alone (names under '
-            'the taxon summed). The ladder\'s Avg is the weighted mean of this column; the ladder\'s ∑Conf. '
-            'comes from the averaged vector instead, so it is not a sum or mean of these numbers.\n'
-            'Agree: ✓ when the crop\'s predicted species falls under $taxonText, – when it does not.\n'
-            'Species / Conf.: the single species this crop alone predicts (the model\'s best guess) and its '
-            'probability (one name, no summing). The species row of the ladder comes from the combined '
-            'vector and can be a different species.\n'
-            'Side px: side of the square crop in photo pixels (box + margin); small crops are blurry after '
-            'enlargement to the model\'s 224 px.\n'
-            'Weight: this crop\'s share in the average (0 to 1): larger, sharper crops with a confident '
-            'detection and little padding at the ROI edge weigh more.\n'
-            'Tap a row to show that crop in the photo above; tap a header to sort; drag sideways when the '
-            'table is wider than the screen.',
+        helperChild: _ColumnsHelp(
+          intro: 'One row per crop = one photo of this track id, in capture order.',
+          cols: [
+            ('No.', 'capture order; the camera icon marks the crop shown in the photo above.'),
+            (
+              'Conf. $_selTaxon',
+              'this crop\'s own confidence for $sel, the ladder row selected above: the crop\'s '
+                  'probabilities for all species under it added up. Tap another ladder row to change the '
+                  'taxon. The Avg of that ladder row is the weighted average of this column.',
+            ),
+            ('Agree', '✓ when the crop\'s top species is inside $sel.'),
+            ('Top species', 'the species with the highest probability for this crop alone.'),
+            (
+              'Species conf.',
+              'that probability (one species, nothing added up). The ladder\'s species row is chosen from '
+                  'the averaged vector and can be a different species.',
+            ),
+            ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
+            ('Weight', 'the crop\'s share in the average (0 to 1): larger, sharper crops with a confident detection and little padding at the ROI edge weigh more.'),
+          ],
+          outro: 'Tap a row to show that crop in the photo; tap a header to sort; drag sideways if the table is wider than the screen.',
+        ),
       ),
       const SizedBox(height: 4),
       if (missing)
@@ -1068,19 +1263,19 @@ class _TrackSheetState extends State<_TrackSheet> {
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
             '"?" = this result file was written by an older app version; "Re-score with this pack" on '
-            'the Identify screen fills the ∑Conf., Avg and Agree values in seconds.',
+            'the Identify screen fills the Conf., Avg and Agree values in seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),
       _MiniTable(
-        cols: _cropCols,
+        cols: cols,
         widths: widths,
         flexMin: 150,
         build: (fw) => [
-          _SortHeader(cols: _cropCols, widths: widths, sortKey: _sortKey, asc: _asc, onSort: _sort, flexWidth: fw),
+          _SortHeader(cols: cols, widths: widths, sortKey: _sortKey, asc: _asc, onSort: _sort, flexWidth: fw),
           for (final (no, c) in _cropRows)
             _TableRow(
-              cols: _cropCols,
+              cols: cols,
               widths: widths,
               flexWidth: fw,
               highlight: _crops.indexOf(c) == _shown,

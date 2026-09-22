@@ -7719,3 +7719,41 @@ session_3 (track #6) pulled from the phone over adb.
 - Tests: job test checks `p_ladder`, `p_mean`, `crops_<pack>.csv`; results-screen test
   adapted (the taxon table scrolls sideways under the 13-px test font, so the finder picks
   the list's own Scrollable). Not device-verified.
+
+## Round 216 (2026-09-22): results wording pass (Med. Conf. / Conf. / track id), bold column help, selectable ladder row
+
+Owner's third review of the results screens (naming scheme S1–S4 agreed the same day),
+verified against session_2 track #19 pulled from the phone: reported Hymenoptera (order)
+90 %, Apidae 67 %, Bombus 19 %, B. impatiens 8 %; the crops table's "∑Conf." column (95, 90,
+97, 98, 80, 98, 98, 68, 94, 10 %) was each crop's confidence for HYMENOPTERA, shown beside
+each crop's top species, and was read as that species' probability. Root cause of "what
+can you sum under a species": the column never named its taxon.
+
+- **Naming:** the ∑ symbol is gone everywhere. S2.table: **Med. Conf.** (median across the
+  row's track ids, rounded; S2 checked by the owner: 95 % = median of 97, 90, 94, 95); S3 and
+  S4.ladder: **Conf.**; S4.crops: **"Conf. <taxon>"** with the taxon in the header, plus **Top
+  species** / **Species conf.**. "Visit" → "track id" on all results screens (S2 header and
+  column "Track ids", suspect switch, S2.all button, S3 title, S4 title), with "what a
+  pollination ecologist calls a visit" said once in S2.table.info and S3.
+- **Info texts:** `HelpLabel.helperChild` (widgets/setting_help.dart) + `_ColumnsHelp`: an
+  intro, "Columns of the table below:", one line per column with the name in bold and 5-px
+  spacing, an outro. Applied to S2.table, S3 (visible, not collapsed), S4.ladder, S4.flags,
+  S4.crops. The Conf. definition moved out of S2 (which only says "median … explained in the
+  list that opens") into S3/S4; "label-pack names" → "species".
+- **S4 ladder ↔ crops link:** tapping a ladder row selects its taxon (cyan bar on the left);
+  the crops table's confidence column is then "Conf. <that taxon>" and its Agree column
+  follows; S4.ladder.info shows a worked example computed from the data, e.g. "Avg for
+  Hymenoptera: (95 % × 0.21 + 90 % × 0.10 + 97 % × 0.14 + …) / (0.21 + 0.10 + 0.14 + …) =
+  69 %", and "Conf. for Hymenoptera = 90 %", so both numbers are verifiable by hand.
+- **Layout:** S2 lineage line under the taxon removed; S3 without a taxon column has no
+  flex column and stays left-packed (the Track id column no longer spans the free width);
+  S3 states "Median Conf. across these n track ids: x %" above its table.
+- **Photo schedule read from the session:** `scoreSessionSync` picks `config.stepSeconds`
+  and `durationSeconds` from the log's start record into `summary.capture`; S4 says "this
+  session: one every 1 s during the first 10 s of a track id" (fallback "e.g. …").
+- README_identification.txt wording aligned (Conf. / Species conf. / Med. Conf.).
+- **Open decision put to the owner:** whether the reported Conf. should stay the
+  mean-embedding value (current; Avg as cross-check) or become the weighted mean of per-crop
+  probabilities (insect-detect-post style; every number then recomputable from the crops
+  table and comparable with the colleague's pipeline). Not changed this round.
+- Not device-verified.

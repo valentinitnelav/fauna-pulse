@@ -93,27 +93,37 @@ One identification belongs to one **visit** (track id), combining all of that vi
 photos; the Photos tab of the session summary shows it under every photo of that track id.
 It is not a per-photo answer (the per-crop guesses are in `predictions_<pack>.jsonl`).
 
-**Two kinds of probability, one vocabulary (round 215).** Every results table uses the same
-two words. **∑Conf.** is the probability that the organism belongs to a *taxon*: the
-probabilities of all label-pack names under that taxon added up (a genus = the sum of its
-species, a family = the sum of its genera, and so on; BioCLIP itself only scores the pack's
-names, FaunaPulse does the adding). **Conf.** is the probability of *one* name, a species,
-with no summing. Both come out of the same softmax over the whole pack, so all ∑Conf.
-values at one rank, plus the "none of these" entries, add up to 100 %.
+**Vocabulary (rounds 215–216).** A **track id** is one tracked organism, what a pollination
+ecologist calls a visit; the app says "track id" because it also serves birds, mammals or
+other organisms. **Conf.** is the model's confidence that a track id belongs to a *taxon*:
+the probabilities of all species under that taxon added up (a genus = the sum of its
+species, a family = the sum of its genera, and so on; BioCLIP itself only scores species
+names, FaunaPulse does the adding). **Species conf.** is the probability of *one* species
+for *one* crop, with no summing. **Med. Conf.** (the taxon table on the results screen) is the
+median of Conf. across the row's track ids, rounded to whole percent; the list that opens
+from the row states the same median above its table so it can be checked. All Conf. values
+at one rank, plus the "none of these" entries, add up to 100 %.
 
-**How a visit's ∑Conf. is computed.** The model turns each crop into a vector. FaunaPulse
+The crops table names the taxon in its confidence column ("Conf. Hymenoptera"), because a
+crop's confidence for the reported taxon sits in the same row as that crop's top species and
+was read as the species' probability (owner, track #19 of session_2: Hymenoptera 90 % with
+per-crop values of 95 %, 90 %, 97 % … next to species names). Tapping a ladder row changes
+the taxon the column shows, and the ladder's Avg for that row is the weighted average of
+the column, spelled out as a worked example in the ladder's info text.
+
+**How a track id's Conf. is computed.** The model turns each crop into a vector. FaunaPulse
 averages the visit's vectors with quality weights (larger, sharper, confidently detected,
 little-padded crops weigh more), re-normalises the average, compares it with every name in
 the pack (cosine similarity times the pack's logit scale, divided by the calibration
 temperature) and turns the similarities into probabilities with a softmax. The ladder's
-∑Conf. column is that distribution summed under each chosen taxon. It is therefore *not*
+Conf. column is that distribution summed under each chosen taxon. It is therefore *not*
 the sum or the mean of the per-crop numbers in the crops table: the per-crop numbers come
 from each crop's own vector. Two cross-checks make the relationship visible:
-**Avg** = each crop scored on its own, then the crops' ∑Conf. values averaged with the same
-weights (close to ∑Conf. when the crops agree; a large gap means they disagree and the
+**Avg** = each crop scored on its own, then the crops' Conf. values averaged with the same
+weights (close to Conf. when the crops agree; a large gap means they disagree and the
 averaged vector landed between them); **Agree** = how many crops, judged alone, put their
-predicted species under the taxon (3/5). The crops table shows every crop's own ∑Conf. for
-the reported taxon, its predicted species and that species' Conf., so the Avg and Agree
+top species under the taxon (3/5). The crops table shows every crop's own Conf. for the
+selected ladder taxon, its top species and that species' confidence, so the Avg and Agree
 numbers can be recomputed by hand, and `crops_<pack>.csv` carries the same per-crop numbers
 for R or Python.
 

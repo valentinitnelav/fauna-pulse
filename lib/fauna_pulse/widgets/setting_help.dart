@@ -53,10 +53,15 @@ class HelpLabel extends StatefulWidget {
   /// Optional icon shown before the label (used by section headers).
   final Widget? leading;
 
+  /// Round 216: a widget body instead of [helperText] (bold column names
+  /// with spacing between them, dynamic examples).
+  final Widget? helperChild;
+
   const HelpLabel({
     super.key,
     required this.label,
-    required this.helperText,
+    this.helperText = '',
+    this.helperChild,
     this.labelStyle = const TextStyle(color: Colors.white70),
     this.leading,
   });
@@ -90,7 +95,7 @@ class _HelpLabelState extends State<HelpLabel> {
               ],
             ),
           ),
-          if (_open) _helpBody(widget.helperText),
+          if (_open) widget.helperChild ?? _helpBody(widget.helperText),
         ],
       ),
     );

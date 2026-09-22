@@ -301,6 +301,7 @@ Map<String, dynamic> writeOutputs({
   required List<ScoredTrack> tracks,
   required Map<String, dynamic> settings,
   required String appVersion,
+  Map<String, dynamic>? capture,
 }) {
   paths.dir.createSync(recursive: true);
   final targetRank = (settings['target_rank'] as String?) ?? 'family';
@@ -589,6 +590,8 @@ Map<String, dynamic> writeOutputs({
     'pack_id': pack.packId,
     'pack_rows': pack.rows,
     'settings': settings,
+    // Round 216: photo schedule of the recording (null when unknown).
+    'capture': capture ?? const {},
     'tracks_total': tracks.length,
     'visits_merged': visitsMerged,
     'tracks_before_merge': tracksBeforeMerge,
@@ -658,12 +661,15 @@ Files
   crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
 
-Two kinds of probability appear everywhere (the app writes them as "SumConf." and "Conf."):
-  SumConf. (p_<rank>)  probability that the organism belongs to a TAXON = the probabilities of
-                       all label-pack names under that taxon added up (genus = sum of its
-                       species, family = sum of its genera, ...). From the visit's combined
-                       embedding unless stated otherwise.
-  Conf. (top1_p)       probability of ONE name (a species), no summing.
+Two kinds of probability appear everywhere (round 216 wording):
+  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON = the
+                       probabilities of all species under that taxon added up (genus = sum of
+                       its species, family = sum of its genera, ...). From the track id's
+                       combined embedding; p_mean is the same from the crops scored one by one
+                       and averaged (the results screen's "Avg").
+  Species conf. (top1_p)  probability of ONE species for ONE crop, nothing added up.
+  Med. Conf.           on the results screen's taxon table: the median of Conf. across the
+                       row's track ids.
 
 tracks_<pack>.csv columns
   device_id, session_id, track_id      identifiers (track_id empty for no-AI sessions: one row per crop)
