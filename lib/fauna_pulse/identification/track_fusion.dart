@@ -75,18 +75,26 @@ class LadderStep {
   /// Share of the track's crops whose own top-1 falls under this taxon.
   final double support;
 
+  /// Round 215: mass under this taxon of the quality-WEIGHTED AVERAGE of the
+  /// crops' own probability distributions (= the weighted mean of the
+  /// per-crop masses shown in the crops table). [mass] comes from the
+  /// averaged EMBEDDING instead; the two agree when the crops agree.
+  final double meanMass;
+
   const LadderStep({
     required this.rank,
     required this.taxon,
     required this.key,
     required this.mass,
     required this.support,
+    this.meanMass = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'rank': rank,
     'taxon': taxon,
     'p': double.parse(mass.toStringAsFixed(4)),
+    'p_mean': double.parse(meanMass.toStringAsFixed(4)),
     'support': double.parse(support.toStringAsFixed(3)),
   };
 }
@@ -114,6 +122,11 @@ class FusedTrack {
   /// Per-crop top-1 row (for the per-crop records).
   final List<TopK> perCrop;
 
+  /// Round 215: for every crop, its OWN probability mass under each ladder
+  /// taxon (index = rank, same length as [ladder]). This is what lets a
+  /// user trace the visit's answer back to single photos.
+  final List<List<double>> perCropMass;
+
   const FusedTrack({
     required this.trackId,
     required this.nCrops,
@@ -128,6 +141,7 @@ class FusedTrack {
     required this.bestViewProb,
     required this.fusedEmbedding,
     required this.perCrop,
+    this.perCropMass = const [],
   });
 
   LadderStep? stepAt(String rank) {
@@ -153,6 +167,51 @@ class Scorer {
 
   Scorer(this.pack, {double? temperature})
     : scale = pack.logitScale / (temperature ?? pack.temperature);
+
+  // Round 215: an integer id per row and rank for the row's taxonomy key,
+  // built once per pack, so the mass of a distribution under a ladder taxon
+  // is one integer comparison per row (rollUp joins strings per row and is
+  // far too slow to run per crop).
+  List<Int32List>? _rankIds;
+  List<Map<String, int>>? _keyToId;
+
+  void _buildRankIds() {
+    final ids = List.generate(7, (_) => Int32List(pack.rows));
+    final maps = List.generate(7, (_) => <String, int>{});
+    for (var r = 0; r < pack.rows; r++) {
+      final row = pack.labels[r];
+      for (var k = 0; k < 7; k++) {
+        if (row.ranks[k].isEmpty) {
+          for (var j = k; j < 7; j++) {
+            ids[j][r] = -1;
+          }
+          break;
+        }
+        final key = row.keyAt(k);
+        ids[k][r] = maps[k].putIfAbsent(key, () => maps[k].length);
+      }
+    }
+    _rankIds = ids;
+    _keyToId = maps;
+  }
+
+  /// Probability mass of [p] under each ladder key in [keys] (index = rank;
+  /// shorter ladders allowed). Keys nest, so a row outside the key at one
+  /// rank is outside every deeper key too.
+  List<double> massesAt(Float32List p, List<String> keys) {
+    if (_rankIds == null) _buildRankIds();
+    final ids = _rankIds!, maps = _keyToId!;
+    final target = [for (var k = 0; k < keys.length; k++) maps[k][keys[k]] ?? -2];
+    final out = List<double>.filled(keys.length, 0);
+    for (var r = 0; r < pack.rows; r++) {
+      final v = p[r];
+      for (var k = 0; k < target.length; k++) {
+        if (ids[k][r] != target[k]) break;
+        out[k] += v;
+      }
+    }
+    return out;
+  }
 
   /// Softmax over all pack rows for unit vector [e].
   Float32List probs(Float32List e) {
@@ -330,10 +389,14 @@ class Scorer {
           key: bestKey,
           mass: best,
           support: agree / crops.length,
+          meanMass: massesBar[k][bestKey] ?? 0.0,
         ),
       );
       parentKey = bestKey;
     }
+    // Each crop's own mass under the ladder taxa (round 215).
+    final ladderKeys = [for (final s in ladder) s.key];
+    final perCropMass = [for (final p in perCropProbs) massesAt(p, ladderKeys)];
 
     final noneMass = masses[0][kSinkKingdom] ?? 0.0;
     String? identified;
@@ -363,23 +426,36 @@ class Scorer {
       ruleConflict = barKey != null && barKey != ownStep.key;
     }
 
-    // Best single view among decent-quality crops (species rows only).
+    // Best single view (rule changed round 215): among decent-quality crops,
+    // the one whose OWN mass under the reported taxon is highest, i.e. the
+    // photo that on its own most clearly shows what the visit was identified
+    // as. When nothing was identified: the highest single (non-sink) species
+    // probability, as before. The owner saw the old rule pick a blurry crop
+    // whose best single species was a spider at 8 % for an Insecta visit.
     var bestIdx = 0;
     var bestProb = -1.0;
-    var bestTaxon = '';
     final wThreshold = weights.any((w) => w >= 0.5) ? 0.5 : 0.0;
-    for (var i = 0; i < crops.length; i++) {
-      if (weights[i] < wThreshold) continue;
+    final idIdx = identified == null ? -1 : kRankNames.indexOf(identified);
+    double topNonSink(int i) {
       final t = perCropTop[i];
       for (var j = 0; j < t.rows.length; j++) {
-        final row = pack.labels[t.rows[j]];
-        if (row.isSink) continue;
-        if (t.probs[j] > bestProb) {
-          bestProb = t.probs[j];
-          bestIdx = i;
-          bestTaxon = row.speciesName;
-        }
-        break; // only the best non-sink row of this crop
+        if (!pack.labels[t.rows[j]].isSink) return t.probs[j];
+      }
+      return 0;
+    }
+    for (var i = 0; i < crops.length; i++) {
+      if (weights[i] < wThreshold) continue;
+      final score = idIdx >= 0 && idIdx < perCropMass[i].length ? perCropMass[i][idIdx] : topNonSink(i);
+      if (score > bestProb) {
+        bestProb = score;
+        bestIdx = i;
+      }
+    }
+    var bestTaxon = '';
+    for (final j in perCropTop[bestIdx].rows) {
+      if (!pack.labels[j].isSink) {
+        bestTaxon = pack.labels[j].speciesName;
+        break;
       }
     }
 
@@ -397,6 +473,7 @@ class Scorer {
       bestViewProb: math.max(0, bestProb),
       fusedEmbedding: fused,
       perCrop: perCropTop,
+      perCropMass: perCropMass,
     );
   }
 

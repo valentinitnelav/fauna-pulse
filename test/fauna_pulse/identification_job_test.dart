@@ -114,6 +114,18 @@ void main() {
     expect(tracks[0]['track_id'], 1);
     expect(tracks[0]['headline'], 'Eristalis tenax');
     expect((tracks[0]['crops'] as List).first['agrees'], isTrue); // round 214
+    // Round 215: per-crop mass under every ladder taxon, the ladder's
+    // weighted-mean column, and the per-crop CSV.
+    final crop0 = (tracks[0]['crops'] as List).first as Map<String, dynamic>;
+    expect(crop0['p_ladder'], hasLength((tracks[0]['ladder'] as List).length));
+    expect((crop0['p_ladder'] as List).first, greaterThan(0.9)); // kingdom mass of a clear crop
+    expect((tracks[0]['ladder'] as List).first['p_mean'], greaterThan(0.9));
+    final cropsCsv = paths.cropsCsv('tiny_pack');
+    expect(cropsCsv.existsSync(), isTrue);
+    final cropLines = cropsCsv.readAsStringSync().trim().split('\n');
+    expect(cropLines.first, startsWith('session_id,track_id,crop_no,photo,box_left'));
+    expect(cropLines.first, endsWith(',p_species'));
+    expect(cropLines.length, 4); // header + 3 crops
     expect((tracks[0]['crops'] as List).length, 2);
     expect(tracks[1]['headline'], 'Apis mellifera');
     expect((tracks[0]['ladder'] as List).length, 7);

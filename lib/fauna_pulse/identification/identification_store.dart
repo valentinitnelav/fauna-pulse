@@ -50,6 +50,10 @@ class IdentificationPaths {
       File('${dir.path}/predictions_$packStem.jsonl');
   File tracksJson(String packStem) => File('${dir.path}/tracks_$packStem.json');
   File tracksCsv(String packStem) => File('${dir.path}/tracks_$packStem.csv');
+
+  /// Round 215: one row per crop (photo × track) with the crop's own
+  /// probabilities, for tracing a visit's answer back to single photos.
+  File cropsCsv(String packStem) => File('${dir.path}/crops_$packStem.csv');
   File summaryJson(String packStem) =>
       File('${dir.path}/summary_$packStem.json');
   File get readme => File('${dir.path}/README_identification.txt');
@@ -382,6 +386,30 @@ Map<String, dynamic> writeOutputs({
   final taxaOrder = <String, int>{};
   final taxaFamily = <String, int>{};
   var noneCount = 0, unidentified = 0;
+  // Round 215: crops_<pack>.csv, one row per crop.
+  final cropsCsv = StringBuffer()
+    ..writeln(
+      [
+        'session_id',
+        'track_id',
+        'crop_no',
+        'photo',
+        'box_left',
+        'box_top',
+        'box_right',
+        'box_bottom',
+        'crop_px',
+        'sharpness',
+        'det_conf',
+        'pad_frac',
+        'weight',
+        'top1_species',
+        'top1_p',
+        'agrees',
+        for (final r in kRankNames) 'ladder_$r',
+        for (final r in kRankNames) 'p_$r',
+      ].join(','),
+    );
 
   for (final t in tracks) {
     final f = t.fused;
@@ -405,21 +433,13 @@ Map<String, dynamic> writeOutputs({
         taxaFamily[fam.taxon] = (taxaFamily[fam.taxon] ?? 0) + 1;
       }
     }
-    // pred_prob_mean: mean over crops of the mass their top rows put under
-    // the predicted taxon (approximate: from each crop's top-5 rows).
-    var predMeanSum = 0.0;
+    // Round 215 (exact, was approximate from top-5 rows): pred_imgs = crops
+    // whose own top-1 falls under the predicted taxon; pred_prob_mean = the
+    // quality-weighted mean of the crops' own mass under it (= LadderStep.meanMass).
     var predImgs = 0;
     if (step != null) {
       for (final top in f.perCrop) {
-        var m = 0.0;
-        for (var j = 0; j < top.rows.length; j++) {
-          final row = pack.labels[top.rows[j]];
-          if (row.ranks[rankIdx].isNotEmpty && row.keyAt(rankIdx) == step.key) m += top.probs[j];
-        }
-        if (m > 0) {
-          predMeanSum += m;
-          predImgs++;
-        }
+        if (_cropAgrees(pack.labels[top.rows.first], step.key, rankIdx)) predImgs++;
       }
     }
     final detConfMean = t.crops.isEmpty
@@ -466,7 +486,7 @@ Map<String, dynamic> writeOutputs({
       predImgs,
       step?.taxon ?? '',
       step == null ? '' : step.mass.toStringAsFixed(4),
-      predImgs == 0 ? '' : (predMeanSum / predImgs).toStringAsFixed(4),
+      step == null ? '' : step.meanMass.toStringAsFixed(4),
       _iso(t.startMs),
       _iso(t.endMs),
       durationS?.toStringAsFixed(2) ?? '',
@@ -489,6 +509,30 @@ Map<String, dynamic> writeOutputs({
       suspect ? 1 : 0,
     ];
     csv.writeln(row.map(_csvCell).join(','));
+    for (var i = 0; i < t.crops.length; i++) {
+      final c = t.crops[i];
+      final top1 = pack.labels[f.perCrop[i].rows.first];
+      final masses = i < f.perCropMass.length ? f.perCropMass[i] : const <double>[];
+      cropsCsv.writeln(
+        [
+          sessionId,
+          f.trackId,
+          i + 1,
+          c.source,
+          ...c.box.map((v) => v.toStringAsFixed(4)),
+          c.cropPx,
+          c.sharpness.toStringAsFixed(1),
+          c.detConf.toStringAsFixed(3),
+          c.padFrac.toStringAsFixed(3),
+          f.weights[i].toStringAsFixed(3),
+          top1.speciesName,
+          f.perCrop[i].probs.first.toStringAsFixed(4),
+          f.identifiedRank == null ? '' : (_cropAgrees(top1, f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)) ? 1 : 0),
+          for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
+          for (var k = 0; k < 7; k++) k < masses.length ? masses[k].toStringAsFixed(4) : '',
+        ].map(_csvCell).join(','),
+      );
+    }
     jsonTracks.add({
       'track_id': f.trackId,
       'track_ids': t.trackIds,
@@ -518,6 +562,12 @@ Map<String, dynamic> writeOutputs({
             'agrees': f.identifiedRank == null
                 ? null
                 : _cropAgrees(pack.labels[f.perCrop[i].rows.first], f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)),
+            // Round 215: this crop's own probability mass under each ladder
+            // taxon (index = rank), the number the ladder is traced to.
+            'p_ladder': [
+              if (i < f.perCropMass.length)
+                for (final m in f.perCropMass[i]) double.parse(m.toStringAsFixed(4)),
+            ],
             'box': t.crops[i].box,
             'weight': double.parse(f.weights[i].toStringAsFixed(3)),
             'crop_px': t.crops[i].cropPx,
@@ -529,6 +579,7 @@ Map<String, dynamic> writeOutputs({
     });
   }
   paths.tracksCsv(packStem).writeAsStringSync(csv.toString());
+  paths.cropsCsv(packStem).writeAsStringSync(cropsCsv.toString());
 
   final summary = <String, dynamic>{
     'generated_ms': now.millisecondsSinceEpoch,
@@ -604,26 +655,51 @@ Files
   tracks_<pack>.json               per track: the full "ladder" (kingdom..species with mass and support),
                                    crops with weights, best single view, flags
   tracks_<pack>.csv                one row per track (visit); columns below
+  crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
+
+Two kinds of probability appear everywhere (the app writes them as "SumConf." and "Conf."):
+  SumConf. (p_<rank>)  probability that the organism belongs to a TAXON = the probabilities of
+                       all label-pack names under that taxon added up (genus = sum of its
+                       species, family = sum of its genera, ...). From the visit's combined
+                       embedding unless stated otherwise.
+  Conf. (top1_p)       probability of ONE name (a species), no summing.
 
 tracks_<pack>.csv columns
   device_id, session_id, track_id      identifiers (track_id empty for no-AI sessions: one row per crop)
   track_imgs                          crops used for this track
-  pred, pred_prob_weighted            the taxon at the chosen target rank and its probability mass
-  pred_imgs, pred_prob_mean           crops whose own top rows include that taxon, and their mean mass
-                                      (approximate, from each crop's top-5 rows)
+  pred, pred_prob_weighted            the taxon at the chosen target rank and its SumConf. from the
+                                      visit's combined embedding
+  pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the
+                                      quality-weighted mean of the crops' own SumConf. under it
+                                      (exact since round 215)
   start_time, end_time, duration_s    from the session log's track span
   det_conf_mean                       mean detector confidence of the crops
   bioclip_<rank>                      the taxon chosen at each rank on a consistent top-down path
-  p_<rank>                            probability mass of that taxon (model confidence, calibrated only
-                                      if the pack carries a fitted temperature)
+  p_<rank>                            SumConf. of that taxon from the combined embedding (model
+                                      confidence, calibrated only if the pack carries a fitted
+                                      temperature); the JSON ladder also carries p_mean = the
+                                      weighted mean of the crops' own SumConf. (the "Avg" column)
   identified_rank                     deepest rank whose mass reached tau
   headline                            the taxon at identified_rank, or "unidentified" / "no organism"
   support_<rank>                      share of crops whose own top-1 falls under that taxon
   none_p                              mass on the "none of these" rows (flower, leaf, shadow, ...)
-  best_view_*                         the single crop with the most confident species suggestion
+  best_view_*                         the crop whose own SumConf. under the reported taxon is highest
+                                      (its top-1 species and that SumConf.; before round 215: the
+                                      crop with the highest single species probability)
   flags                               none | unidentified | path_conflict | rule_conflict | single_crop
   model_id, pack_id                   provenance
+  merged_track_ids, n_detections, suspect   joined ids; detector frames; suspect verdict (0/1)
+
+crops_<pack>.csv columns
+  session_id, track_id, crop_no       the visit and the crop's number within it (capture order)
+  photo, box_*                        photo file and the detector box (fractions of the photo side)
+  crop_px, sharpness, det_conf, pad_frac, weight
+                                      square crop side (px), Laplacian sharpness, detector confidence,
+                                      padding outside the photo, and the quality weight in the average
+  top1_species, top1_p                the species this crop alone suggests and its Conf.
+  agrees                              1 when top1_species falls under the visit's reported taxon
+  ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own SumConf. under each
 
 How it is computed (plan section 11.3): each crop is embedded with the BioCLIP image
 tower; a track's crops are averaged (quality-weighted: size, sharpness, detector

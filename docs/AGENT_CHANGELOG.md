@@ -7665,3 +7665,57 @@ Owner's itemised review of the results screen (device test of session_2).
   `agrees` is missing (result file older than this build) pointing to "Re-score".
 - Same day: the rank · flags line under the taxon in the visits sheet wraps instead of
   ellipsising ("class · short, pa…" was unreadable).
+
+## Round 215 (2026-09-22): results vocabulary (∑Conf. / Conf. / Avg / Agree), per-crop masses, table layout
+
+Owner's second review of the results screen, centred on "how do these confidences arise
+and why do they not add up". Verified against the real files of session_2 (track #7) and
+session_3 (track #6) pulled from the phone over adb.
+
+- **What was actually going on:** the ladder's confidence is the softmax over the whole
+  label pack of the visit's COMBINED (quality-weighted mean) embedding, summed under each
+  taxon; the crops table showed each crop's OWN top-1 species probability from that crop's
+  own softmax. Two different distributions, so the owner's attempt to add the per-crop
+  numbers to reach 83 % / 99 % could never work, and the table gave no number that could be
+  traced. Session_2 #7: four blurry crops (48–92 px, single-name Conf. 8 %, 5 %, 2 %, 3 %, two
+  of them spiders) → Insecta 83 % from the combined vector, correct behaviour. Session_3
+  #6: Bombus 99 % (all Bombus species summed) while the best species row is B. cingulatus
+  13 %; the crops' own best species (vestalis 30 %, cingulatus 17 %, …) are single names.
+  Time = first-to-last detector frame (1.7 s / 35.2 s confirmed from the logs); photos = the
+  schedule's saves in the first 10 s plus frames other insects triggered (session_2 #7 got
+  4 crops in 1.7 s from a crowded YouTube scene; session_3 #6 got 7 photos at ~1 s spacing in
+  its first 10 s and none of its remaining 25 s). All as designed; now explained on screen.
+- **Vocabulary, everywhere:** **∑Conf.** = probability of a TAXON (pack names under it
+  summed), **Conf.** = probability of ONE species; **Avg** = crops scored one by one, then
+  their ∑Conf. averaged with the fusion weights (= `massesBar` at the ladder key, exactly
+  the quantity the `rule_conflict` cross-check uses); **Agree** = count "3/5". Info texts of
+  the taxon table, the ladder, the crops table and the flags (path_conflict rewritten:
+  "the most probable family overall is not inside the most probable order; the ladder
+  keeps the top-down path, so it shows the best family INSIDE the chosen order") define
+  them; no "probability mass" anywhere.
+- **Per-crop masses (`Scorer.massesAt`):** integer ids of each row's key at each rank,
+  built once per pack (`_buildRankIds`), make "mass of a distribution under a taxon" one
+  integer comparison per row (the string-joining `rollUp` was too slow per crop).
+  `FusedTrack.perCropMass` (crops × ladder) → JSON `crops[].p_ladder`; `LadderStep.meanMass`
+  → JSON `p_mean`; CSV `pred_prob_mean` is now exact (was top-5 approximation) and
+  `pred_imgs` = crops whose top-1 is under the target taxon; new **`crops_<pack>.csv`** (one
+  row per crop: box, size, sharpness, det conf, padding, weight, top-1 species + Conf.,
+  agrees, the visit's ladder taxa and this crop's ∑Conf. under each) so every screen number
+  can be recomputed in R. README_identification.txt updated.
+- **Best view rule changed:** among good-quality crops, the highest own ∑Conf. under the
+  reported taxon (was: highest single-species probability, which picked a spider-at-8 %
+  blur for an Insecta visit and B. vestalis for a B. cingulatus ladder). `best_view.p` is
+  now that ∑Conf. (documented in DATA_GUIDE).
+- **Tables:** column widths measured with `TextPainter` from the header (label + arrow) and
+  the longest cells (`_fitWidths`), so sort arrows never ellipsise; alignment standard:
+  identifiers and names left, quantities right; `_MiniTable` scrolls sideways with a
+  visible scrollbar when a table cannot fit (the crops table on a phone; trace columns
+  first, Side px / Weight to the right); per-taxon visit sheets drop the Taxon column and the
+  rank/flags line (a small amber "suspect" only), the All-visits sheet keeps taxon + rank;
+  ∑Conf. in a taxon's sheet is at THAT rank; crops table No. / ∑Conf. / Agree / Species /
+  Conf. / Side px / Weight with a photo icon on the shown row and "Showing crop No. n (best
+  view)" above the photo; times one decimal + s/m/h everywhere; visit header "35.2 s · 152
+  detector frames · 7 photos (crops)" with the frames-vs-photos explanation.
+- Tests: job test checks `p_ladder`, `p_mean`, `crops_<pack>.csv`; results-screen test
+  adapted (the taxon table scrolls sideways under the 13-px test font, so the finder picks
+  the list's own Scrollable). Not device-verified.

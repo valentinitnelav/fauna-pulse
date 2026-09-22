@@ -113,8 +113,10 @@ void main() {
     await tester.tapAt(const Offset(180, 20));
     await tester.pumpAndSettle();
 
+    // .first: the taxon table may add its own horizontal Scrollable (it
+    // does under the test font, whose glyphs are all 13 px wide).
     final scrollable = tester.state<ScrollableState>(
-      find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),
+      find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first,
     );
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();

@@ -124,9 +124,10 @@ double? _median(List<double> xs) {
   return n.isOdd ? s[n ~/ 2] : (s[n ~/ 2 - 1] + s[n ~/ 2]) / 2;
 }
 
-/// "45 s", "12 min", "1.3 h" for a table cell.
+/// "45.0 s", "12.5 m", "1.3 h": one decimal and a one-letter unit in every
+/// results table (owner, round 215).
 String formatVisitTime(double seconds) {
-  if (seconds < 60) return '${seconds.round()} s';
-  if (seconds < 3600) return '${(seconds / 60).round()} min';
+  if (seconds < 60) return '${seconds.toStringAsFixed(1)} s';
+  if (seconds < 3600) return '${(seconds / 60).toStringAsFixed(1)} m';
   return '${(seconds / 3600).toStringAsFixed(1)} h';
 }

@@ -93,12 +93,58 @@ One identification belongs to one **visit** (track id), combining all of that vi
 photos; the Photos tab of the session summary shows it under every photo of that track id.
 It is not a per-photo answer (the per-crop guesses are in `predictions_<pack>.jsonl`).
 
+**Two kinds of probability, one vocabulary (round 215).** Every results table uses the same
+two words. **∑Conf.** is the probability that the organism belongs to a *taxon*: the
+probabilities of all label-pack names under that taxon added up (a genus = the sum of its
+species, a family = the sum of its genera, and so on; BioCLIP itself only scores the pack's
+names, FaunaPulse does the adding). **Conf.** is the probability of *one* name, a species,
+with no summing. Both come out of the same softmax over the whole pack, so all ∑Conf.
+values at one rank, plus the "none of these" entries, add up to 100 %.
+
+**How a visit's ∑Conf. is computed.** The model turns each crop into a vector. FaunaPulse
+averages the visit's vectors with quality weights (larger, sharper, confidently detected,
+little-padded crops weigh more), re-normalises the average, compares it with every name in
+the pack (cosine similarity times the pack's logit scale, divided by the calibration
+temperature) and turns the similarities into probabilities with a softmax. The ladder's
+∑Conf. column is that distribution summed under each chosen taxon. It is therefore *not*
+the sum or the mean of the per-crop numbers in the crops table: the per-crop numbers come
+from each crop's own vector. Two cross-checks make the relationship visible:
+**Avg** = each crop scored on its own, then the crops' ∑Conf. values averaged with the same
+weights (close to ∑Conf. when the crops agree; a large gap means they disagree and the
+averaged vector landed between them); **Agree** = how many crops, judged alone, put their
+predicted species under the taxon (3/5). The crops table shows every crop's own ∑Conf. for
+the reported taxon, its predicted species and that species' Conf., so the Avg and Agree
+numbers can be recomputed by hand, and `crops_<pack>.csv` carries the same per-crop numbers
+for R or Python.
+
 Each visit gets a **ladder**: the taxon chosen at every rank on a consistent path from
-kingdom to species, with the model's probability mass for it and the share of crops
-whose own best guess agrees. The **identified rank** is the deepest rung whose mass reaches
-the confidence threshold (default 0.8); the headline is that rung's taxon, or
-"unidentified" (not even the class is sure) or "no organism" (the "none of these" entries
-won). Species names below the threshold are still shown, as suggestions to verify.
+kingdom to species, with its ∑Conf., Avg and Agree. The **identified rank** is the deepest
+rung whose ∑Conf. reaches the confidence threshold (default 0.8); the headline is that
+rung's taxon, or "unidentified" (not even the class is sure) or "no organism" (the "none of
+these" entries won). Species names below the threshold are still shown, as suggestions to
+verify. The **best view** photo is, among the good-quality crops, the one whose own ∑Conf.
+for the reported taxon is highest, i.e. the single photo that most clearly shows what the
+visit was identified as (before round 215: the highest single-species Conf., which could pick
+a blurry crop whose best single name was a spider at 8 % for an Insecta visit).
+
+Worked examples from the owner's phone (2026-09-22) that motivated this vocabulary: a
+1.7-second track with four crops whose predicted species had Conf. 8 %, 5 %, 2 % and 3 %
+(two of them spiders) was reported as Insecta with ∑Conf. 83 %: the combined vector's
+probability lies mostly on insect names, thousands of them, none individually likely; the
+four Conf. values are single names from four different distributions and are not meant to
+add up to anything. A 35-second bumblebee track with seven crops was Bombus at ∑Conf. 99 %
+while its best species row read *Bombus cingulatus* 13 %: the genus collects the mass of all
+Bombus species (cingulatus 13 %, hypnorum, vestalis, ...), and the crops' own predicted
+species (vestalis 30 %, cingulatus 17 %, dahlbomii 12 %, ...) are each that crop's single
+best name.
+
+**Why a short visit can have several photos and a long one only seven.** Time is the span
+from the first to the last detector frame of the track id (the detector runs several frames
+per second, so a 35-s visit had 152 frames). Photos are saved on the photo schedule, by
+default one per second during the first 10 s of a visit, and every photo that another insect
+triggered while this one was in view also yields a crop for it. So a 1.7-s track in a
+crowded scene got four crops from other insects' photos, and a 35-s bumblebee got seven
+photos in its first ten seconds and none afterwards. Both are as designed.
 
 The percentages are *model confidence*, not measured accuracy: a calibration
 temperature can be fitted later on labelled crops and stored in the label pack. Until

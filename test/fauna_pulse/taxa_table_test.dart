@@ -79,8 +79,9 @@ void main() {
   });
 
   test('formatVisitTime picks a readable unit', () {
-    expect(formatVisitTime(42), '42 s');
-    expect(formatVisitTime(90), '2 min');
+    expect(formatVisitTime(42), '42.0 s');
+    expect(formatVisitTime(0.5), '0.5 s');
+    expect(formatVisitTime(90), '1.5 m');
     expect(formatVisitTime(5400), '1.5 h');
   });
 }
