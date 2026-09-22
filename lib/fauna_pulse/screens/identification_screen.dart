@@ -343,6 +343,17 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     });
   }
 
+  Widget _buttonNote(String name, String text) => Padding(
+    padding: const EdgeInsets.only(top: 3),
+    child: Text.rich(
+      TextSpan(children: [
+        TextSpan(text: '$name: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+        TextSpan(text: text),
+      ]),
+      style: helperTextStyle,
+    ),
+  );
+
   /// Round 211: measures the real speed of the current model + GPU/thread
   /// settings on this phone with a handful of the session's own crops, so the
   /// user can compare settings instead of trusting the switch labels. Nothing
@@ -668,15 +679,33 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
-      if (_hasEmbeddings)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text(
-            'Continue / re-run only runs the model on crops that have no stored result yet; '
-            'threshold, merge and flag settings are applied to the stored results in seconds.',
-            style: helperTextStyle,
-          ),
+      // Round 218: one line per visible button (owner: too many buttons
+      // without saying what each does).
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buttonNote(
+              _hasEmbeddings ? 'Continue / re-run' : 'Start',
+              _hasEmbeddings
+                  ? 'runs the model only on photos that have no stored result yet (new photos, or after '
+                        'lowering "Smallest box"), then recomputes the results; with nothing new it takes '
+                        'seconds.'
+                  : 'runs the model on every photo of every track id (the slow step), then computes the '
+                        'results.',
+            ),
+            _buttonNote('Test speed', 'times the model on 8 of this session\'s crops with the current GPU and thread settings; writes nothing.'),
+            if (_hasEmbeddings && _pack != null)
+              _buttonNote(
+                'Re-score with this pack',
+                'recomputes the results from the stored model outputs without running the model: use it '
+                    'after changing the label pack or any threshold, merge or flag setting (seconds).',
+              ),
+            if (_summaries.isNotEmpty) _buttonNote('View results', 'opens the newest results of this session.'),
+          ],
         ),
+      ),
       if (_speedResult != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -1064,7 +1093,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: Text(
             'The CSV\'s first columns (pred, pred_prob_weighted, pred_prob_mean) follow the '
             'insect-detect-post format of Maximilian Sittinger and hold the answer at ONE rank; '
-            'this picks that rank (default family). All ranks are in the bioclip_<rank> and '
+            'this picks that rank; the box shows your current choice (the app\'s default is family). '
+            'All ranks are in the bioclip_<rank> and '
             'p_<rank> columns regardless. The names follow that format; the formulas are '
             'FaunaPulse\'s (certainty-weighted mean and plain mean of the crops\' probabilities).',
             style: helperTextStyle,

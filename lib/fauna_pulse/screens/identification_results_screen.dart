@@ -199,8 +199,113 @@ class _TableRow extends StatelessWidget {
   }
 }
 
+/// A slider-like indicator under a table that scrolls sideways (owner,
+/// round 218: the stock scrollbar thumb spanned the width and lay over the
+/// last row): a translucent track, a short thumb that follows the scroll
+/// offset and can be dragged, and arrows at both ends that scroll a step.
+class _ScrollGlider extends StatefulWidget {
+  final ScrollController controller;
+  const _ScrollGlider({required this.controller});
+
+  @override
+  State<_ScrollGlider> createState() => _ScrollGliderState();
+}
+
+class _ScrollGliderState extends State<_ScrollGlider> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refresh);
+    // The scroll extent is known only after the first layout.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  void _step(int dir) {
+    final c = widget.controller;
+    if (!c.hasClients || !c.position.hasContentDimensions) return;
+    final page = c.position.viewportDimension * 0.8;
+    c.animateTo(
+      (c.offset + dir * page).clamp(0.0, c.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    // The position exists before its first layout; its extents do not.
+    final ready = c.hasClients && c.position.hasContentDimensions;
+    final max = ready ? c.position.maxScrollExtent : 0.0;
+    final off = ready ? c.offset.clamp(0.0, max) : 0.0;
+    final frac = max > 0 ? off / max : 0.0;
+    return LayoutBuilder(
+      builder: (_, box) {
+        const arrow = 32.0;
+        final trackW = (box.maxWidth - 2 * arrow).clamp(40.0, double.infinity);
+        final thumbW = (trackW * 0.3).clamp(36.0, trackW);
+        final left = (trackW - thumbW) * frac;
+        return Row(
+          children: [
+            SizedBox(
+              width: arrow,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.chevron_left, size: 20, color: Colors.white54),
+                onPressed: off > 0 ? () => _step(-1) : null,
+              ),
+            ),
+            SizedBox(
+              width: trackW,
+              height: 20,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) {
+                  if (!c.hasClients || trackW <= thumbW) return;
+                  c.jumpTo((c.offset + d.delta.dx * max / (trackW - thumbW)).clamp(0.0, max));
+                },
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Container(height: 6, decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(3))),
+                    Positioned(
+                      left: left,
+                      width: thumbW,
+                      child: Container(height: 12, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(6))),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              width: arrow,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.chevron_right, size: 20, color: Colors.white54),
+                onPressed: off < max ? () => _step(1) : null,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// Header + rows that fit the width when they can, and otherwise scroll
-/// sideways with a visible scrollbar (the flex column then gets [flexMin]).
+/// sideways with a glider under them (the flex column then gets [flexMin]).
 class _MiniTable extends StatefulWidget {
   final List<_Col> cols;
   final Map<String, double> widths;
@@ -230,18 +335,19 @@ class _MiniTableState extends State<_MiniTable> {
         if (natural <= box.maxWidth) {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(null));
         }
-        return Scrollbar(
-          controller: _h,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            controller: _h,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 10),
-            child: SizedBox(
-              width: natural,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(hasFlex ? widget.flexMin : null)),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SingleChildScrollView(
+              controller: _h,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: natural,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.build(hasFlex ? widget.flexMin : null)),
+              ),
             ),
-          ),
+            _ScrollGlider(controller: _h),
+          ],
         );
       },
     );
@@ -802,14 +908,17 @@ class _VisitsSheetState extends State<_VisitsSheet> {
       builder: (_, box) {
         final list = _list(context, widths, taxonWord, median);
         if (natural <= box.maxWidth) return list;
-        return Scrollbar(
-          controller: _h,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            controller: _h,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: natural, child: list),
-          ),
+        return Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _h,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(width: natural, child: list),
+              ),
+            ),
+            _ScrollGlider(controller: _h),
+          ],
         );
       },
     );
@@ -1263,10 +1372,11 @@ class _TrackSheetState extends State<_TrackSheet> {
             ('No.', 'capture order; the camera icon marks the crop shown in the photo above.'),
             (
               'Conf. $_selTaxon',
-              'this crop\'s own confidence for $sel, the ladder row selected above: the crop\'s '
-                  'probabilities for all species under it added up. Tap another ladder row to change the '
-                  'taxon. The track id\'s Conf. for that taxon (ladder above) is this column averaged with '
-                  'the Species conf. column as weights.',
+              'this crop\'s own confidence for $sel, the ladder row selected above'
+                  '${_selRank == 'species' ? ': at species level there is nothing to add up, so it is simply the crop\'s probability for this species (equal to Species conf. when this is the crop\'s top species)' : ': the crop\'s probabilities for all species under it added up'}. '
+                  'Tap another ladder row to change the taxon. The track id\'s Conf. for that taxon '
+                  '(ladder above) is this column averaged over ALL crops with the Species conf. column '
+                  'as weights, so one crop\'s value can be higher than the track id\'s Conf.',
             ),
             ('Agree', '✓ when the crop\'s top species is inside $sel.'),
             ('Top species', 'the species with the highest probability for this crop alone.'),

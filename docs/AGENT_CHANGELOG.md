@@ -7808,3 +7808,23 @@ alternatives exported.
   insect-detect-post formula difference), DATA_GUIDE §8 (columns, identities), SETTINGS_REFERENCE
   (tau 0.60), tool/bioclip_export/README.md. Not device-verified: owner re-scores session_2
   and session_3 and compares with the expected values above.
+
+## Round 218 (2026-09-22): Identify-screen button legend, species-level wording, scrollbar strip, Photos-tab text
+
+Owner follow-ups after round 217 on the phone.
+- Identify screen, Run section: a bold-name legend under the buttons explains Start /
+  Continue / re-run, Test speed, Re-score with this pack and View results (only the visible
+  ones); the r213 single helper line is folded into it. The CSV-rank note now says the box
+  shows the user's current choice and that family is only the app default (the owner had
+  genus stored and read "default family" as a contradiction).
+- S4.crops "Conf. <taxon>" info: at species level it says there is nothing to add up (the
+  value is the crop's probability for that species and equals Species conf. when it is the
+  crop's top species) and that the ladder's Conf. is the column averaged over ALL crops,
+  so one crop can exceed it (owner: 88 % on one crop vs 75 % reported for track #10).
+- Sideways-scrolling tables: the stock scrollbar (a thumb almost as wide as the screen,
+  drawn over the last crops row) is replaced by `_ScrollGlider`, a slider under the table:
+  translucent track, short draggable thumb that follows the scroll offset, chevron arrows
+  at both ends that scroll a step.
+- Photos tab "Identify organisms" info: no more "docs/IDENTIFICATION.md" (read as an in-app
+  screen); says the files are imported once on the next screen, which explains where to
+  get them; "visit"/"insect" → "track id"/"organism".
