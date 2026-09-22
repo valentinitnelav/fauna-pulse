@@ -1,4 +1,6 @@
 // FaunaPulse (round 208): cutting model-ready crops out of session photos.
+// (Round 217: the crop quality features measured here, sharpness and
+// padding, are descriptive columns only; they no longer weight any answer.)
 //
 // Per plan section 11.2: a square on the box's longer side (the same rule as
 // `make_bbox_square()` in insect-detect-post, Sittinger 2026, re-implemented)

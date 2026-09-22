@@ -108,41 +108,49 @@ The crops table names the taxon in its confidence column ("Conf. Hymenoptera"), 
 crop's confidence for the reported taxon sits in the same row as that crop's top species and
 was read as the species' probability (owner, track #19 of session_2: Hymenoptera 90 % with
 per-crop values of 95 %, 90 %, 97 % … next to species names). Tapping a ladder row changes
-the taxon the column shows, and the ladder's Avg for that row is the weighted average of
-the column, spelled out as a worked example in the ladder's info text.
+the taxon the column shows; the track id's Conf. for that taxon is that column averaged with
+the Species conf. column as weights, spelled out as a worked example in the info texts.
 
-**How a track id's Conf. is computed.** The model turns each crop into a vector. FaunaPulse
-averages the visit's vectors with quality weights (larger, sharper, confidently detected,
-little-padded crops weigh more), re-normalises the average, compares it with every name in
-the pack (cosine similarity times the pack's logit scale, divided by the calibration
-temperature) and turns the similarities into probabilities with a softmax. The ladder's
-Conf. column is that distribution summed under each chosen taxon. It is therefore *not*
-the sum or the mean of the per-crop numbers in the crops table: the per-crop numbers come
-from each crop's own vector. Two cross-checks make the relationship visible:
-**Avg** = each crop scored on its own, then the crops' Conf. values averaged with the same
-weights (close to Conf. when the crops agree; a large gap means they disagree and the
-averaged vector landed between them); **Agree** = how many crops, judged alone, put their
-top species under the taxon (3/5). The crops table shows every crop's own Conf. for the
-selected ladder taxon, its top species and that species' confidence, so the Avg and Agree
-numbers can be recomputed by hand, and `crops_<pack>.csv` carries the same per-crop numbers
-for R or Python.
+**How a track id's Conf. is computed (round 217).** Each crop is classified on its own:
+the model turns the crop into a vector, compares it with every species name it was given
+(cosine similarity times the pack's logit scale, divided by the calibration temperature),
+turns the similarities into probabilities with a softmax, and the probabilities of the
+species under a taxon are added up (the crop's own Conf. for that taxon, the "Conf. <taxon>"
+column of the crops table). The track id's Conf. for the taxon is the average of those
+per-crop values, each crop weighted by its own top-1 probability (its Species conf.): a
+crop the model is sure about counts more, a blurred crop about which the model is unsure
+counts little, but no single crop decides alone. In symbols, with w_i the top-1
+probability of crop i and c_i its Conf. for the taxon: Conf. = Σ w_i c_i / Σ w_i, e.g.
+(95 % × 0.14 + 90 % × 0.07 + 97 % × 0.23 + …) / (0.14 + 0.07 + 0.23 + …). Conf. can never
+exceed the best single crop. Image-quality heuristics (sharpness, size, detector
+confidence, padding) no longer influence any number; they remain as descriptive columns in
+`crops_<pack>.csv`. Until round 216 Conf. came from a softmax of a quality-weighted mean
+embedding with a separate "Avg" cross-check; the owner replaced both by this single rule so
+that every number on the screen can be recomputed by hand from the crops table.
 
-Each visit gets a **ladder**: the taxon chosen at every rank on a consistent path from
-kingdom to species, with its ∑Conf., Avg and Agree. The **identified rank** is the deepest
-rung whose ∑Conf. reaches the confidence threshold (default 0.8); the headline is that
-rung's taxon, or "unidentified" (not even the class is sure) or "no organism" (the "none of
-these" entries won). Species names below the threshold are still shown, as suggestions to
-verify. The **best view** photo is, among the good-quality crops, the one whose own ∑Conf.
-for the reported taxon is highest, i.e. the single photo that most clearly shows what the
-visit was identified as (before round 215: the highest single-species Conf., which could pick
-a blurry crop whose best single name was a spider at 8 % for an Insecta visit).
+Two more numbers accompany Conf.: **Agree** = how many crops, judged alone, put their top
+species under the taxon, shown as share and count ("50 % (5/10)"); and, in the files, the
+plain mean (`p_mean_<rank>`) and the best single crop (`p_max_<rank>`) for every rank, so
+other pooling rules can be compared in R without re-scoring.
 
-Worked examples from the owner's phone (2026-09-22) that motivated this vocabulary: a
+Each track id gets a **ladder**: the taxon chosen at every rank on a consistent path from
+kingdom to species, with its Conf. and Agree. The **identified rank** is the deepest rung
+whose Conf. reaches the confidence threshold (default 0.6 since round 217); the headline is
+that rung's taxon, or "unidentified" (not even the class is sure) or "no organism" (the
+"none of these" entries won). Species names below the threshold are still shown, as
+suggestions to verify. The **best single photo** is the crop whose own top species has the
+highest Species conf., i.e. the photo the model is surest about on its own; the track id's
+sheet names it, its species and confidence, the crop number and how many photos name the
+same species, and opens the photo view on it.
+
+Worked examples from the owner's phone (2026-09-22, computed with the rule used until
+round 216; under the round 217 rule track #19 reads Apidae 78 %, Bombus 45 %, B. impatiens
+40 %) that motivated this vocabulary: a
 1.7-second track with four crops whose predicted species had Conf. 8 %, 5 %, 2 % and 3 %
-(two of them spiders) was reported as Insecta with ∑Conf. 83 %: the combined vector's
+(two of them spiders) was reported as Insecta with Conf. 83 %: the combined vector's
 probability lies mostly on insect names, thousands of them, none individually likely; the
 four Conf. values are single names from four different distributions and are not meant to
-add up to anything. A 35-second bumblebee track with seven crops was Bombus at ∑Conf. 99 %
+add up to anything. A 35-second bumblebee track with seven crops was Bombus at Conf. 99 %
 while its best species row read *Bombus cingulatus* 13 %: the genus collects the mass of all
 Bombus species (cingulatus 13 %, hypnorum, vestalis, ...), and the crops' own predicted
 species (vestalis 30 %, cingulatus 17 %, dahlbomii 12 %, ...) are each that crop's single
@@ -179,14 +187,16 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
    under 48 px are skipped as too small. For high-res photos the in-sync `_live.jpg`
    companion is used (the logged boxes were observed on that frame).
 2. **Embed:** the model turns each crop into a unit vector. Stored, so re-scoring is free.
-3. **Combine:** the vectors of one track id are averaged with quality weights (larger,
-   sharper, more confidently detected, less padded crops count more) and re-normalised.
-4. **Score:** the average is compared with every name in the pack (cosine similarity ×
-   the model's scale, softmax), species masses are summed up the taxonomy, the ladder is
-   walked top-down, and support is counted from the per-crop best guesses.
-5. **Cross-check:** the weighted mean of the per-crop probabilities must agree at the
-   chosen rank; if not, the visit is flagged `rule_conflict`. A visit is `path_conflict`
-   when the best taxon at some rank is not a child of the best taxon above it.
+3. **Score each crop:** the vector is compared with every name in the pack (cosine
+   similarity × the model's scale, softmax); species masses are summed up the taxonomy.
+4. **Combine:** the crops' probability vectors are averaged, each crop weighted by its own
+   top-1 probability (round 217; no image-quality weights), the ladder is walked top-down
+   on the pooled masses, and Agree is counted from the per-crop best guesses. A track id is
+   `path_conflict` when the best taxon at some rank is not a child of the best taxon above
+   it. A mean embedding with the same weights is still formed, only for the merge check.
+5. **Export the alternatives:** per rank the plain mean (`p_mean_<rank>`), the best single
+   crop (`p_max_<rank>`) and the agreement share (`agree_<rank>`), plus every crop's own
+   values in `crops_<pack>.csv`.
 
 ## Settings (Identify screen → Advanced)
 
@@ -263,8 +273,12 @@ facets) and his TreeOfLife-to-GBIF key mapping, the per-visit CSV column names o
 `_classified_final.csv`, and the square-crop rule of his `make_bbox_square()`. The
 "none of these" rows follow common practice, with the `none_*` classes of his
 classification dataset (Zenodo https://doi.org/10.5281/zenodo.8325384) as the precedent
-for insect crops. The combination of crops per visit (quality-weighted mean embedding,
-ladder, support) is FaunaPulse's own.
+for insect crops. The combination of crops per track id (certainty-weighted mean of the
+crops' probabilities, ladder, agreement) is FaunaPulse's own and differs from his: in
+insect-detect-post `pred_prob_weighted` is the mean probability of the images that voted
+for the winning candidate times the share of images that voted for it, and
+`pred_prob_mean` the mean over those voting images (`metadata_processor.py`); FaunaPulse
+keeps the column names so the same scripts read both outputs, with its own formulas.
 
 ## Troubleshooting
 

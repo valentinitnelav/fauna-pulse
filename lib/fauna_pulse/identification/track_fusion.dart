@@ -1,61 +1,36 @@
-// FaunaPulse (round 208): scoring one crop and fusing a track's crops.
+// FaunaPulse (round 208, rule changed round 217): scoring one crop and
+// pooling a track id's crops.
 //
-// Pure Dart, no I/O, unit-tested. The math follows plan section 11.3:
+// Pure Dart, no I/O, unit-tested.
 //   * per crop: softmax over the pack of (logit_scale / T) * cosine similarity
 //     (as pybioclip's predict, Imageomics)
-//   * per track: quality-weighted MEAN EMBEDDING (re-normalised), scored once,
-//     rolled up through the taxonomy (mass of a family = sum of its species,
-//     as pybioclip's format_grouped_probs)
-//   * a consistent top-down "ladder" (best child of the chosen parent) with
-//     per-rank mass and "support" (share of crops whose own top-1 agrees)
-//   * cross-check: weighted mean of the per-crop probabilities; a different
-//     winner at the user's rank is flagged, never hidden
-//   * "identified rank" = deepest ladder rank with mass >= tau
+//   * per track id: the CERTAINTY-WEIGHTED MEAN of the crops' probability
+//     vectors, each crop weighted by its own top-1 probability (a crop the
+//     model is sure about counts more, an unsure one less; no image-quality
+//     heuristics since round 217, owner decision), rolled up through the
+//     taxonomy (mass of a family = sum of its species, as pybioclip's
+//     format_grouped_probs)
+//   * a consistent top-down "ladder" (best child of the chosen parent) with,
+//     per rank, the pooled mass, the plain mean and the maximum of the crops'
+//     own masses, and "support" (share of crops whose own top-1 agrees)
+//   * "identified rank" = deepest ladder rank with mass >= tau (default 0.6)
 //   * sink rows (kingdom `none`) collect the "no organism" mass
+//   * a certainty-weighted mean EMBEDDING is still formed, solely for the
+//     visit-merge similarity check (visit_merge.dart); no reported number
+//     comes from it
 
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'label_pack.dart';
 
-/// Quality weight of one crop in the track average (plan 11.3), clipped to
-/// [0.05, 1] so a fully blurred track still gets an answer. [sharpness] is
-/// relative to the sharpest crop of the same track ([maxSharpness]).
-double qualityWeight({
-  required int cropPx,
-  required double sharpness,
-  required double maxSharpness,
-  required double detConf,
-  required double padFrac,
-}) {
-  final size = math.min(1.0, cropPx / 160.0);
-  final sharp = maxSharpness > 0
-      ? math.max(0.2, sharpness / maxSharpness)
-      : 1.0;
-  final conf = detConf.isNaN ? 1.0 : detConf.clamp(0.0, 1.0);
-  final w = size * sharp * conf * (1 - padFrac.clamp(0.0, 1.0));
-  return w.clamp(0.05, 1.0);
-}
-
-/// One embedded crop of a track, as the fusion sees it.
+/// One embedded crop of a track id, as the pooling sees it.
 class CropEmbedding {
   final String jpeg;
   final int? trackId;
   final Float32List vector;
-  final int cropPx;
-  final double sharpness;
-  final double detConf;
-  final double padFrac;
 
-  const CropEmbedding({
-    required this.jpeg,
-    required this.trackId,
-    required this.vector,
-    required this.cropPx,
-    required this.sharpness,
-    required this.detConf,
-    required this.padFrac,
-  });
+  const CropEmbedding({required this.jpeg, required this.trackId, required this.vector});
 }
 
 /// Top-k rows of one probability vector.
@@ -65,21 +40,24 @@ class TopK {
   const TopK(this.rows, this.probs);
 }
 
-/// One rung of a track's ladder.
+/// One rung of a track id's ladder.
 class LadderStep {
   final String rank;
   final String taxon;
   final String key;
+
+  /// The reported confidence: certainty-weighted mean over the crops of
+  /// their own mass under this taxon (round 217). Never exceeds [maxMass].
   final double mass;
 
-  /// Share of the track's crops whose own top-1 falls under this taxon.
+  /// Share of the track id's crops whose own top-1 falls under this taxon.
   final double support;
 
-  /// Round 215: mass under this taxon of the quality-WEIGHTED AVERAGE of the
-  /// crops' own probability distributions (= the weighted mean of the
-  /// per-crop masses shown in the crops table). [mass] comes from the
-  /// averaged EMBEDDING instead; the two agree when the crops agree.
+  /// Plain (unweighted) mean over the crops of their own mass under this
+  /// taxon, and the highest single crop's mass; exported so other pooling
+  /// rules can be compared without re-scoring.
   final double meanMass;
+  final double maxMass;
 
   const LadderStep({
     required this.rank,
@@ -87,7 +65,8 @@ class LadderStep {
     required this.key,
     required this.mass,
     required this.support,
-    this.meanMass = 0,
+    required this.meanMass,
+    required this.maxMass,
   });
 
   Map<String, dynamic> toJson() => {
@@ -95,6 +74,7 @@ class LadderStep {
     'taxon': taxon,
     'p': double.parse(mass.toStringAsFixed(4)),
     'p_mean': double.parse(meanMass.toStringAsFixed(4)),
+    'p_max': double.parse(maxMass.toStringAsFixed(4)),
     'support': double.parse(support.toStringAsFixed(3)),
   };
 }
@@ -102,7 +82,6 @@ class LadderStep {
 class FusedTrack {
   final int? trackId;
   final int nCrops;
-  final List<double> weights;
   final List<LadderStep> ladder;
 
   /// Deepest rank with mass >= tau, or null when even the kingdom is unsure
@@ -110,38 +89,38 @@ class FusedTrack {
   final String? identifiedRank;
   final double noneMass;
   final bool pathConflict;
-  final bool ruleConflict;
 
-  /// The crop whose single view is most confident (index into the input list),
-  /// with the species it suggests and that probability.
+  /// The crop whose own top species has the highest (non-sink) probability:
+  /// the single photo the model is surest about, agreeing with the track
+  /// id's answer or not (round 217); that species and that probability.
   final int bestViewIndex;
   final String bestViewTaxon;
   final double bestViewProb;
+
+  /// Certainty-weighted mean embedding, re-normalised. Used ONLY by the
+  /// visit-merge similarity check (visit_merge.dart).
   final Float32List fusedEmbedding;
 
-  /// Per-crop top-1 row (for the per-crop records).
+  /// Per-crop top-k rows; `perCrop[i].probs.first` is crop i's weight.
   final List<TopK> perCrop;
 
-  /// Round 215: for every crop, its OWN probability mass under each ladder
-  /// taxon (index = rank, same length as [ladder]). This is what lets a
-  /// user trace the visit's answer back to single photos.
+  /// For every crop, its OWN mass under each ladder taxon (index = rank,
+  /// same length as [ladder]); the number every screen value traces to.
   final List<List<double>> perCropMass;
 
   const FusedTrack({
     required this.trackId,
     required this.nCrops,
-    required this.weights,
     required this.ladder,
     required this.identifiedRank,
     required this.noneMass,
     required this.pathConflict,
-    required this.ruleConflict,
     required this.bestViewIndex,
     required this.bestViewTaxon,
     required this.bestViewProb,
     required this.fusedEmbedding,
     required this.perCrop,
-    this.perCropMass = const [],
+    required this.perCropMass,
   });
 
   LadderStep? stepAt(String rank) {
@@ -289,37 +268,39 @@ class Scorer {
     return out;
   }
 
-  /// Fuses a track's crops. [tau] = mass needed to count as identified;
-  /// [userRank] = rank at which the rule cross-check is evaluated.
-  FusedTrack fuse(
-    List<CropEmbedding> crops, {
-    double tau = 0.8,
-    String userRank = 'family',
-    int topK = 5,
-  }) {
+  /// Pools a track id's crops (round 217 rule). [tau] = mass needed to
+  /// count as identified.
+  FusedTrack fuse(List<CropEmbedding> crops, {double tau = 0.6, int topK = 5}) {
     assert(crops.isNotEmpty);
     final dim = pack.dim;
-    var maxSharp = 0.0;
-    for (final c in crops) {
-      if (c.sharpness > maxSharp) maxSharp = c.sharpness;
-    }
-    final weights = [
-      for (final c in crops)
-        qualityWeight(
-          cropPx: c.cropPx,
-          sharpness: c.sharpness,
-          maxSharpness: maxSharp,
-          detConf: c.detConf,
-          padFrac: c.padFrac,
-        ),
-    ];
+    final n = crops.length;
 
-    // Weighted mean embedding, re-normalised.
-    final fused = Float32List(dim);
+    // Every crop scored on its own.
+    final perCropProbs = [for (final c in crops) probs(c.vector)];
+    final perCropTop = [for (final p in perCropProbs) this.topK(p, topK)];
+
+    // Certainty weight = the crop's top-1 probability (always > 0).
+    final weights = [for (final t in perCropTop) t.probs.first];
     var wsum = 0.0;
-    for (var i = 0; i < crops.length; i++) {
-      final w = weights[i];
+    for (final w in weights) {
       wsum += w;
+    }
+
+    // Pooled distribution: weighted mean of the per-crop probability vectors.
+    final pbar = Float32List(pack.rows);
+    for (var i = 0; i < n; i++) {
+      final w = weights[i] / wsum;
+      final p = perCropProbs[i];
+      for (var r = 0; r < pack.rows; r++) {
+        pbar[r] += w * p[r];
+      }
+    }
+    final masses = rollUp(pbar);
+
+    // Mean embedding with the same weights, for the merge check only.
+    final fused = Float32List(dim);
+    for (var i = 0; i < n; i++) {
+      final w = weights[i] / wsum;
       final v = crops[i].vector;
       for (var d = 0; d < dim; d++) {
         fused[d] += (w * v[d]).toDouble();
@@ -327,7 +308,6 @@ class Scorer {
     }
     var norm = 0.0;
     for (var d = 0; d < dim; d++) {
-      fused[d] /= wsum;
       norm += fused[d] * fused[d];
     }
     norm = math.sqrt(norm);
@@ -337,24 +317,11 @@ class Scorer {
       }
     }
 
-    // Per-crop probabilities (for support, cross-check and best view).
-    final perCropProbs = [for (final c in crops) probs(c.vector)];
-    final perCropTop = [for (final p in perCropProbs) this.topK(p, topK)];
-    final pbar = Float32List(pack.rows);
-    for (var i = 0; i < crops.length; i++) {
-      final w = weights[i] / wsum;
-      final p = perCropProbs[i];
-      for (var r = 0; r < pack.rows; r++) {
-        pbar[r] += w * p[r];
-      }
-    }
-
-    final pFused = probs(fused);
-    final masses = rollUp(pFused);
-    final massesBar = rollUp(pbar);
-
     // Consistent top-down path.
-    final ladder = <LadderStep>[];
+    final keys = <String>[];
+    final taxa = <String>[];
+    final massAt = <double>[];
+    final agreeAt = <int>[];
     var parentKey = '';
     var pathConflict = false;
     for (var k = 0; k < 7; k++) {
@@ -376,27 +343,42 @@ class Scorer {
       if (bestKey == null) break;
       if (argmaxKey != bestKey) pathConflict = true;
       final name = bestKey.split('|').last;
-      final taxon = k == 6 ? _speciesDisplay(bestKey) : name;
       var agree = 0;
       for (final t in perCropTop) {
         final top1 = pack.labels[t.rows.first];
         if (top1.ranks[k].isNotEmpty && top1.keyAt(k) == bestKey) agree++;
       }
+      keys.add(bestKey);
+      taxa.add(k == 6 ? _speciesDisplay(bestKey) : name);
+      massAt.add(best);
+      agreeAt.add(agree);
+      parentKey = bestKey;
+    }
+
+    // Each crop's own mass under the ladder taxa. Because massesAt is linear
+    // in p, massAt[k] == sum_i weights[i] * perCropMass[i][k] / wsum: the
+    // reported mass is exactly the weighted mean of the crops table column.
+    final perCropMass = [for (final p in perCropProbs) massesAt(p, keys)];
+    final ladder = <LadderStep>[];
+    for (var k = 0; k < keys.length; k++) {
+      var sum = 0.0, mx = 0.0;
+      for (var i = 0; i < n; i++) {
+        final m = perCropMass[i][k];
+        sum += m;
+        if (m > mx) mx = m;
+      }
       ladder.add(
         LadderStep(
           rank: kRankNames[k],
-          taxon: taxon,
-          key: bestKey,
-          mass: best,
-          support: agree / crops.length,
-          meanMass: massesBar[k][bestKey] ?? 0.0,
+          taxon: taxa[k],
+          key: keys[k],
+          mass: massAt[k],
+          support: agreeAt[k] / n,
+          meanMass: sum / n,
+          maxMass: mx,
         ),
       );
-      parentKey = bestKey;
     }
-    // Each crop's own mass under the ladder taxa (round 215).
-    final ladderKeys = [for (final s in ladder) s.key];
-    final perCropMass = [for (final p in perCropProbs) massesAt(p, ladderKeys)];
 
     final noneMass = masses[0][kSinkKingdom] ?? 0.0;
     String? identified;
@@ -410,64 +392,32 @@ class Scorer {
       }
     }
 
-    // Cross-check at the user's rank.
-    final userIdx = kRankNames.indexOf(userRank).clamp(0, 6);
-    var ruleConflict = false;
-    final ownStep = userIdx < ladder.length ? ladder[userIdx] : null;
-    if (ownStep != null) {
-      String? barKey;
-      var barBest = -1.0;
-      for (final e in massesBar[userIdx].entries) {
-        if (e.value > barBest) {
-          barBest = e.value;
-          barKey = e.key;
-        }
-      }
-      ruleConflict = barKey != null && barKey != ownStep.key;
-    }
-
-    // Best single view (rule changed round 215): among decent-quality crops,
-    // the one whose OWN mass under the reported taxon is highest, i.e. the
-    // photo that on its own most clearly shows what the visit was identified
-    // as. When nothing was identified: the highest single (non-sink) species
-    // probability, as before. The owner saw the old rule pick a blurry crop
-    // whose best single species was a spider at 8 % for an Insecta visit.
+    // Best single view: the crop the model is surest about on its own
+    // (highest top-1 non-sink probability), no quality gate (round 217).
     var bestIdx = 0;
     var bestProb = -1.0;
-    final wThreshold = weights.any((w) => w >= 0.5) ? 0.5 : 0.0;
-    final idIdx = identified == null ? -1 : kRankNames.indexOf(identified);
-    double topNonSink(int i) {
+    var bestTaxon = '';
+    for (var i = 0; i < n; i++) {
       final t = perCropTop[i];
       for (var j = 0; j < t.rows.length; j++) {
-        if (!pack.labels[t.rows[j]].isSink) return t.probs[j];
-      }
-      return 0;
-    }
-    for (var i = 0; i < crops.length; i++) {
-      if (weights[i] < wThreshold) continue;
-      final score = idIdx >= 0 && idIdx < perCropMass[i].length ? perCropMass[i][idIdx] : topNonSink(i);
-      if (score > bestProb) {
-        bestProb = score;
-        bestIdx = i;
-      }
-    }
-    var bestTaxon = '';
-    for (final j in perCropTop[bestIdx].rows) {
-      if (!pack.labels[j].isSink) {
-        bestTaxon = pack.labels[j].speciesName;
-        break;
+        final row = pack.labels[t.rows[j]];
+        if (row.isSink) continue;
+        if (t.probs[j] > bestProb) {
+          bestProb = t.probs[j];
+          bestIdx = i;
+          bestTaxon = row.speciesName;
+        }
+        break; // only the best non-sink row of this crop
       }
     }
 
     return FusedTrack(
       trackId: crops.first.trackId,
-      nCrops: crops.length,
-      weights: weights,
+      nCrops: n,
       ladder: ladder,
       identifiedRank: identified,
       noneMass: noneMass,
       pathConflict: pathConflict,
-      ruleConflict: ruleConflict,
       bestViewIndex: bestIdx,
       bestViewTaxon: bestTaxon,
       bestViewProb: math.max(0, bestProb),

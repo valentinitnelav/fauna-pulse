@@ -607,9 +607,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
-            'the model. The crops of one track id are then combined into ONE answer per visit: '
-            'a quality-weighted average of what the model saw in each crop (sharper and larger '
-            'crops weigh more), not a vote per photo, giving a probability per rank. Track ids '
+            'the model. The crops of one track id are then combined into ONE answer: each crop is '
+            'classified on its own and the crops\' probabilities are averaged, a crop that is sure of '
+            'its answer counting more than an unsure one (not a vote per photo), giving a probability '
+            'per rank. Track ids '
             'are not joined unless "Merge consecutive visits" is on (Advanced settings). '
             'Identification runs on this phone with the chosen model and label pack; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
@@ -1064,7 +1065,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'The CSV\'s first columns (pred, pred_prob_weighted, pred_prob_mean) follow the '
             'insect-detect-post format of Maximilian Sittinger and hold the answer at ONE rank; '
             'this picks that rank (default family). All ranks are in the bioclip_<rank> and '
-            'p_<rank> columns regardless.',
+            'p_<rank> columns regardless. The names follow that format; the formulas are '
+            'FaunaPulse\'s (certainty-weighted mean and plain mean of the crops\' probabilities).',
             style: helperTextStyle,
           ),
         ),

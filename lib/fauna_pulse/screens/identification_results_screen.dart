@@ -7,19 +7,22 @@
 // identified" or by a fixed rank). A row opens sheet S3 with its track ids
 // (numbered 1..N, the tracker's ids in their own column, sortable, with the
 // median confidence stated above the table); a track id opens sheet S4:
-// the ladder (Conf. from the combined embedding, Avg from the crops scored
-// one by one, Agree counts; tap a row to select its taxon), flags with
-// explanations, the photo with the detector box and the square crop drawn
-// (toggle, zoom), and the crops table (each crop's own confidence for the
-// selected ladder taxon, its top species; tap a row to show that crop).
+// the ladder (Conf. = certainty-weighted mean of the crops' own values,
+// Agree as "50 % (5/10)"; tap a row to select its taxon), a "Best single
+// photo" line, flags with explanations, the photo with the detector box
+// and the square crop drawn (toggle, zoom), and the crops table (each
+// crop's own confidence for the selected ladder taxon, its top species and
+// that species' confidence, which is also the crop's weight; tap a row to
+// show that crop).
 //
-// Vocabulary (owner, rounds 215/216): "track id" = one tracked organism
+// Vocabulary (owner, rounds 215-217): "track id" = one tracked organism
 // (a pollination ecologist's "visit"); "Conf." = the model's confidence
-// that a track id belongs to a TAXON (species probabilities under it added
-// up); "Species conf." = one species, one crop, nothing added up; "Med.
-// Conf." = median of Conf. across the track ids of a taxon row. Every info
-// text lists its table's columns in bold, one per line. Percentages are
-// model confidence, not accuracy.
+// that a track id belongs to a TAXON (each crop's species probabilities
+// under it added up, then averaged over the crops with each crop's top-1
+// probability as weight); "Species conf." = one species, one crop, nothing
+// added up; "Med. Conf." = median of Conf. across the track ids of a taxon
+// row. Every info text lists its table's columns in bold, one per line.
+// Percentages are model confidence, not accuracy.
 //
 // Column widths are MEASURED from the header and the longest cell texts
 // (TextPainter), so a sort arrow or a long number never gets ellipsised; a
@@ -182,11 +185,14 @@ class _TableRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 5),
         decoration: BoxDecoration(
           color: highlight ? Colors.white10 : null,
-          border: Border(
-            bottom: BorderSide(color: highlight ? Colors.white38 : Colors.white12, width: highlight ? 1 : 0.5),
-            left: selected ? const BorderSide(color: _cropBoxColor, width: 3) : BorderSide.none,
-          ),
+          border: Border(bottom: BorderSide(color: highlight ? Colors.white38 : Colors.white12, width: highlight ? 1 : 0.5)),
         ),
+        // The selection bar is painted in the foreground so it takes no
+        // layout width (a border did, and overflowed a sideways-scrolling
+        // table by exactly its 3 px).
+        foregroundDecoration: selected
+            ? const BoxDecoration(border: Border(left: BorderSide(color: _cropBoxColor, width: 3)))
+            : null,
         child: below == null ? row : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [row, below!]),
       ),
     );
@@ -299,14 +305,25 @@ int _cmpNum(num? a, num? b) {
   return a.compareTo(b);
 }
 
-/// A track id's Conf. at [rank] (null = its identified rank).
-double? _ladderP(Map<String, dynamic> t, String? rank) {
+/// A track id's ladder step at [rank] (null = its identified rank).
+Map<String, dynamic>? _ladderStep(Map<String, dynamic> t, String? rank) {
   final r = rank ?? t['identified_rank'];
   if (r == null) return null;
   for (final s in (t['ladder'] as List).cast<Map<String, dynamic>>()) {
-    if (s['rank'] == r) return (s['p'] as num).toDouble();
+    if (s['rank'] == r) return s;
   }
   return null;
+}
+
+/// A track id's Conf. at [rank] (null = its identified rank).
+double? _ladderP(Map<String, dynamic> t, String? rank) => (_ladderStep(t, rank)?['p'] as num?)?.toDouble();
+
+/// "50 % (5/10)": share and count of crops whose top species falls under
+/// the step's taxon; "?" when the file lacks it.
+String _agreeText(Map<String, dynamic>? step, int n) {
+  final s = (step?['support'] as num?)?.toDouble();
+  if (s == null || n == 0) return '?';
+  return '${_pct(s)} (${(s * n).round()}/$n)';
 }
 
 double? _median(List<double> xs) {
@@ -716,6 +733,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
     const _Col('crops', 'Crops', numeric: true),
     const _Col('time', 'Time', numeric: true),
     const _Col('conf', 'Conf.', numeric: true),
+    const _Col('agree', 'Agree', numeric: true),
   ];
   String _sortKey = 'no';
   bool _asc = true;
@@ -750,6 +768,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
         'crops' => (a.$2['crops'] as List).length.compareTo((b.$2['crops'] as List).length),
         'time' => _cmpNum(a.$2['duration_s'] as num?, b.$2['duration_s'] as num?),
         'conf' => _cmpNum(_p(a.$2), _p(b.$2)),
+        'agree' => _cmpNum(_ladderStep(a.$2, widget.rank)?['support'] as num?, _ladderStep(b.$2, widget.rank)?['support'] as num?),
         _ => a.$1.compareTo(b.$1),
       };
       _rows.sort((a, b) {
@@ -768,6 +787,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
           'id' => _idText(t),
           'crops' => '${(t['crops'] as List).length}',
           'time' => _secs(t['duration_s'] as num?),
+          'agree' => _agreeText(_ladderStep(t, widget.rank), (t['crops'] as List).length),
           _ => _pct(_p(t)),
         },
     ], MediaQuery.textScalerOf(context));
@@ -816,8 +836,13 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                   ('Time', 'first to last detector frame.'),
                   (
                     'Conf.',
-                    'the model\'s confidence that this track id belongs to $taxonWord, combining its crops '
-                        '(how it is computed is explained on the next screen).',
+                    'the model\'s confidence that this track id belongs to $taxonWord: its crops\' own values '
+                        'averaged, a crop that is sure of its answer counting more (explained on the next screen).',
+                  ),
+                  (
+                    'Agree',
+                    'how many of its crops, judged one by one, put their top species inside $taxonWord: '
+                        'share and count, e.g. 50 % (5/10).',
                   ),
                 ],
                 outro: widget.rank == null || median == null
@@ -861,6 +886,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
             _txt('${(t['crops'] as List).length}', right: true, style: _dimCellStyle),
             _txt(_secs(t['duration_s'] as num?), right: true, style: _dimCellStyle),
             _txt(_pct(_p(t)), right: true, style: _dimCellStyle),
+            _txt(_agreeText(_ladderStep(t, widget.rank), (t['crops'] as List).length), right: true, style: _dimCellStyle),
           ],
         );
       },
@@ -899,7 +925,6 @@ class _TrackSheetState extends State<_TrackSheet> {
     _Col('rank', 'Rank'),
     _Col('taxon', 'Taxon', flex: true),
     _Col('p', 'Conf.', numeric: true),
-    _Col('p_mean', 'Avg', numeric: true),
     _Col('support', 'Agree', numeric: true),
   ];
 
@@ -935,7 +960,6 @@ class _TrackSheetState extends State<_TrackSheet> {
     const _Col('top1', 'Top species', flex: true),
     const _Col('p', 'Species conf.', numeric: true),
     const _Col('side', 'Side px', numeric: true),
-    const _Col('weight', 'Weight', numeric: true),
   ];
 
   int _bestIndex() {
@@ -962,7 +986,6 @@ class _TrackSheetState extends State<_TrackSheet> {
       int cmp((int, Map<String, dynamic>) a, (int, Map<String, dynamic>) b) => switch (_sortKey) {
         'mass' => _cmpNum(_mass(a.$2), _mass(b.$2)),
         'side' => _cmpNum(a.$2['crop_px'] as num?, b.$2['crop_px'] as num?),
-        'weight' => _cmpNum(a.$2['weight'] as num?, b.$2['weight'] as num?),
         'p' => _cmpNum(a.$2['top1_p'] as num?, b.$2['top1_p'] as num?),
         'agrees' => (a.$2['agrees'] == true ? 1 : 0).compareTo(b.$2['agrees'] == true ? 1 : 0),
         'top1' => '${a.$2['top1']}'.compareTo('${b.$2['top1']}'),
@@ -975,16 +998,16 @@ class _TrackSheetState extends State<_TrackSheet> {
     });
   }
 
-  /// "(95 % × 0.21 + 90 % × 0.10 + …) / (0.21 + 0.10 + …) = 69 %": the Avg
-  /// of the selected ladder row recomputed from the crops table, so the
-  /// user can verify it by hand.
-  String _avgExample() {
+  /// "(95 % × 0.14 + 90 % × 0.07 + …) / (0.14 + 0.07 + …) = 91 %": the Conf.
+  /// of the selected ladder row recomputed from the crops table (each crop's
+  /// own Conf. weighted by its Species conf.), so the user can verify it.
+  String _confExample() {
     final parts = <String>[];
     final ws = <String>[];
     var numer = 0.0, den = 0.0;
     for (var i = 0; i < _crops.length; i++) {
       final m = _mass(_crops[i]);
-      final w = (_crops[i]['weight'] as num?)?.toDouble();
+      final w = (_crops[i]['top1_p'] as num?)?.toDouble();
       if (m == null || w == null) return '';
       numer += m * w;
       den += w;
@@ -1013,8 +1036,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         switch (c.key) {
           'rank' => '${s['rank']}',
           'p' => _pct(s['p'] as num?),
-          'p_mean' => s['p_mean'] == null ? '?' : _pct(s['p_mean'] as num?),
-          _ => '${((s['support'] as num? ?? 0) * n).round()}/$n',
+          _ => _agreeText(s, n),
         },
     ], scaler);
     final step = widget.photoStepS, dur = widget.photoDurationS;
@@ -1022,9 +1044,10 @@ class _TrackSheetState extends State<_TrackSheet> {
         ? 'this session: one every ${step.toStringAsFixed(step == step.roundToDouble() ? 0 : 1)} s during the first '
               '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)} s of a track id'
         : 'e.g. one every second during the first 10 s of a track id';
-    final reported = _rank == null ? null : _ladder.firstWhere((s) => s['rank'] == _rank, orElse: () => const {});
-    final selStep = _sel < _ladder.length ? _ladder[_sel] : null;
-    final avgExample = _avgExample();
+    final confExample = _confExample();
+    final best = widget.track['best_view'] as Map<String, dynamic>?;
+    final bestSpecies = best == null ? '' : '${best['species']}';
+    final bestAgree = bestSpecies.isEmpty ? 0 : _crops.where((c) => '${c['top1']}' == bestSpecies).length;
     return ListView(
       controller: widget.controller,
       padding: _sheetPadding(context),
@@ -1059,23 +1082,18 @@ class _TrackSheetState extends State<_TrackSheet> {
             cols: [
               (
                 'Conf.',
-                'the model\'s confidence that this track id belongs to the taxon. How it is made: the model '
-                    'turns every crop into a vector; the crops\' vectors are averaged (better crops count '
-                    'more: the Weight column of the crops table); the average is compared with every species '
-                    'the model knows and converted into probabilities; the probabilities of all species '
-                    'under the taxon are added up.'
-                    '${reported == null || reported.isEmpty ? '' : ' Example: Conf. for ${reported['taxon']} = ${_pct(reported['p'] as num?)}.'}',
+                'the model\'s confidence that this track id belongs to the taxon. How it is made: every crop '
+                    'is classified on its own (its probabilities for all species under the taxon added up: '
+                    'the "Conf. $_selTaxon" column of the crops table); those values are then averaged, each '
+                    'crop weighted by its Species conf., so a crop the model is sure about counts more and a '
+                    'blurred, unsure one counts little. Conf. can never exceed the best single crop.'
+                    '${confExample.isEmpty ? '' : ' Example for $_selTaxon: $confExample.'}',
               ),
               (
-                'Avg',
-                'a cross-check computed the other way round: each crop is converted into probabilities on '
-                    'its own and the species under the taxon are added up per crop (the "Conf. $_selTaxon" '
-                    'column of the crops table); those values are then averaged with the same weights.'
-                    '${selStep == null || avgExample.isEmpty ? '' : ' Example for $_selTaxon: $avgExample.'}'
-                    ' Conf. and Avg agree when the crops agree; a gap means the crops point in different '
-                    'directions.',
+                'Agree',
+                'how many crops, each on its own, have their top species inside the taxon, as share and '
+                    'count (e.g. 50 % (5/10)). A second, count-based signal next to Conf.',
               ),
-              ('Agree', 'how many crops, each on its own, have their top species inside the taxon (e.g. 8/10).'),
             ],
           ),
         ),
@@ -1098,12 +1116,20 @@ class _TrackSheetState extends State<_TrackSheet> {
                   _txt('${_ladder[k]['rank']}', style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
                   _txt('${_ladder[k]['taxon']}', bold: _ladder[k]['rank'] == _rank, maxLines: 2),
                   _txt(_pct(_ladder[k]['p'] as num?), right: true, bold: _ladder[k]['rank'] == _rank),
-                  _txt(_ladder[k]['p_mean'] == null ? '?' : _pct(_ladder[k]['p_mean'] as num?), right: true, style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
-                  _txt('${((_ladder[k]['support'] as num? ?? 0) * n).round()}/$n', right: true, style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
+                  _txt(_agreeText(_ladder[k], n), right: true, style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
                 ],
               ),
           ],
         ),
+        if (bestSpecies.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Best single photo: $bestSpecies ${_pct(best!['p'] as num?)} (crop No. ${_bestIndex() + 1}); '
+              '$bestAgree of ${_plural(n, 'photo')} name this species.',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
         if ((t['none_p'] as num? ?? 0) > 0.05)
           Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -1131,7 +1157,6 @@ class _TrackSheetState extends State<_TrackSheet> {
                       'rank on it shows the best taxon inside the chosen parent, which has a lower Conf. than '
                       'the one it had to skip. A sign that the crops point in two directions.',
                 ),
-                ('rule_conflict', 'the Avg column (crops scored one by one, then averaged) picks a different taxon than Conf. (crops averaged first) at the CSV rank.'),
                 ('single_crop', 'only one crop, so there is no agreement to measure.'),
               ],
             ),
@@ -1155,10 +1180,9 @@ class _TrackSheetState extends State<_TrackSheet> {
         label: 'Photo',
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Opens on the BEST VIEW: among the good-quality crops, the one whose own Conf. for the '
-            'reported taxon${_rank == null ? '' : ' ($_rank)'} is highest, i.e. the single photo that most '
-            'clearly shows what the track id was identified as (for an unidentified track id: the highest '
-            'species confidence). Tap a row of the crops table to show that crop instead.\n'
+            'Opens on the BEST VIEW: the crop whose own top species has the highest Species conf., i.e. '
+            'the single photo the model is surest about on its own (it need not agree with the track '
+            'id\'s answer). Tap a row of the crops table to show another crop.\n'
             'Yellow box: the detector\'s box for this organism. Cyan box: the square (box + margin) that '
             'was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
             'double-tap zooms, the reset button returns to full view.',
@@ -1224,11 +1248,10 @@ class _TrackSheetState extends State<_TrackSheet> {
           'mass' => _mass(cr) == null ? '?' : _pct(_mass(cr)),
           'agrees' => '✓',
           'p' => _pct(cr['top1_p'] as num?),
-          'side' => '${cr['crop_px']}',
-          _ => (cr['weight'] as num).toStringAsFixed(2),
+          _ => '${cr['crop_px']}',
         },
     ], scaler);
-    final missing = _crops.any((c) => c['agrees'] == null || _mass(c) == null);
+    final missing = _crops.any((c) => c['agrees'] == null || _mass(c) == null) || _ladder.any((s) => s['p_max'] == null);
     final sel = _selTaxon.isEmpty ? 'the selected taxon' : '$_selTaxon ($_selRank)';
     return [
       HelpLabel(
@@ -1242,17 +1265,19 @@ class _TrackSheetState extends State<_TrackSheet> {
               'Conf. $_selTaxon',
               'this crop\'s own confidence for $sel, the ladder row selected above: the crop\'s '
                   'probabilities for all species under it added up. Tap another ladder row to change the '
-                  'taxon. The Avg of that ladder row is the weighted average of this column.',
+                  'taxon. The track id\'s Conf. for that taxon (ladder above) is this column averaged with '
+                  'the Species conf. column as weights.',
             ),
             ('Agree', '✓ when the crop\'s top species is inside $sel.'),
             ('Top species', 'the species with the highest probability for this crop alone.'),
             (
               'Species conf.',
-              'that probability (one species, nothing added up). The ladder\'s species row is chosen from '
-                  'the averaged vector and can be a different species.',
+              'that probability (one species, nothing added up). It is also the crop\'s WEIGHT in the '
+                  'track id\'s Conf.: a crop that is sure of its answer counts more, an unsure one less. '
+                  'The ladder\'s species row is the best species of the weighted average and can differ.'
+                  '${_confExample().isEmpty ? '' : ' For $_selTaxon: ${_confExample()}.'}',
             ),
             ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
-            ('Weight', 'the crop\'s share in the average (0 to 1): larger, sharper crops with a confident detection and little padding at the ROI edge weigh more.'),
           ],
           outro: 'Tap a row to show that crop in the photo; tap a header to sort; drag sideways if the table is wider than the screen.',
         ),
@@ -1262,8 +1287,9 @@ class _TrackSheetState extends State<_TrackSheet> {
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
-            '"?" = this result file was written by an older app version; "Re-score with this pack" on '
-            'the Identify screen fills the Conf., Avg and Agree values in seconds.',
+            '"?" or a file from an older app version (before round 217 the confidence came from the '
+            'averaged vector and some per-crop values were not stored). "Re-score with this pack" on '
+            'the Identify screen recomputes everything with the current rule in seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),
@@ -1296,7 +1322,6 @@ class _TrackSheetState extends State<_TrackSheet> {
                 _txt('${c['top1']}', maxLines: 2),
                 _txt(_pct(c['top1_p'] as num?), right: true, style: _dimCellStyle),
                 _txt('${c['crop_px']}', right: true, style: _dimCellStyle),
-                _txt((c['weight'] as num).toStringAsFixed(2), right: true, style: _dimCellStyle),
               ],
               below: Padding(
                 padding: const EdgeInsets.only(top: 2),

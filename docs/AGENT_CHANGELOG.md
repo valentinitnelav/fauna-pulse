@@ -7757,3 +7757,54 @@ can you sum under a species": the column never named its taxon.
   probabilities (insect-detect-post style; every number then recomputable from the crops
   table and comparable with the colleague's pipeline). Not changed this round.
 - Not device-verified.
+
+## Round 217 (2026-09-22): Conf. = certainty-weighted mean of per-crop probabilities (owner decision), tau 0.6
+
+Planned with the owner (plan mode): they questioned whether the vector average was sound,
+wanted no image-quality weighting ("blur is subjective"), and asked what insect-detect-post
+does. Read its `metadata_processor.py`: per track, each crop votes with its top-1 and top-2;
+a candidate's `candidate_prob_weighted` = mean probability over the crops that voted for it
+× the share of crops that voted for it; the highest wins; no quality weights, no ladder.
+Offline comparison on the phone's re-scored files (vector average / plain mean /
+certainty-weighted / best crop): #19 Bombus 19 / 22 / 45 / 75 %, #6 Bombus 99 / 71 / 66 /
+100 %, #7 Lepidoptera 54 / 60 / 55 / 83 % (a 1.7-s blur). Owner chose (AskUserQuestion):
+certainty-weighted mean, tau 0.6, Conf. + Agree % + a best-single-photo line, all per-rank
+alternatives exported.
+
+- **Rule (`track_fusion.dart`):** every crop scored on its own; w_i = the crop's top-1
+  probability; pbar = Σ w_i p_i / Σ w_i; masses = rollUp(pbar); ladder, pathConflict,
+  noneMass and identified rank from pbar. Identity asserted in the tests: mass at rank k =
+  Σ w_i · perCropMass[i][k] / Σ w_i, so the reported Conf. is exactly the "Conf. <taxon>"
+  column of the crops table averaged with the "Species conf." column as weights. Removed:
+  `qualityWeight`, the mean-embedding softmax, `massesBar`/"Avg", `ruleConflict`,
+  `FusedTrack.weights`, `CropEmbedding`'s quality fields, `userRank`. Kept: a mean embedding
+  with the same weights, solely for the merge cosine. `LadderStep` gains `maxMass`; `meanMass`
+  is now the plain mean. Best view = the crop with the highest top-1 non-sink probability.
+- **Outputs (`identification_store.dart`):** tracks CSV gets `p_mean_<rank>` and
+  `p_max_<rank>` blocks right after `p_<rank>` (leading insect-detect-post-compatible columns
+  and the trailing merge/suspect columns keep their positions); `support_<rank>` →
+  `agree_<rank>`; `pred_prob_weighted` = Conf., `pred_prob_mean` = plain mean (names as in
+  insect-detect-post, formulas differ: documented); no `rule_conflict` flag; `weight` removed
+  from predictions JSONL, tracks JSON crops and `crops_<pack>.csv` (`top1_p` is the weight);
+  JSON ladder steps carry `p`, `p_mean`, `p_max`, `support`; README text rewritten.
+- **Defaults:** tau 0.6 (`IdentifyPrefs`, `IdentifyRunSettings`, scoring fallback); a phone
+  with a stored `identify_tau` keeps its value (the owner's 0.75 must be changed by hand).
+- **Screens (`identification_results_screen.dart`):** S3 gains an Agree column at the
+  sheet's rank ("50 % (5/10)"); S4 ladder = Rank / Taxon / Conf. / Agree (Avg gone), info
+  text with the worked example recomputed from the crops table with Species conf. as
+  weights; new "Best single photo: <species> <p> (crop No. n); k of N photos name this
+  species" line; flags glossary without rule_conflict; crops table No. / Conf. <taxon> /
+  Agree / Top species / Species conf. / Side px (Weight column and both unconditional
+  `weight` casts removed, so files without `weight` cannot crash); the amber hint covers
+  files written before this round (missing `p_max`/`p_ladder`) and says to re-score.
+  Identify screen: Run help and the CSV-rank note reworded. `crop_worker.dart` header:
+  quality features are descriptive only.
+- **Tests:** `track_fusion_test.dart` rewritten (sure vs unsure crop with the expected
+  2/3 mass, tau 0.6 default vs 0.8, best view, monotonicity, the mass identity plus p_mean /
+  p_max and the JSON keys); job test checks p_max, no `weight` anywhere, the new/renamed CSV
+  header blocks; results-screen test checks the S3 Agree column, the best-single-photo line
+  and the absence of Avg/Weight.
+- Docs: IDENTIFICATION.md (rule, best single photo, steps 3-5, attribution with the
+  insect-detect-post formula difference), DATA_GUIDE §8 (columns, identities), SETTINGS_REFERENCE
+  (tau 0.60), tool/bioclip_export/README.md. Not device-verified: owner re-scores session_2
+  and session_3 and compares with the expected values above.

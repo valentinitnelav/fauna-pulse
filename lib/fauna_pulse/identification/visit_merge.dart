@@ -8,8 +8,9 @@
 //      the two identified ranks, e.g. "Apidae" then "Bombus"), neither is
 //      "no organism";
 //   2. the two visits' fused embeddings are similar: cosine >= [minCos]
-//      (the strong signal: "looks like the same animal", available for free
-//      from the identification);
+//      (the strong signal: "looks like the same animal"; the fused embedding
+//      is the certainty-weighted mean embedding that track_fusion.dart forms
+//      solely for this check since round 217);
 //   3. the mean box side relative to the ROI differs by at most [sizeTol]
 //      (a coarse guard: pose, distance and ROI-edge cuts change box size,
 //      so this is deliberately loose).

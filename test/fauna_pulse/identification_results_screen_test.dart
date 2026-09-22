@@ -25,12 +25,12 @@ Map<String, dynamic> _track(int id, List<String> path, String rank, double p) =>
   'duration_s': 3.0,
   'det_conf_mean': 0.9,
   'ladder': [
-    for (var k = 0; k < 7; k++) {'rank': _ranks[k], 'taxon': path[k], 'p': p, 'support': 1.0},
+    for (var k = 0; k < 7; k++) {'rank': _ranks[k], 'taxon': path[k], 'p': p, 'p_mean': p, 'p_max': p, 'support': 1.0},
   ],
   'flags': const [],
   'best_view': {'src': 'a.jpg', 'species': path.last, 'p': p},
   'crops': [
-    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'weight': 1.0, 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_p': p},
+    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_p': p, 'agrees': true, 'p_ladder': List.filled(7, p)},
   ],
 };
 
@@ -110,10 +110,22 @@ void main() {
     expect(find.text('No. ▲'), findsOneWidget); // default sort column
     // The sheet's explanation block can push the first (lazily built) row
     // below the fold under the test font: scroll the sheet's own list.
+    // Round 217: Agree column in S3 (checked before scrolling: the lazy
+    // list disposes its header row once it leaves the viewport).
+    expect(find.text('Agree'), findsOneWidget);
     await tester.dragUntilVisible(find.text('#1'), find.byType(ListView).last, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(find.text('#1'), findsOneWidget);
-    // Close the sheet.
+    expect(find.text('100 % (1/1)'), findsWidgets); // one crop per track
+    // Open the track id's sheet (S4): best-single-photo line, no Avg/Weight.
+    await tester.tap(find.text('#1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Best single photo'), findsOneWidget);
+    expect(find.text('Avg'), findsNothing);
+    expect(find.text('Weight'), findsNothing);
+    // Close both sheets.
+    await tester.tapAt(const Offset(180, 10));
+    await tester.pumpAndSettle();
     await tester.tapAt(const Offset(180, 20));
     await tester.pumpAndSettle();
 

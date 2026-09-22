@@ -1,5 +1,7 @@
-// Tests for the per-track fusion math (round 208, plan section 11.3): quality
-// weights, softmax scoring, the ladder, support, tau, sink mass, conflicts.
+// Tests for the per-track-id pooling math (round 208, rule changed round
+// 217): softmax scoring, certainty weights, the ladder, support, tau, sink
+// mass, path conflicts, and the identity between the reported mass and the
+// crops' own masses.
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -43,36 +45,10 @@ Float32List unit(List<double> v) {
   return Float32List.fromList([for (final x in v) x / n]);
 }
 
-CropEmbedding crop(
-  List<double> v, {
-  int px = 200,
-  double sharp = 100,
-  double conf = 0.9,
-  double pad = 0,
-  int? track = 1,
-  String jpeg = 'a.jpg',
-}) => CropEmbedding(
-  jpeg: jpeg,
-  trackId: track,
-  vector: unit(v),
-  cropPx: px,
-  sharpness: sharp,
-  detConf: conf,
-  padFrac: pad,
-);
+CropEmbedding crop(List<double> v, {int? track = 1, String jpeg = 'a.jpg'}) =>
+    CropEmbedding(jpeg: jpeg, trackId: track, vector: unit(v));
 
 void main() {
-  group('qualityWeight', () {
-    test('full-quality crop weighs 1, tiny blurred crop stays above the floor', () {
-      expect(qualityWeight(cropPx: 200, sharpness: 50, maxSharpness: 50, detConf: 1, padFrac: 0), 1.0);
-      final w = qualityWeight(cropPx: 20, sharpness: 1, maxSharpness: 100, detConf: 0.3, padFrac: 0.5);
-      expect(w, closeTo(0.05, 1e-9)); // clipped at the floor
-    });
-    test('no sharpness reference gives the size × conf weight', () {
-      expect(qualityWeight(cropPx: 80, sharpness: 0, maxSharpness: 0, detConf: 1, padFrac: 0), closeTo(0.5, 1e-9));
-    });
-  });
-
   group('Scorer', () {
     test('softmax puts the mass on the matching axis and topK sorts', () {
       final s = Scorer(tinyPack());
@@ -113,18 +89,22 @@ void main() {
       expect(f.pathConflict, isFalse);
     });
 
-    test('quality weights pull the average toward the sharp, large crop', () {
+    test('a sure crop outweighs an unsure one; tau 0.6 is the default (round 217)', () {
       final s = Scorer(tinyPack(logitScale: 20));
-      final sharpBee = crop([0, 0, 1, 0, 0], px: 300, sharp: 500, conf: 0.95);
-      final blurryFly = crop([1, 0, 0, 0, 0], px: 40, sharp: 5, conf: 0.4, jpeg: 'b.jpg');
-      final f = s.fuse([sharpBee, blurryFly], tau: 0.8);
-      expect(f.weights[0], closeTo(0.95, 1e-9)); // size 1 × sharp 1 × conf 0.95
-      expect(f.weights[1], lessThan(0.1));
+      final sureBee = crop([0, 0, 1, 0, 0]); // top-1 ~ 1.0
+      final unsureFly = crop([1, 1, 0, 0, 0], jpeg: 'b.jpg'); // split between two Syrphidae: top-1 ~ 0.5
+      final f = s.fuse([sureBee, unsureFly]);
+      expect(f.perCrop[0].probs.first, greaterThan(0.99));
+      expect(f.perCrop[1].probs.first, closeTo(0.5, 0.02));
       expect(f.stepAt('order')!.taxon, 'Hymenoptera');
-      expect(f.bestViewTaxon, 'Apis mellifera');
+      // (1.0 * 1 + 0.5 * 0) / 1.5
+      expect(f.stepAt('order')!.mass, closeTo(2 / 3, 0.02));
+      expect(f.stepAt('order')!.support, 0.5);
+      expect(f.identifiedRank, 'species'); // 0.667 >= 0.6
+      expect(s.fuse([sureBee, unsureFly], tau: 0.8).identifiedRank, 'class');
       expect(f.bestViewIndex, 0);
-      // The mean-probability cross-check agrees (rule conflict false).
-      expect(f.ruleConflict, isFalse);
+      expect(f.bestViewTaxon, 'Apis mellifera');
+      expect(f.bestViewProb, greaterThan(0.99));
     });
 
     test('a flower crop lands on the sink row', () {
@@ -146,20 +126,38 @@ void main() {
       expect(f.stepAt('order')!.taxon, 'Diptera');
     });
 
-    test('ladder masses never increase down the path and rule conflict is detected', () {
-      final s = Scorer(tinyPack(logitScale: 8));
-      // Crop 1 strongly a fly, crops 2+3 mildly bees: the embedding average
-      // may side with one, the mean of probabilities with the other.
-      final f = s.fuse(
-        [crop([1, 0, 0.6, 0.6, 0], sharp: 100), crop([0, 0, 1, 0, 0], sharp: 10, jpeg: 'b.jpg'), crop([0, 0, 0, 1, 0], sharp: 10, jpeg: 'c.jpg')],
-        tau: 0.8,
-        userRank: 'order',
-      );
+    List<CropEmbedding> threeCrops() => [
+      crop([1, 0, 0.6, 0.6, 0]),
+      crop([0, 0, 1, 0, 0], jpeg: 'b.jpg'),
+      crop([0, 0, 0, 1, 0], jpeg: 'c.jpg'),
+    ];
+
+    test('ladder masses never increase down the path', () {
+      final f = Scorer(tinyPack(logitScale: 8)).fuse(threeCrops(), tau: 0.8);
       for (var i = 1; i < f.ladder.length; i++) {
         expect(f.ladder[i].mass, lessThanOrEqualTo(f.ladder[i - 1].mass + 1e-6));
       }
       expect(f.ladder.map((e) => e.rank).toList(), kRankNames);
-      expect(f.ruleConflict, isA<bool>());
+    });
+
+    test('mass is the top-1-weighted mean of the crops\' own masses; p_mean and p_max (round 217)', () {
+      final f = Scorer(tinyPack(logitScale: 8)).fuse(threeCrops(), tau: 0.8);
+      final w = [for (final t in f.perCrop) t.probs.first];
+      final wsum = w.reduce((a, b) => a + b);
+      for (var k = 0; k < f.ladder.length; k++) {
+        var weighted = 0.0, plain = 0.0, mx = 0.0;
+        for (var i = 0; i < 3; i++) {
+          final m = f.perCropMass[i][k];
+          weighted += w[i] * m;
+          plain += m;
+          if (m > mx) mx = m;
+        }
+        expect(f.ladder[k].mass, closeTo(weighted / wsum, 1e-5));
+        expect(f.ladder[k].meanMass, closeTo(plain / 3, 1e-6));
+        expect(f.ladder[k].maxMass, closeTo(mx, 1e-6));
+        expect(f.ladder[k].mass, lessThanOrEqualTo(f.ladder[k].maxMass + 1e-6));
+      }
+      expect(f.ladder.first.toJson().keys, containsAll(['rank', 'taxon', 'p', 'p_mean', 'p_max', 'support']));
     });
   });
 }

@@ -327,7 +327,6 @@ Map<String, dynamic> writeOutputs({
           'key': rec.key,
           'src': rec.source,
           'track_id': rec.trackId,
-          'weight': double.parse(t.fused.weights[i].toStringAsFixed(3)),
           'top': [
             for (var j = 0; j < top.rows.length; j++)
               {
@@ -363,9 +362,13 @@ Map<String, dynamic> writeOutputs({
     'det_conf_mean',
     for (final r in kRankNames) 'bioclip_$r',
     for (final r in kRankNames) 'p_$r',
+    // Round 217: the alternatives, so other pooling rules can be compared
+    // in R without re-scoring: plain mean and best single crop per rank.
+    for (final r in kRankNames) 'p_mean_$r',
+    for (final r in kRankNames) 'p_max_$r',
     'identified_rank',
     'headline',
-    for (final r in kRankNames) 'support_$r',
+    for (final r in kRankNames) 'agree_$r',
     'n_crops_used',
     'none_p',
     'best_view_photo',
@@ -403,7 +406,6 @@ Map<String, dynamic> writeOutputs({
         'sharpness',
         'det_conf',
         'pad_frac',
-        'weight',
         'top1_species',
         'top1_p',
         'agrees',
@@ -434,9 +436,10 @@ Map<String, dynamic> writeOutputs({
         taxaFamily[fam.taxon] = (taxaFamily[fam.taxon] ?? 0) + 1;
       }
     }
-    // Round 215 (exact, was approximate from top-5 rows): pred_imgs = crops
-    // whose own top-1 falls under the predicted taxon; pred_prob_mean = the
-    // quality-weighted mean of the crops' own mass under it (= LadderStep.meanMass).
+    // pred_prob_weighted = the reported Conf. (certainty-weighted mean),
+    // pred_prob_mean = the plain mean, pred_imgs = crops whose own top-1
+    // falls under the predicted taxon. Same column NAMES as insect-detect-post,
+    // different formulas (see DATA_GUIDE section 8).
     var predImgs = 0;
     if (step != null) {
       for (final top in f.perCrop) {
@@ -473,12 +476,13 @@ Map<String, dynamic> writeOutputs({
       if (isNone) 'none',
       if (f.identifiedRank == null && !isNone) 'unidentified',
       if (f.pathConflict) 'path_conflict',
-      if (f.ruleConflict) 'rule_conflict',
       if (t.crops.length == 1) 'single_crop',
     ];
     final bio = {for (var k = 0; k < 7; k++) 'bioclip_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].taxon : ''};
     final pr = {for (var k = 0; k < 7; k++) 'p_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].mass.toStringAsFixed(4) : ''};
-    final sup = {for (var k = 0; k < 7; k++) 'support_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
+    final prMean = {for (var k = 0; k < 7; k++) 'p_mean_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].meanMass.toStringAsFixed(4) : ''};
+    final prMax = {for (var k = 0; k < 7; k++) 'p_max_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].maxMass.toStringAsFixed(4) : ''};
+    final agr = {for (var k = 0; k < 7; k++) 'agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
     final row = <Object?>[
       deviceId,
       sessionId,
@@ -494,9 +498,11 @@ Map<String, dynamic> writeOutputs({
       detConfMean.toStringAsFixed(3),
       ...bio.values,
       ...pr.values,
+      ...prMean.values,
+      ...prMax.values,
       f.identifiedRank ?? '',
       headline,
-      ...sup.values,
+      ...agr.values,
       t.crops.length,
       f.noneMass.toStringAsFixed(4),
       bestCrop.source,
@@ -525,7 +531,6 @@ Map<String, dynamic> writeOutputs({
           c.sharpness.toStringAsFixed(1),
           c.detConf.toStringAsFixed(3),
           c.padFrac.toStringAsFixed(3),
-          f.weights[i].toStringAsFixed(3),
           top1.speciesName,
           f.perCrop[i].probs.first.toStringAsFixed(4),
           f.identifiedRank == null ? '' : (_cropAgrees(top1, f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)) ? 1 : 0),
@@ -570,7 +575,6 @@ Map<String, dynamic> writeOutputs({
                 for (final m in f.perCropMass[i]) double.parse(m.toStringAsFixed(4)),
             ],
             'box': t.crops[i].box,
-            'weight': double.parse(f.weights[i].toStringAsFixed(3)),
             'crop_px': t.crops[i].cropPx,
             'sharpness': double.parse(t.crops[i].sharpness.toStringAsFixed(1)),
             'top1': pack.labels[f.perCrop[i].rows.first].speciesName,
@@ -656,61 +660,58 @@ Files
   embeddings_<model>.jsonl / .bin  one record + one float32 vector per crop (row = vector index)
   predictions_<pack>.jsonl         per crop: the most probable pack rows with probabilities
   tracks_<pack>.json               per track: the full "ladder" (kingdom..species with mass and support),
-                                   crops with weights, best single view, flags
+                                   crops with their own values, best single view, flags
   tracks_<pack>.csv                one row per track (visit); columns below
   crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
 
-Two kinds of probability appear everywhere (round 216 wording):
-  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON = the
-                       probabilities of all species under that taxon added up (genus = sum of
-                       its species, family = sum of its genera, ...). From the track id's
-                       combined embedding; p_mean is the same from the crops scored one by one
-                       and averaged (the results screen's "Avg").
-  Species conf. (top1_p)  probability of ONE species for ONE crop, nothing added up.
+Two kinds of probability appear everywhere (round 217 rule):
+  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON: each crop is
+                       scored on its own (probabilities of all species under the taxon added
+                       up), then the crops are averaged with each crop's top-1 probability as
+                       weight (a sure crop counts more). p_mean_<rank> = the plain mean,
+                       p_max_<rank> = the best single crop; p never exceeds p_max.
+  Species conf. (top1_p)  probability of ONE species for ONE crop, nothing added up; it is
+                       also the crop's weight in the average.
   Med. Conf.           on the results screen's taxon table: the median of Conf. across the
                        row's track ids.
 
 tracks_<pack>.csv columns
   device_id, session_id, track_id      identifiers (track_id empty for no-AI sessions: one row per crop)
   track_imgs                          crops used for this track
-  pred, pred_prob_weighted            the taxon at the chosen target rank and its SumConf. from the
-                                      visit's combined embedding
+  pred, pred_prob_weighted            the taxon at the chosen target rank and its Conf. (see above)
   pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the
-                                      quality-weighted mean of the crops' own SumConf. under it
-                                      (exact since round 215)
+                                      plain mean of the crops' own Conf. under it (names as in
+                                      insect-detect-post, formulas differ)
   start_time, end_time, duration_s    from the session log's track span
   det_conf_mean                       mean detector confidence of the crops
   bioclip_<rank>                      the taxon chosen at each rank on a consistent top-down path
-  p_<rank>                            SumConf. of that taxon from the combined embedding (model
-                                      confidence, calibrated only if the pack carries a fitted
-                                      temperature); the JSON ladder also carries p_mean = the
-                                      weighted mean of the crops' own SumConf. (the "Avg" column)
+  p_<rank>                            Conf. of that taxon (see above; calibrated only if the pack
+                                      carries a fitted temperature)
+  p_mean_<rank>, p_max_<rank>         plain mean and best single crop (round 217)
   identified_rank                     deepest rank whose mass reached tau
   headline                            the taxon at identified_rank, or "unidentified" / "no organism"
-  support_<rank>                      share of crops whose own top-1 falls under that taxon
+  agree_<rank>                        share of crops whose own top-1 falls under that taxon
   none_p                              mass on the "none of these" rows (flower, leaf, shadow, ...)
-  best_view_*                         the crop whose own SumConf. under the reported taxon is highest
-                                      (its top-1 species and that SumConf.; before round 215: the
-                                      crop with the highest single species probability)
-  flags                               none | unidentified | path_conflict | rule_conflict | single_crop
+  best_view_*                         the crop whose own top species has the highest probability (the
+                                      photo the model is surest about on its own); that species and p
+  flags                               none | unidentified | path_conflict | single_crop | merged | short | low_det | weak_id | suspect
   model_id, pack_id                   provenance
   merged_track_ids, n_detections, suspect   joined ids; detector frames; suspect verdict (0/1)
 
 crops_<pack>.csv columns
   session_id, track_id, crop_no       the visit and the crop's number within it (capture order)
   photo, box_*                        photo file and the detector box (fractions of the photo side)
-  crop_px, sharpness, det_conf, pad_frac, weight
+  crop_px, sharpness, det_conf, pad_frac
                                       square crop side (px), Laplacian sharpness, detector confidence,
-                                      padding outside the photo, and the quality weight in the average
-  top1_species, top1_p                the species this crop alone suggests and its Conf.
+                                      padding outside the photo (descriptive only)
+  top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
   agrees                              1 when top1_species falls under the visit's reported taxon
-  ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own SumConf. under each
+  ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own Conf. under each
 
-How it is computed (plan section 11.3): each crop is embedded with the BioCLIP image
-tower; a track's crops are averaged (quality-weighted: size, sharpness, detector
-confidence, padding), the average is scored against the pack, and species masses are
-summed up the taxonomy. Percentages are model confidence, not accuracy.
+How it is computed (round 217): each crop is embedded with the BioCLIP image tower and
+scored against the pack on its own; a track id's per-crop probabilities are averaged with
+each crop's top-1 probability as weight, and species masses are summed up the taxonomy. Percentages are model confidence, not accuracy.
 ''';
 
 /// One visit's identification as the Photos tab shows it (round 209): read

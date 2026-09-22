@@ -120,11 +120,18 @@ void main() {
     expect(crop0['p_ladder'], hasLength((tracks[0]['ladder'] as List).length));
     expect((crop0['p_ladder'] as List).first, greaterThan(0.9)); // kingdom mass of a clear crop
     expect((tracks[0]['ladder'] as List).first['p_mean'], greaterThan(0.9));
+    // Round 217: p_max exported, no per-crop weight (top1_p is the weight).
+    expect((tracks[0]['ladder'] as List).first['p_max'], greaterThan(0.9));
+    expect(crop0.containsKey('weight'), isFalse);
+    expect(crop0['top1_p'], greaterThan(0.9));
+    expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().first, isNot(contains('"weight"')));
     final cropsCsv = paths.cropsCsv('tiny_pack');
     expect(cropsCsv.existsSync(), isTrue);
     final cropLines = cropsCsv.readAsStringSync().trim().split('\n');
     expect(cropLines.first, startsWith('session_id,track_id,crop_no,photo,box_left'));
     expect(cropLines.first, endsWith(',p_species'));
+    expect(cropLines.first, isNot(contains(',weight,')));
+    expect(cropLines.first, contains(',pad_frac,top1_species,'));
     expect(cropLines.length, 4); // header + 3 crops
     expect((tracks[0]['crops'] as List).length, 2);
     expect(tracks[1]['headline'], 'Apis mellifera');
@@ -135,6 +142,10 @@ void main() {
     final csvLines = paths.tracksCsv('tiny_pack').readAsLinesSync();
     expect(csvLines.length, 3);
     expect(csvLines.first, startsWith('device_id,session_id,track_id,track_imgs,pred_imgs,pred,pred_prob_weighted,pred_prob_mean,'));
+    final header = csvLines.first;
+    expect(header, contains(',p_species,p_mean_kingdom,'));
+    expect(header, contains(',p_max_species,identified_rank,headline,agree_kingdom,'));
+    expect(header, isNot(contains('support_')));
     expect(csvLines.first, contains('bioclip_species'));
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'

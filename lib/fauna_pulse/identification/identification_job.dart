@@ -90,7 +90,7 @@ class IdentifyRunSettings {
     this.margin = 0.15,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
-    this.tau = 0.8,
+    this.tau = 0.6,
     this.noneThreshold = 0.5,
     this.thermalLimitC = 40,
     this.targetRank = 'family',
@@ -582,8 +582,7 @@ class IdentificationJob {
       (groups[g] ??= []).add(r);
     }
     final scorer = Scorer(pack);
-    final tau = (settings['tau'] as num?)?.toDouble() ?? 0.8;
-    final targetRank = (settings['target_rank'] as String?) ?? 'family';
+    final tau = (settings['tau'] as num?)?.toDouble() ?? 0.6;
     var scored = <ScoredTrack>[];
     for (final g in order) {
       final recs = groups[g]!;
@@ -593,13 +592,9 @@ class IdentificationJob {
             jpeg: r.source,
             trackId: r.trackId,
             vector: Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
-            cropPx: r.cropPx,
-            sharpness: r.sharpness,
-            detConf: r.detConf,
-            padFrac: r.padFrac,
           ),
       ];
-      final fused = scorer.fuse(crops, tau: tau, userRank: targetRank);
+      final fused = scorer.fuse(crops, tau: tau);
       final span = recs.first.trackId == null ? null : spans[recs.first.trackId!];
       final capMs = [for (final r in recs) ?r.capturedAtMs];
       scored.add(
@@ -628,14 +623,9 @@ class IdentificationJob {
                 jpeg: r.source,
                 trackId: r.trackId,
                 vector: Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
-                cropPx: r.cropPx,
-                sharpness: r.sharpness,
-                detConf: r.detConf,
-                padFrac: r.padFrac,
               ),
           ],
           tau: tau,
-          userRank: targetRank,
         ),
       );
     }

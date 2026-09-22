@@ -268,8 +268,8 @@ https://doi.org/10.5281/zenodo.21822140), re-implemented in our own code:**
   downloaded from his release, not redistributed);
 - the per-visit CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
   `track_imgs`, `pred_imgs`, `bioclip_<rank>`) of his `_classified_final.csv`, so both
-  tools' outputs can be analysed with the same scripts; the app's fusion rule itself
-  differs (quality-weighted mean embedding, plan section 11.3);
+  tools' outputs can be analysed with the same scripts; the app's pooling rule itself
+  differs (certainty-weighted mean of the crops' probabilities, round 217);
 - the square-on-the-longer-side crop rule (`make_bbox_square()`); FaunaPulse adds a
   margin and pads at photo edges instead of shifting the square.
 
