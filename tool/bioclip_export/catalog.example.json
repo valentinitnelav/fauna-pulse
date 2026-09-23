@@ -1,0 +1,56 @@
+{
+  "_comment": "Example of the download catalogue FaunaPulse will fetch over HTTPS. One entry per downloadable file; the app shows kind/name/size/description in a menu, downloads the URL with resume support, verifies sha256, and imports the file exactly like a manual Import.",
+  "catalog_version": 1,
+  "updated": "2026-09-20",
+  "entries": [
+    {
+      "id": "bioclip-2_image_fp16",
+      "kind": "embedder",
+      "name": "BioCLIP 2 image model (fp16)",
+      "description": "Turns a crop into an embedding. Needed once; works with every BioCLIP 2 label pack below.",
+      "model_id": "bioclip-2",
+      "url": "<to be added>",
+      "bytes": 609364000,
+      "sha256": "<from tool/bioclip_export/out/bioclip-2_image_fp16.json>",
+      "license": "MIT (Imageomics BioCLIP 2)",
+      "requires": {"min_ram_gb": 4}
+    },
+    {
+      "id": "bioclip2_pollinator_orders_europe_v1",
+      "kind": "pack",
+      "name": "Pollinator orders, Europe",
+      "description": "Flies, bees and wasps, beetles, butterflies and moths with GBIF records in Europe (35,260 species).",
+      "model_id": "bioclip-2",
+      "region": "EUROPE",
+      "taxa": ["Diptera", "Hymenoptera", "Coleoptera", "Lepidoptera"],
+      "url": "<to be added>",
+      "bytes": 0,
+      "sha256": "<fill in>",
+      "license": "CC0-1.0 (TreeOfLife-200M embeddings)"
+    },
+    {
+      "id": "bioclip2_flower_visitors_32fam_v1",
+      "kind": "pack",
+      "name": "Flower visitors, 32 families, worldwide",
+      "description": "Bees, hoverflies and other flies, ladybirds, butterflies, bugs, crab and orb spiders (38,570 species).",
+      "model_id": "bioclip-2",
+      "region": "WORLD",
+      "url": "<to be added>",
+      "bytes": 62753000,
+      "sha256": "<fill in>",
+      "license": "CC0-1.0 (TreeOfLife-200M embeddings)"
+    },
+    {
+      "id": "bioclip2_mammalia_world_v1",
+      "kind": "pack",
+      "name": "Mammals, worldwide",
+      "description": "All 5,999 mammal species BioCLIP knows, for MegaDetector animal boxes.",
+      "model_id": "bioclip-2",
+      "region": "WORLD",
+      "url": "<to be added>",
+      "bytes": 9800000,
+      "sha256": "<fill in>",
+      "license": "CC0-1.0 (TreeOfLife-200M embeddings)"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# PC-side tools for FaunaPulse identification (export BioCLIP for the phone).
+#
+# Tested 2026-09-20 on Ubuntu 24.04 x86_64 with Python 3.12 (the exact versions
+# that worked are in requirements-lock.txt). No GPU is needed: the CPU build of
+# PyTorch converts BioCLIP 2 in a few minutes. Install with the CPU index so pip
+# does not pull the 3 GB CUDA build:
+#
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+#
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.5
+torchvision
+open_clip_torch>=2.26
+huggingface_hub>=0.23
+numpy>=1.26
+pillow
+# Converter (PyTorch -> LiteRT/TFLite), formerly ai-edge-torch. 0.9+ needs no
+# TensorFlow; it pulls ai-edge-quantizer (fp16/int8 weight casting) and
+# ai-edge-litert (runs the .tflite on the PC for verify_parity.py).
+litert-torch>=0.9.4
+ai-edge-litert>=2.2.0
+ai-edge-quantizer>=0.9.0
+# Optional: --onnx export and PC-side ONNX checks.
+onnx
+onnxruntime

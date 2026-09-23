@@ -7263,3 +7263,741 @@ minted. Concept DOI `10.5281/zenodo.22309221` (all versions), version DOI
 
 Verification: `cffconvert --validate` OK; `cffconvert -f apalike` and `-f bibtex`
 both print `10.5281/zenodo.22309221`; no code changed.
+
+## Round 208 (2026-09-20): on-device identification with BioCLIP (first working slice)
+
+Owner request: identify the tracked organisms on the phone, in bulk after a day of
+recording, with the BioCLIP models Max Sittinger's `insect-detect-post` uses on a PC
+(design notes in the owner's `BIOCLIP_ON_DEVICE_PLAN.md`, outside the repo). This
+round ships the whole vertical slice; nothing here touches the live camera path.
+
+**PC side (`tool/bioclip_export/`, Python, MIT/CC0 inputs):**
+- `export_image_tower.py`: downloads the OpenCLIP checkpoint (BioCLIP 2 / 2.5 / 1),
+  wraps the image tower (CLIP mean/std normalisation and L2 norm baked into the graph,
+  input RGB 0..1 NCHW), converts with `litert-torch` to `.tflite` (fp16 default, int8
+  dynamic-range, or fp32) and writes a `.json` manifest (dim, input size, logit scale,
+  sha256). Optional `--onnx`.
+- `build_label_pack.py` + `fpack.py`: reads the TreeOfLife-200M species text embeddings
+  (2.66 GB, CC0) once from Hugging Face, filters by class / order / species CSV (Max's
+  GBIF country lists plug in here), embeds six "none of these" sink prompts (flower,
+  leaf, shadow, debris, blurry, web) with the text tower, and writes ONE `.fpack` file:
+  `FPK1` magic + uint32 header length + JSON header (pack_id, model_id, dim, rows,
+  dtype f16|f32, logit_scale, temperature, ranks, sink_rows, labels[rows][8]) + the
+  row-major matrix. The Dart reader is tested against a fixture written by this module
+  (`test/fauna_pulse/fixtures/tiny_pack.fpack`).
+- `verify_parity.py`: PyTorch vs TFLite embeddings on a crop folder (cosine, family and
+  species top-1 agreement against a pack); acceptance >= 0.99 / >= 95 %.
+- `README.md` + `requirements.txt`. None of this could be run here (no torch on this
+  machine); syntax-checked only. Owner runs it on a PC.
+
+**Native (plugin):** `Embedder.kt` wraps `InferenceModel.create` (so the LiteRT GPU
+ladder, crash blocklist and CPU threads apply) for an RGB-in / unit-vector-out model;
+`YOLOPlugin.kt` gains `embedderLoad` / `embedderRun` / `embedderClose` on the default
+channel, all work serialised on a dedicated `yolo-embedder` thread, replies on the main
+looper, released on engine detach. Dart API `ImageEmbedder` (plugin
+`lib/core/image_embedder.dart`, exported): `load(path, useGpu, cpuThreads)` →
+accelerator/input size/dim, `embed(List<Uint8List> rgb)` → flat Float32List batch, `close()`.
+
+**App (`lib/fauna_pulse/identification/`):**
+- `label_pack.dart`: fpack reader (half-float decode, taxonomy rows with hierarchy keys,
+  sink rows = kingdom `none`), `readHeader` for listings, `load` off the UI isolate.
+- `crop_planner.dart`: crop tasks from `SessionLogIndex` (one per photo per track id;
+  the `_live` companion is preferred when present since the logged boxes were observed
+  on it), `post_detections.jsonl` fallback for no-AI sessions (no track ids), per-track
+  sampling (largest boxes first).
+- `crop_worker.dart`: pure geometry `planSquareCrop` (square on the longer side + margin,
+  centred, CLIP-mean padding at photo edges instead of shifting), `laplacianVariance`
+  sharpness, `cropBatchSync` (decode once per photo, direct antialiased resize to the
+  model input) on a worker isolate.
+- `track_fusion.dart`: `qualityWeight` (size × sharpness × det conf × (1 − pad), clipped
+  0.05..1), `Scorer` (softmax over the pack with logit_scale / temperature; top-k;
+  taxonomy roll-up; `fuse` = quality-weighted mean embedding scored once, consistent
+  top-down ladder with mass and support, identified rank at tau, sink mass, mean-of-
+  probabilities cross-check → `rule_conflict`, `path_conflict`, best single view).
+- `identification_store.dart`: `<session>/identification/` layout, `EmbeddingRecord` /
+  `EmbeddingIndex` (resume state, contiguity check), float32 `.bin` I/O, `writeOutputs`
+  (predictions jsonl, tracks json + Max-compatible CSV with per-rank p/support columns,
+  summary json, README).
+- `identification_job.dart`: driver. Plan → resume filter (inconsistent files are
+  redone; an orphan vector after a kill is truncated) → per photo: crop isolate → native
+  embed in batches of 8 → append vector then record → progress (throttled), cancel
+  between photos, thermal governor (pause at `thermal_limit_c`, resume 3 °C lower,
+  `identify_end` counts the pauses) → scoring in its own isolate (`scoreSession`; also
+  callable alone = "Re-score with this pack").
+- `identification_assets.dart`: private `identification/models` + `packs` dirs, file
+  picker import through the shared streamed checks (`copyAndValidateModel` gained an
+  optional `maxBytes`; `kMaxIdentificationFileBytes` = 2 GiB; packs must parse),
+  `IdentifyPrefs` (`identify_*` shared_preferences: model, pack, GPU, threads, margin
+  0.15, min crop 48 px, crops per visit 10, tau 0.8, none threshold 0.5, thermal limit
+  40 °C, target rank family) and the per-model measured ms/crop for the estimate.
+- Screens: `identification_screen.dart` (model/pack pickers + Import, crop count and
+  time estimate, plugged-in hint, Advanced fold with every tunable, run with progress /
+  ETA / battery temp / cancel, completion card, re-score, results, share CSV) and
+  `identification_results_screen.dart` (counts, visits per order/family bars, per-visit
+  list with min-confidence slider, ladder sheet with support, best view photo, crops).
+- Entry points: home gear menu "Identify organisms" (+ green biotech badge when
+  `identification/summary_*.json` exists), summary Photos tab button.
+
+**Docs:** new `docs/IDENTIFICATION.md`; DATA_GUIDE §8; SETTINGS_REFERENCE
+"Identification"; THIRD_PARTY_MODELS BioCLIP 2 (MIT) entry + citation; README wording;
+`.gitignore` for the Python venv/outputs.
+
+**Tests (+5 files, 26 tests):** label pack fixture round-trip and half floats; fusion
+math (weights, softmax, roll-up, ladder, sink, unsure, conflicts); crop planner (index,
+live preference, post-hoc, sampling); crop worker (geometry, padding, sharpness, real
+JPEG batch); job end-to-end with a fake embedder (plan → embed → score → CSV/JSON,
+resume, cancel, thermal pause, skips).
+
+**Deliberately not in this round:** URL download of model/pack (Import only; the
+files are made on the owner's PC), blackout screen during the run (wakelock + normal
+screen; brightness is the user's), bulk "identify all sessions", track merging (plan
+11.14), calibration temperature fitting (the pack carries `temperature` = 1.0), native
+scoring for packs > 100 k rows (Dart softmax ≈ 50 ms per crop per 30 k rows).
+
+**Not verified on a device yet:** the litert-torch export of ViT-L/14 and its GPU
+compile on the Xiaomi are exactly what Phase 0 of the plan measures; the CPU int8 path
+is the fallback. First on-device checks: `verify_parity.py` on the PC, then a small
+orders-only pack on a short session.
+
+
+Same-day follow-up (owner's PC run): `pip install -r requirements.txt` brought
+litert-torch 0.9.4, which no longer uses TensorFlow's converter, so the original
+`_ai_edge_converter_flags` approach failed with `No module named 'tensorflow'`.
+`export_image_tower.py` now converts to float32 with `litert_torch.convert(...,
+lightweight_conversion=True)` and applies fp16 (ai-edge-quantizer FLOAT_CASTING on
+FULLY_CONNECTED + CONV_2D weights) or int8 (`recipe.dynamic_wi8_afp32()`) afterwards,
+deleting the float32 intermediate unless `--keep-fp32`; `--no-lightweight` is the
+fallback switch. `build_label_pack.py` gained `--families` so the first phone test can
+use a pack of a few tens of MB. Disk note: the owner's home had 3.6 GB free; the pip
+download cache (4 GB) was purged to make room for the 1.2 GB intermediate + outputs.
+Second follow-up: the float32 conversion itself succeeded on the owner's PC (1.16 GB,
+35 s; input `serving_default_args_0` [1,3,224,224], output
+`serving_default_output_0_output` [1,768], unit-norm output verified with
+ai-edge-litert, 4.4 s/inference on 4 PC threads), but ai-edge-quantizer 0.9.0 with
+flatbuffers 25.12 fails inside its weight transformations (`tensor.name + b'_dequant'`
+with a `str` name). `export_image_tower.py` now normalises tensor names to bytes by
+wrapping `tfl_flatbuffer_utils.read_model` before quantising. The TreeOfLife-200M json
+structure was confirmed as `[[kingdom..epithet], common_name]` (867,455 rows; Insecta
+264,036, Arachnida 16,406). First test pack: 32 flower-visitor families
+(`bioclip2_flower_visitors_32fam_v1`, ~38.5 k rows + 6 sink rows).
+Third follow-up (export finished on the owner's PC): the first fp16 file came out LARGER
+than float32 (1,317 vs 1,216 MB). `inspect_tflite.py` (new helper) showed why: with
+`lightweight_conversion=True` litert-torch folds the LayerNorm scale into the next
+linear layer algebraically but leaves the product `W × gamma` as a runtime MUL over
+705 MB of constants (48 of the 144 FULLY_CONNECTED ops got "computed" weights), which
+ai-edge-quantizer cannot cast. Full constant folding (now the default; `--lightweight`
+is opt-in) gives 97 constant-weight FULLY_CONNECTED ops, float32 1,216 MB in 74 s
+(~7 GB RAM), fp16 609 MB via FLOAT_CASTING in 6 s. The str/bytes workaround now also
+wraps `duplicate_tensor` (its f-string rename). Final artifacts in
+`tool/bioclip_export/out/` (git-ignored): `bioclip-2_image_fp32.tflite` (1,160 MiB,
+parity cosine 1.0000 / 100 % agreement vs PyTorch on 6 synthetic images),
+`bioclip-2_image_fp16.tflite` (581 MiB) + `.json` manifest, and the first pack
+`bioclip2_flower_visitors_32fam_v1.fpack` (59.8 MiB, 38,570 species of 32 flower-visitor
+families + 6 sink rows, logit scale 100.0).
+Reproducibility (owner request): `tool/bioclip_export/README.md` rewritten as a
+step-by-step guide (requirements, environment, export, pack, verification, copy to the
+phone, troubleshooting, licenses) with the measured sizes and times; `requirements.txt`
+now installs the CPU build of PyTorch via `--extra-index-url` (the default CUDA build
+cost 3 GB of disk for nothing); `requirements-lock.txt` holds the exact 77 verified
+package versions (Ubuntu 24.04, Python 3.12.3, minus the nvidia-*/triton CUDA
+packages). New `inspect_tflite.py` documented.
+Packs per category and region (owner request, same day): `build_label_pack.py` gained
+`--sink-set arthropod|mammal|none` (camera-trap sink prompts for MegaDetector boxes)
+and the new `build_region_species_list.py` derives regional species lists from GBIF
+occurrence facets (continent or country union, min 3 records, one request per order)
+intersected with the TreeOfLife-to-GBIF mapping published with insect-detect-post. The
+regional-restriction idea itself is BioCLIP's ("Geo-Restricted Taxon List Predictions"
+in the pybioclip docs); the API-based construction follows Sittinger's implementation
+(owner asked for honest two-level attribution, applied across code and docs the same
+day); Europe × the four pollinator orders
+= 35,260 species in ~70 s of API time. Built: `bioclip2_pollinator_orders_europe_v1`
+(35,260 names), `bioclip2_flower_visitors_32fam_v1` (38,570), `bioclip2_mammalia_world_v1`
+(5,999, 9.4 MB), `bioclip2_pollinator_orders_world_v1` (204,620 names, 318 MB, needs the
+native scorer). `catalog.example.json` sketches the download catalogue for the planned
+in-app "Download…" menu (HTTPS + sha256, hosted on Hugging Face / GitHub Releases, Zenodo
+for the DOI copy; Play bundling ruled out by the 200 MB base limit and Play-only asset
+delivery).
+Distillation considered, not adopted (2026-09-21, after Maximilian Sittinger's references): the full
+BioCLIP 2 image tower stays the on-phone model because identification runs after
+recording in bulk (accuracy over speed, no labelled field data). Published students
+lose species-level fidelity (FastViT student 71.7 % top-1 agreement with its teacher;
+ConvNeXt-tiny + KD 64.7 % vs BioCLIP 2 88.3 % without field labels, Gardiner et al.
+ICCVW 2025). Recorded in `tool/bioclip_export/README.md` ("Why the full model...") with
+the drop-in path for a BioCLIP 2 student should real-time or weak-phone use become a goal.
+
+## Round 209 (2026-09-21): identification results table, taxa under photos, layout fixes
+
+First owner feedback on the round-208 Identify screens (device test with the
+`bioclip2_flower_visitors_32fam_v1.fpack` pack).
+
+- **Layout bugs (identification_screen.dart):** "right overflow by 40 pixels" came from
+  the model / label-pack `DropdownButtonFormField`s sizing to their longest item (long
+  pack file name); fixed with `isExpanded: true` (also on the CSV rank dropdown). The
+  unreachable last row of the unfolded Advanced settings was the round-165 edge-to-edge
+  trap again (explicitly padded ListView, no SafeArea); fixed with `SafeArea` + bottom
+  padding 32, same on the results screen and its bottom sheets. The OVERVIEW now carries a
+  NEW-SCREEN LAYOUT CHECKLIST next to the r165 invariant, and a memory note was saved,
+  because the owner flagged this as recurrent.
+- **Results screen rework (identification_results_screen.dart + new
+  `identification/taxa_table.dart`):** the per-visit list with a "min. confidence" slider
+  (unclear to the owner, and unusable with thousands of tracks) is replaced by a per-taxon
+  table: `aggregateTracks()` groups the tracks JSON "as identified" (one row per answer at
+  its identified rank: genus Bombus and Bombus terrestris are two rows) or by a fixed rank
+  (order/family/genus/species; visits not resolved that deep fall into a "not resolved to
+  <rank>" bucket); columns = visits, summed duration, median confidence; rows sorted by
+  visits, buckets last, folded at 25 rows with "Show all N rows". Tapping a row opens the
+  visits behind it in a lazily built sheet (ListView.builder), tapping a visit opens the
+  existing ladder/crops sheet; "All N visits" button for the full list. The order/family
+  bar charts are gone (the table by rank covers them). Pure-Dart test `taxa_table_test.dart`;
+  widget test `identification_results_screen_test.dart` (360-px screen, long names, bottom
+  inset, grouping).
+- **Taxa under photos (session_summary_screen.dart):** `LatestIdentification.load()`
+  (identification_store.dart) reads the compact `tracks[]` list of the newest
+  `summary_<pack>.json` (never the full per-crop tracks file) into maps by track id and, for
+  no-AI sessions, by photo name (`summary_<pack>.json` `tracks[]` entries now carry `src`
+  when the track id is null). The viewer's info panel gains an "Identified" row:
+  "#12 Bombus (genus, 87 %), #13 no organism"; the tab header names the pack and run time
+  and says the answer is per visit (all photos of the track id combined), not per photo.
+  Reloaded when the Identify screen is closed. Test `summary_identified_row_test.dart`.
+- **Photo sample size:** default stays a random 10; a chip row "Sample: 10 · 50 · 100 ·
+  All (N)" offers only the sizes below the session's photo count (no chips at all for ≤ 10
+  photos), plus a dice button for a fresh random draw. "All" keeps the > 300 confirm
+  dialog. `_photoSampleSize` (null = all) replaces `_photosShowAll`; a reload after a
+  cleanup keeps the chosen size. `summary_tabs_test.dart` updated.
+- Not yet device-verified this round (owner installs and tests).
+
+Ideas for later (not built): a "only photos of identified visits" or per-taxon photo
+filter on the Photos tab (the identification maps are already loaded there); persisting
+the chosen sample size; a per-taxon export (the CSV already allows it in R).
+
+## Round 210 (2026-09-21): Identify screen wording + settings fixes, temperature gauge, opt-in visit merge
+
+Second owner feedback pass on the Identify screen (device test).
+
+- **Title:** "Identify organisms — <session>" was ellipsised into "…"; the AppBar title
+  is now two rows (screen name, session name smaller below). Same on the results screen.
+- **Advanced settings did not take typed values (bug):** the r208 handlers assigned
+  `prefs.x = v` without a rebuild, so the `NumericSettingField` kept its stale `value` and
+  its blur-time snap rewrote the box to the OLD number (the value was in fact stored and
+  reappeared after reopening). All handlers now go through `_edit()` = `setState` + save;
+  the "Save settings" button is gone (subtitle "Saved as you change them").
+- **Helper texts rewritten in plain language (owner):** no "probability mass" (now
+  "probability", with the sum-over-species explanation); "full ladder is always shown"
+  replaced by "deeper ranks are still listed as suggestions"; "no organism" threshold
+  explained via the pack's "none of these" entries; the CSV `pred` rank explained as the
+  one-rank columns of Sittinger's `insect-detect-post` format; model/pack text shortened
+  with the GitHub repository reference; the Run text says identification happens on the
+  phone with no data transfer, that crops are combined per visit as a quality-weighted
+  average (not a vote), that track ids are not joined unless the merge is on, and that the
+  pause temperature is set under Advanced; the 48 px default explained (224 px model input,
+  >4x enlargement below 48 px is blur); "Crops per visit" explained as the LARGEST boxes
+  cap, related to the AI-mode photo schedule (1 s step, 10 s duration ≈ 10 photos, so the
+  default cap of 10 rarely bites). Default kept at 10 (bounds runtime for long bursts); 0 =
+  all.
+- **Progress:** the counter advances per photo (all crops of that photo), stated on
+  screen; the battery temperature is now reported during embedding (not only while paused)
+  and drawn as a green/amber/red bar against the pause limit, with cooling advice while
+  paused (cool hard surface, out of the sun, fan, no case).
+- **Opt-in visit merge (`identification/visit_merge.dart`):** the owner asked whether
+  "combining" meant joining track ids and wanted the user to decide. Combining per track
+  id is unchanged (quality-weighted mean embedding). NEW "Merge consecutive visits" (off)
+  + "Largest gap" (5 s): after per-track fusion, a track starting within the gap after the
+  previous one ended, with a compatible identification (identical taxon key at the
+  shallower of the two identified ranks) and mean crop size within 2x, is joined; the
+  union of crops is fused again. Overlapping tracks never merge. Outputs: `track_ids`,
+  CSV trailing `merged_track_ids`, flag `merged`, summary `visits_merged` /
+  `tracks_before_merge`; the results header and visit tiles show the joined ids; the
+  Photos tab maps every member id to the merged answer. Test added to
+  `identification_job_test.dart` (merge on/off, gap too short).
+- Docs: IDENTIFICATION.md (defaults rationale, merge), DATA_GUIDE §8 (new columns/fields).
+- Not device-verified this round.
+
+## Round 211 (2026-09-21): GPU fallback reason on screen, "Test speed", honest accelerator texts
+
+Owner asked whether the Identify screen's GPU switch and CPU-thread field are real or a
+facade (the Xiaomi always ends on CPU for BioCLIP).
+
+- **Audit result:** both are real. `Embedder` uses `InferenceModel.create` → `LiteRtModel`,
+  i.e. the detector's GPU-first ladder (crash blocklist, CPU fallback) and
+  `CompiledModel.CpuOptions(numThreads)` on CPU compiles. What was NOT true: the r208 helper
+  claimed "GPU is usually faster for the fp16 model" (never measured for BioCLIP; on the
+  Xiaomi the GPU compile fails and the run silently falls back), and the fallback reason
+  lived only in logcat.
+- **Reason surfaced:** `InferenceModel.accelerationNote` (interface default null;
+  `LiteRtModel` records the compile exception text or "on the GPU blocklist…"; `OrtQnnModel`
+  untouched) → `Embedder.accelerationNote` → `embedderLoad` reply → `ImageEmbedderInfo` →
+  Identify screen: stage text "Identifying crops on the CPU (GPU not used: …)", Last-run
+  card line, and the speed-test result.
+- **"Test speed" button (Run section):** loads the model with the current GPU/thread
+  settings, crops up to 8 of the session's planned boxes (worker isolate), embeds one as
+  warm-up, times the 8, reports "x.xx s per crop on the CPU (n threads)", closes the model;
+  nothing is written. Lets the owner compare GPU on/off and thread counts per phone.
+- **Helper texts** for the GPU switch and CPU threads rewritten: what each really does
+  (LiteRT GPU compile attempt with CPU fallback; XNNPACK thread pool), no speed promise,
+  pointer to Test speed.
+- Kotlin changes are compile-checked with Gradle (see the round's notes); not device-run.
+
+
+## Round 212 (2026-09-21): merge rule with embedding similarity, exposed parameters, suspect-visit flags
+
+Owner decisions (after the r211 discussion): merge on gap + box side relative to the ROI
+(within 50 %) + cosine similarity of the consecutive visits' embeddings as the stronger
+signal; no position continuity (the tracker handles it); short-lived tracks get
+non-destructive flags at scoring (option 1), with all parameters exposed.
+
+- **Merge rule (`identification/visit_merge.dart`):** the r210 "mean cropPx within 2x"
+  guard is replaced by (a) cosine similarity of the two visits' fused unit embeddings
+  ≥ `merge_min_cos` (default 0.85) and (b) mean box longer side as a fraction of the ROI
+  (from the record's normalised box) differing by at most `merge_size_tol` (default 0.5 of
+  the larger; 1.0 disables). Gap (5 s) and taxon compatibility unchanged. The three checks
+  are gates rather than a weighted score: transparent to the user, and the embedding is
+  the decisive one in practice (a different family fails it long before the size guard).
+  Position continuity deliberately not implemented (tracker buffer covers it within 3 s;
+  after a real loss the insect can re-enter anywhere).
+- **Suspect flags (`writeOutputs`):** per tracked visit `short` (duration <
+  `flag_min_duration_s` 2 s OR detections < `flag_min_detections` 3), `low_det`
+  (det_conf_mean < `flag_min_det_conf` 0.2), `weak_id` (order-rank probability <
+  `flag_min_order_p` 0.5), `suspect` = short AND (low_det OR weak_id OR none). Nothing is
+  dropped: CSV gains trailing `n_detections`, `suspect` (0/1); JSON `detections`,
+  `suspect`; summary `suspect` count and per-track `suspect` in the compact list.
+  `scoreSessionSync` now counts detector frames per track id while parsing spans
+  (`ScoredTrack.detections`, summed on merge). Literature: the duration and detector-
+  confidence criteria follow the optional track filter in `insect-detect-post`
+  software (Sittinger 2026, Zenodo doi:10.5281/zenodo.21822140, `metadata.filter_tracks`;
+  defaults 2 s, 0.2 adopted verbatim at the owner's request so the pipelines agree; credited in the docs only
+  (not on phone screens);
+  Bjerge et al. 2022 (RSEC) filter stationary repeats instead (tracker-side idea, noted).
+- **UI:** Identify → Advanced: "Appearance similarity needed", "Box size may differ by up
+  to (%)" under the merge switch; a "Suspect visits (flags only, nothing is deleted)"
+  group with the four thresholds and plain-language helpers. Results: "Include N suspect
+  visits" switch above the table (hidden by default; table, All-visits list recomputed).
+  Photos tab labels append "· suspect".
+- Prefs `identify_merge_size_tol`, `identify_merge_min_cos`, `identify_flag_*`; run
+  settings echo them. Tests: merge test updated for the new guards; new suspect-flag test.
+- Docs: IDENTIFICATION.md, SETTINGS_REFERENCE "Identification" table (also corrected the
+  r208 GPU/threads/mass wording), DATA_GUIDE §8.
+- Not device-verified.
+- Owner follow-ups the same day: merge gap default 5 s → **3 s** (matches the tracker's
+  occlusion buffer; the appearance check cannot separate two individuals of one species,
+  so the time gap is what does); suspect defaults `flag_min_det_conf` 0.3 → **0.2**,
+  `flag_min_order_p` 0.6 → **0.5**; citation corrected to the insect-detect-post software
+  record (Sittinger 2026, Zenodo) rather than the 2024 paper.
+
+## Round 213 (2026-09-21): re-run correctness (margin, too-small retries), View results shortcuts, wording
+
+Owner questions after r212: why "Continue / re-run" is orders of magnitude faster than a
+first run, whether settings changes re-run BioCLIP, where the CSV lives, and whether the
+identification results should live inside `session.jsonl`.
+
+- **Answers recorded:** the model runs only on crops without a stored vector; every other
+  setting (thresholds, CSV rank, merge, suspect flags) is applied at scoring in seconds;
+  all outputs are in `<session>/identification/` (USB copy works). Results stay OUT of
+  `session.jsonl` (raw append-only log vs derived, re-runnable data; multiple runs would
+  pile up; MB-sized JSON would slow every summary open; the Photos tab reads only the small
+  summary). Alignment is by `track_id` / photo file name, documented in IDENTIFICATION.md
+  and DATA_GUIDE §8.
+- **Bug found during the check, fixed:** the resume key is (photo, track, box), so (a) a
+  changed crop margin silently reused vectors cut with the old margin and (b) crops skipped
+  as too small were never retried after lowering "Smallest box". `EmbeddingIndex` now
+  keeps the first `identify_start`'s `margin`/`min_crop_px` and a `tooSmallPx` map from the
+  `crop_skipped` records; `skippedFor(minCropPx)` re-admits too-small crops that would now
+  pass; `run(restart: true)` deletes the embeddings files first. The Identify screen's
+  Start compares the stored margin with the current one and asks "Keep stored crops" /
+  "Recompute all crops" (plain dialog buttons, no filled style per owner). A helper line
+  under the buttons explains what a re-run recomputes. Tests: too-small retry in the
+  existing skip test; new restart/margin test.
+- **Buttons (owner):** Start / Continue are outlined; "View results" is the filled one
+  (pre-flight and Last-run card). The summary Photos tab gets a filled "View results"
+  beside "Identify organisms" whenever a summary exists (`LatestIdentification.summaryFile`,
+  `packStem`), so the user no longer goes through the Identify screen to see results.
+- **Wording:** "Share CSV" → "Share results (CSV file)" (button, results-screen tooltip,
+  docs; the doc also says the file stays in the session folder).
+- Not device-verified.
+
+## Round 214 (2026-09-21): identification results screen aesthetics
+
+Owner's itemised review of the results screen (device test of session_2).
+
+- **Header:** key/value rows "Model", "Label pack (n names)", "Date run yyyy-mm-dd hh:mm",
+  "Visits" (with the joined-visit note); the "n identified to genus · m to family …"
+  sentence is gone (redundant with the table, messy for hundreds of visits).
+- **Table kit** (`_Col`, `_SortHeader`, `_TableRow` in the screen file): a header with bold
+  labels, ▲/▼ on the active column and a thicker rule; rows with a thin divider; a
+  highlighted variant for the chosen/selected row. Tapping a header sorts (second tap flips).
+  Used for every table on the screen so alignment is by construction.
+- **Taxon table:** header "Visits per taxon / rank" whose info text now carries the
+  confidence explanation (no "probability mass") and one line per column (Rank, Visits, Time,
+  Conf.); Rank is its own column; a "Rank filter" dropdown (all / each rank present / not
+  resolved) when more than one rank is present; sortable by Taxon, Rank, Visits, Time, Conf.
+- **Visits sheets** (row tap and "All n visits"): numbered "No." column 1..N plus a "Track id"
+  column (#id, "#12+2" for joined visits), taxon with rank + flags under it, crops, time,
+  conf.; sortable; a note explains No. vs Track id (ids jump because the tracker assigns them).
+- **Visit sheet:** ladder as an aligned table (Rank / Taxon / Conf. / Agree) with the
+  reported rank's whole row bold on a light background with a brighter underline; info text
+  defines Conf. and Agree ("crops agreeing" = share of crops whose own best guess falls under
+  the taxon). Flags line becomes a collapsible glossary (merged, short, low_det, weak_id,
+  suspect, none, unidentified, path_conflict, rule_conflict, single_crop). Photo section:
+  info text defines the best single view; the image (square ROI photo) gets the detector
+  box (amber) and the square crop actually given to the model (cyan; recomputed with
+  `planSquareCrop` on a virtual 1000-px square using the run's margin), an eye button to
+  hide the boxes, pinch/double-tap zoom via `InteractiveViewer` and a reset button (a
+  small self-contained viewer rather than the summary screen's `_PhotoViewer`, which is
+  private to that file and carries crop-export state). Crops table: No. / Side px / Weight /
+  Conf. / Best guess with the file name on a second, dimmer line (fits 360 px), sortable,
+  info text defines side, weight and best guess; tapping a row shows that crop in the photo
+  (highlighted row).
+- Widget test updated (header rows, separate rank cell, header sort, visits sheet columns).
+- Not device-verified.
+- Owner follow-ups (2026-09-22): the confidence sentence now says the model scores every
+  pack name and FaunaPulse adds them up the tree (genus = sum of its species, family = sum of
+  its genera …), which is what `Scorer.rollUp` does; fixed columns narrowed and the taxon /
+  lineage cells wrap (2 / 3 lines) in every table; "Agree" is shown as a count "3/5"
+  (support × crops) with a rewritten explanation, and the crops table gets an "Agree" ✓/–
+  column from a new per-crop `agrees` field in `tracks_<pack>.json` (own top-1 under the
+  reported taxon; older result files show "?"); the visit header says "n detector frames ·
+  m photos (crops)" with a line explaining why they differ (frames = every detector hit,
+  photos = the schedule's saves); sheets pad their list bottom with
+  `MediaQuery.paddingOf(context).bottom` so the crops table scrolls fully above the
+  navigation bar (the modal sheet is edge-to-edge too).
+- Same day: an 8-px gutter between all table columns (`_gutter` in the header and row
+  widgets; a right-aligned number next to a left-aligned text read as one string), fixed
+  widths trimmed to pay for it on 360 px; an amber hint under the crops table when
+  `agrees` is missing (result file older than this build) pointing to "Re-score".
+- Same day: the rank · flags line under the taxon in the visits sheet wraps instead of
+  ellipsising ("class · short, pa…" was unreadable).
+
+## Round 215 (2026-09-22): results vocabulary (∑Conf. / Conf. / Avg / Agree), per-crop masses, table layout
+
+Owner's second review of the results screen, centred on "how do these confidences arise
+and why do they not add up". Verified against the real files of session_2 (track #7) and
+session_3 (track #6) pulled from the phone over adb.
+
+- **What was actually going on:** the ladder's confidence is the softmax over the whole
+  label pack of the visit's COMBINED (quality-weighted mean) embedding, summed under each
+  taxon; the crops table showed each crop's OWN top-1 species probability from that crop's
+  own softmax. Two different distributions, so the owner's attempt to add the per-crop
+  numbers to reach 83 % / 99 % could never work, and the table gave no number that could be
+  traced. Session_2 #7: four blurry crops (48–92 px, single-name Conf. 8 %, 5 %, 2 %, 3 %, two
+  of them spiders) → Insecta 83 % from the combined vector, correct behaviour. Session_3
+  #6: Bombus 99 % (all Bombus species summed) while the best species row is B. cingulatus
+  13 %; the crops' own best species (vestalis 30 %, cingulatus 17 %, …) are single names.
+  Time = first-to-last detector frame (1.7 s / 35.2 s confirmed from the logs); photos = the
+  schedule's saves in the first 10 s plus frames other insects triggered (session_2 #7 got
+  4 crops in 1.7 s from a crowded YouTube scene; session_3 #6 got 7 photos at ~1 s spacing in
+  its first 10 s and none of its remaining 25 s). All as designed; now explained on screen.
+- **Vocabulary, everywhere:** **∑Conf.** = probability of a TAXON (pack names under it
+  summed), **Conf.** = probability of ONE species; **Avg** = crops scored one by one, then
+  their ∑Conf. averaged with the fusion weights (= `massesBar` at the ladder key, exactly
+  the quantity the `rule_conflict` cross-check uses); **Agree** = count "3/5". Info texts of
+  the taxon table, the ladder, the crops table and the flags (path_conflict rewritten:
+  "the most probable family overall is not inside the most probable order; the ladder
+  keeps the top-down path, so it shows the best family INSIDE the chosen order") define
+  them; no "probability mass" anywhere.
+- **Per-crop masses (`Scorer.massesAt`):** integer ids of each row's key at each rank,
+  built once per pack (`_buildRankIds`), make "mass of a distribution under a taxon" one
+  integer comparison per row (the string-joining `rollUp` was too slow per crop).
+  `FusedTrack.perCropMass` (crops × ladder) → JSON `crops[].p_ladder`; `LadderStep.meanMass`
+  → JSON `p_mean`; CSV `pred_prob_mean` is now exact (was top-5 approximation) and
+  `pred_imgs` = crops whose top-1 is under the target taxon; new **`crops_<pack>.csv`** (one
+  row per crop: box, size, sharpness, det conf, padding, weight, top-1 species + Conf.,
+  agrees, the visit's ladder taxa and this crop's ∑Conf. under each) so every screen number
+  can be recomputed in R. README_identification.txt updated.
+- **Best view rule changed:** among good-quality crops, the highest own ∑Conf. under the
+  reported taxon (was: highest single-species probability, which picked a spider-at-8 %
+  blur for an Insecta visit and B. vestalis for a B. cingulatus ladder). `best_view.p` is
+  now that ∑Conf. (documented in DATA_GUIDE).
+- **Tables:** column widths measured with `TextPainter` from the header (label + arrow) and
+  the longest cells (`_fitWidths`), so sort arrows never ellipsise; alignment standard:
+  identifiers and names left, quantities right; `_MiniTable` scrolls sideways with a
+  visible scrollbar when a table cannot fit (the crops table on a phone; trace columns
+  first, Side px / Weight to the right); per-taxon visit sheets drop the Taxon column and the
+  rank/flags line (a small amber "suspect" only), the All-visits sheet keeps taxon + rank;
+  ∑Conf. in a taxon's sheet is at THAT rank; crops table No. / ∑Conf. / Agree / Species /
+  Conf. / Side px / Weight with a photo icon on the shown row and "Showing crop No. n (best
+  view)" above the photo; times one decimal + s/m/h everywhere; visit header "35.2 s · 152
+  detector frames · 7 photos (crops)" with the frames-vs-photos explanation.
+- Tests: job test checks `p_ladder`, `p_mean`, `crops_<pack>.csv`; results-screen test
+  adapted (the taxon table scrolls sideways under the 13-px test font, so the finder picks
+  the list's own Scrollable). Not device-verified.
+
+## Round 216 (2026-09-22): results wording pass (Med. Conf. / Conf. / track id), bold column help, selectable ladder row
+
+Owner's third review of the results screens (naming scheme S1–S4 agreed the same day),
+verified against session_2 track #19 pulled from the phone: reported Hymenoptera (order)
+90 %, Apidae 67 %, Bombus 19 %, B. impatiens 8 %; the crops table's "∑Conf." column (95, 90,
+97, 98, 80, 98, 98, 68, 94, 10 %) was each crop's confidence for HYMENOPTERA, shown beside
+each crop's top species, and was read as that species' probability. Root cause of "what
+can you sum under a species": the column never named its taxon.
+
+- **Naming:** the ∑ symbol is gone everywhere. S2.table: **Med. Conf.** (median across the
+  row's track ids, rounded; S2 checked by the owner: 95 % = median of 97, 90, 94, 95); S3 and
+  S4.ladder: **Conf.**; S4.crops: **"Conf. <taxon>"** with the taxon in the header, plus **Top
+  species** / **Species conf.**. "Visit" → "track id" on all results screens (S2 header and
+  column "Track ids", suspect switch, S2.all button, S3 title, S4 title), with "what a
+  pollination ecologist calls a visit" said once in S2.table.info and S3.
+- **Info texts:** `HelpLabel.helperChild` (widgets/setting_help.dart) + `_ColumnsHelp`: an
+  intro, "Columns of the table below:", one line per column with the name in bold and 5-px
+  spacing, an outro. Applied to S2.table, S3 (visible, not collapsed), S4.ladder, S4.flags,
+  S4.crops. The Conf. definition moved out of S2 (which only says "median … explained in the
+  list that opens") into S3/S4; "label-pack names" → "species".
+- **S4 ladder ↔ crops link:** tapping a ladder row selects its taxon (cyan bar on the left);
+  the crops table's confidence column is then "Conf. <that taxon>" and its Agree column
+  follows; S4.ladder.info shows a worked example computed from the data, e.g. "Avg for
+  Hymenoptera: (95 % × 0.21 + 90 % × 0.10 + 97 % × 0.14 + …) / (0.21 + 0.10 + 0.14 + …) =
+  69 %", and "Conf. for Hymenoptera = 90 %", so both numbers are verifiable by hand.
+- **Layout:** S2 lineage line under the taxon removed; S3 without a taxon column has no
+  flex column and stays left-packed (the Track id column no longer spans the free width);
+  S3 states "Median Conf. across these n track ids: x %" above its table.
+- **Photo schedule read from the session:** `scoreSessionSync` picks `config.stepSeconds`
+  and `durationSeconds` from the log's start record into `summary.capture`; S4 says "this
+  session: one every 1 s during the first 10 s of a track id" (fallback "e.g. …").
+- README_identification.txt wording aligned (Conf. / Species conf. / Med. Conf.).
+- **Open decision put to the owner:** whether the reported Conf. should stay the
+  mean-embedding value (current; Avg as cross-check) or become the weighted mean of per-crop
+  probabilities (insect-detect-post style; every number then recomputable from the crops
+  table and comparable with the colleague's pipeline). Not changed this round.
+- Not device-verified.
+
+## Round 217 (2026-09-22): Conf. = certainty-weighted mean of per-crop probabilities (owner decision), tau 0.6
+
+Planned with the owner (plan mode): they questioned whether the vector average was sound,
+wanted no image-quality weighting ("blur is subjective"), and asked what insect-detect-post
+does. Read its `metadata_processor.py`: per track, each crop votes with its top-1 and top-2;
+a candidate's `candidate_prob_weighted` = mean probability over the crops that voted for it
+× the share of crops that voted for it; the highest wins; no quality weights, no ladder.
+Offline comparison on the phone's re-scored files (vector average / plain mean /
+certainty-weighted / best crop): #19 Bombus 19 / 22 / 45 / 75 %, #6 Bombus 99 / 71 / 66 /
+100 %, #7 Lepidoptera 54 / 60 / 55 / 83 % (a 1.7-s blur). Owner chose (AskUserQuestion):
+certainty-weighted mean, tau 0.6, Conf. + Agree % + a best-single-photo line, all per-rank
+alternatives exported.
+
+- **Rule (`track_fusion.dart`):** every crop scored on its own; w_i = the crop's top-1
+  probability; pbar = Σ w_i p_i / Σ w_i; masses = rollUp(pbar); ladder, pathConflict,
+  noneMass and identified rank from pbar. Identity asserted in the tests: mass at rank k =
+  Σ w_i · perCropMass[i][k] / Σ w_i, so the reported Conf. is exactly the "Conf. <taxon>"
+  column of the crops table averaged with the "Species conf." column as weights. Removed:
+  `qualityWeight`, the mean-embedding softmax, `massesBar`/"Avg", `ruleConflict`,
+  `FusedTrack.weights`, `CropEmbedding`'s quality fields, `userRank`. Kept: a mean embedding
+  with the same weights, solely for the merge cosine. `LadderStep` gains `maxMass`; `meanMass`
+  is now the plain mean. Best view = the crop with the highest top-1 non-sink probability.
+- **Outputs (`identification_store.dart`):** tracks CSV gets `p_mean_<rank>` and
+  `p_max_<rank>` blocks right after `p_<rank>` (leading insect-detect-post-compatible columns
+  and the trailing merge/suspect columns keep their positions); `support_<rank>` →
+  `agree_<rank>`; `pred_prob_weighted` = Conf., `pred_prob_mean` = plain mean (names as in
+  insect-detect-post, formulas differ: documented); no `rule_conflict` flag; `weight` removed
+  from predictions JSONL, tracks JSON crops and `crops_<pack>.csv` (`top1_p` is the weight);
+  JSON ladder steps carry `p`, `p_mean`, `p_max`, `support`; README text rewritten.
+- **Defaults:** tau 0.6 (`IdentifyPrefs`, `IdentifyRunSettings`, scoring fallback); a phone
+  with a stored `identify_tau` keeps its value (the owner's 0.75 must be changed by hand).
+- **Screens (`identification_results_screen.dart`):** S3 gains an Agree column at the
+  sheet's rank ("50 % (5/10)"); S4 ladder = Rank / Taxon / Conf. / Agree (Avg gone), info
+  text with the worked example recomputed from the crops table with Species conf. as
+  weights; new "Best single photo: <species> <p> (crop No. n); k of N photos name this
+  species" line; flags glossary without rule_conflict; crops table No. / Conf. <taxon> /
+  Agree / Top species / Species conf. / Side px (Weight column and both unconditional
+  `weight` casts removed, so files without `weight` cannot crash); the amber hint covers
+  files written before this round (missing `p_max`/`p_ladder`) and says to re-score.
+  Identify screen: Run help and the CSV-rank note reworded. `crop_worker.dart` header:
+  quality features are descriptive only.
+- **Tests:** `track_fusion_test.dart` rewritten (sure vs unsure crop with the expected
+  2/3 mass, tau 0.6 default vs 0.8, best view, monotonicity, the mass identity plus p_mean /
+  p_max and the JSON keys); job test checks p_max, no `weight` anywhere, the new/renamed CSV
+  header blocks; results-screen test checks the S3 Agree column, the best-single-photo line
+  and the absence of Avg/Weight.
+- Docs: IDENTIFICATION.md (rule, best single photo, steps 3-5, attribution with the
+  insect-detect-post formula difference), DATA_GUIDE §8 (columns, identities), SETTINGS_REFERENCE
+  (tau 0.60), tool/bioclip_export/README.md. Not device-verified: owner re-scores session_2
+  and session_3 and compares with the expected values above.
+
+## Round 218 (2026-09-22): Identify-screen button legend, species-level wording, scrollbar strip, Photos-tab text
+
+Owner follow-ups after round 217 on the phone.
+- Identify screen, Run section: a bold-name legend under the buttons explains Start /
+  Continue / re-run, Test speed, Re-score with this pack and View results (only the visible
+  ones); the r213 single helper line is folded into it. The CSV-rank note now says the box
+  shows the user's current choice and that family is only the app default (the owner had
+  genus stored and read "default family" as a contradiction).
+- S4.crops "Conf. <taxon>" info: at species level it says there is nothing to add up (the
+  value is the crop's probability for that species and equals Species conf. when it is the
+  crop's top species) and that the ladder's Conf. is the column averaged over ALL crops,
+  so one crop can exceed it (owner: 88 % on one crop vs 75 % reported for track #10).
+- Sideways-scrolling tables: the stock scrollbar (a thumb almost as wide as the screen,
+  drawn over the last crops row) is replaced by `_ScrollGlider`, a slider under the table:
+  translucent track, short draggable thumb that follows the scroll offset, chevron arrows
+  at both ends that scroll a step.
+- Photos tab "Identify organisms" info: no more "docs/IDENTIFICATION.md" (read as an in-app
+  screen); says the files are imported once on the next screen, which explains where to
+  get them; "visit"/"insect" → "track id"/"organism".
+
+## Round 219 (2026-09-23): average-logit pooling per track id (branch feature/avg-logit-pooling)
+
+Owner review of round 217 on real tracks: a lone correct photo diluted by clueless crops
+(session_2 #10: 88 % → 75 %), agreement never rewarded (session_3 #6: 5/7 crops Bombus →
+66 %), and "column 2 looks copied from column 4" at species level (it is the same number by
+definition when the selected taxon is the crop's top species). Decision process: the owner
+downloaded 15 papers into ~/InsectDetectApp/papers/ (Dussert 2024/2025/2026, Kittler 1998,
+Guo 2017, Lakshminarayanan 2017, Norouzzadeh 2018, Beery 2018, Whytock 2021, Sittinger 2024,
+Bjerge 2022/2023, BioCLIP 1/2, a moth domain-gap paper); the calibration paper was read in
+full, the others in the relevant sections. Findings: averaging per-image probabilities
+("Average Score", = round 217) is the underconfident rule; averaging before the softmax
+("Average Logit") ties it on accuracy (ΔAcc 3.56 vs 3.71 %) and is far better calibrated
+(ECE 3.32 vs 6.08 %, 1.17 vs 3.99 % with temperature scaling); max is overconfident; Kittler
+1998 explains why averaging beats multiplying evidence from correlated views; Sittinger's
+rule (vote share × mean among voters) is the most diluting of all on our tracks (#10 18 %).
+For BioCLIP, Average Logit = scoring the averaged embedding, i.e. the r208-216 mechanism
+whose fault was the image-quality weights, not the averaging. Owner has no time for an
+empirical validation on the Zenodo crops → implement with literature defaults, documented
+as untested on pollinators, plus a reproduction script. Owner asked for a separate branch.
+
+- **Rule (`Scorer.fuse`):** w_i = top-1 probability; `counted_i = w_i >= max(w) /
+  dropFactor` (default 10, ≤ 1 = all); pooled = Σ w_i e_i / Σ w_i over counted crops, NOT
+  re-normalised (disagreement shortens the vector and lowers every Conf.; the re-normalised
+  variant was computed and rejected: it removes that penalty); pbar = probs(pooled); masses =
+  rollUp(pbar); ladder, pathConflict, noneMass, identified rank from masses. `fusedEmbedding`
+  = unit(pooled) for the merge cosine. `LadderStep.agreeMass` (`p_agree`), `FusedTrack.counted`.
+  Best view unchanged. Numbers verified offline (numpy) and by the Dart implementation on a
+  scratch copy of session_2 (identical to 4 decimals): #10 B. impatiens 87.6 % (1/5 crops
+  counted), #19 Apidae 86.2 % / Bombus 54.5 %, #7 Insecta 85.7 % / Lepidoptera 59.6 %.
+- **Settings:** `drop_factor` in `IdentifyRunSettings`/`IdentifyPrefs`
+  (`identify_drop_factor`), Advanced field "Ignore crops far less sure than the best
+  (factor)" with an honest helper (rule of thumb, untested).
+- **Outputs:** tracks CSV `p_agree_<rank>` block after `p_max_<rank>`; crops CSV/JSON
+  `counted`; README text rewritten (rule, defaults, "not yet validated on pollinator data").
+- **Screens:** ladder Conf. help = the averaged-descriptions explanation ("NOT an average
+  of that column; agreeing photos reinforce each other; disagreeing photos lower every
+  Conf."); the r217 worked-example arithmetic is gone (`_confExample` removed); crops help
+  reworded; left-out crops get an amber "left out of the combined answer" line; Run help
+  and the S1 field texts updated. No literature citations on phone screens (owner rule).
+- **Reproduction:** `tool/bioclip_export/reproduce_track_conf.py` (numpy only) recomputes a
+  session's ladders from `embeddings_<model>.{jsonl,bin}` + a `.fpack` with the same
+  defaults (flags for tau, drop factor, temperature; `--crops` prints the per-crop table).
+- **Docs:** IDENTIFICATION.md ("How a track id's Conf. is computed (round 219)" +
+  "Validation status" listing every default's origin; steps 3-5; attribution to Dussert et
+  al. 2025 and Kittler et al. 1998), DATA_GUIDE §8, SETTINGS_REFERENCE, tool README.
+- **Tests:** track_fusion_test rewritten for the rule (sure vs unsure with and without the
+  drop rule, agreement above the plain mean, clueless crop left out at the default and
+  diluting at factor 1, per-rank alternatives incl. p_agree, JSON keys, counted); job test
+  headers (`p_agree_*`, `counted`); results-screen fixture `counted`.
+- Not device-verified: owner re-scores session_2/3 on the phone.
+
+## Round 220 (2026-09-23): S4 flags explained in place, taxonomic tree per crop
+
+- **Flags are per track id, not per crop.** Owner asked where the S4 flags belong: they
+  describe the whole track id (the `flags` column of `tracks_<pack>.csv`), so neither table
+  gets a column. The flags help reused `_ColumnsHelp`, whose fixed heading "Columns of the
+  table below:" was wrong there; `_ColumnsHelp` now takes a `heading`, the flags use "What
+  each flag means:" plus an intro saying none / unidentified / weak_id / path_conflict
+  concern the ladder above. Position unchanged (under the ladder).
+- **`none` and `unidentified` rewritten.** `none` = the "none of these" entries took more than
+  the "No organism" threshold (value shown; `_TrackSheet` now gets `noneThreshold` from the
+  summary settings); says explicitly it does not mean "no flags". `unidentified` said "not even
+  the class reached the threshold", but `Scorer.fuse` stops at kingdom: now "no taxonomic rank
+  reached the threshold, not even kingdom", plus why this happens in animal-only packs
+  (kingdom Conf. = 1 − none share). Same fix in IDENTIFICATION.md.
+- **Taxonomic tree column (owner).** Crops table gains a last column "Taxonomic tree" =
+  kingdom > phylum > class > order > family of the crop's Top species (genus is in the species
+  name); "–" for a sink row, "?" for files before this round (the amber re-score note now
+  covers it). Last position so the visible columns keep their place; sortable. Data: tracks
+  JSON crop field `top1_tree` (5 names), crops CSV `top1_kingdom` … `top1_family` after
+  `top1_p`. README dictionary + DATA_GUIDE updated.
+- **path_conflict: discussed, not changed.** Explained to owner: the ladder is always
+  taxonomically consistent (best child of the chosen parent); the flag means a rank's overall
+  winner sits in another branch. Because tau >= 0.5 (slider minimum), the reported rank and
+  every rank above it are always their rank's overall winner, so a conflict can only occur in
+  the suggestion rows below the reported rank. Options (keep + name the rival taxon on the
+  row, drop the flag, target-rank-first like pybioclip / insect-detect-post) await the owner.
+- Tests: results-screen fixture `top1_tree` + column check; job test header + JSON field.
+
+## Round 221 (2026-09-23): S4 flags shown where they apply, path_conflict names its rival
+
+- **Flags moved to where they apply (owner).** Owner expected flags as amber markers on the
+  affected rows, not a loose "Flags:" line. Each flag is now an amber ⚠ line (`_flagNote`: a
+  `HelpLabel` with a warning icon; ⓘ gives the reason with the actual values and limits):
+  `merged`, `short`, `low_det`, `suspect` under the header; `path_conflict`, `weak_id`,
+  `unidentified`, `no_organism` under the ladder; `single_crop` above the crops table. The
+  header line now also shows the mean detector conf.; duration / detector frames / detector
+  conf. turn amber when they caused `short` / `low_det`. Ladder rows carry ⚠ after the taxon
+  for path_conflict (every affected row), weak_id (order row), unidentified / no_organism
+  (kingdom row). The old "Flags:" line became a small grey "Flags in tracks CSV: …" line at
+  the bottom with the dictionary, as the link between phone and R. `_TrackSheet` gets the
+  run `settings` for the flag limits (`flag_min_*`).
+- **path_conflict made concrete (owner chose option A).** `LadderStep` gains `rival`,
+  `rivalMass`, `rivalLineage` (set in `Scorer.fuse` when the rank's argmax is not the best
+  child of the chosen parent; sink rows only count at kingdom, so a rival is always a real
+  taxon). JSON ladder rows add `rival`, `rival_p`, `rival_lineage`; tracks CSV adds trailing
+  `rival_rank`, `rival_taxon`, `rival_p` (highest conflict). The note under the ladder, for the
+  selected row if it has a rival, else the highest: "family: Syrphidae (order Diptera, not
+  Hymenoptera) scores 32 %, more than Apidae (26 %), the best family inside Hymenoptera". Its ⓘ
+  explains in plain words: the ladder shows the best taxon INSIDE the row above, so it always
+  stays one consistent path; the chosen group's Conf. is shared among several sub-taxa while a
+  larger share of the rival group's smaller Conf. sits in one; species-rich groups collect
+  more summed Conf.; cannot happen at or above the highlighted row (tau >= 50 %). Owner's
+  remark, open for later: the roll-up favours groups with many species in the pack (a bias of
+  its own, not changed here).
+- **`none` flag renamed `no_organism` (owner)**, also the summary count key (`none` →
+  `no_organism`; S1 reads it with a null guard). No compatibility kept, by owner's decision
+  (no field data affected).
+- `dart format` must not run on whole files here: the repo is not formatter-clean, and it
+  reflowed ~200 unrelated lines; reverted hunk by hunk (only this round's lines kept).
+- Tests: `track_fusion_test` path-conflict case (tiny pack: Diptera split over two genera,
+  Apis wins the genus rank → rival `Apis`, lineage, species rival, JSON keys); results-screen
+  test gives track #1 short / path_conflict / single_crop and checks the notes, the exact
+  conflict sentence, ⚠ icons and the CSV flags line; job test header + `no_organism`.
+  Full suite 569 passed, analyzer clean.
+
+## Round 222 (2026-09-23): results tables: split Agree, Rank column, Family/Order/Class, sideways scroll of the table only
+
+Owner's aesthetic review of the identification results (S2-S4), all in
+`screens/identification_results_screen.dart`:
+- **S3 sideways scroll moves only the table.** The lazy visits list still scrolls sideways as
+  a whole when its columns do not fit, but the title and the column explanation are now held
+  in view (item 0 is counter-translated by the horizontal offset, at the screen's width), so
+  only the header row and the rows slide. The glider under the list is padded above the
+  navigation bar (it sat under it before, so the owner never saw it).
+- **"All track ids": Rank is its own column** right of Taxon (was a small line under the
+  taxon), sortable (kingdom first, "–" last). The amber "suspect" mark now always sits under
+  the track id. Column explanation updated.
+- **Agree split in two** in S3 and the S4 ladder: Agree ("50 %") and Crops agree ("5/10"),
+  each sortable in S3. Helpers `_agreePct`, `_agreeCount`, `_agreeRatio` replace `_agreeText`.
+- **Two-line headers.** `_Col.wrap`: the header may break onto two lines; `_fitWidths` gives
+  it the narrowest width at which label AND sort arrow fit in two lines without splitting a
+  word. Used for Conf. <taxon>, Species conf., Side px (crops), Crops agree, and S2's Track ids
+  and Med. Conf.
+- **Crops table: "Taxonomic tree" became Family, Order, Class** (one sortable column each,
+  from `top1_tree`; `_treeAt` replaces `_treeText`). Files unchanged.
+- **Why the tree was cut with "…" even when scrolled fully right:** `_fitWidths` measured with
+  a bare TextStyle, but cells render merged with the theme's bodyMedium (letter spacing 0.25),
+  so a long string came out a few px wider than measured. `_fitWidths` now takes the
+  BuildContext and measures with `Theme.of(context).textTheme.bodyMedium` merged in.
+- **Ladder: taxa below the reported row in grey** (`_dimCellStyle`, same as Rank/Agree; all
+  rows when nothing was identified). Help text says so.
+- **Photo line:** "Showing crop No. n (best view):" stays next to the buttons; the file name
+  is on its own line below, wrapped and selectable, never cut.
+- Tests: results-screen test checks the split Agree values, grey vs white ladder taxa, the
+  photo line, the Family/Order/Class headers, and in "All 41 track ids" the Rank and Crops
+  agree columns plus a title that keeps its x position while the table scrolls to its end.
+  Its old "close both sheets" taps never closed anything (dragging had expanded the sheets
+  to full height); they now pop the routes. Screens checked with Roboto at 393x873 through a
+  throwaway golden test (not committed). Full suite 569 passed, analyzer clean.
+
+## Round 223 (2026-09-23): S4 detector confidence per crop, on the photo and in the crops table
+
+Owner request: show the live detector's confidence on the S4 photo, attached to the box, and
+as a crops-table column right after Species conf., to help when checking single cases.
+- **Data:** each crop in `tracks_<pack>.json` gains `det_conf` (3 decimals; the value
+  `crops_<pack>.csv` already had, and the one `det_conf_mean` averages). Source unchanged:
+  the box's own confidence from the session log, else the one another log record of that
+  track gave on the same photo, else 1.0 (`crop_planner.dart`). Files from earlier runs show "?" until re-scored ("Re-score
+  with this pack" is enough, no re-embedding).
+- **Photo:** `_BoxesPainter` takes `detConf` and draws "Detector conf. 87 %" in black on an
+  amber tag on the yellow box: above the box when there is room, else just inside its top
+  edge; shifted left to stay on the photo at the right edge. The eye button hides it with
+  the boxes. Photo help text says what the label is.
+- **Crops table:** "Detector conf." column (two-line header, sortable) after Species conf.;
+  column help says it is the per-photo value behind the header's mean and plays no part in
+  the identification. The header's help text points to the column; the "?" note names it.
+- Tests: results-screen fixture carries `det_conf` (column and value checked); job test
+  checks the per-crop values 0.9/0.8 from the fixture log and their mean 0.85. Label
+  placement (middle, top edge, right edge) checked in a throwaway golden test at 393x873
+  (not committed; the test font draws the painter's text as blocks, placement only). Full
+  suite 569 passed, analyzer clean.

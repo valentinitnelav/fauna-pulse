@@ -42,6 +42,9 @@ import '../widgets/mini_bar_chart.dart';
 import '../widgets/setting_help.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
+import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
+import 'identification_results_screen.dart';
+import 'identification_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
@@ -179,10 +182,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   int _totalReferencePhotos = 0;
   bool _photosRequested = false;
   bool _photosLoading = false;
-  // True once the user chose "Show all photos" — kept so a reload after a
-  // post-hoc cleanup restores the same view, not a fresh random sample.
-  bool _photosShowAll = false;
+  // Round 209: how many photos the random sample holds (10 by default, the
+  // user can pick 50, 100 or all = null). Kept so a reload after a post-hoc
+  // cleanup restores the same view, not a fresh 10-photo sample.
+  int? _photoSampleSize = _randomSampleCount;
+  static const List<int> _sampleChoices = [_randomSampleCount, 50, 100];
   List<_PhotoSample> _photos = const [];
+  // Round 209: the newest identification result of this session (null when
+  // never identified) — shown under each photo in the viewer.
+  LatestIdentification? _identification;
 
   // True while the photo viewer is zoomed in: the TabBarView and the Photos
   // ListView freeze so their drags can't steal the user's panning (round 89).
@@ -216,6 +224,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _init();
     _loadStorageInfo();
     _loadPostHoc();
+    _loadIdentification();
+  }
+
+  /// Reads the compact per-visit list of the newest `summary_<pack>.json`
+  /// (round 209); called again after the Identify screen closes.
+  Future<void> _loadIdentification() async {
+    LatestIdentification? id;
+    try {
+      id = await LatestIdentification.load(widget.logFile.parent);
+    } catch (e) {
+      logSwallowed('summary_identification_load', e);
+    }
+    if (mounted) setState(() => _identification = id);
   }
 
   // Post-hoc analysis results for this session (round 137): outcomes parsed
@@ -609,11 +630,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// The heavy log parse — previously a full `readAsLines()` plus a second
   /// full re-scan for high-res box time-matching, all on the UI isolate —
   /// lives in [SessionLogIndex.build] now.
-  Future<void> _loadPhotos({bool all = false}) async {
+  /// [all] loads every photo; [sample] sets a new sample size; neither keeps
+  /// the current size (a reload after a cleanup).
+  Future<void> _loadPhotos({bool all = false, int? sample}) async {
+    final size = all ? null : (sample ?? _photoSampleSize);
     setState(() {
       _photosRequested = true;
       _photosLoading = true;
-      _photosShowAll = all;
+      _photoSampleSize = size;
     });
     var order = const <String>[];
     var photosByName = const <String, IndexedPhoto>{};
@@ -711,14 +735,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
     final picked = <_PhotoSample>[];
     if (order.isNotEmpty) {
-      // Either every photo, or a random sample of up to [_randomSampleCount].
-      // The picked names keep their capture order either way, so swiping
-      // through the viewer always moves forward in time.
+      // Either every photo, or a random sample of [size] photos. The picked
+      // names keep their capture order either way, so swiping through the
+      // viewer always moves forward in time.
       List<String> names = order;
-      if (!all && order.length > _randomSampleCount) {
+      if (size != null && order.length > size) {
         final indices = List<int>.generate(order.length, (i) => i)
           ..shuffle(Random());
-        names = (indices.take(_randomSampleCount).toList()..sort())
+        names = (indices.take(size).toList()..sort())
             .map((i) => order[i])
             .toList();
       }
@@ -2045,8 +2069,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ),
       const SizedBox(height: 4),
       const Text(
-        'Up to $_randomSampleCount photos, picked at random across the '
-        'session, are shown. If AI was applied, predicted boxes are displayed too. '
+        'A random sample of $_randomSampleCount photos across the session is '
+        'shown by default; pick a bigger sample or all photos below. '
+        'If AI was applied, predicted boxes are displayed too. '
         'Swipe left/right, or use the navigation arrows to '
         'step through them (always in capture order). Reference photos '
         '(taken on a fixed clock regardless of detections) are mixed in and '
@@ -2087,20 +2112,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
       ),
       const SizedBox(height: 8),
-      // Round 187: the sample-size slider is gone — a random sample of up to
-      // 10 loads by itself; "Show all" is the single remaining choice.
-      if (_photosRequested &&
-          !_photosLoading &&
-          !_photosShowAll &&
-          _totalSavedPhotos > _photos.length)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: _confirmShowAllPhotos,
-            icon: const Icon(Icons.grid_view, size: 18),
-            label: Text('Show all $_totalSavedPhotos photos'),
-          ),
-        ),
+      // Round 209: sample-size chips (10 / 50 / 100 / all) — only the sizes
+      // smaller than the session's photo count are offered, plus a fresh
+      // random draw. A session of 10 photos or fewer shows no chips at all.
+      if (_photosRequested && !_photosLoading && _totalSavedPhotos > _randomSampleCount)
+        ..._sampleChips(),
       if (_photosRequested && !_photosLoading)
         Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -2109,6 +2125,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             '${_totalSavedPhotos == 1 ? '' : 's'} this session'
             '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}'
             '${_photos.length < _totalSavedPhotos ? ' — picked at random' : ''}.',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+      // Round 209: which identification run labels the photos below.
+      if (_identification case final id?)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'Identifications (pack ${id.packId}, '
+            '${id.generatedIso.length >= 16 ? id.generatedIso.substring(0, 16).replaceFirst('T', ' ') : id.generatedIso}) '
+            'are shown under each photo, one per track id: the answer is per VISIT '
+            '(all photos of that track id combined), not per photo.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2162,6 +2190,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       else if (_photos.isNotEmpty)
         _PhotoViewer(
           photos: _photos,
+          identification: _identification,
           location: SessionLocation.fromJson(
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
           ),
@@ -2211,6 +2240,96 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           icon: const Icon(Icons.photo_library),
           label: const Text('Copy photos'),
         ),
+      ),
+      // --- Identify organisms (round 208): per-visit taxonomic identification
+      // with the BioCLIP image tower, run on the phone from the saved photos.
+      const Divider(height: 32, color: Colors.white24),
+      const HelpLabel(
+        label: 'Identify organisms',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        helperText:
+            'Runs an identification model (BioCLIP) over the saved photos of every '
+            'tracked organism and combines the photos of each track id into one answer '
+            'with a confidence per rank (order, family, genus, species). Needs a model '
+            'file and a label pack, imported once on the next screen. '
+            'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
+            'Results land in the session folder as CSV and JSON. '
+            'And when ready, a "View results" button will also appear here '
+            'Please treat the results as suggestions. ' 
+            'Misidentifications are possible, especially for taxa that are not in the label pack.',
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(context)
+                .push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        IdentificationScreen(sessionDir: widget.logFile.parent),
+                  ),
+                )
+                .then((_) => _loadIdentification()),
+            icon: const Icon(Icons.biotech_outlined),
+            label: const Text('Identify organisms'),
+          ),
+          // Round 213: straight to the newest results when a run exists.
+          if (_identification case final id?)
+            FilledButton.icon(
+              onPressed: () {
+                final paths = IdentificationPaths(widget.logFile.parent);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => IdentificationResultsScreen(
+                      sessionDir: widget.logFile.parent,
+                      tracksJson: paths.tracksJson(id.packStem),
+                      summaryJson: id.summaryFile,
+                      tracksCsv: paths.tracksCsv(id.packStem),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.table_rows_outlined),
+              label: const Text('View results'),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// The sample-size chip row (round 209): 10 / 50 / 100 (those below the
+  /// photo count) / All, plus a "new random draw" button.
+  List<Widget> _sampleChips() {
+    final current = _photoSampleSize;
+    return [
+      Wrap(
+        spacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('Sample:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          for (final n in _sampleChoices.where((n) => n < _totalSavedPhotos))
+            ChoiceChip(
+              label: Text('$n'),
+              selected: current == n,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => _loadPhotos(sample: n),
+            ),
+          ChoiceChip(
+            label: Text('All ($_totalSavedPhotos)'),
+            selected: current == null,
+            visualDensity: VisualDensity.compact,
+            onSelected: (_) => _confirmShowAllPhotos(),
+          ),
+          if (current != null)
+            IconButton(
+              tooltip: 'New random sample',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.casino_outlined, size: 20),
+              onPressed: () => _loadPhotos(),
+            ),
+        ],
       ),
     ];
   }
@@ -2358,7 +2477,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     await _loadPostHoc();
     // The photo list still points at deleted files; reload it (keeping the
     // user's sample/all choice) and the Setup tab's storage numbers.
-    if (_photosRequested) await _loadPhotos(all: _photosShowAll);
+    if (_photosRequested) await _loadPhotos();
     await _loadStorageInfo();
   }
 
@@ -2634,9 +2753,14 @@ class _PhotoViewer extends StatefulWidget {
   /// confusing.
   final Map<String, KeepDecision> keepDecisions;
 
+  /// Round 209: per-visit identifications of the newest run (null when the
+  /// session was never identified); drawn as an info row under the photo.
+  final LatestIdentification? identification;
+
   const _PhotoViewer({
     required this.photos,
     required this.onZoomChanged,
+    this.identification,
     this.location,
     this.postBoxes = const {},
     this.deleteMarked = const {},
@@ -3653,6 +3777,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             _infoRow('Track IDs', ids),
             _infoRow('Confidence', conf),
           ],
+          // Round 209: the identification of each visit in this photo (one
+          // answer per track id, combined over all its photos; no-AI
+          // sessions are identified per photo instead).
+          if (_identifiedText(p) case final text?) _infoRow('Identified', text),
           _infoRow('Captured', _formatStamp(p.captureMs)),
           _infoRow('File', liveShown ? p.liveName! : p.name),
           // Post-hoc cleanup verdict for the shown file (round 138): a photo
@@ -3737,6 +3865,22 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       return 'trigger frame — ${p.stillMatchNote}';
     }
     return 'trigger frame';
+  }
+
+  /// "#12 Bombus (genus, 87 %), #13 no organism" for the visits in [p], or
+  /// the per-photo answer of a no-AI session; null when nothing is known.
+  String? _identifiedText(_PhotoSample p) {
+    final id = widget.identification;
+    if (id == null) return null;
+    final parts = [
+      for (final t in p.trackIds)
+        if (id.byTrack[t] case final v?) '#$t ${v.label}',
+    ];
+    if (parts.isEmpty) {
+      final v = id.byPhoto[p.name] ?? (p.liveName == null ? null : id.byPhoto[p.liveName!]);
+      if (v != null) parts.add(v.label);
+    }
+    return parts.isEmpty ? null : parts.join(', ');
   }
 
   Widget _infoRow(String label, String value) => Padding(
