@@ -659,12 +659,12 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         helperChild: _ColumnsHelp(
           intro:
               'One row per taxon. A track id is one tracked organism (what a pollination ecologist '
-              'calls a visit); it has one or more crops (photos) that the model classified together '
+              'calls a visit). It has one or more crops (photos) that the model classified together '
               'into one answer. "As identified" gives one row per answer at the rank the model was '
-              'sure about (a track id identified only to genus Bombus and one identified to Bombus '
-              'terrestris are two rows). Pick a rank to count every track id under its order, family, '
-              'genus or species instead; track ids the model did not resolve that deep land in a '
-              '"not resolved" row.',
+              'sure about (a track id identified only to genus "Bombus" and one identified to "Bombus '
+              'terrestris" are two separate rows). Pick a rank to count every track id under its order, family, '
+              'genus or species instead. Track ids the model did not resolve that deep are displayed in a '
+              '"not resolved to ..." row.',
           cols: [
             ('Taxon', 'the taxon of the row.'),
             ('Rank', 'its taxonomic rank; the Rank filter above keeps only rows of one rank.'),
@@ -674,11 +674,11 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
               'Med. Conf.',
               'the median of the model\'s confidence for this taxon across the row\'s track ids, rounded '
                   'to whole percent. It is the Conf. column of the list that opens when you tap the row, '
-                  'where confidence is explained. Model confidence, not a measured accuracy: treat '
-                  'species-level names as suggestions.',
+                  'where confidence is explained. '
             ),
           ],
-          outro: 'Tap a column header to sort, a row to list its track ids, a track id for its full ladder.',
+          outro: 'Tap a column header to sort it, tap a row to list its track ids, '
+                 'and, in the next screen, tap a track id to list its detailed results.'
         ),
       ),
       const SizedBox(height: 6),
@@ -1490,7 +1490,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         helperText:
             'Opens on the BEST VIEW: the crop whose own top species has the highest Species conf., i.e. '
             'the single photo the model is surest about on its own (it need not agree with the track '
-            'id\'s answer). Tap a row of the crops table to show another crop.\n'
+            'id\'s answer). Tap a row of the Crops table below to show another crop.\n'
             'Yellow box: the detector\'s box for this organism. Cyan box: the square (box + margin) that '
             'was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
             'double-tap zooms, the reset button returns to full view.',

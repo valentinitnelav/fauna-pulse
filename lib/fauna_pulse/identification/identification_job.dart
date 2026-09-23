@@ -94,7 +94,7 @@ class IdentifyRunSettings {
     this.margin = 0.15,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
-    this.tau = 0.6,
+    this.tau = 0.7,
     this.noneThreshold = 0.5,
     this.thermalLimitC = 40,
     this.targetRank = 'family',

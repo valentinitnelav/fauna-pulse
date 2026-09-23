@@ -550,11 +550,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Model and label pack',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'The MODEL (BioCLIP image tower, 0.3 to 1.3 GB) turns a crop into numbers; the '
-            'LABEL PACK holds the names it may choose from, with their taxonomy. Both are '
-            'made on a PC with the scripts in the FaunaPulse repository '
-            '(github.com/valentinitnelav/fauna-pulse, docs/IDENTIFICATION.md). Import copies '
-            'them into the app; the originals can then be deleted.',
+            'The MODEL (BioCLIP image tower) turns a crop into numbers; the '
+            'LABEL PACK holds the names it may choose from, with their taxonomy. '
+            'The model and pack must match: a model trained on one pack will give nonsense with another. '
+            'A model file can be very large (hundreds of MB) '
+            'Download the files on your phone and then use the Import buttons below to make them available to the app. '
       ),
       const SizedBox(height: 8),
       // isExpanded (round 209): without it the field takes the width of its
@@ -620,7 +620,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
             'the model. The crops of one track id are then combined into ONE answer: the model '
-            'describes each crop, the descriptions are averaged (a crop the model is sure about counts '
+            'describes each crop in a vector of numbers, then they are averaged (a crop the model is sure about counts '
             'more, crops it is far less sure about are left out) and the average is classified once, so '
             'photos that agree reinforce each other (not a vote per photo), giving a probability per '
             'rank. Track ids '
@@ -930,10 +930,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           },
           helperText:
               'Upper limit per track id: when a visit has more photos than this, only its LARGEST '
-              'boxes are kept (not a random sample, not the first ones). How many photos a visit has '
-              'comes from the session\'s photo schedule (AI mode default: one photo every 1 s for '
+              'boxes are kept. How many photos a visit has '
+              'comes from the session\'s photo schedule (e.g.: AI mode default with one photo every 1 s for '
               '10 s, so about 10 per visit); with that default the limit of 10 rarely removes '
-              'anything and only bounds the runtime for long bursts. 0 = every photo.',
+              'anything and only bounds the runtime for long bursts. Set 0 to use all photos.',
         ),
         NumericSettingField(
           label: 'Ignore crops far less sure than the best (factor)',
@@ -946,7 +946,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'A crop whose Species conf. is below the surest crop\'s divided by this factor is left out '
               'of the combined answer (it still appears in the crops table, marked "left out"). '
               '1 = every crop counts. The default of 10 is a FaunaPulse rule of thumb, not yet tested '
-              'on pollinator data.',
+              'on representative data.',
         ),
         NumericSettingField(
           label: 'Confidence needed to call a rank identified',
@@ -1008,8 +1008,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             unitSuffix: 's',
             onChanged: (v) => _edit(() => prefs.mergeGapS = v),
             helperText:
-                'Time from the end of one track id to the start of the next. 3 s matches the live '
-                'tracker\'s own continuity buffer (its occlusion setting, 3 s by default). Longer gaps '
+                'Time from the end of one track id to the start of the next. Check also what is set for the '
+                'live tracker\'s own continuity buffer (its occlusion setting, 3 s by default). Longer gaps '
                 'risk joining two different insects of the same species: the appearance check cannot '
                 'tell individuals apart, only the time gap can.',
           ),
@@ -1050,7 +1050,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'supported (detector confidence below the threshold, order-level probability below the '
               'threshold, or "no organism"). Suspect visits are hidden from the results table by default '
               '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
-              'thresholds on your own data in R.',
+              'thresholds on your own data in R or Python.',
         ),
         NumericSettingField(
           label: 'Short: duration below',
@@ -1078,7 +1078,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 1,
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.flagMinDetConf = v),
-          helperText: 'Mean confidence of the live detector over the visit\'s crops.',
+          helperText: 
+              'If the mean confidence of the live detector over the visit\'s crops '
+              'is below this, the visit is flagged as weak. '
         ),
         NumericSettingField(
           label: 'Weak: order probability below',
@@ -1088,8 +1090,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.flagMinOrderP = v),
           helperText:
-              'The identification\'s probability at ORDER rank (e.g. Diptera). A real insect usually gets '
-              'a confident order even when family or genus stay unsure; a blob does not.',
+              'If the identification\'s probability at ORDER rank (e.g. Diptera) '
+              'is below this, the visit is flagged as weak. '
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),

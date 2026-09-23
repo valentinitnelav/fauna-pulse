@@ -2251,9 +2251,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'Runs an identification model (BioCLIP) over the saved photos of every '
             'tracked organism and combines the photos of each track id into one answer '
             'with a confidence per rank (order, family, genus, species). Needs a model '
-            'file and a label pack, imported once on the next screen, which also says '
-            'where to get them. Takes minutes to hours, best with the phone plugged in. '
-            'Results land in the session folder as CSV and JSON.',
+            'file and a label pack, imported once on the next screen. '
+            'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
+            'Results land in the session folder as CSV and JSON. '
+            'And when ready, a "View results" button will also appear here '
+            'Please treat the results as suggestions. ' 
+            'Misidentifications are possible, especially for taxa that are not in the label pack.',
       ),
       const SizedBox(height: 8),
       Wrap(
