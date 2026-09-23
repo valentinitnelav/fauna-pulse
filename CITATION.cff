@@ -1,25 +1,30 @@
 cff-version: 1.2.0
 message: "If you use FaunaPulse in your research, please cite the software using the metadata provided below."
-title: "FaunaPulse: a smartphone application for on-device detection and tracking of animals"
+title: "FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals"
 abstract: >-
   FaunaPulse is an offline smartphone application for monitoring animal activity
   using on-device computer vision. It detects and tracks moving organisms in real
   time using configurable object-detection models and records visits to a
   user-defined region of interest, enabling estimation of visitation frequency and
   duration. The application supports user-provided detection models,
-  motion-triggered and time-lapse image capture with nocturnal monitoring. By
+  motion-triggered and time-lapse image capture with nocturnal monitoring. An
+  experimental identification step runs after recording: the BioCLIP 2 vision model
+  assigns each tracked visit to a taxon on the phone, choosing from a user-prepared
+  list of candidate taxa and reporting a confidence per taxonomic rank. By
   performing inference directly on the smartphone, FaunaPulse enables portable and
   low-cost ecological monitoring without requiring an internet connection.
 type: software
 license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
-version: "0.7.0-alpha.1"
-date-released: "2026-09-04"
+version: "0.8.0-alpha.1"
+date-released: "2026-09-23"
 keywords:
   - pollinators
   - pollination ecology
   - on-device AI
   - object detection
+  - taxonomic identification
+  - BioCLIP
   - biodiversity monitoring
   - insect monitoring
   - pollinator monitoring

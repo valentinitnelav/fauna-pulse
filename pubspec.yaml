@@ -1,9 +1,9 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 name: fauna_pulse
-description: "FaunaPulse: a smartphone application for on-device detection and tracking of animals."
+description: "FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals."
 publish_to: "none"
-version: 0.7.0-alpha.1+12
+version: 0.8.0-alpha.1+13
 
 environment:
   sdk: ^3.8.1

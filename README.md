@@ -256,7 +256,7 @@ GitHub renders a ready-made "Cite this repository" button from that file (top-ri
 
 Example:
 
-> Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection and tracking of animals. https://doi.org/10.5281/zenodo.22309221
+> Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals. https://doi.org/10.5281/zenodo.22309221
 
 Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`.
 

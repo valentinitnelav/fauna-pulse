@@ -259,6 +259,45 @@ Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone i
 the arm64 APK and the AI pipeline runs with the bundled MegaDetector v6 (MDV6) model out of
 the box.
 
+## v0.8.0-alpha.1: identification enters the title (prepared round 224)
+
+The citation title becomes "FaunaPulse: a smartphone application for on-device detection,
+tracking and identification of animals". Same name, so same Zenodo concept DOI; Zenodo
+lets every version carry its own title. Owner decision 2026-09-23: GitHub + Zenodo now,
+Play later (closed test still running).
+
+1. [x] (round 224, on `develop`) New title in CITATION.cff (plus an abstract sentence and
+       two keywords), pubspec `description`, README citation example; identification
+       bullet in `fastlane/.../full_description.txt`.
+2. [ ] Leave the v0.7.0-alpha.1 Zenodo record (`10.5281/zenodo.22309222`) as it is. It
+       archives code without identification, so its old title is the correct one.
+3. [x] (round 224) Version `0.8.0-alpha.1+13`, CITATION.cff `version` + `date-released`
+       (2026-09-23; update it and the CHANGELOG date if publishing slips), CHANGELOG
+       section, `fastlane/.../changelogs/13.txt`, release notes draft
+       `dist/RELEASE_NOTES_v0.8.0-alpha.1.md` (git-ignored). versionCode 13 although Play
+       gets nothing now: Play only refuses codes it has already received, so 13 stays free
+       there; it must exceed Play's 12 so closed testers can install the GitHub APK over
+       the Play build; later the AAB built from this tag goes to Play as the same 13
+       (lockstep). A Play-only fix before that would become 14, and GitHub follows.
+4. [ ] Owner: commit on `develop`, merge `develop` into `main` (the new title reaches
+       GitHub's "Cite this repository" only now, together with the new version), then on
+       `main`: `git tag -a v0.8.0-alpha.1 -m "FaunaPulse v0.8.0-alpha.1"` and
+       `git push origin main v0.8.0-alpha.1`. Build the APKs from that commit with
+       `bash scripts/build_release_apks.sh`; check versionCode 13 with aapt2 (Phase 1
+       step 7). GitHub release: tag `v0.8.0-alpha.1`, title "FaunaPulse
+       v0.8.0-alpha.1", "Set as a pre-release", notes from the dist draft, attach both
+       APKs, then Publish (publishing fires the Zenodo webhook).
+5. [ ] Zenodo takes title, abstract, authors, keywords and licence from CITATION.cff and
+       the version from the tag name. It ignores `doi`, `identifiers` and `date-released`
+       (checked in zenodo-rdm `github/schemas.py`, 2026-09-23), so the DOIs already in
+       the file are harmless. Check the new record; if something is off, fix it there
+       (Edit > Publish keeps the DOI) AND in CITATION.cff, which is re-read every release.
+6. [ ] Phase 1 step 9: the new version DOI replaces the old one in CITATION.cff
+       `identifiers`.
+7. [ ] Play: the same AAB (versionCode 13) to the closed-test track, and paste the new
+       `full_description.txt` into the store listing in the same go (the listing must
+       not describe a feature the live build lacks).
+
 ## Phase 2: citizen-scientist documentation (~2 rounds + owner screenshots)
 
 Owner decisions 2026-08-05 (round 193): no separate QUICK_START.md, `docs/FIELD_GUIDE.md`

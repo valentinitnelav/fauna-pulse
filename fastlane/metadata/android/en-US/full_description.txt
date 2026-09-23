@@ -7,6 +7,7 @@ KEY FEATURES
 - Motion-triggered image capture
 - Time-lapse image capture, including a night mode using the phone's flashlight
 - Post-capture AI detection on already-captured images, with an optional tiling mode (SAHI) to reduce empty frames
+- Experimental on-device identification of the recorded animals with the BioCLIP 2 vision model, with a confidence per taxonomic rank (the model and the list of candidate taxa must be downloaded; see the project's GitHub page)
 - A draggable region of interest (ROI) to focus monitoring on a specific spot
 - End-of-session dashboard with visitation-rate graphs and image review
 - Works fully offline: no account, no ads, no analytics, no data ever leaves your phone
@@ -18,7 +19,7 @@ BRING YOUR OWN MODEL
 The app ships with a general-purpose object-detection model, so it works immediately, but that model does not specifically recognize insects. For insect monitoring you will need to add a purpose-trained .tflite detection model of your own or from a collaborator (see the project's GitHub page for details).
 
 IMPORTANT: EARLY RESEARCH PREVIEW (ALPHA)
-FaunaPulse is an early-stage, experimental research tool. Validation is ongoing. Detection and tracking accuracy depend on your model, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.
+FaunaPulse is an early-stage, experimental research tool. Validation is ongoing. Detection, tracking and identification accuracy depend on your models, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.
 
 PRIVACY
 FaunaPulse collects and transmits nothing. There is no account, no analytics and no tracking. All processing happens on your device, and everything recorded stays in the app's local storage unless you choose to export or share it. Full privacy policy on the project's GitHub page.
