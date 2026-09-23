@@ -30,7 +30,7 @@ Map<String, dynamic> _track(int id, List<String> path, String rank, double p) =>
   'flags': const [],
   'best_view': {'src': 'a.jpg', 'species': path.last, 'p': p},
   'crops': [
-    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_p': p, 'agrees': true, 'p_ladder': List.filled(7, p)},
+    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_p': p, 'agrees': true, 'counted': true, 'p_ladder': List.filled(7, p)},
   ],
 };
 
@@ -123,6 +123,7 @@ void main() {
     expect(find.textContaining('Best single photo'), findsOneWidget);
     expect(find.text('Avg'), findsNothing);
     expect(find.text('Weight'), findsNothing);
+    expect(find.textContaining('left out'), findsNothing); // every fixture crop counted
     // Close both sheets.
     await tester.tapAt(const Offset(180, 10));
     await tester.pumpAndSettle();

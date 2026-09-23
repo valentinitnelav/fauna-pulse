@@ -7,7 +7,7 @@
 // identified" or by a fixed rank). A row opens sheet S3 with its track ids
 // (numbered 1..N, the tracker's ids in their own column, sortable, with the
 // median confidence stated above the table); a track id opens sheet S4:
-// the ladder (Conf. = certainty-weighted mean of the crops' own values,
+// the ladder (Conf. = the crops' descriptions averaged with certainty weights and scored once,
 // Agree as "50 % (5/10)"; tap a row to select its taxon), a "Best single
 // photo" line, flags with explanations, the photo with the detector box
 // and the square crop drawn (toggle, zoom), and the crops table (each
@@ -15,11 +15,11 @@
 // that species' confidence, which is also the crop's weight; tap a row to
 // show that crop).
 //
-// Vocabulary (owner, rounds 215-217): "track id" = one tracked organism
+// Vocabulary (owner, rounds 215-219): "track id" = one tracked organism
 // (a pollination ecologist's "visit"); "Conf." = the model's confidence
-// that a track id belongs to a TAXON (each crop's species probabilities
-// under it added up, then averaged over the crops with each crop's top-1
-// probability as weight); "Species conf." = one species, one crop, nothing
+// that a track id belongs to a TAXON (round 219: the crops' descriptions
+// averaged with certainty weights, far-less-sure crops left out, scored
+// once, species under the taxon added up); "Species conf." = one species, one crop, nothing
 // added up; "Med. Conf." = median of Conf. across the track ids of a taxon
 // row. Every info text lists its table's columns in bold, one per line.
 // Percentages are model confidence, not accuracy.
@@ -1107,29 +1107,6 @@ class _TrackSheetState extends State<_TrackSheet> {
     });
   }
 
-  /// "(95 % × 0.14 + 90 % × 0.07 + …) / (0.14 + 0.07 + …) = 91 %": the Conf.
-  /// of the selected ladder row recomputed from the crops table (each crop's
-  /// own Conf. weighted by its Species conf.), so the user can verify it.
-  String _confExample() {
-    final parts = <String>[];
-    final ws = <String>[];
-    var numer = 0.0, den = 0.0;
-    for (var i = 0; i < _crops.length; i++) {
-      final m = _mass(_crops[i]);
-      final w = (_crops[i]['top1_p'] as num?)?.toDouble();
-      if (m == null || w == null) return '';
-      numer += m * w;
-      den += w;
-      if (i < 3) {
-        parts.add('${_pct(m)} × ${w.toStringAsFixed(2)}');
-        ws.add(w.toStringAsFixed(2));
-      }
-    }
-    if (den == 0) return '';
-    final more = _crops.length > 3 ? ' + …' : '';
-    return '(${parts.join(' + ')}$more) / (${ws.join(' + ')}$more) = ${_pct(numer / den)}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = widget.track;
@@ -1153,7 +1130,6 @@ class _TrackSheetState extends State<_TrackSheet> {
         ? 'this session: one every ${step.toStringAsFixed(step == step.roundToDouble() ? 0 : 1)} s during the first '
               '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)} s of a track id'
         : 'e.g. one every second during the first 10 s of a track id';
-    final confExample = _confExample();
     final best = widget.track['best_view'] as Map<String, dynamic>?;
     final bestSpecies = best == null ? '' : '${best['species']}';
     final bestAgree = bestSpecies.isEmpty ? 0 : _crops.where((c) => '${c['top1']}' == bestSpecies).length;
@@ -1191,12 +1167,13 @@ class _TrackSheetState extends State<_TrackSheet> {
             cols: [
               (
                 'Conf.',
-                'the model\'s confidence that this track id belongs to the taxon. How it is made: every crop '
-                    'is classified on its own (its probabilities for all species under the taxon added up: '
-                    'the "Conf. $_selTaxon" column of the crops table); those values are then averaged, each '
-                    'crop weighted by its Species conf., so a crop the model is sure about counts more and a '
-                    'blurred, unsure one counts little. Conf. can never exceed the best single crop.'
-                    '${confExample.isEmpty ? '' : ' Example for $_selTaxon: $confExample.'}',
+                'the model\'s confidence that this track id belongs to the taxon. How it is made: the model '
+                    'turns each crop into a description (a list of numbers); the descriptions are averaged, '
+                    'a crop the model is sure about counting more (its Species conf.) and crops it is far '
+                    'less sure about left out; the average is classified once and the species under the '
+                    'taxon are added up. Photos that agree therefore reinforce each other, and Conf. can be '
+                    'higher than any single photo\'s value in the crops table; it is NOT an average of that '
+                    'column. Photos that disagree pull the average apart and lower every Conf.',
               ),
               (
                 'Agree',
@@ -1374,18 +1351,19 @@ class _TrackSheetState extends State<_TrackSheet> {
               'Conf. $_selTaxon',
               'this crop\'s own confidence for $sel, the ladder row selected above'
                   '${_selRank == 'species' ? ': at species level there is nothing to add up, so it is simply the crop\'s probability for this species (equal to Species conf. when this is the crop\'s top species)' : ': the crop\'s probabilities for all species under it added up'}. '
-                  'Tap another ladder row to change the taxon. The track id\'s Conf. for that taxon '
-                  '(ladder above) is this column averaged over ALL crops with the Species conf. column '
-                  'as weights, so one crop\'s value can be higher than the track id\'s Conf.',
+                  'Tap another ladder row to change the taxon. This column is evidence, not the arithmetic '
+                  'behind the ladder: the track id\'s Conf. comes from the averaged descriptions, so it can '
+                  'be higher than every value here when the crops agree, or lower when they disagree.',
             ),
             ('Agree', '✓ when the crop\'s top species is inside $sel.'),
             ('Top species', 'the species with the highest probability for this crop alone.'),
             (
               'Species conf.',
-              'that probability (one species, nothing added up). It is also the crop\'s WEIGHT in the '
-                  'track id\'s Conf.: a crop that is sure of its answer counts more, an unsure one less. '
-                  'The ladder\'s species row is the best species of the weighted average and can differ.'
-                  '${_confExample().isEmpty ? '' : ' For $_selTaxon: ${_confExample()}.'}',
+              'that probability (one species, nothing added up). It also decides how much the crop '
+                  'counts in the combined answer: a crop that is sure of its answer counts more, and a '
+                  'crop far less sure than the surest one (below it divided by the factor set under '
+                  'Advanced settings) is left out and marked "left out" here. The ladder\'s species row '
+                  'is the best species of the combined answer and can differ from every crop\'s own.',
             ),
             ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
           ],
@@ -1435,7 +1413,11 @@ class _TrackSheetState extends State<_TrackSheet> {
               ],
               below: Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text('${c['src']}', style: const TextStyle(color: Colors.white38, fontSize: 11), overflow: TextOverflow.ellipsis),
+                child: Text(
+                  '${c['src']}${c['counted'] == false ? '  ·  left out of the combined answer' : ''}',
+                  style: TextStyle(color: c['counted'] == false ? Colors.amber : Colors.white38, fontSize: 11),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
         ],

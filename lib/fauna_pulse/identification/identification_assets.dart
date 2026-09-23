@@ -139,6 +139,8 @@ class IdentifyPrefs {
   int flagMinDetections;
   double flagMinDetConf;
   double flagMinOrderP;
+  // Round 219: leave out crops far less certain than the surest one.
+  double dropFactor;
 
   IdentifyPrefs({
     this.modelName,
@@ -160,6 +162,7 @@ class IdentifyPrefs {
     this.flagMinDetections = 3,
     this.flagMinDetConf = 0.2,
     this.flagMinOrderP = 0.5,
+    this.dropFactor = 10,
   });
 
   static const _kModel = 'identify_model';
@@ -181,6 +184,7 @@ class IdentifyPrefs {
   static const _kFlagDet = 'identify_flag_min_detections';
   static const _kFlagConf = 'identify_flag_min_det_conf';
   static const _kFlagOrderP = 'identify_flag_min_order_p';
+  static const _kDrop = 'identify_drop_factor';
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -209,6 +213,7 @@ class IdentifyPrefs {
       flagMinDetections: p.getInt(_kFlagDet) ?? 3,
       flagMinDetConf: p.getDouble(_kFlagConf) ?? 0.2,
       flagMinOrderP: p.getDouble(_kFlagOrderP) ?? 0.5,
+      dropFactor: p.getDouble(_kDrop) ?? 10,
     );
   }
 
@@ -241,6 +246,7 @@ class IdentifyPrefs {
     await p.setInt(_kFlagDet, flagMinDetections);
     await p.setDouble(_kFlagConf, flagMinDetConf);
     await p.setDouble(_kFlagOrderP, flagMinOrderP);
+    await p.setDouble(_kDrop, dropFactor);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -264,5 +270,6 @@ class IdentifyPrefs {
     'flag_min_detections': flagMinDetections,
     'flag_min_det_conf': flagMinDetConf,
     'flag_min_order_p': flagMinOrderP,
+    'drop_factor': dropFactor,
   };
 }

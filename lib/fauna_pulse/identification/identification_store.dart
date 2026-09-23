@@ -366,6 +366,9 @@ Map<String, dynamic> writeOutputs({
     // in R without re-scoring: plain mean and best single crop per rank.
     for (final r in kRankNames) 'p_mean_$r',
     for (final r in kRankNames) 'p_max_$r',
+    // Round 219: mean over the crops whose own top-1 is under the taxon
+    // (insect-detect-post's weighted probability = agree x p_agree).
+    for (final r in kRankNames) 'p_agree_$r',
     'identified_rank',
     'headline',
     for (final r in kRankNames) 'agree_$r',
@@ -409,6 +412,7 @@ Map<String, dynamic> writeOutputs({
         'top1_species',
         'top1_p',
         'agrees',
+        'counted',
         for (final r in kRankNames) 'ladder_$r',
         for (final r in kRankNames) 'p_$r',
       ].join(','),
@@ -482,6 +486,7 @@ Map<String, dynamic> writeOutputs({
     final pr = {for (var k = 0; k < 7; k++) 'p_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].mass.toStringAsFixed(4) : ''};
     final prMean = {for (var k = 0; k < 7; k++) 'p_mean_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].meanMass.toStringAsFixed(4) : ''};
     final prMax = {for (var k = 0; k < 7; k++) 'p_max_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].maxMass.toStringAsFixed(4) : ''};
+    final prAgree = {for (var k = 0; k < 7; k++) 'p_agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].agreeMass.toStringAsFixed(4) : ''};
     final agr = {for (var k = 0; k < 7; k++) 'agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
     final row = <Object?>[
       deviceId,
@@ -500,6 +505,7 @@ Map<String, dynamic> writeOutputs({
       ...pr.values,
       ...prMean.values,
       ...prMax.values,
+      ...prAgree.values,
       f.identifiedRank ?? '',
       headline,
       ...agr.values,
@@ -534,6 +540,7 @@ Map<String, dynamic> writeOutputs({
           top1.speciesName,
           f.perCrop[i].probs.first.toStringAsFixed(4),
           f.identifiedRank == null ? '' : (_cropAgrees(top1, f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)) ? 1 : 0),
+          i < f.counted.length ? (f.counted[i] ? 1 : 0) : 1,
           for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
           for (var k = 0; k < 7; k++) k < masses.length ? masses[k].toStringAsFixed(4) : '',
         ].map(_csvCell).join(','),
@@ -574,6 +581,8 @@ Map<String, dynamic> writeOutputs({
               if (i < f.perCropMass.length)
                 for (final m in f.perCropMass[i]) double.parse(m.toStringAsFixed(4)),
             ],
+            // Round 219: false when the crop was left out of the pooled answer.
+            'counted': i < f.counted.length ? f.counted[i] : true,
             'box': t.crops[i].box,
             'crop_px': t.crops[i].cropPx,
             'sharpness': double.parse(t.crops[i].sharpness.toStringAsFixed(1)),
@@ -665,14 +674,19 @@ Files
   crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
 
-Two kinds of probability appear everywhere (round 217 rule):
-  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON: each crop is
-                       scored on its own (probabilities of all species under the taxon added
-                       up), then the crops are averaged with each crop's top-1 probability as
-                       weight (a sure crop counts more). p_mean_<rank> = the plain mean,
-                       p_max_<rank> = the best single crop; p never exceeds p_max.
+Two kinds of probability appear everywhere (round 219 rule):
+  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON. The crops'
+                       embedding vectors are averaged, each crop weighted by its top-1
+                       probability, crops below the surest crop's top-1 probability divided
+                       by the drop factor (default 10) left out; the average is scored once
+                       (softmax over the pack) and the species under the taxon are added up.
+                       This is the "Average Logit" rule of Dussert et al. 2025 (camera-trap
+                       sequences) with FaunaPulse's certainty weights and drop rule, NOT yet
+                       validated on pollinator data; temperature 1.0 = uncalibrated.
+                       p_mean_<rank> = plain mean of the crops' own values, p_max_<rank> =
+                       best single crop, p_agree_<rank> = mean over the crops that name it.
   Species conf. (top1_p)  probability of ONE species for ONE crop, nothing added up; it is
-                       also the crop's weight in the average.
+                       also the crop's weight in the average (0 when counted = 0).
   Med. Conf.           on the results screen's taxon table: the median of Conf. across the
                        row's track ids.
 
@@ -689,6 +703,9 @@ tracks_<pack>.csv columns
   p_<rank>                            Conf. of that taxon (see above; calibrated only if the pack
                                       carries a fitted temperature)
   p_mean_<rank>, p_max_<rank>         plain mean and best single crop (round 217)
+  p_agree_<rank>                      mean of the crops' own values over the crops whose top-1 is
+                                      under the taxon (agree_<rank> x p_agree_<rank> = insect-
+                                      detect-post's weighted probability)
   identified_rank                     deepest rank whose mass reached tau
   headline                            the taxon at identified_rank, or "unidentified" / "no organism"
   agree_<rank>                        share of crops whose own top-1 falls under that taxon
@@ -707,11 +724,13 @@ crops_<pack>.csv columns
                                       padding outside the photo (descriptive only)
   top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
   agrees                              1 when top1_species falls under the visit's reported taxon
+  counted                             1 when the crop entered the combined answer (round 219)
   ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own Conf. under each
 
-How it is computed (round 217): each crop is embedded with the BioCLIP image tower and
-scored against the pack on its own; a track id's per-crop probabilities are averaged with
-each crop's top-1 probability as weight, and species masses are summed up the taxonomy. Percentages are model confidence, not accuracy.
+How it is computed (round 219): each crop is embedded with the BioCLIP image tower and
+scored against the pack on its own (for the per-crop columns); the track id's answer comes
+from the certainty-weighted average of the counted crops' embeddings, scored once, with
+species masses summed up the taxonomy. Percentages are model confidence, not accuracy.
 ''';
 
 /// One visit's identification as the Photos tab shows it (round 209): read

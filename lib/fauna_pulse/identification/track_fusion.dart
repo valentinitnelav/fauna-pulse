@@ -1,23 +1,29 @@
-// FaunaPulse (round 208, rule changed round 217): scoring one crop and
-// pooling a track id's crops.
+// FaunaPulse (round 208, rule changed rounds 217 and 219): scoring one crop
+// and pooling a track id's crops.
 //
 // Pure Dart, no I/O, unit-tested.
 //   * per crop: softmax over the pack of (logit_scale / T) * cosine similarity
-//     (as pybioclip's predict, Imageomics)
-//   * per track id: the CERTAINTY-WEIGHTED MEAN of the crops' probability
-//     vectors, each crop weighted by its own top-1 probability (a crop the
-//     model is sure about counts more, an unsure one less; no image-quality
-//     heuristics since round 217, owner decision), rolled up through the
-//     taxonomy (mass of a family = sum of its species, as pybioclip's
-//     format_grouped_probs)
+//     (as pybioclip's predict, Imageomics); T = the pack's calibration
+//     temperature, 1.0 until one is fitted on labelled crops
+//   * per track id (round 219, "Average Logit" of Dussert et al. 2025, RSEC
+//     11:88-99, adapted): the crops' unit embeddings are averaged, each crop
+//     weighted by its own top-1 probability (its certainty), crops whose
+//     certainty is below the surest crop's divided by [dropFactor] left out;
+//     the average (NOT re-normalised, so disagreement shortens it and lowers
+//     every confidence) is scored once against the pack and rolled up through
+//     the taxonomy (mass of a family = sum of its species, as pybioclip's
+//     format_grouped_probs). For a similarity-scored model this equals
+//     averaging the crops' logits before the softmax, the rule that benchmark
+//     found best calibrated; the certainty weights and the drop rule are
+//     FaunaPulse additions, not yet tested on pollinator data.
 //   * a consistent top-down "ladder" (best child of the chosen parent) with,
-//     per rank, the pooled mass, the plain mean and the maximum of the crops'
-//     own masses, and "support" (share of crops whose own top-1 agrees)
+//     per rank, the pooled mass, the plain mean / maximum / agreeing-crops
+//     mean of the crops' own masses, and "support" (share of crops whose own
+//     top-1 agrees)
 //   * "identified rank" = deepest ladder rank with mass >= tau (default 0.6)
 //   * sink rows (kingdom `none`) collect the "no organism" mass
-//   * a certainty-weighted mean EMBEDDING is still formed, solely for the
-//     visit-merge similarity check (visit_merge.dart); no reported number
-//     comes from it
+//   * the unit-length pooled embedding is kept solely for the visit-merge
+//     similarity check (visit_merge.dart)
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -46,18 +52,23 @@ class LadderStep {
   final String taxon;
   final String key;
 
-  /// The reported confidence: certainty-weighted mean over the crops of
-  /// their own mass under this taxon (round 217). Never exceeds [maxMass].
+  /// The reported confidence: mass under this taxon of the pooled
+  /// distribution (round 219: the crops' embeddings averaged with certainty
+  /// weights, scored once). Can exceed every single crop's own mass when the
+  /// crops agree.
   final double mass;
 
   /// Share of the track id's crops whose own top-1 falls under this taxon.
   final double support;
 
-  /// Plain (unweighted) mean over the crops of their own mass under this
-  /// taxon, and the highest single crop's mass; exported so other pooling
-  /// rules can be compared without re-scoring.
+  /// Plain (unweighted) mean over ALL crops of their own mass under this
+  /// taxon, the highest single crop's mass, and the mean over the crops whose
+  /// own top-1 falls under it (0 when none); exported so other pooling rules
+  /// (e.g. insect-detect-post's vote share x mean = support x agreeMass) can
+  /// be compared without re-scoring.
   final double meanMass;
   final double maxMass;
+  final double agreeMass;
 
   const LadderStep({
     required this.rank,
@@ -67,6 +78,7 @@ class LadderStep {
     required this.support,
     required this.meanMass,
     required this.maxMass,
+    required this.agreeMass,
   });
 
   Map<String, dynamic> toJson() => {
@@ -75,6 +87,7 @@ class LadderStep {
     'p': double.parse(mass.toStringAsFixed(4)),
     'p_mean': double.parse(meanMass.toStringAsFixed(4)),
     'p_max': double.parse(maxMass.toStringAsFixed(4)),
+    'p_agree': double.parse(agreeMass.toStringAsFixed(4)),
     'support': double.parse(support.toStringAsFixed(3)),
   };
 }
@@ -104,6 +117,10 @@ class FusedTrack {
   /// Per-crop top-k rows; `perCrop[i].probs.first` is crop i's weight.
   final List<TopK> perCrop;
 
+  /// Round 219: false for crops left out of the pooled answer (certainty below
+  /// the surest crop's divided by the drop factor). Same length as [perCrop].
+  final List<bool> counted;
+
   /// For every crop, its OWN mass under each ladder taxon (index = rank,
   /// same length as [ladder]); the number every screen value traces to.
   final List<List<double>> perCropMass;
@@ -121,6 +138,7 @@ class FusedTrack {
     required this.fusedEmbedding,
     required this.perCrop,
     required this.perCropMass,
+    required this.counted,
   });
 
   LadderStep? stepAt(String rank) {
@@ -268,9 +286,10 @@ class Scorer {
     return out;
   }
 
-  /// Pools a track id's crops (round 217 rule). [tau] = mass needed to
-  /// count as identified.
-  FusedTrack fuse(List<CropEmbedding> crops, {double tau = 0.6, int topK = 5}) {
+  /// Pools a track id's crops (round 219 rule, see the file header). [tau] =
+  /// mass needed to count as identified; [dropFactor] = crops whose certainty
+  /// is below the surest crop's divided by this are left out (<= 1: none).
+  FusedTrack fuse(List<CropEmbedding> crops, {double tau = 0.6, double dropFactor = 10, int topK = 5}) {
     assert(crops.isNotEmpty);
     final dim = pack.dim;
     final n = crops.length;
@@ -279,49 +298,49 @@ class Scorer {
     final perCropProbs = [for (final c in crops) probs(c.vector)];
     final perCropTop = [for (final p in perCropProbs) this.topK(p, topK)];
 
-    // Certainty weight = the crop's top-1 probability (always > 0).
+    // Certainty weight = the crop's top-1 probability (always > 0); crops far
+    // less certain than the surest one are left out.
     final weights = [for (final t in perCropTop) t.probs.first];
-    var wsum = 0.0;
+    var maxW = 0.0;
     for (final w in weights) {
-      wsum += w;
+      if (w > maxW) maxW = w;
+    }
+    final counted = [for (final w in weights) dropFactor <= 1 || w >= maxW / dropFactor];
+    var wsum = 0.0;
+    for (var i = 0; i < n; i++) {
+      if (counted[i]) wsum += weights[i];
     }
 
-    // Pooled distribution: weighted mean of the per-crop probability vectors.
-    final pbar = Float32List(pack.rows);
+    // Pooled embedding: certainty-weighted mean of the counted crops' unit
+    // vectors, deliberately not re-normalised (average logit).
+    final pooled = Float32List(dim);
     for (var i = 0; i < n; i++) {
-      final w = weights[i] / wsum;
-      final p = perCropProbs[i];
-      for (var r = 0; r < pack.rows; r++) {
-        pbar[r] += w * p[r];
-      }
-    }
-    final masses = rollUp(pbar);
-
-    // Mean embedding with the same weights, for the merge check only.
-    final fused = Float32List(dim);
-    for (var i = 0; i < n; i++) {
+      if (!counted[i]) continue;
       final w = weights[i] / wsum;
       final v = crops[i].vector;
       for (var d = 0; d < dim; d++) {
-        fused[d] += (w * v[d]).toDouble();
+        pooled[d] += (w * v[d]).toDouble();
       }
     }
+    final pbar = probs(pooled);
+    final masses = rollUp(pbar);
+
+    // Unit-length copy for the merge similarity check only.
+    final fused = Float32List(dim);
     var norm = 0.0;
     for (var d = 0; d < dim; d++) {
-      norm += fused[d] * fused[d];
+      norm += pooled[d] * pooled[d];
     }
     norm = math.sqrt(norm);
-    if (norm > 0) {
-      for (var d = 0; d < dim; d++) {
-        fused[d] /= norm;
-      }
+    for (var d = 0; d < dim; d++) {
+      fused[d] = norm > 0 ? pooled[d] / norm : pooled[d];
     }
 
     // Consistent top-down path.
     final keys = <String>[];
     final taxa = <String>[];
     final massAt = <double>[];
-    final agreeAt = <int>[];
+    final agreeAt = <List<bool>>[];
     var parentKey = '';
     var pathConflict = false;
     for (var k = 0; k < 7; k++) {
@@ -343,10 +362,10 @@ class Scorer {
       if (bestKey == null) break;
       if (argmaxKey != bestKey) pathConflict = true;
       final name = bestKey.split('|').last;
-      var agree = 0;
+      final agree = <bool>[];
       for (final t in perCropTop) {
         final top1 = pack.labels[t.rows.first];
-        if (top1.ranks[k].isNotEmpty && top1.keyAt(k) == bestKey) agree++;
+        agree.add(top1.ranks[k].isNotEmpty && top1.keyAt(k) == bestKey);
       }
       keys.add(bestKey);
       taxa.add(k == 6 ? _speciesDisplay(bestKey) : name);
@@ -355,17 +374,21 @@ class Scorer {
       parentKey = bestKey;
     }
 
-    // Each crop's own mass under the ladder taxa. Because massesAt is linear
-    // in p, massAt[k] == sum_i weights[i] * perCropMass[i][k] / wsum: the
-    // reported mass is exactly the weighted mean of the crops table column.
+    // Each crop's own mass under the ladder taxa (evidence for the tables and
+    // the per-rank alternatives p_mean / p_max / p_agree).
     final perCropMass = [for (final p in perCropProbs) massesAt(p, keys)];
     final ladder = <LadderStep>[];
     for (var k = 0; k < keys.length; k++) {
-      var sum = 0.0, mx = 0.0;
+      var sum = 0.0, mx = 0.0, agreeSum = 0.0;
+      var agreeN = 0;
       for (var i = 0; i < n; i++) {
         final m = perCropMass[i][k];
         sum += m;
         if (m > mx) mx = m;
+        if (agreeAt[k][i]) {
+          agreeSum += m;
+          agreeN++;
+        }
       }
       ladder.add(
         LadderStep(
@@ -373,9 +396,10 @@ class Scorer {
           taxon: taxa[k],
           key: keys[k],
           mass: massAt[k],
-          support: agreeAt[k] / n,
+          support: agreeN / n,
           meanMass: sum / n,
           maxMass: mx,
+          agreeMass: agreeN == 0 ? 0 : agreeSum / agreeN,
         ),
       );
     }
@@ -424,6 +448,7 @@ class Scorer {
       fusedEmbedding: fused,
       perCrop: perCropTop,
       perCropMass: perCropMass,
+      counted: counted,
     );
   }
 

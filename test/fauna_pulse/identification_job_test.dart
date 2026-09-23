@@ -132,6 +132,8 @@ void main() {
     expect(cropLines.first, endsWith(',p_species'));
     expect(cropLines.first, isNot(contains(',weight,')));
     expect(cropLines.first, contains(',pad_frac,top1_species,'));
+    expect(cropLines.first, contains(',agrees,counted,'));
+    expect(crop0['counted'], isTrue);
     expect(cropLines.length, 4); // header + 3 crops
     expect((tracks[0]['crops'] as List).length, 2);
     expect(tracks[1]['headline'], 'Apis mellifera');
@@ -144,7 +146,8 @@ void main() {
     expect(csvLines.first, startsWith('device_id,session_id,track_id,track_imgs,pred_imgs,pred,pred_prob_weighted,pred_prob_mean,'));
     final header = csvLines.first;
     expect(header, contains(',p_species,p_mean_kingdom,'));
-    expect(header, contains(',p_max_species,identified_rank,headline,agree_kingdom,'));
+    expect(header, contains(',p_max_species,p_agree_kingdom,'));
+    expect(header, contains(',p_agree_species,identified_rank,headline,agree_kingdom,'));
     expect(header, isNot(contains('support_')));
     expect(csvLines.first, contains('bioclip_species'));
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));

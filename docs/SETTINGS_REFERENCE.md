@@ -248,7 +248,8 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |
-| Confidence needed to call a rank identified | 0.60 (0.80 until round 216) | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. Conf. = the crops' own confidences averaged with each crop's top-1 probability as weight (round 217). |
+| Ignore crops far less sure than the best (factor) | 10 | r219: a crop whose top-1 probability is below the surest crop's divided by this factor is left out of the pooled answer (still listed, marked "left out"); 1 = every crop counts. FaunaPulse rule of thumb, not tested on pollinator data. |
+| Confidence needed to call a rank identified | 0.60 (0.80 until round 216) | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. Conf. = the pooled answer of round 219 (crops' embeddings averaged with certainty weights, scored once); 0.7 to 0.8 are common thresholds in the camera-trap literature, none tested for pollinators. |
 | "No organism" threshold | 0.50 | Summed probability of the "none of these" entries above which a visit is reported as no organism. |
 | Pause above battery temperature | 40 °C | The run pauses at this battery temperature and resumes 3 °C lower. |
 | Merge consecutive visits | off | r210/212: join a track id to the previous one when the gap, a compatible identification, the appearance similarity and the box-size guard all pass; the union is identified again. |

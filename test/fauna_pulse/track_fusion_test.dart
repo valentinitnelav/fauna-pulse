@@ -89,22 +89,28 @@ void main() {
       expect(f.pathConflict, isFalse);
     });
 
-    test('a sure crop outweighs an unsure one; tau 0.6 is the default (round 217)', () {
+    test('a sure crop dominates; a far less sure one is left out (rounds 217/219)', () {
       final s = Scorer(tinyPack(logitScale: 20));
       final sureBee = crop([0, 0, 1, 0, 0]); // top-1 ~ 1.0
       final unsureFly = crop([1, 1, 0, 0, 0], jpeg: 'b.jpg'); // split between two Syrphidae: top-1 ~ 0.5
       final f = s.fuse([sureBee, unsureFly]);
       expect(f.perCrop[0].probs.first, greaterThan(0.99));
       expect(f.perCrop[1].probs.first, closeTo(0.5, 0.02));
+      // 0.5 >= 1.0 / 10: both crops count; the average description sits
+      // nearer the bee (weight 1.0 vs 0.5) and the pooled answer follows it.
+      expect(f.counted, [true, true]);
       expect(f.stepAt('order')!.taxon, 'Hymenoptera');
-      // (1.0 * 1 + 0.5 * 0) / 1.5
-      expect(f.stepAt('order')!.mass, closeTo(2 / 3, 0.02));
+      expect(f.stepAt('order')!.mass, greaterThan(0.5));
       expect(f.stepAt('order')!.support, 0.5);
-      expect(f.identifiedRank, 'species'); // 0.667 >= 0.6
-      expect(s.fuse([sureBee, unsureFly], tau: 0.8).identifiedRank, 'class');
       expect(f.bestViewIndex, 0);
       expect(f.bestViewTaxon, 'Apis mellifera');
       expect(f.bestViewProb, greaterThan(0.99));
+      // With a factor of 1.5 the fly (0.5 < 1.0 / 1.5) is left out and the
+      // answer is the bee's own.
+      final g = s.fuse([sureBee, unsureFly], dropFactor: 1.5);
+      expect(g.counted, [true, false]);
+      expect(g.stepAt('species')!.mass, closeTo(s.fuse([sureBee]).stepAt('species')!.mass, 1e-6));
+      expect(g.identifiedRank, 'species'); // >= 0.6 default tau
     });
 
     test('a flower crop lands on the sink row', () {
@@ -140,24 +146,55 @@ void main() {
       expect(f.ladder.map((e) => e.rank).toList(), kRankNames);
     });
 
-    test('mass is the top-1-weighted mean of the crops\' own masses; p_mean and p_max (round 217)', () {
-      final f = Scorer(tinyPack(logitScale: 8)).fuse(threeCrops(), tau: 0.8);
-      final w = [for (final t in f.perCrop) t.probs.first];
-      final wsum = w.reduce((a, b) => a + b);
+    test('agreeing crops reinforce each other: pooled mass above the plain mean (round 219)', () {
+      final s = Scorer(tinyPack(logitScale: 12));
+      // Three views that all lean to Apis but are individually unsure.
+      final f = s.fuse([crop([0.3, 0, 1, 0.3, 0]), crop([0, 0.3, 1, 0.3, 0], jpeg: 'b.jpg'), crop([0.2, 0.2, 1, 0.2, 0], jpeg: 'c.jpg')]);
+      final sp = f.stepAt('species')!;
+      expect(sp.taxon, 'Apis mellifera');
+      expect(sp.mass, greaterThan(sp.meanMass));
+      expect(sp.support, 1.0);
+      expect(sp.agreeMass, closeTo(sp.meanMass, 1e-9)); // every crop agrees
+    });
+
+    test('a clueless crop is left out by the drop rule; with factor 1 it dilutes', () {
+      final s = Scorer(tinyPack(logitScale: 20));
+      final sure = crop([0, 0, 1, 0, 0]);
+      // Equal similarity to every row: top-1 = 1/5 = 0.2 in this 5-row pack
+      // (near 0 in a 38 000-name pack, where the default factor 10 drops it);
+      // here a factor of 3 (0.2 < 1.0 / 3) is needed to leave it out.
+      final flat = crop([1, 1, 1, 1, 1], jpeg: 'b.jpg');
+      final alone = s.fuse([sure]);
+      final withFlat = s.fuse([sure, flat], dropFactor: 3);
+      expect(withFlat.counted, [true, false]);
+      expect(withFlat.stepAt('species')!.mass, closeTo(alone.stepAt('species')!.mass, 1e-6));
+      final all = s.fuse([sure, flat], dropFactor: 1);
+      expect(all.counted, [true, true]);
+      expect(all.stepAt('species')!.mass, lessThan(alone.stepAt('species')!.mass));
+    });
+
+    test('per-rank alternatives and JSON keys (rounds 217/219)', () {
+      final f = Scorer(tinyPack(logitScale: 8)).fuse(threeCrops(), tau: 0.8, dropFactor: 1);
       for (var k = 0; k < f.ladder.length; k++) {
-        var weighted = 0.0, plain = 0.0, mx = 0.0;
+        var plain = 0.0, mx = 0.0, agreeSum = 0.0;
+        var agreeN = 0;
         for (var i = 0; i < 3; i++) {
           final m = f.perCropMass[i][k];
-          weighted += w[i] * m;
           plain += m;
           if (m > mx) mx = m;
+          final top1 = f.perCrop[i].rows.first;
+          if (tinyPack().labels[top1].ranks[k].isNotEmpty && tinyPack().labels[top1].keyAt(k) == f.ladder[k].key) {
+            agreeSum += m;
+            agreeN++;
+          }
         }
-        expect(f.ladder[k].mass, closeTo(weighted / wsum, 1e-5));
         expect(f.ladder[k].meanMass, closeTo(plain / 3, 1e-6));
         expect(f.ladder[k].maxMass, closeTo(mx, 1e-6));
-        expect(f.ladder[k].mass, lessThanOrEqualTo(f.ladder[k].maxMass + 1e-6));
+        expect(f.ladder[k].support, closeTo(agreeN / 3, 1e-9));
+        expect(f.ladder[k].agreeMass, closeTo(agreeN == 0 ? 0 : agreeSum / agreeN, 1e-6));
       }
-      expect(f.ladder.first.toJson().keys, containsAll(['rank', 'taxon', 'p', 'p_mean', 'p_max', 'support']));
+      expect(f.ladder.first.toJson().keys, containsAll(['rank', 'taxon', 'p', 'p_mean', 'p_max', 'p_agree', 'support']));
+      expect(f.counted.length, 3);
     });
   });
 }

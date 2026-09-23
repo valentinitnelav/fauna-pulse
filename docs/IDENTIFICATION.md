@@ -111,27 +111,45 @@ per-crop values of 95 %, 90 %, 97 % … next to species names). Tapping a ladder
 the taxon the column shows; the track id's Conf. for that taxon is that column averaged with
 the Species conf. column as weights, spelled out as a worked example in the info texts.
 
-**How a track id's Conf. is computed (round 217).** Each crop is classified on its own:
-the model turns the crop into a vector, compares it with every species name it was given
-(cosine similarity times the pack's logit scale, divided by the calibration temperature),
-turns the similarities into probabilities with a softmax, and the probabilities of the
-species under a taxon are added up (the crop's own Conf. for that taxon, the "Conf. <taxon>"
-column of the crops table). The track id's Conf. for the taxon is the average of those
-per-crop values, each crop weighted by its own top-1 probability (its Species conf.): a
-crop the model is sure about counts more, a blurred crop about which the model is unsure
-counts little, but no single crop decides alone. In symbols, with w_i the top-1
-probability of crop i and c_i its Conf. for the taxon: Conf. = Σ w_i c_i / Σ w_i, e.g.
-(95 % × 0.14 + 90 % × 0.07 + 97 % × 0.23 + …) / (0.14 + 0.07 + 0.23 + …). Conf. can never
-exceed the best single crop. Image-quality heuristics (sharpness, size, detector
-confidence, padding) no longer influence any number; they remain as descriptive columns in
-`crops_<pack>.csv`. Until round 216 Conf. came from a softmax of a quality-weighted mean
-embedding with a separate "Avg" cross-check; the owner replaced both by this single rule so
-that every number on the screen can be recomputed by hand from the crops table.
+**How a track id's Conf. is computed (round 219).** Each crop is classified on its own for
+the tables: the model turns the crop into a vector, compares it with every species name it
+was given (cosine similarity times the pack's logit scale, divided by the calibration
+temperature), turns the similarities into probabilities with a softmax, and the
+probabilities of the species under a taxon are added up (the crop's own Conf. for that
+taxon, the "Conf. <taxon>" column of the crops table). The track id's answer is NOT an
+average of those per-crop values. Instead the crops' vectors themselves are averaged, each
+crop weighted by its own top-1 probability (its Species conf.), crops whose top-1
+probability is below the surest crop's divided by a factor (default 10) left out, and the
+average, deliberately not re-normalised, is classified once in the same way. Averaging
+before the softmax is the "Average Logit" rule that Dussert et al. (2025) found best
+calibrated for camera-trap image sequences (their "Average Score", the average of per-image
+probabilities, was systematically underconfident, which is what FaunaPulse did in rounds
+217 and 218). Consequences: photos that agree reinforce each other, so a track id's Conf.
+can exceed every single photo's value; photos that disagree pull the average apart and lower
+every Conf.; a photo the model is far less sure about than its best photo carries no usable
+information and is left out (marked "left out" in the crops table). Every number can be
+recomputed off the phone with `tool/bioclip_export/reproduce_track_conf.py` from the stored
+embeddings and the label pack.
+
+**Validation status (honest).** The rule and its defaults have NOT been tested on
+pollinator data. Origins: averaging before the softmax = Dussert et al. 2025 (European
+mammals, 22 classes, five models, three test sets; they flag hierarchical and very-many-class
+settings as future work); the certainty weights and the drop factor 10 = FaunaPulse choices
+(the unweighted rule flattens to nothing with 38 000 candidate names); the threshold 0.6 =
+owner's choice (0.7 to 0.8 are common in ecological studies, Whytock et al. 2021, Dussert et
+al. 2025); the calibration temperature 1.0 = no calibration (Dussert: fit one temperature on
+a labelled test set and keep it; the pack format carries the field). The planned check is
+the owner's expert-labelled smartphone crops (Zenodo 10.5281/zenodo.15096610): accuracy per
+rank, a fitted temperature, and a comparison of pooling rules on track ids with three or
+more crops. Until then, treat Conf. as a model score with a known direction of bias
+(sharper than the per-crop average) rather than a calibrated probability.
 
 Two more numbers accompany Conf.: **Agree** = how many crops, judged alone, put their top
 species under the taxon, shown as share and count ("50 % (5/10)"); and, in the files, the
-plain mean (`p_mean_<rank>`) and the best single crop (`p_max_<rank>`) for every rank, so
-other pooling rules can be compared in R without re-scoring.
+plain mean (`p_mean_<rank>`), the best single crop (`p_max_<rank>`) and the mean over the
+agreeing crops (`p_agree_<rank>`, so that insect-detect-post's weighted probability =
+`agree_<rank>` × `p_agree_<rank>`) for every rank, so other pooling rules can be compared in
+R without re-scoring.
 
 Each track id gets a **ladder**: the taxon chosen at every rank on a consistent path from
 kingdom to species, with its Conf. and Agree. The **identified rank** is the deepest rung
@@ -144,8 +162,8 @@ sheet names it, its species and confidence, the crop number and how many photos 
 same species, and opens the photo view on it.
 
 Worked examples from the owner's phone (2026-09-22, computed with the rule used until
-round 216; under the round 217 rule track #19 reads Apidae 78 %, Bombus 45 %, B. impatiens
-40 %) that motivated this vocabulary: a
+round 216; under round 219 track #19 reads Apidae 86 %, Bombus 54 %, B. impatiens 50 %,
+track #10 B. impatiens 88 % from its one counted crop) that motivated this vocabulary: a
 1.7-second track with four crops whose predicted species had Conf. 8 %, 5 %, 2 % and 3 %
 (two of them spiders) was reported as Insecta with Conf. 83 %: the combined vector's
 probability lies mostly on insect names, thousands of them, none individually likely; the
@@ -189,14 +207,17 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 2. **Embed:** the model turns each crop into a unit vector. Stored, so re-scoring is free.
 3. **Score each crop:** the vector is compared with every name in the pack (cosine
    similarity × the model's scale, softmax); species masses are summed up the taxonomy.
-4. **Combine:** the crops' probability vectors are averaged, each crop weighted by its own
-   top-1 probability (round 217; no image-quality weights), the ladder is walked top-down
-   on the pooled masses, and Agree is counted from the per-crop best guesses. A track id is
-   `path_conflict` when the best taxon at some rank is not a child of the best taxon above
-   it. A mean embedding with the same weights is still formed, only for the merge check.
+4. **Combine:** the crops' vectors are averaged, each crop weighted by its own top-1
+   probability, crops below the surest crop's top-1 divided by the drop factor left out
+   (round 219; no image-quality weights); the average is scored once and species masses
+   summed up the taxonomy; the ladder is walked top-down on those pooled masses, and Agree
+   is counted from the per-crop best guesses. A track id is `path_conflict` when the best
+   taxon at some rank is not a child of the best taxon above it. The unit-length average is
+   also the vector the merge check compares.
 5. **Export the alternatives:** per rank the plain mean (`p_mean_<rank>`), the best single
-   crop (`p_max_<rank>`) and the agreement share (`agree_<rank>`), plus every crop's own
-   values in `crops_<pack>.csv`.
+   crop (`p_max_<rank>`), the agreeing-crops mean (`p_agree_<rank>`) and the agreement share
+   (`agree_<rank>`), plus every crop's own values and its `counted` flag in
+   `crops_<pack>.csv`.
 
 ## Settings (Identify screen → Advanced)
 
@@ -273,8 +294,11 @@ facets) and his TreeOfLife-to-GBIF key mapping, the per-visit CSV column names o
 `_classified_final.csv`, and the square-crop rule of his `make_bbox_square()`. The
 "none of these" rows follow common practice, with the `none_*` classes of his
 classification dataset (Zenodo https://doi.org/10.5281/zenodo.8325384) as the precedent
-for insect crops. The combination of crops per track id (certainty-weighted mean of the
-crops' probabilities, ladder, agreement) is FaunaPulse's own and differs from his: in
+for insect crops. The pooling of crops per track id follows the "Average Logit" rule of
+Dussert et al. (2025, Remote Sensing in Ecology and Conservation 11:88-99) with FaunaPulse's
+certainty weights, drop rule, ladder and agreement columns; Kittler et al. (1998, IEEE TPAMI
+20:226-239) is the theoretical reason for averaging rather than multiplying evidence from
+correlated views. The result differs from Sittinger's pipeline: in
 insect-detect-post `pred_prob_weighted` is the mean probability of the images that voted
 for the winning candidate times the share of images that voted for it, and
 `pred_prob_mean` the mean over those voting images (`metadata_processor.py`); FaunaPulse

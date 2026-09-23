@@ -77,6 +77,10 @@ class IdentifyRunSettings {
   final int flagMinDetections;
   final double flagMinDetConf;
   final double flagMinOrderP;
+
+  /// Round 219: crops whose certainty is below the surest crop's divided by
+  /// this are left out of the pooled answer (<= 1: every crop counts).
+  final double dropFactor;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -102,6 +106,7 @@ class IdentifyRunSettings {
     this.flagMinDetections = 3,
     this.flagMinDetConf = 0.2,
     this.flagMinOrderP = 0.5,
+    this.dropFactor = 10,
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -128,6 +133,7 @@ class IdentifyRunSettings {
     'flag_min_detections': flagMinDetections,
     'flag_min_det_conf': flagMinDetConf,
     'flag_min_order_p': flagMinOrderP,
+    'drop_factor': dropFactor,
     ...extra,
   };
 }
@@ -583,6 +589,7 @@ class IdentificationJob {
     }
     final scorer = Scorer(pack);
     final tau = (settings['tau'] as num?)?.toDouble() ?? 0.6;
+    final dropFactor = (settings['drop_factor'] as num?)?.toDouble() ?? 10;
     var scored = <ScoredTrack>[];
     for (final g in order) {
       final recs = groups[g]!;
@@ -594,7 +601,7 @@ class IdentificationJob {
             vector: Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
           ),
       ];
-      final fused = scorer.fuse(crops, tau: tau);
+      final fused = scorer.fuse(crops, tau: tau, dropFactor: dropFactor);
       final span = recs.first.trackId == null ? null : spans[recs.first.trackId!];
       final capMs = [for (final r in recs) ?r.capturedAtMs];
       scored.add(
@@ -626,6 +633,7 @@ class IdentificationJob {
               ),
           ],
           tau: tau,
+          dropFactor: dropFactor,
         ),
       );
     }

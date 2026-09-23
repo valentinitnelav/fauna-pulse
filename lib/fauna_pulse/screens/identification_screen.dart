@@ -306,6 +306,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           flagMinDetections: prefs.flagMinDetections,
           flagMinDetConf: prefs.flagMinDetConf,
           flagMinOrderP: prefs.flagMinOrderP,
+          dropFactor: prefs.dropFactor,
           extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads},
         ),
         packFile: pack,
@@ -618,10 +619,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
-            'the model. The crops of one track id are then combined into ONE answer: each crop is '
-            'classified on its own and the crops\' probabilities are averaged, a crop that is sure of '
-            'its answer counting more than an unsure one (not a vote per photo), giving a probability '
-            'per rank. Track ids '
+            'the model. The crops of one track id are then combined into ONE answer: the model '
+            'describes each crop, the descriptions are averaged (a crop the model is sure about counts '
+            'more, crops it is far less sure about are left out) and the average is classified once, so '
+            'photos that agree reinforce each other (not a vote per photo), giving a probability per '
+            'rank. Track ids '
             'are not joined unless "Merge consecutive visits" is on (Advanced settings). '
             'Identification runs on this phone with the chosen model and label pack; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
@@ -932,6 +934,19 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'comes from the session\'s photo schedule (AI mode default: one photo every 1 s for '
               '10 s, so about 10 per visit); with that default the limit of 10 rarely removes '
               'anything and only bounds the runtime for long bursts. 0 = every photo.',
+        ),
+        NumericSettingField(
+          label: 'Ignore crops far less sure than the best (factor)',
+          value: prefs.dropFactor,
+          min: 1,
+          max: 100,
+          decimals: 0,
+          onChanged: (v) => _edit(() => prefs.dropFactor = v),
+          helperText:
+              'A crop whose Species conf. is below the surest crop\'s divided by this factor is left out '
+              'of the combined answer (it still appears in the crops table, marked "left out"). '
+              '1 = every crop counts. The default of 10 is a FaunaPulse rule of thumb, not yet tested '
+              'on pollinator data.',
         ),
         NumericSettingField(
           label: 'Confidence needed to call a rank identified',

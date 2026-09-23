@@ -7828,3 +7828,54 @@ Owner follow-ups after round 217 on the phone.
 - Photos tab "Identify organisms" info: no more "docs/IDENTIFICATION.md" (read as an in-app
   screen); says the files are imported once on the next screen, which explains where to
   get them; "visit"/"insect" → "track id"/"organism".
+
+## Round 219 (2026-09-23): average-logit pooling per track id (branch feature/avg-logit-pooling)
+
+Owner review of round 217 on real tracks: a lone correct photo diluted by clueless crops
+(session_2 #10: 88 % → 75 %), agreement never rewarded (session_3 #6: 5/7 crops Bombus →
+66 %), and "column 2 looks copied from column 4" at species level (it is the same number by
+definition when the selected taxon is the crop's top species). Decision process: the owner
+downloaded 15 papers into ~/InsectDetectApp/papers/ (Dussert 2024/2025/2026, Kittler 1998,
+Guo 2017, Lakshminarayanan 2017, Norouzzadeh 2018, Beery 2018, Whytock 2021, Sittinger 2024,
+Bjerge 2022/2023, BioCLIP 1/2, a moth domain-gap paper); the calibration paper was read in
+full, the others in the relevant sections. Findings: averaging per-image probabilities
+("Average Score", = round 217) is the underconfident rule; averaging before the softmax
+("Average Logit") ties it on accuracy (ΔAcc 3.56 vs 3.71 %) and is far better calibrated
+(ECE 3.32 vs 6.08 %, 1.17 vs 3.99 % with temperature scaling); max is overconfident; Kittler
+1998 explains why averaging beats multiplying evidence from correlated views; Sittinger's
+rule (vote share × mean among voters) is the most diluting of all on our tracks (#10 18 %).
+For BioCLIP, Average Logit = scoring the averaged embedding, i.e. the r208-216 mechanism
+whose fault was the image-quality weights, not the averaging. Owner has no time for an
+empirical validation on the Zenodo crops → implement with literature defaults, documented
+as untested on pollinators, plus a reproduction script. Owner asked for a separate branch.
+
+- **Rule (`Scorer.fuse`):** w_i = top-1 probability; `counted_i = w_i >= max(w) /
+  dropFactor` (default 10, ≤ 1 = all); pooled = Σ w_i e_i / Σ w_i over counted crops, NOT
+  re-normalised (disagreement shortens the vector and lowers every Conf.; the re-normalised
+  variant was computed and rejected: it removes that penalty); pbar = probs(pooled); masses =
+  rollUp(pbar); ladder, pathConflict, noneMass, identified rank from masses. `fusedEmbedding`
+  = unit(pooled) for the merge cosine. `LadderStep.agreeMass` (`p_agree`), `FusedTrack.counted`.
+  Best view unchanged. Numbers verified offline (numpy) and by the Dart implementation on a
+  scratch copy of session_2 (identical to 4 decimals): #10 B. impatiens 87.6 % (1/5 crops
+  counted), #19 Apidae 86.2 % / Bombus 54.5 %, #7 Insecta 85.7 % / Lepidoptera 59.6 %.
+- **Settings:** `drop_factor` in `IdentifyRunSettings`/`IdentifyPrefs`
+  (`identify_drop_factor`), Advanced field "Ignore crops far less sure than the best
+  (factor)" with an honest helper (rule of thumb, untested).
+- **Outputs:** tracks CSV `p_agree_<rank>` block after `p_max_<rank>`; crops CSV/JSON
+  `counted`; README text rewritten (rule, defaults, "not yet validated on pollinator data").
+- **Screens:** ladder Conf. help = the averaged-descriptions explanation ("NOT an average
+  of that column; agreeing photos reinforce each other; disagreeing photos lower every
+  Conf."); the r217 worked-example arithmetic is gone (`_confExample` removed); crops help
+  reworded; left-out crops get an amber "left out of the combined answer" line; Run help
+  and the S1 field texts updated. No literature citations on phone screens (owner rule).
+- **Reproduction:** `tool/bioclip_export/reproduce_track_conf.py` (numpy only) recomputes a
+  session's ladders from `embeddings_<model>.{jsonl,bin}` + a `.fpack` with the same
+  defaults (flags for tau, drop factor, temperature; `--crops` prints the per-crop table).
+- **Docs:** IDENTIFICATION.md ("How a track id's Conf. is computed (round 219)" +
+  "Validation status" listing every default's origin; steps 3-5; attribution to Dussert et
+  al. 2025 and Kittler et al. 1998), DATA_GUIDE §8, SETTINGS_REFERENCE, tool README.
+- **Tests:** track_fusion_test rewritten for the rule (sure vs unsure with and without the
+  drop rule, agreement above the plain mean, clueless crop left out at the default and
+  diluting at factor 1, per-rank alternatives incl. p_agree, JSON keys, counted); job test
+  headers (`p_agree_*`, `counted`); results-screen fixture `counted`.
+- Not device-verified: owner re-scores session_2/3 on the phone.

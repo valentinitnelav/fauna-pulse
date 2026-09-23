@@ -721,13 +721,13 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 |---|---|
 | `device_id`, `session_id`, `track_id` | identifiers |
 | `track_imgs` | crops used |
-| `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and the track id's Conf. for it: the crops' own Conf. values averaged with each crop's top-1 probability as weight (round 217; until round 216 the softmax of a quality-weighted mean embedding) |
+| `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and the track id's Conf. for it (round 219: the counted crops' embeddings averaged with each crop's top-1 probability as weight, scored once, species summed; see IDENTIFICATION.md) |
 | `pred_imgs`, `pred_prob_mean` | crops whose own top species falls under that taxon, and the plain (unweighted) mean of the crops' own Conf. under it. Same column names as insect-detect-post, different formulas (there: mean over the voting images times the vote share) |
 | `start_time`, `end_time`, `duration_s` | the track's first/last detection (ISO local time) |
 | `det_conf_mean` | mean detector confidence of the crops |
 | `bioclip_kingdom` … `bioclip_species` | the taxon chosen at each rank on a consistent top-down path (species as "Genus epithet") |
-| `p_kingdom` … `p_species` | Conf. of that taxon: the crops' own Conf. (species under it summed) averaged with each crop's top-1 probability as weight (round 217) |
-| `p_mean_<rank>`, `p_max_<rank>` | round 217: the plain mean over all crops and the highest single crop's own Conf. for that taxon; `p_<rank>` never exceeds `p_max_<rank>` |
+| `p_kingdom` … `p_species` | Conf. of that taxon from the pooled answer (round 219); can exceed every crop's own value when the crops agree |
+| `p_mean_<rank>`, `p_max_<rank>`, `p_agree_<rank>` | the plain mean over all crops, the highest single crop, and the mean over the crops whose top species is under the taxon (round 219); `agree_<rank>` × `p_agree_<rank>` reproduces insect-detect-post's weighted probability |
 | `identified_rank`, `headline` | deepest rank whose Conf. reached `tau` (default 0.6); the taxon there, or `unidentified` / `no organism` |
 | `agree_<rank>` | share of crops whose own top species falls under that taxon (was `support_<rank>` until round 216) |
 | `n_crops_used`, `none_p` | crops in the average; mass on the "none of these" rows |
@@ -745,11 +745,15 @@ One row per crop (photo × track), for tracing a visit's answer to single photos
 `det_conf`, `pad_frac` (descriptive only since round 217), `top1_species`, `top1_p` (the
 species this crop alone predicts and its probability; also the crop's weight in the track
 id's answer), `agrees` (1 when that species falls under the visit's reported taxon),
+`counted` (round 219: 1 when the crop entered the pooled answer, 0 when it was left out as
+far less sure than the surest crop),
 `ladder_<rank>` (the visit's ladder taxa, repeated per row) and `p_<rank>` (this crop's own
-Conf. under each of them). Identities for checking in R: over a track id's rows, the
-`top1_p`-weighted mean of `p_<rank>` equals its `p_<rank>`, the plain mean equals
-`p_mean_<rank>`, the maximum equals `p_max_<rank>`, and the count of `agrees == 1` equals
-`agree_<rank>` × crops at the identified rank.
+Conf. under each of them). Identities for checking in R: over a track id's rows, the plain
+mean of `p_<rank>` equals `p_mean_<rank>`, the maximum equals `p_max_<rank>`, the mean over
+rows whose top species is under the taxon equals `p_agree_<rank>`, and the count of
+`agrees == 1` equals `agree_<rank>` × crops at the identified rank. The track's own
+`p_<rank>` is NOT a function of these columns (it comes from the averaged embeddings);
+recompute it with `tool/bioclip_export/reproduce_track_conf.py`.
 
 To align identifications with the recording: join on `track_id` (the same id as in the
 `detections` records of `session.jsonl`; a merged visit lists every member id in
@@ -757,8 +761,8 @@ To align identifications with the recording: join on `track_id` (the same id as 
 plus box coordinates. Identification results deliberately stay in their own files instead
 of `session.jsonl` (raw log vs derived, re-runnable data).
 
-The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `p_mean`, `p_max`, `support`), every
-crop with its own top-1, `agrees` (round 214: whether that top-1 falls under the reported
+The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `p_mean`, `p_max`, `p_agree`,
+`support`), every crop with its own top-1, `counted`, `agrees` (round 214: whether that top-1 falls under the reported
 taxon; the ladder's `support` at the identified rank is the share of `agrees == true`) and
 `p_ladder` (round 215: the crop's own Conf. under each ladder taxon, index = rank),
 `best_view`, `flags`, and the run `settings`.
