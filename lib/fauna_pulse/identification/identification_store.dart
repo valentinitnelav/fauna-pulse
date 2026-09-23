@@ -386,6 +386,11 @@ Map<String, dynamic> writeOutputs({
     // Round 212: detector frames of the visit and the suspect verdict (0/1).
     'n_detections',
     'suspect',
+    // Round 221: the highest path_conflict rank, the taxon that scored more
+    // there than the ladder's pick, and its Conf. (empty without a conflict).
+    'rival_rank',
+    'rival_taxon',
+    'rival_p',
   ];
   csv.writeln(header.join(','));
   var visitsMerged = 0, tracksBeforeMerge = 0, suspectCount = 0;
@@ -478,7 +483,7 @@ Map<String, dynamic> writeOutputs({
       if (lowDet) 'low_det',
       if (weakId) 'weak_id',
       if (suspect) 'suspect',
-      if (isNone) 'none',
+      if (isNone) 'no_organism',
       if (f.identifiedRank == null && !isNone) 'unidentified',
       if (f.pathConflict) 'path_conflict',
       if (t.crops.length == 1) 'single_crop',
@@ -489,6 +494,7 @@ Map<String, dynamic> writeOutputs({
     final prMax = {for (var k = 0; k < 7; k++) 'p_max_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].maxMass.toStringAsFixed(4) : ''};
     final prAgree = {for (var k = 0; k < 7; k++) 'p_agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].agreeMass.toStringAsFixed(4) : ''};
     final agr = {for (var k = 0; k < 7; k++) 'agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
+    final rival = f.ladder.where((s) => s.rival != null).firstOrNull;
     final row = <Object?>[
       deviceId,
       sessionId,
@@ -521,6 +527,9 @@ Map<String, dynamic> writeOutputs({
       t.trackIds.join(';'),
       t.detections ?? '',
       suspect ? 1 : 0,
+      rival?.rank ?? '',
+      rival?.rival ?? '',
+      rival == null ? '' : rival.rivalMass.toStringAsFixed(4),
     ];
     csv.writeln(row.map(_csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -615,7 +624,7 @@ Map<String, dynamic> writeOutputs({
     'tracks_before_merge': tracksBeforeMerge,
     'suspect': suspectCount,
     'by_identified_rank': byRank,
-    'none': noneCount,
+    'no_organism': noneCount,
     'unidentified': unidentified,
     'taxa_order': taxaOrder,
     'taxa_family': taxaFamily,
@@ -717,9 +726,12 @@ tracks_<pack>.csv columns
   none_p                              mass on the "none of these" rows (flower, leaf, shadow, ...)
   best_view_*                         the crop whose own top species has the highest probability (the
                                       photo the model is surest about on its own); that species and p
-  flags                               none | unidentified | path_conflict | single_crop | merged | short | low_det | weak_id | suspect
+  flags                               no_organism | unidentified | path_conflict | single_crop | merged | short | low_det | weak_id | suspect
   model_id, pack_id                   provenance
   merged_track_ids, n_detections, suspect   joined ids; detector frames; suspect verdict (0/1)
+  rival_rank, rival_taxon, rival_p    path_conflict only: the highest rank where a taxon outside the
+                                      ladder's path had more Conf. than the ladder's pick; that taxon
+                                      and its Conf. (round 221)
 
 crops_<pack>.csv columns
   session_id, track_id, crop_no       the visit and the crop's number within it (capture order)

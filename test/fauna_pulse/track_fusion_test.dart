@@ -173,6 +173,25 @@ void main() {
       expect(all.stepAt('species')!.mass, lessThan(alone.stepAt('species')!.mass));
     });
 
+    test('path conflict: the rank\'s overall winner outside the path is kept as the rival (round 221)', () {
+      final s = Scorer(tinyPack(logitScale: 20));
+      // Diptera's mass is split over two genera, Hymenoptera's sits in one:
+      // Diptera wins the order, Apis (Hymenoptera) the genus rank.
+      final f = s.fuse([crop([1, 1, 1.03, 0, 0])], tau: 0.55);
+      expect(f.stepAt('order')!.taxon, 'Diptera');
+      expect(f.identifiedRank, 'family');
+      expect(f.pathConflict, isTrue);
+      expect(f.stepAt('family')!.rival, isNull);
+      final g = f.stepAt('genus')!;
+      expect(g.taxon, isNot('Apis'));
+      expect(g.rival, 'Apis');
+      expect(g.rivalMass, greaterThan(g.mass));
+      expect(g.rivalLineage, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae']);
+      expect(f.stepAt('species')!.rival, 'Apis mellifera');
+      expect(g.toJson()['rival'], 'Apis');
+      expect(f.stepAt('family')!.toJson().containsKey('rival'), isFalse);
+    });
+
     test('per-rank alternatives and JSON keys (rounds 217/219)', () {
       final f = Scorer(tinyPack(logitScale: 8)).fuse(threeCrops(), tau: 0.8, dropFactor: 1);
       for (var k = 0; k < f.ladder.length; k++) {

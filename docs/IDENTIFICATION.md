@@ -84,12 +84,17 @@ The table (round 214) is sortable by tapping a column header, has the rank in it
 column and a rank filter (e.g. only rows that reached species), and a row opens its visits
 as a numbered list (No. is the row number; Track id is the tracker's id, which can jump).
 A visit's detail sheet shows the ladder as an aligned table with the reported rank
-highlighted, the flags with their meanings, the photo of the best single view with the
+highlighted, the photo of the best single view with the
 detector box (yellow) and the square crop given to the model (cyan; toggle, zoom), and the
 crops table (side in pixels, weight, own best guess and, since round 220, that species'
 kingdom > phylum > class > order > family as "Taxonomic tree"); tapping a crop shows that
-photo. The flags describe the whole track id, not single crops, so neither table has a
-column for them.
+photo. Since round 221 each flag is shown where it applies, as an amber ⚠ line whose ⓘ
+gives the reason with the actual values: `merged`, `short`, `low_det` and `suspect` under
+the header (the numbers behind `short` / `low_det` turn amber), `path_conflict`, `weak_id`,
+`unidentified` and `no_organism` under the ladder (the affected rows carry ⚠; the
+path_conflict line names the rival taxon and why the ladder skips it), `single_crop` above
+the crops table. A small grey "Flags in tracks CSV" line at the bottom lists the flags as
+written to the CSV, with a dictionary.
 
 One identification belongs to one **visit** (track id), combining all of that visit's
 photos; the Photos tab of the session summary shows it under every photo of that track id.
@@ -215,8 +220,11 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
    probability, crops below the surest crop's top-1 divided by the drop factor left out
    (round 219; no image-quality weights); the average is scored once and species masses
    summed up the taxonomy; the ladder is walked top-down on those pooled masses, and Agree
-   is counted from the per-crop best guesses. A track id is `path_conflict` when the best
-   taxon at some rank is not a child of the best taxon above it. The unit-length average is
+   is counted from the per-crop best guesses. A track id is `path_conflict` when at some rank the
+   taxon with the most mass overall is not a child of the ladder's taxon one rank up: the
+   chosen branch's mass is spread over several sub-taxa while another branch's smaller mass
+   sits mostly in one (round 221: that rival is kept per ladder row and exported as
+   `rival_*`; with `tau` >= 0.5 it can only happen below the reported rank). The unit-length average is
    also the vector the merge check compares.
 5. **Export the alternatives:** per rank the plain mean (`p_mean_<rank>`), the best single
    crop (`p_max_<rank>`), the agreeing-crops mean (`p_agree_<rank>`) and the agreement share

@@ -70,6 +70,14 @@ class LadderStep {
   final double maxMass;
   final double agreeMass;
 
+  /// Round 221 (path_conflict): the taxon with the highest mass of this rank
+  /// overall when it lies outside the taxon chosen one rank up, else null;
+  /// its mass and its ancestors (kingdom .. one rank up), so a screen can say
+  /// where it leaves the ladder's path.
+  final String? rival;
+  final double rivalMass;
+  final List<String> rivalLineage;
+
   const LadderStep({
     required this.rank,
     required this.taxon,
@@ -79,6 +87,9 @@ class LadderStep {
     required this.meanMass,
     required this.maxMass,
     required this.agreeMass,
+    this.rival,
+    this.rivalMass = 0,
+    this.rivalLineage = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -89,6 +100,11 @@ class LadderStep {
     'p_max': double.parse(maxMass.toStringAsFixed(4)),
     'p_agree': double.parse(agreeMass.toStringAsFixed(4)),
     'support': double.parse(support.toStringAsFixed(3)),
+    if (rival != null) ...{
+      'rival': rival,
+      'rival_p': double.parse(rivalMass.toStringAsFixed(4)),
+      'rival_lineage': rivalLineage,
+    },
   };
 }
 
@@ -341,6 +357,8 @@ class Scorer {
     final taxa = <String>[];
     final massAt = <double>[];
     final agreeAt = <List<bool>>[];
+    final rivalKeyAt = <String?>[];
+    final rivalMassAt = <double>[];
     var parentKey = '';
     var pathConflict = false;
     for (var k = 0; k < 7; k++) {
@@ -360,7 +378,10 @@ class Scorer {
         }
       }
       if (bestKey == null) break;
-      if (argmaxKey != bestKey) pathConflict = true;
+      final conflict = argmaxKey != bestKey;
+      if (conflict) pathConflict = true;
+      rivalKeyAt.add(conflict ? argmaxKey : null);
+      rivalMassAt.add(conflict ? argmax : 0);
       final name = bestKey.split('|').last;
       final agree = <bool>[];
       for (final t in perCropTop) {
@@ -400,6 +421,11 @@ class Scorer {
           meanMass: sum / n,
           maxMass: mx,
           agreeMass: agreeN == 0 ? 0 : agreeSum / agreeN,
+          rival: rivalKeyAt[k] == null
+              ? null
+              : (k == 6 ? _speciesDisplay(rivalKeyAt[k]!) : rivalKeyAt[k]!.split('|').last),
+          rivalMass: rivalMassAt[k],
+          rivalLineage: rivalKeyAt[k] == null ? const [] : rivalKeyAt[k]!.split('|').take(k).toList(),
         ),
       );
     }

@@ -732,10 +732,11 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `agree_<rank>` | share of crops whose own top species falls under that taxon (was `support_<rank>` until round 216) |
 | `n_crops_used`, `none_p` | crops in the average; mass on the "none of these" rows |
 | `best_view_photo`, `best_view_species`, `best_view_p` | the crop whose own top species has the highest probability (the photo the model is surest about on its own, round 217); that species and probability |
-| `flags` | `none` (the "none of these" entries took more than the "No organism" threshold; headline `no organism`), `unidentified` (no rank reached `tau`, not even kingdom), `path_conflict` (a rank's best taxon is not under the rank above), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
+| `flags` | `no_organism` (round 221, was `none`: the "none of these" entries took more than the "No organism" threshold; headline `no organism`), `unidentified` (no rank reached `tau`, not even kingdom), `path_conflict` (at some rank a taxon outside the ladder's path has more Conf. than the ladder's pick; the ladder itself stays one consistent path, see `rival_*`), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
 | `model_id`, `pack_id` | provenance |
 | `merged_track_ids` | round 210, trailing column: every track id of the visit, semicolon-separated (one id unless "Merge consecutive visits" was on; `flags` then also holds `merged`) |
 | `n_detections`, `suspect` | round 212: detector frames the track id(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
+| `rival_rank`, `rival_taxon`, `rival_p` | round 221, trailing: for a `path_conflict` track id, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5 |
 
 ### `crops_<pack>.csv` (round 215)
 
@@ -763,7 +764,8 @@ plus box coordinates. Identification results deliberately stay in their own file
 of `session.jsonl` (raw log vs derived, re-runnable data).
 
 The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `p_mean`, `p_max`, `p_agree`,
-`support`), every crop with its own top-1, `counted`, `agrees` (round 214: whether that top-1 falls under the reported
+`support`; round 221: on every path_conflict row also `rival`, `rival_p` and `rival_lineage`,
+the rival's ancestors from kingdom down to one rank above it), every crop with its own top-1, `counted`, `agrees` (round 214: whether that top-1 falls under the reported
 taxon; the ladder's `support` at the identified rank is the share of `agrees == true`) and
 `p_ladder` (round 215: the crop's own Conf. under each ladder taxon, index = rank),
 `top1_tree` (round 220: kingdom … family of the crop's top species, the crops table's
@@ -772,7 +774,7 @@ taxon; the ladder's `support` at the identified rank is the share of `agrees == 
 ### `summary_<pack>.json`
 
 Counts for the app: `tracks_total` (visits after the optional merge), `visits_merged`,
-`tracks_before_merge` (round 210), `suspect` (round 212), `by_identified_rank`, `none`, `unidentified`,
+`tracks_before_merge` (round 210), `suspect` (round 212), `by_identified_rank`, `no_organism` (round 221, was `none`), `unidentified`,
 `taxa_order`, `taxa_family` (visits per taxon among the visits identified at least to that
 rank), a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`, `p`, `n_crops`;
 plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's

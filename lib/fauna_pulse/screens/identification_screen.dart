@@ -830,7 +830,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             '${s['tracks_total']} visits: '
             '${(s['by_identified_rank'] as Map).entries.map((e) => '${e.value} to ${e.key}').join(', ')}'
             '${s['unidentified'] != 0 ? ', ${s['unidentified']} unidentified' : ''}'
-            '${s['none'] != 0 ? ', ${s['none']} no organism' : ''}.',
+            '${(s['no_organism'] ?? 0) != 0 ? ', ${s['no_organism']} no organism' : ''}.',
             style: const TextStyle(color: Colors.white),
           ),
           const SizedBox(height: 10),

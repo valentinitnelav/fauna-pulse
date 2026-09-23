@@ -7907,3 +7907,40 @@ as untested on pollinators, plus a reproduction script. Owner asked for a separa
   the suggestion rows below the reported rank. Options (keep + name the rival taxon on the
   row, drop the flag, target-rank-first like pybioclip / insect-detect-post) await the owner.
 - Tests: results-screen fixture `top1_tree` + column check; job test header + JSON field.
+
+## Round 221 (2026-09-23): S4 flags shown where they apply, path_conflict names its rival
+
+- **Flags moved to where they apply (owner).** Owner expected flags as amber markers on the
+  affected rows, not a loose "Flags:" line. Each flag is now an amber ⚠ line (`_flagNote`: a
+  `HelpLabel` with a warning icon; ⓘ gives the reason with the actual values and limits):
+  `merged`, `short`, `low_det`, `suspect` under the header; `path_conflict`, `weak_id`,
+  `unidentified`, `no_organism` under the ladder; `single_crop` above the crops table. The
+  header line now also shows the mean detector conf.; duration / detector frames / detector
+  conf. turn amber when they caused `short` / `low_det`. Ladder rows carry ⚠ after the taxon
+  for path_conflict (every affected row), weak_id (order row), unidentified / no_organism
+  (kingdom row). The old "Flags:" line became a small grey "Flags in tracks CSV: …" line at
+  the bottom with the dictionary, as the link between phone and R. `_TrackSheet` gets the
+  run `settings` for the flag limits (`flag_min_*`).
+- **path_conflict made concrete (owner chose option A).** `LadderStep` gains `rival`,
+  `rivalMass`, `rivalLineage` (set in `Scorer.fuse` when the rank's argmax is not the best
+  child of the chosen parent; sink rows only count at kingdom, so a rival is always a real
+  taxon). JSON ladder rows add `rival`, `rival_p`, `rival_lineage`; tracks CSV adds trailing
+  `rival_rank`, `rival_taxon`, `rival_p` (highest conflict). The note under the ladder, for the
+  selected row if it has a rival, else the highest: "family: Syrphidae (order Diptera, not
+  Hymenoptera) scores 32 %, more than Apidae (26 %), the best family inside Hymenoptera". Its ⓘ
+  explains in plain words: the ladder shows the best taxon INSIDE the row above, so it always
+  stays one consistent path; the chosen group's Conf. is shared among several sub-taxa while a
+  larger share of the rival group's smaller Conf. sits in one; species-rich groups collect
+  more summed Conf.; cannot happen at or above the highlighted row (tau >= 50 %). Owner's
+  remark, open for later: the roll-up favours groups with many species in the pack (a bias of
+  its own, not changed here).
+- **`none` flag renamed `no_organism` (owner)**, also the summary count key (`none` →
+  `no_organism`; S1 reads it with a null guard). No compatibility kept, by owner's decision
+  (no field data affected).
+- `dart format` must not run on whole files here: the repo is not formatter-clean, and it
+  reflowed ~200 unrelated lines; reverted hunk by hunk (only this round's lines kept).
+- Tests: `track_fusion_test` path-conflict case (tiny pack: Diptera split over two genera,
+  Apis wins the genus rank → rival `Apis`, lineage, species rival, JSON keys); results-screen
+  test gives track #1 short / path_conflict / single_crop and checks the notes, the exact
+  conflict sentence, ⚠ icons and the CSV flags line; job test header + `no_organism`.
+  Full suite 569 passed, analyzer clean.

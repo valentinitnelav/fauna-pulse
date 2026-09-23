@@ -46,6 +46,15 @@ void main() {
         _track(i, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'], 'genus', 0.9),
       _track(41, ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', longName, 'X', 'X y'], 'family', 0.8),
     ];
+    // Round 221: track id #1 carries flags, each shown where it applies; a
+    // Diptera species beat the ladder's species below the reported genus.
+    ((tracks.first['ladder'] as List)[6] as Map<String, Object>).addAll({
+      'p': 0.2,
+      'rival': 'Eristalis tenax',
+      'rival_p': 0.3,
+      'rival_lineage': ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Eristalis'],
+    });
+    tracks.first['flags'] = ['short', 'path_conflict', 'single_crop'];
     final tracksJson = File('${idDir.path}/tracks_p.json')
       ..writeAsStringSync(jsonEncode({'session_id': 's', 'tracks': tracks}));
     final summaryJson = File('${idDir.path}/summary_p.json')
@@ -57,7 +66,7 @@ void main() {
           'pack_rows': 38600,
           'tracks_total': 41,
           'by_identified_rank': {'genus': 40, 'family': 1},
-          'none': 0,
+          'no_organism': 0,
           'unidentified': 0,
           'taxa_order': {},
           'taxa_family': {},
@@ -120,15 +129,33 @@ void main() {
     // Open the track id's sheet (S4): best-single-photo line, no Avg/Weight.
     await tester.tap(find.text('#1'));
     await tester.pumpAndSettle();
+    final sheet = find.byType(ListView).last;
+    expect(find.textContaining('Short visit: '), findsOneWidget);
+    await tester.dragUntilVisible(find.textContaining('(path_conflict)'), sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'species: Eristalis tenax (order Diptera, not Hymenoptera) scores 30 %, more than Bombus terrestris '
+        '(20 %), the best species inside Bombus (path_conflict)',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.warning_amber_rounded), findsWidgets); // on the species row and the notes
+    await tester.dragUntilVisible(find.textContaining('Best single photo'), sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Best single photo'), findsOneWidget);
     expect(find.text('Avg'), findsNothing);
     expect(find.text('Weight'), findsNothing);
     expect(find.textContaining('left out'), findsNothing); // every fixture crop counted
     // Round 220: the crops table's last column, the top species' kingdom .. family.
-    await tester.dragUntilVisible(find.text('Taxonomic tree'), find.byType(ListView).last, const Offset(0, -150));
+    await tester.dragUntilVisible(find.text('Taxonomic tree'), sheet, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(find.text('Animalia > Arthropoda > Insecta > Hymenoptera > Apidae'), findsOneWidget);
     expect(find.textContaining('"?" = a value'), findsNothing); // fixture has every value
+    expect(find.textContaining('(single_crop)'), findsOneWidget); // above the crops table
+    await tester.dragUntilVisible(find.textContaining('Flags in tracks CSV'), sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.text('Flags in tracks CSV: short, path_conflict, single_crop'), findsOneWidget);
     // Close both sheets.
     await tester.tapAt(const Offset(180, 10));
     await tester.pumpAndSettle();
