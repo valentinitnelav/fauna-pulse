@@ -8001,3 +8001,33 @@ as a crops-table column right after Species conf., to help when checking single 
   placement (middle, top edge, right edge) checked in a throwaway golden test at 393x873
   (not committed; the test font draws the painter's text as blocks, placement only). Full
   suite 569 passed, analyzer clean.
+
+## Round 224 (2026-09-23): v0.8.0-alpha.1 release prep, identification in the citation title
+- **Why:** on-device identification (r208 onwards) made the old title "... on-device
+  detection and tracking of animals" incomplete. Owner's new title: "FaunaPulse: a smartphone
+  application for on-device detection, tracking and identification of animals".
+- **Changed on `develop`:** CITATION.cff `title`, one abstract sentence on the experimental
+  BioCLIP 2 identification step, keywords `taxonomic identification` + `BioCLIP`; pubspec
+  `description`; README citation example; fastlane `full_description.txt` (identification
+  bullet, "Detection, tracking and identification accuracy depend on your models");
+  CITATION.cff validated against the CFF 1.2.0 JSON schema.
+- **Release prep (owner: GitHub + Zenodo now, Play later while the closed test runs):**
+  pubspec `0.8.0-alpha.1+13`, CITATION.cff `version` + `date-released` 2026-09-23,
+  CHANGELOG `## 0.8.0-alpha.1` (identification, Photos-tab sample chips from r209, title),
+  `fastlane/.../changelogs/13.txt` (413 chars, Play limit 500), release notes draft
+  `dist/RELEASE_NOTES_v0.8.0-alpha.1.md` (git-ignored). versionCode 13 even without a
+  Play upload: Play only refuses codes it has received; 13 > Play's 12 lets closed testers
+  install the GitHub APK over the Play build; the AAB from the same tag goes to Play later.
+  Code changes since v0.7.0-alpha.1 checked with `git diff --stat`: all identification
+  (plus the Photos-tab chips and `copyAndValidateModel(maxBytes:)`).
+- **Deliberately unchanged:** the version-DOI entry (only known after Zenodo mints it), the
+  0.7.0-alpha.1 CHANGELOG section and release notes, the short Play description.
+- **Zenodo facts (read in zenodo-rdm `site/zenodo_rdm/github/schemas.py`):** the GitHub
+  integration loads only `title`, `abstract`, `authors`, `keywords`, `license`, `message`
+  from CITATION.cff (unknown keys excluded); the version comes from the tag name. So the
+  `doi:`/`identifiers` already in the file cannot clash with the new version's DOI. Same
+  concept DOI because the software is the same; each Zenodo version keeps its own title,
+  and the v0.7.0-alpha.1 record keeps the old one on purpose (its code has no identification).
+- **Release recipe:** RELEASE_PLAN.md "v0.8.0-alpha.1: identification enters the title"
+  (owner commits, merges to `main`, tags, builds APKs, publishes the pre-release).
+  Overview versioning invariant updated (also fixed its stale `+11` to `+12`).

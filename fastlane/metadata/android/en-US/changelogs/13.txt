@@ -1,0 +1,4 @@
+Version 0.8.0-alpha.1 - early research preview.
+- New, experimental: identify the recorded animals on the phone with the BioCLIP 2 vision model, with a confidence per taxonomic rank. The model and the list of candidate taxa are set up separately (see the project's GitHub page).
+- Photos tab: pick how many photos to show and draw a new random sample.
+Full details: see CHANGELOG.md on the project's GitHub page.

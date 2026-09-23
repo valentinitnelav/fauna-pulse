@@ -5,6 +5,19 @@ an early research preview, versions carry a SemVer pre-release suffix (e.g.
 `0.7.0-alpha.1`) and the GitHub release is marked as a pre-release.
 -->
 
+## 0.8.0-alpha.1 (2026-09-23)
+
+- **Identify organisms (experimental):** after a session, the saved photos of every
+  tracked visit can be identified on the phone with the BioCLIP 2 vision model, against
+  a label pack (the list of candidate taxa), with a confidence per taxonomic rank. The
+  model and the label pack are prepared on a computer, see
+  [`docs/IDENTIFICATION.md`](docs/IDENTIFICATION.md).
+- Session summary, Photos tab: choose how many photos to show (10 / 50 / 100 / All) and
+  draw a new random sample; identified taxa appear under the photos.
+- The citation title now reads "FaunaPulse: a smartphone application for on-device
+  detection, tracking and identification of animals" (`CITATION.cff`, and Zenodo from
+  this release on). Earlier Zenodo versions keep their original title.
+
 ## 0.7.0-alpha.1 (2026-09-04)
 
 The first public, citable release: an early research preview, tagged so it can be
