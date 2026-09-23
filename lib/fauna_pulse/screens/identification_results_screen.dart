@@ -12,8 +12,8 @@
 // photo" line, flags with explanations, the photo with the detector box
 // and the square crop drawn (toggle, zoom), and the crops table (each
 // crop's own confidence for the selected ladder taxon, its top species and
-// that species' confidence, which is also the crop's weight; tap a row to
-// show that crop).
+// that species' confidence, which is also the crop's weight, and the top
+// species' taxonomic tree (round 220); tap a row to show that crop).
 //
 // Vocabulary (owner, rounds 215-219): "track id" = one tracked organism
 // (a pollination ecologist's "visit"); "Conf." = the model's confidence
@@ -38,7 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../identification/crop_worker.dart' show planSquareCrop;
-import '../identification/label_pack.dart' show kRankNames;
+import '../identification/label_pack.dart' show kRankNames, kSinkKingdom;
 import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
 import '../widgets/setting_help.dart';
@@ -355,13 +355,14 @@ class _MiniTableState extends State<_MiniTable> {
 }
 
 /// An explanation block for one table (owner, round 216): an intro, then
-/// "Columns of the table below:", one line per column with the column name
-/// in bold and a little space between the lines, then an outro.
+/// [heading] ("Columns of the table below:"), one line per column with the
+/// column name in bold and a little space between the lines, then an outro.
 class _ColumnsHelp extends StatelessWidget {
   final String? intro;
+  final String heading;
   final List<(String, String)> cols;
   final String? outro;
-  const _ColumnsHelp({this.intro, required this.cols, this.outro});
+  const _ColumnsHelp({this.intro, this.heading = 'Columns of the table below:', required this.cols, this.outro});
 
   @override
   Widget build(BuildContext context) {
@@ -374,7 +375,7 @@ class _ColumnsHelp extends StatelessWidget {
           if (intro != null) Text(intro!, style: helperTextStyle),
           Padding(
             padding: EdgeInsets.only(top: intro == null ? 0 : 6),
-            child: const Text('Columns of the table below:', style: bold),
+            child: Text(heading, style: bold),
           ),
           for (final (name, text) in cols)
             Padding(
@@ -432,6 +433,16 @@ String _agreeText(Map<String, dynamic>? step, int n) {
   return '${_pct(s)} (${(s * n).round()}/$n)';
 }
 
+/// "Animalia > Arthropoda > Insecta > Diptera > Syrphidae": kingdom ..
+/// family of a crop's top species (round 220); "–" for a "none of these"
+/// entry, "?" when the file predates round 220.
+String _treeText(Map<String, dynamic> crop) {
+  final t = (crop['top1_tree'] as List?)?.cast<String>();
+  if (t == null) return '?';
+  if (t.isEmpty || t.first == kSinkKingdom) return '–';
+  return t.where((s) => s.isNotEmpty).join(' > ');
+}
+
 double? _median(List<double> xs) {
   if (xs.isEmpty) return null;
   final s = [...xs]..sort();
@@ -484,6 +495,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   Map<String, dynamic> get _settings => ((_summary?['settings'] as Map?) ?? const {}).cast<String, dynamic>();
   double get _margin => (_settings['margin'] as num?)?.toDouble() ?? 0.15;
   double? get _tau => (_settings['tau'] as num?)?.toDouble();
+  double? get _noneThreshold => (_settings['none_threshold'] as num?)?.toDouble();
   Map<String, dynamic> get _capture => ((_summary?['capture'] as Map?) ?? const {}).cast<String, dynamic>();
 
   @override
@@ -791,6 +803,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           track: t,
           margin: _margin,
           tau: _tau,
+          noneThreshold: _noneThreshold,
           photoStepS: (_capture['photo_step_s'] as num?)?.toDouble(),
           photoDurationS: (_capture['photo_duration_s'] as num?)?.toDouble(),
           controller: controller,
@@ -1012,6 +1025,7 @@ class _TrackSheet extends StatefulWidget {
   final Map<String, dynamic> track;
   final double margin;
   final double? tau;
+  final double? noneThreshold;
   final double? photoStepS;
   final double? photoDurationS;
   final ScrollController controller;
@@ -1020,6 +1034,7 @@ class _TrackSheet extends StatefulWidget {
     required this.track,
     required this.margin,
     required this.tau,
+    required this.noneThreshold,
     required this.photoStepS,
     required this.photoDurationS,
     required this.controller,
@@ -1069,6 +1084,7 @@ class _TrackSheetState extends State<_TrackSheet> {
     const _Col('top1', 'Top species', flex: true),
     const _Col('p', 'Species conf.', numeric: true),
     const _Col('side', 'Side px', numeric: true),
+    const _Col('tree', 'Taxonomic tree'),
   ];
 
   int _bestIndex() {
@@ -1090,7 +1106,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         _asc = !_asc;
       } else {
         _sortKey = key;
-        _asc = key == 'no' || key == 'top1';
+        _asc = key == 'no' || key == 'top1' || key == 'tree';
       }
       int cmp((int, Map<String, dynamic>) a, (int, Map<String, dynamic>) b) => switch (_sortKey) {
         'mass' => _cmpNum(_mass(a.$2), _mass(b.$2)),
@@ -1098,6 +1114,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         'p' => _cmpNum(a.$2['top1_p'] as num?, b.$2['top1_p'] as num?),
         'agrees' => (a.$2['agrees'] == true ? 1 : 0).compareTo(b.$2['agrees'] == true ? 1 : 0),
         'top1' => '${a.$2['top1']}'.compareTo('${b.$2['top1']}'),
+        'tree' => _treeText(a.$2).compareTo(_treeText(b.$2)),
         _ => a.$1.compareTo(b.$1),
       };
       _cropRows.sort((a, b) {
@@ -1226,15 +1243,36 @@ class _TrackSheetState extends State<_TrackSheet> {
           HelpLabel(
             label: 'Flags: ${flags.join(', ')}',
             labelStyle: const TextStyle(color: Colors.white),
-            helperChild: const _ColumnsHelp(
+            helperChild: _ColumnsHelp(
+              intro:
+                  'Flags describe the whole track id (all its crops together), not single crops, so '
+                  'neither table has a column for them; the same flags are in the flags column of '
+                  'tracks_<pack>.csv. none, unidentified, weak_id and path_conflict concern the ladder '
+                  'above; the others concern the track itself.',
+              heading: 'What each flag means:',
               cols: [
                 ('merged', 'joined from consecutive track ids.'),
                 ('short', 'below the duration or detections threshold.'),
                 ('low_det', 'mean detector confidence below the threshold.'),
                 ('weak_id', 'order-level Conf. below the threshold.'),
                 ('suspect', 'short AND weakly supported; likely a false detection (kept, never deleted).'),
-                ('none', 'the "none of these" entries won.'),
-                ('unidentified', 'not even the class reached the threshold.'),
+                (
+                  'none',
+                  'the label pack\'s "none of these" entries (flower, leaf, shadow …) together got more than '
+                      '${widget.noneThreshold == null ? 'the "No organism" threshold' : '${_pct(widget.noneThreshold)} (the "No organism" threshold)'}, '
+                      'so this track id is reported as "no organism": the detector most likely fired on '
+                      'something that is not an organism. The flag is named after those entries; it does '
+                      'NOT mean "no flags".',
+                ),
+                (
+                  'unidentified',
+                  'no taxonomic rank reached the confidence threshold'
+                      '${widget.tau == null ? '' : ' (${_pct(widget.tau)})'}, not even kingdom, the highest '
+                      'rank, so no identification is reported and no ladder row is highlighted. In a pack of '
+                      'animals only (all current packs), kingdom Conf. is 100 % minus the "none of these" '
+                      'share, so this happens when that share is large but not above the "No organism" '
+                      'threshold.',
+                ),
                 (
                   'path_conflict',
                   'at some rank the single most probable taxon is NOT inside the taxon chosen one rank above '
@@ -1334,10 +1372,12 @@ class _TrackSheetState extends State<_TrackSheet> {
           'mass' => _mass(cr) == null ? '?' : _pct(_mass(cr)),
           'agrees' => '✓',
           'p' => _pct(cr['top1_p'] as num?),
+          'tree' => _treeText(cr),
           _ => '${cr['crop_px']}',
         },
     ], scaler);
-    final missing = _crops.any((c) => c['agrees'] == null || _mass(c) == null) || _ladder.any((s) => s['p_max'] == null);
+    final missing =
+        _crops.any((c) => c['agrees'] == null || _mass(c) == null || c['top1_tree'] == null) || _ladder.any((s) => s['p_max'] == null);
     final sel = _selTaxon.isEmpty ? 'the selected taxon' : '$_selTaxon ($_selRank)';
     return [
       HelpLabel(
@@ -1366,6 +1406,13 @@ class _TrackSheetState extends State<_TrackSheet> {
                   'is the best species of the combined answer and can differ from every crop\'s own.',
             ),
             ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
+            (
+              'Taxonomic tree',
+              'the higher taxonomic ranks of the Top species: kingdom > phylum > class > order > family '
+                  '(the genus is the first word of the species name). Shows where a crop that does not '
+                  'agree with the ladder points instead, e.g. to which order. "–" for a "none of these" '
+                  'entry.',
+            ),
           ],
           outro: 'Tap a row to show that crop in the photo; tap a header to sort; drag sideways if the table is wider than the screen.',
         ),
@@ -1375,9 +1422,9 @@ class _TrackSheetState extends State<_TrackSheet> {
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
-            '"?" or a file from an older app version (before round 217 the confidence came from the '
-            'averaged vector and some per-crop values were not stored). "Re-score with this pack" on '
-            'the Identify screen recomputes everything with the current rule in seconds.',
+            '"?" = a value an older app version did not store (some per-crop values before round 217, '
+            'the taxonomic tree before round 220). "Re-score with this pack" on the Identify screen '
+            'recomputes everything with the current rule in seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),
@@ -1410,6 +1457,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                 _txt('${c['top1']}', maxLines: 2),
                 _txt(_pct(c['top1_p'] as num?), right: true, style: _dimCellStyle),
                 _txt('${c['crop_px']}', right: true, style: _dimCellStyle),
+                _txt(_treeText(c), style: _dimCellStyle),
               ],
               below: Padding(
                 padding: const EdgeInsets.only(top: 2),

@@ -86,7 +86,10 @@ as a numbered list (No. is the row number; Track id is the tracker's id, which c
 A visit's detail sheet shows the ladder as an aligned table with the reported rank
 highlighted, the flags with their meanings, the photo of the best single view with the
 detector box (yellow) and the square crop given to the model (cyan; toggle, zoom), and the
-crops table (side in pixels, weight, own best guess); tapping a crop shows that photo.
+crops table (side in pixels, weight, own best guess and, since round 220, that species'
+kingdom > phylum > class > order > family as "Taxonomic tree"); tapping a crop shows that
+photo. The flags describe the whole track id, not single crops, so neither table has a
+column for them.
 
 One identification belongs to one **visit** (track id), combining all of that visit's
 photos; the Photos tab of the session summary shows it under every photo of that track id.
@@ -153,8 +156,10 @@ R without re-scoring.
 Each track id gets a **ladder**: the taxon chosen at every rank on a consistent path from
 kingdom to species, with its Conf. and Agree. The **identified rank** is the deepest rung
 whose Conf. reaches the confidence threshold (default 0.6 since round 217); the headline is
-that rung's taxon, or "unidentified" (not even the class is sure) or "no organism" (the
-"none of these" entries won). Species names below the threshold are still shown, as
+that rung's taxon, or "unidentified" (no taxonomic rank reached the threshold, not even
+kingdom; in a pack of animals only this means the "none of these" entries took a large share
+but not more than the "No organism" threshold) or "no organism" (the "none of these" entries
+took more than that threshold). Species names below the threshold are still shown, as
 suggestions to verify. The **best single photo** is the crop whose own top species has the
 highest Species conf., i.e. the photo the model is surest about on its own; the track id's
 sheet names it, its species and confidence, the crop number and how many photos name the

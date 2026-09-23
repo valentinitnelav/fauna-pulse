@@ -411,6 +411,7 @@ Map<String, dynamic> writeOutputs({
         'pad_frac',
         'top1_species',
         'top1_p',
+        for (final r in kRankNames.take(5)) 'top1_$r',
         'agrees',
         'counted',
         for (final r in kRankNames) 'ladder_$r',
@@ -539,6 +540,7 @@ Map<String, dynamic> writeOutputs({
           c.padFrac.toStringAsFixed(3),
           top1.speciesName,
           f.perCrop[i].probs.first.toStringAsFixed(4),
+          ...top1.ranks.take(5),
           f.identifiedRank == null ? '' : (_cropAgrees(top1, f.stepAt(f.identifiedRank!)!.key, kRankNames.indexOf(f.identifiedRank!)) ? 1 : 0),
           i < f.counted.length ? (f.counted[i] ? 1 : 0) : 1,
           for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
@@ -587,6 +589,9 @@ Map<String, dynamic> writeOutputs({
             'crop_px': t.crops[i].cropPx,
             'sharpness': double.parse(t.crops[i].sharpness.toStringAsFixed(1)),
             'top1': pack.labels[f.perCrop[i].rows.first].speciesName,
+            // Round 220: the top species' kingdom .. family (the crops
+            // table's "Taxonomic tree"; kingdom `none` for a sink row).
+            'top1_tree': pack.labels[f.perCrop[i].rows.first].ranks.take(5).toList(),
             'top1_p': double.parse(f.perCrop[i].probs.first.toStringAsFixed(4)),
           },
       ],
@@ -723,6 +728,8 @@ crops_<pack>.csv columns
                                       square crop side (px), Laplacian sharpness, detector confidence,
                                       padding outside the photo (descriptive only)
   top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
+  top1_kingdom .. top1_family         that species' higher ranks (round 220; kingdom "none" for a
+                                      "none of these" entry)
   agrees                              1 when top1_species falls under the visit's reported taxon
   counted                             1 when the crop entered the combined answer (round 219)
   ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own Conf. under each

@@ -732,7 +732,7 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `agree_<rank>` | share of crops whose own top species falls under that taxon (was `support_<rank>` until round 216) |
 | `n_crops_used`, `none_p` | crops in the average; mass on the "none of these" rows |
 | `best_view_photo`, `best_view_species`, `best_view_p` | the crop whose own top species has the highest probability (the photo the model is surest about on its own, round 217); that species and probability |
-| `flags` | `none`, `unidentified`, `path_conflict` (a rank's best taxon is not under the rank above), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
+| `flags` | `none` (the "none of these" entries took more than the "No organism" threshold; headline `no organism`), `unidentified` (no rank reached `tau`, not even kingdom), `path_conflict` (a rank's best taxon is not under the rank above), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
 | `model_id`, `pack_id` | provenance |
 | `merged_track_ids` | round 210, trailing column: every track id of the visit, semicolon-separated (one id unless "Merge consecutive visits" was on; `flags` then also holds `merged`) |
 | `n_detections`, `suspect` | round 212: detector frames the track id(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
@@ -744,7 +744,8 @@ One row per crop (photo × track), for tracing a visit's answer to single photos
 … `box_bottom` (detector box as fractions of the photo side), `crop_px`, `sharpness`,
 `det_conf`, `pad_frac` (descriptive only since round 217), `top1_species`, `top1_p` (the
 species this crop alone predicts and its probability; also the crop's weight in the track
-id's answer), `agrees` (1 when that species falls under the visit's reported taxon),
+id's answer), `top1_kingdom` … `top1_family` (round 220: that species' higher ranks; kingdom
+`none` for a "none of these" entry), `agrees` (1 when that species falls under the visit's reported taxon),
 `counted` (round 219: 1 when the crop entered the pooled answer, 0 when it was left out as
 far less sure than the surest crop),
 `ladder_<rank>` (the visit's ladder taxa, repeated per row) and `p_<rank>` (this crop's own
@@ -765,7 +766,8 @@ The JSON adds the full `ladder` (`rank`, `taxon`, `p`, `p_mean`, `p_max`, `p_agr
 `support`), every crop with its own top-1, `counted`, `agrees` (round 214: whether that top-1 falls under the reported
 taxon; the ladder's `support` at the identified rank is the share of `agrees == true`) and
 `p_ladder` (round 215: the crop's own Conf. under each ladder taxon, index = rank),
-`best_view`, `flags`, and the run `settings`.
+`top1_tree` (round 220: kingdom … family of the crop's top species, the crops table's
+"Taxonomic tree"), `best_view`, `flags`, and the run `settings`.
 
 ### `summary_<pack>.json`
 

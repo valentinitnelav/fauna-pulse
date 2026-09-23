@@ -7879,3 +7879,31 @@ as untested on pollinators, plus a reproduction script. Owner asked for a separa
   diluting at factor 1, per-rank alternatives incl. p_agree, JSON keys, counted); job test
   headers (`p_agree_*`, `counted`); results-screen fixture `counted`.
 - Not device-verified: owner re-scores session_2/3 on the phone.
+
+## Round 220 (2026-09-23): S4 flags explained in place, taxonomic tree per crop
+
+- **Flags are per track id, not per crop.** Owner asked where the S4 flags belong: they
+  describe the whole track id (the `flags` column of `tracks_<pack>.csv`), so neither table
+  gets a column. The flags help reused `_ColumnsHelp`, whose fixed heading "Columns of the
+  table below:" was wrong there; `_ColumnsHelp` now takes a `heading`, the flags use "What
+  each flag means:" plus an intro saying none / unidentified / weak_id / path_conflict
+  concern the ladder above. Position unchanged (under the ladder).
+- **`none` and `unidentified` rewritten.** `none` = the "none of these" entries took more than
+  the "No organism" threshold (value shown; `_TrackSheet` now gets `noneThreshold` from the
+  summary settings); says explicitly it does not mean "no flags". `unidentified` said "not even
+  the class reached the threshold", but `Scorer.fuse` stops at kingdom: now "no taxonomic rank
+  reached the threshold, not even kingdom", plus why this happens in animal-only packs
+  (kingdom Conf. = 1 − none share). Same fix in IDENTIFICATION.md.
+- **Taxonomic tree column (owner).** Crops table gains a last column "Taxonomic tree" =
+  kingdom > phylum > class > order > family of the crop's Top species (genus is in the species
+  name); "–" for a sink row, "?" for files before this round (the amber re-score note now
+  covers it). Last position so the visible columns keep their place; sortable. Data: tracks
+  JSON crop field `top1_tree` (5 names), crops CSV `top1_kingdom` … `top1_family` after
+  `top1_p`. README dictionary + DATA_GUIDE updated.
+- **path_conflict: discussed, not changed.** Explained to owner: the ladder is always
+  taxonomically consistent (best child of the chosen parent); the flag means a rank's overall
+  winner sits in another branch. Because tau >= 0.5 (slider minimum), the reported rank and
+  every rank above it are always their rank's overall winner, so a conflict can only occur in
+  the suggestion rows below the reported rank. Options (keep + name the rival taxon on the
+  row, drop the flag, target-rank-first like pybioclip / insect-detect-post) await the owner.
+- Tests: results-screen fixture `top1_tree` + column check; job test header + JSON field.

@@ -30,7 +30,7 @@ Map<String, dynamic> _track(int id, List<String> path, String rank, double p) =>
   'flags': const [],
   'best_view': {'src': 'a.jpg', 'species': path.last, 'p': p},
   'crops': [
-    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_p': p, 'agrees': true, 'counted': true, 'p_ladder': List.filled(7, p)},
+    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_tree': path.take(5).toList(), 'top1_p': p, 'agrees': true, 'counted': true, 'p_ladder': List.filled(7, p)},
   ],
 };
 
@@ -124,6 +124,11 @@ void main() {
     expect(find.text('Avg'), findsNothing);
     expect(find.text('Weight'), findsNothing);
     expect(find.textContaining('left out'), findsNothing); // every fixture crop counted
+    // Round 220: the crops table's last column, the top species' kingdom .. family.
+    await tester.dragUntilVisible(find.text('Taxonomic tree'), find.byType(ListView).last, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.text('Animalia > Arthropoda > Insecta > Hymenoptera > Apidae'), findsOneWidget);
+    expect(find.textContaining('"?" = a value'), findsNothing); // fixture has every value
     // Close both sheets.
     await tester.tapAt(const Offset(180, 10));
     await tester.pumpAndSettle();

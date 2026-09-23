@@ -132,6 +132,9 @@ void main() {
     expect(cropLines.first, endsWith(',p_species'));
     expect(cropLines.first, isNot(contains(',weight,')));
     expect(cropLines.first, contains(',pad_frac,top1_species,'));
+    // Round 220: the top species' higher ranks, per crop.
+    expect(cropLines.first, contains(',top1_p,top1_kingdom,top1_phylum,top1_class,top1_order,top1_family,agrees,'));
+    expect(crop0['top1_tree'], hasLength(5));
     expect(cropLines.first, contains(',agrees,counted,'));
     expect(crop0['counted'], isTrue);
     expect(cropLines.length, 4); // header + 3 crops
