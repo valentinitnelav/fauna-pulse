@@ -597,6 +597,9 @@ Map<String, dynamic> writeOutputs({
             'box': t.crops[i].box,
             'crop_px': t.crops[i].cropPx,
             'sharpness': double.parse(t.crops[i].sharpness.toStringAsFixed(1)),
+            // Round 223: the live detector's confidence for this box (the
+            // crops table's "Detector conf." and the label on the photo).
+            'det_conf': double.parse(t.crops[i].detConf.toStringAsFixed(3)),
             'top1': pack.labels[f.perCrop[i].rows.first].speciesName,
             // Round 220: the top species' kingdom .. family (the crops
             // table's "Taxonomic tree"; kingdom `none` for a sink row).

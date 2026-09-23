@@ -137,6 +137,10 @@ void main() {
     expect(crop0['top1_tree'], hasLength(5));
     expect(cropLines.first, contains(',agrees,counted,'));
     expect(crop0['counted'], isTrue);
+    // Round 223: each crop's detector confidence (the log's 0.9 and 0.8);
+    // det_conf_mean is their mean.
+    expect([for (final c in tracks[0]['crops'] as List) c['det_conf']], unorderedEquals([0.9, 0.8]));
+    expect(tracks[0]['det_conf_mean'], 0.85);
     expect(cropLines.length, 4); // header + 3 crops
     expect((tracks[0]['crops'] as List).length, 2);
     expect(tracks[1]['headline'], 'Apis mellifera');

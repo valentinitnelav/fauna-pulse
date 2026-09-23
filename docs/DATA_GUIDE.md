@@ -769,7 +769,9 @@ the rival's ancestors from kingdom down to one rank above it), every crop with i
 taxon; the ladder's `support` at the identified rank is the share of `agrees == true`) and
 `p_ladder` (round 215: the crop's own Conf. under each ladder taxon, index = rank),
 `top1_tree` (round 220: kingdom … family of the crop's top species; the crops table shows
-its family, order and class), `best_view`, `flags`, and the run `settings`.
+its family, order and class), `det_conf` (round 223: the live detector's confidence for the
+crop's box, as in the crops CSV; `det_conf_mean` is their mean), `best_view`, `flags`, and
+the run `settings`.
 
 ### `summary_<pack>.json`
 

@@ -88,8 +88,10 @@ the screen scrolls sideways under a slider; in that list only the table moves, t
 above it stays. A visit's detail sheet shows the ladder as an aligned table with the
 reported rank highlighted and the taxa below it (suggestions) in grey, the photo of the
 best single view with its full file name on its own line, the
-detector box (yellow) and the square crop given to the model (cyan; toggle, zoom), and the
-crops table (side in pixels, weight, own best guess and, since round 222, that species'
+detector box (yellow, labelled with the live detector's confidence for that photo since
+round 223) and the square crop given to the model (cyan; toggle, zoom), and the
+crops table (side in pixels, weight, own best guess, the detector's confidence for the
+crop's box (Detector conf., round 223) and, since round 222, the best guess's
 family, order and class in one column each; round 220 had them as one "Taxonomic tree"
 column); tapping a crop shows that photo. Long column names over short values (e.g.
 "Species conf.") wrap onto two lines, with room for the sort arrow. Since round 221 each flag is shown where it applies, as an amber ⚠ line whose ⓘ

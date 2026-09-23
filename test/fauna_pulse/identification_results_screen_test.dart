@@ -30,7 +30,7 @@ Map<String, dynamic> _track(int id, List<String> path, String rank, double p) =>
   'flags': const [],
   'best_view': {'src': 'a.jpg', 'species': path.last, 'p': p},
   'crops': [
-    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'top1': path.last, 'top1_tree': path.take(5).toList(), 'top1_p': p, 'agrees': true, 'counted': true, 'p_ladder': List.filled(7, p)},
+    {'src': 'a.jpg', 'box': [0.1, 0.1, 0.5, 0.5], 'crop_px': 200, 'sharpness': 10.0, 'det_conf': 0.87, 'top1': path.last, 'top1_tree': path.take(5).toList(), 'top1_p': p, 'agrees': true, 'counted': true, 'p_ladder': List.filled(7, p)},
   ],
 };
 
@@ -160,6 +160,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Taxonomic tree'), findsNothing);
     expect(find.text('Insecta'), findsWidgets);
+    // Round 223: the detector's confidence for the crop's box.
+    expect(find.text('Detector conf.'), findsOneWidget);
+    expect(find.text('87 %'), findsOneWidget);
     expect(find.textContaining('"?" = a value'), findsNothing); // fixture has every value
     expect(find.textContaining('(single_crop)'), findsOneWidget); // above the crops table
     await tester.dragUntilVisible(find.textContaining('Flags in tracks CSV'), sheet, const Offset(0, -150));

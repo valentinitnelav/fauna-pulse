@@ -7979,3 +7979,25 @@ Owner's aesthetic review of the identification results (S2-S4), all in
   Its old "close both sheets" taps never closed anything (dragging had expanded the sheets
   to full height); they now pop the routes. Screens checked with Roboto at 393x873 through a
   throwaway golden test (not committed). Full suite 569 passed, analyzer clean.
+
+## Round 223 (2026-09-23): S4 detector confidence per crop, on the photo and in the crops table
+
+Owner request: show the live detector's confidence on the S4 photo, attached to the box, and
+as a crops-table column right after Species conf., to help when checking single cases.
+- **Data:** each crop in `tracks_<pack>.json` gains `det_conf` (3 decimals; the value
+  `crops_<pack>.csv` already had, and the one `det_conf_mean` averages). Source unchanged:
+  the box's own confidence from the session log, else the one another log record of that
+  track gave on the same photo, else 1.0 (`crop_planner.dart`). Files from earlier runs show "?" until re-scored ("Re-score
+  with this pack" is enough, no re-embedding).
+- **Photo:** `_BoxesPainter` takes `detConf` and draws "Detector conf. 87 %" in black on an
+  amber tag on the yellow box: above the box when there is room, else just inside its top
+  edge; shifted left to stay on the photo at the right edge. The eye button hides it with
+  the boxes. Photo help text says what the label is.
+- **Crops table:** "Detector conf." column (two-line header, sortable) after Species conf.;
+  column help says it is the per-photo value behind the header's mean and plays no part in
+  the identification. The header's help text points to the column; the "?" note names it.
+- Tests: results-screen fixture carries `det_conf` (column and value checked); job test
+  checks the per-crop values 0.9/0.8 from the fixture log and their mean 0.85. Label
+  placement (middle, top edge, right edge) checked in a throwaway golden test at 393x873
+  (not committed; the test font draws the painter's text as blocks, placement only). Full
+  suite 569 passed, analyzer clean.

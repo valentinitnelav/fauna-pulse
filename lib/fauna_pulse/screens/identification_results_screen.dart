@@ -12,11 +12,12 @@
 // grey; tap a row to select its taxon), a "Best single
 // photo" line, each flag as an amber ⚠ line where it applies (round 221;
 // path_conflict names the rival taxon), the photo with the detector box
-// and the square crop drawn (toggle, zoom), and the crops table (each
-// crop's own confidence for the selected ladder taxon, its top species and
-// that species' confidence, which is also the crop's weight, and the top
-// species' family, order and class (round 222); tap a row to show that
-// crop).
+// (labelled with its detector confidence, round 223) and the square crop
+// drawn (toggle, zoom), and the crops table (each crop's own confidence for
+// the selected ladder taxon, its top species and that species' confidence,
+// which is also the crop's weight, the detector's confidence for its box
+// (round 223) and the top species' family, order and class (round 222);
+// tap a row to show that crop).
 //
 // Vocabulary (owner, rounds 215-219): "track id" = one tracked organism
 // (a pollination ecologist's "visit"); "Conf." = the model's confidence
@@ -1247,12 +1248,18 @@ class _TrackSheetState extends State<_TrackSheet> {
     return l[_sel].toDouble();
   }
 
+  /// This crop's detector confidence ("?" for files written before round 223).
+  static String _detText(Map<String, dynamic> c) => c['det_conf'] == null ? '?' : _pct(c['det_conf'] as num?);
+
   List<_Col> get _cropCols => [
     const _Col('no', 'No.'),
     _Col('mass', 'Conf. $_selTaxon', numeric: true, wrap: true),
     const _Col('agrees', 'Agree', numeric: true),
     const _Col('top1', 'Top species', flex: true),
     const _Col('p', 'Species conf.', numeric: true, wrap: true),
+    // Round 223 (owner): the live detector's confidence for this crop's box,
+    // the value on the yellow box's label.
+    const _Col('det', 'Detector conf.', numeric: true, wrap: true),
     const _Col('side', 'Side px', numeric: true, wrap: true),
     // Round 222 (owner): the top species' family, order and class, one
     // column each, measured so a long name is never cut.
@@ -1286,6 +1293,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         'mass' => _cmpNum(_mass(a.$2), _mass(b.$2)),
         'side' => _cmpNum(a.$2['crop_px'] as num?, b.$2['crop_px'] as num?),
         'p' => _cmpNum(a.$2['top1_p'] as num?, b.$2['top1_p'] as num?),
+        'det' => _cmpNum(a.$2['det_conf'] as num?, b.$2['det_conf'] as num?),
         'agrees' => (a.$2['agrees'] == true ? 1 : 0).compareTo(b.$2['agrees'] == true ? 1 : 0),
         'top1' => '${a.$2['top1']}'.compareTo('${b.$2['top1']}'),
         'family' || 'order' || 'class' =>
@@ -1345,7 +1353,7 @@ class _TrackSheetState extends State<_TrackSheet> {
               TextSpan(text: ' · ${_plural(n, 'photo')} (crops)'),
               if (det != null && detConf != null) ...[
                 const TextSpan(text: ' · '),
-                TextSpan(text: 'detector conf. ${_pct(detConf)}', style: _has('low_det') ? _amberStyle : null),
+                TextSpan(text: 'Mean detector conf. ${_pct(detConf)}', style: _has('low_det') ? _amberStyle : null),
               ],
             ],
           ),
@@ -1356,7 +1364,8 @@ class _TrackSheetState extends State<_TrackSheet> {
           'Time = first to last detector frame of the track id. Detector frames = every frame the live '
           'detector saw it in (several per second). Photos = the frames saved on the photo schedule '
           '($schedule) plus frames another organism triggered while this one was in view; each saved '
-          'photo gives one crop. Detector conf. = the live detector\'s mean confidence over the photos. '
+          'photo gives one crop. Mean detector conf. = the live detector\'s mean confidence over the photos '
+          '(each photo\'s own value: "Detector conf." column in the Crops table). '
           'Amber values, ⚠ lines and ⚠ on ladder rows are flags; tap a ⚠ line for the reason.',
           style: helperTextStyle,
         ),
@@ -1578,7 +1587,8 @@ class _TrackSheetState extends State<_TrackSheet> {
             'Opens on the BEST VIEW: the crop whose own top species has the highest Species conf., i.e. '
             'the single photo the model is surest about on its own (it need not agree with the track '
             'id\'s answer). Tap a row of the Crops table below to show another crop.\n'
-            'Yellow box: the detector\'s box for this organism. Cyan box: the square (box + margin) that '
+            'Yellow box: the detector\'s box for this organism; its label is the detector\'s confidence '
+            'for this photo (Detector conf. in the Crops table). Cyan box: the square (box + margin) that '
             'was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
             'double-tap zooms, the reset button returns to full view.',
       ),
@@ -1619,7 +1629,9 @@ class _TrackSheetState extends State<_TrackSheet> {
                   children: [
                     Image.file(file, fit: BoxFit.contain, cacheWidth: 1200),
                     if (_showBoxes && c != null)
-                      CustomPaint(painter: _BoxesPainter(box: (c['box'] as List).cast<num>(), margin: widget.margin)),
+                      CustomPaint(
+                        painter: _BoxesPainter(box: (c['box'] as List).cast<num>(), margin: widget.margin, detConf: c['det_conf'] as num?),
+                      ),
                   ],
                 ),
               ),
@@ -1640,12 +1652,14 @@ class _TrackSheetState extends State<_TrackSheet> {
           'mass' => _mass(cr) == null ? '?' : _pct(_mass(cr)),
           'agrees' => '✓',
           'p' => _pct(cr['top1_p'] as num?),
+          'det' => _detText(cr),
           'side' => '${cr['crop_px']}',
           _ => _treeAt(cr, kRankNames.indexOf(c.key)),
         },
     ], context);
     final missing =
-        _crops.any((c) => c['agrees'] == null || _mass(c) == null || c['top1_tree'] == null) || _ladder.any((s) => s['p_max'] == null);
+        _crops.any((c) => c['agrees'] == null || _mass(c) == null || c['top1_tree'] == null || c['det_conf'] == null) ||
+        _ladder.any((s) => s['p_max'] == null);
     final sel = _selTaxon.isEmpty ? 'the selected taxon' : '$_selTaxon ($_selRank)';
     return [
       HelpLabel(
@@ -1673,6 +1687,13 @@ class _TrackSheetState extends State<_TrackSheet> {
                   'Advanced settings) is left out and marked "left out" here. The ladder\'s species row '
                   'is the best species of the combined answer and can differ from every crop\'s own.',
             ),
+            (
+              'Detector conf.',
+              'the live detector\'s confidence that its box on this photo shows an organism (the value on '
+                  'the yellow box\'s label). A low value often means a leaf, a shadow or a reflection, or '
+                  'only part of the animal in view. The header\'s detector conf. is the mean of this column. '
+                  'It plays no part in the identification.',
+            ),
             ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
             (
               'Family, Order, Class',
@@ -1696,7 +1717,8 @@ class _TrackSheetState extends State<_TrackSheet> {
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
             '"?" = a value an older app version did not store (some per-crop values before round 217, '
-            'Family, Order and Class before round 220). "Re-score with this pack" on the Identify screen '
+            'Family, Order and Class before round 220, Detector conf. before round 223). "Re-score with '
+            'this pack" on the Identify screen '
             'recomputes everything with the current rule in seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
@@ -1729,6 +1751,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                 _txt(c['agrees'] == null ? '?' : (c['agrees'] == true ? '✓' : '–'), right: true, style: c['agrees'] == true ? _cellStyle : _dimCellStyle),
                 _txt('${c['top1']}', maxLines: 2),
                 _txt(_pct(c['top1_p'] as num?), right: true, style: _dimCellStyle),
+                _txt(_detText(c), right: true, style: _dimCellStyle),
                 _txt('${c['crop_px']}', right: true, style: _dimCellStyle),
                 for (final (key, _) in _treeCols) _txt(_treeAt(c, kRankNames.indexOf(key)), style: _dimCellStyle),
               ],
@@ -1748,11 +1771,14 @@ class _TrackSheetState extends State<_TrackSheet> {
 }
 
 /// Draws the detector box and the square crop (box + margin) over a square
-/// ROI photo; coordinates are fractions of the photo side.
+/// ROI photo; coordinates are fractions of the photo side. Round 223: the
+/// detector box carries its confidence as a label, above the box when there
+/// is room, else just inside its top edge.
 class _BoxesPainter extends CustomPainter {
   final List<num> box;
   final double margin;
-  const _BoxesPainter({required this.box, required this.margin});
+  final num? detConf;
+  const _BoxesPainter({required this.box, required this.margin, this.detConf});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1766,8 +1792,21 @@ class _BoxesPainter extends CustomPainter {
       ..strokeWidth = 2;
     canvas.drawRect(sq, paint..color = _cropBoxColor);
     canvas.drawRect(det, paint..color = _detectorBoxColor);
+    if (detConf == null) return;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: 'Detector conf. ${_pct(detConf)}',
+        style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = tp.width + 6, h = tp.height + 2;
+    final top = det.top - h >= 0 ? det.top - h : det.top;
+    final label = Rect.fromLTWH(det.left.clamp(0, math.max(0, size.width - w)).toDouble(), top, w, h);
+    canvas.drawRect(label, Paint()..color = _detectorBoxColor);
+    tp.paint(canvas, Offset(label.left + 3, label.top + 1));
   }
 
   @override
-  bool shouldRepaint(_BoxesPainter old) => old.box != box || old.margin != margin;
+  bool shouldRepaint(_BoxesPainter old) => old.box != box || old.margin != margin || old.detConf != detConf;
 }
