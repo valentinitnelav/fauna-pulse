@@ -1,11 +1,10 @@
 # Identify organisms (on-device taxonomic identification)
 
-*Experimental since round 208. For field users who want a taxon per visit, and for
-collaborators who prepare the model files.*
+*Experimental since commit round 208*
 
 FaunaPulse detects and tracks insects live. **Identification** is a separate, later step:
 the saved photos of every tracked visit are cut to crops, each crop is turned into an
-"embedding" (a list of numbers describing its content) by the BioCLIP image tower, and
+"embedding" (a list of numbers describing its content) by the [BioCLIP 2][bioclip] image tower, and
 the crops of one track id are combined into one answer with a confidence per taxonomic
 rank (order, family, genus, species). Everything runs on the phone; nothing is uploaded.
 It is meant for bulk processing after a day of recording, with the phone plugged in.
@@ -318,3 +317,11 @@ keeps the column names so the same scripts read both outputs, with its own formu
   lower it in Advanced, or check the crops (very small boxes give weak embeddings).
 - Scoring a large pack (> 100 k names) takes a while per crop in this version; use a
   country or order-restricted pack for speed.
+
+
+<!-- 
+Reference links: [id]: URL
+These are links used throughout this file
+-->
+
+[bioclip]: https://imageomics.github.io/bioclip-ecosystem/index.html
