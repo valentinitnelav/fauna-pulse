@@ -125,12 +125,18 @@ void main() {
     await tester.dragUntilVisible(find.text('#1'), find.byType(ListView).last, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(find.text('#1'), findsOneWidget);
-    expect(find.text('100 % (1/1)'), findsWidgets); // one crop per track
+    // Round 222: Agree split into share and count columns.
+    expect(find.text('100 %'), findsWidgets);
+    expect(find.text('1/1'), findsWidgets); // one crop per track
     // Open the track id's sheet (S4): best-single-photo line, no Avg/Weight.
     await tester.tap(find.text('#1'));
     await tester.pumpAndSettle();
     final sheet = find.byType(ListView).last;
     expect(find.textContaining('Short visit: '), findsOneWidget);
+    // Round 222: the reported genus row keeps white, the species below the
+    // threshold is grey.
+    expect(tester.widget<Text>(find.text('Bombus')).style?.color, Colors.white);
+    expect(tester.widget<Text>(find.text('Bombus terrestris').first).style?.color, Colors.white54);
     await tester.dragUntilVisible(find.textContaining('(path_conflict)'), sheet, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(
@@ -147,20 +153,26 @@ void main() {
     expect(find.text('Avg'), findsNothing);
     expect(find.text('Weight'), findsNothing);
     expect(find.textContaining('left out'), findsNothing); // every fixture crop counted
-    // Round 220: the crops table's last column, the top species' kingdom .. family.
-    await tester.dragUntilVisible(find.text('Taxonomic tree'), sheet, const Offset(0, -150));
+    // Round 222: the photo's file name on its own line; the crops table ends
+    // with the top species' family, order and class, one column each.
+    expect(find.text('Showing crop No. 1 (best view):'), findsOneWidget);
+    await tester.dragUntilVisible(find.text('Class'), sheet, const Offset(0, -150));
     await tester.pumpAndSettle();
-    expect(find.text('Animalia > Arthropoda > Insecta > Hymenoptera > Apidae'), findsOneWidget);
+    expect(find.text('Taxonomic tree'), findsNothing);
+    expect(find.text('Insecta'), findsWidgets);
     expect(find.textContaining('"?" = a value'), findsNothing); // fixture has every value
     expect(find.textContaining('(single_crop)'), findsOneWidget); // above the crops table
     await tester.dragUntilVisible(find.textContaining('Flags in tracks CSV'), sheet, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(find.text('Flags in tracks CSV: short, path_conflict, single_crop'), findsOneWidget);
-    // Close both sheets.
-    await tester.tapAt(const Offset(180, 10));
+    // Close both sheets (dragging expanded them to full height, so there is
+    // no barrier left to tap).
+    final nav = tester.state<NavigatorState>(find.byType(Navigator));
+    nav.pop();
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(180, 20));
+    nav.pop();
     await tester.pumpAndSettle();
+    expect(find.text('Track id'), findsNothing);
 
     // .first: the taxon table may add its own horizontal Scrollable (it
     // does under the test font, whose glyphs are all 13 px wide).
@@ -170,6 +182,23 @@ void main() {
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
     expectAboveBottomInset(tester, find.textContaining('All 41 track ids'), label: 'last results row');
+
+    // Round 222: "All track ids": rank in its own column; the table scrolls
+    // sideways under a title that stays in place.
+    await tester.tap(find.textContaining('All 41 track ids'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rank'), findsNWidgets(2)); // S2's and this sheet's
+    expect(find.text('Crops agree'), findsOneWidget);
+    final title = find.text('All track ids · 41 track ids');
+    final titleX = tester.getTopLeft(title).dx, headerX = tester.getTopLeft(find.text('Crops agree')).dx;
+    final sideways = tester
+        .stateList<ScrollableState>(find.ancestor(of: find.text('Crops agree'), matching: find.byType(Scrollable)))
+        .firstWhere((s) => s.position.axis == Axis.horizontal);
+    expect(sideways.position.maxScrollExtent, greaterThan(0));
+    sideways.position.jumpTo(sideways.position.maxScrollExtent);
+    await tester.pump();
+    expect(tester.getTopLeft(title).dx, titleX);
+    expect(tester.getTopLeft(find.text('Crops agree')).dx, lessThan(headerX));
 
     await tester.pumpWidget(const SizedBox());
   });

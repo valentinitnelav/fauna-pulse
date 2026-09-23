@@ -82,13 +82,17 @@ can be reproduced from `tracks_<pack>.csv` (`bioclip_<rank>` / `p_<rank>` column
 
 The table (round 214) is sortable by tapping a column header, has the rank in its own
 column and a rank filter (e.g. only rows that reached species), and a row opens its visits
-as a numbered list (No. is the row number; Track id is the tracker's id, which can jump).
-A visit's detail sheet shows the ladder as an aligned table with the reported rank
-highlighted, the photo of the best single view with the
+as a numbered list (No. is the row number; Track id is the tracker's id, which can jump;
+in "All track ids" the taxon's rank has its own column since round 222). A table wider than
+the screen scrolls sideways under a slider; in that list only the table moves, the text
+above it stays. A visit's detail sheet shows the ladder as an aligned table with the
+reported rank highlighted and the taxa below it (suggestions) in grey, the photo of the
+best single view with its full file name on its own line, the
 detector box (yellow) and the square crop given to the model (cyan; toggle, zoom), and the
-crops table (side in pixels, weight, own best guess and, since round 220, that species'
-kingdom > phylum > class > order > family as "Taxonomic tree"); tapping a crop shows that
-photo. Since round 221 each flag is shown where it applies, as an amber ⚠ line whose ⓘ
+crops table (side in pixels, weight, own best guess and, since round 222, that species'
+family, order and class in one column each; round 220 had them as one "Taxonomic tree"
+column); tapping a crop shows that photo. Long column names over short values (e.g.
+"Species conf.") wrap onto two lines, with room for the sort arrow. Since round 221 each flag is shown where it applies, as an amber ⚠ line whose ⓘ
 gives the reason with the actual values: `merged`, `short`, `low_det` and `suspect` under
 the header (the numbers behind `short` / `low_det` turn amber), `path_conflict`, `weak_id`,
 `unidentified` and `no_organism` under the ladder (the affected rows carry ⚠; the
@@ -152,7 +156,8 @@ more crops. Until then, treat Conf. as a model score with a known direction of b
 (sharper than the per-crop average) rather than a calibrated probability.
 
 Two more numbers accompany Conf.: **Agree** = how many crops, judged alone, put their top
-species under the taxon, shown as share and count ("50 % (5/10)"); and, in the files, the
+species under the taxon, shown as a share (Agree, "50 %") and a count (Crops agree, "5/10";
+one column each since round 222); and, in the files, the
 plain mean (`p_mean_<rank>`), the best single crop (`p_max_<rank>`) and the mean over the
 agreeing crops (`p_agree_<rank>`, so that insect-detect-post's weighted probability =
 `agree_<rank>` × `p_agree_<rank>`) for every rank, so other pooling rules can be compared in

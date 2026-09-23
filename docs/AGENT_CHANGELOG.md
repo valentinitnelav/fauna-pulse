@@ -7944,3 +7944,38 @@ as untested on pollinators, plus a reproduction script. Owner asked for a separa
   test gives track #1 short / path_conflict / single_crop and checks the notes, the exact
   conflict sentence, ⚠ icons and the CSV flags line; job test header + `no_organism`.
   Full suite 569 passed, analyzer clean.
+
+## Round 222 (2026-09-23): results tables: split Agree, Rank column, Family/Order/Class, sideways scroll of the table only
+
+Owner's aesthetic review of the identification results (S2-S4), all in
+`screens/identification_results_screen.dart`:
+- **S3 sideways scroll moves only the table.** The lazy visits list still scrolls sideways as
+  a whole when its columns do not fit, but the title and the column explanation are now held
+  in view (item 0 is counter-translated by the horizontal offset, at the screen's width), so
+  only the header row and the rows slide. The glider under the list is padded above the
+  navigation bar (it sat under it before, so the owner never saw it).
+- **"All track ids": Rank is its own column** right of Taxon (was a small line under the
+  taxon), sortable (kingdom first, "–" last). The amber "suspect" mark now always sits under
+  the track id. Column explanation updated.
+- **Agree split in two** in S3 and the S4 ladder: Agree ("50 %") and Crops agree ("5/10"),
+  each sortable in S3. Helpers `_agreePct`, `_agreeCount`, `_agreeRatio` replace `_agreeText`.
+- **Two-line headers.** `_Col.wrap`: the header may break onto two lines; `_fitWidths` gives
+  it the narrowest width at which label AND sort arrow fit in two lines without splitting a
+  word. Used for Conf. <taxon>, Species conf., Side px (crops), Crops agree, and S2's Track ids
+  and Med. Conf.
+- **Crops table: "Taxonomic tree" became Family, Order, Class** (one sortable column each,
+  from `top1_tree`; `_treeAt` replaces `_treeText`). Files unchanged.
+- **Why the tree was cut with "…" even when scrolled fully right:** `_fitWidths` measured with
+  a bare TextStyle, but cells render merged with the theme's bodyMedium (letter spacing 0.25),
+  so a long string came out a few px wider than measured. `_fitWidths` now takes the
+  BuildContext and measures with `Theme.of(context).textTheme.bodyMedium` merged in.
+- **Ladder: taxa below the reported row in grey** (`_dimCellStyle`, same as Rank/Agree; all
+  rows when nothing was identified). Help text says so.
+- **Photo line:** "Showing crop No. n (best view):" stays next to the buttons; the file name
+  is on its own line below, wrapped and selectable, never cut.
+- Tests: results-screen test checks the split Agree values, grey vs white ladder taxa, the
+  photo line, the Family/Order/Class headers, and in "All 41 track ids" the Rank and Crops
+  agree columns plus a title that keeps its x position while the table scrolls to its end.
+  Its old "close both sheets" taps never closed anything (dragging had expanded the sheets
+  to full height); they now pop the routes. Screens checked with Roboto at 393x873 through a
+  throwaway golden test (not committed). Full suite 569 passed, analyzer clean.
