@@ -19,6 +19,7 @@ import 'dart:typed_data';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
+import '../logging/thermal_pause.dart';
 import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
 import '../postprocess/post_detector.dart' show PostDetector;
@@ -33,9 +34,6 @@ typedef EmbedFn = Future<List<Float32List>> Function(List<Uint8List> rgb);
 
 /// Cuts the crops of one photo (default: the isolate worker).
 typedef CropFn = Future<List<CropResult>> Function(CropBatchArgs args);
-
-/// Reads the phone's thermal state (default: DeviceThermal.read).
-typedef ThermalFn = Future<ThermalReading> Function();
 
 class IdentifyProgress {
   /// 'planning' | 'embedding' | 'paused' | 'scoring' | 'done'
@@ -312,26 +310,21 @@ class IdentificationJob {
         }
         // Thermal governor: pause while the battery is warm. The reading is
         // also shown during normal embedding (round 210 temperature gauge).
-        double? temp;
-        try {
-          var reading = await thermal();
-          temp = reading.batteryTempC;
-          if (temp != null && temp >= settings.thermalLimitC) {
-            pauses++;
-            while (temp != null && temp > settings.thermalLimitC - 3) {
-              emit('paused', tempC: temp, note: 'Phone warm ($temp °C); resuming below ${(settings.thermalLimitC - 3).toStringAsFixed(0)} °C');
-              await Future<void>.delayed(pausePoll);
-              if (isCancelled?.call() ?? false) break;
-              reading = await thermal();
-              temp = reading.batteryTempC;
-            }
-            if (isCancelled?.call() ?? false) {
-              cancelled = true;
-              break;
-            }
+        final warm = await waitWhileWarm(
+          thermal: thermal,
+          limitC: settings.thermalLimitC,
+          poll: pausePoll,
+          isCancelled: isCancelled,
+          onPaused: (t, note) => emit('paused', tempC: t, note: note),
+          errorTag: 'identify_thermal',
+        );
+        final temp = warm.tempC;
+        if (warm.paused) {
+          pauses++;
+          if (isCancelled?.call() ?? false) {
+            cancelled = true;
+            break;
           }
-        } catch (e) {
-          logSwallowed('identify_thermal', e);
         }
 
         final source = entry.key;

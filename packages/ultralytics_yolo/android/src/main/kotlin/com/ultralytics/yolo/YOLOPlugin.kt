@@ -47,6 +47,14 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
   private val embedderExecutor: java.util.concurrent.ExecutorService =
     java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "yolo-embedder") }
 
+  // FaunaPulse (round 225): the open clip of an offline video analysis (see VideoFrameSource.kt)
+  // and the detector call bound to it at videoOpen. One clip at a time, all work on its own
+  // thread, same pattern as the embedder.
+  private var videoSource: VideoFrameSource? = null
+  private var videoPredict: ((Bitmap) -> Pair<List<FloatArray>, List<String>>)? = null
+  private val videoExecutor: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "yolo-video") }
+
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // Store application context and binary messenger for later use
@@ -108,6 +116,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     YOLOInstanceManager.shared.disposeAll()
     embedderExecutor.execute { runCatching { embedder?.close() }; embedder = null }
     embedderExecutor.shutdown()
+    videoExecutor.execute { runCatching { videoSource?.close() }; videoSource = null }
+    videoExecutor.shutdown()
   }
   
   /**
@@ -880,7 +890,64 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         }
       }
 
+      // FaunaPulse (round 225): offline video analysis. videoInfo reads clip facts without
+      // decoding; videoOpen / videoNext / videoClose decode one clip in chunks and run a loaded
+      // detector instance on each sampled frame. Only boxes cross the channel, never pictures.
+      "videoInfo", "videoOpen", "videoNext", "videoClose" -> handleVideo(call, result)
+
       else -> result.notImplemented()
+    }
+  }
+
+  private fun handleVideo(call: MethodCall, result: MethodChannel.Result) {
+    val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
+    fun num(key: String) = args[key] as? Number
+    val reply = android.os.Handler(android.os.Looper.getMainLooper())
+    videoExecutor.execute {
+      val outcome = runCatching<Any?> {
+        when (call.method) {
+          "videoInfo" -> VideoFrameSource.info(args["path"] as String)
+          "videoOpen" -> {
+            runCatching { videoSource?.close() }
+            videoSource = null
+            val instanceId = args["instanceId"] as? String ?: "default"
+            val conf = num("confidence")?.toFloat()
+            val iou = num("iou")?.toFloat()
+            videoPredict = { bmp ->
+              val r = YOLOInstanceManager.shared.predict(instanceId, bmp, conf, iou, generateAnnotatedImage = false)
+                ?: throw IllegalStateException("Detection failed (model not loaded, or an inference error; see logcat).")
+              Pair(r.boxes.map { b -> floatArrayOf(b.xywh.left, b.xywh.top, b.xywh.right, b.xywh.bottom, b.conf, b.index.toFloat()) }, r.names)
+            }
+            videoSource = VideoFrameSource.open(
+              path = args["path"] as String,
+              roi = (args["roi"] as? List<*>)?.map { (it as Number).toDouble() }?.toDoubleArray(),
+              startPtsUs = num("startPtsUs")?.toLong() ?: 0L,
+              minIntervalUs = num("minIntervalUs")?.toLong() ?: 0L,
+              maxSidePx = num("maxSidePx")?.toInt() ?: 1280,
+            )
+            null
+          }
+          "videoNext" -> {
+            val src = videoSource ?: throw IllegalStateException("No video open; call videoOpen first")
+            src.next(num("maxFrames")?.toInt() ?: 8, num("budgetMs")?.toLong() ?: 1000L, videoPredict!!)
+          }
+          else -> {
+            runCatching { videoSource?.close() }
+            videoSource = null
+            videoPredict = null
+            null
+          }
+        }
+      }
+      reply.post {
+        outcome.fold(
+          onSuccess = { result.success(it) },
+          onFailure = { e ->
+            Log.e(TAG, "${call.method} failed", e)
+            result.error("video_error", e.message ?: e.javaClass.simpleName, null)
+          },
+        )
+      }
     }
   }
 
