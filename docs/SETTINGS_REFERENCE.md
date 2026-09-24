@@ -238,7 +238,9 @@ Like the photo analysis, these settings belong to the analysis, not to a recordi
 are stored on the phone (`video_analysis_*`) and echoed into the `settings` of every
 `video_run_start` record. A session's results always come from one set of settings: after
 a change the screen offers "Analyze again with these settings", which replaces the earlier
-results after asking.
+results after asking. Since round 229 the session summary's Setup tab lists them (Model &
+detection, Visit tracking), read back from the last run's records; the pause temperature is
+logged as `thermal_limit_c`.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|

@@ -37,11 +37,13 @@ import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
 import '../logging/session_log_index.dart';
 import '../logging/device_storage.dart';
+import '../logging/track_source.dart';
 import '../logging/visit_stats.dart';
 import '../widgets/mini_bar_chart.dart';
 import '../widgets/setting_help.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
+import '../postprocess/video_detector.dart' show VideoDetector;
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
 import 'identification_screen.dart';
@@ -133,6 +135,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _endedNormally = false;
   int? _uniqueTracks;
 
+  // Imported videos (round 229): the "Run AI on videos" settings, i.e. the
+  // first `video_run_start` record of video_detections.jsonl. Null when the
+  // videos were never analyzed.
+  Map<String, dynamic>? _videoRun;
+
   // Battery state read cheaply from the start/end records: the battery percentage
   // at each (a rough independent check on the energy estimate) and whether the
   // phone was plugged in (which would invalidate the estimate).
@@ -143,6 +150,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _graphsRequested = false;
   bool _graphsLoading = false;
   final Map<int, (int first, int last)> _spans = {};
+
+  /// Where [_spans] came from and, for visits found afterwards in the
+  /// session's videos, their `post_track_start` record (round 229).
+  TrackSource _trackSource = TrackSource.live;
+  Map<String, dynamic>? _postTrackStart;
 
   /// Round 163 (perf review E5): ONE streaming parse of session.jsonl —
   /// built off the UI isolate by [SessionLogIndex.build] — serves graphs,
@@ -224,7 +236,31 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _init();
     _loadStorageInfo();
     _loadPostHoc();
+    _loadVideoRun();
     _loadIdentification();
+  }
+
+  /// Reads the video analysis settings from the head of
+  /// video_detections.jsonl (round 229). Its first record is enough: a
+  /// continued run keeps the same box settings, and starting over rewrites
+  /// the file.
+  Future<void> _loadVideoRun() async {
+    final f = File(
+      '${widget.logFile.parent.path}/${VideoDetector.outputFileName}',
+    );
+    if (!f.existsSync()) return;
+    try {
+      final head = await f
+          .openRead(0, 8192)
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .join();
+      final rec = _tryDecode(head.split('\n').first);
+      if (rec?['type'] == 'video_run_start' && mounted) {
+        setState(() => _videoRun = rec);
+      }
+    } catch (e) {
+      logSwallowed('summary_video_run_load', e);
+    }
   }
 
   /// Reads the compact per-visit list of the newest `summary_<pack>.json`
@@ -490,6 +526,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     try {
       final index = await _logIndex;
       _spans.addAll(index.trackSpans);
+      _trackSource = index.trackSource;
+      _postTrackStart = index.postTrackStart;
       _temps.addAll(index.temps);
       _headroom.addAll(index.headroom);
       _fps.addAll(index.fps);
@@ -808,7 +846,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_startMs == null || _endMs == null || _endMs! < _startMs!) {
       return 'unknown (no end record — crash/forced stop)';
     }
-    final s = ((_endMs! - _startMs!) / 1000).round();
+    return _hmsLabel(_endMs! - _startMs!);
+  }
+
+  static String _hmsLabel(int ms) {
+    final s = (ms / 1000).round();
     final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
     return h > 0 ? '${h}h ${m}m ${sec}s' : '${m}m ${sec}s';
   }
@@ -861,6 +903,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool get _noAiSession =>
       _motionOnlySession || _timeLapseSession || _importedVideoSession;
 
+  /// The visits were found afterwards in the session's videos ("Find
+  /// visits", round 229) rather than tracked live.
+  bool get _visitsAfterwards => _trackSource == TrackSource.afterwards;
+
+  /// A value of the `post_track_start` record (visits found afterwards).
+  Object? _post(String key) => _postTrackStart?[key];
+
+  /// The tracker settings block of visits found afterwards.
+  Map? get _postTracker => _post('tracker') as Map?;
+
   /// True only for sessions recorded with the short-lived round-148 build,
   /// where diagnostic logging was opt-in and off by default: those logs have
   /// no temperature/FPS/power records by design, so the Extra graphs section
@@ -873,6 +925,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// The tracker (ByteTrack) tuning block, from the `config` block or the
   /// top-level `tracker_params` (older sessions).
   Map? get _trackerParams {
+    if (_visitsAfterwards) return _postTracker;
     final cfg = _startRec?['config'];
     if (cfg is Map && cfg['trackerParams'] is Map) {
       return cfg['trackerParams'] as Map;
@@ -884,6 +937,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// The C-BIoU tuning block (round 105), only present when that algorithm
   /// was selectable when the session was recorded.
   Map? get _cbiouParams {
+    if (_visitsAfterwards) return _postTracker;
     final cfg = _startRec?['config'];
     return (cfg is Map && cfg['cbiouParams'] is Map)
         ? cfg['cbiouParams'] as Map
@@ -894,7 +948,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// 'bytetrack' or 'cbiou'. Sessions recorded before round 105 carry no key
   /// — they were all ByteTrack.
   String get _trackerAlgorithm =>
-      (_setting('trackerAlgorithm') ??
+      ((_visitsAfterwards ? _postTracker : null)?['algorithm'] ??
+              _setting('trackerAlgorithm') ??
               (_startRec?['tracker_params'] is Map
                   ? (_startRec!['tracker_params'] as Map)['algorithm']
                   : null) ??
@@ -991,7 +1046,43 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // --- Model & detection ---
     rows.add(_subhead('Model & detection'));
-    if (noAi) {
+    if (_importedVideoSession) {
+      // Round 229: what "Run AI on videos" used (video_detections.jsonl);
+      // labels match that screen's controls.
+      final run = _videoRun;
+      final vs = run?['settings'];
+      if (run == null || vs is! Map) {
+        addNote(
+          'Not analyzed yet: "Run AI on videos" on the home screen finds '
+          'the insects in these videos.',
+        );
+      } else {
+        addNote('Chosen on the "Run AI on videos" screen.');
+        add('Model', run['model_name'] ?? vs['model']);
+        add('GPU requested', run['use_gpu']);
+        add('Confidence threshold', vs['confidence']);
+        add('IoU threshold', vs['iou']);
+        add('Frames analyzed per second', vs['analysis_fps']);
+        final roi = vs['roi'];
+        add(
+          'Area to analyze',
+          roi is List && roi.length == 3 && roi[2] is num
+              ? 'a square, ${((roi[2] as num) * 100).round()} % of the '
+                    'picture width'
+              : 'whole picture',
+        );
+        add(
+          'Larger pictures shrunk to',
+          vs['max_side_px'],
+          suffix: ' px per side',
+        );
+        add(
+          'Pause above battery temperature',
+          run['thermal_limit_c'],
+          suffix: ' °C',
+        );
+      }
+    } else if (noAi) {
       addNote(
         'Not applicable: the detector never ran in this session '
         '($modeName mode).',
@@ -1100,11 +1191,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     // --- Photos & capture ---
-    rows.add(_subhead('Photos & capture'));
+    rows.add(_subhead(_importedVideoSession ? 'Videos' : 'Photos & capture'));
     add(
       'Output folder',
       _setting('folderName') ?? widget.logFile.parent.path.split('/').last,
     );
+    // Imported videos (round 229): the import's totals from the start record.
+    final video = _startRec?['video'];
+    if (video is Map) {
+      add('Clips', video['clips']);
+      final bytes = video['total_bytes'];
+      add('Video files', bytes is num ? formatBytes(bytes.toInt()) : null);
+    }
     // The session's operating mode (round 97 enum; older sessions carry the
     // motion-only bool shown in Heat management instead — add() skips null).
     add('Capture trigger', _setting('captureTrigger'));
@@ -1282,7 +1380,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     // --- Session & sampling ---
-    rows.add(_subhead('Session & sampling'));
+    // (Nothing to list for imported videos: no camera session ran.)
+    if (!_importedVideoSession) rows.add(_subhead('Session & sampling'));
     final scheduleEnabled = _setting('scheduleEnabled');
     add(
       'Max session length',
@@ -1355,54 +1454,72 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // ran is shown (its name in the sub-header), so the card never lists knobs
     // that had no effect.
     final isCbiou = _trackerAlgorithm == 'cbiou';
+    // Round 229: imported videos show the settings of "Find visits"
+    // (post_tracks.jsonl) once it has run.
+    final afterwards = _visitsAfterwards;
+    final trackNa = noAi && !afterwards;
     rows.add(
-      _subhead('Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})'),
+      _subhead(
+        _importedVideoSession && !afterwards
+            ? 'Visit tracking'
+            : 'Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
+      ),
     );
-    if (noAi) {
+    if (_importedVideoSession) {
+      addNote(
+        afterwards
+            ? 'Visits found afterwards with "Find visits" on the "Run AI on '
+                  'videos" screen.'
+            : 'Not run yet: "Find visits" on the "Run AI on videos" screen '
+                  'follows each insect from frame to frame.',
+      );
+    } else if (noAi) {
       addNote(
         'Not applicable: tracking requires the detector ($modeName mode).',
       );
     }
     add(
       'Occlusion tolerance',
-      _setting('occlusionSeconds'),
+      afterwards ? _post('occlusion_seconds') : _setting('occlusionSeconds'),
       suffix: ' s',
-      na: noAi,
+      na: trackNa,
     );
     // Min visit length: prefer the seconds the user set (newer sessions);
     // fall back to the raw frame count logged by older sessions.
     final tp = _trackerParams;
-    final minHitsSeconds = _setting('minHitsSeconds');
+    final minHitsSeconds = afterwards
+        ? _post('min_hits_seconds')
+        : _setting('minHitsSeconds');
     if (minHitsSeconds != null) {
-      add('Minimum visit length', minHitsSeconds, suffix: ' s', na: noAi);
+      add('Minimum visit length', minHitsSeconds, suffix: ' s', na: trackNa);
     } else if (tp != null) {
       add(
         'Minimum visit length',
         tp['minHitsToConfirm'],
         suffix: ' frames',
-        na: noAi,
+        na: trackNa,
       );
     }
     if (isCbiou) {
       final cbp = _cbiouParams;
       if (cbp != null) {
-        add('Search margin — pass 1', cbp['bufferScale1'], na: noAi);
-        add('Search margin — pass 2', cbp['bufferScale2'], na: noAi);
-        add('High-score threshold', cbp['highThresh'], na: noAi);
+        add('Search margin — pass 1', cbp['bufferScale1'], na: trackNa);
+        add('Search margin — pass 2', cbp['bufferScale2'], na: trackNa);
+        add('High-score threshold', cbp['highThresh'], na: trackNa);
       }
     } else if (tp != null) {
-      add('Match overlap (IoU)', tp['matchThresh'], na: noAi);
-      add('Low-score association', tp['lowMatchThresh'], na: noAi);
-      add('Velocity smoothing', tp['velocitySmoothing'], na: noAi);
+      add('Match overlap (IoU)', tp['matchThresh'], na: trackNa);
+      add('Low-score association', tp['lowMatchThresh'], na: trackNa);
+      add('Velocity smoothing', tp['velocitySmoothing'], na: trackNa);
       // The frame-count buffer actually used by the tracker (derived from
       // the seconds above at the session's frame rate).
       add(
         'Occlusion buffer (derived)',
         tp['trackBuffer'],
         suffix: ' frames',
-        na: noAi,
+        na: trackNa,
       );
-      add('High-score threshold', tp['highThresh'], na: noAi);
+      add('High-score threshold', tp['highThresh'], na: trackNa);
     }
     // Only worth a row when it was on (it changes what the log contains).
     if (_setting('logRawDetections') == true) {
@@ -1518,9 +1635,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           case final SessionLocation loc)
         _stat('Location', '${loc.label} (${loc.source})'),
       _stat('Session duration', _durationLabel),
+      // Imported videos (round 229): the clips' total length. The session
+      // runs from the first clip's start to the last one's end, gaps
+      // included, and those gaps were not filmed.
+      if ((_startRec?['video'] as Map?)?['total_duration_ms']
+          case final num filmedMs)
+        _stat('Filmed time (all clips)', _hmsLabel(filmedMs.toInt())),
       _stat(
         'Model',
-        _noAiSession
+        _importedVideoSession
+            ? '${_videoRun?['model_name'] ?? 'Not analyzed yet'}'
+            : _noAiSession
             ? 'Not applicable (no AI detector used)'
             : _model ?? 'unknown',
       ),
@@ -1782,7 +1907,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           : _timeLapseSession
           ? 'n/a (time-lapse — detector off)'
           : _importedVideoSession
-          ? 'n/a (imported videos: not counted yet)'
+          ? (_visitsAfterwards
+                ? '${_spans.length} (found afterwards in the videos)'
+                : _graphsLoading
+                ? '…'
+                : 'none yet ("Find visits" on "Run AI on videos")')
           : _uniqueTracks?.toString() ?? 'unknown',
     ),
     const SizedBox(height: 8),
@@ -1796,6 +1925,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       'within the ROI; overlapping bars were on it at the same time.',
       style: TextStyle(color: Colors.white70, fontSize: 12),
     ),
+    if (_visitsAfterwards) ...[
+      const SizedBox(height: 4),
+      Text(
+        'Found afterwards in the videos with "Find visits" (occlusion '
+        'tolerance ${_numStr(_post('occlusion_seconds'))} s, minimum visit '
+        'length ${_numStr(_post('min_hits_seconds'))} s). Time between '
+        'clips was not filmed.',
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+    ],
     const SizedBox(height: 12),
     _timeline(),
     if (_spans.isNotEmpty) ..._visitCharts(),
@@ -2508,10 +2647,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ? 'Time-lapse session — the AI detector was off, so no visits '
                     'or tracks were recorded. Photos were taken in scheduled '
                     'bursts; see the Photos tab.'
+              : _visitsAfterwards
+              ? 'No visits found in the videos.'
               : _importedVideoSession
               ? 'Imported videos: no visits yet. "Run AI on videos" on the '
-                    'home screen finds the insects; counting visits from '
-                    'its results comes in a later app update.'
+                    'home screen finds the insects, then "Find visits" there '
+                    'follows each one from frame to frame.'
               : 'No visits recorded.',
           textAlign: TextAlign.center,
         ),

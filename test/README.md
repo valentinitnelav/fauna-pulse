@@ -14,7 +14,8 @@ both trackers, the session logger (including the write-failure path), capture
 scheduling and crop geometry, frame processing, config round-trips/migrations,
 schedule and time-lapse plans, post-hoc analysis + SAHI, video import and
 start-time guesses, offline tracking of videos and its exports
-(`video_tracker_test.dart`), error reporting, and
+(`video_tracker_test.dart`), the one-visits-file rule for summary, dashboard
+and identification (`track_source_test.dart`), error reporting, and
 widget regressions (e.g. the bottom-inset pattern in
 `summary_bottom_inset_test.dart`, which also documents the widget-test async
 traps). One more trap (round 227, `video_screens_test.dart`): a widget test

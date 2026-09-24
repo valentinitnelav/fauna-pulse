@@ -1,7 +1,8 @@
 // FaunaPulse — cross-session dashboard statistics (round 186).
 //
 // The home screen's Dashboard aggregates every AI-mode session (the mode
-// where the tracker ran, so track ids = visits exist) into totals and
+// where the tracker ran, so track ids = visits exist; since round 229 also
+// imported videos whose visits were found afterwards) into totals and
 // activity histograms: how many insect visits over a period, at which hours
 // of the day, on which days. Motion and time-lapse sessions carry no track
 // ids, so they are counted separately and shown only as a "not included"
@@ -15,6 +16,10 @@
 // once per session; the two events that DO rewrite the log (a crash-truncated
 // file growing on a resumed... it cannot — logs are per-session — and the
 // r182 rename rewrite) change length/mtime and simply trigger one recompute.
+//
+// Round 229: imported-video sessions count too once "Find visits" has run.
+// Their visits come from post_tracks.jsonl (track_source.dart), whose length
+// + mtime join the cache key, so re-finding visits recomputes.
 
 import 'dart:convert';
 import 'dart:io';
@@ -22,6 +27,7 @@ import 'dart:math';
 
 import 'app_error_hooks.dart';
 import 'session_log_index.dart';
+import 'track_source.dart';
 
 /// One session's contribution to the dashboard, small enough to cache as a
 /// few KB of JSON.
@@ -34,26 +40,33 @@ class SessionDashboardStats {
   /// track activity, else [startMs] (zero-length crashed session).
   final int endMs;
 
-  /// True when the session ran the AI detector (tracker active). Motion and
-  /// time-lapse sessions are false: no track ids exist there.
+  /// True when the session has visits: the AI detector ran live (tracker
+  /// active), or visits were found afterwards in its videos (round 229).
+  /// Motion and time-lapse sessions are false: no track ids exist there.
   final bool aiMode;
 
   /// Per confirmed track id: (first seen ms, last seen ms).
   final List<(int, int)> visits;
+
+  /// Filmed time of visits found afterwards (the clips' total length; the
+  /// gaps between clips were not watched). Null for live sessions.
+  final int? observedMs;
 
   const SessionDashboardStats({
     required this.startMs,
     required this.endMs,
     required this.aiMode,
     required this.visits,
+    this.observedMs,
   });
 
-  int get recordedMs => max(0, endMs - startMs);
+  int get recordedMs => observedMs ?? max(0, endMs - startMs);
 
   Map<String, dynamic> toJson() => {
     'start_ms': startMs,
     'end_ms': endMs,
     'ai_mode': aiMode,
+    'observed_ms': ?observedMs,
     'visits': [
       for (final (s, e) in visits) [s, e],
     ],
@@ -68,6 +81,7 @@ class SessionDashboardStats {
           for (final v in (j['visits'] as List))
             (((v as List)[0] as num).toInt(), (v[1] as num).toInt()),
         ],
+        observedMs: (j['observed_ms'] as num?)?.toInt(),
       );
 }
 
@@ -95,6 +109,20 @@ class DashboardStatsCache {
       );
     }
 
+    // Visits found afterwards (round 229); 0/0 when there are none, which is
+    // also what an older cache without these keys reads as.
+    int tracksLen = 0, tracksMtime = 0;
+    final tracks = File('${sessionDir.path}/$postTracksFileName');
+    if (tracks.existsSync()) {
+      try {
+        final stat = tracks.statSync();
+        tracksLen = stat.size;
+        tracksMtime = stat.modified.millisecondsSinceEpoch;
+      } catch (e) {
+        logSwallowed('dashboard_tracks_stat', e);
+      }
+    }
+
     final cacheFile = File('${sessionDir.path}/$fileName');
     try {
       if (cacheFile.existsSync()) {
@@ -102,7 +130,9 @@ class DashboardStatsCache {
             jsonDecode(await cacheFile.readAsString()) as Map<String, dynamic>;
         if (j['version'] == _version &&
             (j['log_len'] as num?)?.toInt() == logLen &&
-            (j['log_mtime_ms'] as num?)?.toInt() == logMtime) {
+            (j['log_mtime_ms'] as num?)?.toInt() == logMtime &&
+            ((j['tracks_len'] as num?)?.toInt() ?? 0) == tracksLen &&
+            ((j['tracks_mtime_ms'] as num?)?.toInt() ?? 0) == tracksMtime) {
           return SessionDashboardStats.fromJson(j);
         }
       }
@@ -117,6 +147,8 @@ class DashboardStatsCache {
           'version': _version,
           'log_len': logLen,
           'log_mtime_ms': logMtime,
+          if (tracksLen > 0) 'tracks_len': tracksLen,
+          if (tracksLen > 0) 'tracks_mtime_ms': tracksMtime,
           ...stats.toJson(),
         }),
         flush: true,
@@ -141,11 +173,15 @@ class DashboardStatsCache {
       final lastActivity = visits.isEmpty
           ? startMs
           : visits.map((v) => v.$2).reduce(max);
+      final afterwards = index.trackSource == TrackSource.afterwards;
       return SessionDashboardStats(
         startMs: startMs,
         endMs: max(await _readEndMs(log) ?? lastActivity, startMs),
-        aiMode: _isAiMode(config),
+        aiMode: afterwards || liveTrackerRan(config),
         visits: visits,
+        observedMs: afterwards
+            ? (index.postTrackStart?['observed_ms'] as num?)?.toInt()
+            : null,
       );
     } catch (e) {
       logSwallowed('dashboard_stats_compute', e);
@@ -156,18 +192,6 @@ class DashboardStatsCache {
         visits: [],
       );
     }
-  }
-
-  /// Was the tracker running? `captureTrigger` exists since round 97
-  /// ('detector' | 'motion' | 'timelapse'); before that the r95
-  /// `motionOnlyCapture` bool marks the only no-AI mode; anything older is
-  /// always an AI session. A session with no readable config is not
-  /// countable, so it reports false.
-  static bool _isAiMode(dynamic config) {
-    if (config is! Map) return false;
-    final trigger = config['captureTrigger'];
-    if (trigger is String) return trigger == 'detector';
-    return config['motionOnlyCapture'] != true;
   }
 
   /// The `end_of_session` stamp from the log tail (same cheap trick as the
@@ -213,8 +237,9 @@ typedef DayBucket = ({DateTime day, int count});
 class DashboardAggregate {
   final int aiSessions;
 
-  /// Motion/time-lapse sessions in the period — shown as a "not counted"
-  /// note, never mixed into the visit numbers.
+  /// Sessions without visits in the period (motion/time-lapse, imported
+  /// videos not tracked yet) — shown as a "not counted" note, never mixed
+  /// into the visit numbers.
   final int otherSessions;
   final int totalVisits;
   final int totalRecordedMs;

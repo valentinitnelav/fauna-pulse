@@ -171,6 +171,43 @@ void main() {
     expect(EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
   });
 
+  // Round 229: visits found afterwards in imported videos. Scoring takes the
+  // visit times from post_tracks.jsonl only, never merged with session.jsonl.
+  test('scoring reads visits found afterwards from post_tracks.jsonl', () async {
+    final session = makeSession('v1');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    expect((await job.run(session, settings: settings(), packFile: packFile)).error, isNull);
+
+    final log = File('${session.path}/session.jsonl');
+    log.writeAsStringSync(
+      _log.replaceFirst('"config":{}', '"source":"imported_video"'),
+    );
+    File('${session.path}/post_tracks.jsonl').writeAsStringSync(
+      '{"type":"post_track_start","time_ms":1000}\n'
+      '{"type":"detections","time_ms":5000,"tracks":[{"track_id":1}]}\n'
+      '{"type":"detections","time_ms":6000,"tracks":[{"track_id":1},{"track_id":2}]}\n'
+      '{"type":"detections","time_ms":7000,"tracks":[{"track_id":2}]}\n',
+    );
+    IdentificationJob.scoreSessionSync(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: packFile,
+      settings: settings().toJson(),
+    );
+    final tracks = (jsonDecode(IdentificationPaths(session).tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+    final t1 = tracks.firstWhere((t) => t['track_id'] == 1);
+    expect(t1['start_ms'], 5000); // 2000 if session.jsonl had been mixed in
+    expect(t1['end_ms'], 6000);
+    expect(t1['detections'], 2);
+    final t2 = tracks.firstWhere((t) => t['track_id'] == 2);
+    expect((t2['start_ms'], t2['end_ms']), (6000, 7000));
+  });
+
   test('cancel before the first photo keeps files consistent and skips scoring', () async {
     final session = makeSession('s2');
     final job = IdentificationJob(

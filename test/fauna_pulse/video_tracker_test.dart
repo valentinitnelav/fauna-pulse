@@ -231,6 +231,8 @@ void main() {
       expect(result.visits, 3);
       expect(_visits(dir).map((r) => '${r[0]} ${r[1]} ${r[3]}'), ['1 a.mp4 0.000', '2 b.mp4 0.000', '3 c.mp4 0.000']);
       expect(_records(dir).first['clips_continuing_previous'], isEmpty);
+      // Filmed time counts the overlap of a and b once: 7 s + 5 s.
+      expect(_records(dir).first['observed_ms'], 12000);
     });
 
     test('2 analysed frames per second still follow one insect', () async {

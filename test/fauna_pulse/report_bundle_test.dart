@@ -178,6 +178,32 @@ void main() {
       expect(logcat, contains('Camera fps cap'));
       expect(logcat, isNot(contains('updateAcquireFence')));
     });
+
+    test('video sessions carry run records, not per-frame boxes (r229)', () async {
+      File('${tmp.path}/video_detections.jsonl').writeAsStringSync([
+        '{"type":"video_run_start","time_ms":1,"thermal_limit_c":40}',
+        '{"type":"raw_detections","frame_ms":2,"boxes":[]}',
+        '{"type":"video_clip_done","clip":"a.mp4"}',
+      ].join('\n'));
+      File('${tmp.path}/post_tracks.jsonl').writeAsStringSync([
+        '{"type":"post_track_start","time_ms":3}',
+        '{"type":"detections","time_ms":4,"tracks":[]}',
+        '{"type":"track_event","time_ms":4,"event":"confirmed"}',
+        '{"type":"post_track_end","time_ms":5,"visits":0}',
+      ].join('\n'));
+
+      final extras = await collectSessionExtras(tmp);
+      expect(extras.map((e) => e.name), [
+        'video_detections_runs.jsonl',
+        'post_tracks_runs.jsonl',
+      ]);
+      expect(extras[0].content, contains('video_run_start'));
+      expect(extras[0].content, contains('video_clip_done'));
+      expect(extras[0].content, isNot(contains('raw_detections')));
+      expect(extras[1].content, contains('post_track_end'));
+      expect(extras[1].content, isNot(contains('"detections"')));
+      expect(extras[1].content, isNot(contains('track_event')));
+    });
   });
 
   group('writeReportZip', () {

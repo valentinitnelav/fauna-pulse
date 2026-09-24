@@ -38,6 +38,7 @@ import 'package:archive/archive.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/session_logger.dart' show isoWithOffset;
+import '../logging/track_source.dart' show postTracksFileName;
 import '../models/roi.dart' show boxInRoi;
 import '../models/session_config.dart';
 import '../models/track.dart';
@@ -88,6 +89,7 @@ class PostTrackSummary {
 class _Clip {
   final String name;
   int startMs = 0;
+  int durationMs = 0;
   int width = 0;
   int height = 0;
   bool done = false;
@@ -98,7 +100,7 @@ class _Clip {
 }
 
 class VideoTracker {
-  static const outputFileName = 'post_tracks.jsonl';
+  static const outputFileName = postTracksFileName;
 
   /// Tracks every finished clip of [sessionDir] with [config]'s tracker
   /// settings and writes post_tracks.jsonl, visits.csv and mot/. Throws a
@@ -134,6 +136,7 @@ class VideoTracker {
         case 'video_clip_start' when name != null:
           final c = clips.putIfAbsent(name, () => _Clip(name));
           c.startMs = (rec['start_epoch_ms'] as num?)?.toInt() ?? c.startMs;
+          c.durationMs = (rec['duration_ms'] as num?)?.toInt() ?? c.durationMs;
           c.width = (rec['width'] as num?)?.toInt() ?? c.width;
           c.height = (rec['height'] as num?)?.toInt() ?? c.height;
         case 'video_clip_done' when name != null:
@@ -226,6 +229,7 @@ class VideoTracker {
       'min_hits_seconds': config.minHitsSeconds,
       'tracker': config.buildTracker(fps0).effectiveParamsJson(),
       'clips': [for (final c in tracked) c.name],
+      'observed_ms': _observedMs(tracked),
       'clips_continuing_previous': continued,
       'clips_left_out': [
         for (final c in clips.values)
@@ -338,6 +342,23 @@ class VideoTracker {
       frames: frames,
       elapsed: DateTime.now().difference(started),
     );
+  }
+
+  /// Time the tracked clips cover, overlaps counted once: the dashboard's
+  /// "recorded" time for visits per hour (gaps between clips were not
+  /// filmed). A clip without a known length counts up to its last frame.
+  static int _observedMs(List<_Clip> clips) {
+    final spans = <(int, int)>[
+      for (final c in clips)
+        (c.startMs, max(c.startMs + c.durationMs, c.frames.isEmpty ? c.startMs : c.frames.last.timestampMs)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    var total = 0, end = -1 << 62;
+    for (final (s, e) in spans) {
+      if (e <= end) continue;
+      total += e - max(s, end);
+      end = e;
+    }
+    return total;
   }
 
   /// Frame rate from the typical (median) gap between frames, or null for

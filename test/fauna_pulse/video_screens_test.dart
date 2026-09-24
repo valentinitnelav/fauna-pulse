@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
+import 'summary_tabs_test.dart' show expectSummaryRowValue;
 
 Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   for (var i = 0; i < 250; i++) {
@@ -320,6 +321,91 @@ void main() {
       ),
     );
     await _pumpUntil(tester, find.text('Imported videos (AI runs afterwards)'));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  // Round 229: once "Find visits" has run, the summary reads the visits from
+  // post_tracks.jsonl and the Setup tab shows what the video screen used.
+  testWidgets('summary of an imported session shows visits found afterwards', (tester) async {
+    simulateBottomSystemBar(tester); // 360 px wide
+    SharedPreferences.setMockInitialValues({});
+    final tmp = _tempDir('video_visits_summary');
+    final cache = Directory('${tmp.path}/cache')..createSync();
+    final sessions = Directory('${tmp.path}/sessions')..createSync();
+    const name = 'VID_20260924_155954.mp4';
+    final f = File('${cache.path}/$name')..writeAsStringSync('video');
+    final dir = (await tester.runAsync(
+      () => importVideos(
+        sessionsDir: sessions,
+        sessionName: 'Meadow',
+        clips: [
+          ImportClip(
+            path: f.path,
+            name: name,
+            sizeBytes: 5,
+            info: const VideoInfo(durationMs: 30000, width: 1920, height: 1080, mime: 'video/avc'),
+            guess: guessClipStart(fileName: name, durationMs: 30000),
+          ),
+        ],
+      ),
+    ))!;
+    final log = File('${dir.path}/session.jsonl');
+    final t0 = (jsonDecode(log.readAsLinesSync().first) as Map)['time_ms'] as int;
+    String rec(String type, Map<String, dynamic> fields) => jsonEncode({'type': type, ...fields});
+    File('${dir.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      '${rec('video_run_start', {
+        'settings': {'model': 'bees.tflite', 'confidence': 0.25, 'iou': 0.45, 'analysis_fps': 15, 'roi': [0.5, 0.5, 0.5], 'max_side_px': 1280},
+        'model_name': 'Bee model',
+        'use_gpu': false,
+        'thermal_limit_c': 40,
+      })}\n',
+    );
+    String dets(int ms, List<int> ids) => rec('detections', {
+      'time_ms': t0 + ms,
+      'frame_ms': t0 + ms,
+      'tracks': [
+        for (final id in ids) {'track_id': id, 'class_name': 'bee', 'confidence': 0.9},
+      ],
+    });
+    File('${dir.path}/post_tracks.jsonl').writeAsStringSync(
+      '${[
+        rec('post_track_start', {
+          'time_ms': t0,
+          'occlusion_seconds': 3.0,
+          'min_hits_seconds': 0.2,
+          'observed_ms': 30000,
+          'tracker': {'algorithm': 'bytetrack', 'trackBuffer': 45},
+        }),
+        dets(2000, [1]),
+        dets(4000, [1, 2]),
+        dets(9000, [2]),
+        rec('post_track_end', {'time_ms': t0 + 30000, 'visits': 2}),
+      ].join('\n')}\n',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
+    );
+    await _pumpUntil(tester, find.text('2 (found afterwards in the videos)'));
+    expect(find.textContaining('occlusion tolerance 3 s, minimum visit length 0.2 s'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Setup'));
+    await tester.pumpAndSettle();
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.textContaining('All session settings'), 200, scrollable: scrollable);
+    await tester.tap(find.textContaining('All session settings'));
+    await tester.pump();
+    await tester.scrollUntilVisible(find.text('Chosen on the "Run AI on videos" screen.'), 200, scrollable: scrollable);
+    await expectSummaryRowValue(tester, scrollable, label: 'Confidence threshold', value: '0.25');
+    await expectSummaryRowValue(tester, scrollable, label: 'Area to analyze', value: 'a square, 50 % of the picture width');
+    await expectSummaryRowValue(tester, scrollable, label: 'Pause above battery temperature', value: '40 °C');
+    await expectSummaryRowValue(tester, scrollable, label: 'Clips', value: '1');
+    await tester.scrollUntilVisible(find.textContaining('Visits found afterwards with "Find visits"'), 200, scrollable: scrollable);
+    await expectSummaryRowValue(tester, scrollable, label: 'Occlusion tolerance', value: '3 s');
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());

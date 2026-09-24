@@ -8099,3 +8099,31 @@ Plan: `~/.claude/plans/pasted-content-id-a09e-what-about-pure-yeti.md`, Phase 1b
 - **Tests:** new `video_tracker_test.dart` (16: one visit with every file and record checked, two visits after a long gap, a short gap kept as one visit with both trackers, back-to-back clips carry, overlapping and late clips reset with unique ids, 2 fps, unfinished clips left out, nothing to track, re-run replaces results and stale MOT files, failed run keeps the old file, `readSummary` on unfinished files, zip contents, visits.csv / MOT golden strings, MOT file names). Also `buildTracker` (session_config_test), `onFrame` and the video fields of the parser (tracker_replay_test), and in `video_screens_test.dart` the Visits button as last row at 360 px, a real "Find visits" tap to "Share results" above the inset, and the two new prefs in the round-trip.
 - **Verification:** `flutter analyze` (lib, test, integration_test, plugin lib) clean; `flutter test test/fauna_pulse` 615 pass (1 skipped). In the first full run the 100k-line `session_log_index_test` timed out under load (no timing assert; 12 s alone), and it passed in the rerun. Plugin tests 173 pass; `flutter build apk --debug` builds, installed on the Xiaomi 2b2dc560 (`install -r`, data kept). Not yet tried on the phone with real videos.
 - **Not yet:** summary, dashboard and identification reading these visits (`trackSourceOf`, 1e), summary rows for the video settings (1e), PC evaluation kit (1d).
+
+## Round 229 (2026-09-24): Video plan Phase 1e, summary, dashboard and identification read visits found afterwards
+
+- **What it does:** after "Find visits", an imported video session shows its visits everywhere a live session does. The summary's Graphs tab gives the count ("N (found afterwards in the videos)"), shows the timeline with a note on the tracking settings, and says that time between clips was not filmed. The dashboard counts the session and computes visits per hour over the filmed time. Identification takes visit times and detection counts from the same file. The Setup tab lists what "Run AI on videos" used (model, GPU, confidence, IoU, frames per second, area, max side, pause temperature) and the visit tracking settings, with a "Videos" block (clips, file size) instead of camera rows. Overview adds "Filmed time (all clips)".
+- **One visits file, never merged:** new `logging/track_source.dart`. `trackSourceOf(dir)` returns afterwards when `post_tracks.jsonl` exists and the live tracker did not run (`liveTrackerRan(config)`, moved from the dashboard's `_isAiMode`: imported, motion and time-lapse sessions). Otherwise it returns live. A live AI session keeps its own visits even when a post file exists; the "Live | Afterwards" toggle belongs to plan item 3b. `tracksFileOf(dir)` names the file.
+- **Readers:** `SessionLogIndex.build` reads the track record types (`detection`, `detections`, `capture`) from that file only and everything else from `session.jsonl`. It also keeps `trackSource` and the `post_track_start` record. `scoreSessionSync` still takes the start record from `session.jsonl` and the spans from the track file. The `DashboardStatsCache` key now includes the post file's length and modification time, so running "Find visits" again recomputes; old caches stay valid. `SessionDashboardStats.observedMs` (cached as `observed_ms`) replaces start to end in `recordedMs` when set.
+- **New log fields:** `post_track_start.observed_ms` (union of clip spans, overlaps counted once) and `video_run_start.thermal_limit_c`.
+- **Problem reports:** the session extras add `video_detections_runs.jsonl` and `post_tracks_runs.jsonl`, head and tail 40 of the run and clip records, without per-frame boxes or track events.
+- **Dashboard wording:** the notes on uncounted sessions and the empty state say imported videos count once "Find visits" has run.
+- **Docs:** DATA_GUIDE §9 (two new fields, new part "Where the app reads these visits"); SETTINGS_REFERENCE video intro (summary rows, `thermal_limit_c`); overview row; test/README.
+- **Tests:** new `track_source_test.dart` (7 tests):
+  - trackSourceOf with no post file, imported, live AI, time-lapse or motion, the pre-r97 flag, and a missing or cut-off log;
+  - SessionLogIndex taking visits from the post file only (a stray `session.jsonl` detection ignored, start record and `post_track_start` kept);
+  - a live AI session ignoring the post file.
+
+  Dashboard (4 tests): an imported session counts after "Find visits" and uses filmed time in the aggregate; a re-run invalidates the cache; live AI ignores the post file; `observed_ms` JSON round trip.
+
+  Other additions:
+  - identification: scoring spans from `post_tracks.jsonl` (start 5000, not the mixed 2000);
+  - summary widget test at 360 px: the Visits count, timeline note and Setup rows, no overflow;
+  - `observed_ms` for overlapping clips in video_tracker_test;
+  - report bundle run-records test.
+- **Verification:**
+  - `flutter analyze` (lib, test, integration_test, plugin lib) is clean;
+  - `flutter test test/fauna_pulse`: 629 pass (1 skipped);
+  - plugin tests: 173 pass;
+  - `flutter build apk --debug` builds and is installed on the Xiaomi 2b2dc560 (`install -r`, data kept). It has not been tried on the phone with real videos yet.
+- **Not yet:** identification crops for video sessions (Phase 2 keeps frames per visit); PC evaluation kit (1d).

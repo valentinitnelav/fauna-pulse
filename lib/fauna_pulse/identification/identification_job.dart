@@ -20,6 +20,7 @@ import 'dart:typed_data';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../logging/thermal_pause.dart';
+import '../logging/track_source.dart';
 import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
 import '../postprocess/post_detector.dart' show PostDetector;
@@ -524,17 +525,22 @@ class IdentificationJob {
 
     // Track spans + ids from the session log (cheap head/tail-free parse of
     // only the record types the index keeps; done synchronously here because
-    // we are already on a worker isolate).
+    // we are already on a worker isolate). Round 229: visits found afterwards
+    // in a session's videos come from post_tracks.jsonl instead (never both);
+    // the start record always comes from session.jsonl.
     final spans = <int, (int, int)>{};
     final detCounts = <int, int>{};
     final log = File('${sessionDir.path}/session.jsonl');
+    final tracksFile = tracksFileOf(sessionDir);
     String deviceId = '';
     // Round 216: the session's photo schedule, so the results screen can say
     // "one photo every 1 s during the first 10 s of a track id" with the
     // real values instead of the defaults.
     double? photoStepS, photoDurationS;
-    if (log.existsSync()) {
-      for (final line in const LineSplitter().convert(log.readAsStringSync())) {
+    for (final file in tracksFile.path == log.path ? [log] : [log, tracksFile]) {
+      if (!file.existsSync()) continue;
+      final readTracks = file.path == tracksFile.path;
+      for (final line in const LineSplitter().convert(file.readAsStringSync())) {
         if (!line.contains('"track') && !line.contains('"start_of_session"')) continue;
         Map<String, dynamic> rec;
         try {
@@ -559,6 +565,7 @@ class IdentificationJob {
           final s = spans[id];
           spans[id] = s == null ? (t, t) : (s.$1 < t ? s.$1 : t, s.$2 > t ? s.$2 : t);
         }
+        if (!readTracks) continue;
         if (rec['type'] == 'detections') {
           final tracks = rec['tracks'];
           if (tracks is List) {

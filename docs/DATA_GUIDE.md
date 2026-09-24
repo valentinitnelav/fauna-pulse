@@ -849,8 +849,9 @@ stored time; video editors reset it to the export time.
 * `video_run_start` — one per run: `settings` (`model`, `confidence`, `iou`,
   `analysis_fps` = frames looked at per video second, `roi` = `[center_x, center_y, side]`
   as fractions of the upright picture, side as a fraction of its width, or `null` for the
-  whole picture, `max_side_px`), `model_name`, `use_gpu`, `clips_total`,
-  `clips_pending`, `started_over` (when earlier results were replaced), `app_version`.
+  whole picture, `max_side_px`), `model_name`, `use_gpu`, `thermal_limit_c` (the pause
+  temperature, round 229+), `clips_total`, `clips_pending`, `started_over` (when earlier
+  results were replaced), `app_version`.
   Results made with other `settings` are never mixed: a run with changed settings asks,
   then starts the file over.
 * `video_clip_start` — per clip: `clip`, `start_epoch_ms`, `start_time_source`,
@@ -883,7 +884,8 @@ complete, so a crash never leaves half a file in place of a good one):
 * `post_tracks.jsonl`: shaped like the live log. `post_track_start` first (`run_id`,
   `detections_run_ms` = `time_ms` of the analysis run's first `video_run_start`, the
   `detection_settings`, `occlusion_seconds`, `min_hits_seconds`, `tracker` = the effective
-  tracker parameters, `clips`, `clips_continuing_previous`, `clips_left_out`), then
+  tracker parameters, `clips`, `observed_ms` = filmed time of the tracked clips, overlaps
+  counted once (round 229+), `clips_continuing_previous`, `clips_left_out`), then
   `detections` and `track_event` records as in §3 (with `time_ms` = the frame's own time,
   plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live),
   and `post_track_end` last (`visits`, `frames`, `detections`, `clips_tracked`,
@@ -914,3 +916,15 @@ Worth knowing when comparing with a hand count:
 
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
 (to track again on a computer) and `session.jsonl` (clip start times).
+
+### Where the app reads these visits (round 229+)
+
+The session summary (visit count and timeline, Setup rows), the dashboard and
+identification read a session's visits from **one** file: `post_tracks.jsonl` when it
+exists and the session did not track live (imported videos, or a motion or time-lapse
+session), `session.jsonl` otherwise. The two are never added together. The dashboard counts
+an imported session once *Find visits* has run, and its visits per hour use `observed_ms`
+(the filmed time), not the span from the first clip's start to the last one's end, since
+the gaps between clips were not filmed. A problem report carries the run records of both
+files (`video_detections_runs.jsonl`, `post_tracks_runs.jsonl`), without the per-frame
+boxes.

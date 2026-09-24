@@ -290,6 +290,7 @@ class VideoDetector {
       'settings': config.identity,
       'model_name': config.modelName,
       'use_gpu': config.useGpu,
+      'thermal_limit_c': thermalLimitC,
       'clips_total': clips.length,
       'clips_pending': pending.length,
       if (replace) 'started_over': true,
