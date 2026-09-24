@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  On-device AI · Real-time tracking · Custom models · Works offline
+  On-device AI · Real-time tracking · Custom AI models · Works offline
 </p>
 
 <p align="center">
@@ -50,27 +50,27 @@
 
 ## Overview
 
-**FaunaPulse is an open-source smartphone app for wildlife monitoring that allows you to integrate your custom AI-based object detection and classification models directly on your smartphone (no AI in the cloud, your data stays yours).
+**FaunaPulse is an open-source smartphone app for wildlife monitoring that allows you to integrate your custom AI-based object detection and classification models directly on your smartphone (no AI in the cloud, your data stays yours).**
 
-Think of FaunaPulse as the chassis of a car where you can drop in your own engine: it provides the platform to run custom AI models, on-device, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).**
+**Think of FaunaPulse as the chassis of a car where you can drop in your own engine: it provides the platform to run custom AI models, on-device, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).**
 
-The first and primary scientific use case of FaunaPulse is estimating *visitation rates* in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
+The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
 
 FaunaPulse is intended as a passive, non-invasive imaging tool. Detection, tracking, classification and any image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so an internet connection is not required in the field and your data stays under your control and privacy needs. A draggable square **region of interest (ROI)** can be placed over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves (locally, on device) ROI-cropped JPEG images together with metadata. At the end of the recording session, it outputs a dashboard screen with info and graphs about the visitation rates and the captured images with the tracked objects for preview an check. Saved images and session metadata can later be exported on a PC for analysis in research workflows.
 
-An experimental **Identify organisms** step can run a [BioCLIP][bioclip] vision foundation model on the phone itself over the saved crops of every tracked visit (model and label pack prepared on PC, see `docs/IDENTIFICATION.md`).
+An experimental **Identify organisms** step can run a [BioCLIP][bioclip] vision foundation model on the phone itself over the saved crops of every tracked visit (model and label pack prepared on PC, see [IDENTIFICATION.md](docs/IDENTIFICATION.md)).
 BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC with our without a GPU - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). Note that the FaunaPulse detection results would have to be adapted to the specific data structure that software package ingests.
 
-For interested end-users, saved images can also be reviewed and cropped within the app. Organism crops can then be shared with or imported into identification apps such as: [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. Therefore, you can choose the identification service best suited to your needs. Note that at the time of releasing this repository, the apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. While this sharing feature is possible, FaunaPulse is designed with offline usage in mind and bulk processing (e.g. mass classification with BioCLip models on device) for scaling monitoring.
+For interested end-users, saved images can also be reviewed and cropped within the FaunaPulse app. Organism crops can then be shared with or imported into identification apps such as: [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. Therefore, you can choose the identification service best suited to your needs. Note that at the time of releasing this repository, the apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. While this sharing feature is possible, FaunaPulse is designed with offline usage in mind and bulk processing (e.g. mass classification with BioCLIP models on device) for scaling monitoring.
 
 FaunaPulse supports several **modes of operation**:
 
 1. **Real-time AI-based object detection and tracking** using a compatible AI detector;
 2. **Motion-triggered** image capture;
 3. **Time-lapse** image capture, including nocturnal mode using the phone's torch / flashlight;
-4. **Post-capture AI detection** processing of the motion or time-lapse images using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. This can help reduce the amount of "empty" images (without pollinators / target object) that are usually captured via the motion-triggered or time-lapse modes;
-5. **Post-capture AI classification**, for example using an adapted [BioCLIP 2][bioclip] image classifier.
+4. **Post-capture AI detection** processing of the motion or time-lapse images using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. This is slow but it can help reduce the amount of "empty" images (without pollinators / target object) that are usually captured via the motion-triggered or time-lapse modes;
+5. **Post-capture AI classification**, for example using an adapted [BioCLIP 2][bioclip2] image classifier.
 
 Modes 1-3 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-17:00, daily), or with over night time if the smartphone(s) are deployed over multiple days or for recording in time-lapse mode for nocturnal activity.
 
@@ -94,13 +94,14 @@ Modes 1-3 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 
 FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
-- Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own AI models.
-- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (0.3 to 1.3 GB) and a label pack prepared on a PC, runs at roughly one to several seconds per crop and classification results will vary significantly with image quality.
-- Visit counts may include missed, duplicated, split or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions.
 - Each scientific application should be validated under its intended field conditions before data collection at scale.
-- Detection accuracy and tracking performance depend on the model, smartphone, target organism and field setup, including weather conditions. Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
-- **Device temperature** can vary substantially between phone models. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly. Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the device hardware, operating system, operation conditions and handling and cannot be guaranteed for every device. Some phone models can also overheat faster while charging. **If your device becomes excessively hot or displays a thermal warning (even when using cooling options / thermal casing), stop it's usage and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
+- Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
+- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own AI models (one for detection and another one for classification).
+- Visit counts may include missed, duplicated, split (fragmented) or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
+- The quality of results depend on many factors, including AI model, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large file!) and a label pack prepared on a PC, runs at roughly one to several seconds per crop and classification results will vary significantly with image quality.
+- Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
+- **Device temperature** can vary substantially between phone models and with ambient temperature. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly (especially over 40°C). Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the device hardware, operating system, operation conditions and handling and cannot be guaranteed for every device. Some phone models can also overheat faster while charging. **If your device becomes excessively hot (e.g. over 40-45°C) or displays a thermal warning (even when using cooling options / thermal casing), stop it's usage and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
 
 </details>
 
@@ -111,7 +112,7 @@ FaunaPulse is an **early research preview (alpha)**, provided as a free, experim
 
 NOTE:
 
-> FaunaPulse is currently in early development and active field testing. To keep this research tool completely open-source during testing and avoid commercial app store registration fees and restrictions, it is not currently published on Google Play. You can install the app directly on your Android device using the released APK file by following the steps below.
+> FaunaPulse is currently in early development and testing. It will also be soon published on Google Play. Meanwhile, you can install the app directly on your Android device using the released APK file by following the steps below.
 
 1. **Install the app.** Currently there are several options - from [Installation & Testing Guide](docs/INSTALL.md):
   - 1.1. Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page; WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). See also "Track A" in [Installation & Testing Guide](docs/INSTALL.md) for a guide example with screenshots. However, this option does not come with auto-updates - see next option with Obtainium for that.
@@ -153,6 +154,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact. |
 | [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
+| [AGENTS.md](./AGENTS.md) | Code agent | A coding agent will first read this file to build context. |
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |
 | [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent | Detailed append-only development journal. |
 
@@ -163,7 +165,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse is built on Ultralytics' open-source [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app), forked from upstream commit `22b2e5d`.
+The frame for deploying an AI model in FaunaPulse is built on Ultralytics' open-source [`yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app), forked from upstream commit `22b2e5d`.
 
 The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](packages/ultralytics_yolo/) and remains subject to its own `LICENSE`.
 
@@ -192,10 +194,9 @@ Model weights are not stored in this repository. They can be too large to keep i
 
 ### Classifiers
 
-Classification models like [BioCLIP 2][bioclip] are currently under implementation for bulk classification on-device without an internet connection.
-Since FaunaPulse is designed to be used offline in the field and classify thousands of cropped images of detected and tracked organisms, having on-device classification is a key addition.
+Classification models like [BioCLIP 2][bioclip2] are currently under experimental implementation for bulk (en-masse) classification on-device without an internet connection. Quality of results may be noisy.
 
-Classifiers will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets that can be downloaded to the end-user's device. Links will be provided soon with the next release.
+Classifiers will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets or other free storage services from where they can be downloaded on the phone. Links will be provided soon with the next releases.
 
 </details>
 
@@ -221,15 +222,15 @@ While this was ok, it quickly highlighted some core challenges that motivated th
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse also began as a personal experiment in what is called **“vibe coding”**. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
+FaunaPulse also began as a personal experiment in what is called “vibe coding”. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
 
 I am a curious scientist with experience in R, Python, statistics and computer vision, but I am not a professional mobile-app developer. Most software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognize that access to paid AI tools is not equally available.
 
-I defined the scientific requirements and design decisions, tested the application repeatedly on smartphones, inspected its outputs, created and updated documentation and overall architected the resulting software. Occasionally, ChatGPT or Gemini (via web chat) and [Codex](https://openai.com/codex/) were used as additional sources of "critique".
+I defined the scientific requirements and design decisions, tested the application repeatedly on smartphones, inspected its outputs, reviewed and created documentation and code, and overall architected the resulting software. Occasionally, ChatGPT or Gemini (via web chat) and [Codex](https://openai.com/codex/) were used as additional sources of "critique".
 
 Scientific literature was located using [Google Scholar](https://scholar.google.com), [Elicit](https://elicit.com/) and [Consensus](https://consensus.app/).
 
-For transparency, the development process is documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
+For transparency, the development process is automatically documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the very detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
 
 </details>
 
@@ -310,7 +311,7 @@ fauna-pulse/
 |   └── ultralytics_yolo/    # Modified Ultralytics YOLO Flutter plugin
 ├── ...
 └── tool/
-    └── bioclip_export       # Classification with BioClip
+    └── bioclip_export       # Classification with BioCLIP
 ```
 
 The application now sits at the repository root. The older path `/yolo-flutter-app/example/` may still appear in the historical development logs.
@@ -333,6 +334,7 @@ These are links used throughout this file
 [ufz]: https://www.ufz.de/
 [idiv]: https://www.idiv.de/
 [bioclip]: https://imageomics.github.io/bioclip-ecosystem/index.html
+[bioclip2]: https://imageomics.github.io/bioclip-2/
 [sahi]: https://github.com/obss/sahi
 [mgdet]: https://github.com/microsoft/MegaDetector
 [mgdetv6]: https://github.com/microsoft/MegaDetector/releases/tag/megadetector-v6.0

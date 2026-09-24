@@ -28,22 +28,17 @@ On 2026-07-13 I have renamed POLLINATOR_MONITOR.md to AGENT_CHANGELOG.md, and PO
 1. Read `./fauna-pulse/docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, file maps, key invariants and pointers. 
     Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants. 
     Keep it short, as it acts as an overview for the coding agent (e.g. Claude Code, codex). 
-    In order to keep it short, can modify in place, even remove text if it is no longer relevant for the development of the app.
-2. The very long, full, extra detailed history in `./fauna-pulse/docs/AGENT_CHANGELOG.md` should be read only 
-    if explicit past rationale or a round-by-round change log is absolutely requested. 
-    Also append it so that the full history is being tracked. 
+    In order to keep it short, please modify in place, even remove text if it is no longer relevant for the current development of the app.
+2. The very long, full, extra detailed history in `./fauna-pulse/docs/AGENT_CHANGELOG.md` 
+    should never be read fully due to its size and therefore wasting tokens. Always ask for permission to read it 
+    if explicit past rationale or a round-by-round change log is absolutely needed. 
+    Just append summary changes to it without reading it entirely so that the full history is being tracked. 
     No need to consume many tokens on reading it when updating history, just append
-    / add summary of changes & implementations at the end of the file.
-    For example add a header line like this "## Round xy (yyyy-mm-dd): short title"
-    example: "## Round 76 (2026-07-08): user-triggered engine benchmark".
+    / add summary of changes and implementations at the end of the file.
+    For example add a header line like this "## Round xy (yyyy-mm-dd): some short title"
+    example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
     then add the summary text, bullet points, etc. that is useful for future developers, myself and coding agents,
     then add an empty line that will separate future entries.
-
-### Pointers
-
-**Release plan:** `./fauna-pulse/docs/RELEASE_PLAN.md` — phased checklist for the first public
-  release. Re-ground THERE for any release/distribution work; tick items as rounds land.
-  Do not place there any private data like email addresses.
 
 ## General rules
 
@@ -51,6 +46,8 @@ Keep answers concise, but clear and easy to understand.
 
 Less is more: the simplest code solution is the better solution as long as core functionality is not lost
 and as long as the code remains readable for humans too.
+
+Do not place in any git tracked file any private or sensitive data like email addresses, passwords, any sort of digital keys.
 
 Do not read without being asked specifically into the folder `~/InsectDetectApp/sessions/`. 
 This folder contains a lot of txt files with session outputs, and it will consume a lot of tokens.
