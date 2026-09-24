@@ -20,6 +20,10 @@ class ImageEmbedderInfo {
   /// Why the GPU was not used although requested (compile error text or
   /// "blocklisted"); null on GPU or when the GPU was not requested.
   final String? accelerationNote;
+
+  /// Threads the CPU engine runs on (the count behind "0 = automatic");
+  /// null on the GPU.
+  final int? cpuThreads;
   final int inputWidth;
   final int inputHeight;
 
@@ -30,6 +34,7 @@ class ImageEmbedderInfo {
   const ImageEmbedderInfo({
     required this.accelerator,
     this.accelerationNote,
+    this.cpuThreads,
     required this.inputWidth,
     required this.inputHeight,
     required this.dim,
@@ -76,6 +81,7 @@ class ImageEmbedder {
     return ImageEmbedderInfo(
       accelerator: (r['accelerator'] as String?) ?? '?',
       accelerationNote: r['accelerationNote'] as String?,
+      cpuThreads: (r['cpuThreads'] as num?)?.toInt(),
       inputWidth: (r['inputWidth'] as num).toInt(),
       inputHeight: (r['inputHeight'] as num).toInt(),
       dim: (r['dim'] as num).toInt(),

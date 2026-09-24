@@ -54,7 +54,7 @@ class YOLOView extends StatefulWidget {
   final double iouThreshold;
   final bool useGpu;
 
-  /// CPU inference threads when the model runs on CPU (0 = the runtime's default).
+  /// CPU inference threads when the model runs on CPU (0 = automatic, 2 threads).
   /// LiteRT's CPU backend (XNNPACK) can spread its work over several threads:
   /// often faster, but draws more power. Benchmark before raising it - see
   /// [YOLO.benchmarkAccelerators].

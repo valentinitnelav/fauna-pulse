@@ -83,6 +83,13 @@ android {
             signingConfig = signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debug {
+            // Test a debug build next to an installed Play build (different
+            // signature) without replacing it: ORG_GRADLE_PROJECT_debugIdSuffix=.check
+            if (project.hasProperty('debugIdSuffix')) {
+                applicationIdSuffix = project.property('debugIdSuffix')
+            }
+        }
     }
 
     lint {

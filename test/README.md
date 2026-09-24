@@ -12,10 +12,14 @@ flutter test test/fauna_pulse
 Pure-Dart coverage of the app's logic, mirroring `lib/fauna_pulse/`: ROI math,
 both trackers, the session logger (including the write-failure path), capture
 scheduling and crop geometry, frame processing, config round-trips/migrations,
-schedule and time-lapse plans, post-hoc analysis + SAHI, error reporting, and
+schedule and time-lapse plans, post-hoc analysis + SAHI, video import and
+start-time guesses, error reporting, and
 widget regressions (e.g. the bottom-inset pattern in
 `summary_bottom_inset_test.dart`, which also documents the widget-test async
-traps). Run `flutter analyze` alongside it; both must be clean before a PR.
+traps). One more trap (round 227, `video_screens_test.dart`): a widget test
+that writes through `SessionLogger` must pump with a duration, because the
+logger yields with a zero-length timer that a bare `pump()` never fires.
+Run `flutter analyze` alongside it; both must be clean before a PR.
 
 
 ## Security and release gate
@@ -45,11 +49,29 @@ benchmarks.
 
 ## Integration tests (device attached)
 
+Always pass `--no-uninstall`: without it flutter uninstalls the app after the
+test (and also when installing fails, e.g. a signature mismatch), which deletes
+every session stored on the phone.
+
 ```bash
-flutter test integration_test/app_launch_test.dart -d <device>   # app-launch smoke
-flutter test integration_test/qnn_smoke_test.dart -d <device>    # QNN runtime presence
-flutter test integration_test/qnn_benchmark_test.dart -d <device> \
+flutter test integration_test/app_launch_test.dart -d <device> --no-uninstall   # app-launch smoke
+flutter test integration_test/qnn_smoke_test.dart -d <device> --no-uninstall    # QNN runtime presence
+flutter test integration_test/qnn_benchmark_test.dart -d <device> --no-uninstall \
   --dart-define=RUN_BENCH=true   # optional: --dart-define=RUN_SOAK=true
+flutter test integration_test/video_decode_check_test.dart -d <device> --no-uninstall  # video pass (r225; header: clips to push)
+flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-uninstall   # CPU thread timing (r226)
+flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)
+```
+
+On a phone that has the Play build installed (the Samsung), never run the
+commands above: they would replace or uninstall it. Build a side-by-side debug
+copy instead and read the results from logcat:
+
+```bash
+ORG_GRADLE_PROJECT_debugIdSuffix=.check flutter build apk --debug -t integration_test/<file>.dart
+adb -s <serial> install -r build/app/outputs/flutter-apk/app-debug.apk
+adb -s <serial> shell am start -n com.faunapulse.app.check/com.ultralytics.yolo.MainActivity
+adb -s <serial> logcat -v brief flutter:I '*:S'
 ```
 
 The QNN benchmark needs network access (downloads models and a test image) and

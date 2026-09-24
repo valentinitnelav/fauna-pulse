@@ -28,6 +28,7 @@ import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
 
 class IdentificationScreen extends StatefulWidget {
@@ -307,7 +308,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           flagMinDetConf: prefs.flagMinDetConf,
           flagMinOrderP: prefs.flagMinOrderP,
           dropFactor: prefs.dropFactor,
-          extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads},
+          extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads, 'cpu_threads_used': ?info.cpuThreads},
         ),
         packFile: pack,
         appVersion: '${pinfo.version}+${pinfo.buildNumber}',
@@ -393,7 +394,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final sw = Stopwatch()..start();
       await ImageEmbedder.embed(rgb);
       final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
-      final threads = prefs.cpuThreads == 0 ? 'automatic' : '${prefs.cpuThreads}';
+      final auto = prefs.cpuThreads == 0, used = info.cpuThreads;
+      final threads = used == null ? (auto ? 'automatic' : '${prefs.cpuThreads}') : '${auto ? 'automatic: ' : ''}$used';
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
           '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
@@ -750,7 +752,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
           '${p != null && p.avgMs > 0 ? ' — ${(p.avgMs / 1000).toStringAsFixed(1)} s per crop' : ''}',
           style: helperTextStyle),
-      if (p?.tempC != null) ..._temperatureGauge(p!.tempC!, p.stage == 'paused'),
+      if (p?.tempC != null)
+        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? 40, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerLeft,
@@ -760,50 +763,6 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           label: Text(_cancel ? 'Stopping after this photo…' : 'Cancel (keeps what is done)'),
         ),
       ),
-    ];
-  }
-
-  /// Battery temperature against the pause limit (round 210): a bar that
-  /// turns from green to amber to red, and cooling advice while paused.
-  List<Widget> _temperatureGauge(double tempC, bool paused) {
-    final limit = _prefs?.thermalLimitC ?? 40;
-    const floor = 25.0;
-    final frac = ((tempC - floor) / (limit - floor)).clamp(0.0, 1.0);
-    final color = tempC >= limit
-        ? Colors.redAccent
-        : tempC >= limit - 4
-        ? Colors.amber
-        : Colors.lightGreen;
-    return [
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Icon(Icons.device_thermostat, size: 18, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(value: frac, minHeight: 8, color: color, backgroundColor: Colors.white12),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('${tempC.toStringAsFixed(1)} °C', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-        ],
-      ),
-      Text(
-        'Battery temperature; the run pauses at ${limit.toStringAsFixed(0)} °C and resumes below '
-        '${(limit - 3).toStringAsFixed(0)} °C (limit under Advanced settings).',
-        style: helperTextStyle,
-      ),
-      if (paused)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text(
-            'Cooling down. Put the phone on a cool, hard surface out of the sun (or in front of a '
-            'fan); a case traps heat. It resumes by itself.',
-            style: TextStyle(color: Colors.amber, fontSize: 12),
-          ),
-        ),
     ];
   }
 
@@ -886,10 +845,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           isInt: true,
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText:
-              'How many threads the CPU engine (XNNPACK) may spread the model\'s matrix maths '
-              'across; 0 = the engine\'s own default. More threads are usually faster on the big '
-              'cores but heat the phone sooner (which triggers the pause). "Test speed" shows the '
-              'real effect of a value on this phone.',
+              'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
+              'on the test phone that was 2.5 times as fast as 1. 4 was about a quarter faster '
+              'again but keeps twice as many cores busy, so the phone warms up sooner (which '
+              'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),
         NumericSettingField(
           label: 'Crop margin',

@@ -5,6 +5,7 @@
 //   adb -s <serial> push <clips>/. /sdcard/Android/data/com.faunapulse.app/files/video_check/videos/
 //   adb -s <serial> push <refs>/. /sdcard/Android/data/com.faunapulse.app/files/video_check/
 // Run:  flutter test integration_test/video_decode_check_test.dart -d <serial> --no-uninstall
+// Other model: add --dart-define=VIDEO_CHECK_MODEL=assets/models/custom/<file>.tflite
 // Always pass --no-uninstall: without it flutter uninstalls the app after the
 // test, which deletes every session stored on the phone.
 //
@@ -12,7 +13,7 @@
 // bundled model, prints decode / convert / detect ms per frame per clip, and
 // checks that:
 //  - clips named "*tenbit*" are refused with the plain-language 10-bit message;
-//  - frame 0's boxes match a photo run on the reference frame (colours,
+//  - frame 0's confident boxes match a photo run on the reference frame (colours,
 //    rotation and box mapping are right);
 //  - a centred ROI square lands where the live photo crop would put it, and
 //    its boxes match a photo run on the same crop of the reference frame.
@@ -31,7 +32,9 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-typedef Box = List<double>; // l, t, r, b normalized
+typedef Box = List<double>; // l, t, r, b, confidence (box normalized)
+
+const _modelPath = String.fromEnvironment('VIDEO_CHECK_MODEL', defaultValue: kLocalYolo26ModelPath);
 
 double _iou(Box a, Box b) {
   final w = math.max(0.0, math.min(a[2], b[2]) - math.max(a[0], b[0]));
@@ -41,37 +44,32 @@ double _iou(Box a, Box b) {
   return union <= 0 ? 0 : inter / union;
 }
 
-/// Greedy best-IoU matching; returns (matched at IoU >= 0.7, mean IoU of matches).
-(int, double) _match(List<Box> video, List<Box> photo) {
-  final used = <int>{};
-  var matched = 0;
-  var sum = 0.0;
-  for (final p in photo) {
-    var best = -1;
-    var bestIou = 0.0;
-    for (var i = 0; i < video.length; i++) {
-      if (used.contains(i)) continue;
-      final v = _iou(p, video[i]);
-      if (v > bestIou) {
-        bestIou = v;
-        best = i;
-      }
-    }
-    if (best >= 0 && bestIou >= 0.7) {
-      used.add(best);
-      matched++;
-      sum += bestIou;
-    }
-  }
-  return (matched, matched == 0 ? 0 : sum / matched);
+/// Best IoU of [b] against any box in [others].
+double _bestIou(Box b, List<Box> others) => others.fold(0.0, (m, o) => math.max(m, _iou(b, o)));
+
+// The video pass runs at confidence 0.25, the photo pass at 0.15. Boxes near
+// 0.25 flip with tiny pixel differences (JPEG vs H.264 decode), so only boxes
+// clearly above the threshold (>= 0.35) must appear on the other side.
+const _videoConf = 0.25, _photoConf = 0.15, _sure = 0.35;
+
+/// Returns (sure boxes, sure boxes found on the other side at IoU >= 0.7,
+/// mean IoU of those).
+(int, int, double) _compare(List<Box> video, List<Box> photo) {
+  final ious = [
+    for (final p in photo.where((b) => b[4] >= _sure)) _bestIou(p, video),
+    for (final v in video.where((b) => b[4] >= _sure)) _bestIou(v, photo),
+  ];
+  final hits = ious.where((v) => v >= 0.7).toList();
+  return (ious.length, hits.length, hits.isEmpty ? 0 : hits.reduce((a, b) => a + b) / hits.length);
 }
 
 Future<List<Box>> _photoBoxes(YOLO yolo, List<int> jpeg) async {
-  final r = await yolo.predict(Uint8List.fromList(jpeg), confidenceThreshold: 0.25, iouThreshold: 0.5, includeAnnotatedImage: false);
+  final r = await yolo.predict(Uint8List.fromList(jpeg), confidenceThreshold: _photoConf, iouThreshold: 0.5, includeAnnotatedImage: false);
   return [
     for (final d in (r['detections'] as List).cast<Map>())
       [
         for (final k in ['left', 'top', 'right', 'bottom']) ((d['normalizedBox'] as Map)[k] as num).toDouble(),
+        (d['confidence'] as num).toDouble(),
       ],
   ];
 }
@@ -85,12 +83,12 @@ void main() {
       final clips = VideoDetector.clipsOf(root);
       expect(clips, isNotEmpty, reason: 'push clips to ${root.path}/videos first');
 
-      final yolo = YOLO(modelPath: kLocalYolo26ModelPath, task: YOLOTask.detect, useMultiInstance: true);
+      final yolo = YOLO(modelPath: _modelPath, task: YOLOTask.detect, useMultiInstance: true);
       expect(await yolo.loadModel(), isTrue);
-      const config = VideoRunConfig(
-        modelPath: kLocalYolo26ModelPath,
-        modelName: 'yolo26n',
-        confidence: 0.25,
+      final config = VideoRunConfig(
+        modelPath: _modelPath,
+        modelName: _modelPath.split('/').last,
+        confidence: _videoConf,
         iou: 0.5,
         useGpu: true,
       );
@@ -111,7 +109,8 @@ void main() {
         final end = recs.lastWhere((r) => r['clip'] == clip && '${r['type']}'.startsWith('video_clip_'));
         // ignore: avoid_print
         print('CLIP $clip ${start['mime']} ${start['width']}x${start['height']} rot=${start['rotation']} '
-            'fps=${start['mean_fps']} start=${start['start_time_source']}');
+            'fps=${start['mean_fps']} start=${start['start_time_source']} '
+            '${start['start_epoch_ms'] == null ? '' : DateTime.fromMillisecondsSinceEpoch(start['start_epoch_ms'] as int)}');
         if (clip.contains('tenbit')) {
           expect(end['type'], 'video_clip_error', reason: clip);
           expect(end['error'], contains('10-bit'));
@@ -130,18 +129,18 @@ void main() {
         final ref = File('${root.path}/$clip.ref.jpg');
         if (!ref.existsSync()) continue;
         final frame0 = recs.firstWhere((r) => r['type'] == 'raw_detections' && r['clip'] == clip && r['frame'] == 0);
-        final video = [for (final b in frame0['boxes'] as List) (b as List).take(4).map((v) => (v as num).toDouble()).toList()];
+        final video = [for (final b in frame0['boxes'] as List) (b as List).take(5).map((v) => (v as num).toDouble()).toList()];
         final photo = await _photoBoxes(yolo, ref.readAsBytesSync());
-        final (matched, meanIou) = _match(video, photo);
+        final (sure, found, meanIou) = _compare(video, photo);
         // ignore: avoid_print
-        print('  frame0 boxes video=${video.length} photo=${photo.length} matched=$matched meanIoU=${meanIou.toStringAsFixed(3)}');
-        expect(matched, greaterThanOrEqualTo((photo.length * 0.8).floor()), reason: '$clip frame 0 vs photo');
+        print('  frame0 boxes video=${video.length} photo=${photo.length} sure=$sure found=$found meanIoU=${meanIou.toStringAsFixed(3)}');
+        expect(found, sure, reason: '$clip frame 0 vs photo');
 
         // 3. Centred ROI square vs the same crop of the reference frame.
         await VideoFrameSource.open(
           clips.firstWhere((f) => f.path.endsWith(clip)).path,
           instanceId: yolo.instanceId,
-          confidence: 0.25,
+          confidence: _videoConf,
           iou: 0.5,
           roi: const [0.5, 0.5, 0.5],
         );
@@ -154,13 +153,13 @@ void main() {
         final crop = img.copyCrop(img.decodeJpg(ref.readAsBytesSync())!, x: x, y: y, width: px, height: px);
         final cropBoxes = [
           for (final b in await _photoBoxes(yolo, img.encodeJpg(crop, quality: 95)))
-            [(x + b[0] * px) / w, (y + b[1] * px) / h, (x + b[2] * px) / w, (y + b[3] * px) / h],
+            [(x + b[0] * px) / w, (y + b[1] * px) / h, (x + b[2] * px) / w, (y + b[3] * px) / h, b[4]],
         ];
-        final roiBoxes = [for (final b in chunk.frames.first.boxes) b.take(4).map((v) => v.toDouble()).toList()];
-        final (m2, iou2) = _match(roiBoxes, cropBoxes);
+        final roiBoxes = [for (final b in chunk.frames.first.boxes) b.take(5).map((v) => v.toDouble()).toList()];
+        final (sure2, found2, iou2) = _compare(roiBoxes, cropBoxes);
         // ignore: avoid_print
-        print('  roi ${chunk.roiPx} boxes video=${roiBoxes.length} photo=${cropBoxes.length} matched=$m2 meanIoU=${iou2.toStringAsFixed(3)}');
-        expect(m2, greaterThanOrEqualTo((cropBoxes.length * 0.8).floor()), reason: '$clip ROI vs photo crop');
+        print('  roi ${chunk.roiPx} boxes video=${roiBoxes.length} photo=${cropBoxes.length} sure=$sure2 found=$found2 meanIoU=${iou2.toStringAsFixed(3)}');
+        expect(found2, sure2, reason: '$clip ROI vs photo crop');
       }
       await yolo.dispose();
     });

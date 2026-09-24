@@ -333,7 +333,7 @@ class YOLO {
   /// Benchmarks inference speed per engine for [modelPath] (Android only).
   ///
   /// Compiles the model once per configuration - GPU, then CPU once per entry
-  /// in [cpuThreadVariants] (0 = the runtime's default thread count) - and
+  /// in [cpuThreadVariants] (0 = automatic, 2 threads) - and
   /// times [iterations] real inferences on each. Returns one map per
   /// configuration with `label`, `useGpu`, `cpuThreads`, `accelerator`, and
   /// either `avgMs` / `minMs` / `compileMs` / `iterations` or an `error`

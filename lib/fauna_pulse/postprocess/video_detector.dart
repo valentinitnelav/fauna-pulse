@@ -27,6 +27,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart'
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../logging/thermal_pause.dart';
+import 'video_start_time.dart';
 
 /// The native decode + detect path (see VideoFrameSource.kt).
 abstract class VideoBackend {
@@ -426,14 +427,17 @@ class VideoDetector {
     );
   }
 
-  /// Wall-clock start of [clip] and where it came from: the session log
-  /// (import sheet / recorder), the file's own creation time, or, as a last
-  /// resort, the file's modification time minus its duration.
+  /// Wall-clock start of [clip] and where it came from (see
+  /// video_start_time.dart for the order of sources).
   static (int, String) _clipStart(String clip, VideoInfo info, File file, Map<String, int> logStarts) {
-    final logged = logStarts[clip];
-    if (logged != null) return (logged, 'session_log');
-    if (info.creationEpochMs != null) return (info.creationEpochMs!, 'metadata');
-    return (file.lastModifiedSync().millisecondsSinceEpoch - (info.durationMs ?? 0), 'file_time');
+    final g = guessClipStart(
+      fileName: clip,
+      loggedMs: logStarts[clip],
+      storedMs: info.creationEpochMs,
+      durationMs: info.durationMs,
+      fileModifiedMs: file.lastModifiedSync().millisecondsSinceEpoch,
+    );
+    return (g.epochMs, g.source);
   }
 
   static VideoProgress _progress(

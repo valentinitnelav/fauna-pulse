@@ -150,7 +150,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
 
   /**
    * Times real inferences per engine configuration: GPU first, then CPU once per entry in
-   * [threadVariants] (0 = the runtime's default thread count). Reuses [LiteRtModel], so the
+   * [threadVariants] (0 = automatic, [LiteRtModel.automaticCpuThreads]). Reuses [LiteRtModel], so the
    * GPU attempt inherits the crash-guard marker, the 2-strike blocklist and the program cache
    * - a model that is known to crash the GPU is reported as unavailable, not retried.
    *
@@ -171,7 +171,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     data class Config(val label: String, val useGpu: Boolean, val cpuThreads: Int)
     val configs = mutableListOf(Config("GPU", useGpu = true, cpuThreads = 0))
     for (t in threadVariants.distinct()) {
-      configs += Config(if (t == 0) "CPU (default threads)" else "CPU ($t threads)", useGpu = false, cpuThreads = t)
+      val label = if (t == 0) "CPU (automatic: ${LiteRtModel.automaticCpuThreads()} threads)" else "CPU ($t threads)"
+      configs += Config(label, useGpu = false, cpuThreads = t)
     }
 
     val out = mutableListOf<Map<String, Any>>()
@@ -832,6 +833,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             mapOf(
               "accelerator" to e.accelerator,
               "accelerationNote" to e.accelerationNote,
+              "cpuThreads" to e.cpuThreads,
               "inputWidth" to e.inputWidth,
               "inputHeight" to e.inputHeight,
               "dim" to e.dim,
@@ -892,8 +894,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
 
       // FaunaPulse (round 225): offline video analysis. videoInfo reads clip facts without
       // decoding; videoOpen / videoNext / videoClose decode one clip in chunks and run a loaded
-      // detector instance on each sampled frame. Only boxes cross the channel, never pictures.
-      "videoInfo", "videoOpen", "videoNext", "videoClose" -> handleVideo(call, result)
+      // detector instance on each sampled frame. Only boxes cross the channel, never pictures
+      // (videoThumbnail, r227: one small JPEG of the first frame for drawing the square on).
+      "videoInfo", "videoThumbnail", "videoOpen", "videoNext", "videoClose" -> handleVideo(call, result)
 
       else -> result.notImplemented()
     }
@@ -907,6 +910,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       val outcome = runCatching<Any?> {
         when (call.method) {
           "videoInfo" -> VideoFrameSource.info(args["path"] as String)
+          "videoThumbnail" -> VideoFrameSource.thumbnail(args["path"] as String, num("maxSide")?.toInt() ?: 720)
           "videoOpen" -> {
             runCatching { videoSource?.close() }
             videoSource = null

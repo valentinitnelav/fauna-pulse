@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,12 +25,15 @@ import '../logging/session_rename.dart';
 import '../models/session_config.dart';
 import '../identification/identification_store.dart';
 import '../postprocess/post_detector.dart';
+import '../postprocess/video_detector.dart';
 import 'analysis_screen.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'identification_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_summary_screen.dart';
+import 'video_analysis_screen.dart';
+import 'video_import_screen.dart';
 
 /// One past session found on disk: its folder name and log file, the real
 /// session [start]/[end] clock times read from the log (falling back to the
@@ -55,6 +59,10 @@ class _PastSession {
   /// for this session (round 208) — a second badge on the row.
   final bool hasIdentification;
 
+  /// Whether the session has clips in `videos/` (round 227): its analysis
+  /// is "Run AI on videos" instead of "Run AI on photos".
+  final bool hasVideos;
+
   const _PastSession(
     this.name,
     this.logFile,
@@ -65,6 +73,7 @@ class _PastSession {
     this.sizeBytes = 0,
     this.hasAnalysis = false,
     this.hasIdentification = false,
+    this.hasVideos = false,
   });
 }
 
@@ -75,7 +84,7 @@ class _PastSession {
 /// settings sheet in round 159 — it is an app-level preference, and this menu
 /// is the established home for those (session settings stay on the camera
 /// screen, which needs the live camera).
-enum _HomeMenuAction { about, toggleSetupTips, reportProblem, deleteAllSessions }
+enum _HomeMenuAction { about, importVideos, toggleSetupTips, reportProblem, deleteAllSessions }
 
 /// Per-session actions in the gear menu on each "Previous sessions" row
 /// (round 182). The gear replaced a decorative histogram icon; it groups
@@ -165,12 +174,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 duration: dur,
                 endedNormally: span.endedNormally,
                 sizeBytes: sizeBytes,
-                hasAnalysis: File(
-                  '${entity.path}/${PostDetector.outputFileName}',
-                ).existsSync(),
+                hasAnalysis:
+                    File(
+                      '${entity.path}/${PostDetector.outputFileName}',
+                    ).existsSync() ||
+                    File(
+                      '${entity.path}/${VideoDetector.outputFileName}',
+                    ).existsSync(),
                 hasIdentification: IdentificationPaths(
                   entity,
                 ).existingSummaries().isNotEmpty,
+                hasVideos: VideoDetector.clipsOf(entity).isNotEmpty,
               ),
             );
           }
@@ -331,6 +345,73 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     _loadSessions();
+  }
+
+  /// The video twin of [_openAnalysis] (round 227).
+  Future<void> _openVideoAnalysis([String? sessionDirPath]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoAnalysisScreen(initialSessionPath: sessionDirPath),
+      ),
+    );
+    _loadSessions();
+  }
+
+  /// Picks videos and opens the import screen (round 227). The picker
+  /// copies every file into the app's cache before it returns, which takes
+  /// a while for long videos, so a dialog says so meanwhile.
+  Future<void> _importVideos() async {
+    var dialogShown = false;
+    FilePickerResult? picked;
+    try {
+      picked = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowMultiple: true,
+        onFileLoading: (status) {
+          if (status != FilePickerStatus.picking || dialogShown || !mounted) {
+            return;
+          }
+          dialogShown = true;
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const PopScope(
+              canPop: false,
+              child: AlertDialog(
+                content: Row(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 16),
+                    Expanded(child: Text('Reading the videos…')),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      logSwallowed('video_pick', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the videos: $e')),
+        );
+      }
+    } finally {
+      if (dialogShown && mounted) Navigator.of(context).pop();
+    }
+    if (picked == null || !mounted) return;
+    final files = [
+      for (final f in picked.files)
+        if (f.path != null) PickedVideo(f.path!, f.name, f.size),
+    ];
+    if (files.isEmpty) return;
+    final imported = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => VideoImportScreen(files: files)),
+    );
+    await _loadSessions();
+    // The import screen's "Run AI on these videos" returns the new folder.
+    if (imported != null && mounted) await _openVideoAnalysis(imported);
   }
 
   /// Opens the identification screen for one session (round 208); rescans
@@ -763,6 +844,8 @@ class _HomeScreenState extends State<HomeScreen> {
         switch (action) {
           case _HomeMenuAction.about:
             _showAbout();
+          case _HomeMenuAction.importVideos:
+            _importVideos();
           case _HomeMenuAction.toggleSetupTips:
             _toggleSetupTips();
           case _HomeMenuAction.reportProblem:
@@ -779,6 +862,19 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(Icons.info_outline, size: 20, color: Colors.white70),
               SizedBox(width: 10),
               Text('About FaunaPulse'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        // Round 227: videos filmed elsewhere become a session; the AI runs
+        // on them afterwards ("Run AI on videos").
+        const PopupMenuItem(
+          value: _HomeMenuAction.importVideos,
+          child: Row(
+            children: [
+              Icon(Icons.video_library_outlined, size: 20, color: Colors.white70),
+              SizedBox(width: 10),
+              Text('Import videos…'),
             ],
           ),
         ),
@@ -896,6 +992,19 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           label: const Text('Run AI on photos'),
                         ),
+                        // Round 227: the same for imported videos, shown
+                        // once a session has videos (import: ⋮ menu).
+                        if (_sessions.any((s) => s.hasVideos)) ...[
+                          const SizedBox(height: 6),
+                          OutlinedButton.icon(
+                            onPressed: _openVideoAnalysis,
+                            icon: const Icon(
+                              Icons.movie_filter_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Run AI on videos'),
+                          ),
+                        ],
                         // "Report a problem" moved into the ⋮ menu
                         // (round 190, owner request — above Delete all
                         // sessions); it stays reachable after a crash and
@@ -980,15 +1089,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   case _SessionAction.exportPhotos:
                     _exportSessionPhotos(s);
                   case _SessionAction.analyze:
-                    _openAnalysis(s.logFile.parent.path);
+                    s.hasVideos
+                        ? _openVideoAnalysis(s.logFile.parent.path)
+                        : _openAnalysis(s.logFile.parent.path);
                   case _SessionAction.identify:
                     _openIdentification(s);
                   case _SessionAction.delete:
                     _confirmDeleteSession(s);
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
+              itemBuilder: (_) => [
+                const PopupMenuItem(
                   value: _SessionAction.rename,
                   child: ListTile(
                     dense: true,
@@ -997,7 +1108,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: Text('Rename session'),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: _SessionAction.exportPhotos,
                   child: ListTile(
                     dense: true,
@@ -1011,11 +1122,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.auto_awesome_outlined),
-                    title: Text('Run AI on photos'),
+                    leading: const Icon(Icons.auto_awesome_outlined),
+                    title: Text(
+                      s.hasVideos ? 'Run AI on videos' : 'Run AI on photos',
+                    ),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: _SessionAction.identify,
                   child: ListTile(
                     dense: true,
@@ -1024,7 +1137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: Text('Identify organisms'),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: _SessionAction.delete,
                   child: ListTile(
                     dense: true,
@@ -1132,7 +1245,9 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () => _openSession(s),
             // Long-press = analyze THIS session (same screen the "Analyze
             // saved photos" button opens, with the session preselected).
-            onLongPress: () => _openAnalysis(s.logFile.parent.path),
+            onLongPress: () => s.hasVideos
+                ? _openVideoAnalysis(s.logFile.parent.path)
+                : _openAnalysis(s.logFile.parent.path),
           );
         },
       ),

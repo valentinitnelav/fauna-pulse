@@ -32,8 +32,10 @@ class VideoInfo {
   final double? meanFps;
   final int? nominalFps;
 
-  /// Recording start from the file's metadata (UTC epoch ms); null when the
-  /// file carries none. Many editors reset it to the export time.
+  /// Time stored in the file (UTC epoch ms); null when the file carries
+  /// none. Android phones store when recording STOPPED (round 226 check on
+  /// a Xiaomi clip), so the start is this minus [durationMs]. Messengers
+  /// such as WhatsApp drop it; editors reset it to the export time.
   final int? creationEpochMs;
 
   /// Why the file can't be analysed (e.g. 10-bit/HDR), in plain language.
@@ -141,6 +143,14 @@ class VideoFrameSource {
     final r = await _channel.invokeMethod<Map>('videoInfo', {'path': path});
     if (r == null) throw StateError('videoInfo returned nothing');
     return VideoInfo.fromMap(r);
+  }
+
+  /// The first frame as an upright JPEG, at most [maxSide] px on its long
+  /// side (for drawing the analysis square on).
+  static Future<Uint8List> thumbnail(String path, {int maxSide = 720}) async {
+    final r = await _channel.invokeMethod<Uint8List>('videoThumbnail', {'path': path, 'maxSide': maxSide});
+    if (r == null) throw StateError('videoThumbnail returned nothing');
+    return r;
   }
 
   /// Opens [path] for analysis with the detector loaded as [instanceId]

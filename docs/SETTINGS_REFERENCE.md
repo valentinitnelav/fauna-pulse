@@ -40,7 +40,7 @@ come back as soon as a mode that uses them is selected.
 | **Model** | `yolo26n` | Which AI model detects insects. Only the bundled "nano" model ships with the app; other `.tflite` models must be added to the phone first (see [INSTALL.md](INSTALL.md)). Change to use a custom-trained model. |
 | **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
 | **IoU threshold** | `0.7` | *(AI tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
-| **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). Run the engine benchmark in the same fold before changing it. |
+| **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2 since round 226 (LiteRT's own default is 1; on both test phones 2 was ~1.9× faster than 1, and 4 at most ~15% faster than 2 for twice the busy cores). Run the engine benchmark in the same fold before changing it. |
 
 ## Region of Interest & photos
 
@@ -229,6 +229,26 @@ you can try a different model or different tiling settings on a finished
 session. The newest result per photo wins downstream (see
 [DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
+## Video analysis (Run AI on videos screen)
+
+Round 227. Videos come in through the home screen's ⋮ menu → *Import videos…*, which
+asks only for a session name and when filming started (both logged, see
+[DATA_GUIDE.md §9](DATA_GUIDE.md)). "Run AI on videos" then finds the insects in them.
+Like the photo analysis, these settings belong to the analysis, not to a recording: they
+are stored on the phone (`video_analysis_*`) and echoed into the `settings` of every
+`video_run_start` record. A session's results always come from one set of settings: after
+a change the screen offers "Analyze again with these settings", which replaces the earlier
+results after asking.
+
+| Setting | Default | What it does / when to change |
+|---|---|---|
+| **Detection model** | the last one used (first in the list the first time) | Any model from camera Settings → AI. There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
+| **Confidence threshold** | `0.25` | Minimum score for a box to count; the live camera's default. |
+| **Frames analyzed per second** | `15` (1–30) | How many pictures of each video second the AI looks at. 15 is what the live camera analyzes, so results compare with live sessions. Fewer is faster, but an insect can move far between two looks and be missed or counted twice. Asking for more than the video has changes nothing (most phone videos have 30). |
+| **Area to analyze** | Whole picture | Or *A square*, placed on the first frame of the first clip (drag, pinch or slider), its side snapped to a multiple of 32 video pixels as on the live camera. Insects outside it are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the square of its last run, so *Continue* works without placing it again. |
+| **IoU threshold** (Advanced) | `0.7` | Overlap level at which two boxes merge into one; the live camera's default. |
+| **Pause above battery temperature** (Advanced) | `40 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. |
+
 ---
 
 **Note for developers:** by project rule, every new tunable ships with a
@@ -244,7 +264,7 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Setting | Default | Meaning |
 |---|---|---|
 | Use the GPU when it can run the model | on | Tries a GPU compile, automatic CPU fallback with the reason shown on screen (r211). Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
-| CPU threads | 0 (automatic) | XNNPACK thread count for the CPU path; more = usually faster but warmer. Measure with "Test speed". |
+| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi: 23.4 s per crop on 1 thread, 9.4 s on 2, 7.1 s on 4, 7.7 s on 8; 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |

@@ -92,6 +92,8 @@ void main() {
     ]);
     final starts = recs.where((r) => r['type'] == 'video_clip_start').toList();
     expect(starts.map((r) => r['start_time_source']), ['session_log', 'metadata']);
+    // The stored time is when filming stopped: the start is 0.2 s before it.
+    expect(starts[1]['start_epoch_ms'], 5000000 - 200);
     expect(recs.where((r) => r['type'] == 'video_clip_done').map((r) => r['class_names']), everyElement(['insect']));
     expect(recs.last['type'], 'video_run_end');
     expect(recs.last['ended_normally'], isTrue);

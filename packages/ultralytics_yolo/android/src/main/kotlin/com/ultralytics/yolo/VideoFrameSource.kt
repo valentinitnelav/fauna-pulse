@@ -92,6 +92,38 @@ class VideoFrameSource private constructor(
     }
 
     /**
+     * First frame as an upright JPEG, at most [maxSide] px on its long side, for drawing the
+     * analysis square on (round 227). The retriever applies the rotation tag itself.
+     */
+    fun thumbnail(path: String, maxSide: Int): ByteArray {
+      val mmr = MediaMetadataRetriever()
+      try {
+        mmr.setDataSource(path)
+        val w = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: maxSide
+        val h = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: maxSide
+        val rot = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val (uw, uh) = if (rot == 90 || rot == 270) h to w else w to h
+        val scale = min(1.0, maxSide.toDouble() / max(uw, uh))
+        val bmp = if (android.os.Build.VERSION.SDK_INT >= 27) {
+          mmr.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, max(1, (uw * scale).roundToInt()), max(1, (uh * scale).roundToInt()))
+        } else {
+          mmr.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        } ?: throw IllegalArgumentException("Could not read a picture from this video.")
+        val out = java.io.ByteArrayOutputStream()
+        val fitted = if (max(bmp.width, bmp.height) > maxSide) {
+          val s = maxSide.toDouble() / max(bmp.width, bmp.height)
+          Bitmap.createScaledBitmap(bmp, max(1, (bmp.width * s).roundToInt()), max(1, (bmp.height * s).roundToInt()), true)
+        } else bmp
+        fitted.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        if (fitted !== bmp) fitted.recycle()
+        bmp.recycle()
+        return out.toByteArray()
+      } finally {
+        runCatching { mmr.release() }
+      }
+    }
+
+    /**
      * Opens [path] for decoding. [roi] = (cx, cy, side) as fractions of the upright frame (the
      * live ROI convention) or null for the whole frame. Sampling starts at [startPtsUs] and then
      * takes one frame per [minIntervalUs] (0 = every frame). [maxSidePx] caps the converted

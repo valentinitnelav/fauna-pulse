@@ -94,6 +94,13 @@ The `roi` sub-object (also used in `roi_update`):
 > `width_px / frame_width_px × analysis_frame_width_px`, snapped to the
 > nearest multiple of 32.
 
+**Imported videos (round 227+):** a session made with *Import videos…* has
+`source: "imported_video"` in its start record, plus `imported_at`,
+`file_token`, the app/build fields and a `video` summary (`clips`,
+`total_duration_ms`, `total_bytes`, and `start_shift_ms` when the user
+corrected the start). It has no camera fields and no `config`, because no
+camera ran. Its `time_ms` is the first clip's start. See §9.
+
 ### `detections` — the core record, one per processed frame with insects
 
 This is what you count. One line per frame; the frame's insects are entries in
@@ -790,3 +797,75 @@ tr <- read.csv("identification/tracks_<pack>.csv")
 table(tr$identified_rank)
 aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = length)
 ```
+
+## 9. Imported videos (`videos/`, `video_detections.jsonl`), round 225+
+
+*Import videos…* (home screen ⋮ menu, round 227) makes a session from video files
+filmed elsewhere: the phone's camera app, a collaborator, a published dataset. The files
+are moved into `<session>/videos/` (names made file-system safe; the original name is
+logged). `session.jsonl` then only records where the clips came from: the start record
+(§3), one `video_clip` record per clip in start order, and an `end_of_session` with
+`ended_normally: true` whose `time_ms` is the last clip's end. It has no `detections` or
+`track_event` records; the boxes come from the analysis pass below.
+
+### `video_clip` — one per imported clip
+
+| Field | Meaning |
+|---|---|
+| `time_ms` | The clip's start (same as `start_epoch_ms`). |
+| `file` | Path inside the session folder (`videos/<name>`). |
+| `original_name` | The file's name on the phone before the import. |
+| `start_epoch_ms` | When the clip started (Unix epoch ms). |
+| `start_time_source` | Where that start came from (table below). |
+| `start_time_guess_source` | Only when the clip's own guess was replaced (`after_previous` or `user`): what that guess was. |
+| `start_time_shift_ms` | Only when the user corrected the start; every clip moves by the same amount. |
+| `duration_ms`, `size_bytes` | Length and file size. |
+| `width`, `height`, `rotation` | Picture size as seen upright, and the turn (degrees) stored in the file. |
+| `codec`, `frame_count`, `fps_mean`, `fps_nominal` | Video format; the mean frames per second from the frames' own time stamps, and the rate the file header claims. Phone videos often have a variable frame rate, so the app computes times from each frame's time stamp, never from frame number ÷ fps. |
+| `stored_time_ms` | The time stored in the file, when there is one (see `metadata` below). |
+
+**Where a clip's start comes from** (`start_time_source`), most reliable first:
+
+| Value | Meaning |
+|---|---|
+| `session_log` | Read back from the `video_clip` record (what the analysis pass uses). |
+| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it. |
+| `metadata` | The time stored in the file **minus the clip length**: Android phones store when recording *stopped* (checked on a Xiaomi clip, round 226). |
+| `file_name_date` | Only the day is in the name (WhatsApp: `VID-20260924-WA0005.mp4`); noon is assumed. Uncertain. |
+| `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file picker copies every file it hands over. |
+| `after_previous` | A clip with an uncertain time that would overlap the clip before it, placed right after that clip (so several WhatsApp clips from one day play one after the other instead of all at noon). Clips with a reliable time never move, so a real overlap (two cameras) stays visible. |
+| `user` | The user set the start on the import screen. |
+
+When the file name's time and the stored time differ by more than 2 minutes, the name wins
+but the import screen marks the time as uncertain. Messengers such as WhatsApp remove the
+stored time; video editors reset it to the export time.
+
+### `video_detections.jsonl` — "Run AI on videos" (round 225+)
+
+"Run AI on videos" (home screen) runs a detector over every clip and appends to
+`<session>/video_detections.jsonl`, following the same append-only JSONL rules as
+`session.jsonl` (records carry `time_ms` = when written, no `time_iso`):
+
+* `video_run_start` — one per run: `settings` (`model`, `confidence`, `iou`,
+  `analysis_fps` = frames looked at per video second, `roi` = `[center_x, center_y, side]`
+  as fractions of the upright picture, side as a fraction of its width, or `null` for the
+  whole picture, `max_side_px`), `model_name`, `use_gpu`, `clips_total`,
+  `clips_pending`, `started_over` (when earlier results were replaced), `app_version`.
+  Results made with other `settings` are never mixed: a run with changed settings asks,
+  then starts the file over.
+* `video_clip_start` — per clip: `clip`, `start_epoch_ms`, `start_time_source`,
+  `resume_from_pts_us` (when a stopped run continued), and the format fields.
+* `raw_detections` — per analysed frame: `clip`, `pts_us` (the frame's time stamp in the
+  file), `frame` (0-based in display order, as CVAT counts), `frame_ms` (epoch ms = clip
+  start + time stamp offset) and `boxes` as `[left, top, right, bottom, conf, class]`
+  normalized 0–1 **to the whole upright frame**, also with a square. This is the live
+  log's `raw_detections` shape (§3), so the tracker replay tools read it.
+* `video_clip_done` — per clip: `frames_analysed`, `frames_decoded`, `frame_width`,
+  `frame_height`, `roi_px` (the square in video pixels), `class_names`, and time sums
+  `decode_ms`, `convert_ms`, `infer_ms`, `elapsed_ms`. `video_clip_error` instead when a
+  clip failed (`error`, `at_pts_us`).
+* `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
+  `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
+
+The file holds boxes only. Turning them into visits (tracking), and the summary and
+exports of those visits, come in a later app update.

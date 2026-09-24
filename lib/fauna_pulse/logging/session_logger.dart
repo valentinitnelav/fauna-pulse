@@ -314,6 +314,11 @@ class SessionLogger {
   void logAppError(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('app_error', payload, at: at);
 
+  /// One video clip of the session (round 227, imports): its file (relative
+  /// to the session folder), start time and where that time came from.
+  void logVideoClip(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('video_clip', payload, at: at);
+
   /// Final record. `ended_normally: true` is written only on a clean stop;
   /// its absence (the line never got written) signals a crash.
   void logEnd(Map<String, dynamic> payload, {DateTime? at}) =>

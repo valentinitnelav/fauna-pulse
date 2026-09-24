@@ -843,16 +843,23 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// detector, no motion check.
   bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
+  /// True for videos imported from the home ⋮ menu (round 227): no camera
+  /// settings, and the AI runs afterwards ("Run AI on videos").
+  bool get _importedVideoSession => _startRec?['source'] == 'imported_video';
+
   /// Plain-language mode shown first in Setup's Overview. Sessions older
   /// than the capture-trigger setting were AI-detector sessions unless they
   /// carry the legacy motion-only flag handled above.
-  String get _captureModeLabel => _timeLapseSession
+  String get _captureModeLabel => _importedVideoSession
+      ? 'Imported videos (AI runs afterwards)'
+      : _timeLapseSession
       ? 'Time-lapse photo bursts (no AI)'
       : _motionOnlySession
       ? 'Motion-triggered photos (no AI)'
       : 'AI detector';
 
-  bool get _noAiSession => _motionOnlySession || _timeLapseSession;
+  bool get _noAiSession =>
+      _motionOnlySession || _timeLapseSession || _importedVideoSession;
 
   /// True only for sessions recorded with the short-lived round-148 build,
   /// where diagnostic logging was opt-in and off by default: those logs have
@@ -962,8 +969,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // the "not applicable" notes below mark whole groups the session's mode
     // made inert; each affected value reads "Not applicable". The log's config
     // block still registers every value (see config_not_applicable there).
-    final noAi = _motionOnlySession || _timeLapseSession;
-    final modeName = _timeLapseSession
+    final noAi = _noAiSession;
+    final modeName = _importedVideoSession
+        ? 'imported-video'
+        : _timeLapseSession
         ? 'time-lapse'
         : _motionOnlySession
         ? 'motion-trigger'
@@ -1772,6 +1781,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? 'n/a (motion-only capture — detector off)'
           : _timeLapseSession
           ? 'n/a (time-lapse — detector off)'
+          : _importedVideoSession
+          ? 'n/a (imported videos: not counted yet)'
           : _uniqueTracks?.toString() ?? 'unknown',
     ),
     const SizedBox(height: 8),
@@ -2497,6 +2508,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ? 'Time-lapse session — the AI detector was off, so no visits '
                     'or tracks were recorded. Photos were taken in scheduled '
                     'bursts; see the Photos tab.'
+              : _importedVideoSession
+              ? 'Imported videos: no visits yet. "Run AI on videos" on the '
+                    'home screen finds the insects; counting visits from '
+                    'its results comes in a later app update.'
               : 'No visits recorded.',
           textAlign: TextAlign.center,
         ),

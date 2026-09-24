@@ -1086,9 +1086,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         isInt: true,
         helperText:
             'How many processor cores the model may use when it runs on the '
-            'CPU (GPU runs ignore this). 0 lets the runtime decide. More '
-            'threads can be faster but draw more power and heat — run the '
-            'benchmark below before changing it.',
+            'CPU (GPU runs ignore this). 0 = automatic, which uses 2: on the '
+            'test phones that was about twice as fast as 1, while 4 was at '
+            'most slightly faster and keeps twice as many cores busy (more '
+            'heat). Run the benchmark below before changing it.',
         onChanged: (v) =>
             setState(() => _c = _c.copyWith(cpuThreads: v.round())),
       ),

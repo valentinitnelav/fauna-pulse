@@ -257,6 +257,14 @@ model with the current settings, embeds 8 of the session's own crops after a war
 reports seconds per crop, so GPU on/off and thread counts can be compared in a minute
 each; the app does not claim a speed it has not measured.
 
+Round 226 measured the thread count for the BioCLIP-2 image tower (fp16) on the Xiaomi
+with the engine benchmark (`integration_test/cpu_threads_check_test.dart`, 3 runs per
+value): 23.4 s per crop on 1 thread (LiteRT's own default, which "0" meant until then),
+9.4 s on 2, 7.1 s on 4 and 7.7 s on 8. "0 = automatic" now means 2 threads, the same as
+for the detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a
+long run the extra heat can cost more in thermal pauses than it saves, so it is left as
+an owner experiment with "Test speed" rather than the default.
+
 Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per
 visit 10** keeps a visit's ten LARGEST boxes when it has more photos (the photo count per

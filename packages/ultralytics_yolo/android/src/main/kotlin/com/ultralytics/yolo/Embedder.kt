@@ -34,6 +34,9 @@ class Embedder(
     val accelerator: String get() = rt.accelerator
     val accelerationNote: String? get() = rt.accelerationNote
 
+    /** Threads the CPU engine runs on (the count behind "0 = automatic"); null on the GPU. */
+    val cpuThreads: Int? get() = if (rt.accelerator == "CPU") (rt as? LiteRtModel)?.cpuThreads else null
+
     private val nchw: Boolean = rt.inputUsesNchw
     private val input: FloatArray
 
