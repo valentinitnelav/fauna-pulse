@@ -682,6 +682,24 @@ class SessionConfig {
     return (minHitsSeconds * fps).round().clamp(1, 600);
   }
 
+  /// A fresh tracker of the chosen algorithm with its frame budgets derived
+  /// for [detectorFps]. The one builder for live sessions (camera screen)
+  /// and offline tracking of videos (postprocess/video_tracker.dart).
+  InsectTracker buildTracker(double detectorFps) {
+    final buffer = occlusionFramesFor(detectorFps);
+    final hits = minHitsFramesFor(detectorFps);
+    switch (trackerAlgorithm) {
+      case TrackerAlgorithm.cbiou:
+        return CBiouTracker(
+          params: cbiouParams.copyWith(trackBuffer: buffer, minHitsToConfirm: hits),
+        );
+      case TrackerAlgorithm.bytetrack:
+        return ByteTracker(
+          params: trackerParams.copyWith(trackBuffer: buffer, minHitsToConfirm: hits),
+        );
+    }
+  }
+
   SessionConfig copyWith({
     String? modelPath,
     YOLOTask? task,

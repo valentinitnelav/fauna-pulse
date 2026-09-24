@@ -1,5 +1,5 @@
 // Round 227 screens for imported videos: the import screen, "Run AI on
-// videos" and its square editor. Each gets the 360-px layout check (no
+// videos" (with its Visits section, r228) and its square editor. Each gets the 360-px layout check (no
 // overflow, last control above a 48-px navigation bar); the import screen
 // also runs a real import into a temp folder, and the summary must name the
 // imported session's mode instead of guessing a camera mode.
@@ -165,10 +165,80 @@ void main() {
 
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
-    final footer = find.textContaining('Long runs:');
-    await tester.scrollUntilVisible(footer, 200, scrollable: list);
+    // Clip a is done, so the Visits section follows; its button is the last row.
+    final findVisits = find.text('Find visits');
+    await tester.scrollUntilVisible(findVisits, 200, scrollable: list);
     await tester.pump();
-    expectAboveBottomInset(tester, footer);
+    expectAboveBottomInset(tester, findVisits);
+  });
+
+  testWidgets('Find visits tracks the finished clips and offers the results (r228)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_visits_screen');
+    final session = Directory('${tmp.path}/Meadow plot 7 near the old oak tree second visit');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    for (final c in ['a.mp4', 'b.mp4']) {
+      File('${session.path}/videos/$c').writeAsStringSync('video');
+    }
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      '{"type":"start_of_session","time_ms":1000,"source":"imported_video"}\n'
+      '{"type":"end_of_session","time_ms":61000,"ended_normally":true}\n',
+    );
+    final settings = const VideoRunConfig(
+      modelPath: 'test_model',
+      modelName: 'test_model.tflite',
+      confidence: 0.25,
+      iou: 0.7,
+      useGpu: true,
+    ).identity;
+    // Clip a analysed at 10 fps with one insect resting for 3 s; b not yet.
+    File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      [
+        jsonEncode({'type': 'video_run_start', 'time_ms': 111, 'settings': settings}),
+        '{"type":"video_clip_start","clip":"a.mp4","start_epoch_ms":1000000,"width":1920,"height":1080}',
+        for (var t = 0; t <= 3000; t += 100)
+          jsonEncode({
+            'type': 'raw_detections',
+            'frame_ms': 1000000 + t,
+            'clip': 'a.mp4',
+            'pts_us': t * 1000,
+            'frame': t * 30 ~/ 1000,
+            'boxes': [
+              [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+            ],
+          }),
+        '{"type":"video_clip_done","clip":"a.mp4","frame_width":1920,"frame_height":1080,'
+            '"roi_px":[0,0,1920,1080],"class_names":["bee"]}',
+      ].join('\n'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
+    await tester.pump();
+    await tester.tap(find.text('Find visits'));
+    await _pumpUntil(tester, find.text('Share results'));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Found 1 visit in 1 clip.'), findsOneWidget);
+    expect(find.text('1 visit in 1 of 2 clips (occlusion tolerance 3.0 s, minimum visit 0.2 s).'), findsOneWidget);
+    expect(find.text('Find visits again'), findsOneWidget);
+    expect(File('${session.path}/visits.csv').existsSync(), isTrue);
+    expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
+
+    final share = find.text('Share results');
+    await tester.scrollUntilVisible(share, 200, scrollable: list);
+    await tester.pump();
+    expectAboveBottomInset(tester, share);
   });
 
   testWidgets('square editor fits 360 px and returns a side on the 32-pixel grid', (tester) async {
@@ -202,9 +272,20 @@ void main() {
 
   test('video analysis settings survive a restart', () async {
     SharedPreferences.setMockInitialValues({});
-    await VideoAnalysisPrefs(modelId: 'big_model', confidence: 0.4, iou: 0.5, analysisFps: 5, thermalLimitC: 42).save();
+    await VideoAnalysisPrefs(
+      modelId: 'big_model',
+      confidence: 0.4,
+      iou: 0.5,
+      analysisFps: 5,
+      thermalLimitC: 42,
+      occlusionSeconds: 5.0,
+      minVisitSeconds: 0.5,
+    ).save();
     final p = await VideoAnalysisPrefs.load();
-    expect([p.modelId, p.confidence, p.iou, p.analysisFps, p.thermalLimitC], ['big_model', 0.4, 0.5, 5, 42]);
+    expect(
+      [p.modelId, p.confidence, p.iou, p.analysisFps, p.thermalLimitC, p.occlusionSeconds, p.minVisitSeconds],
+      ['big_model', 0.4, 0.5, 5, 42, 5.0, 0.5],
+    );
 
     await (p..modelId = null).save();
     expect((await VideoAnalysisPrefs.load()).modelId, isNull);

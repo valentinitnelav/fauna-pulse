@@ -37,8 +37,6 @@ import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
-import '../tracking/byte_track.dart';
-import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
 import '../widgets/calibrating_banner.dart';
 import '../widgets/location_dialog.dart';
@@ -2292,26 +2290,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// and the given (smoothed) detector FPS. Centralised so the init and the
   /// settings-apply construct the tracker the same way; the per-second live
   /// refresh only re-derives the frame budgets via [InsectTracker.setFrameBudgets].
-  InsectTracker _buildTracker(double detectorFps) {
-    final buffer = _config.occlusionFramesFor(detectorFps);
-    final hits = _config.minHitsFramesFor(detectorFps);
-    switch (_config.trackerAlgorithm) {
-      case TrackerAlgorithm.cbiou:
-        return CBiouTracker(
-          params: _config.cbiouParams.copyWith(
-            trackBuffer: buffer,
-            minHitsToConfirm: hits,
-          ),
-        );
-      case TrackerAlgorithm.bytetrack:
-        return ByteTracker(
-          params: _config.trackerParams.copyWith(
-            trackBuffer: buffer,
-            minHitsToConfirm: hits,
-          ),
-        );
-    }
-  }
+  /// The builder itself lives in [SessionConfig.buildTracker] (round 228),
+  /// shared with offline tracking of videos.
+  InsectTracker _buildTracker(double detectorFps) => _config.buildTracker(detectorFps);
 
   /// The explicit user-selected inference-rate ceiling (FPS).
   int get _inferenceCeilFps => _config.inferenceFps;

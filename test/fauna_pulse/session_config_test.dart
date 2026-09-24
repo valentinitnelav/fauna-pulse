@@ -297,6 +297,19 @@ void main() {
     });
   });
 
+  test('buildTracker: chosen algorithm, budgets in frames for the given fps (r228)', () {
+    // One builder for live sessions and offline tracking of videos.
+    const c = SessionConfig(occlusionSeconds: 2.0, minHitsSeconds: 0.4, trackerAlgorithm: TrackerAlgorithm.cbiou);
+    final t = c.buildTracker(10);
+    expect(t, isA<CBiouTracker>());
+    expect(t.trackBuffer, 20);
+    expect(t.minHitsToConfirm, 4);
+    final b = c.copyWith(trackerAlgorithm: TrackerAlgorithm.bytetrack).buildTracker(2);
+    expect(b, isA<ByteTracker>());
+    expect(b.trackBuffer, 4);
+    expect(b.minHitsToConfirm, 1); // 0.4 s at 2 fps rounds to 1 frame
+  });
+
   test('minHitsSeconds round-trips through toJson/fromJson', () {
     const original = SessionConfig(minHitsSeconds: 0.4);
     final restored = SessionConfig.fromJson(original.toJson());

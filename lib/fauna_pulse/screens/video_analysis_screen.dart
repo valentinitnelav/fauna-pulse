@@ -13,15 +13,22 @@
 // shrunk less before the model sees it, so small insects stay visible. When
 // a session's clips differ in size, the square keeps the same position and
 // size relative to each clip's width.
+//
+// Visits (round 228): once clips are analyzed, "Find visits" links the boxes
+// into visits (postprocess/video_tracker.dart) and writes visits.csv and
+// MOT files; it runs by itself after a finished analysis and can be repeated
+// with other tracking settings in seconds. "Share results" zips them.
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -32,6 +39,8 @@ import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../postprocess/video_detector.dart';
+import '../postprocess/video_tracker.dart';
+import '../tracking/tracker.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
@@ -50,12 +59,20 @@ class VideoAnalysisPrefs {
   double analysisFps;
   double thermalLimitC;
 
+  /// Visit tracking (round 228): the live camera's two seconds-based
+  /// settings, kept apart so trying other values on videos never changes
+  /// the camera. Algorithm and fine-tuning are the camera's.
+  double occlusionSeconds;
+  double minVisitSeconds;
+
   VideoAnalysisPrefs({
     this.modelId,
     this.confidence = 0.25,
     this.iou = 0.7,
     this.analysisFps = 15,
     this.thermalLimitC = 40,
+    this.occlusionSeconds = 3.0,
+    this.minVisitSeconds = 0.2,
   });
 
   static const _kModel = 'video_analysis_model';
@@ -63,6 +80,8 @@ class VideoAnalysisPrefs {
   static const _kIou = 'video_analysis_iou';
   static const _kFps = 'video_analysis_fps';
   static const _kThermal = 'video_analysis_thermal_limit_c';
+  static const _kOcclusion = 'video_analysis_occlusion_s';
+  static const _kMinVisit = 'video_analysis_min_visit_s';
 
   static Future<VideoAnalysisPrefs> load() async {
     final p = await SharedPreferences.getInstance();
@@ -72,6 +91,8 @@ class VideoAnalysisPrefs {
       iou: p.getDouble(_kIou) ?? 0.7,
       analysisFps: p.getDouble(_kFps) ?? 15,
       thermalLimitC: p.getDouble(_kThermal) ?? 40,
+      occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
+      minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
     );
   }
 
@@ -86,6 +107,8 @@ class VideoAnalysisPrefs {
     await p.setDouble(_kIou, iou);
     await p.setDouble(_kFps, analysisFps);
     await p.setDouble(_kThermal, thermalLimitC);
+    await p.setDouble(_kOcclusion, occlusionSeconds);
+    await p.setDouble(_kMinVisit, minVisitSeconds);
   }
 }
 
@@ -105,7 +128,24 @@ class _VideoSession {
   /// Settings of the last run, or null when none ran yet.
   final Map<String, dynamic>? lastSettings;
 
-  const _VideoSession(this.name, this.dir, this.clips, this.totalBytes, this.lengthsMs, this.doneClips, this.lastSettings);
+  /// `time_ms` of the detection run's first record (see
+  /// [PostTrackSummary.detectionsRunMs]).
+  final int? detectionsRunMs;
+
+  /// The last "Find visits", or null.
+  final PostTrackSummary? visits;
+
+  const _VideoSession(
+    this.name,
+    this.dir,
+    this.clips,
+    this.totalBytes,
+    this.lengthsMs,
+    this.doneClips,
+    this.lastSettings,
+    this.detectionsRunMs,
+    this.visits,
+  );
 
   int get totalMs => clips.fold(0, (s, c) => s + (lengthsMs[c] ?? 0));
 }
@@ -142,6 +182,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   bool _running = false;
   bool _cancelRequested = false;
+  bool _tracking = false;
+
+  /// The camera's tracking algorithm, which "Find visits" uses too.
+  TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
   VideoProgress? _progress;
 
   /// Lengths (ms) of the clips this run walks, in its order: the progress
@@ -165,13 +209,14 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _load() async {
     final prefs = await VideoAnalysisPrefs.load();
     final models = widget.models ?? await ModelCatalog.build();
-    final useGpu = (await SessionConfig.load()).useGpu;
+    final appConfig = await SessionConfig.load();
     final sessions = await _scanSessions();
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
       _models = models;
-      _useGpu = useGpu;
+      _useGpu = appConfig.useGpu;
+      _algorithm = appConfig.trackerAlgorithm;
       _sessions = sessions;
       _model = models.where((m) => m.id == prefs.modelId).firstOrNull ?? models.firstOrNull;
       _loading = false;
@@ -218,6 +263,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       }
     }
     var resume = const VideoResume(null, {}, {});
+    int? runMs;
     final out = File('${dir.path}/${VideoDetector.outputFileName}');
     if (out.existsSync()) {
       // Only the run and clip-done records matter here; skipping the many
@@ -229,6 +275,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           .where((l) => l.contains('"video_run_start"') || l.contains('"video_clip_done"'))
           .toList();
       resume = VideoResume.parse(lines);
+      for (final l in lines.where((l) => l.contains('"video_run_start"')).take(1)) {
+        try {
+          runMs = ((jsonDecode(l) as Map)['time_ms'] as num?)?.toInt();
+        } catch (_) {}
+      }
     }
     return _VideoSession(
       dir.path.split('/').last,
@@ -238,6 +289,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       lengths,
       resume.doneClips,
       resume.settings,
+      runMs,
+      await VideoTracker.readSummary(dir),
     );
   }
 
@@ -422,7 +475,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       if (await _confirmStartOver(session, const [])) await _start(startOver: true);
       return;
     }
-    final message = failure != null
+    var message = failure != null
         ? 'Analysis failed: $failure'
         : result!.cancelled
         ? 'Stopped after ${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}; '
@@ -431,7 +484,16 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               '${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}'
               '${result.thermalPauses > 0 ? ', ${result.thermalPauses} heat pauses' : ''}'
               '${result.clipsFailed > 0 ? '. ${result.clipsFailed} could not be read; Continue tries them again' : ''}.';
+    // Boxes alone are not visits yet: link them right away (seconds).
+    if (failure == null && !result!.cancelled && result.clipsDone > 0) {
+      message = '$message ${await _findVisits(session)}';
+      if (!mounted) return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await _refresh(session);
+  }
+
+  Future<void> _refresh(_VideoSession session) async {
     final sessions = await _scanSessions();
     if (!mounted) return;
     setState(() {
@@ -439,6 +501,55 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _session = sessions.where((s) => s.dir.path == session.dir.path).firstOrNull;
     });
   }
+
+  /// Links the analyzed boxes of [session] into visits, off the screen's
+  /// thread so it stays responsive. Returns the outcome in words.
+  Future<String> _findVisits(_VideoSession session) async {
+    setState(() => _tracking = true);
+    await _prefs.save();
+    String message;
+    try {
+      final config = (await SessionConfig.load()).copyWith(
+        occlusionSeconds: _prefs.occlusionSeconds,
+        minHitsSeconds: _prefs.minVisitSeconds,
+      );
+      final r = await _trackInBackground(session.dir.path, config);
+      message =
+          'Found ${r.visits} ${r.visits == 1 ? 'visit' : 'visits'} in ${r.clipsTracked} '
+          '${r.clipsTracked == 1 ? 'clip' : 'clips'}.';
+    } catch (e) {
+      logSwallowed('video_find_visits', e);
+      message = 'Finding visits failed: ${e is StateError ? e.message : e}';
+    }
+    if (mounted) setState(() => _tracking = false);
+    return message;
+  }
+
+  Future<void> _onFindVisits() async {
+    final s = _session;
+    if (s == null || _running || _tracking) return;
+    final message = await _findVisits(s);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await _refresh(s);
+  }
+
+  Future<void> _shareResults(_VideoSession s) async {
+    final tmp = await getTemporaryDirectory();
+    final path = await _zipInBackground(s.dir.path, '${tmp.path}/${s.name}_video_results.zip');
+    if (!mounted) return;
+    if (path == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not pack the results.')));
+      return;
+    }
+    await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+  }
+
+  // Static, so the background isolate carries only the path and settings.
+  static Future<VideoTrackResult> _trackInBackground(String path, SessionConfig config) =>
+      Isolate.run(() => VideoTracker.run(Directory(path), config));
+  static Future<String?> _zipInBackground(String dir, String zip) =>
+      Isolate.run(() => VideoTracker.writeResultsZip(dir, zip));
 
   /// Share of the run done, weighing clips by length.
   double? get _fraction {
@@ -568,6 +679,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                     'phone is used meanwhile. A stopped run continues where it left off.',
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
+                  _visitsSection(),
                 ],
               ),
       ),
@@ -727,6 +839,105 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           const Text(
             'The boxes found are saved in the session folder (video_detections.jsonl).',
             style: helperTextStyle,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// "Visits": tracking settings, Find visits, the last result and Share.
+  /// Shown once at least one clip is analyzed.
+  Widget _visitsSection() {
+    final s = _session;
+    if (s == null || s.doneClips.isEmpty) return const SizedBox.shrink();
+    final v = s.visits;
+    final busy = _running || _tracking;
+    final stale = v != null &&
+        (v.detectionsRunMs != s.detectionsRunMs ||
+            v.clips.length != s.doneClips.length ||
+            !v.clips.every(s.doneClips.contains));
+    final changed = v != null &&
+        (v.occlusionSeconds != _prefs.occlusionSeconds ||
+            v.minHitsSeconds != _prefs.minVisitSeconds ||
+            v.algorithm != _algorithm.name);
+    const amber = TextStyle(color: Colors.amber, fontSize: 13);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        const HelpLabel(
+          label: 'Visits',
+          labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          helperText:
+              'Follows each insect from frame to frame, as the live camera does, so one insect seen in '
+              'many frames counts as one visit. Takes seconds and can be repeated with other settings '
+              'without analyzing the videos again.',
+        ),
+        const SizedBox(height: 8),
+        NumericSettingField(
+          label: 'Occlusion tolerance',
+          value: _prefs.occlusionSeconds,
+          min: 0.2,
+          max: 10,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
+              'visits split in two; too long: two visitors can merge into one. Keep it well above the '
+              'time between two analyzed frames. Default 3 s, as on the live camera.',
+          onChanged: (x) {
+            setState(() => _prefs.occlusionSeconds = x);
+            _prefs.save();
+          },
+        ),
+        NumericSettingField(
+          label: 'Minimum visit length',
+          value: _prefs.minVisitSeconds,
+          min: 0,
+          max: 2,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'How long an insect must be seen before it counts as a visit; shorter sightings are '
+              'dropped as noise. Default 0.2 s, as on the live camera.',
+          onChanged: (x) {
+            setState(() => _prefs.minVisitSeconds = x);
+            _prefs.save();
+          },
+        ),
+        Text(
+          'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
+          'camera Settings → AI → Visit tracking → Advanced.',
+          style: helperTextStyle,
+        ),
+        const SizedBox(height: 8),
+        FilledButton.tonalIcon(
+          onPressed: busy ? null : _onFindVisits,
+          icon: const Icon(Icons.timeline),
+          label: Text(_tracking ? 'Finding visits…' : v == null ? 'Find visits' : 'Find visits again'),
+        ),
+        if (v != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '${v.visits} ${v.visits == 1 ? 'visit' : 'visits'} in ${v.clips.length} of ${s.clips.length} clips '
+            '(occlusion tolerance ${v.occlusionSeconds.toStringAsFixed(1)} s, minimum visit '
+            '${v.minHitsSeconds.toStringAsFixed(1)} s).',
+          ),
+          if (stale)
+            const Text('The videos were analyzed further or again since: find visits again to include that.', style: amber)
+          else if (changed)
+            const Text('Settings changed: find visits again to use them.', style: amber),
+          const SizedBox(height: 4),
+          const Text(
+            'Saved in the session folder: visits.csv (one row per visit), mot/ (every box, for annotation '
+            'tools) and post_tracks.jsonl.',
+            style: helperTextStyle,
+          ),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => _shareResults(s),
+            icon: const Icon(Icons.share),
+            label: const Text('Share results'),
           ),
         ],
       ],

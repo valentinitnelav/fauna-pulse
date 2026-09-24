@@ -867,5 +867,50 @@ stored time; video editors reset it to the export time.
 * `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
   `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
 
-The file holds boxes only. Turning them into visits (tracking), and the summary and
-exports of those visits, come in a later app update.
+The file holds boxes only; the next files turn them into visits.
+
+### Visits: `post_tracks.jsonl`, `visits.csv`, `mot/` (round 228+)
+
+*Find visits* (under the analysis on the "Run AI on videos" screen, and automatically
+after each finished analysis) runs the boxes through the same tracker a live session
+uses (ByteTrack or C-BIoU, chosen under camera Settings, with the screen's own
+**occlusion tolerance** and **minimum visit length**). It follows each insect from frame
+to frame, so one insect seen in many frames counts as one visit. It takes seconds and
+never re-runs the detector, so it can be repeated with other settings; each run
+**replaces** these three outputs (each is written under a temporary name and renamed when
+complete, so a crash never leaves half a file in place of a good one):
+
+* `post_tracks.jsonl`: shaped like the live log. `post_track_start` first (`run_id`,
+  `detections_run_ms` = `time_ms` of the analysis run's first `video_run_start`, the
+  `detection_settings`, `occlusion_seconds`, `min_hits_seconds`, `tracker` = the effective
+  tracker parameters, `clips`, `clips_continuing_previous`, `clips_left_out`), then
+  `detections` and `track_event` records as in §3 (with `time_ms` = the frame's own time,
+  plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live),
+  and `post_track_end` last (`visits`, `frames`, `detections`, `clips_tracked`,
+  `elapsed_ms`).
+* `visits.csv`: one row per visit (confirmed track id), for spreadsheets and R:
+  `track_id, clip, start_time` (wall clock), `start_s, end_s, duration_s` (seconds from
+  the start of the clip the visit began in, the position a video player shows),
+  `n_frames` (frames with a box), `mean_conf` and `class` (the class seen in most frames).
+* `mot/<clip>.txt`: every tracked box in the MOTChallenge text format
+  `frame,id,x,y,w,h,conf,-1,-1,-1` (frames counted from 1 in display order, box
+  left/top/width/height in video pixels). CVAT imports it as a first draft of the
+  annotation; tracking benchmarks read it. A clip without any box gets an empty file.
+
+Worth knowing when comparing with a hand count:
+
+* As in live sessions, a track shows up only once confirmed (after the minimum visit
+  length), so `mot/` and `detections` lack each visit's first frames. `start_s` is the
+  tracker's first sighting, before confirmation; `n_frames` counts from confirmation.
+* Only clips whose analysis finished are tracked (`clips_left_out` lists the others).
+* One tracker follows an insect from one clip into the next only when the next clip's
+  first analysed frame comes after the previous clip's last one, within the occlusion
+  tolerance (clips recorded back to back). The visit keeps the first clip's clock, so its
+  `end_s` can exceed that clip's length. Otherwise the tracker starts afresh, since
+  imported files can overlap or carry wrong clocks. Track ids stay unique per session.
+* Times come from each frame's own time stamp, never from frame number ÷ fps.
+* At a low analysis rate, keep the occlusion tolerance well above the time between two
+  analysed frames, or every visit breaks into pieces.
+
+*Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
+(to track again on a computer) and `session.jsonl` (clip start times).

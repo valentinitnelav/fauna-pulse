@@ -28,10 +28,22 @@ import '../models/track.dart';
 import 'tracker.dart';
 
 /// One replayable frame: its wall-clock timestamp and the detector's boxes.
+/// Frames from a video analysis (`video_detections.jsonl`, round 225) also
+/// carry the clip, the frame's number in it (0-based, display order) and its
+/// time stamp inside the clip; live sessions leave them null.
 class ReplayFrame {
   final int timestampMs;
   final List<Detection> detections;
-  const ReplayFrame({required this.timestampMs, required this.detections});
+  final String? clip;
+  final int? frameIndex;
+  final int? ptsUs;
+  const ReplayFrame({
+    required this.timestampMs,
+    required this.detections,
+    this.clip,
+    this.frameIndex,
+    this.ptsUs,
+  });
 }
 
 /// Parses the `raw_detections` records out of session.jsonl lines. All other
@@ -41,7 +53,8 @@ class ReplayFrame {
 /// Payload format (KEEP IN SYNC with `SessionRecorder.recordFrame`):
 /// `{"type":"raw_detections","frame_ms":<int>,`
 /// `"boxes":[[left,top,right,bottom,confidence,classIndex],...]}`
-/// with boxes frame-normalized 0..1.
+/// with boxes frame-normalized 0..1. Video records add `clip`, `frame` and
+/// `pts_us` (postprocess/video_detector.dart).
 List<ReplayFrame> parseRawDetectionLines(Iterable<String> lines) {
   final frames = <ReplayFrame>[];
   for (final line in lines) {
@@ -74,7 +87,15 @@ List<ReplayFrame> parseRawDetectionLines(Iterable<String> lines) {
         ),
       );
     }
-    frames.add(ReplayFrame(timestampMs: ts, detections: dets));
+    frames.add(
+      ReplayFrame(
+        timestampMs: ts,
+        detections: dets,
+        clip: rec['clip'] as String?,
+        frameIndex: (rec['frame'] as num?)?.toInt(),
+        ptsUs: (rec['pts_us'] as num?)?.toInt(),
+      ),
+    );
   }
   frames.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
   return frames;
@@ -219,14 +240,22 @@ class TrackerReplayReport {
 ///
 /// The budget formulas mirror `SessionConfig.occlusionFramesFor` /
 /// `minHitsFramesFor` — KEEP IN SYNC.
+///
+/// [initialFps] seeds the FPS estimate (a video's analysis rate is known up
+/// front; without it the first second assumes 15 FPS). [onFrame] sees every
+/// frame's confirmed tracks and the lifecycle events drained after it
+/// (round 228: offline tracking of videos writes them out); the [Track]
+/// objects are the tracker's own and change on the next frame.
 TrackerReplayReport replayTracker({
   required InsectTracker tracker,
   required List<ReplayFrame> frames,
   double occlusionSeconds = 3.0,
   double minHitsSeconds = 0.2,
+  double? initialFps,
+  void Function(ReplayFrame frame, List<Track> tracks, List<TrackEvent> events)? onFrame,
 }) {
   tracker.reset();
-  var fpsEma = 0.0;
+  var fpsEma = initialFps ?? 0.0;
   var lastTs = 0;
   var lastBudgetTs = 0;
   var detections = 0;
@@ -282,9 +311,10 @@ TrackerReplayReport replayTracker({
     final sw = Stopwatch()..start();
     final tracks = tracker.update(frame.detections, frame.timestampMs);
     sw.stop();
-    // The replay scores counts/durations only; drain the lifecycle events
-    // (round 116) so they can't pile up across thousands of frames.
-    tracker.drainEvents();
+    // Drain the lifecycle events (round 116) every frame so they can't pile
+    // up across thousands of frames; only [onFrame] uses them.
+    final events = tracker.drainEvents();
+    onFrame?.call(frame, tracks, events);
     trackMsSamples.add(sw.elapsedMicroseconds / 1000.0);
     if (tracks.length > maxConcurrent) maxConcurrent = tracks.length;
     if (tracker.activeTrackCount > peakActive) {

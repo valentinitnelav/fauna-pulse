@@ -32,6 +32,20 @@ int snapToMultipleOf32(double pixels) {
   return (steps < 1 ? 1 : steps) * 32;
 }
 
+/// Expresses a normalized frame box as coordinates inside the ROI (0..1),
+/// per CLAUDE.md (boxes are stored relative to the ROI they were found in).
+/// Shared by the live session log and offline tracking of videos (r228).
+Map<String, double> boxInRoi(Rect box, Rect roi) {
+  final rw = roi.width == 0 ? 1.0 : roi.width;
+  final rh = roi.height == 0 ? 1.0 : roi.height;
+  return {
+    'left': (box.left - roi.left) / rw,
+    'top': (box.top - roi.top) / rh,
+    'right': (box.right - roi.left) / rw,
+    'bottom': (box.bottom - roi.top) / rh,
+  };
+}
+
 /// An immutable square region of interest, defined in frame-relative units.
 class Roi {
   /// Box centre X as a fraction of frame width (0..1).
