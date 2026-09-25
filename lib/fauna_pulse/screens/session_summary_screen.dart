@@ -41,12 +41,14 @@ import '../logging/track_source.dart';
 import '../logging/visit_stats.dart';
 import '../widgets/mini_bar_chart.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/video_review_player.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
 import 'identification_screen.dart';
+import 'video_analysis_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final File logFile;
@@ -1565,11 +1567,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Session summary'),
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'Photos'),
-              Tab(text: 'Graphs'),
-              Tab(text: 'Setup'),
+              Tab(text: _videoTab ? 'Video' : 'Photos'),
+              const Tab(text: 'Graphs'),
+              const Tab(text: 'Setup'),
             ],
           ),
         ),
@@ -1583,7 +1585,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 physics: _photoViewerZoomed
                     ? const NeverScrollableScrollPhysics()
                     : null,
-                children: [_photosTab(), _graphsTab(), _setupTab()],
+                children: [
+                  _videoTab ? _videoReviewTab() : _photosTab(),
+                  _graphsTab(),
+                  _setupTab(),
+                ],
               ),
       ),
     );
@@ -1827,6 +1833,46 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         if (_setupSettingsExpanded) ..._settingsSection(),
       ],
     );
+  }
+
+  /// Imported videos get a "Video" tab instead of "Photos" (round 231).
+  /// Until the start record is read, a videos/ folder decides, so the tab
+  /// label does not flip once loading is done.
+  bool get _videoTab => _startRec == null ? _hasVideoFolder : _importedVideoSession;
+  late final bool _hasVideoFolder = Directory(
+    '${widget.logFile.parent.path}/videos',
+  ).existsSync();
+
+  Widget _videoReviewTab() => VideoReviewPlayer(
+    sessionDir: widget.logFile.parent,
+    padding: _tabPadding,
+    onOpenAnalysis: _openVideoAnalysis,
+    footer: _identifySection(),
+  );
+
+  /// "Run AI on videos" for this session, from the Video tab. A new
+  /// analysis or new visits change the Setup rows and the Graphs, so both
+  /// are read again afterwards.
+  Future<void> _openVideoAnalysis() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoAnalysisScreen(
+          initialSessionPath: widget.logFile.parent.path,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadVideoRun();
+    if (!mounted) return;
+    _indexFuture = null;
+    _spans.clear();
+    _temps.clear();
+    _headroom.clear();
+    _fps.clear();
+    _infMs.clear();
+    _power.clear();
+    _uniqueTracks = null;
+    if (_graphsRequested) await _loadGraphs();
   }
 
   Widget _photosTab() {
@@ -2391,63 +2437,69 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           label: const Text('Copy photos'),
         ),
       ),
-      // --- Identify organisms (round 208): per-visit taxonomic identification
-      // with the BioCLIP image tower, run on the phone from the saved photos.
-      const Divider(height: 32, color: Colors.white24),
-      const HelpLabel(
-        label: 'Identify organisms',
-        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        helperText:
-            'Runs an identification model (BioCLIP) over the saved photos of every '
-            'tracked organism and combines the photos of each track id into one answer '
-            'with a confidence per rank (order, family, genus, species). Needs a model '
-            'file and a label pack, imported once on the next screen. '
-            'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
-            'Results land in the session folder as CSV and JSON. '
-            'And when ready, a "View results" button will also appear here '
-            'Please treat the results as suggestions. ' 
-            'Misidentifications are possible, especially for taxa that are not in the label pack.',
-      ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: () => Navigator.of(context)
-                .push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        IdentificationScreen(sessionDir: widget.logFile.parent),
-                  ),
-                )
-                .then((_) => _loadIdentification()),
-            icon: const Icon(Icons.biotech_outlined),
-            label: const Text('Identify organisms'),
-          ),
-          // Round 213: straight to the newest results when a run exists.
-          if (_identification case final id?)
-            FilledButton.icon(
-              onPressed: () {
-                final paths = IdentificationPaths(widget.logFile.parent);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => IdentificationResultsScreen(
-                      sessionDir: widget.logFile.parent,
-                      tracksJson: paths.tracksJson(id.packStem),
-                      summaryJson: id.summaryFile,
-                      tracksCsv: paths.tracksCsv(id.packStem),
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.table_rows_outlined),
-              label: const Text('View results'),
-            ),
-        ],
-      ),
+      ..._identifySection(),
     ];
   }
+
+  /// "Identify organisms" (round 208), at the end of the Photos tab and of
+  /// the Video tab (round 231).
+  List<Widget> _identifySection() => [
+    // --- Identify organisms (round 208): per-visit taxonomic identification
+    // with the BioCLIP image tower, run on the phone from the saved photos.
+    const Divider(height: 32, color: Colors.white24),
+    const HelpLabel(
+      label: 'Identify organisms',
+      labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+      helperText:
+          'Runs an identification model (BioCLIP) over the saved photos of every '
+          'tracked organism and combines the photos of each track id into one answer '
+          'with a confidence per rank (order, family, genus, species). Needs a model '
+          'file and a label pack, imported once on the next screen. '
+          'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
+          'Results land in the session folder as CSV and JSON. '
+          'And when ready, a "View results" button will also appear here '
+          'Please treat the results as suggestions. ' 
+          'Misidentifications are possible, especially for taxa that are not in the label pack.',
+    ),
+    const SizedBox(height: 8),
+    Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: () => Navigator.of(context)
+              .push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      IdentificationScreen(sessionDir: widget.logFile.parent),
+                ),
+              )
+              .then((_) => _loadIdentification()),
+          icon: const Icon(Icons.biotech_outlined),
+          label: const Text('Identify organisms'),
+        ),
+        // Round 213: straight to the newest results when a run exists.
+        if (_identification case final id?)
+          FilledButton.icon(
+            onPressed: () {
+              final paths = IdentificationPaths(widget.logFile.parent);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => IdentificationResultsScreen(
+                    sessionDir: widget.logFile.parent,
+                    tracksJson: paths.tracksJson(id.packStem),
+                    summaryJson: id.summaryFile,
+                    tracksCsv: paths.tracksCsv(id.packStem),
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.table_rows_outlined),
+            label: const Text('View results'),
+          ),
+      ],
+    ),
+  ];
 
   /// The sample-size chip row (round 209): 10 / 50 / 100 (those below the
   /// photo count) / All, plus a "new random draw" button.

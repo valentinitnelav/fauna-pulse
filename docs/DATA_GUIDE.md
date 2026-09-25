@@ -931,3 +931,36 @@ an imported session once *Find visits* has run, and its visits per hour use `obs
 the gaps between clips were not filmed. A problem report carries the run records of both
 files (`video_detections_runs.jsonl`, `post_tracks_runs.jsonl`), without the per-frame
 boxes.
+
+### The Video tab: watching the boxes (round 231+)
+
+For an imported video session the summary's first tab is **Video** (live sessions keep
+*Photos*). It plays the session's clips with the AI's boxes drawn on them, so you can see
+what the AI found and whether the analysed square was well placed. The tab only reads
+`video_detections.jsonl` and `post_tracks.jsonl`; it writes nothing.
+
+* **Which boxes show at a moment.** The player's position counts from the clip's first
+  frame, the same clock as `start_s`/`end_s` in `visits.csv`. It shows the boxes of the
+  last analysed frame at or before that position and keeps them for at most 1.5 times the
+  step between analysed frames (150 ms at 10 frames per second). Parts of a clip that were
+  never analysed (a gap, the tail of a stopped analysis) show no boxes, never old ones. At
+  an analysis rate below the video's frame rate the boxes move in small steps, and at
+  higher playback speeds they can trail a fast insect a little.
+* **Visits or all AI boxes.** Once *Find visits* has run, the boxes are the tracked ones
+  from `post_tracks.jsonl`, labelled `#<track id> class conf` with the same number as in
+  `visits.csv`. A faded box is a frame where the detector missed the insect and the tracker
+  kept its place. The *All AI boxes* switch shows every `raw_detections` box instead,
+  including those *Find visits* did not count (a visit shorter than the minimum length,
+  or the frames before a track was confirmed, see above). Before *Find visits*, and when
+  the videos were analysed again after it (the visits' `detections_run_ms` no longer
+  matches the analysis run), only the AI boxes are shown, with a note.
+* **Whole frame or what the AI saw.** When a square was analysed, *Whole frame* draws it
+  and darkens the part left out; *What the AI saw* zooms onto the square. The square comes
+  from `roi_px` in `video_clip_done`, or from the run's `settings.roi` for a clip whose
+  analysis has not finished. Insects outside the square or cut by its edge mean the square
+  should move: *Change square and analyse again* opens *Run AI on videos* for the session,
+  and the tab reloads on return.
+* **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
+  visit (each starts 1 s before the visit); speed 0.5×, 1×, 2× or 4×; sound is off until
+  switched on. The coloured bars under the time bar mark the visits, and tapping a visit in
+  the list below the player jumps to it.
