@@ -65,6 +65,10 @@ class VideoAnalysisPrefs {
   double occlusionSeconds;
   double minVisitSeconds;
 
+  /// How often the phone's temperature, power and speed are logged during a
+  /// run (round 232), seconds.
+  double sampleSeconds;
+
   VideoAnalysisPrefs({
     this.modelId,
     this.confidence = 0.25,
@@ -73,6 +77,7 @@ class VideoAnalysisPrefs {
     this.thermalLimitC = 40,
     this.occlusionSeconds = 3.0,
     this.minVisitSeconds = 0.2,
+    this.sampleSeconds = 10,
   });
 
   static const _kModel = 'video_analysis_model';
@@ -82,6 +87,7 @@ class VideoAnalysisPrefs {
   static const _kThermal = 'video_analysis_thermal_limit_c';
   static const _kOcclusion = 'video_analysis_occlusion_s';
   static const _kMinVisit = 'video_analysis_min_visit_s';
+  static const _kSample = 'video_analysis_sample_s';
 
   static Future<VideoAnalysisPrefs> load() async {
     final p = await SharedPreferences.getInstance();
@@ -93,6 +99,7 @@ class VideoAnalysisPrefs {
       thermalLimitC: p.getDouble(_kThermal) ?? 40,
       occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
       minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
+      sampleSeconds: p.getDouble(_kSample) ?? 10,
     );
   }
 
@@ -109,6 +116,7 @@ class VideoAnalysisPrefs {
     await p.setDouble(_kThermal, thermalLimitC);
     await p.setDouble(_kOcclusion, occlusionSeconds);
     await p.setDouble(_kMinVisit, minVisitSeconds);
+    await p.setDouble(_kSample, sampleSeconds);
   }
 }
 
@@ -451,6 +459,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         },
         isCancelled: () => _cancelRequested,
         thermalLimitC: _prefs.thermalLimitC,
+        sampleEvery: Duration(seconds: _prefs.sampleSeconds.round()),
         appVersion: appVersion,
         startOver: startOver,
       );
@@ -668,6 +677,23 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                         helperText:
                             'The run pauses when the battery reaches this and resumes 3 °C lower. A hot battery '
                             'ages faster, and a hot phone slows itself down anyway.',
+                      ),
+                      NumericSettingField(
+                        label: 'Measure the phone every',
+                        value: _prefs.sampleSeconds,
+                        min: 5,
+                        max: 60,
+                        decimals: 0,
+                        unitSuffix: 's',
+                        onChanged: (v) {
+                          setState(() => _prefs.sampleSeconds = v);
+                          _prefs.save();
+                        },
+                        helperText:
+                            'How often the battery temperature, power use and analysis speed are written down '
+                            'during a run, also while it pauses to cool down. They make the session\'s Graphs '
+                            'and the file phone_during_analysis.csv. 10 s, as on the live camera, shows how '
+                            'the phone warms up; shorter shows quick changes but gives a longer file.',
                       ),
                     ],
                   ),

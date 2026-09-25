@@ -24,6 +24,11 @@ logger yields with a zero-length timer that a bare `pump()` never fires.
 The summary's Video tab (`video_review_player_test.dart`, round 231) runs
 against a fake `VideoPlayerPlatform`; its rows sit in a lazy `ListView`, so
 the test scrolls to them (`scrollUntilVisible`) before looking for them.
+`phone_during_analysis.csv` (round 232) is compared with the golden file
+`fixtures/phone_during_analysis.csv` in `video_run_samples_test.dart`; after
+an intended change to its columns, rewrite it with
+`flutter test test/fauna_pulse/video_run_samples_test.dart --update-goldens`
+and check the diff.
 Run `flutter analyze` alongside it; both must be clean before a PR.
 
 
@@ -84,6 +89,7 @@ flutter test integration_test/video_decode_check_test.dart -d <device> --no-unin
 flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-uninstall   # CPU thread timing (r226)
 flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)
 flutter test integration_test/video_review_check_test.dart -d <device> --no-uninstall # Video tab: boxes, 4x frame times, soak, re-analysis (r231; header: model, screenshots)
+flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Run AI on videos: stop, forced cooling pause, continue, graphs, CSV (r232)
 ```
 
 On a phone that has the Play build installed (the Samsung), never run the

@@ -16,6 +16,12 @@
 //
 // The native side is injected ([VideoBackend]) so the driver's logic is
 // unit-testable without a phone.
+//
+// Round 232: every `sampleEvery` (also while paused to cool down) the run
+// logs the phone's state with the live record names (`thermal`, `power`)
+// plus `analysis_speed`, and marks cooling pauses (`video_thermal_pause` /
+// `video_thermal_resume`). The summary's Graphs tab and
+// phone_during_analysis.csv read them (video_run_samples.dart).
 
 import 'dart:convert';
 import 'dart:io';
@@ -217,11 +223,23 @@ class VideoDetector {
   final VideoBackend backend;
   final ThermalFn thermal;
 
-  /// Sleep between temperature checks while paused.
+  /// Sleep between temperature checks while paused (shortened to the sample
+  /// interval when that is shorter, so samples continue during a pause).
   final Duration pausePoll;
 
-  VideoDetector({required this.backend, ThermalFn? thermal, this.pausePoll = const Duration(seconds: 15)})
-    : thermal = thermal ?? DeviceThermal.read;
+  /// Clock and wait, replaceable in tests.
+  final DateTime Function() now;
+  final Future<void> Function(Duration) sleep;
+
+  VideoDetector({
+    required this.backend,
+    ThermalFn? thermal,
+    this.pausePoll = const Duration(seconds: 15),
+    DateTime Function()? now,
+    Future<void> Function(Duration)? sleep,
+  }) : thermal = thermal ?? DeviceThermal.read,
+       now = now ?? DateTime.now,
+       sleep = sleep ?? Future<void>.delayed;
 
   /// The session's clips (`videos/*`), sorted by file name.
   static List<File> clipsOf(Directory sessionDir) {
@@ -257,17 +275,19 @@ class VideoDetector {
   /// to [outputFileName]. Throws [VideoSettingsChanged] when the existing
   /// file was made with other settings, unless [startOver] (which replaces
   /// it). A clip that fails is logged (`video_clip_error`) and skipped; the
-  /// next run retries it.
+  /// next run retries it. The phone is measured every [sampleEvery].
   Future<VideoRunResult> run(
     Directory sessionDir, {
     required VideoRunConfig config,
     void Function(VideoProgress p)? onProgress,
     bool Function()? isCancelled,
     double thermalLimitC = 40,
+    Duration sampleEvery = const Duration(seconds: 10),
     String appVersion = '',
     bool startOver = false,
   }) async {
-    final started = DateTime.now();
+    final started = now();
+    final every = sampleEvery < const Duration(seconds: 1) ? const Duration(seconds: 1) : sampleEvery;
     final outFile = File('${sessionDir.path}/$outputFileName');
     var resume = outFile.existsSync()
         ? VideoResume.parse(await outFile.openRead().transform(utf8.decoder).transform(const LineSplitter()).toList())
@@ -282,8 +302,8 @@ class VideoDetector {
     final logStarts = await clipStartsFromLog(sessionDir);
 
     final sink = outFile.openWrite(mode: replace ? FileMode.write : FileMode.append);
-    void writeRecord(String type, Map<String, dynamic> rec) {
-      sink.writeln(jsonEncode({'type': type, 'time_ms': DateTime.now().millisecondsSinceEpoch, ...rec}));
+    void writeRecord(String type, Map<String, dynamic> rec, {int? atMs}) {
+      sink.writeln(jsonEncode({'type': type, 'time_ms': atMs ?? now().millisecondsSinceEpoch, ...rec}));
     }
 
     writeRecord('video_run_start', {
@@ -293,6 +313,7 @@ class VideoDetector {
       'thermal_limit_c': thermalLimitC,
       'clips_total': clips.length,
       'clips_pending': pending.length,
+      'sample_s': every.inSeconds,
       if (replace) 'started_over': true,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
@@ -301,9 +322,60 @@ class VideoDetector {
     var cancelled = false;
     final clock = Stopwatch()..start();
 
+    // Phone samples: the first at the first reading, then every [every].
+    // The speed figures cover the time since the previous sample.
+    var nextSampleAt = started;
+    var periodStart = started;
+    var periodFrames = 0, periodDecoded = 0, periodPausedMs = 0;
+    var periodDecodeMs = 0.0, periodConvertMs = 0.0, periodInferMs = 0.0;
+    DateTime? pauseStart;
+    var sampleClip = '';
+    double r1(double v) => (v * 10).round() / 10;
+    int pausedSince(DateTime from, DateTime to) => to.difference(from.isAfter(periodStart) ? from : periodStart).inMilliseconds;
+    void sample(ThermalReading? r, {bool paused = false, bool force = false}) {
+      final t = now();
+      if (!force && t.isBefore(nextSampleAt)) return;
+      while (!nextSampleAt.isAfter(t)) {
+        nextSampleAt = nextSampleAt.add(every);
+      }
+      final at = t.millisecondsSinceEpoch;
+      if (r != null) {
+        writeRecord('thermal', {...r.toJson(), 'clip': sampleClip, if (paused) 'paused': true}, atMs: at);
+        writeRecord('power', {
+          'power_w': r.powerW,
+          'battery_current_ua': r.batteryCurrentUa,
+          'battery_voltage_mv': r.batteryVoltageMv,
+          'charge_counter_uah': r.chargeCounterUah,
+          'is_charging': r.isCharging,
+          'is_plugged': r.isPlugged,
+        }, atMs: at);
+      }
+      final periodMs = t.difference(periodStart).inMilliseconds;
+      final pausedMs = periodPausedMs + (pauseStart == null ? 0 : pausedSince(pauseStart!, t));
+      if (periodFrames > 0 || pausedMs > 0) {
+        writeRecord('analysis_speed', {
+          'clip': sampleClip,
+          'period_ms': periodMs,
+          'frames': periodFrames,
+          'frames_decoded': periodDecoded,
+          'frames_per_s': periodMs > 0 ? (periodFrames * 100000 / periodMs).round() / 100 : 0,
+          if (periodFrames > 0) ...{
+            'decode_ms': r1(periodDecodeMs / periodFrames),
+            'convert_ms': r1(periodConvertMs / periodFrames),
+            'detect_ms': r1(periodInferMs / periodFrames),
+          },
+          if (pausedMs > 0) 'paused_ms': pausedMs,
+        }, atMs: at);
+      }
+      periodStart = t;
+      periodFrames = periodDecoded = periodPausedMs = 0;
+      periodDecodeMs = periodConvertMs = periodInferMs = 0;
+    }
+
     for (var ci = 0; ci < pending.length && !cancelled; ci++) {
       final file = pending[ci];
       final clip = file.path.split('/').last;
+      sampleClip = clip;
       final clipClock = Stopwatch()..start();
       var clipFrames = 0, decoded = 0;
       var decodeMs = 0.0, convertMs = 0.0, inferMs = 0.0;
@@ -342,16 +414,41 @@ class VideoDetector {
             final warm = await waitWhileWarm(
               thermal: thermal,
               limitC: thermalLimitC,
-              poll: pausePoll,
+              poll: every < pausePoll ? every : pausePoll,
               isCancelled: isCancelled,
               onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, clock, t, note)),
+              onReading: (r, waiting) {
+                if (waiting && pauseStart == null) {
+                  pauseStart = now();
+                  writeRecord('video_thermal_pause', {
+                    'clip': clip,
+                    'temp_c': r.batteryTempC,
+                    'limit_c': thermalLimitC,
+                    'resume_below_c': thermalLimitC - thermalResumeGapC,
+                  });
+                }
+                sample(r, paused: waiting);
+              },
+              sleep: sleep,
               errorTag: 'video_thermal',
             );
             tempC = warm.tempC;
             if (warm.paused) {
               pauses++;
+              final t = now();
+              if (pauseStart != null) {
+                periodPausedMs += pausedSince(pauseStart!, t);
+                writeRecord('video_thermal_resume', {
+                  'clip': clip,
+                  'temp_c': tempC,
+                  'paused_ms': t.difference(pauseStart!).inMilliseconds,
+                  if (isCancelled?.call() ?? false) 'cancelled': true,
+                });
+                pauseStart = null;
+              }
               continue; // re-check cancel before the next chunk
             }
+            if (warm.reading == null) sample(null);
             final chunk = await backend.next();
             lastChunk = chunk;
             names ??= chunk.names;
@@ -371,6 +468,11 @@ class VideoDetector {
             decodeMs += chunk.decodeMs;
             convertMs += chunk.convertMs;
             inferMs += chunk.inferMs;
+            periodFrames += chunk.frames.length;
+            periodDecoded += chunk.decoded;
+            periodDecodeMs += chunk.decodeMs;
+            periodConvertMs += chunk.convertMs;
+            periodInferMs += chunk.inferMs;
             done = chunk.done;
             await sink.flush();
             onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, clock, tempC, ''));
@@ -407,12 +509,23 @@ class VideoDetector {
       await sink.flush();
     }
 
+    // A last sample, so a run shorter than the interval still has one.
+    if (pending.isNotEmpty) {
+      ThermalReading? last;
+      try {
+        last = await thermal();
+      } catch (e) {
+        logSwallowed('video_thermal', e);
+      }
+      sample(last, force: true);
+    }
+
     writeRecord('video_run_end', {
       'clips_done': clipsDone,
       'clips_failed': clipsFailed,
       'frames_analysed': framesAnalysed,
       'thermal_pauses': pauses,
-      'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
+      'elapsed_ms': now().difference(started).inMilliseconds,
       'ended_normally': !cancelled,
       if (cancelled) 'reason': 'cancelled',
     });
@@ -423,7 +536,7 @@ class VideoDetector {
       clipsDone: clipsDone,
       clipsFailed: clipsFailed,
       thermalPauses: pauses,
-      elapsed: DateTime.now().difference(started),
+      elapsed: now().difference(started),
       cancelled: cancelled,
     );
   }

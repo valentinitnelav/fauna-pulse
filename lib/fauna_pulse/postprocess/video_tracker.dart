@@ -45,6 +45,7 @@ import '../models/track.dart';
 import '../tracking/tracker_replay.dart';
 import 'track_export.dart';
 import 'video_detector.dart';
+import 'video_run_samples.dart';
 
 /// What one tracking run found.
 class VideoTrackResult {
@@ -401,9 +402,10 @@ class VideoTracker {
 
   /// Zips the results and the logs they came from into [zipPath] for
   /// "Share results": visits.csv, mot/, post_tracks.jsonl,
-  /// video_detections.jsonl (for re-tracking on a computer) and
-  /// session.jsonl (clip start times). Returns [zipPath], or null when
-  /// writing failed.
+  /// video_detections.jsonl (for re-tracking on a computer),
+  /// session.jsonl (clip start times) and phone_during_analysis.csv (the
+  /// phone's temperature, power and speed during the runs, round 232).
+  /// Returns [zipPath], or null when writing failed.
   static Future<String?> writeResultsZip(String sessionPath, String zipPath) async {
     try {
       final archive = Archive();
@@ -415,6 +417,10 @@ class VideoTracker {
       ]) {
         final f = File('$sessionPath/$name');
         if (f.existsSync()) archive.addFile(ArchiveFile.bytes(name, await f.readAsBytes()));
+      }
+      final phone = await VideoRunSamples.parseFile('$sessionPath/${VideoDetector.outputFileName}');
+      if (phone != null && !phone.isEmpty) {
+        archive.addFile(ArchiveFile.string(VideoRunSamples.csvFileName, phone.toCsv()));
       }
       final mot = Directory('$sessionPath/${TrackExport.motDirName}');
       if (mot.existsSync()) {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/thermal_pause.dart' show ThermalFn;
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoChunk, VideoFrameBoxes, VideoInfo;
@@ -14,7 +15,10 @@ class FakeBackend implements VideoBackend {
   List<int> _pts = const [];
   var _i = 0;
 
-  FakeBackend(this.frameCounts, {this.unsupported = const {}});
+  /// Called for every chunk, e.g. to move a fake clock on.
+  final void Function()? onNext;
+
+  FakeBackend(this.frameCounts, {this.unsupported = const {}, this.onNext});
 
   String _name(String path) => path.split('/').last;
 
@@ -36,6 +40,7 @@ class FakeBackend implements VideoBackend {
 
   @override
   Future<VideoChunk> next() async {
+    onNext?.call();
     final end = (_i + 3).clamp(0, _pts.length);
     final frames = [
       for (var k = _i; k < end; k++)
@@ -44,7 +49,15 @@ class FakeBackend implements VideoBackend {
         ]),
     ];
     _i = end;
-    return VideoChunk(frames: frames, done: _i >= _pts.length, decoded: frames.length, names: const ['insect']);
+    return VideoChunk(
+      frames: frames,
+      done: _i >= _pts.length,
+      decoded: frames.length,
+      names: const ['insect'],
+      decodeMs: 3.0 * frames.length,
+      convertMs: 1.5 * frames.length,
+      inferMs: 20.0 * frames.length,
+    );
   }
 
   @override
@@ -159,5 +172,96 @@ void main() {
     expect(result.framesAnalysed, 4);
     expect(notes.first, contains('Phone warm'));
     expect(records(dir).last['thermal_pauses'], 1);
+  });
+
+  group('phone samples (round 232)', () {
+    // A fake clock: every chunk takes 1 s, every wait takes what it asks.
+    late DateTime t;
+    late DateTime t0;
+    late List<Duration> waits;
+    setUp(() {
+      t0 = t = DateTime.utc(2026, 9, 25, 12);
+      waits = [];
+    });
+    int sec(Map<String, dynamic> r) => ((r['time_ms'] as int) - t0.millisecondsSinceEpoch) ~/ 1000;
+    List<Map<String, dynamic>> ofType(String type) => records(dir).where((r) => r['type'] == type).toList();
+    VideoDetector timed(FakeBackend b, ThermalFn thermal) => VideoDetector(
+      backend: b,
+      thermal: thermal,
+      now: () => t,
+      sleep: (d) async {
+        waits.add(d);
+        t = t.add(d);
+      },
+    );
+    ThermalReading reading(double temp) => ThermalReading(
+      batteryTempC: temp,
+      thermalStatus: 'none',
+      batteryCurrentUa: -400000,
+      batteryVoltageMv: 4000,
+      chargeCounterUah: 3000000,
+      isCharging: false,
+      isPlugged: false,
+    );
+
+    test('thermal, power and speed every interval, with one time per sample', () async {
+      final b = FakeBackend({'a.mp4': 30, 'b.MOV': 2}, onNext: () => t = t.add(const Duration(seconds: 1)));
+      await timed(b, () async => reading(30)).run(dir, config: config, sampleEvery: const Duration(seconds: 3));
+
+      expect(records(dir).first['sample_s'], 3);
+      // The first sample at the start, then every 3 s, and one at the end.
+      expect(ofType('thermal').map(sec), [0, 3, 6, 9, 11]);
+      expect(ofType('power').map(sec), [0, 3, 6, 9, 11]);
+      expect(ofType('thermal').first['battery_temp_c'], 30);
+      expect(ofType('thermal').first.containsKey('paused'), isFalse);
+      expect(ofType('power').first['power_w'], closeTo(1.6, 1e-9));
+      expect(ofType('power').first['is_plugged'], isFalse);
+      final speed = ofType('analysis_speed');
+      expect(speed.map(sec), [3, 6, 9, 11]);
+      expect(speed.map((r) => r['frames']), [9, 9, 9, 5]);
+      expect(speed.map((r) => r['frames_per_s']), [3.0, 3.0, 3.0, 2.5]);
+      expect(speed.map((r) => r['clip']), ['a.mp4', 'a.mp4', 'a.mp4', 'b.MOV']);
+      expect(speed.first['decode_ms'], 3.0);
+      expect(speed.first['convert_ms'], 1.5);
+      expect(speed.first['detect_ms'], 20.0);
+      // Every analysed frame is in exactly one period.
+      expect(speed.fold<int>(0, (n, r) => n + (r['frames'] as int)), 32);
+      expect(ofType('video_thermal_pause'), isEmpty);
+    });
+
+    test('samples continue while paused to cool down; the pause is marked', () async {
+      final temps = [30.0, 45.0, 44.0, 36.0];
+      var reads = 0;
+      final b = FakeBackend({'a.mp4': 6, 'b.MOV': 3}, onNext: () => t = t.add(const Duration(seconds: 1)));
+      final result = await timed(b, () async => reading(reads < temps.length ? temps[reads++] : 30)).run(
+        dir,
+        config: config,
+        sampleEvery: const Duration(seconds: 5),
+      );
+      expect(result.thermalPauses, 1);
+      // The 15 s pause poll is shortened to the 5 s interval.
+      expect(waits, [const Duration(seconds: 5), const Duration(seconds: 5)]);
+
+      final pause = ofType('video_thermal_pause').single;
+      expect(sec(pause), 1);
+      expect(pause['temp_c'], 45);
+      expect(pause['limit_c'], 40);
+      expect(pause['resume_below_c'], 37);
+      final resume = ofType('video_thermal_resume').single;
+      expect(sec(resume), 11);
+      expect(resume['paused_ms'], 10000);
+      expect(resume['temp_c'], 36);
+
+      final thermal = ofType('thermal');
+      expect(thermal.map(sec), [0, 6, 11, 13]);
+      expect(thermal.map((r) => r['paused']), [null, true, null, null]);
+      final speed = ofType('analysis_speed');
+      expect(speed.map(sec), [6, 11, 13]);
+      expect(speed.map((r) => r['frames']), [3, 0, 6]);
+      expect(speed.map((r) => r['frames_per_s']), [0.5, 0, 3.0]);
+      expect(speed.map((r) => r['paused_ms']), [5000, 5000, null]);
+      // No frames, no per-frame times.
+      expect(speed[1].containsKey('detect_ms'), isFalse);
+    });
   });
 }

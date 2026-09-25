@@ -45,6 +45,7 @@ import '../widgets/video_review_player.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
+import '../postprocess/video_run_samples.dart';
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
 import 'identification_screen.dart';
@@ -179,6 +180,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   final List<(int ms, double v)> _infMs = [];
   // Instantaneous battery power (W) over the session (the W graph).
   final List<(int ms, double v)> _power = [];
+  // Imported videos (round 232): the lists above hold the phone's state
+  // while the AI ran on the videos instead, on the analysis clock of these
+  // samples (video_detections.jsonl). Null when never measured.
+  VideoRunSamples? _videoSamples;
   // The session's total energy (Wh) — integral of the power curve — plus the
   // average/min/max power, shown as numbers (no Wh graph).
   double? _energyTotalWh;
@@ -530,11 +535,25 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _spans.addAll(index.trackSpans);
       _trackSource = index.trackSource;
       _postTrackStart = index.postTrackStart;
-      _temps.addAll(index.temps);
-      _headroom.addAll(index.headroom);
-      _fps.addAll(index.fps);
-      _infMs.addAll(index.infMs);
-      _buildEnergySeries(index.powerSamples);
+      if (_importedVideoSession) {
+        final samples = await VideoRunSamples.read(
+          File('${widget.logFile.parent.path}/${VideoDetector.outputFileName}'),
+        );
+        _videoSamples = samples;
+        if (samples != null) {
+          _temps.addAll(samples.temps);
+          _headroom.addAll(samples.headroom);
+          _fps.addAll(samples.framesPerS);
+          _infMs.addAll(samples.detectMs);
+          _buildEnergySeries(samples.power, maxStepMs: samples.runGapMs);
+        }
+      } else {
+        _temps.addAll(index.temps);
+        _headroom.addAll(index.headroom);
+        _fps.addAll(index.fps);
+        _infMs.addAll(index.infMs);
+        _buildEnergySeries(index.powerSamples);
+      }
       // If the start/end weren't found from head/tail (rare), fall back here.
       if (_spans.isNotEmpty) {
         _startMs ??= _spans.values.map((s) => s.$1).reduce(min);
@@ -556,7 +575,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   ///    (see below), which works even when the charge counter never moves.
   ///  - Some phones (notably Xiaomi) report a 2-cell *series* voltage (~8.8 V);
   ///    [_singleCellVoltageV] normalizes that so power/energy aren't doubled.
-  void _buildEnergySeries(List<IndexedPowerSample> raw) {
+  /// Steps of [maxStepMs] or more (the gap between two video analysis runs)
+  /// are neither smoothed across nor counted as energy.
+  void _buildEnergySeries(List<IndexedPowerSample> raw, {int? maxStepMs}) {
     // Battery-terminal readings only measure the PHONE's consumption while it
     // is discharging: plugged in, the sensor sees the charging current (or ~0
     // once the battery is full and the charger carries the load). Any charging
@@ -631,9 +652,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // A light 3-point moving average smooths the jitter from coarse current /
     // charge-counter steps, so the line is readable without hiding the trend.
+    bool joined(int a, int b) =>
+        maxStepMs == null || pts[b].$1 - pts[a].$1 < maxStepMs;
     for (var i = 0; i < pts.length; i++) {
-      final lo = i == 0 ? 0 : i - 1;
-      final hi = i == pts.length - 1 ? i : i + 1;
+      final lo = i == 0 || !joined(i - 1, i) ? i : i - 1;
+      final hi = i == pts.length - 1 || !joined(i, i + 1) ? i : i + 1;
       var sum = 0.0;
       for (var k = lo; k <= hi; k++) {
         sum += pts[k].$2;
@@ -656,7 +679,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // always available and, cross-checked against the charge drop, just as accurate.
     double wh = 0;
     for (var i = 1; i < _power.length; i++) {
-      final dtH = (_power[i].$1 - _power[i - 1].$1) / 3600000.0;
+      final dtMs = _power[i].$1 - _power[i - 1].$1;
+      if (maxStepMs != null && dtMs >= maxStepMs) continue;
+      final dtH = dtMs / 3600000.0;
       if (dtH <= 0) continue;
       wh += (_power[i].$2 + _power[i - 1].$2) / 2.0 * dtH;
     }
@@ -1083,6 +1108,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           run['thermal_limit_c'],
           suffix: ' °C',
         );
+        add('Measure the phone every', run['sample_s'], suffix: ' s');
       }
     } else if (noAi) {
       addNote(
@@ -1871,6 +1897,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _fps.clear();
     _infMs.clear();
     _power.clear();
+    _videoSamples = null;
+    _energyTotalWh = _powerAvg = _powerMedian = _powerMin = _powerMax = null;
+    _chargingDuringSession = false;
     _uniqueTracks = null;
     if (_graphsRequested) await _loadGraphs();
   }
@@ -2011,6 +2040,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       )
+    else if (_extraGraphsExpanded && _importedVideoSession)
+      ..._videoRunGraphs()
     else if (_extraGraphsExpanded) ...[
       const SizedBox(height: 12),
       const Text(
@@ -2129,6 +2160,167 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ],
     ],
   ];
+
+  /// The extra graphs of an imported video session (round 232): the phone
+  /// while "Run AI on videos" ran, from the samples [VideoDetector] writes,
+  /// on the analysis clock of [VideoRunSamples] (runs back to back, a gap
+  /// between two runs, cooling pauses shaded).
+  List<Widget> _videoRunGraphs() {
+    final s = _videoSamples;
+    if (s == null || s.isEmpty) {
+      return [
+        const SizedBox(height: 8),
+        Text(
+          _graphsLoading
+              ? '…'
+              : 'No measurements yet. The phone\'s temperature, power and '
+                    'speed are written down while "Run AI on videos" runs; '
+                    'runs made with app versions before this one did not '
+                    'do that.',
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ];
+    }
+    final range = (0, s.totalMs);
+    final shade = s.pauses;
+    const note = TextStyle(color: Colors.white70, fontSize: 12);
+    const bold = TextStyle(fontWeight: FontWeight.bold);
+    final mean = s.meanFramesPerS;
+    final every = s.sampleSeconds.isEmpty ? '…' : s.sampleSeconds.join(' or ');
+    return [
+      const SizedBox(height: 12),
+      const Text('While the AI ran on the videos', style: bold),
+      const SizedBox(height: 4),
+      Text(
+        'Measured every $every s while "Run AI on videos" ran. '
+        'Time runs over the analysis only: a run that was stopped and '
+        'continued later shows as a gap. Grey bands: paused for the phone '
+        'to cool down.',
+        style: note,
+      ),
+      const SizedBox(height: 8),
+      _stat(
+        'Analysis time',
+        '${_hmsLabel(s.runMs)}${s.runs > 1 ? ' in ${s.runs} runs' : ''}',
+      ),
+      _stat('Frames analyzed', '${s.frames}'),
+      _stat(
+        'Speed while running',
+        mean == null ? 'unknown' : '${mean.toStringAsFixed(1)} frames per second',
+      ),
+      _stat(
+        'Cooling pauses',
+        s.pauses.isEmpty
+            ? 'none'
+            : '${s.pauses.length} (${_hmsLabel(s.pausedMs)} in total)',
+      ),
+      _stat(
+        'Energy used',
+        _chargingDuringSession
+            ? 'not measured: the phone was plugged in'
+            : _energyTotalWh == null
+            ? 'unknown'
+            : '≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh (on battery)',
+      ),
+      const SizedBox(height: 20),
+      const Text('Battery temperature (°C)', style: bold),
+      const SizedBox(height: 12),
+      _series(_temps, const Color(0xFFFF7043), '°', range: range, shade: shade),
+      _statsText(_temps, decimals: 1, unit: '°C'),
+      if (_headroom.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text(
+          'Thermal headroom (0 = cool → 1 = throttling)',
+          style: bold,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'How close the phone is to slowing itself down to cool off, from '
+          'the chip/skin sensors.',
+          style: note,
+        ),
+        const SizedBox(height: 12),
+        _series(_headroom, const Color(0xFFEF5350), '', range: range, shade: shade),
+      ] else ...[
+        const SizedBox(height: 12),
+        const Text(
+          'Thermal headroom: not reported by this phone (common, not a bug).',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ],
+      const SizedBox(height: 28),
+      const Text('Frames analyzed per second', style: bold),
+      const SizedBox(height: 4),
+      const Text(
+        'Video frames the AI finished per second of clock time, averaged '
+        'since the previous measurement; 0 while paused to cool down. It '
+        'drops when the phone slows itself down to cool off.',
+        style: note,
+      ),
+      const SizedBox(height: 12),
+      _series(_fps, const Color(0xFF66BB6A), '', range: range, shade: shade),
+      // Not the plain average of the points: the zeros of a cooling pause
+      // would pull it far below "Speed while running" above.
+      if (_seriesStats(s.framesPerSRunning) case final st?)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            'Without the cooling pauses: median ${st.median.toStringAsFixed(1)} fps; '
+            'min ${st.min.toStringAsFixed(1)} fps, max ${st.max.toStringAsFixed(1)} fps. '
+            'The average is "Speed while running" above.',
+            style: note,
+          ),
+        ),
+      if (_infMs.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text('Detector time per frame (ms)', style: bold),
+        const SizedBox(height: 4),
+        // Keep in sync with VideoFrameSource.kt: inferMs times the whole
+        // predict() call (input preparation, model run, box decoding + NMS).
+        const Text(
+          'Milliseconds the detector needs per frame (preparing the picture '
+          'for the model, the model itself and sorting out its boxes), '
+          'averaged since the previous measurement. Reading the frame from '
+          'the video and cutting out the square are not included; they are '
+          'in the data (decode_ms and convert_ms). This number climbs when '
+          'the chip slows itself down to cool off.',
+          style: note,
+        ),
+        const SizedBox(height: 12),
+        _series(_infMs, const Color(0xFF42A5F5), ' ms', range: range, shade: shade),
+        _statsText(_infMs, decimals: 1, unit: ' ms'),
+      ],
+      const SizedBox(height: 28),
+      const Text('Power draw (W)', style: bold),
+      const SizedBox(height: 4),
+      if (_chargingDuringSession)
+        const Text(
+          'Not shown: the phone was plugged in during (part of) the analysis. '
+          'The battery sensor then measures charging current, not what the '
+          'phone uses. Run the analysis on battery to see this graph.',
+          style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+        )
+      else ...[
+        const Text(
+          'Estimated from the phone\'s own battery sensors (current × '
+          'voltage, lightly smoothed, with the same corrections as for live '
+          'sessions). A good indication, not a lab measurement.',
+          style: note,
+        ),
+        const SizedBox(height: 12),
+        _series(_power, const Color(0xFFFFCA28), 'W', range: range, shade: shade),
+        if (_powerAvg != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Average power ${_powerAvg!.toStringAsFixed(2)} W '
+            '(median ${_powerMedian!.toStringAsFixed(2)} W; '
+            'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W).',
+            style: note,
+          ),
+        ],
+      ],
+    ];
+  }
 
   /// The two per-session visit charts (round 187), between the timeline and
   /// the "Extra graphs" disclosure: how long visits lasted (histogram with a
@@ -2749,11 +2941,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _series(List<(int ms, double v)> points, Color color, String unit) {
+  /// A line graph over the session, or over [range] (the analysis clock of
+  /// an imported video session), with the [shade] spans greyed.
+  Widget _series(
+    List<(int ms, double v)> points,
+    Color color,
+    String unit, {
+    (int, int)? range,
+    List<(int, int)> shade = const [],
+  }) {
+    final startMs = range?.$1 ?? _startMs, endMs = range?.$2 ?? _endMs;
     if (points.length < 2 ||
-        _startMs == null ||
-        _endMs == null ||
-        _endMs! <= _startMs!) {
+        startMs == null ||
+        endMs == null ||
+        endMs <= startMs) {
       return const Center(child: Text('Not enough samples.'));
     }
     return SizedBox(
@@ -2762,10 +2963,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         size: Size.infinite,
         painter: _SeriesPainter(
           points: points,
-          startMs: _startMs!,
-          endMs: _endMs!,
+          startMs: startMs,
+          endMs: endMs,
           color: color,
           unit: unit,
+          shade: shade,
         ),
       ),
     );
@@ -4472,12 +4674,16 @@ class _SeriesPainter extends CustomPainter {
   final Color color;
   final String unit;
 
+  /// Time spans drawn as grey bands behind the line (cooling pauses).
+  final List<(int, int)> shade;
+
   _SeriesPainter({
     required this.points,
     required this.startMs,
     required this.endMs,
     required this.color,
     required this.unit,
+    this.shade = const [],
   });
 
   static const double _gutter = 44.0;
@@ -4506,6 +4712,13 @@ class _SeriesPainter extends CustomPainter {
     double xForMs(int ms) => plotLeft + ((ms - startMs) / totalMs) * plotWidth;
     double yForV(double v) =>
         plotBottom - ((v - ax.niceMin) / vrange) * plotBottom;
+
+    final shadePaint = Paint()..color = Colors.white12;
+    for (final (from, to) in shade) {
+      final l = xForMs(from).clamp(plotLeft, size.width);
+      final r = xForMs(to).clamp(plotLeft, size.width);
+      canvas.drawRect(Rect.fromLTRB(l, 0, max(r, l + 2), plotBottom), shadePaint);
+    }
 
     final axisPaint = Paint()
       ..color = Colors.white24
@@ -4574,5 +4787,8 @@ class _SeriesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SeriesPainter old) =>
-      old.points != points || old.startMs != startMs || old.endMs != endMs;
+      old.points != points ||
+      old.startMs != startMs ||
+      old.endMs != endMs ||
+      old.shade != shade;
 }

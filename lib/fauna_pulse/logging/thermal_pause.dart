@@ -23,40 +23,51 @@ class ThermalWait {
   /// Whether the job had to pause.
   final bool paused;
 
-  const ThermalWait(this.tempC, this.paused);
+  /// The last full reading, so a caller that also logs the phone's state
+  /// does not read the sensors a second time (null when reading failed).
+  final ThermalReading? reading;
+
+  const ThermalWait(this.tempC, this.paused, [this.reading]);
 }
 
 /// Reads the temperature once; when it is at or above [limitC], waits in
 /// [poll] steps until it is back below `limitC - thermalResumeGapC` (or
 /// [isCancelled] says stop). [onPaused] fires before every wait with the
-/// temperature and a plain-language note for the progress line. Never throws:
-/// a failing reading just lets the job continue.
+/// temperature and a plain-language note for the progress line. [onReading]
+/// gets every reading, with whether the job waits after it. [sleep] replaces
+/// the wait in tests. Never throws: a failing reading just lets the job
+/// continue.
 Future<ThermalWait> waitWhileWarm({
   required ThermalFn thermal,
   required double limitC,
   required Duration poll,
   bool Function()? isCancelled,
   void Function(double tempC, String note)? onPaused,
+  void Function(ThermalReading reading, bool paused)? onReading,
+  Future<void> Function(Duration)? sleep,
   String errorTag = 'thermal_pause',
 }) async {
   double? temp;
+  ThermalReading? reading;
   var paused = false;
   try {
-    var reading = await thermal();
+    reading = await thermal();
     temp = reading.batteryTempC;
-    if (temp != null && temp >= limitC) {
-      paused = true;
-      final resumeC = limitC - thermalResumeGapC;
+    final resumeC = limitC - thermalResumeGapC;
+    paused = temp != null && temp >= limitC;
+    onReading?.call(reading, paused);
+    if (paused) {
       while (temp != null && temp > resumeC) {
         onPaused?.call(temp, 'Phone warm ($temp °C); resuming below ${resumeC.toStringAsFixed(0)} °C');
-        await Future<void>.delayed(poll);
+        await (sleep ?? Future<void>.delayed)(poll);
         if (isCancelled?.call() ?? false) break;
         reading = await thermal();
         temp = reading.batteryTempC;
+        onReading?.call(reading, temp != null && temp > resumeC);
       }
     }
   } catch (e) {
     logSwallowed(errorTag, e);
   }
-  return ThermalWait(temp, paused);
+  return ThermalWait(temp, paused, reading);
 }

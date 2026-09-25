@@ -1,0 +1,7 @@
+run,time_s,epoch_ms,clip,temp_c,headroom,thermal_status,power_w,battery_current_ua,battery_voltage_mv,charging,plugged,frames_per_s,frames,decode_ms,convert_ms,detect_ms,paused,paused_ms
+1,0.0,1790337600000,a.mp4,30.0,,none,3.634,-412345,8812,false,false,,,,,,false,
+1,6.0,1790337606000,a.mp4,44.0,,none,3.634,-412345,8812,false,false,0.5,3,3.0,1.5,20.0,true,5000
+1,11.0,1790337611000,a.mp4,36.0,,none,3.634,-412345,8812,false,false,0.0,0,,,,false,5000
+1,12.0,1790337612000,a.mp4,30.5,,none,3.634,-412345,8812,false,false,3.0,3,3.0,1.5,20.0,false,
+2,72.0,1790341212000,"c, late.mp4",30.5,,none,3.634,-412345,8812,false,false,,,,,,false,
+2,73.0,1790341213000,"c, late.mp4",30.5,,none,3.634,-412345,8812,false,false,3.0,3,3.0,1.5,20.0,false,

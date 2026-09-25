@@ -850,8 +850,9 @@ stored time; video editors reset it to the export time.
   `analysis_fps` = frames looked at per video second, `roi` = `[center_x, center_y, side]`
   as fractions of the upright picture, side as a fraction of its width, or `null` for the
   whole picture, `max_side_px`), `model_name`, `use_gpu`, `thermal_limit_c` (the pause
-  temperature, round 229+), `clips_total`, `clips_pending`, `started_over` (when earlier
-  results were replaced), `app_version`.
+  temperature, round 229+), `sample_s` (the "Measure the phone every" setting, round
+  232+), `clips_total`, `clips_pending`, `started_over` (when earlier results were
+  replaced), `app_version`.
   Results made with other `settings` are never mixed: a run with changed settings asks,
   then starts the file over.
 * `video_clip_start` — per clip: `clip`, `start_epoch_ms`, `start_time_source`,
@@ -868,7 +869,62 @@ stored time; video editors reset it to the export time.
 * `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
   `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
 
-The file holds boxes only; the next files turn them into visits.
+**The phone during the analysis (round 232+).** Every `sample_s` seconds of a run, also
+while it waits for the phone to cool down, and once more at the end of each run, the run
+writes one sample: up to three records with the same `time_ms`, named as in live sessions
+(§3) so one script reads both.
+
+* `thermal` — the live record's fields without the storage ones, plus `clip` (the clip
+  being analysed) and `paused: true` while the run waits to cool down.
+* `power` — the live record's fields, with the same raw-sensor caveats (§3: some phones
+  report milliamps, the Xiaomi a two-cell voltage, and any `is_charging` or `is_plugged`
+  makes the power figures meaningless).
+* `analysis_speed` — the time since the previous sample: `clip`, `period_ms`, `frames`
+  (analysed), `frames_decoded`, `frames_per_s` (analysed frames per second of clock
+  time; cooling pauses count, so it is 0 during a pause), `paused_ms` (the part spent
+  cooling down), and per analysed frame the mean `decode_ms` (reading frames from the
+  video, including the frames skipped to reach the analysis rate), `convert_ms` (cutting
+  out the square and scaling it) and `detect_ms` (the detector call: input preparation,
+  the model and box decoding). The three means are left out when no frame was analysed;
+  the record is left out when nothing was analysed and nothing paused (the first sample
+  of a run).
+* `video_thermal_pause` (`clip`, `temp_c`, `limit_c`, `resume_below_c`) and
+  `video_thermal_resume` (`clip`, `temp_c`, `paused_ms`, `cancelled: true` when the run
+  was stopped while waiting) mark each cooling pause.
+
+The summary's Graphs tab (under *Extra graphs*) plots these instead of the live graphs,
+on the analysis time: runs placed back to back with a gap between them (5 sample
+intervals, at least a minute), cooling pauses shaded. *Share results* adds them as
+`phone_during_analysis.csv`, one row per sample on the same clock:
+`run` (1, 2, … per start of *Run AI on videos*), `time_s` (the graphs' time axis),
+`epoch_ms` (the records' `time_ms`), `clip`, `temp_c`, `headroom`, `thermal_status`,
+`power_w`, `battery_current_ua`, `battery_voltage_mv` (raw, as logged; the two sensor
+columns are there to apply the §3 corrections), `charging`, `plugged`, `frames_per_s`,
+`frames` (analysed since the previous row), `decode_ms`, `convert_ms`, `detect_ms`,
+`paused`, `paused_ms` (the part of the period spent cooling down). Empty cells are
+values the phone did not report, or no frames in that period. A battery current of
+exactly 0 counts as not reported, so `power_w` is empty whenever a full battery on the
+charger lets the phone run from the charger alone (it happens in cooling pauses).
+Rows cover different numbers of frames (the last one of a run is shorter, and the
+first frames of a run can be slower while the detector warms up), so average the
+per-frame columns weighted by `frames`:
+
+```r
+p <- read.csv("phone_during_analysis.csv")
+plot(p$time_s / 60, p$temp_c, type = "l", xlab = "analysis time (min)", ylab = "battery °C")
+# Detector ms per frame in each run: does it slow down in later runs?
+sapply(split(p, p$run), function(d) weighted.mean(d$detect_ms, d$frames, na.rm = TRUE))
+```
+
+```python
+import pandas as pd
+p = pd.read_csv("phone_during_analysis.csv")
+p.plot(x="time_s", y=["temp_c", "frames_per_s"], secondary_y="frames_per_s")
+d = p.dropna(subset=["detect_ms"])
+(d.detect_ms * d.frames).groupby(d.run).sum() / d.frames.groupby(d.run).sum()
+```
+
+The file holds boxes and these samples only; the next files turn the boxes into visits.
 
 ### Visits: `post_tracks.jsonl`, `visits.csv`, `mot/` (round 228+)
 
@@ -916,7 +972,8 @@ Worth knowing when comparing with a hand count:
   analysed frames, or every visit breaks into pieces.
 
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
-(to track again on a computer) and `session.jsonl` (clip start times). How to count the
+(to track again on a computer), `session.jsonl` (clip start times) and, once runs have
+measured the phone (round 232+), `phone_during_analysis.csv` (above). How to count the
 same clips by hand, score the app against that count and find the lowest frame rate that
 still counts visits correctly: [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) (round 230).
 

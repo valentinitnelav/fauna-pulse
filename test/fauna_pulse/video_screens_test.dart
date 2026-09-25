@@ -281,12 +281,15 @@ void main() {
       thermalLimitC: 42,
       occlusionSeconds: 5.0,
       minVisitSeconds: 0.5,
+      sampleSeconds: 30,
     ).save();
     final p = await VideoAnalysisPrefs.load();
     expect(
-      [p.modelId, p.confidence, p.iou, p.analysisFps, p.thermalLimitC, p.occlusionSeconds, p.minVisitSeconds],
-      ['big_model', 0.4, 0.5, 5, 42, 5.0, 0.5],
+      [p.modelId, p.confidence, p.iou, p.analysisFps, p.thermalLimitC, p.occlusionSeconds, p.minVisitSeconds, p.sampleSeconds],
+      ['big_model', 0.4, 0.5, 5, 42, 5.0, 0.5, 30],
     );
+    SharedPreferences.setMockInitialValues({});
+    expect((await VideoAnalysisPrefs.load()).sampleSeconds, 10);
 
     await (p..modelId = null).save();
     expect((await VideoAnalysisPrefs.load()).modelId, isNull);
@@ -361,6 +364,7 @@ void main() {
         'model_name': 'Bee model',
         'use_gpu': false,
         'thermal_limit_c': 40,
+        'sample_s': 10,
       })}\n',
     );
     String dets(int ms, List<int> ids) => rec('detections', {
@@ -403,9 +407,101 @@ void main() {
     await expectSummaryRowValue(tester, scrollable, label: 'Confidence threshold', value: '0.25');
     await expectSummaryRowValue(tester, scrollable, label: 'Area to analyze', value: 'a square, 50 % of the picture width');
     await expectSummaryRowValue(tester, scrollable, label: 'Pause above battery temperature', value: '40 °C');
+    await expectSummaryRowValue(tester, scrollable, label: 'Measure the phone every', value: '10 s');
     await expectSummaryRowValue(tester, scrollable, label: 'Clips', value: '1');
     await tester.scrollUntilVisible(find.textContaining('Visits found afterwards with "Find visits"'), 200, scrollable: scrollable);
     await expectSummaryRowValue(tester, scrollable, label: 'Occlusion tolerance', value: '3 s');
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  // Round 232: the Graphs tab of an imported session shows the phone while
+  // the AI ran on the videos, from the samples in video_detections.jsonl.
+  testWidgets('summary of an imported session graphs the phone during the analysis', (tester) async {
+    simulateBottomSystemBar(tester); // 360 px wide
+    SharedPreferences.setMockInitialValues({'extra_graphs_expanded': true});
+    final tmp = _tempDir('video_graphs_summary');
+    final cache = Directory('${tmp.path}/cache')..createSync();
+    final sessions = Directory('${tmp.path}/sessions')..createSync();
+    const name = 'VID_20260924_155954.mp4';
+    final f = File('${cache.path}/$name')..writeAsStringSync('video');
+    final dir = (await tester.runAsync(
+      () => importVideos(
+        sessionsDir: sessions,
+        sessionName: 'Meadow',
+        clips: [
+          ImportClip(
+            path: f.path,
+            name: name,
+            sizeBytes: 5,
+            info: const VideoInfo(durationMs: 30000, width: 1920, height: 1080, mime: 'video/avc'),
+            guess: guessClipStart(fileName: name, durationMs: 30000),
+          ),
+        ],
+      ),
+    ))!;
+    const t0 = 1790337600000, t1 = t0 + 3600000;
+    String rec(String type, int t, [Map<String, dynamic> fields = const {}]) =>
+        jsonEncode({'type': type, 'time_ms': t, ...fields});
+    List<String> sampleAt(int t, double temp, {double? fps, double? detectMs, int? pausedMs, bool paused = false}) => [
+      rec('thermal', t, {'battery_temp_c': temp, 'thermal_status': 'none', 'clip': name, if (paused) 'paused': true}),
+      rec('power', t, {'power_w': 2.0, 'battery_current_ua': -500000, 'battery_voltage_mv': 4000, 'is_charging': false, 'is_plugged': false}),
+      if (fps != null) rec('analysis_speed', t, {'clip': name, 'frames_per_s': fps, 'detect_ms': ?detectMs, 'paused_ms': ?pausedMs}),
+    ];
+    File('${dir.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      '${[
+        rec('video_run_start', t0, {
+          'settings': {'model': 'bees.tflite', 'confidence': 0.25, 'iou': 0.45, 'analysis_fps': 15, 'roi': null, 'max_side_px': 1280},
+          'sample_s': 10,
+        }),
+        ...sampleAt(t0, 31),
+        for (var i = 0; i < 300; i++) rec('raw_detections', t0 + 100 + i, {'boxes': []}),
+        ...sampleAt(t0 + 10000, 35, fps: 25, detectMs: 30),
+        rec('video_thermal_pause', t0 + 12000, {'temp_c': 40}),
+        ...sampleAt(t0 + 20000, 39, fps: 5, pausedMs: 8000, paused: true),
+        rec('video_thermal_resume', t0 + 25000, {'paused_ms': 13000}),
+        rec('video_run_end', t0 + 30000),
+        rec('video_run_start', t1, {'sample_s': 10}),
+        ...sampleAt(t1, 30),
+        ...sampleAt(t1 + 30000, 33, fps: 20, detectMs: 32),
+        rec('video_run_end', t1 + 30000),
+      ].join('\n')}\n',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1)),
+    );
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await _pumpUntil(tester, find.text('While the AI ran on the videos', skipOffstage: false));
+    await tester.scrollUntilVisible(find.text('While the AI ran on the videos'), 200, scrollable: scrollable);
+    expect(find.textContaining('Measured every 10 s'), findsOneWidget);
+    await expectSummaryRowValue(tester, scrollable, label: 'Analysis time', value: '1m 0s in 2 runs');
+    await expectSummaryRowValue(tester, scrollable, label: 'Frames analyzed', value: '300');
+    // 300 frames in 60 s, less 13 s cooling down.
+    await expectSummaryRowValue(tester, scrollable, label: 'Speed while running', value: '6.4 frames per second');
+    await expectSummaryRowValue(tester, scrollable, label: 'Cooling pauses', value: '1 (0m 13s in total)');
+    // 2 W over the 50 s of the two runs; the hour between them is not counted.
+    await expectSummaryRowValue(tester, scrollable, label: 'Energy used', value: '≈ 0.03 Wh (on battery)');
+    for (final title in ['Battery temperature (°C)', 'Frames analyzed per second', 'Detector time per frame (ms)', 'Power draw (W)']) {
+      await tester.scrollUntilVisible(find.text(title), 200, scrollable: scrollable);
+    }
+    expect(find.text('Not enough samples.', skipOffstage: false), findsNothing);
+    // 25 and 20 fps; the 5 fps of the period with the pause is left out.
+    expect(
+      find.text(
+        'Without the cooling pauses: median 22.5 fps; min 20.0 fps, max 25.0 fps. '
+        'The average is "Speed while running" above.',
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Phone temperature over the session'), findsNothing);
+    final list = tester.state<ScrollableState>(scrollable);
+    list.position.jumpTo(list.position.maxScrollExtent);
+    await tester.pump();
+    expectAboveBottomInset(tester, find.textContaining('Average power'), label: 'last video graph row');
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
