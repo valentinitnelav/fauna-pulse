@@ -884,7 +884,8 @@ writes one sample: up to three records with the same `time_ms`, named as in live
   time; cooling pauses count, so it is 0 during a pause), `paused_ms` (the part spent
   cooling down), and per analysed frame the mean `decode_ms` (reading frames from the
   video, including the frames skipped to reach the analysis rate), `convert_ms` (cutting
-  out the square and scaling it) and `detect_ms` (the detector call: input preparation,
+  out the square and scaling it; from round 233 split over several cores, so it is the
+  waiting time, not the summed work of the cores) and `detect_ms` (the detector call: input preparation,
   the model and box decoding). The three means are left out when no frame was analysed;
   the record is left out when nothing was analysed and nothing paused (the first sample
   of a run).

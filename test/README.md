@@ -90,6 +90,7 @@ flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-unins
 flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)
 flutter test integration_test/video_review_check_test.dart -d <device> --no-uninstall # Video tab: boxes, 4x frame times, soak, re-analysis (r231; header: model, screenshots)
 flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Run AI on videos: stop, forced cooling pause, continue, graphs, CSV (r232)
+flutter test integration_test/video_convert_check_test.dart -d <device> --no-uninstall # frame conversion: same boxes as a saved reference, ms per step (r233; run once before a converter change to save the reference)
 ```
 
 On a phone that has the Play build installed (the Samsung), never run the

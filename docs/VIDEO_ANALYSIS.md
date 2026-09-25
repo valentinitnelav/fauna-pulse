@@ -39,6 +39,12 @@ Terms used below:
 Videos in 10-bit or HDR (some newer phones film this way) are refused with a message;
 re-export them as 8-bit H.264, for example with the phone's video editor or HandBrake.
 
+A video missing from the file window? Its **Downloads** view lists only files Android
+marked as downloads. A clip saved by another app (for example WhatsApp) and then moved into
+the Download folder is missing there. Tap ☰ in the file window and choose **Videos**, or
+the phone's name and then the same folder: the clip is listed there. The app shows this
+tip when the file window is closed without a choice.
+
 ## 2. What the app counts as a visit
 
 Count by hand with the same rule, or the comparison measures the rule and not the AI:

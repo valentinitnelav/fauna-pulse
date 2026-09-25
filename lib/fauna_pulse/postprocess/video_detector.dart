@@ -89,7 +89,13 @@ class VideoRunConfig {
   final List<double>? roi;
 
   /// Larger areas are averaged down to about this many pixels per side
-  /// before detection (the model shrinks them further anyway).
+  /// before detection (the model shrinks them further anyway). Not the
+  /// model's input size, although that would be about twice as fast: it
+  /// changes what the model sees (averaged instead of the model's own
+  /// shrink, which live AI uses too), and in round 233 it changed the boxes
+  /// a lot (a 320-px model on a 720x1280 clip: half of them). Whether that
+  /// helps or hurts needs a hand-counted field clip; the test clips film a
+  /// laptop screen and cannot tell.
   final int maxSidePx;
 
   const VideoRunConfig({

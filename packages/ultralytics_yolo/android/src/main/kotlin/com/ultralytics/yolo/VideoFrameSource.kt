@@ -25,8 +25,14 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import java.nio.ByteBuffer
+import java.nio.IntBuffer
 import java.util.Calendar
 import java.util.TimeZone
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -46,6 +52,13 @@ class VideoFrameSource private constructor(
     /** Error text for files the decoder path cannot read correctly. */
     private const val TEN_BIT_MESSAGE =
       "This video is 10-bit / HDR. Re-export it as 8-bit H.264 (standard dynamic range) and import again."
+
+    /**
+     * Bands of rows converted at the same time (round 233): half the cores, at most 4. The
+     * detector waits for the picture anyway, so the cores are idle meanwhile; a 720x1280 frame
+     * took about 11 ms on one core (debug build), as long as the detection itself.
+     */
+    private val CONVERT_BANDS = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
 
     /** Clip facts for the import sheet and the analysis header; no decoding. */
     fun info(path: String): Map<String, Any?> {
@@ -227,10 +240,9 @@ class VideoFrameSource private constructor(
   private var roiPx: IntArray? = null // upright x, y, width, height (px) of the analysed area
   private var pixels = IntArray(0)
   private var bitmap: Bitmap? = null
-  private var yRow = ByteArray(0)
-  private var uRow = ByteArray(0)
-  private var vRow = ByteArray(0)
-  private var acc = IntArray(0)
+  private val rowBuffers = Array(CONVERT_BANDS) { RowBuffers() }
+  private val convertPool: ExecutorService? = if (CONVERT_BANDS < 2) null else
+    Executors.newFixedThreadPool(CONVERT_BANDS - 1) { r -> Thread(r, "video-convert").apply { isDaemon = true } }
 
   /**
    * Decodes until [maxFrames] sampled frames were detected, [budgetMs] passed (after at least one
@@ -304,6 +316,7 @@ class VideoFrameSource private constructor(
     runCatching { decoder.stop() }
     runCatching { decoder.release() }
     runCatching { extractor.release() }
+    convertPool?.shutdownNow()
     bitmap?.recycle()
     bitmap = null
   }
@@ -382,30 +395,102 @@ class VideoFrameSource private constructor(
     val bmpW = if (sideways) outH else outW
     val bmpH = if (sideways) outW else outH
     if (pixels.size != outW * outH) pixels = IntArray(outW * outH)
-    if (acc.size < outW) acc = IntArray(outW)
 
     val (yOff, yMul, coef) = colourCoefficients(rawW, rawH)
-    val (rv, gu, gv, bu) = coef
-    val yPlane = planes[0]; val uPlane = planes[1]; val vPlane = planes[2]
-    val yBuf = yPlane.buffer; val uBuf = uPlane.buffer; val vBuf = vPlane.buffer
-    val yRs = yPlane.rowStride
-    val uvRs = uPlane.rowStride; val uvPs = uPlane.pixelStride
     val x0 = crop.left + raw[0]
+    val f = FrameJob(
+      planes[0], planes[1], planes[2], crop.top + raw[1], x0, step, outW, outH, bmpW,
+      x0 shr 1, (((x0 + (outW - 1) * step + step / 2) shr 1) - (x0 shr 1)) * planes[1].pixelStride + 1,
+      yOff, yMul, coef, pixels,
+    )
+    // Every output row depends only on its own source rows, so bands of rows run side by side.
+    // Each worker takes the next few rows until none are left: phones mix fast and slow cores,
+    // and equal shares would leave the fast ones waiting for the slowest.
+    val workers = min(CONVERT_BANDS, outH)
+    val nextRow = AtomicInteger(0)
+    val chunk = max(8, outH / (workers * 8))
+    fun work(rb: RowBuffers) {
+      while (true) {
+        val from = nextRow.getAndAdd(chunk)
+        if (from >= outH) return
+        convertRows(f, from, min(outH, from + chunk), rb)
+      }
+    }
+    val others: List<Future<*>> = (1 until workers).map { k -> convertPool!!.submit { work(rowBuffers[k]) } }
+    var failure: Throwable? = null
+    try {
+      work(rowBuffers[0])
+    } catch (e: Throwable) {
+      failure = e
+    }
+    // The caller frees the picture's memory right after this returns, so every band ends first.
+    for (o in others) {
+      try {
+        o.get()
+      } catch (e: ExecutionException) {
+        if (failure == null) failure = e.cause ?: e
+      }
+    }
+    failure?.let { throw it }
+
+    val bmp = bitmap?.takeIf { it.width == bmpW && it.height == bmpH }
+      ?: Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888).also { bitmap?.recycle(); bitmap = it }
+    // A plain copy: the pixels are already in the bitmap's own byte order (setPixels would
+    // convert each one again).
+    bmp.copyPixelsFromBuffer(IntBuffer.wrap(pixels))
+    return bmp
+  }
+
+  /** What the row bands of one frame share; read only while they run. */
+  private class FrameJob(
+    val yPlane: android.media.Image.Plane,
+    val uPlane: android.media.Image.Plane,
+    val vPlane: android.media.Image.Plane,
+    val top: Int, // raw buffer row of output row 0
+    val x0: Int, // raw buffer column of output column 0
+    val step: Int,
+    val outW: Int,
+    val outH: Int,
+    val bmpW: Int,
+    val cx0: Int, // colour plane column of the first colour sample
+    val cLen: Int, // colour plane bytes one output row reads
+    val yOff: Int,
+    val yMul: Int,
+    val coef: IntArray,
+    val out: IntArray,
+  )
+
+  /** One band's own row buffers. */
+  private class RowBuffers {
+    var y = ByteArray(0)
+    var u = ByteArray(0)
+    var v = ByteArray(0)
+    var acc = IntArray(0)
+  }
+
+  /** Converts output rows [from] until [to] of [f] into [FrameJob.out]. */
+  private fun convertRows(f: FrameJob, from: Int, to: Int, rb: RowBuffers) {
+    val step = f.step; val outW = f.outW; val outH = f.outH; val bmpW = f.bmpW; val x0 = f.x0
     val yLen = outW * step
-    if (yRow.size < yLen) yRow = ByteArray(yLen)
-    val cx0 = x0 shr 1
-    val cx1 = (x0 + (outW - 1) * step + step / 2) shr 1
-    val cLen = (cx1 - cx0) * uvPs + 1
-    if (uRow.size < cLen) { uRow = ByteArray(cLen); vRow = ByteArray(cLen) }
+    if (rb.y.size < yLen) rb.y = ByteArray(yLen)
+    if (rb.u.size < f.cLen) { rb.u = ByteArray(f.cLen); rb.v = ByteArray(f.cLen) }
+    if (rb.acc.size < outW) rb.acc = IntArray(outW)
+    // Own read positions: the planes' buffers are shared by the bands.
+    val yBuf = f.yPlane.buffer.duplicate(); val uBuf = f.uPlane.buffer.duplicate(); val vBuf = f.vPlane.buffer.duplicate()
+    val yRs = f.yPlane.rowStride
+    val uvRs = f.uPlane.rowStride; val uvPs = f.uPlane.pixelStride
+    val vRs = f.vPlane.rowStride; val vPs = f.vPlane.pixelStride
+    val cx0 = f.cx0; val cLen = f.cLen
+    val yOff = f.yOff; val yMul = f.yMul
+    val (rv, gu, gv, bu) = f.coef
     val area = step * step
 
     // The loop below runs once per output pixel (millions per frame), so it only touches locals
     // and walks the output index by a fixed step instead of recomputing the rotation each time.
-    val yr = yRow; val ur = uRow; val vr = vRow; val ac = acc; val out = pixels
-    val vRs = vPlane.rowStride; val vPs = vPlane.pixelStride
+    val yr = rb.y; val ur = rb.u; val vr = rb.v; val ac = rb.acc; val out = f.out
     val dx = when (rotation) { 90 -> bmpW; 180 -> -1; 270 -> -bmpW; else -> 1 }
-    for (oy in 0 until outH) {
-      val sy0 = crop.top + raw[1] + oy * step
+    for (oy in from until to) {
+      val sy0 = f.top + oy * step
       if (step == 1) {
         readRow(yBuf, sy0 * yRs + x0, yr, yLen)
       } else {
@@ -444,15 +529,12 @@ class VideoFrameSource private constructor(
         if (red < 0) red = 0 else if (red > 255) red = 255
         if (green < 0) green = 0 else if (green > 255) green = 255
         if (blue < 0) blue = 0 else if (blue > 255) blue = 255
-        out[dst] = -0x1000000 or (red shl 16) or (green shl 8) or blue
+        // The bitmap's memory holds R, G, B, A bytes: as a little-endian int, A is the top byte.
+        out[dst] = -0x1000000 or (blue shl 16) or (green shl 8) or red
         dst += dx
         xs += step
       }
     }
-    val bmp = bitmap?.takeIf { it.width == bmpW && it.height == bmpH }
-      ?: Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888).also { bitmap?.recycle(); bitmap = it }
-    bmp.setPixels(pixels, 0, bmpW, 0, 0, bmpW, bmpH)
-    return bmp
   }
 
   /** Upright analysed area (x, y, w, h): the live photo crop's rounding (MainActivity.cropRoiJpeg), or the whole frame. */

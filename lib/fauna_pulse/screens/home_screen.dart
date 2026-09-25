@@ -362,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// a while for long videos, so a dialog says so meanwhile.
   Future<void> _importVideos() async {
     var dialogShown = false;
+    var failed = false;
     FilePickerResult? picked;
     try {
       picked = await FilePicker.platform.pickFiles(
@@ -391,6 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       );
     } catch (e) {
+      failed = true;
       logSwallowed('video_pick', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -400,7 +402,16 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (dialogShown && mounted) Navigator.of(context).pop();
     }
-    if (picked == null || !mounted) return;
+    if (!mounted) return;
+    if (picked == null) {
+      // Closing the picker often means the video was not in the list.
+      if (!failed) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(videoPickTipSnackBar(onRetry: _importVideos));
+      }
+      return;
+    }
     final files = [
       for (final f in picked.files)
         if (f.path != null) PickedVideo(f.path!, f.name, f.size),
@@ -1426,6 +1437,23 @@ class ReportSavedDialog extends StatelessWidget {
     );
   }
 }
+
+/// Shown when the video picker is closed without a choice (round 233). The
+/// picker's Downloads view lists only files Android marked as downloads, so a
+/// clip saved by another app (the owner's WhatsApp video) and then moved into
+/// Download is missing there, although the phone's own storage view and
+/// Videos list it. Public so it can be widget-tested standalone.
+SnackBar videoPickTipSnackBar({required VoidCallback onRetry}) => SnackBar(
+  duration: const Duration(seconds: 12),
+  // A snack bar with an action stays until tapped unless told otherwise.
+  persist: false,
+  content: const Text(
+    'Video not in the list? In the file window, tap ☰ (top left) and '
+    'choose Videos, or your phone\'s name and then the same folder. The '
+    'Downloads view hides some files, for example videos saved by WhatsApp.',
+  ),
+  action: SnackBarAction(label: 'Try again', onPressed: onRetry),
+);
 
 /// The ⋮ menu's About dialog content (extracted as a public widget in round
 /// 193 so it can be widget-tested standalone, like [DeleteAllSessionsDialog]).
