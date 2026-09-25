@@ -896,8 +896,9 @@ complete, so a crash never leaves half a file in place of a good one):
   `n_frames` (frames with a box), `mean_conf` and `class` (the class seen in most frames).
 * `mot/<clip>.txt`: every tracked box in the MOTChallenge text format
   `frame,id,x,y,w,h,conf,-1,-1,-1` (frames counted from 1 in display order, box
-  left/top/width/height in video pixels). CVAT imports it as a first draft of the
-  annotation; tracking benchmarks read it. A clip without any box gets an empty file.
+  left/top/width/height in video pixels). Tracking benchmarks (TrackEval) read it as is;
+  for CVAT, `tool/video_eval/mot_to_cvat.py` adds the class column CVAT expects (round
+  230). A clip without any box gets an empty file.
 
 Worth knowing when comparing with a hand count:
 
@@ -915,7 +916,9 @@ Worth knowing when comparing with a hand count:
   analysed frames, or every visit breaks into pieces.
 
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
-(to track again on a computer) and `session.jsonl` (clip start times).
+(to track again on a computer) and `session.jsonl` (clip start times). How to count the
+same clips by hand, score the app against that count and find the lowest frame rate that
+still counts visits correctly: [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) (round 230).
 
 ### Where the app reads these visits (round 229+)
 

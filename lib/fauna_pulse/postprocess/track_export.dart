@@ -9,8 +9,8 @@
 //    first clip's clock, so its end_s can exceed that clip's length.
 //  * mot/<clip>.txt: every tracked box in the MOTChallenge text format,
 //    `frame,id,x,y,w,h,conf,-1,-1,-1`: frames counted from 1 in display
-//    order, box left/top/width/height in video pixels. Annotation tools
-//    (CVAT) import it as a first draft, tracking benchmarks read it.
+//    order, box left/top/width/height in video pixels. Tracking benchmarks
+//    read it as is; tool/video_eval/mot_to_cvat.py converts it for CVAT.
 //
 // As in live sessions, a track shows up only once confirmed (after the
 // minimum visit length, 0.2 s by default), so the MOT files lack each

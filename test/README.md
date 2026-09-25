@@ -49,6 +49,23 @@ Skipped when the define is missing. Judge results against a hand count from
 the session's `gt_frames/` photos (rounds 105/108 workflow), not against MOT
 benchmarks.
 
+## Video frame-rate sweep (round 230)
+
+Re-runs *Find visits* on an analysed video session at lower frame rates (the
+frames a run at that rate would have looked at) for both trackers, and writes
+`fps_sweep/visits_<tracker>_<fps>fps.csv` for
+`tool/video_eval/evaluate_visits.py` to score against a hand count
+(`docs/VIDEO_ANALYSIS.md` §5). Analyse the videos at their full rate first.
+
+```bash
+flutter test test/fauna_pulse/video_fps_sweep_test.dart \
+  --dart-define=SWEEP_SESSION=/absolute/path/to/session_folder \
+  --dart-define=SWEEP_FPS=15,10,5,2,1
+```
+
+Only the frame-thinning unit tests run when the define is missing. The PC
+scripts have their own tests: `python3 -m unittest` in `tool/video_eval/`.
+
 ## Integration tests (device attached)
 
 Always pass `--no-uninstall`: without it flutter uninstalls the app after the

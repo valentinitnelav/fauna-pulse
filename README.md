@@ -138,6 +138,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | Field researcher | Run a session, read the live screen and troubleshoot. |
 | [DATA_GUIDE.md](docs/DATA_GUIDE.md) | Researcher / analyst | Read the `session.jsonl` data dictionary and compute visitation rates in R or Python. |
+| [VIDEO_ANALYSIS.md](docs/VIDEO_ANALYSIS.md) | Researcher / analyst | Count visits in imported videos, check them against a hand count (BORIS or spreadsheet) and find the frame rate that is enough. |
 | [SETTINGS_REFERENCE.md](docs/SETTINGS_REFERENCE.md) | Field researcher | Understand every user setting. |
 | [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | Developer | Understand why a small ROI can still yield sharp photographs. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
