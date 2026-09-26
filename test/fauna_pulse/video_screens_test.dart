@@ -13,6 +13,8 @@ import 'dart:io';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/video_frame_keeper.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart' show KeepFramesSettings;
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
@@ -21,7 +23,7 @@ import 'package:fauna_pulse/fauna_pulse/screens/video_import_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
+import 'package:ultralytics_yolo/ultralytics_yolo.dart' show SavedFramesChunk, SavedVideoFrame, VideoInfo;
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 import 'summary_tabs_test.dart' show expectSummaryRowValue;
@@ -65,6 +67,31 @@ Future<void> _open(WidgetTester tester) async {
   await tester.tap(find.text('open'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400)); // route transition
+}
+
+/// Writes a small file for each frame asked for, as the phone's decoder
+/// would.
+class _FakeFrameSaver implements FrameSaveBackend {
+  final saved = <String>[];
+
+  @override
+  Future<void> open(String path, List<int> roiPx) async {}
+
+  @override
+  Future<SavedFramesChunk> save(List<int> ptsUs, List<String> paths) async {
+    for (final p in paths) {
+      File(p).writeAsStringSync('jpeg');
+      saved.add(p.split('/').last);
+    }
+    return SavedFramesChunk(
+      saved: [for (var i = 0; i < ptsUs.length; i++) SavedVideoFrame(i, ptsUs[i], 1920, 1080, 4)],
+      missing: const [],
+      processed: ptsUs.length,
+    );
+  }
+
+  @override
+  Future<void> close() async {}
 }
 
 void main() {
@@ -214,12 +241,14 @@ void main() {
       ].join('\n'),
     );
 
+    final decoder = _FakeFrameSaver();
     await tester.pumpWidget(
       MaterialApp(
         home: VideoAnalysisScreen(
           initialSessionPath: session.path,
           sessionsDir: tmp,
           models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+          frameSaveBackend: decoder,
         ),
       ),
     );
@@ -227,14 +256,35 @@ void main() {
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
     await tester.pump();
+    // Round 234: frames kept of each visit (on by default) are saved right
+    // after, here by a fake decoder.
+    expect(find.text('Keep frames of each visit'), findsOneWidget);
+    expect(find.text('Keep a frame every'), findsOneWidget);
+    expect(find.text('For up to'), findsOneWidget);
     await tester.tap(find.text('Find visits'));
     await _pumpUntil(tester, find.text('Share results'));
+    await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
     expect(tester.takeException(), isNull);
-    expect(find.text('Found 1 visit in 1 clip.'), findsOneWidget);
+    // A 3-s visit, one frame a second from its first sighting.
+    expect(find.textContaining(RegExp(r'^Found 1 visit in 1 clip\. Saved 3 frames in ')), findsOneWidget);
+    expect(find.text('Kept frames saved: 3 of 3.'), findsOneWidget);
+    expect(decoder.saved, hasLength(3));
+    expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
     expect(find.text('1 visit in 1 of 2 clips (occlusion tolerance 3.0 s, minimum visit 0.2 s).'), findsOneWidget);
     expect(find.text('Find visits again'), findsOneWidget);
     expect(File('${session.path}/visits.csv').existsSync(), isTrue);
     expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
+
+    // Off: the step rows go, and a note says what finding again would do.
+    final keep = find.text('Keep frames of each visit');
+    await tester.scrollUntilVisible(keep, -200, scrollable: list);
+    await tester.pump();
+    await tester.tap(keep);
+    await tester.pump();
+    expect(find.text('Keep a frame every'), findsNothing);
+    expect(find.textContaining('Finding visits again with this off removes the 3 frames saved before'), findsOneWidget);
+    expect(find.textContaining('Kept frames per visit'), findsNothing);
+    expect(tester.takeException(), isNull);
 
     final share = find.text('Share results');
     await tester.scrollUntilVisible(share, 200, scrollable: list);
@@ -282,14 +332,22 @@ void main() {
       occlusionSeconds: 5.0,
       minVisitSeconds: 0.5,
       sampleSeconds: 30,
+      keepFrames: false,
+      keepStepSeconds: 0.5,
+      keepDurationSeconds: 30,
     ).save();
     final p = await VideoAnalysisPrefs.load();
     expect(
       [p.modelId, p.confidence, p.iou, p.analysisFps, p.thermalLimitC, p.occlusionSeconds, p.minVisitSeconds, p.sampleSeconds],
       ['big_model', 0.4, 0.5, 5, 42, 5.0, 0.5, 30],
     );
+    // Round 234: the kept-frames rule; off gives no rule to "Find visits".
+    expect([p.keepFrames, p.keepStepSeconds, p.keepDurationSeconds, p.keep], [false, 0.5, 30.0, null]);
+    expect((p..keepFrames = true).keep, const KeepFramesSettings(stepSeconds: 0.5, durationSeconds: 30));
     SharedPreferences.setMockInitialValues({});
-    expect((await VideoAnalysisPrefs.load()).sampleSeconds, 10);
+    final defaults = await VideoAnalysisPrefs.load();
+    expect(defaults.sampleSeconds, 10);
+    expect(defaults.keep, const KeepFramesSettings(stepSeconds: 1, durationSeconds: 10));
 
     await (p..modelId = null).save();
     expect((await VideoAnalysisPrefs.load()).modelId, isNull);

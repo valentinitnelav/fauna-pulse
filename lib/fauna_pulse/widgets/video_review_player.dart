@@ -11,6 +11,9 @@
 // the phone's gallery. It reports its position every 100 ms; between reports
 // a ticker moves the boxes on by the elapsed time × speed, so they follow the
 // insect smoothly. Paused or after a seek, the position is exact.
+//
+// Round 234: the summary's "Kept frames" below the player move it to a
+// frame's moment ([VideoReviewPlayerState.showMoment]).
 
 import 'dart:io';
 import 'dart:math';
@@ -36,8 +39,13 @@ class VideoReviewPlayer extends StatefulWidget {
   /// when it closes.
   final Future<void> Function() onOpenAnalysis;
 
-  /// Shown below the player (the summary's "Identify organisms").
+  /// Shown below the player (the summary's kept frames and "Identify
+  /// organisms").
   final List<Widget> footer;
+
+  /// Freezes the list's scrolling while a kept frame below is zoomed, so a
+  /// drag pans the picture instead of scrolling the page away.
+  final bool scrollLocked;
 
   const VideoReviewPlayer({
     super.key,
@@ -45,6 +53,7 @@ class VideoReviewPlayer extends StatefulWidget {
     required this.padding,
     required this.onOpenAnalysis,
     this.footer = const [],
+    this.scrollLocked = false,
   });
 
   /// Same colours as the summary's photo viewer: tracked objects cyan,
@@ -55,10 +64,10 @@ class VideoReviewPlayer extends StatefulWidget {
   static const speeds = [0.5, 1.0, 2.0, 4.0];
 
   @override
-  State<VideoReviewPlayer> createState() => _VideoReviewPlayerState();
+  State<VideoReviewPlayer> createState() => VideoReviewPlayerState();
 }
 
-class _VideoReviewPlayerState extends State<VideoReviewPlayer>
+class VideoReviewPlayerState extends State<VideoReviewPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   VideoBoxTimeline _timeline = VideoBoxTimeline.empty;
   bool _loading = true;
@@ -100,6 +109,8 @@ class _VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// Whether this tab holds the wakelock (see [_keepAwake]).
   bool _awake = false;
 
+  final _scroll = ScrollController();
+
   @override
   bool get wantKeepAlive => true;
 
@@ -130,6 +141,7 @@ class _VideoReviewPlayerState extends State<VideoReviewPlayer>
     _controller?.dispose();
     _posMs.dispose();
     _playing.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -292,6 +304,20 @@ class _VideoReviewPlayerState extends State<VideoReviewPlayer>
     if (target != null) _seekTo(target);
   }
 
+  /// Shows the frame at [ms] of [clip], paused, and scrolls the player into
+  /// view (a kept frame's "Show in video", round 234).
+  Future<void> showMoment(String clip, int ms) async {
+    final index = _clips.indexOf(clip);
+    if (index < 0) return;
+    _pause();
+    if (index != _clip || _controller == null) await _openClip(index);
+    if (!mounted) return;
+    _seekTo(ms);
+    if (_scroll.hasClients) {
+      await _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
   Future<void> _openAnalysis() async {
     _pause();
     await widget.onOpenAnalysis();
@@ -309,7 +335,9 @@ class _VideoReviewPlayerState extends State<VideoReviewPlayer>
     final area = c == null ? null : boxes?.areaFor(frameAspect);
     final aiView = _aiView && area != null;
     return ListView(
+      controller: _scroll,
       padding: widget.padding,
+      physics: widget.scrollLocked ? const NeverScrollableScrollPhysics() : null,
       children: [
         const Text("Videos with the AI's boxes", style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),

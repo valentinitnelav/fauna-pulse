@@ -29,7 +29,14 @@ Terms used below:
 3. **Find visits** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
    C-BIoU), using the screen's *Occlusion tolerance* and *Minimum visit length*. It
-   takes seconds and can be run again with other settings.
+   takes seconds and can be run again with other settings. With *Keep frames of each
+   visit* on (the default, round 234) it then saves pictures of every visit from the
+   clips, by the live photo rule: the first frame, then one every *Keep a frame every*
+   (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show
+   under the player on the summary's Video tab (*Show in video* jumps there) and are what
+   *Identify organisms* reads. Saving reads each clip once; it can be stopped and
+   continued with *Save the remaining frames*. Finding the visits again numbers them
+   anew, so identification results made before say to run identification again.
 4. **Share results**: one zip with `visits.csv` (one row per visit), `mot/` (every
    tracked box), `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`.
    Unzip it on the computer and keep the files together: the scripts below need them.

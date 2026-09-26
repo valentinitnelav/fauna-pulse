@@ -19,6 +19,15 @@
 // Each file is written under a temporary name and renamed when complete, so
 // a crash never leaves a half file in place of a good one.
 //
+// Kept frames (round 234): per visit, the frames a live session would have
+// photographed (the first one, then one every N s for up to M s: the same
+// TrackKeepRule). Here they are only chosen and named: the due tracks carry
+// `jpeg` in their `detections` entries and a `capture` record follows, as in
+// a live log, so the summary's photo viewer, the gallery copy and the
+// identification read them unchanged. The pictures themselves are saved
+// from the clips afterwards (video_frame_keeper.dart) into roi_frames/; a
+// frame not saved yet is simply skipped by every reader.
+//
 // Only clips whose analysis finished are tracked. One tracker follows
 // insects from one clip into the next only when the next clip's first
 // analysed frame comes after the previous clip's last one, within the
@@ -36,6 +45,7 @@ import 'dart:ui';
 
 import 'package:archive/archive.dart';
 
+import '../capture/roi_capture.dart' show TrackKeepRule, roiPhotoFileName;
 import '../logging/app_error_hooks.dart';
 import '../logging/session_logger.dart' show isoWithOffset;
 import '../logging/track_source.dart' show postTracksFileName;
@@ -47,18 +57,101 @@ import 'track_export.dart';
 import 'video_detector.dart';
 import 'video_run_samples.dart';
 
+/// Which frames of each visit are kept as photos (round 234): the first
+/// one, then one every [stepSeconds] for up to [durationSeconds] after the
+/// visit began; the rule a live session takes its photos by.
+class KeepFramesSettings {
+  final double stepSeconds;
+  final double durationSeconds;
+  const KeepFramesSettings({this.stepSeconds = 1, this.durationSeconds = 10});
+
+  Map<String, dynamic> toJson() => {'step_seconds': stepSeconds, 'duration_seconds': durationSeconds};
+
+  static KeepFramesSettings? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final step = (j['step_seconds'] as num?)?.toDouble();
+    final duration = (j['duration_seconds'] as num?)?.toDouble();
+    if (step == null || duration == null) return null;
+    return KeepFramesSettings(stepSeconds: step, durationSeconds: duration);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is KeepFramesSettings && other.stepSeconds == stepSeconds && other.durationSeconds == durationSeconds;
+
+  @override
+  int get hashCode => Object.hash(stepSeconds, durationSeconds);
+}
+
+/// One frame chosen to be kept, from its `capture` record in
+/// post_tracks.jsonl: where it is in which clip, and the file it is saved to.
+class KeptFrame {
+  final String file;
+  final String clip;
+  final int ptsUs;
+  final int frameMs;
+
+  /// The analysed area in upright frame pixels `[x, y, width, height]`: the
+  /// part of the frame that is saved.
+  final List<int> roiPx;
+  final List<int> trackIds;
+
+  const KeptFrame({
+    required this.file,
+    required this.clip,
+    required this.ptsUs,
+    required this.frameMs,
+    required this.roiPx,
+    required this.trackIds,
+  });
+
+  KeptFrame named(String name) =>
+      KeptFrame(file: name, clip: clip, ptsUs: ptsUs, frameMs: frameMs, roiPx: roiPx, trackIds: trackIds);
+
+  /// Same picture: same clip, moment and area.
+  bool samePicture(KeptFrame o) =>
+      o.clip == clip && o.ptsUs == ptsUs && o.roiPx.length == roiPx.length && _sameInts(o.roiPx, roiPx);
+
+  static bool _sameInts(List<int> a, List<int> b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static KeptFrame? fromRecord(Map<String, dynamic> rec) {
+    final file = rec['file'];
+    final clip = rec['clip'];
+    final pts = rec['pts_us'];
+    final roi = rec['roi_px'];
+    if (file is! String || clip is! String || pts is! num || roi is! List || roi.length != 4) return null;
+    return KeptFrame(
+      file: file,
+      clip: clip,
+      ptsUs: pts.toInt(),
+      frameMs: (rec['captured_at_ms'] as num?)?.toInt() ?? 0,
+      roiPx: [for (final v in roi) (v as num).toInt()],
+      trackIds: [for (final v in (rec['track_ids'] as List? ?? const [])) (v as num).toInt()],
+    );
+  }
+}
+
 /// What one tracking run found.
 class VideoTrackResult {
   final int visits;
   final int clipsTracked;
   final int clipsLeftOut;
   final int frames;
+
+  /// Frames chosen to be kept (round 234; saved afterwards).
+  final int keptFrames;
   final Duration elapsed;
   const VideoTrackResult({
     required this.visits,
     required this.clipsTracked,
     required this.clipsLeftOut,
     required this.frames,
+    this.keptFrames = 0,
     required this.elapsed,
   });
 }
@@ -76,6 +169,14 @@ class PostTrackSummary {
   final double minHitsSeconds;
   final String algorithm;
 
+  /// This run's `run_id`: identification remembers it, so it can tell when
+  /// the visits (and their numbers) were found again since (round 234).
+  final int? runId;
+
+  /// The kept-frames rule of this run, or null when none were kept.
+  final KeepFramesSettings? keep;
+  final int keptFrames;
+
   const PostTrackSummary({
     required this.visits,
     required this.clips,
@@ -83,6 +184,9 @@ class PostTrackSummary {
     required this.occlusionSeconds,
     required this.minHitsSeconds,
     required this.algorithm,
+    this.runId,
+    this.keep,
+    this.keptFrames = 0,
   });
 }
 
@@ -96,6 +200,9 @@ class _Clip {
   bool done = false;
   Rect roi = const Rect.fromLTWH(0, 0, 1, 1);
   List<String> names = const [];
+
+  /// `roi_px` of `video_clip_done` (upright pixels), or null for none.
+  List<int>? roiPx;
   List<ReplayFrame> frames = [];
   _Clip(this.name);
 }
@@ -103,10 +210,14 @@ class _Clip {
 class VideoTracker {
   static const outputFileName = postTracksFileName;
 
+  /// Folder of the kept frames: the one live photos use.
+  static const framesDirName = 'roi_frames';
+
   /// Tracks every finished clip of [sessionDir] with [config]'s tracker
-  /// settings and writes post_tracks.jsonl, visits.csv and mot/. Throws a
-  /// [StateError] when no clip has finished its analysis yet.
-  static Future<VideoTrackResult> run(Directory sessionDir, SessionConfig config) async {
+  /// settings and writes post_tracks.jsonl, visits.csv and mot/. With
+  /// [keep], chooses the frames to keep per visit (see the file header).
+  /// Throws a [StateError] when no clip has finished its analysis yet.
+  static Future<VideoTrackResult> run(Directory sessionDir, SessionConfig config, {KeepFramesSettings? keep}) async {
     final started = DateTime.now();
     final input = File('${sessionDir.path}/${VideoDetector.outputFileName}');
     if (!input.existsSync()) throw StateError('The videos were not analyzed yet.');
@@ -153,6 +264,7 @@ class VideoTracker {
           if (roi is List && roi.length == 4 && c.width > 0 && c.height > 0) {
             final r = [for (final v in roi) (v as num).toDouble()];
             c.roi = Rect.fromLTWH(r[0] / c.width, r[1] / c.height, r[2] / c.width, r[3] / c.height);
+            c.roiPx = [for (final v in r) v.round()];
           }
           final names = rec['class_names'];
           if (names is List) c.names = [for (final n in names) '$n'];
@@ -210,6 +322,30 @@ class VideoTracker {
 
     final runId = started.millisecondsSinceEpoch;
     final fps0 = (detectionSettings?['analysis_fps'] as num?)?.toDouble() ?? 15;
+
+    // Kept frames: names as live photos have them (the session's token plus
+    // the frame's time), one per frame. A name already taken moves on by
+    // 1 ms. An existing file of that name is taken over only when the last
+    // run kept it and it can be made again from its video (or it already
+    // shows this picture); a file no run kept (a camera photo, say) or whose
+    // video is gone is never overwritten.
+    final framesDir = Directory('${sessionDir.path}/$framesDirName');
+    final oldKept = {for (final k in await readKeptFrames(sessionDir)) k.file: k};
+    final videoThere = <String, bool>{};
+    bool canRemake(String clip) =>
+        videoThere.putIfAbsent(clip, () => File('${sessionDir.path}/videos/$clip').existsSync());
+    final token = keep == null ? '' : _fileToken(sessionDir);
+    final kept = <String, KeptFrame>{};
+    String keptName(KeptFrame want) {
+      for (var ms = want.frameMs; ; ms++) {
+        final name = roiPhotoFileName(ms, token);
+        if (kept.containsKey(name)) continue;
+        if (!File('${framesDir.path}/$name').existsSync()) return name;
+        final old = oldKept[name];
+        if (old != null && (old.samePicture(want) || canRemake(old.clip))) return name;
+      }
+    }
+
     final out = File('${sessionDir.path}/$outputFileName');
     final tmp = File('${out.path}.tmp');
     final sink = tmp.openWrite();
@@ -236,6 +372,8 @@ class VideoTracker {
         for (final c in clips.values)
           if (!c.done) c.name,
       ],
+      'keep_frames': keep?.toJson(),
+      if (keep != null) 'file_token': token,
     });
 
     final visits = <int, VideoVisit>{};
@@ -246,6 +384,12 @@ class VideoTracker {
         final all = [for (final c in stretch) ...c.frames];
         final fps = _fpsOf(all) ?? fps0;
         var maxId = 0;
+        final rule = keep == null
+            ? null
+            : TrackKeepRule(
+                stepMs: (keep.stepSeconds * 1000).round(),
+                durationMs: (keep.durationSeconds * 1000).round(),
+              );
         // Clip a first sighting belongs to: the last clip of the stretch
         // that had begun by then.
         _Clip clipAt(int ms) => stretch.lastWhere((c) => c.frames.first.timestampMs <= ms, orElse: () => stretch.first);
@@ -257,6 +401,24 @@ class VideoTracker {
           initialFps: fps,
           onFrame: (frame, tracks, events) {
             final clip = clips[frame.clip]!;
+            final pts = frame.ptsUs;
+            // Every frame, as live: the rule also forgets ended visits.
+            final due = rule == null || pts == null
+                ? const <int>[]
+                : rule.due([for (final t in tracks) t.id], frame.timestampMs);
+            String? jpeg;
+            if (due.isNotEmpty) {
+              final want = KeptFrame(
+                file: '',
+                clip: clip.name,
+                ptsUs: pts!,
+                frameMs: frame.timestampMs,
+                roiPx: clip.roiPx ?? [0, 0, clip.width, clip.height],
+                trackIds: [for (final id in due) idBase + id],
+              );
+              jpeg = keptName(want);
+              kept[jpeg] = want.named(jpeg);
+            }
             if (tracks.isNotEmpty) {
               write('detections', frame.timestampMs, {
                 'frame_ms': frame.timestampMs,
@@ -272,8 +434,25 @@ class VideoTracker {
                       'confidence': t.confidence,
                       'box_in_roi': boxInRoi(t.box, clip.roi),
                       if (t.timeSinceUpdate > 0) 'coasted': true,
+                      if (jpeg != null && due.contains(t.id)) 'jpeg': jpeg,
                     },
                 ],
+              });
+            }
+            if (jpeg != null) {
+              final k = kept[jpeg]!;
+              final roiPx = k.roiPx;
+              write('capture', frame.timestampMs, {
+                'file': jpeg,
+                'captured_at_ms': frame.timestampMs,
+                'track_ids': k.trackIds,
+                'source': 'video',
+                'clip': clip.name,
+                'frame': frame.frameIndex,
+                'pts_us': pts,
+                'roi_px': roiPx,
+                // The saved picture is the analysed area at full size.
+                if (roiPx[2] == roiPx[3]) 'saved_px': roiPx[2] else ...{'saved_w': roiPx[2], 'saved_h': roiPx[3]},
               });
             }
             for (final e in events) {
@@ -323,6 +502,7 @@ class VideoTracker {
         'frames': frames,
         'detections': detections,
         'clips_tracked': tracked.length,
+        'kept_frames': kept.length,
         'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
       });
       await sink.flush();
@@ -334,6 +514,22 @@ class VideoTracker {
       if (tmp.existsSync()) tmp.deleteSync();
       rethrow;
     }
+    // Frames the last run kept that this one does not keep as the same
+    // picture go before the new file takes over: a crash in between leaves
+    // the old records pointing at missing files (skipped by every reader),
+    // never a name pointing at the wrong picture. Frames whose video is gone
+    // stay: they can't be made again.
+    for (final old in oldKept.values) {
+      final now = kept[old.file];
+      if (now != null && now.samePicture(old)) continue;
+      if (!canRemake(old.clip)) continue;
+      final f = File('${framesDir.path}/${old.file}');
+      try {
+        if (f.existsSync()) f.deleteSync();
+      } catch (e) {
+        logSwallowed('video_kept_frame_delete', e);
+      }
+    }
     await tmp.rename(out.path);
     await TrackExport.write(sessionDir, visits: visits.values, clips: [for (final c in tracked) c.name], mot: mot);
     return VideoTrackResult(
@@ -341,8 +537,53 @@ class VideoTracker {
       clipsTracked: tracked.length,
       clipsLeftOut: clips.length - tracked.length,
       frames: frames,
+      keptFrames: kept.length,
       elapsed: DateTime.now().difference(started),
     );
+  }
+
+  /// The session's `file_token` (start record of session.jsonl), which live
+  /// photo names carry too; `video` when the log has none.
+  static String _fileToken(Directory sessionDir) {
+    try {
+      final raf = File('${sessionDir.path}/session.jsonl').openSync();
+      try {
+        final head = utf8.decode(raf.readSync(min(65536, raf.lengthSync())), allowMalformed: true);
+        for (final line in const LineSplitter().convert(head)) {
+          if (!line.contains('"start_of_session"')) continue;
+          final token = (jsonDecode(line) as Map)['file_token'];
+          if (token is String && RegExp(r'^[a-z0-9]+$').hasMatch(token)) return token;
+        }
+      } finally {
+        raf.closeSync();
+      }
+    } catch (e) {
+      logSwallowed('video_file_token', e);
+    }
+    return 'video';
+  }
+
+  /// The frames the current post_tracks.jsonl keeps, in its order (empty
+  /// when there is none).
+  static Future<List<KeptFrame>> readKeptFrames(Directory sessionDir) async {
+    final file = File('${sessionDir.path}/$outputFileName');
+    if (!file.existsSync()) return const [];
+    final out = <KeptFrame>[];
+    try {
+      await for (final line
+          in file.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter())) {
+        if (!line.startsWith('{"type":"capture"')) continue;
+        try {
+          final k = KeptFrame.fromRecord((jsonDecode(line) as Map).cast<String, dynamic>());
+          if (k != null) out.add(k);
+        } catch (_) {
+          // a torn line
+        }
+      }
+    } catch (e) {
+      logSwallowed('video_kept_frames_read', e);
+    }
+    return out;
   }
 
   /// Time the tracked clips cover, overlaps counted once: the dashboard's
@@ -393,6 +634,9 @@ class VideoTracker {
         occlusionSeconds: (first['occlusion_seconds'] as num).toDouble(),
         minHitsSeconds: (first['min_hits_seconds'] as num).toDouble(),
         algorithm: '${(first['tracker'] as Map?)?['algorithm'] ?? ''}',
+        runId: (first['run_id'] as num?)?.toInt(),
+        keep: KeepFramesSettings.fromJson(first['keep_frames']),
+        keptFrames: (last['kept_frames'] as num?)?.toInt() ?? 0,
       );
     } catch (e) {
       logSwallowed('post_tracks_summary', e);

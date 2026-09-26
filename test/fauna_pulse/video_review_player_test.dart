@@ -20,6 +20,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -240,6 +241,11 @@ void main() {
     await tester.tap(find.text('#${visit.trackId}'));
     await tester.pump();
     expect(player.calls.last, 'seek ${visit.startMs - 1000}');
+    // Round 234: the kept frames (none: this run kept none) come next.
+    await tester.scrollUntilVisible(find.textContaining('No kept frames yet.'), 200, scrollable: scrollable);
+    // (A `.last` finder can't scroll to a row not built yet: drag first.)
+    await tester.drag(scrollable, const Offset(0, -2000));
+    await tester.pump();
     await tester.scrollUntilVisible(find.text('Identify organisms').last, 200, scrollable: scrollable);
     await tester.drag(scrollable, const Offset(0, -2000));
     await tester.pump();
@@ -260,6 +266,45 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
     expect(player.calls.last, 'dispose');
+  });
+
+  testWidgets('kept frames show under the player; "Show in video" moves it there (r234)', (tester) async {
+    simulateBottomSystemBar(tester);
+    const clip = 'VID_20260924_155954.mp4';
+    final dir = await _importedSession(tester, [clip]);
+    _writeDetections(dir, clip, roi: [0.5, 0.5, 0.5625], roiPx: [420, 0, 1080, 1080]);
+    await tester.runAsync(
+      () => VideoTracker.run(dir, const SessionConfig(), keep: const KeepFramesSettings(stepSeconds: 1, durationSeconds: 10)),
+    );
+    final kept = (await tester.runAsync(() => VideoTracker.readKeptFrames(dir)))!;
+    expect(kept, hasLength(2)); // the 2-s visit: its first frame and one a second later
+    final jpeg = img.encodeJpg(img.Image(width: 64, height: 64));
+    for (final k in kept) {
+      File('${dir.path}/roi_frames/${k.file}')
+        ..parent.createSync(recursive: true)
+        ..writeAsBytesSync(jpeg);
+    }
+
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    // The tab's own list (the photo viewer inside it scrolls too).
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('Kept frames'), 200, scrollable: scrollable);
+    await _pumpUntil(tester, find.text('Show in video'));
+    expect(find.text('Showing 2 of 2 kept frames this session.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.scrollUntilVisible(find.text('Show in video').first, 200, scrollable: scrollable);
+    await tester.tap(find.text('Show in video').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400)); // back up to the player
+    expect(player.calls.last, 'seek ${kept.first.ptsUs ~/ 1000}');
+    expect(find.byTooltip('Play').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
   });
 
   testWidgets('without a square, visits or analysis: no view switch, notes say why', (tester) async {

@@ -132,6 +132,11 @@ class IndexedPhoto {
   /// True for a reference photo (gt_frames/): clock-driven, no boxes.
   final bool isReference;
 
+  /// Round 234: a frame kept from an imported video, with the clip it came
+  /// from and its moment there (microseconds); null for camera photos.
+  final String? clip;
+  final int? ptsUs;
+
   const IndexedPhoto({
     required this.name,
     required this.boxes,
@@ -150,6 +155,8 @@ class IndexedPhoto {
     required this.stillWithinTol,
     required this.stillMatchNote,
     required this.isReference,
+    this.clip,
+    this.ptsUs,
   });
 }
 
@@ -321,6 +328,8 @@ class _PhotoAcc {
   bool stillWithinTol = false;
   String? stillMatchNote;
   bool isReference = false;
+  String? clip;
+  int? ptsUs;
 
   _PhotoAcc(this.name);
 }
@@ -533,6 +542,20 @@ class _IndexBuilder {
       p.resW = px;
       p.resH = px;
     }
+    // A frame kept from a video (round 234): the whole picture may have been
+    // analysed, so it need not be square; it knows its clip and moment.
+    final w = (rec['saved_w'] as num?)?.toInt();
+    final h = (rec['saved_h'] as num?)?.toInt();
+    if (w != null && h != null && w > 0 && h > 0) {
+      p.resW = w;
+      p.resH = h;
+    }
+    final clip = rec['clip'];
+    final pts = (rec['pts_us'] as num?)?.toInt();
+    if (clip is String && pts != null) {
+      p.clip = clip;
+      p.ptsUs = pts;
+    }
     // Sync companion (r108) + content lag: only high-res-path records carry
     // these; fast-path photos ARE live crops, so they have neither.
     final liveJpeg = rec['live_jpeg'] as String?;
@@ -659,6 +682,8 @@ class _IndexBuilder {
           stillWithinTol: p.stillWithinTol,
           stillMatchNote: p.stillMatchNote,
           isReference: p.isReference,
+          clip: p.clip,
+          ptsUs: p.ptsUs,
         ),
     },
     referenceNames: referenceNames,

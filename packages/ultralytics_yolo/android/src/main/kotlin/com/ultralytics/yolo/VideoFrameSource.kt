@@ -15,6 +15,11 @@
 // and the rotation is applied while writing the pixels, so no full-frame bitmap ever exists.
 // A clip is read front to back; the Dart side asks for a few frames at a time ([next]) so a
 // long clip never holds the method channel for minutes.
+//
+// Kept frames (round 234): [openFrames] + [saveFrames] save chosen frames of a clip as JPEGs of
+// the analysed area at full size. They reuse the same decoder and conversion (no averaging down),
+// read forward, and jump over long stretches without a wanted frame by seeking to the key frame
+// before the next one.
 
 package com.ultralytics.yolo
 
@@ -47,6 +52,8 @@ class VideoFrameSource private constructor(
   private val maxSidePx: Int,
   minIntervalUs: Long,
   startPtsUs: Long,
+  /** Fixed analysed area (upright x, y, w, h) instead of [roi]: the one a detection run used. */
+  private val fixedRoiPx: IntArray? = null,
 ) {
   companion object {
     /** Error text for files the decoder path cannot read correctly. */
@@ -59,6 +66,12 @@ class VideoFrameSource private constructor(
      * took about 11 ms on one core (debug build), as long as the detection itself.
      */
     private val CONVERT_BANDS = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+
+    /** A wanted frame further ahead than this is reached by seeking, not by decoding every frame. */
+    private const val SEEK_AHEAD_US = 3_000_000L
+
+    /** Time stamps this close to a wanted one count as that frame (rounding in the records). */
+    private const val PTS_TOLERANCE_US = 1_000L
 
     /** Clip facts for the import sheet and the analysis header; no decoding. */
     fun info(path: String): Map<String, Any?> {
@@ -174,6 +187,40 @@ class VideoFrameSource private constructor(
       }
     }
 
+    /**
+     * Opens [path] for [saveFrames]: pictures of the upright area [roiPx] (x, y, w, h) at full
+     * size. No frame table is read; the first [saveFrames] call seeks to its first frame.
+     */
+    fun openFrames(path: String, roiPx: IntArray): VideoFrameSource {
+      require(roiPx.size == 4 && roiPx[2] > 0 && roiPx[3] > 0) { "Bad area to save." }
+      val ex = MediaExtractor()
+      var dec: MediaCodec? = null
+      try {
+        ex.setDataSource(path)
+        val track = videoTrack(ex) ?: throw IllegalArgumentException("No video track in this file.")
+        val fmt = ex.getTrackFormat(track)
+        unsupportedReason(fmt)?.let { throw IllegalArgumentException(it) }
+        ex.selectTrack(track)
+        val mmr = MediaMetadataRetriever()
+        val rot = try {
+          mmr.setDataSource(path)
+          mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        } finally {
+          runCatching { mmr.release() }
+        }
+        val mime = fmt.getString(MediaFormat.KEY_MIME)!!
+        dec = MediaCodec.createDecoderByType(mime)
+        fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+        dec.configure(fmt, null, null, 0)
+        dec.start()
+        return VideoFrameSource(ex, dec, fmt, ((rot % 360) + 360) % 360, LongArray(0), null, Int.MAX_VALUE, 0L, 0L, roiPx.copyOf())
+      } catch (e: Throwable) {
+        runCatching { dec?.release() }
+        runCatching { ex.release() }
+        throw e
+      }
+    }
+
     private fun videoTrack(ex: MediaExtractor): Int? =
       (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
 
@@ -230,6 +277,7 @@ class VideoFrameSource private constructor(
   private val info = MediaCodec.BufferInfo()
   private var inputDone = false
   private var outputDone = false
+  private var fedSamples = 0L
   private val sampler = PtsSampler(minIntervalUs, startPtsUs)
   private var outFormat: MediaFormat? = null
   private var namesSent = false
@@ -312,6 +360,96 @@ class VideoFrameSource private constructor(
     )
   }
 
+  // --- kept frames (round 234) ---------------------------------------------------------------
+
+  private var lastOutPts = Long.MIN_VALUE / 4
+  private var seekedFor = Long.MIN_VALUE
+
+  /**
+   * Saves the frames at [targets] (display time stamps, ascending) as JPEGs at [paths], each
+   * written to a temporary name first so a killed run never leaves half a file. Stops after
+   * [budgetMs] once at least one target was dealt with; "processed" says how many were, in order.
+   * A target the clip does not reach is reported in "missing". A frame missing from the video is
+   * replaced by the next one, whose own time stamp is reported.
+   */
+  fun saveFrames(targets: LongArray, paths: List<String>, quality: Int, budgetMs: Long): Map<String, Any?> {
+    require(targets.size == paths.size) { "One file name per frame." }
+    val t0 = System.nanoTime()
+    var lastOutputNs = t0
+    var decoded = 0
+    val saved = ArrayList<Map<String, Any>>()
+    val missing = ArrayList<Int>()
+    var i = 0
+    while (i < targets.size) {
+      if (i > 0 && (System.nanoTime() - t0) / 1_000_000 >= budgetMs) break
+      val want = targets[i]
+      if (want - lastOutPts > SEEK_AHEAD_US && seekedFor != want) {
+        seekTo(want)
+        lastOutputNs = System.nanoTime()
+      }
+      if (outputDone) {
+        missing.add(i++)
+        continue
+      }
+      feedInput()
+      val idx = decoder.dequeueOutputBuffer(info, 10_000)
+      when {
+        idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> outFormat = decoder.outputFormat
+        idx < 0 -> {
+          if ((System.nanoTime() - lastOutputNs) / 1_000_000 > 5_000) {
+            if (inputDone) outputDone = true
+            else throw IllegalStateException("The video decoder stopped responding near ${want / 1_000_000} s.")
+          }
+        }
+        else -> {
+          lastOutputNs = System.nanoTime()
+          if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
+          val pts = info.presentationTimeUs
+          if (info.size > 0) {
+            decoded++
+            lastOutPts = pts
+          }
+          if (info.size > 0 && pts >= want - PTS_TOLERANCE_US) {
+            val image = decoder.getOutputImage(idx) ?: throw IllegalStateException("The decoder returned no picture.")
+            val bmp = try { convert(image) } finally { image.close() }
+            decoder.releaseOutputBuffer(idx, false)
+            val jpeg = java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+            while (i < targets.size && pts >= targets[i] - PTS_TOLERANCE_US) {
+              val out = java.io.File(paths[i])
+              val tmp = java.io.File(paths[i] + ".tmp")
+              tmp.writeBytes(jpeg)
+              if (!tmp.renameTo(out)) throw java.io.IOException("Could not save ${out.name}.")
+              saved.add(mapOf("index" to i, "pts" to pts, "width" to bmp.width, "height" to bmp.height, "bytes" to jpeg.size))
+              i++
+            }
+          } else {
+            decoder.releaseOutputBuffer(idx, false)
+          }
+        }
+      }
+    }
+    return mapOf(
+      "saved" to saved,
+      "missing" to missing,
+      "processed" to i,
+      "decoded" to decoded,
+      "elapsedMs" to (System.nanoTime() - t0) / 1e6,
+    )
+  }
+
+  /**
+   * Continues decoding at the key frame before [want]. Before the first sample went in the
+   * decoder needs no flush (a flush that early would also lose the codec's setup data).
+   */
+  private fun seekTo(want: Long) {
+    seekedFor = want
+    extractor.seekTo(want, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+    if (fedSamples > 0) decoder.flush()
+    inputDone = false
+    outputDone = false
+    lastOutPts = extractor.sampleTime
+  }
+
   fun close() {
     runCatching { decoder.stop() }
     runCatching { decoder.release() }
@@ -334,6 +472,7 @@ class VideoFrameSource private constructor(
         return
       }
       decoder.queueInputBuffer(i, 0, n, extractor.sampleTime, 0)
+      fedSamples++
       extractor.advance()
     }
   }
@@ -539,6 +678,11 @@ class VideoFrameSource private constructor(
 
   /** Upright analysed area (x, y, w, h): the live photo crop's rounding (MainActivity.cropRoiJpeg), or the whole frame. */
   private fun roiRect(upW: Int, upH: Int): IntArray {
+    fixedRoiPx?.let { f ->
+      val x = f[0].coerceIn(0, upW - 1)
+      val y = f[1].coerceIn(0, upH - 1)
+      return intArrayOf(x, y, f[2].coerceIn(1, upW - x), f[3].coerceIn(1, upH - y))
+    }
     val rr = roi ?: return intArrayOf(0, 0, upW, upH)
     val cap = (min(upW, upH) / 32) * 32
     val px = (((rr[2] * upW) / 32.0).roundToInt() * 32).coerceIn(32, max(32, cap))

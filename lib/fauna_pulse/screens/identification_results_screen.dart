@@ -34,6 +34,10 @@
 // left-packed, and a table that still does not fit scrolls sideways with a
 // visible scrollbar (in S3 only the table moves, the text above it stays;
 // round 222). Long headers over narrow values may wrap onto two lines.
+//
+// Round 234: results for visits found in videos remember the "Find visits"
+// run they used (capture.visits_run_id); when the visits were found again
+// since, an amber line under the header says to run identification again.
 
 import 'dart:convert';
 import 'dart:io';
@@ -46,6 +50,7 @@ import '../identification/crop_worker.dart' show planSquareCrop;
 import '../identification/label_pack.dart' show kRankNames, kSinkKingdom;
 import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
+import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
 
 const _cellStyle = TextStyle(color: Colors.white, fontSize: 13);
@@ -557,6 +562,9 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   double? get _noneThreshold => (_settings['none_threshold'] as num?)?.toDouble();
   Map<String, dynamic> get _capture => ((_summary?['capture'] as Map?) ?? const {}).cast<String, dynamic>();
 
+  /// The visits these results used were found again since (round 234).
+  bool _visitsRenumbered = false;
+
   @override
   void initState() {
     super.initState();
@@ -568,9 +576,13 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       final summary = jsonDecode(await widget.summaryJson.readAsString()) as Map<String, dynamic>;
       final full = jsonDecode(await widget.tracksJson.readAsString()) as Map<String, dynamic>;
       final tracks = (full['tracks'] as List).cast<Map<String, dynamic>>();
+      final usedRunId = ((summary['capture'] as Map?)?['visits_run_id'] as num?)?.toInt();
+      final renumbered =
+          usedRunId != null && (await VideoTracker.readSummary(widget.sessionDir))?.runId != usedRunId;
       if (!mounted) return;
       setState(() {
         _summary = summary;
+        _visitsRenumbered = renumbered;
         _tracks = tracks;
         _recompute();
       });
@@ -680,6 +692,16 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         '${s['tracks_total']}'
         '${merged > 0 ? ' ($merged joined from consecutive track ids, ${s['tracks_before_merge']} before joining)' : ''}',
       ),
+      if (_visitsRenumbered)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: _flagNote(
+            'The visits were found again since; run identification again.',
+            '"Find visits" numbers the visits anew each time it runs, and keeps new frames for them. '
+                'These results still use the old numbers and frames, so they no longer match the visits '
+                'on the session screen. Run identification again to match them.',
+          ),
+        ),
     ];
   }
 

@@ -896,7 +896,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       // decoding; videoOpen / videoNext / videoClose decode one clip in chunks and run a loaded
       // detector instance on each sampled frame. Only boxes cross the channel, never pictures
       // (videoThumbnail, r227: one small JPEG of the first frame for drawing the square on).
-      "videoInfo", "videoThumbnail", "videoOpen", "videoNext", "videoClose" -> handleVideo(call, result)
+      // videoOpenFrames / videoSaveFrames (r234) save chosen frames as JPEG files instead.
+      "videoInfo", "videoThumbnail", "videoOpen", "videoNext", "videoOpenFrames", "videoSaveFrames",
+      "videoClose" -> handleVideo(call, result)
 
       else -> result.notImplemented()
     }
@@ -934,6 +936,25 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           "videoNext" -> {
             val src = videoSource ?: throw IllegalStateException("No video open; call videoOpen first")
             src.next(num("maxFrames")?.toInt() ?: 8, num("budgetMs")?.toLong() ?: 1000L, videoPredict!!)
+          }
+          "videoOpenFrames" -> {
+            runCatching { videoSource?.close() }
+            videoSource = null
+            videoPredict = null
+            videoSource = VideoFrameSource.openFrames(
+              path = args["path"] as String,
+              roiPx = (args["roiPx"] as List<*>).map { (it as Number).toInt() }.toIntArray(),
+            )
+            null
+          }
+          "videoSaveFrames" -> {
+            val src = videoSource ?: throw IllegalStateException("No video open; call videoOpenFrames first")
+            src.saveFrames(
+              targets = (args["ptsUs"] as List<*>).map { (it as Number).toLong() }.toLongArray(),
+              paths = (args["paths"] as List<*>).map { it as String },
+              quality = num("quality")?.toInt() ?: 90,
+              budgetMs = num("budgetMs")?.toLong() ?: 1500L,
+            )
           }
           else -> {
             runCatching { videoSource?.close() }

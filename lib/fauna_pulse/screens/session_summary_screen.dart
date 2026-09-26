@@ -46,6 +46,7 @@ import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_run_samples.dart';
+import '../postprocess/video_tracker.dart' show KeepFramesSettings;
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
 import 'identification_screen.dart';
@@ -788,6 +789,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         stillWithinTol: p.stillWithinTol,
         stillMatchNote: p.stillMatchNote,
         isReference: p.isReference,
+        clip: p.clip,
+        ptsUs: p.ptsUs,
       );
     }
 
@@ -798,6 +801,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     File fileFor(String name) => File(
       '$dir/${referenceNames.contains(name) ? 'gt_frames' : 'roi_frames'}/$name',
     );
+    // Frames kept from videos (round 234) are listed as soon as the visits
+    // are found and saved afterwards: count and sample only the saved ones.
+    if (_videoTab) order = [for (final n in order) if (fileFor(n).existsSync()) n];
     final picked = <_PhotoSample>[];
     if (order.isNotEmpty) {
       // Either every photo, or a random sample of [size] photos. The picked
@@ -1528,6 +1534,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         na: trackNa,
       );
     }
+    // Round 234: frames "Find visits" kept of each visit.
+    if (afterwards && _importedVideoSession) {
+      final keep = KeepFramesSettings.fromJson(_post('keep_frames'));
+      add(
+        'Kept frames per visit',
+        keep == null
+            ? 'none'
+            : 'first frame, then one every ${_numStr(keep.stepSeconds)} s '
+                  'for up to ${_numStr(keep.durationSeconds)} s',
+      );
+    }
     if (isCbiou) {
       final cbp = _cbiouParams;
       if (cbp != null) {
@@ -1869,12 +1886,26 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     '${widget.logFile.parent.path}/videos',
   ).existsSync();
 
-  Widget _videoReviewTab() => VideoReviewPlayer(
-    sessionDir: widget.logFile.parent,
-    padding: _tabPadding,
-    onOpenAnalysis: _openVideoAnalysis,
-    footer: _identifySection(),
-  );
+  /// The Video tab's player, for "Show in video" on a kept frame.
+  final _videoPlayerKey = GlobalKey<VideoReviewPlayerState>();
+
+  Widget _videoReviewTab() {
+    // The frames kept for visits (round 234) load by themselves, as on the
+    // Photos tab.
+    if (!_photosRequested) {
+      _photosRequested = true;
+      _photosLoading = true;
+      Future.microtask(_loadPhotos);
+    }
+    return VideoReviewPlayer(
+      key: _videoPlayerKey,
+      sessionDir: widget.logFile.parent,
+      padding: _tabPadding,
+      onOpenAnalysis: _openVideoAnalysis,
+      scrollLocked: _photoViewerZoomed,
+      footer: _photoSection(videoFrames: true),
+    );
+  }
 
   /// "Run AI on videos" for this session, from the Video tab. A new
   /// analysis or new visits change the Setup rows and the Graphs, so both
@@ -1902,6 +1933,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _chargingDuringSession = false;
     _uniqueTracks = null;
     if (_graphsRequested) await _loadGraphs();
+    // New visits keep other frames.
+    if (_photosRequested && mounted) await _loadPhotos();
   }
 
   Widget _photosTab() {
@@ -2449,8 +2482,23 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  List<Widget> _photoSection() {
+  /// The photo viewer with its explanations and actions; with [videoFrames]
+  /// the frames kept from imported videos (round 234, under the player).
+  List<Widget> _photoSection({bool videoFrames = false}) {
+    final noun = videoFrames ? 'kept frame' : 'saved photo';
     return [
+      if (videoFrames) ...[
+        const Divider(height: 32, color: Colors.white24),
+        const Text('Kept frames', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text(
+          'Pictures of each visit, kept from the videos when the visits were found (set under '
+          '"Run AI on videos" → Visits). A random sample of $_randomSampleCount is shown; pick more '
+          'below. Swipe or use the arrows to step through them in time order. "Show in video" moves '
+          'the player above to that moment.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ] else ...[
       const Text(
         'Saved photos (with detection boxes if AI was used)',
         style: TextStyle(fontWeight: FontWeight.bold),
@@ -2466,6 +2514,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'marked; they have no prediction boxes by design.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
+      ],
       const SizedBox(height: 4),
       // Box-color legend (round 86): a photo shows EVERY object detected in
       // the frame that scheduled it, not only the one(s) whose time-lapse
@@ -2475,15 +2524,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 2),
-      const Text.rich(
+      Text.rich(
         TextSpan(
-          style: TextStyle(color: Colors.white70, fontSize: 12),
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
           children: [
-            TextSpan(
+            const TextSpan(
               text: '■ ',
               style: TextStyle(color: _BoxPainter.triggerColor),
             ),
-            TextSpan(text: 'tracked object whose photo schedule triggered this shot'),
+            TextSpan(
+              text: videoFrames
+                  ? 'the visit this frame was kept for'
+                  : 'tracked object whose photo schedule triggered this shot',
+            ),
           ],
         ),
       ),
@@ -2509,7 +2562,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
-            'Showing ${_photos.length} of $_totalSavedPhotos saved photo'
+            'Showing ${_photos.length} of $_totalSavedPhotos $noun'
             '${_totalSavedPhotos == 1 ? '' : 's'} this session'
             '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}'
             '${_photos.length < _totalSavedPhotos ? ' — picked at random' : ''}.',
@@ -2568,11 +2621,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           child: Center(child: CircularProgressIndicator()),
         )
       else if (_photosRequested && _photos.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(16),
+        Padding(
+          padding: const EdgeInsets.all(16),
           child: Text(
-            'No saved photos found for this session.',
-            style: TextStyle(color: Colors.white70),
+            videoFrames
+                ? 'No kept frames yet. In "Run AI on videos", find the visits with '
+                      '"Keep frames of each visit" on.'
+                : 'No saved photos found for this session.',
+            style: const TextStyle(color: Colors.white70),
           ),
         )
       else if (_photos.isNotEmpty)
@@ -2585,6 +2641,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           postBoxes: _postBoxesByName,
           deleteMarked: _postDeleteMarked,
           keepDecisions: _postDecisions,
+          onShowInVideo: videoFrames
+              ? (clip, ms) => _videoPlayerKey.currentState?.showMoment(clip, ms)
+              : null,
           onZoomChanged: (z) {
             if (mounted && z != _photoViewerZoomed) {
               setState(() => _photoViewerZoomed = z);
@@ -3106,6 +3165,11 @@ class _PhotoSample {
   /// regardless of detections, so it carries no boxes by design.
   final bool isReference;
 
+  /// Round 234: a frame kept from an imported video, its clip and moment
+  /// there (microseconds); null for camera photos.
+  final String? clip;
+  final int? ptsUs;
+
   const _PhotoSample({
     required this.file,
     required this.name,
@@ -3127,7 +3191,17 @@ class _PhotoSample {
     this.stillWithinTol = false,
     this.stillMatchNote,
     this.isReference = false,
+    this.clip,
+    this.ptsUs,
   });
+
+  /// Width / height of the saved picture: 1 for camera photos (square
+  /// crops), the video's own shape for a frame of the whole picture.
+  double get aspect {
+    final w = width, h = height;
+    if (liveFile != null || w == null || h == null || w <= 0 || h <= 0) return 1;
+    return w / h;
+  }
 }
 
 /// A swipeable viewer: one saved ROI photo per page with its detection boxes
@@ -3167,10 +3241,15 @@ class _PhotoViewer extends StatefulWidget {
   /// session was never identified); drawn as an info row under the photo.
   final LatestIdentification? identification;
 
+  /// Round 234: moves the video player to a kept frame's moment (clip, ms);
+  /// null outside the Video tab.
+  final void Function(String clip, int ms)? onShowInVideo;
+
   const _PhotoViewer({
     required this.photos,
     required this.onZoomChanged,
     this.identification,
+    this.onShowInVideo,
     this.location,
     this.postBoxes = const {},
     this.deleteMarked = const {},
@@ -3428,17 +3507,37 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     return min(p.width!, p.height!);
   }
 
-  /// Normalized (0..1) form of the current crop rectangle, or null.
-  Rect? get _cropNormRect => _cropSceneRect == null
-      ? null
-      : normalizedRect(_cropSceneRect!, _viewerSide);
+  /// Where the picture sits in the square scene: all of it for a square
+  /// photo, centred with bars for a video frame of the whole picture
+  /// (round 234).
+  Rect _imageRectInScene(_PhotoSample p) {
+    final a = p.aspect;
+    final s = _viewerSide;
+    if (a >= 1) return Rect.fromLTWH(0, (s - s / a) / 2, s, s / a);
+    return Rect.fromLTWH((s - s * a) / 2, 0, s * a, s);
+  }
+
+  /// Normalized (0..1) form of the current crop rectangle on the picture,
+  /// or null.
+  Rect? get _cropNormRect {
+    final r = _cropSceneRect;
+    if (r == null) return null;
+    final p = widget.photos[_page];
+    if (p.aspect == 1) return normalizedRect(r, _viewerSide);
+    final img = _imageRectInScene(p);
+    double x(double v) => ((v - img.left) / img.width).clamp(0.0, 1.0);
+    double y(double v) => ((v - img.top) / img.height).clamp(0.0, 1.0);
+    return Rect.fromLTRB(x(r.left), y(r.top), x(r.right), y(r.bottom));
+  }
 
   /// Real pixel size of the current crop on the SAVED photo (not the screen),
   /// or null when the photo's size isn't in the log.
   (int, int)? _cropPxSize() {
     final norm = _cropNormRect;
-    final side = _shownSidePx(widget.photos[_page]);
+    final p = widget.photos[_page];
+    final side = _shownSidePx(p);
     if (norm == null || side == null) return null;
+    if (p.aspect != 1) return ((norm.width * p.width!).round(), (norm.height * p.height!).round());
     return ((norm.width * side).round(), (norm.height * side).round());
   }
 
@@ -3468,9 +3567,13 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     _cropMoveOriginRect = null;
     final r = _cropSceneRect;
     if (r == null) return;
-    final px = _shownSidePx(widget.photos[_page]) ?? 1024;
-    if (r.width / _viewerSide * px < kMinCropSidePx ||
-        r.height / _viewerSide * px < kMinCropSidePx) {
+    final p = widget.photos[_page];
+    final px = _shownSidePx(p) ?? 1024;
+    // Saved pixels per scene unit: a picture narrower than the scene
+    // (a video frame, round 234) has more of them.
+    final perScene = p.aspect == 1 ? px / _viewerSide : p.width! / _imageRectInScene(p).width;
+    if (r.width * perScene < kMinCropSidePx ||
+        r.height * perScene < kMinCropSidePx) {
       setState(() => _cropSceneRect = null);
     }
   }
@@ -3655,6 +3758,22 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // Round 234: a frame kept from a video moves the player above to
+            // its moment.
+            if (widget.onShowInVideo case final show? when widget.photos[_page].clip != null)
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      final p = widget.photos[_page];
+                      show(p.clip!, p.ptsUs! ~/ 1000);
+                    },
+                    icon: const Icon(Icons.play_circle_outline, size: 18),
+                    label: const Text('Show in video', overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ),
             _toolButton(
               icon: Icons.crop_din,
               tooltip: 'Show/hide detection boxes',
@@ -3785,7 +3904,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                 child: InteractiveViewer(
                                   transformationController: _transformFor(i),
                                   maxScale: _maxZoom,
-                                  child: Stack(
+                                  // A video frame of the whole picture is not square (round 234):
+                                  // the picture and its boxes keep its shape, centred.
+                                  child: Center(child: AspectRatio(aspectRatio: p.aspect, child: Stack(
                                     fit: StackFit.expand,
                                     children: [
                                       // Boxes are ROI-normalized, so they
@@ -3957,7 +4078,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                           ),
                                         ),
                                     ],
-                                  ),
+                                  ))),
                                 ),
                               ),
                               // Crop mode (round 91): a drag layer ABOVE the
@@ -4134,6 +4255,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     );
   }
 
+  /// "1:05.3": a kept frame's moment in its clip.
+  static String _clipTime(int ms) {
+    final s = ms / 1000;
+    return '${s ~/ 60}:${(s % 60).toStringAsFixed(1).padLeft(4, '0')}';
+  }
+
   /// Per-photo metadata read from the session log: resolution, the track ids
   /// visible in it, the capture time, and the file name. Follows the ⚡
   /// toggle: while the live companion is shown, resolution and file name
@@ -4143,10 +4270,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     final res = liveShown
         ? (p.livePx != null ? '${p.livePx} × ${p.livePx} px' : 'unknown')
         : (p.width != null && p.height != null)
-        // ROI crops are square, so "short × wide" is the same number twice; we
-        // still compute min/max in case a future non-square crop is logged.
-        ? '${p.width! < p.height! ? p.width : p.height} × '
-              '${p.width! < p.height! ? p.height : p.width} px'
+        // Width × height: ROI crops are square; a video frame of the whole
+        // picture (round 234) keeps the video's shape.
+        ? '${p.width} × ${p.height} px'
         : 'unknown';
     // One "#id Conf.: 0.xy" entry per track visible in this photo. Only
     // meaningful when the live detector ran (see the rows below).
@@ -4192,6 +4318,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           // sessions are identified per photo instead).
           if (_identifiedText(p) case final text?) _infoRow('Identified', text),
           _infoRow('Captured', _formatStamp(p.captureMs)),
+          if (p.clip case final clip? when p.ptsUs != null)
+            _infoRow('In video', '$clip at ${_clipTime(p.ptsUs! ~/ 1000)}'),
           _infoRow('File', liveShown ? p.liveName! : p.name),
           // Post-hoc cleanup verdict for the shown file (round 138): a photo
           // kept without an own detection names the photo that saved it.

@@ -24,6 +24,7 @@ import '../logging/track_source.dart';
 import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
 import '../postprocess/post_detector.dart' show PostDetector;
+import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import 'crop_planner.dart';
 import 'crop_worker.dart';
 import 'identification_store.dart';
@@ -228,6 +229,11 @@ class IdentificationJob {
 
     onProgress?.call(const IdentifyProgress(stage: 'planning', done: 0, total: 0, avgMs: 0));
     final tasks = await planSession(sessionDir, maxCropsPerTrack: settings.maxCropsPerTrack);
+    // Round 234: visits found in videos are numbered anew by each "Find
+    // visits"; crops stored under the old numbers can't be continued.
+    final visitsRunId = trackSourceOf(sessionDir) == TrackSource.afterwards
+        ? (await VideoTracker.readSummary(sessionDir))?.runId
+        : null;
 
     // Resume state: an intact jsonl/bin pair is continued; anything
     // inconsistent (dim changed, rows missing, bin short) is redone.
@@ -238,8 +244,14 @@ class IdentificationJob {
       final intact = existing.contiguous &&
           (existing.dim == null || existing.dim == settings.dim) &&
           binLen >= existing.rows * settings.dim * 4;
-      if (!intact) {
-        logSwallowed('identify_resume_reset', StateError('inconsistent embeddings files; starting over'));
+      final renumbered = existing.visitsRunId != visitsRunId;
+      if (!intact || renumbered) {
+        logSwallowed(
+          'identify_resume_reset',
+          StateError(
+            renumbered ? 'visits were found again since; starting over' : 'inconsistent embeddings files; starting over',
+          ),
+        );
         if (jsonlFile.existsSync()) jsonlFile.deleteSync();
         if (binFile.existsSync()) binFile.deleteSync();
         existing = const EmbeddingIndex(records: [], skippedKeys: {}, dim: null, modelId: null);
@@ -269,6 +281,7 @@ class IdentificationJob {
       'crops_planned': tasks.length,
       'crops_pending': pending.length,
       'crops_done_before': done.length,
+      'visits_run_id': ?visitsRunId,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
@@ -537,11 +550,20 @@ class IdentificationJob {
     // "one photo every 1 s during the first 10 s of a track id" with the
     // real values instead of the defaults.
     double? photoStepS, photoDurationS;
+    // Round 234: visits found in videos keep their frames by the rule of
+    // their "Find visits" run (post_track_start), whose run_id the results
+    // screen compares with the current one.
+    int? visitsRunId;
+    KeepFramesSettings? keep;
     for (final file in tracksFile.path == log.path ? [log] : [log, tracksFile]) {
       if (!file.existsSync()) continue;
       final readTracks = file.path == tracksFile.path;
       for (final line in const LineSplitter().convert(file.readAsStringSync())) {
-        if (!line.contains('"track') && !line.contains('"start_of_session"')) continue;
+        if (!line.contains('"track') &&
+            !line.contains('"start_of_session"') &&
+            !line.contains('"post_track_start"')) {
+          continue;
+        }
         Map<String, dynamic> rec;
         try {
           rec = jsonDecode(line) as Map<String, dynamic>;
@@ -558,6 +580,10 @@ class IdentificationJob {
             photoStepS = (cfg['stepSeconds'] as num?)?.toDouble();
             photoDurationS = (cfg['durationSeconds'] as num?)?.toDouble();
           }
+        }
+        if (readTracks && rec['type'] == 'post_track_start') {
+          visitsRunId = (rec['run_id'] as num?)?.toInt();
+          keep = KeepFramesSettings.fromJson(rec['keep_frames']);
         }
         void extend(int? id) {
           if (id == null || t == null) return;
@@ -652,7 +678,11 @@ class IdentificationJob {
       tracks: scored,
       settings: settings,
       appVersion: appVersion,
-      capture: {'photo_step_s': photoStepS, 'photo_duration_s': photoDurationS},
+      capture: {
+        'photo_step_s': keep?.stepSeconds ?? photoStepS,
+        'photo_duration_s': keep?.durationSeconds ?? photoDurationS,
+        'visits_run_id': ?visitsRunId,
+      },
     );
   }
 }

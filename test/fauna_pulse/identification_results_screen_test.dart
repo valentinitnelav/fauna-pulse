@@ -205,4 +205,61 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  // Round 234: results of visits found in videos remember the "Find visits"
+  // run; after a new one the header says to run identification again.
+  for (final (shownRunId, warned) in [(7, false), (8, true)]) {
+    testWidgets('visits found again since: warned = $warned', (tester) async {
+      simulateBottomSystemBar(tester);
+      final tmp = Directory.systemTemp.createTempSync('identify_results_runid');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      File('${tmp.path}/post_tracks.jsonl').writeAsStringSync(
+        '${jsonEncode({'type': 'post_track_start', 'run_id': shownRunId, 'clips': ['a.mp4'], 'occlusion_seconds': 3, 'min_hits_seconds': 0.2})}\n'
+        '${jsonEncode({'type': 'post_track_end', 'run_id': shownRunId, 'visits': 1})}\n',
+      );
+      final idDir = Directory('${tmp.path}/identification')..createSync();
+      final tracksJson = File('${idDir.path}/tracks_p.json')
+        ..writeAsStringSync(
+          jsonEncode({
+            'session_id': 's',
+            'tracks': [
+              _track(1, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'], 'genus', 0.9),
+            ],
+          }),
+        );
+      final summaryJson = File('${idDir.path}/summary_p.json')
+        ..writeAsStringSync(
+          jsonEncode({
+            'generated_iso': '2026-09-26T10:00:00.000',
+            'model_id': 'bioclip',
+            'pack_id': 'pack',
+            'pack_rows': 10,
+            'tracks_total': 1,
+            'capture': {'photo_step_s': 1.0, 'photo_duration_s': 10.0, 'visits_run_id': 7},
+            'tracks': [],
+          }),
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IdentificationResultsScreen(
+            sessionDir: tmp,
+            tracksJson: tracksJson,
+            summaryJson: summaryJson,
+            tracksCsv: File('${idDir.path}/tracks_p.csv'),
+          ),
+        ),
+      );
+      for (var i = 0; i < 100; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+        if (find.text('Bombus').evaluate().isNotEmpty) break;
+      }
+      expect(find.text('Bombus'), findsOneWidget);
+      expect(
+        find.text('The visits were found again since; run identification again.'),
+        warned ? findsOneWidget : findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 }

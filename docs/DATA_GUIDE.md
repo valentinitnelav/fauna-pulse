@@ -705,7 +705,7 @@ Append-only (resumable). Records:
 
 | `type` | Fields |
 |---|---|
-| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version` |
+| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `visits_run_id` (round 234, visits found in videos only: the *Find visits* run the crops' track ids come from; a run after a new *Find visits* deletes both files and starts over) |
 | `crop` | `key` (resume key: source|track|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
 | `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
 | `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms`, `avg_embed_ms`, `error` |
@@ -788,7 +788,12 @@ Counts for the app: `tracks_total` (visits after the optional merge), `visits_me
 rank), a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`, `p`, `n_crops`;
 plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's
 provenance. The app's session summary reads this list to label photos, never the full
-tracks file.
+tracks file. `capture` holds the photo rule the photos were taken by (`photo_step_s`,
+`photo_duration_s`, round 216; for visits found in videos the kept-frames rule of their
+*Find visits* run) and, for visits found in videos, `visits_run_id` (round 234): the
+`run_id` of the `post_tracks.jsonl` whose track ids the results use. *Find visits*
+numbers the visits anew each time, so when the current `run_id` differs the results
+screen says to run identification again.
 
 R sketch:
 
@@ -942,11 +947,14 @@ complete, so a crash never leaves half a file in place of a good one):
   `detections_run_ms` = `time_ms` of the analysis run's first `video_run_start`, the
   `detection_settings`, `occlusion_seconds`, `min_hits_seconds`, `tracker` = the effective
   tracker parameters, `clips`, `observed_ms` = filmed time of the tracked clips, overlaps
-  counted once (round 229+), `clips_continuing_previous`, `clips_left_out`), then
+  counted once (round 229+), `clips_continuing_previous`, `clips_left_out`; round 234:
+  `keep_frames` = `{step_seconds, duration_seconds}` or null when no frames were kept,
+  and with it `file_token`, the name token of the kept frames), then
   `detections` and `track_event` records as in §3 (with `time_ms` = the frame's own time,
-  plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live),
-  and `post_track_end` last (`visits`, `frames`, `detections`, `clips_tracked`,
-  `elapsed_ms`).
+  plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live;
+  a track entry names its kept frame in `jpeg`, as live photos do), `capture` records for
+  the kept frames (below), and `post_track_end` last (`visits`, `frames`, `detections`,
+  `clips_tracked`, `kept_frames`, `elapsed_ms`).
 * `visits.csv`: one row per visit (confirmed track id), for spreadsheets and R:
   `track_id, clip, start_time` (wall clock), `start_s, end_s, duration_s` (seconds from
   the start of the clip the visit began in, the position a video player shows),
@@ -972,6 +980,32 @@ Worth knowing when comparing with a hand count:
 * At a low analysis rate, keep the occlusion tolerance well above the time between two
   analysed frames, or every visit breaks into pieces.
 
+### Kept frames: `roi_frames/` (round 234+)
+
+With *Keep frames of each visit* on (the default), *Find visits* also chooses pictures of
+each visit by the rule live photos follow: the visit's first frame, then one every *Keep a
+frame every* seconds (default 1 s) for up to *For up to* seconds (default 10 s) after the
+visit was first seen. Visits in the same frame share one picture. So a session keeps about
+`visits × (1 + duration ÷ step)` frames, fewer for visits shorter than the duration.
+
+* Each frame gets a `capture` record in `post_tracks.jsonl`: `file` (a live photo name,
+  `roi_<token>_<date>_<time>_<ms>.jpg` with the frame's wall-clock time), `captured_at_ms`,
+  `track_ids`, `source: "video"`, `clip`, `frame`, `pts_us` (the frame's position in the
+  clip in µs; the Video tab's player position is `pts_us ÷ 1000` ms), `roi_px` (the
+  analysed area `[x, y, width, height]` in upright video pixels) and its size: `saved_px`
+  for a square, `saved_w` and `saved_h` otherwise.
+* Right after *Find visits*, the app reads each clip once from front to back and saves the
+  analysed area of each chosen frame at full size (JPEG quality 90) into `roi_frames/`,
+  where live photos go, so the gallery copy and identification treat them like photos. A
+  frame whose file is there is not saved again: a stopped or interrupted saving continues
+  with *Save the remaining frames*, and finding the visits again with the same rule only
+  saves the frames that changed.
+* A later *Find visits* deletes the kept frames it no longer keeps. It never overwrites or
+  deletes a file no run kept (a name already taken moves on by 1 ms), nor a kept frame
+  whose video is no longer in `videos/`, since it could not be made again.
+* The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
+  moves the player to the frame's moment.
+
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
 (to track again on a computer), `session.jsonl` (clip start times) and, once runs have
 measured the phone (round 232+), `phone_during_analysis.csv` (above). How to count the
@@ -995,7 +1029,8 @@ boxes.
 For an imported video session the summary's first tab is **Video** (live sessions keep
 *Photos*). It plays the session's clips with the AI's boxes drawn on them, so you can see
 what the AI found and whether the analysed square was well placed. The tab only reads
-`video_detections.jsonl` and `post_tracks.jsonl`; it writes nothing.
+`video_detections.jsonl`, `post_tracks.jsonl` and the kept frames in `roi_frames/` (round
+234, shown under the player); it writes nothing.
 
 * **Which boxes show at a moment.** The player's position counts from the clip's first
   frame, the same clock as `start_s`/`end_s` in `visits.csv`. It shows the boxes of the

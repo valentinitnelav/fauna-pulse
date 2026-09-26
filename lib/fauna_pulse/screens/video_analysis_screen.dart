@@ -18,6 +18,12 @@
 // into visits (postprocess/video_tracker.dart) and writes visits.csv and
 // MOT files; it runs by itself after a finished analysis and can be repeated
 // with other tracking settings in seconds. "Share results" zips them.
+//
+// Kept frames (round 234): "Find visits" also picks frames to keep for each
+// visit (the first, then one every N s for up to M s: the live camera's
+// photo rule) and the phone saves them from the clips into roi_frames/
+// (postprocess/video_frame_keeper.dart), so the session's Video tab shows
+// them and identification can run on them.
 
 import 'dart:convert';
 import 'dart:io';
@@ -39,6 +45,7 @@ import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../postprocess/video_detector.dart';
+import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
 import '../tracking/tracker.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -69,6 +76,14 @@ class VideoAnalysisPrefs {
   /// run (round 232), seconds.
   double sampleSeconds;
 
+  /// Kept frames per visit (round 234): on/off, and the live camera's photo
+  /// rule (first frame, then one every [keepStepSeconds] for up to
+  /// [keepDurationSeconds]); separate from the camera's for the same reason
+  /// as the tracking settings.
+  bool keepFrames;
+  double keepStepSeconds;
+  double keepDurationSeconds;
+
   VideoAnalysisPrefs({
     this.modelId,
     this.confidence = 0.25,
@@ -78,7 +93,14 @@ class VideoAnalysisPrefs {
     this.occlusionSeconds = 3.0,
     this.minVisitSeconds = 0.2,
     this.sampleSeconds = 10,
+    this.keepFrames = true,
+    this.keepStepSeconds = 1.0,
+    this.keepDurationSeconds = 10.0,
   });
+
+  /// The rule "Find visits" keeps frames by, or null when off.
+  KeepFramesSettings? get keep =>
+      keepFrames ? KeepFramesSettings(stepSeconds: keepStepSeconds, durationSeconds: keepDurationSeconds) : null;
 
   static const _kModel = 'video_analysis_model';
   static const _kConf = 'video_analysis_confidence';
@@ -88,6 +110,9 @@ class VideoAnalysisPrefs {
   static const _kOcclusion = 'video_analysis_occlusion_s';
   static const _kMinVisit = 'video_analysis_min_visit_s';
   static const _kSample = 'video_analysis_sample_s';
+  static const _kKeep = 'video_analysis_keep_frames';
+  static const _kKeepStep = 'video_analysis_keep_step_s';
+  static const _kKeepDuration = 'video_analysis_keep_duration_s';
 
   static Future<VideoAnalysisPrefs> load() async {
     final p = await SharedPreferences.getInstance();
@@ -100,6 +125,9 @@ class VideoAnalysisPrefs {
       occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
       minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
       sampleSeconds: p.getDouble(_kSample) ?? 10,
+      keepFrames: p.getBool(_kKeep) ?? true,
+      keepStepSeconds: p.getDouble(_kKeepStep) ?? 1.0,
+      keepDurationSeconds: p.getDouble(_kKeepDuration) ?? 10.0,
     );
   }
 
@@ -117,6 +145,9 @@ class VideoAnalysisPrefs {
     await p.setDouble(_kOcclusion, occlusionSeconds);
     await p.setDouble(_kMinVisit, minVisitSeconds);
     await p.setDouble(_kSample, sampleSeconds);
+    await p.setBool(_kKeep, keepFrames);
+    await p.setDouble(_kKeepStep, keepStepSeconds);
+    await p.setDouble(_kKeepDuration, keepDurationSeconds);
   }
 }
 
@@ -143,6 +174,9 @@ class _VideoSession {
   /// The last "Find visits", or null.
   final PostTrackSummary? visits;
 
+  /// How many of the frames kept for visits are saved.
+  final KeptFramesStatus kept;
+
   const _VideoSession(
     this.name,
     this.dir,
@@ -153,6 +187,7 @@ class _VideoSession {
     this.lastSettings,
     this.detectionsRunMs,
     this.visits,
+    this.kept,
   );
 
   int get totalMs => clips.fold(0, (s, c) => s + (lengthsMs[c] ?? 0));
@@ -162,11 +197,19 @@ class VideoAnalysisScreen extends StatefulWidget {
   /// Session folder to preselect (the finished import, or a home row).
   final String? initialSessionPath;
 
-  /// Tests replace the sessions folder and the model list.
+  /// Tests replace the sessions folder, the model list and the phone's
+  /// video decoder for saving kept frames.
   final Directory? sessionsDir;
   final List<ModelEntry>? models;
+  final FrameSaveBackend? frameSaveBackend;
 
-  const VideoAnalysisScreen({super.key, this.initialSessionPath, this.sessionsDir, this.models});
+  const VideoAnalysisScreen({
+    super.key,
+    this.initialSessionPath,
+    this.sessionsDir,
+    this.models,
+    this.frameSaveBackend,
+  });
 
   @override
   State<VideoAnalysisScreen> createState() => _VideoAnalysisScreenState();
@@ -192,6 +235,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   bool _cancelRequested = false;
   bool _tracking = false;
 
+  /// Saving kept frames from the clips (round 234), and how far it got.
+  bool _keeping = false;
+  ({int done, int total})? _keepProgress;
+
   /// The camera's tracking algorithm, which "Find visits" uses too.
   TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
   VideoProgress? _progress;
@@ -210,8 +257,18 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   void dispose() {
     // A popped screen can't show progress; stop the run too.
     _cancelRequested = true;
-    if (_running) WakelockPlus.disable();
+    if (_running || _keeping) _keepAwake(false);
     super.dispose();
+  }
+
+  /// Keeps the screen on during a run. Best effort: a run goes on (and its
+  /// flags are cleared) even if the phone refuses.
+  static Future<void> _keepAwake(bool on) async {
+    try {
+      await WakelockPlus.toggle(enable: on);
+    } catch (e) {
+      logSwallowed('video_analysis_wakelock', e);
+    }
   }
 
   Future<void> _load() async {
@@ -299,6 +356,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       resume.settings,
       runMs,
       await VideoTracker.readSummary(dir),
+      await VideoFrameKeeper.status(dir),
     );
   }
 
@@ -418,7 +476,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _start({bool startOver = false}) async {
     final session = _session;
     final config = _config;
-    if (session == null || config == null || _running) return;
+    if (session == null || config == null || _busy) return;
     final changed = _changedSettings(session, config);
     if (!startOver && changed.isNotEmpty) {
       if (!await _confirmStartOver(session, changed)) return;
@@ -436,7 +494,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           if (startOver || !session.doneClips.contains(c)) session.lengthsMs[c] ?? 0,
       ];
     });
-    await WakelockPlus.enable();
+    await _keepAwake(true);
 
     VideoRunResult? result;
     String? failure;
@@ -475,7 +533,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       } catch (e) {
         logSwallowed('video_analysis_yolo_dispose', e);
       }
-      await WakelockPlus.disable();
+      await _keepAwake(false);
     }
 
     if (!mounted) return;
@@ -511,18 +569,23 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     });
   }
 
+  bool get _busy => _running || _tracking || _keeping;
+
   /// Links the analyzed boxes of [session] into visits, off the screen's
-  /// thread so it stays responsive. Returns the outcome in words.
+  /// thread so it stays responsive, then saves the frames kept for them.
+  /// Returns the outcome in words.
   Future<String> _findVisits(_VideoSession session) async {
     setState(() => _tracking = true);
     await _prefs.save();
     String message;
+    var keptFrames = 0;
     try {
       final config = (await SessionConfig.load()).copyWith(
         occlusionSeconds: _prefs.occlusionSeconds,
         minHitsSeconds: _prefs.minVisitSeconds,
       );
-      final r = await _trackInBackground(session.dir.path, config);
+      final r = await _trackInBackground(session.dir.path, config, _prefs.keep);
+      keptFrames = r.keptFrames;
       message =
           'Found ${r.visits} ${r.visits == 1 ? 'visit' : 'visits'} in ${r.clipsTracked} '
           '${r.clipsTracked == 1 ? 'clip' : 'clips'}.';
@@ -530,14 +593,65 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       logSwallowed('video_find_visits', e);
       message = 'Finding visits failed: ${e is StateError ? e.message : e}';
     }
-    if (mounted) setState(() => _tracking = false);
+    if (!mounted) return message;
+    setState(() => _tracking = false);
+    if (keptFrames > 0) message = '$message ${await _saveKeptFrames(session)}';
     return message;
   }
 
   Future<void> _onFindVisits() async {
     final s = _session;
-    if (s == null || _running || _tracking) return;
+    if (s == null || _busy) return;
     final message = await _findVisits(s);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await _refresh(s);
+  }
+
+  /// Saves the kept frames of [session] that are not saved yet, from the
+  /// clips; a stopped run continues where it left off. Returns the outcome
+  /// in words.
+  Future<String> _saveKeptFrames(_VideoSession session) async {
+    setState(() {
+      _keeping = true;
+      _cancelRequested = false;
+      _keepProgress = null;
+    });
+    await _keepAwake(true);
+    String message;
+    try {
+      final r = await VideoFrameKeeper(backend: widget.frameSaveBackend ?? const NativeFrameSaveBackend()).run(
+        session.dir,
+        onProgress: (done, total) {
+          if (mounted) setState(() => _keepProgress = (done: done, total: total));
+        },
+        isCancelled: () => _cancelRequested,
+      );
+      final lost = r.failed + r.missing;
+      message = r.cancelled
+          ? 'Stopped after saving ${r.saved} ${r.saved == 1 ? 'frame' : 'frames'}; '
+                '"Save the remaining frames" continues.'
+          : 'Saved ${r.saved} ${r.saved == 1 ? 'frame' : 'frames'} in ${_fmtElapsed(r.elapsed)}'
+                '${lost > 0 ? '; $lost could not be read from their video' : ''}.';
+    } catch (e) {
+      logSwallowed('video_keep_frames_run', e);
+      message = 'Saving the frames failed: $e';
+    } finally {
+      await _keepAwake(false);
+    }
+    if (mounted) {
+      setState(() {
+        _keeping = false;
+        _keepProgress = null;
+      });
+    }
+    return message;
+  }
+
+  Future<void> _onSaveKeptFrames() async {
+    final s = _session;
+    if (s == null || _busy) return;
+    final message = await _saveKeptFrames(s);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     await _refresh(s);
@@ -555,8 +669,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   // Static, so the background isolate carries only the path and settings.
-  static Future<VideoTrackResult> _trackInBackground(String path, SessionConfig config) =>
-      Isolate.run(() => VideoTracker.run(Directory(path), config));
+  static Future<VideoTrackResult> _trackInBackground(String path, SessionConfig config, KeepFramesSettings? keep) =>
+      Isolate.run(() => VideoTracker.run(Directory(path), config, keep: keep));
   static Future<String?> _zipInBackground(String dir, String zip) =>
       Isolate.run(() => VideoTracker.writeResultsZip(dir, zip));
 
@@ -736,7 +850,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             ),
           ),
       ],
-      onChanged: _running ? null : (s) => s == null ? null : _select(s),
+      onChanged: _busy ? null : (s) => s == null ? null : _select(s),
     );
   }
 
@@ -846,7 +960,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: s == null || config == null || allDone ? null : _start,
+          onPressed: s == null || config == null || allDone || _busy ? null : _start,
           icon: const Icon(Icons.play_arrow),
           label: Text(
             s == null
@@ -877,7 +991,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final s = _session;
     if (s == null || s.doneClips.isEmpty) return const SizedBox.shrink();
     final v = s.visits;
-    final busy = _running || _tracking;
+    final busy = _busy;
+    final kept = s.kept;
     final stale = v != null &&
         (v.detectionsRunMs != s.detectionsRunMs ||
             v.clips.length != s.doneClips.length ||
@@ -885,7 +1000,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final changed = v != null &&
         (v.occlusionSeconds != _prefs.occlusionSeconds ||
             v.minHitsSeconds != _prefs.minVisitSeconds ||
-            v.algorithm != _algorithm.name);
+            v.algorithm != _algorithm.name ||
+            v.keep != _prefs.keep);
     const amber = TextStyle(color: Colors.amber, fontSize: 13);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -936,6 +1052,63 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           'camera Settings → AI → Visit tracking → Advanced.',
           style: helperTextStyle,
         ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Keep frames of each visit'),
+          subtitle: const Text(
+            'Saves pictures of every visit from the videos, like the photos the live camera takes, so '
+            'you can look at the visitors and identify them. Uses some storage: one picture is about '
+            'as big as a live photo.',
+            style: helperTextStyle,
+          ),
+          value: _prefs.keepFrames,
+          onChanged: busy
+              ? null
+              : (x) {
+                  setState(() => _prefs.keepFrames = x);
+                  _prefs.save();
+                },
+        ),
+        if (!_prefs.keepFrames && kept.saved > 0)
+          Text(
+            'Finding visits again with this off removes the ${kept.saved} frames saved before; '
+            'they can be saved again from the videos later.',
+            style: const TextStyle(color: Colors.amber, fontSize: 13),
+          ),
+        if (_prefs.keepFrames) ...[
+          NumericSettingField(
+            label: 'Keep a frame every',
+            value: _prefs.keepStepSeconds,
+            min: 0.1,
+            max: 10,
+            decimals: 1,
+            unitSuffix: 's',
+            helperText:
+                'The first frame of a visit is always kept, then one after each such step. Default 1 s, '
+                'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
+            onChanged: (x) {
+              setState(() => _prefs.keepStepSeconds = x);
+              _prefs.save();
+            },
+          ),
+          NumericSettingField(
+            label: 'For up to',
+            value: _prefs.keepDurationSeconds,
+            min: 1,
+            max: 300,
+            decimals: 0,
+            unitSuffix: 's',
+            helperText:
+                'How long into a visit frames keep being saved; a long visit gives no more after this. '
+                'Default 10 s, as the live camera\'s photo duration. With these two settings a visit '
+                'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
+            onChanged: (x) {
+              setState(() => _prefs.keepDurationSeconds = x);
+              _prefs.save();
+            },
+          ),
+        ],
         const SizedBox(height: 8),
         FilledButton.tonalIcon(
           onPressed: busy ? null : _onFindVisits,
@@ -953,10 +1126,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             const Text('The videos were analyzed further or again since: find visits again to include that.', style: amber)
           else if (changed)
             const Text('Settings changed: find visits again to use them.', style: amber),
+          ..._keptFramesStatus(kept),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Saved in the session folder: visits.csv (one row per visit), mot/ (every box, for annotation '
-            'tools) and post_tracks.jsonl.',
+            'tools)${kept.total > 0 ? ', roi_frames/ (the kept frames)' : ''} and post_tracks.jsonl.',
             style: helperTextStyle,
           ),
           const SizedBox(height: 6),
@@ -968,6 +1142,45 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         ],
       ],
     );
+  }
+
+  /// "Frames saved: X of Y", the saving progress and Stop, or the button
+  /// that saves the rest.
+  List<Widget> _keptFramesStatus(KeptFramesStatus kept) {
+    final p = _keepProgress;
+    if (_keeping) {
+      return [
+        const SizedBox(height: 8),
+        LinearProgressIndicator(value: p == null || p.total == 0 ? null : p.done / p.total, minHeight: 6),
+        const SizedBox(height: 4),
+        Text(p == null ? 'Saving the kept frames…' : 'Saving the kept frames: ${p.done} of ${p.total}'),
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
+          onPressed: _cancelRequested ? null : () => setState(() => _cancelRequested = true),
+          icon: const Icon(Icons.stop),
+          label: Text(_cancelRequested ? 'Stopping…' : 'Stop'),
+        ),
+      ];
+    }
+    if (kept.total == 0) return const [];
+    return [
+      const SizedBox(height: 4),
+      Text('Kept frames saved: ${kept.saved} of ${kept.total}.'),
+      if (kept.noVideo > 0)
+        Text(
+          '${kept.noVideo} ${kept.noVideo == 1 ? 'frame' : 'frames'} can no longer be saved: '
+          'their video is gone from the session folder.',
+          style: const TextStyle(color: Colors.amber, fontSize: 13),
+        ),
+      if (kept.remaining > 0) ...[
+        const SizedBox(height: 4),
+        FilledButton.tonalIcon(
+          onPressed: _busy ? null : _onSaveKeptFrames,
+          icon: const Icon(Icons.photo_library_outlined),
+          label: Text('Save the remaining ${kept.remaining} ${kept.remaining == 1 ? 'frame' : 'frames'}'),
+        ),
+      ],
+    ];
   }
 
   Widget _progressPanel() {

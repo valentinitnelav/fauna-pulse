@@ -5,6 +5,10 @@
 // done, then close. One clip is open at a time and every call is awaited by
 // the caller, so the native single-thread executor never sees overlapping
 // work. Only boxes cross the channel, never pictures. See VideoFrameSource.kt.
+//
+// Round 234: [VideoFrameSource.openFrames] + [VideoFrameSource.saveFrames]
+// save chosen frames of a clip as JPEG files (the frames kept per visit);
+// only file names and sizes cross the channel.
 
 import 'package:flutter/services.dart';
 
@@ -135,6 +139,59 @@ class VideoChunk {
   );
 }
 
+/// One frame [VideoFrameSource.saveFrames] wrote.
+class SavedVideoFrame {
+  /// Position in the call's list.
+  final int index;
+
+  /// Time stamp of the frame saved: the wanted one, or the next frame when
+  /// the wanted one is missing from the video.
+  final int ptsUs;
+  final int width;
+  final int height;
+  final int bytes;
+  const SavedVideoFrame(this.index, this.ptsUs, this.width, this.height, this.bytes);
+}
+
+/// What one [VideoFrameSource.saveFrames] call did.
+class SavedFramesChunk {
+  final List<SavedVideoFrame> saved;
+
+  /// Positions in the call's list the clip did not reach.
+  final List<int> missing;
+
+  /// How many of the call's frames were dealt with, in order; the caller
+  /// sends the rest again.
+  final int processed;
+  final int decoded;
+  final double elapsedMs;
+
+  const SavedFramesChunk({
+    required this.saved,
+    required this.missing,
+    required this.processed,
+    this.decoded = 0,
+    this.elapsedMs = 0,
+  });
+
+  factory SavedFramesChunk.fromMap(Map r) => SavedFramesChunk(
+    saved: [
+      for (final f in (r['saved'] as List? ?? const []))
+        SavedVideoFrame(
+          (f['index'] as num).toInt(),
+          (f['pts'] as num).toInt(),
+          (f['width'] as num).toInt(),
+          (f['height'] as num).toInt(),
+          (f['bytes'] as num).toInt(),
+        ),
+    ],
+    missing: [for (final i in (r['missing'] as List? ?? const [])) (i as num).toInt()],
+    processed: (r['processed'] as num?)?.toInt() ?? 0,
+    decoded: (r['decoded'] as num?)?.toInt() ?? 0,
+    elapsedMs: (r['elapsedMs'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class VideoFrameSource {
   static final MethodChannel _channel = ChannelConfig.createSingleImageChannel();
 
@@ -189,6 +246,31 @@ class VideoFrameSource {
     });
     if (r == null) throw StateError('videoNext returned nothing');
     return VideoChunk.fromMap(r);
+  }
+
+  /// Opens [path] for [saveFrames], closing any clip opened before. The
+  /// saved pictures show the upright area [roiPx] `[x, y, width, height]`
+  /// (a detection run's `roi_px`) at full size.
+  static Future<void> openFrames(String path, {required List<int> roiPx}) =>
+      _channel.invokeMethod<void>('videoOpenFrames', {'path': path, 'roiPx': roiPx});
+
+  /// Saves the frames at [ptsUs] (ascending) of the clip opened with
+  /// [openFrames] as JPEG files at [paths], returning after [budgetMs] once
+  /// at least one frame was dealt with.
+  static Future<SavedFramesChunk> saveFrames({
+    required List<int> ptsUs,
+    required List<String> paths,
+    int quality = 90,
+    int budgetMs = 1500,
+  }) async {
+    final r = await _channel.invokeMethod<Map>('videoSaveFrames', {
+      'ptsUs': ptsUs,
+      'paths': paths,
+      'quality': quality,
+      'budgetMs': budgetMs,
+    });
+    if (r == null) throw StateError('videoSaveFrames returned nothing');
+    return SavedFramesChunk.fromMap(r);
   }
 
   /// Releases the decoder. Safe to call when nothing is open.
