@@ -184,7 +184,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 hasIdentification: IdentificationPaths(
                   entity,
                 ).existingSummaries().isNotEmpty,
-                hasVideos: VideoDetector.clipsOf(entity).isNotEmpty,
+                // Round 236: still a video session once its clips were
+                // deleted to free storage (its boxes stay).
+                hasVideos: VideoDetector.clipsOf(entity).isNotEmpty ||
+                    File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
               ),
             );
           }

@@ -410,10 +410,11 @@ JSONL throughout.
 ### `end_of_session` — one per session, last line (absent = crash)
 
 `ended_normally` (`true` only on a clean stop), `battery_percent`,
-`unique_track_count`, and a final `thermal` reading. (One exception to "last
+`unique_track_count`, and a final `thermal` reading. (Exceptions to "last
 line": a `session_renamed` record, below, lands after it if the session was
-renamed later — detect a crash by the record's *absence*, as in §2, not by
-its position.)
+renamed later, and so does a `video_cleanup` record when videos were deleted
+to free storage (round 236, §9) — detect a crash by the record's *absence*,
+as in §2, not by its position.)
 
 ### `session_renamed` — the session was renamed after recording (round 182+)
 
@@ -1009,6 +1010,40 @@ visit was first seen. Visits in the same frame share one picture. So a session k
   moves the player to the frame's moment and scrolls it, with its controls, to the top of
   the tab. White ticks under the player's time bar mark the saved kept frames (round 235).
   The *Run AI on videos* screen shows how many are saved and the storage they take.
+
+### Freeing storage: deleting the videos (round 236+)
+
+The videos take most of a session's space. Once the visits are found, *Free storage* on
+the *Run AI on videos* screen offers two deletions, each after a confirmation; the videos
+are kept unless you choose one:
+
+* **Delete the clips without any visit**: clips that the current *Find visits* followed
+  and in which no visit has a box (a visit running on into the next clip keeps that clip).
+* **Delete all clips, keep the saved frames**: offered once every clip is analysed, the
+  visits include the latest analysis and every kept frame is saved.
+
+What stays: `video_detections.jsonl` (the AI's boxes), `post_tracks.jsonl`, `visits.csv`,
+`mot/` and the kept frames in `roi_frames/`. *Find visits* still runs from the boxes; a
+kept frame whose clip is gone is never overwritten or deleted, and a frame that a new rule
+would need from a deleted clip is counted as "can no longer be saved". What goes: playing
+the clip, analysing it again (another square or model; analysing the remaining clips
+again with other settings also drops the deleted clips' boxes, and the dialog says so)
+and keeping other frames from it.
+
+Each deletion appends one record to `session.jsonl`, after `end_of_session`:
+
+| Field | Meaning |
+|---|---|
+| `type` | `video_cleanup` |
+| `time_ms`, `time_iso` | when |
+| `mode` | `without_visits` or `all` |
+| `clips` | the file names deleted (as in `videos/`) |
+| `freed_bytes` | the space freed |
+| `visits_run_id` | the `run_id` of the *Find visits* run the choice was based on |
+
+The summary's Setup tab adds a *Videos deleted* row (count and space freed); on the Video
+tab a deleted clip says when it was deleted, and its boxes, visits and kept frames still
+show.
 
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
 (to track again on a computer), `session.jsonl` (clip start times) and, once runs have

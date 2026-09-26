@@ -286,10 +286,122 @@ void main() {
     expect(find.textContaining('Kept frames per visit'), findsNothing);
     expect(tester.takeException(), isNull);
 
+    // Round 236: b is not analyzed yet, so only a can be judged, and
+    // deleting all clips waits for b.
+    await tester.scrollUntilVisible(find.text('Analyze every clip first (1 left).'), 200, scrollable: list);
+    expect(find.text('Every analyzed clip has at least one visit.'), findsOneWidget);
+
     final share = find.text('Share results');
-    await tester.scrollUntilVisible(share, 200, scrollable: list);
+    await tester.scrollUntilVisible(share, -200, scrollable: list);
     await tester.pump();
     expectAboveBottomInset(tester, share);
+  });
+
+  testWidgets('Free storage deletes the clips without visits, then all clips (r236)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_free_storage');
+    final session = Directory('${tmp.path}/Meadow');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/a.mp4').writeAsStringSync('a' * 3000);
+    File('${session.path}/videos/b.mp4').writeAsStringSync('b' * 2000);
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      '{"type":"start_of_session","time_ms":1000,"source":"imported_video"}\n'
+      '{"type":"end_of_session","time_ms":61000,"ended_normally":true}\n',
+    );
+    final settings = const VideoRunConfig(
+      modelPath: 'test_model',
+      modelName: 'test_model.tflite',
+      confidence: 0.25,
+      iou: 0.7,
+      useGpu: true,
+    ).identity;
+    // Both clips analysed at 10 fps: an insect rests in a for 3 s, b is empty.
+    List<String> clip(String name, int startMs, bool insect) => [
+      '{"type":"video_clip_start","clip":"$name","start_epoch_ms":$startMs,"width":1920,"height":1080}',
+      for (var t = 0; t <= 3000; t += 100)
+        jsonEncode({
+          'type': 'raw_detections',
+          'frame_ms': startMs + t,
+          'clip': name,
+          'pts_us': t * 1000,
+          'frame': t * 30 ~/ 1000,
+          'boxes': [
+            if (insect) [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+          ],
+        }),
+      '{"type":"video_clip_done","clip":"$name","frame_width":1920,"frame_height":1080,'
+          '"roi_px":[0,0,1920,1080],"class_names":["bee"]}',
+    ];
+    File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      [
+        jsonEncode({'type': 'video_run_start', 'time_ms': 111, 'settings': settings}),
+        ...clip('a.mp4', 1000000, true),
+        ...clip('b.mp4', 2000000, false),
+      ].join('\n'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+          frameSaveBackend: _FakeFrameSaver(),
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('2 analyzed)'));
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
+    await tester.pump();
+    await tester.tap(find.text('Find visits'));
+    await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
+
+    // One clip without a visit.
+    final withoutVisits = find.textContaining('Delete 1 clip without any visit (2 KB)');
+    await tester.scrollUntilVisible(withoutVisits, 200, scrollable: list);
+    await tester.pump();
+    expect(find.text('Videos: 2 clips, 5 KB.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(withoutVisits);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('This permanently deletes 1 video (2 KB): b.mp4.'), findsOneWidget);
+    await tester.tap(find.text('Delete 1'));
+    await _pumpUntil(tester, find.textContaining('(1 deleted before)'));
+    expect(File('${session.path}/videos/b.mp4').existsSync(), isFalse);
+    expect(File('${session.path}/videos/a.mp4').existsSync(), isTrue);
+    await _pumpUntil(tester, find.text('Every analyzed clip has at least one visit.'));
+    expect(find.text('Videos: 1 clip, 3 KB (1 deleted before).'), findsOneWidget);
+
+    // Then all: the session stays, the visits too.
+    final all = find.textContaining('Delete all 1 clips, keep the saved frames');
+    // The "Deleted 1 video" snack bar covers the end of the list for 4 s.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(all, 200, scrollable: list);
+    await tester.pump();
+    await tester.tap(all);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete all videos?'), findsOneWidget);
+    await tester.tap(find.text('Delete 1'));
+    await _pumpUntil(tester, find.text('All 2 videos were deleted.'));
+    expect(VideoDetector.clipsOf(session), isEmpty);
+    await tester.scrollUntilVisible(find.textContaining('1 visit in 2 of 2 clips'), -200, scrollable: list);
+    await tester.scrollUntilVisible(find.text('Find visits again'), -200, scrollable: list);
+    await tester.scrollUntilVisible(find.text('The videos were deleted'), -200, scrollable: list); // the start button
+    expect(find.textContaining('they cannot be analyzed again; "Find visits" below still works'), findsOneWidget);
+    final records = [
+      for (final l in File('${session.path}/session.jsonl').readAsLinesSync())
+        if (l.contains('"video_cleanup"')) (jsonDecode(l) as Map)['mode'],
+    ];
+    expect(records, ['without_visits', 'all']);
+    await tester.drag(list, const Offset(0, -3000));
+    await tester.pump();
+    await tester.drag(list, const Offset(0, -3000));
+    await tester.pump();
+    expectAboveBottomInset(tester, find.text('All 2 videos were deleted.'));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('square editor fits 360 px and returns a side on the 32-pixel grid', (tester) async {

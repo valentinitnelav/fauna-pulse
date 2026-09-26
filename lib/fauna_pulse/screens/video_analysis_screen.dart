@@ -25,6 +25,11 @@
 // (postprocess/video_frame_keeper.dart), so the session's Video tab shows
 // them and identification can run on them. Round 235: how many are saved
 // (and their size) is read for the selected session only.
+//
+// Free storage (round 236): once the visits are found, the clips without any
+// visit, or all clips, can be deleted (postprocess/clip_cleanup.dart). The
+// session stays on this screen: "Find visits" still runs from the saved
+// boxes, only analyzing a deleted clip again is not possible.
 
 import 'dart:convert';
 import 'dart:io';
@@ -45,6 +50,7 @@ import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
+import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_detector.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
@@ -161,6 +167,10 @@ class _VideoSession {
   final List<String> clips;
   final int totalBytes;
 
+  /// Clips the session had (imported or analyzed) whose file is gone, most
+  /// often deleted to free storage (round 236).
+  final Set<String> missingClips;
+
   /// Clip lengths from the session log's `video_clip` records.
   final Map<String, int> lengthsMs;
   final Set<String> doneClips;
@@ -185,7 +195,10 @@ class _VideoSession {
     this.lastSettings,
     this.detectionsRunMs,
     this.visits,
+    this.missingClips,
   );
+
+  int get allClipCount => clips.length + missingClips.length;
 
   int get totalMs => clips.fold(0, (s, c) => s + (lengthsMs[c] ?? 0));
 }
@@ -239,6 +252,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// How many of the selected session's kept frames are saved; read for
   /// that session only, so the list opens quickly (round 235).
   KeptFramesStatus _kept = KeptFramesStatus.none;
+
+  /// The selected session's clips without any visit (round 236), and a
+  /// deletion in progress.
+  ClipCleanupPlan? _withoutVisits;
+  bool _deleting = false;
 
   /// The camera's tracking algorithm, which "Find visits" uses too.
   TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
@@ -302,7 +320,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       if (!dir.existsSync()) return found;
       for (final entity in dir.listSync().whereType<Directory>()) {
         final files = VideoDetector.clipsOf(entity);
-        if (files.isEmpty) continue;
+        // A session whose clips were all deleted keeps its boxes (round 236).
+        if (files.isEmpty && !File('${entity.path}/${VideoDetector.outputFileName}').existsSync()) continue;
         found.add(await _readSession(entity, files));
       }
       // Newest first by folder modification time, like the photo screen.
@@ -357,6 +376,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       resume.settings,
       runMs,
       await VideoTracker.readSummary(dir),
+      {...lengths.keys, ...resume.doneClips}.difference({for (final f in files) f.path.split('/').last}),
     );
   }
 
@@ -365,7 +385,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   void _select(_VideoSession s) {
     final roi = s.lastSettings?['roi'];
     setState(() {
-      if (_session?.dir.path != s.dir.path) _kept = KeptFramesStatus.none;
+      if (_session?.dir.path != s.dir.path) {
+        _kept = KeptFramesStatus.none;
+        _withoutVisits = null;
+      }
       _session = s;
       _roi = roi is List && roi.length == 3
           ? Roi(
@@ -376,14 +399,22 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           : null;
     });
     if (_roi != null) _loadFrame();
-    _loadKept();
+    _loadSelected();
   }
 
-  Future<void> _loadKept() async {
+  /// What only the selected session needs: its kept frames and its clips
+  /// without visits.
+  Future<void> _loadSelected() async {
     final s = _session;
     if (s == null) return;
     final kept = await VideoFrameKeeper.status(s.dir);
-    if (mounted && _session?.dir.path == s.dir.path) setState(() => _kept = kept);
+    final withoutVisits = await ClipCleanup.planWithoutVisits(s.dir);
+    if (mounted && _session?.dir.path == s.dir.path) {
+      setState(() {
+        _kept = kept;
+        _withoutVisits = withoutVisits;
+      });
+    }
   }
 
   /// The first clip's first frame (cached per session).
@@ -391,6 +422,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final s = _session;
     if (s == null) return null;
     if (_framePath == s.dir.path && _frame != null) return _frame;
+    if (s.clips.isEmpty) return null;
     try {
       final path = '${s.dir.path}/videos/${s.clips.first}';
       final info = await VideoFrameSource.info(path);
@@ -471,7 +503,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           'These videos were analyzed before with other settings'
           '${changed.isEmpty ? '' : ' (changed: ${changed.join(', ')})'}. '
           'Results from two settings cannot be mixed, so analyzing again replaces the earlier ones '
-          '(${s.doneClips.length} of ${s.clips.length} clips were finished).',
+          '(${s.doneClips.length} of ${s.allClipCount} clips were finished).'
+          '${s.missingClips.isEmpty ? '' : ' ${s.missingClips.length} ${s.missingClips.length == 1 ? 'clip was' : 'clips were'} '
+                'deleted: their boxes and visits go too, and they cannot be analyzed again.'}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
@@ -576,10 +610,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _sessions = sessions;
       _session = sessions.where((s) => s.dir.path == session.dir.path).firstOrNull;
     });
-    await _loadKept();
+    await _loadSelected();
   }
 
-  bool get _busy => _running || _tracking || _keeping;
+  bool get _busy => _running || _tracking || _keeping || _deleting;
 
   /// Links the analyzed boxes of [session] into visits, off the screen's
   /// thread so it stays responsive, then saves the frames kept for them.
@@ -852,7 +886,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           DropdownMenuItem(
             value: s,
             child: Text(
-              '${s.name} (${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}, '
+              '${s.name} (${s.allClipCount} ${s.allClipCount == 1 ? 'clip' : 'clips'}, '
+              '${s.missingClips.isEmpty ? '' : '${s.missingClips.length} deleted, '}'
               '${s.totalMs > 0 ? '${_fmtElapsed(Duration(milliseconds: s.totalMs))}, ' : ''}'
               '${formatBytes(s.totalBytes)}'
               '${s.doneClips.isNotEmpty ? ', ${s.doneClips.length} analyzed' : ''})',
@@ -970,11 +1005,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: s == null || config == null || allDone || _busy ? null : _start,
+          onPressed: s == null || config == null || allDone || _busy || s.clips.isEmpty ? null : _start,
           icon: const Icon(Icons.play_arrow),
           label: Text(
             s == null
                 ? 'Pick a session to analyze'
+                : s.clips.isEmpty
+                ? 'The videos were deleted'
                 : allDone
                 ? 'All clips analyzed with these settings'
                 : changed.isNotEmpty
@@ -986,8 +1023,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         ),
         if (s != null && s.doneClips.isNotEmpty) ...[
           const SizedBox(height: 6),
-          const Text(
-            'The boxes found are saved in the session folder (video_detections.jsonl).',
+          Text(
+            'The boxes found are saved in the session folder (video_detections.jsonl).'
+            '${s.clips.isEmpty ? ' The videos were deleted to free storage, so they cannot be analyzed '
+                      'again; "Find visits" below still works from the saved boxes.' : ''}',
             style: helperTextStyle,
           ),
         ],
@@ -1128,7 +1167,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         if (v != null) ...[
           const SizedBox(height: 8),
           Text(
-            '${v.visits} ${v.visits == 1 ? 'visit' : 'visits'} in ${v.clips.length} of ${s.clips.length} clips '
+            '${v.visits} ${v.visits == 1 ? 'visit' : 'visits'} in ${v.clips.length} of ${s.allClipCount} clips '
             '(occlusion tolerance ${v.occlusionSeconds.toStringAsFixed(1)} s, minimum visit '
             '${v.minHitsSeconds.toStringAsFixed(1)} s).',
           ),
@@ -1149,9 +1188,112 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             icon: const Icon(Icons.share),
             label: const Text('Share results'),
           ),
+          ..._freeStorage(s, stale: stale),
         ],
       ],
     );
+  }
+
+  /// "Free storage" (round 236): deleting the clips without any visit, or
+  /// all clips, once the visits are found.
+  List<Widget> _freeStorage(_VideoSession s, {required bool stale}) {
+    final busy = _busy;
+    final none = _withoutVisits;
+    final pending = s.clips.where((c) => !s.doneClips.contains(c)).length;
+    final String? allBlocked = stale
+        ? 'Find visits again first: the visits do not include the latest analysis yet.'
+        : pending > 0
+        ? 'Analyze every clip first ($pending left).'
+        : _kept.remaining > 0
+        ? 'Save the remaining kept frames first: they cannot be saved without the videos.'
+        : null;
+    return [
+      const Divider(height: 32),
+      const HelpLabel(
+        label: 'Free storage',
+        labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        helperText:
+            'The videos take most of the space. Once the visits are found and the frames you want '
+            'are saved, the videos can go: the boxes the AI found, the visits and the kept frames '
+            'stay, so "Find visits" can run again with other settings. What is lost: playing a '
+            'deleted clip, analyzing it again (for example with another square or model) and '
+            'keeping other frames from it. Keep the videos if you may want any of that; copies on '
+            'a computer are the safest.',
+      ),
+      const SizedBox(height: 4),
+      Text(
+        s.clips.isEmpty
+            ? 'All ${s.allClipCount} videos were deleted.'
+            : 'Videos: ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}, ${formatBytes(s.totalBytes)}'
+                  '${s.missingClips.isEmpty ? '' : ' (${s.missingClips.length} deleted before)'}.',
+      ),
+      if (s.clips.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        if (none != null && !none.isEmpty && !stale)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade300),
+            onPressed: busy ? null : () => _confirmDeleteClips(s, none),
+            icon: const Icon(Icons.delete_outline),
+            label: Text(
+              'Delete ${none.deleteNames.length} ${none.deleteNames.length == 1 ? 'clip' : 'clips'} '
+              'without any visit (${formatBytes(none.deleteBytes)})…',
+            ),
+          )
+        else if (none != null && !stale)
+          const Text('Every analyzed clip has at least one visit.', style: helperTextStyle),
+        const SizedBox(height: 6),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade300),
+          onPressed: busy || allBlocked != null
+              ? null
+              : () async => _confirmDeleteClips(s, await ClipCleanup.planAll(s.dir)),
+          icon: const Icon(Icons.delete_sweep_outlined),
+          label: Text('Delete all ${s.clips.length} clips, keep the saved frames (${formatBytes(s.totalBytes)})…'),
+        ),
+        if (allBlocked != null) Text(allBlocked, style: helperTextStyle),
+      ],
+    ];
+  }
+
+  Future<void> _confirmDeleteClips(_VideoSession s, ClipCleanupPlan plan) async {
+    if (plan.isEmpty) return;
+    final n = plan.deleteNames.length;
+    final all = plan.mode == ClipCleanup.modeAll;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(all ? 'Delete all videos?' : 'Delete the clips without any visit?'),
+        content: SingleChildScrollView(
+          child: Text(
+            'This permanently deletes $n ${n == 1 ? 'video' : 'videos'} '
+            '(${formatBytes(plan.deleteBytes)})${all ? '' : ': ${plan.deleteNames.join(', ')}'}. '
+            'The boxes the AI found, the visits and the kept frames stay, and "Find visits" can run '
+            'again. The deleted clips can no longer be played, analyzed again or give other frames. '
+            'This cannot be undone.',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete $n', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _deleting = true);
+    final deleted = await ClipCleanup.run(s.dir, plan);
+    if (!mounted) return;
+    setState(() {
+      _deleting = false;
+      _withoutVisits = null; // read again below
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Deleted $deleted ${deleted == 1 ? 'video' : 'videos'}, ${formatBytes(plan.deleteBytes)} freed.')),
+    );
+    await _refresh(s);
   }
 
   /// "Frames saved: X of Y", the saving progress and Stop, or the button

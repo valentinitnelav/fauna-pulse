@@ -15,7 +15,8 @@
 // Round 234: the summary's "Kept frames" below the player move it to a
 // frame's moment ([VideoReviewPlayerState.showMoment]). Round 235: that
 // scrolls the clip picker, player and controls to the top of the tab, and
-// white ticks under the time bar mark the saved kept frames.
+// white ticks under the time bar mark the saved kept frames. Round 236: a
+// clip deleted to free storage says when; its boxes and visits still list.
 
 import 'dart:io';
 import 'dart:math';
@@ -27,6 +28,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_box_timeline.dart';
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_tracker.dart' show VideoTracker;
@@ -79,6 +81,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// (their file was deleted).
   List<String> _clips = const [];
   Set<String> _files = const {};
+
+  /// Clips deleted to free storage, with when (round 236).
+  Map<String, DateTime> _deleted = const {};
   int _clip = 0;
 
   VideoPlayerController? _controller;
@@ -163,6 +168,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       logSwallowed('video_box_timeline', e);
     }
     final files = {for (final f in VideoDetector.clipsOf(widget.sessionDir)) f.uri.pathSegments.last};
+    final deleted = await ClipCleanup.deletedClips(widget.sessionDir);
     final keptMs = <String, List<int>>{};
     final framesDir = '${widget.sessionDir.path}/${VideoTracker.framesDirName}';
     for (final k in await VideoTracker.readKeptFrames(widget.sessionDir)) {
@@ -174,6 +180,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     setState(() {
       _timeline = timeline;
       _files = files;
+      _deleted = deleted;
       _clips = clips;
       _keptMs = keptMs;
       _loading = false;
@@ -436,7 +443,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
           ],
           if (boxes != null) ..._legend(visits),
-          if (_keptMs[name]?.isNotEmpty ?? false) ...[
+          // The ticks sit under the time bar, which a deleted clip lacks.
+          if (c != null && (_keptMs[name]?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 4),
             const Text.rich(
               TextSpan(
@@ -449,21 +457,35 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
           ],
           const SizedBox(height: 12),
-          const HelpLabel(
-            label: 'Square in the wrong place?',
-            labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-            helperText:
-                'Opens "Run AI on videos" for this session. There you can move or resize the '
-                'square, analyse the videos again and then press "Find visits". The new boxes '
-                'and visits replace the ones shown here.',
-          ),
+          // With every video deleted (round 236) nothing can be analysed
+          // again; "Find visits" there still works.
+          if (_files.isEmpty)
+            const HelpLabel(
+              label: 'Other visit settings?',
+              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              helperText:
+                  'The videos were deleted to free storage, so they cannot be analysed again. '
+                  '"Run AI on videos" can still find the visits again from the saved boxes, for '
+                  'example with another occlusion tolerance or minimum visit length.',
+            )
+          else
+            const HelpLabel(
+              label: 'Square in the wrong place?',
+              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              helperText:
+                  'Opens "Run AI on videos" for this session. There you can move or resize the '
+                  'square, analyse the videos again and then press "Find visits". The new boxes '
+                  'and visits replace the ones shown here.',
+            ),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.tonalIcon(
               onPressed: _openAnalysis,
-              icon: const Icon(Icons.crop_free),
-              label: Text(_timeline.clips.isEmpty ? 'Run AI on videos' : 'Change square and analyse again'),
+              icon: Icon(_files.isEmpty ? Icons.timeline : Icons.crop_free),
+              label: Text(
+                _timeline.clips.isEmpty || _files.isEmpty ? 'Run AI on videos' : 'Change square and analyse again',
+              ),
             ),
           ),
           if (boxes != null && boxes.tracked) ..._visitRows(boxes),
@@ -493,17 +515,27 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   String _clipNote(String name) {
     final b = _timeline.clips[name];
-    if (!_files.contains(name)) return ' · file deleted';
+    if (!_files.contains(name)) {
+      // Its visits stay (round 236).
+      final v = b != null && b.tracked ? '${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}, ' : '';
+      return ' · ${v}video deleted';
+    }
     if (b == null) return ' · not analysed';
     if (!b.done) return ' · analysed in part';
     if (b.tracked) return ' · ${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}';
     return '';
   }
 
+  static String _two(int v) => v.toString().padLeft(2, '0');
+
   List<Widget> _notes(String name, ClipBoxes? boxes) {
     String? note;
     if (!_files.contains(name)) {
-      note = 'The video file of this clip is no longer on the phone.';
+      final at = _deleted[name];
+      note = at == null
+          ? 'The video file of this clip is no longer on the phone.'
+          : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
+                'free storage. Its boxes, visits and kept frames stay; only the video cannot be played.';
     } else if (boxes == null) {
       note = 'This clip was not analysed yet, so there are no boxes. "Run AI on videos" '
           '(button below) finds the insects in it.';

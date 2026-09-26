@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/clip_cleanup.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_box_timeline.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart';
@@ -28,6 +29,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar, writeSessionFixture;
+import 'summary_tabs_test.dart' show expectSummaryRowValue;
 
 /// Plays nothing; remembers every call as a short string.
 class _FakePlayer extends VideoPlayerPlatform {
@@ -375,6 +377,40 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  });
+
+  testWidgets('a clip deleted to free storage says so, keeps its visits; Setup counts it (r236)', (tester) async {
+    simulateBottomSystemBar(tester);
+    const clip = 'VID_20260924_155954.mp4';
+    final dir = await _importedSession(tester, [clip]);
+    _writeDetections(dir, clip);
+    await tester.runAsync(() async {
+      await VideoTracker.run(dir, const SessionConfig());
+      await ClipCleanup.run(dir, await ClipCleanup.planAll(dir));
+    });
+
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.textContaining('to free storage'));
+    expect(find.textContaining('This clip was deleted on '), findsOneWidget);
+    expect(player.calls.where((c) => c.startsWith('create')), isEmpty);
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    // No time bar, so no ticks explained; nothing left to analyse again.
+    expect(find.textContaining('a white tick under the time bar'), findsNothing);
+    expect(find.text('Square in the wrong place?'), findsNothing);
+    expect(find.text('Other visit settings?'), findsOneWidget);
+    expect(find.text('Run AI on videos'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Setup'));
+    await tester.pumpAndSettle();
+    final setup = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.textContaining('All session settings'), 200, scrollable: setup);
+    await tester.tap(find.textContaining('All session settings'));
+    await tester.pump();
+    await expectSummaryRowValue(tester, setup, label: 'Videos deleted', value: '1 (5 B freed)');
+    await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
 

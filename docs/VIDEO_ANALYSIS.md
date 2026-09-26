@@ -37,6 +37,10 @@ Terms used below:
    *Identify organisms* reads. Saving reads each clip once; it can be stopped and
    continued with *Save the remaining frames*. Finding the visits again numbers them
    anew, so identification results made before say to run identification again.
+   *Free storage* (round 236) below it deletes the clips without any visit, or all clips
+   once the frames are saved; the boxes, visits and kept frames stay, so Find visits can
+   still run again (DATA_GUIDE §9). Copy the clips to a computer first if you may want to
+   analyse them again.
 4. **Share results**: one zip with `visits.csv` (one row per visit), `mot/` (every
    tracked box), `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`.
    Unzip it on the computer and keep the files together: the scripts below need them.

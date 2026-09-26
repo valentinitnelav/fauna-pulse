@@ -140,6 +140,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _endedNormally = false;
   int? _uniqueTracks;
 
+  /// Videos deleted to free storage and the space freed (round 236, from
+  /// the `video_cleanup` records after the session's end).
+  int _videosDeleted = 0;
+  int _videosFreedBytes = 0;
+
   // Imported videos (round 229): the "Run AI on videos" settings, i.e. the
   // first `video_run_start` record of video_detections.jsonl. Null when the
   // videos were never analyzed.
@@ -483,6 +488,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             .split('\n')
             .where((l) => l.trim().isNotEmpty)
             .toList();
+        _videosDeleted = _videosFreedBytes = 0;
+        for (final l in tailLines) {
+          if (!l.contains('"video_cleanup"')) continue;
+          final rec = _tryDecode(l);
+          _videosDeleted += (rec?['clips'] as List?)?.length ?? 0;
+          _videosFreedBytes += (rec?['freed_bytes'] as num?)?.toInt() ?? 0;
+        }
         for (final l in tailLines.reversed) {
           if (l.contains('"end_of_session"')) {
             final rec = _tryDecode(l);
@@ -1250,6 +1262,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Clips', video['clips']);
       final bytes = video['total_bytes'];
       add('Video files', bytes is num ? formatBytes(bytes.toInt()) : null);
+      if (_videosDeleted > 0) {
+        add('Videos deleted', '$_videosDeleted (${formatBytes(_videosFreedBytes)} freed)');
+      }
     }
     // The session's operating mode (round 97 enum; older sessions carry the
     // motion-only bool shown in Heat management instead — add() skips null).
