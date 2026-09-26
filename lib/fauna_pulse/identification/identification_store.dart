@@ -789,12 +789,18 @@ class LatestIdentification {
   /// AI sessions: by track id. No-AI sessions: by photo file name.
   final Map<int, TrackIdentity> byTrack;
   final Map<String, TrackIdentity> byPhoto;
+
+  /// The "Find visits" run whose visit numbers [byTrack] uses (videos only,
+  /// round 235): when the visits were found again since, the numbers point
+  /// at other visits.
+  final int? visitsRunId;
   const LatestIdentification({
     required this.packId,
     required this.generatedIso,
     required this.summaryFile,
     required this.byTrack,
     required this.byPhoto,
+    this.visitsRunId,
   });
 
   /// `summary_<pack>.json` → `<pack>`.
@@ -834,6 +840,7 @@ class LatestIdentification {
       summaryFile: summaries.first,
       byTrack: byTrack,
       byPhoto: byPhoto,
+      visitsRunId: ((s['capture'] as Map?)?['visits_run_id'] as num?)?.toInt(),
     );
   }
 }

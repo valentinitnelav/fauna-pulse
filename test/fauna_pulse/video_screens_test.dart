@@ -267,7 +267,7 @@ void main() {
     expect(tester.takeException(), isNull);
     // A 3-s visit, one frame a second from its first sighting.
     expect(find.textContaining(RegExp(r'^Found 1 visit in 1 clip\. Saved 3 frames in ')), findsOneWidget);
-    expect(find.text('Kept frames saved: 3 of 3.'), findsOneWidget);
+    expect(find.text('Kept frames saved: 3 of 3 (12 B).'), findsOneWidget); // 4-byte fake files
     expect(decoder.saved, hasLength(3));
     expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
     expect(find.text('1 visit in 1 of 2 clips (occlusion tolerance 3.0 s, minimum visit 0.2 s).'), findsOneWidget);

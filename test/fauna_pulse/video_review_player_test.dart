@@ -203,6 +203,7 @@ void main() {
     expect(find.text('Photos'), findsNothing);
     expect(player.calls, containsAllInOrder(['create $clip', 'volume 0.0']));
     expect(find.textContaining('No visits yet'), findsNothing);
+    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsNothing); // none kept
     expect(tester.takeException(), isNull);
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
 
@@ -237,6 +238,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    expect(find.textContaining('a white tick under the time bar'), findsNothing); // none kept
     await tester.scrollUntilVisible(find.text('#${visit.trackId}'), 200, scrollable: scrollable);
     await tester.tap(find.text('#${visit.trackId}'));
     await tester.pump();
@@ -254,6 +256,9 @@ void main() {
 
     // Leaving the tab pauses; closing the screen releases the player.
     await tester.scrollUntilVisible(find.byTooltip('Play'), -200, scrollable: scrollable);
+    // (It can stop with the button under the app bar: bring it fully on screen.)
+    await tester.ensureVisible(find.byTooltip('Play'));
+    await tester.pump();
     await tester.tap(find.byTooltip('Play'));
     await tester.pump();
     expect(player.calls.last, 'speed 2.0');
@@ -268,8 +273,10 @@ void main() {
     expect(player.calls.last, 'dispose');
   });
 
-  testWidgets('kept frames show under the player; "Show in video" moves it there (r234)', (tester) async {
-    simulateBottomSystemBar(tester);
+  /// An imported session whose visit kept 2 frames (saved as small JPEGs),
+  /// with an identification of that visit made for the Find visits run
+  /// [identifiedRunOffset] away from the current one (null: none).
+  Future<(Directory, List<KeptFrame>)> keptSession(WidgetTester tester, {int? identifiedRunOffset}) async {
     const clip = 'VID_20260924_155954.mp4';
     final dir = await _importedSession(tester, [clip]);
     _writeDetections(dir, clip, roi: [0.5, 0.5, 0.5625], roiPx: [420, 0, 1080, 1080]);
@@ -284,24 +291,88 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsBytesSync(jpeg);
     }
+    if (identifiedRunOffset != null) {
+      final runId = (await tester.runAsync(() => VideoTracker.readSummary(dir)))!.runId!;
+      File('${dir.path}/identification/summary_p.json')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          jsonEncode({
+            'pack_id': 'p',
+            'generated_iso': '2026-09-26T10:00:00.000',
+            'capture': {'visits_run_id': runId + identifiedRunOffset},
+            'tracks': [
+              {'track_id': kept.first.trackIds.first, 'headline': 'Bombus', 'identified_rank': 'genus', 'p': 0.9},
+            ],
+          }),
+        );
+    }
+    return (dir, kept);
+  }
 
+  /// Opens the summary on [dir] and scrolls to the kept frames' viewer.
+  Future<Finder> openKeptFrames(WidgetTester tester, Directory dir) async {
     await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
     await _pumpUntil(tester, find.byTooltip('Play'));
     // The tab's own list (the photo viewer inside it scrolls too).
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
     await tester.scrollUntilVisible(find.text('Kept frames'), 200, scrollable: scrollable);
     await _pumpUntil(tester, find.text('Show in video'));
+    return scrollable;
+  }
+
+  testWidgets('kept frames show under the player; "Show in video" moves it there (r234)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final (dir, kept) = await keptSession(tester, identifiedRunOffset: 0);
+    // Round 235: white ticks under the time bar mark the kept frames.
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsOneWidget);
+    // The tab's own list (the photo viewer inside it scrolls too).
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.textContaining('a white tick under the time bar'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Kept frames'), 200, scrollable: scrollable);
+    await _pumpUntil(tester, find.text('Show in video'));
     expect(find.text('Showing 2 of 2 kept frames this session.'), findsOneWidget);
+    // The identification made for these visits labels the frame.
+    await tester.scrollUntilVisible(find.textContaining('Bombus (genus, 90 %)').first, 200, scrollable: scrollable);
+    expect(find.textContaining('The visits were found again since identification ran'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(find.text('Show in video').first, 200, scrollable: scrollable);
     await tester.tap(find.text('Show in video').first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400)); // back up to the player
+    // Back up to the player: a jump to the top, then the block aligned.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
     expect(player.calls.last, 'seek ${kept.first.ptsUs ~/ 1000}');
     expect(find.byTooltip('Play').hitTestable(), findsOneWidget);
+    // Round 235: the header text scrolled off; the player block sits at the
+    // top of the tab, so the controls are on screen with a tall clip too.
+    expect(find.text("Videos with the AI's boxes").hitTestable(), findsNothing);
+    expect(tester.state<ScrollableState>(scrollable).position.pixels, greaterThan(0));
     expect(tester.takeException(), isNull);
 
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  });
+
+  testWidgets('an identification of visits found before is not shown on the frames (r235)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final (dir, _) = await keptSession(tester, identifiedRunOffset: -1);
+    final scrollable = await openKeptFrames(tester, dir);
+    await tester.scrollUntilVisible(
+      find.textContaining('The visits were found again since identification ran'),
+      -200,
+      scrollable: scrollable,
+    );
+    expect(find.textContaining('are shown under each photo'), findsNothing);
+    // The frame's info rows are there, without the outdated answer.
+    await tester.scrollUntilVisible(find.text('In video'), 200, scrollable: scrollable);
+    expect(find.text('Track IDs'), findsOneWidget);
+    expect(find.text('Identified'), findsNothing);
+    expect(find.textContaining('Bombus'), findsNothing);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();

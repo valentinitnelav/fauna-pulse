@@ -46,7 +46,10 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
 
 **Re-score with this pack** repeats only the last step (seconds): the stored embeddings are
 compared against a different label pack, e.g. a country-restricted one, without running
-the model again.
+the model again. For visits found in videos, *Find visits* numbers the visits anew each
+time: after it ran again, the stored crops belong to the old numbers, so the button is
+hidden, a note says the next *Continue / re-run* starts over, and the session summary
+shows no answers on the frames until then (round 235).
 
 **What a re-run recomputes (round 213).** The model output for every crop is stored in
 `embeddings_<model>.jsonl/.bin`, keyed by photo, track id and box. "Continue / re-run" runs

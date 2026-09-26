@@ -6,6 +6,10 @@
 // only wires the native embedder (ImageEmbedder) into the job, keeps the
 // screen awake and shows progress. Long runs are meant for a plugged-in
 // phone indoors (plan section 11.12).
+//
+// Round 235: when the visits of a video session were found again since the
+// stored crops were made, "Re-score with this pack" is hidden (the crops
+// carry the old visit numbers) and a note says the next run starts over.
 
 import 'dart:async';
 import 'dart:io';
@@ -66,6 +70,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   bool _testingSpeed = false;
   String? _speedResult;
 
+  /// The stored crops carry visit numbers of an earlier "Find visits" run.
+  bool _visitsChanged = false;
+
   String get _sessionName => widget.sessionDir.path.split('/').last;
 
   @override
@@ -119,7 +126,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
     await _plan();
+    await _checkVisits();
     await _loadSpeed();
+  }
+
+  Future<void> _checkVisits() async {
+    final m = _model;
+    final changed = m != null && await IdentificationJob.cropsOutdated(widget.sessionDir, m.path.split('/').last);
+    if (mounted) setState(() => _visitsChanged = changed);
   }
 
   Future<void> _plan() async {
@@ -199,6 +213,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       }
     });
     if (packs) await _selectPack(_pack);
+    if (!packs) await _checkVisits();
   }
 
   void _snack(String text) {
@@ -218,6 +233,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// reused. Asks the user to keep them or recompute everything. Returns
   /// null when cancelled, true = start over.
   Future<bool?> _confirmCropSettings(IdentifyPrefs prefs, String modelName) async {
+    // Crops of visits found again since are redone anyway (round 235).
+    if (await IdentificationJob.cropsOutdated(widget.sessionDir, modelName)) return true;
     final stored = await IdentificationJob.storedIndex(widget.sessionDir, modelName);
     if (stored == null || stored.records.isEmpty || stored.margin == null) return false;
     if ((stored.margin! - prefs.margin).abs() < 1e-6) return false;
@@ -343,6 +360,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _result = result;
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
+    await _checkVisits();
   }
 
   Widget _buttonNote(String name, String text) => Padding(
@@ -569,6 +587,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         onChanged: (p) {
           setState(() => _model = _models.firstWhere((f) => f.path == p));
           _loadSpeed();
+          _checkVisits();
         },
       ),
       const SizedBox(height: 8),
@@ -669,7 +688,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             icon: const Icon(Icons.speed),
             label: Text(_testingSpeed ? 'Testing…' : 'Test speed'),
           ),
-          if (_hasEmbeddings && _pack != null)
+          if (_hasEmbeddings && _pack != null && !_visitsChanged)
             OutlinedButton.icon(
               onPressed: _rescore,
               icon: const Icon(Icons.refresh),
@@ -683,6 +702,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
+      if (_visitsChanged)
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text(
+            'The visits were found again since the last run, so its stored results no longer match '
+            'them. Continue / re-run starts over.',
+            style: TextStyle(color: Colors.amber, fontSize: 12),
+          ),
+        ),
       // Round 218: one line per visible button (owner: too many buttons
       // without saying what each does).
       Padding(
@@ -700,7 +728,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                         'results.',
             ),
             _buttonNote('Test speed', 'times the model on 8 of this session\'s crops with the current GPU and thread settings; writes nothing.'),
-            if (_hasEmbeddings && _pack != null)
+            if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
                 'Re-score with this pack',
                 'recomputes the results from the stored model outputs without running the model: use it '

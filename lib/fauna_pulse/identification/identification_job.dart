@@ -231,9 +231,7 @@ class IdentificationJob {
     final tasks = await planSession(sessionDir, maxCropsPerTrack: settings.maxCropsPerTrack);
     // Round 234: visits found in videos are numbered anew by each "Find
     // visits"; crops stored under the old numbers can't be continued.
-    final visitsRunId = trackSourceOf(sessionDir) == TrackSource.afterwards
-        ? (await VideoTracker.readSummary(sessionDir))?.runId
-        : null;
+    final visitsRunId = await currentVisitsRunId(sessionDir);
 
     // Resume state: an intact jsonl/bin pair is continued; anything
     // inconsistent (dim changed, rows missing, bin short) is redone.
@@ -479,6 +477,20 @@ class IdentificationJob {
     );
   }
 
+  /// The `run_id` of the "Find visits" run whose numbers a session's visits
+  /// carry now, for visits found afterwards in videos; null for visits
+  /// tracked live (their numbers never change). Round 235.
+  static Future<int?> currentVisitsRunId(Directory sessionDir) async =>
+      trackSourceOf(sessionDir) == TrackSource.afterwards ? (await VideoTracker.readSummary(sessionDir))?.runId : null;
+
+  /// The stored crops of [modelName] carry visit numbers of an earlier "Find
+  /// visits" run: re-scoring them would pair answers with the wrong visits,
+  /// and the next run starts over (round 235).
+  static Future<bool> cropsOutdated(Directory sessionDir, String modelName) async {
+    final stored = await storedIndex(sessionDir, modelName);
+    return stored != null && stored.visitsRunId != await currentVisitsRunId(sessionDir);
+  }
+
   /// The crop settings the stored embeddings of [modelName] were made with
   /// (round 213), or null when there are none. The screen compares them with
   /// the current settings before a re-run.
@@ -603,6 +615,15 @@ class IdentificationJob {
           extend((rec['track_id'] as num?)?.toInt());
         }
       }
+    }
+
+    // Round 235: crops cut for visits that were found again since carry the
+    // old numbers; scoring them against the new visits would mismatch both.
+    if (visitsRunId != index.visitsRunId) {
+      throw StateError(
+        'The visits were found again since these crops were made. Run identification again '
+        '("Continue / re-run"); it starts over by itself.',
+      );
     }
 
     // Group crops per track (crops without a track id stand alone).

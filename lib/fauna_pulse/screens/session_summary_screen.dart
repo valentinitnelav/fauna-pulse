@@ -47,6 +47,7 @@ import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_run_samples.dart';
 import '../postprocess/video_tracker.dart' show KeepFramesSettings;
+import '../identification/identification_job.dart' show IdentificationJob;
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
 import 'identification_screen.dart';
@@ -212,6 +213,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // never identified) — shown under each photo in the viewer.
   LatestIdentification? _identification;
 
+  /// The newest identification used visits found before the last "Find
+  /// visits" (round 235): its answers are not shown on the frames.
+  bool _identificationStale = false;
+
   // True while the photo viewer is zoomed in: the TabBarView and the Photos
   // ListView freeze so their drags can't steal the user's panning (round 89).
   bool _photoViewerZoomed = false;
@@ -275,12 +280,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// (round 209); called again after the Identify screen closes.
   Future<void> _loadIdentification() async {
     LatestIdentification? id;
+    var stale = false;
     try {
       id = await LatestIdentification.load(widget.logFile.parent);
+      // Round 235: visits found again since use other numbers.
+      stale = id?.visitsRunId != null &&
+          id!.visitsRunId != await IdentificationJob.currentVisitsRunId(widget.logFile.parent);
     } catch (e) {
       logSwallowed('summary_identification_load', e);
     }
-    if (mounted) setState(() => _identification = id);
+    if (mounted) {
+      setState(() {
+        _identification = id;
+        _identificationStale = stale;
+      });
+    }
   }
 
   // Post-hoc analysis results for this session (round 137): outcomes parsed
@@ -1933,8 +1947,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _chargingDuringSession = false;
     _uniqueTracks = null;
     if (_graphsRequested) await _loadGraphs();
-    // New visits keep other frames.
+    // New visits keep other frames, and may outdate the identification.
     if (_photosRequested && mounted) await _loadPhotos();
+    if (mounted) await _loadIdentification();
   }
 
   Widget _photosTab() {
@@ -2570,7 +2585,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
         ),
       // Round 209: which identification run labels the photos below.
-      if (_identification case final id?)
+      if (_identification != null && _identificationStale)
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'The visits were found again since identification ran, so its answers no longer match '
+            'these frames. Run Identify organisms again.',
+            style: TextStyle(color: Colors.amber, fontSize: 12),
+          ),
+        )
+      else if (_identification case final id?)
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
@@ -2634,7 +2658,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       else if (_photos.isNotEmpty)
         _PhotoViewer(
           photos: _photos,
-          identification: _identification,
+          identification: _identificationStale ? null : _identification,
           location: SessionLocation.fromJson(
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
           ),

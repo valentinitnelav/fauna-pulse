@@ -13,7 +13,9 @@
 // insect smoothly. Paused or after a seek, the position is exact.
 //
 // Round 234: the summary's "Kept frames" below the player move it to a
-// frame's moment ([VideoReviewPlayerState.showMoment]).
+// frame's moment ([VideoReviewPlayerState.showMoment]). Round 235: that
+// scrolls the clip picker, player and controls to the top of the tab, and
+// white ticks under the time bar mark the saved kept frames.
 
 import 'dart:io';
 import 'dart:math';
@@ -27,6 +29,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../logging/app_error_hooks.dart';
 import '../postprocess/video_box_timeline.dart';
 import '../postprocess/video_detector.dart' show VideoDetector;
+import '../postprocess/video_tracker.dart' show VideoTracker;
 import 'setting_help.dart';
 
 class VideoReviewPlayer extends StatefulWidget {
@@ -111,6 +114,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   final _scroll = ScrollController();
 
+  /// The clip picker, player and controls: "Show in video" scrolls it to
+  /// the top of the tab.
+  final _playerBlock = GlobalKey();
+
+  /// Saved kept frames per clip, as player positions in ms (round 235).
+  Map<String, List<int>> _keptMs = const {};
+
   @override
   bool get wantKeepAlive => true;
 
@@ -153,6 +163,11 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       logSwallowed('video_box_timeline', e);
     }
     final files = {for (final f in VideoDetector.clipsOf(widget.sessionDir)) f.uri.pathSegments.last};
+    final keptMs = <String, List<int>>{};
+    final framesDir = '${widget.sessionDir.path}/${VideoTracker.framesDirName}';
+    for (final k in await VideoTracker.readKeptFrames(widget.sessionDir)) {
+      if (File('$framesDir/${k.file}').existsSync()) (keptMs[k.clip] ??= []).add(k.ptsUs ~/ 1000);
+    }
     if (!mounted) return;
     final before = _clips.isEmpty ? null : _clips[_clip];
     final clips = {...files, ...timeline.clips.keys}.toList()..sort();
@@ -160,6 +175,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       _timeline = timeline;
       _files = files;
       _clips = clips;
+      _keptMs = keptMs;
       _loading = false;
     });
     // Reloaded after a new analysis: the same clip keeps playing.
@@ -313,8 +329,24 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     if (index != _clip || _controller == null) await _openClip(index);
     if (!mounted) return;
     _seekTo(ms);
-    if (_scroll.hasClients) {
-      await _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    if (!_scroll.hasClients) return;
+    // Far down the list the block is not built: back to the top first.
+    var block = _playerBlock.currentContext?.findRenderObject();
+    if (block == null) {
+      _scroll.jumpTo(0);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !_scroll.hasClients) return;
+      block = _playerBlock.currentContext?.findRenderObject();
+    }
+    // Only this list scrolls (Scrollable.ensureVisible would also move the
+    // summary's tab pager).
+    if (block != null) {
+      await _scroll.position.ensureVisible(
+        block,
+        alignment: 0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -359,10 +391,19 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             child: Text('No videos in this session.', style: TextStyle(color: Colors.white70)),
           )
         else ...[
-          if (_clips.length > 1) _clipPicker(),
-          ..._notes(name!, boxes),
-          _playerBox(c, boxes, frameAspect: frameAspect, area: area, aiView: aiView, visits: visits),
-          if (c != null) ..._controls(c, boxes),
+          KeyedSubtree(
+            key: _playerBlock,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_clips.length > 1) _clipPicker(),
+                ..._notes(name!, boxes),
+                _playerBox(c, boxes, frameAspect: frameAspect, area: area, aiView: aiView, visits: visits),
+                if (c != null) ..._controls(c, boxes),
+              ],
+            ),
+          ),
           if (area != null) ...[
             const SizedBox(height: 8),
             SegmentedButton<bool>(
@@ -395,6 +436,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
           ],
           if (boxes != null) ..._legend(visits),
+          if (_keptMs[name]?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 4),
+            const Text.rich(
+              TextSpan(
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+                children: [
+                  TextSpan(text: '| ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  TextSpan(text: 'a white tick under the time bar: a frame kept for a visit (see Kept frames below).'),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           const HelpLabel(
             label: 'Square in the wrong place?',
@@ -562,6 +615,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           height: 6,
           width: double.infinity,
           child: CustomPaint(painter: _VisitStripPainter(boxes.visits, c.value.duration.inMilliseconds)),
+        ),
+      if (_keptMs[_clips[_clip]] case final kept? when kept.isNotEmpty)
+        SizedBox(
+          key: const ValueKey('kept_frame_ticks'),
+          height: 6,
+          width: double.infinity,
+          child: CustomPaint(painter: _KeptTickPainter(kept, c.value.duration.inMilliseconds)),
         ),
       const SizedBox(height: 4),
       RepaintBoundary(
@@ -764,6 +824,27 @@ class _OverlayPainter extends CustomPainter {
 }
 
 /// The visits of the clip as bars under the scrubber.
+/// White 2-px ticks at the kept frames of a clip (round 235), scaled like
+/// [_VisitStripPainter].
+class _KeptTickPainter extends CustomPainter {
+  final List<int> keptMs;
+  final int durationMs;
+  _KeptTickPainter(this.keptMs, this.durationMs);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (durationMs <= 0) return;
+    final paint = Paint()..color = Colors.white;
+    for (final ms in keptMs) {
+      final x = (ms / durationMs * size.width).clamp(0.0, size.width - 2);
+      canvas.drawRect(Rect.fromLTWH(x, 0, 2, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _KeptTickPainter old) => old.keptMs != keptMs || old.durationMs != durationMs;
+}
+
 class _VisitStripPainter extends CustomPainter {
   final List<TimelineVisit> visits;
   final int durationMs;

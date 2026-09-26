@@ -793,7 +793,9 @@ tracks file. `capture` holds the photo rule the photos were taken by (`photo_ste
 *Find visits* run) and, for visits found in videos, `visits_run_id` (round 234): the
 `run_id` of the `post_tracks.jsonl` whose track ids the results use. *Find visits*
 numbers the visits anew each time, so when the current `run_id` differs the results
-screen says to run identification again.
+screen says to run identification again, the session summary shows no answers on the
+frames (a note says why), and re-scoring the stored crops refuses (round 235): their
+`track_id`s belong to the earlier visits. The next *Continue / re-run* starts over.
 
 R sketch:
 
@@ -1004,7 +1006,9 @@ visit was first seen. Visits in the same frame share one picture. So a session k
   deletes a file no run kept (a name already taken moves on by 1 ms), nor a kept frame
   whose video is no longer in `videos/`, since it could not be made again.
 * The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
-  moves the player to the frame's moment.
+  moves the player to the frame's moment and scrolls it, with its controls, to the top of
+  the tab. White ticks under the player's time bar mark the saved kept frames (round 235).
+  The *Run AI on videos* screen shows how many are saved and the storage they take.
 
 *Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
 (to track again on a computer), `session.jsonl` (clip start times) and, once runs have

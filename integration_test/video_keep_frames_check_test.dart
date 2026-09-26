@@ -23,9 +23,12 @@
 //  - finds the visits again every 2 s: the frames no longer kept are gone,
 //    the others untouched;
 //  - identification on the kept frames; after finding the visits again the
-//    next run starts over under the new visit numbers;
-//  - the summary's Video tab: the kept frames under the player, "Show in
-//    video" moves the player to the frame (SHOT).
+//    stored crops are outdated: re-scoring refuses and the Video tab shows
+//    no answers but a note (SHOT, round 235); the next run starts over under
+//    the new visit numbers;
+//  - the summary's Video tab: ticks under the time bar at the kept frames,
+//    the kept frames under the player with their answers, "Show in video"
+//    moves the player to the frame and brings its controls on screen (SHOT).
 // The session stays in video_keep_frames_check/ for `adb pull`.
 
 import 'dart:convert';
@@ -218,10 +221,39 @@ void main() {
     _log('SAVE AGAIN ${r.saved} new frames in ${_ms(r.elapsed)}');
     expect((await VideoFrameKeeper.status(dir)).remaining, 0);
 
+    // The summary screen, for steps 5 and 6.
+    Future<void> waitFor(Finder f, {int seconds = 20}) async {
+      for (var i = 0; i < seconds * 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (f.evaluate().isNotEmpty) return;
+      }
+      fail('not found: $f');
+    }
+
+    Future<void> shot(String name) async {
+      await tester.pump(const Duration(milliseconds: 500));
+      _log('SHOT $name');
+      await tester.pump(const Duration(seconds: 4));
+    }
+
+    Future<Finder> openSummary() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl')),
+        ),
+      );
+      await waitFor(find.byType(VideoPlayer));
+      return find.descendant(of: find.byType(VideoReviewPlayer), matching: find.byType(Scrollable)).first;
+    }
+
     // 5. Identification on the kept frames.
     final models = (await IdentificationAssets.listModels()).where((f) => f.path.contains('bioclip')).toList();
     final packs = await IdentificationAssets.listPacks();
     final pack = packs.where((f) => _pack.isEmpty || f.path.endsWith('/$_pack')).firstOrNull;
+    var identified = false;
     if (models.isEmpty || pack == null) {
       _log('IDENTIFY skipped: no BioCLIP model or pack imported');
     } else {
@@ -265,39 +297,56 @@ void main() {
 
       track = await VideoTracker.run(dir, const SessionConfig(), keep: every1);
       await const VideoFrameKeeper().run(dir);
+      // Round 235: until identified again, the stored crops are outdated:
+      // re-scoring refuses, and the summary shows no answers on the frames.
+      expect(await IdentificationJob.cropsOutdated(dir, name), isTrue);
+      Object? refused;
+      try {
+        IdentificationJob.scoreSessionSync(
+          dir,
+          modelName: name,
+          modelId: stemOf(name),
+          packFile: pack,
+          settings: settings.toJson(),
+        );
+      } catch (e) {
+        refused = e;
+      }
+      _log('RESCORE AFTER FINDING AGAIN: $refused');
+      expect(refused, isA<StateError>());
+      final list = await openSummary();
+      final stale = find.textContaining('The visits were found again since identification ran');
+      await tester.scrollUntilVisible(stale, 300, scrollable: list);
+      await tester.ensureVisible(stale);
+      await shot('keep_stale_identification');
+      await tester.scrollUntilVisible(find.text('In video'), 200, scrollable: list);
+      expect(find.text('Identified'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 300));
+
       (res, summary) = await identify();
       _log('IDENTIFY AFTER FINDING AGAIN: ${res.resumedDone} continued, ${res.embedded} embedded');
       expect(res.resumedDone, 0);
       expect((summary['capture'] as Map)['visits_run_id'], (await VideoTracker.readSummary(dir))!.runId);
+      expect(await IdentificationJob.cropsOutdated(dir, name), isFalse);
       await ImageEmbedder.close();
+      identified = true;
     }
 
     // 6. The Video tab.
     kept = await VideoTracker.readKeptFrames(dir);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
-        home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl')),
-      ),
-    );
-    final list = find.descendant(of: find.byType(VideoReviewPlayer), matching: find.byType(Scrollable)).first;
-    Future<void> waitFor(Finder f, {int seconds = 20}) async {
-      for (var i = 0; i < seconds * 10; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-        if (f.evaluate().isNotEmpty) return;
-      }
-      fail('not found: $f');
-    }
-
-    Future<void> shot(String name) async {
-      await tester.pump(const Duration(milliseconds: 500));
-      _log('SHOT $name');
-      await tester.pump(const Duration(seconds: 4));
-    }
-
-    await waitFor(find.byType(VideoPlayer));
+    final list = await openSummary();
+    // Round 235: white ticks under the time bar at the kept frames.
+    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Kept frames'), 300, scrollable: list);
     await waitFor(find.text('Show in video'));
+    if (identified) {
+      // Identified again for these visits: the frames carry the answers.
+      expect(find.textContaining('The visits were found again since identification ran'), findsNothing);
+      await tester.scrollUntilVisible(find.text('Identified'), 200, scrollable: list);
+      _log('LABEL ${(tester.widget<Text>(find.descendant(of: find.ancestor(of: find.text('Identified'), matching: find.byType(Row)).first, matching: find.byType(Text)).last)).data}');
+      await tester.scrollUntilVisible(find.text('Kept frames'), -300, scrollable: list);
+    }
     final showing = find.textContaining(RegExp(r'^Showing \d+ of \d+ kept frames'));
     await tester.scrollUntilVisible(showing, 200, scrollable: list);
     _log('TAB ${(tester.widget<Text>(showing)).data}');
@@ -321,6 +370,9 @@ void main() {
     );
     // (The box overlay covers the VideoPlayer itself for hit tests.)
     expect(find.byTooltip('Play').hitTestable(), findsOneWidget, reason: 'scrolled back to the player');
+    // Round 235: the clip picker and player at the top of the tab, the
+    // header text scrolled off, so the controls are on screen.
+    expect(find.text("Videos with the AI's boxes").hitTestable(), findsNothing);
     await shot('keep_show_in_video');
 
     await tester.pumpWidget(const SizedBox());

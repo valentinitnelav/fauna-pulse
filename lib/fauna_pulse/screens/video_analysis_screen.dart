@@ -23,7 +23,8 @@
 // visit (the first, then one every N s for up to M s: the live camera's
 // photo rule) and the phone saves them from the clips into roi_frames/
 // (postprocess/video_frame_keeper.dart), so the session's Video tab shows
-// them and identification can run on them.
+// them and identification can run on them. Round 235: how many are saved
+// (and their size) is read for the selected session only.
 
 import 'dart:convert';
 import 'dart:io';
@@ -174,9 +175,6 @@ class _VideoSession {
   /// The last "Find visits", or null.
   final PostTrackSummary? visits;
 
-  /// How many of the frames kept for visits are saved.
-  final KeptFramesStatus kept;
-
   const _VideoSession(
     this.name,
     this.dir,
@@ -187,7 +185,6 @@ class _VideoSession {
     this.lastSettings,
     this.detectionsRunMs,
     this.visits,
-    this.kept,
   );
 
   int get totalMs => clips.fold(0, (s, c) => s + (lengthsMs[c] ?? 0));
@@ -238,6 +235,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// Saving kept frames from the clips (round 234), and how far it got.
   bool _keeping = false;
   ({int done, int total})? _keepProgress;
+
+  /// How many of the selected session's kept frames are saved; read for
+  /// that session only, so the list opens quickly (round 235).
+  KeptFramesStatus _kept = KeptFramesStatus.none;
 
   /// The camera's tracking algorithm, which "Find visits" uses too.
   TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
@@ -356,7 +357,6 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       resume.settings,
       runMs,
       await VideoTracker.readSummary(dir),
-      await VideoFrameKeeper.status(dir),
     );
   }
 
@@ -365,6 +365,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   void _select(_VideoSession s) {
     final roi = s.lastSettings?['roi'];
     setState(() {
+      if (_session?.dir.path != s.dir.path) _kept = KeptFramesStatus.none;
       _session = s;
       _roi = roi is List && roi.length == 3
           ? Roi(
@@ -375,6 +376,14 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           : null;
     });
     if (_roi != null) _loadFrame();
+    _loadKept();
+  }
+
+  Future<void> _loadKept() async {
+    final s = _session;
+    if (s == null) return;
+    final kept = await VideoFrameKeeper.status(s.dir);
+    if (mounted && _session?.dir.path == s.dir.path) setState(() => _kept = kept);
   }
 
   /// The first clip's first frame (cached per session).
@@ -567,6 +576,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _sessions = sessions;
       _session = sessions.where((s) => s.dir.path == session.dir.path).firstOrNull;
     });
+    await _loadKept();
   }
 
   bool get _busy => _running || _tracking || _keeping;
@@ -992,7 +1002,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (s == null || s.doneClips.isEmpty) return const SizedBox.shrink();
     final v = s.visits;
     final busy = _busy;
-    final kept = s.kept;
+    final kept = _kept;
     final stale = v != null &&
         (v.detectionsRunMs != s.detectionsRunMs ||
             v.clips.length != s.doneClips.length ||
@@ -1165,7 +1175,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (kept.total == 0) return const [];
     return [
       const SizedBox(height: 4),
-      Text('Kept frames saved: ${kept.saved} of ${kept.total}.'),
+      Text('Kept frames saved: ${kept.saved} of ${kept.total} (${formatBytes(kept.bytes)}).'),
       if (kept.noVideo > 0)
         Text(
           '${kept.noVideo} ${kept.noVideo == 1 ? 'frame' : 'frames'} can no longer be saved: '

@@ -248,6 +248,11 @@ void main() {
       expect(progress.last, 11);
       final status = await VideoFrameKeeper.status(dir);
       expect([status.total, status.saved, status.remaining], [11, 11, 0]);
+      // Round 235: the storage they take.
+      expect(status.bytes, [
+        for (final k in await VideoTracker.readKeptFrames(dir)) _frame(dir, k.file).lengthSync(),
+      ].fold<int>(0, (a, b) => a + b));
+      expect(status.bytes, greaterThan(0));
 
       final again = _FakeBackend();
       expect((await VideoFrameKeeper(backend: again).run(dir)).saved, 0);
@@ -357,15 +362,41 @@ void main() {
       (r, used) = await identify();
       expect([r.resumedDone, r.embedded], [embedded, 0]);
 
+      expect(await IdentificationJob.currentVisitsRunId(dir), firstRun);
+      expect(await IdentificationJob.cropsOutdated(dir, settings.modelName), isFalse);
+
       // Found again: the same pictures, but numbered anew, so every crop is
       // made again under the new numbers.
       await findVisits();
       final secondRun = (await VideoTracker.readSummary(dir))!.runId;
       expect(secondRun, isNot(firstRun));
+      // Round 235: until then the stored crops are outdated, and scoring
+      // them alone ("Re-score with this pack") refuses.
+      expect(await IdentificationJob.cropsOutdated(dir, settings.modelName), isTrue);
+      expect(
+        () => IdentificationJob.scoreSessionSync(
+          dir,
+          modelName: settings.modelName,
+          modelId: settings.modelId,
+          packFile: packFile,
+          settings: settings.toJson(),
+        ),
+        throwsA(isA<StateError>().having((e) => e.message, 'message', contains('found again'))),
+      );
       (r, used) = await identify();
       expect([r.resumedDone, r.embedded], [0, embedded]);
       expect(used, secondRun);
       expect(EmbeddingIndex.parse(paths.embeddingsJsonl(stem).readAsStringSync()).visitsRunId, secondRun);
+      expect(await IdentificationJob.cropsOutdated(dir, settings.modelName), isFalse);
+
+      // Visits tracked live keep their numbers: no run id.
+      final live = Directory.systemTemp.createTempSync('video_kept_frames_live_');
+      addTearDown(() => live.deleteSync(recursive: true));
+      File('${live.path}/session.jsonl').writeAsStringSync(
+        '${jsonEncode({'type': 'start_of_session', 'time_ms': s0, 'config': {'captureTrigger': 'detector'}})}\n',
+      );
+      expect(await IdentificationJob.currentVisitsRunId(live), isNull);
+      expect(await IdentificationJob.cropsOutdated(live, settings.modelName), isFalse);
 
       final a = EmbeddingIndex.parse(
         [

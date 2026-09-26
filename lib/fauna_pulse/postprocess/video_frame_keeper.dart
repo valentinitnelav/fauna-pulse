@@ -47,7 +47,10 @@ class KeptFramesStatus {
   /// Not saved and can't be: their video is no longer in videos/.
   final int noVideo;
 
-  const KeptFramesStatus({required this.total, required this.saved, required this.noVideo});
+  /// Storage the saved ones take (round 235).
+  final int bytes;
+
+  const KeptFramesStatus({required this.total, required this.saved, required this.noVideo, this.bytes = 0});
 
   static const none = KeptFramesStatus(total: 0, saved: 0, noVideo: 0);
 
@@ -90,16 +93,18 @@ class VideoFrameKeeper {
     final all = await VideoTracker.readKeptFrames(sessionDir);
     if (all.isEmpty) return KeptFramesStatus.none;
     final dir = framesDirOf(sessionDir).path;
-    var saved = 0, noVideo = 0;
+    var saved = 0, noVideo = 0, bytes = 0;
     final videoThere = <String, bool>{};
     for (final k in all) {
-      if (File('$dir/${k.file}').existsSync()) {
+      final f = File('$dir/${k.file}');
+      if (f.existsSync()) {
         saved++;
+        bytes += f.lengthSync();
       } else if (!videoThere.putIfAbsent(k.clip, () => File('${sessionDir.path}/videos/${k.clip}').existsSync())) {
         noVideo++;
       }
     }
-    return KeptFramesStatus(total: all.length, saved: saved, noVideo: noVideo);
+    return KeptFramesStatus(total: all.length, saved: saved, noVideo: noVideo, bytes: bytes);
   }
 
   /// Saves every kept frame of [sessionDir] that is not saved yet.
