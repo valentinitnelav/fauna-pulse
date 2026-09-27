@@ -31,6 +31,10 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _crops = 6;
 
+// --dart-define=BIOCLIP_GPU=false: CPU only (a phone whose GPU run would be
+// killed for lack of memory, round 243).
+const _tryGpu = bool.fromEnvironment('BIOCLIP_GPU', defaultValue: true);
+
 // ignore: avoid_print
 void _log(String s) => print(s);
 
@@ -45,7 +49,7 @@ void main() {
     final rng = Random(7);
     File? gpuModel;
     for (final m in models) {
-      for (final gpu in [true, false]) {
+      for (final gpu in [if (_tryGpu) true, false]) {
         final t0 = await DeviceThermal.read();
         final info = await ImageEmbedder.load(m.path, useGpu: gpu);
         final side = info.inputWidth * info.inputHeight * 3;
@@ -59,7 +63,7 @@ void main() {
         }
         final perCrop = sw.elapsedMilliseconds / _crops / 1000;
         await ImageEmbedder.close();
-        if (gpu && info.accelerator == 'GPU') gpuModel ??= m;
+        if (gpu && info.accelerator == 'GPU' || !_tryGpu) gpuModel ??= m;
         final t1 = await DeviceThermal.read();
         _log('EMBED ${m.path.split('/').last} asked ${gpu ? 'GPU' : 'CPU'}: ran on ${info.accelerator}'
             '${info.cpuThreads == null ? '' : ' (${info.cpuThreads} threads)'}, load ${(info.loadMs / 1000).toStringAsFixed(1)} s, '
@@ -114,6 +118,13 @@ void main() {
       return (vectors, summary, res);
     }
 
+    if (!_tryGpu) {
+      final (_, cs, _) = await identify(false);
+      for (final t in cs['tracks'] as List) {
+        _log('  #${t['track_id']} CPU ${t['headline']} (${t['identified_rank']}) p=${t['p']}');
+      }
+      return;
+    }
     final (gv, gs, _) = await identify(true);
     final (cv, cs, _) = await identify(false);
     expect(gv.length, cv.length);

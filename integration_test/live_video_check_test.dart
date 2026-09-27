@@ -32,6 +32,11 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _folder = 'live_video_check';
+
+// --dart-define=LIVE_CHECK_ONLY=D runs only session D (round 243, Samsung).
+const _only = String.fromEnvironment('LIVE_CHECK_ONLY');
+// --dart-define=LIVE_D_VIDEO=false: session D without video (does the gate sleep at all?).
+const _dVideo = bool.fromEnvironment('LIVE_D_VIDEO', defaultValue: true);
 const _seconds = 45;
 
 // ignore: avoid_print
@@ -47,6 +52,7 @@ void main() {
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
     final sessions = Directory('${(await getExternalStorageDirectory())!.path}/sessions');
+    sessions.createSync(recursive: true); // a fresh install has none yet
 
     Future<void> shot(String name) async {
       await tester.pump(const Duration(milliseconds: 300));
@@ -122,19 +128,34 @@ void main() {
       sessionMinutes: 60,
       folderName: _folder,
     );
-    final a = await record('A', base.copyWith(liveAiVideo: false));
-    expect(Directory('${a.path}/videos').existsSync(), isFalse);
-
-    final b = await record('B', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15));
-    final c = await record('C', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15, motionGateEnabled: true));
+    final runs = <Directory>[];
+    if (_only.isEmpty) {
+      final a = await record('A', base.copyWith(liveAiVideo: false));
+      expect(Directory('${a.path}/videos').existsSync(), isFalse);
+      runs.add(await record('B', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15)));
+      runs.add(await record('C', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15, motionGateEnabled: true)));
+    }
+    // D: nothing can wake the gate: no pixel change counts (> 255) and no box counts as a
+    // detection (confidence 0.99; any box keeps the gate awake, also classes the tracker
+    // ignores, e.g. MegaDetector's person/vehicle on a dark scene: Samsung, round 243). The
+    // arthropod model, when imported, finds nothing in a dark scene.
+    final arthropod = File('${(await getApplicationSupportDirectory()).path}/models/arthropod_yolov11_float16.tflite');
     final d = await record(
       'D',
-      base.copyWith(liveAiVideo: true, liveAiVideoFps: 15, motionGateEnabled: true, motionGatePixelDelta: 255),
+      base.copyWith(
+        liveAiVideo: _dVideo,
+        liveAiVideoFps: 15,
+        motionGateEnabled: true,
+        motionGatePixelDelta: 255,
+        confidenceThreshold: 0.99,
+        modelPath: arthropod.existsSync() ? arthropod.path : null,
+      ),
     );
+    if (_dVideo) runs.add(d);
     final idle = File('${d.path}/session.jsonl').readAsLinesSync().where((l) => l.contains('"gate_idle":true')).length;
     _log('GATE D: $idle fps records with the detector asleep');
     expect(idle, greaterThan(0), reason: 'the gate should have slept');
-    for (final dir in [b, c, d]) {
+    for (final dir in runs) {
       final recs = [for (final l in File('${dir.path}/session.jsonl').readAsLinesSync()) jsonDecode(l) as Map<String, dynamic>];
       expect(recs.where((r) => r['type'] == 'live_video_start'), hasLength(1));
       final clip = recs.singleWhere((r) => r['type'] == 'video_clip');

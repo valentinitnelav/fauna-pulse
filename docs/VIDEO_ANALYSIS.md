@@ -58,6 +58,20 @@ Terms used below:
 Videos in 10-bit or HDR (some newer phones film this way) are refused with a message;
 re-export them as 8-bit H.264, for example with the phone's video editor or HandBrake.
 
+A clip that was still recording when the app stopped (flat battery, Android closing the
+app, a forced stop) is **cut off**: the phone writes a video's index only when the
+recording ends, so the file cannot be read. *Run AI on videos* says so, analyses the other
+clips and offers *Delete the cut-off clip…* right under the note (round 243); the Video tab
+leaves such clips out. Live AI + video records 5-minute pieces and video bursts one clip
+per burst, so a stop loses at most the piece or burst that was recording.
+
+**Older phones.** A phone too slow for live AI can still record and analyse later. On the
+second test phone (Samsung Galaxy M12, 2021, Exynos 850; round 243) live AI ran at 3 to 5
+frames per second, too slow for a fast insect, while video bursts recorded at the full 15
+frames per second. *Run AI on videos* then took a few times the clip's length there (23 s
+of bursts in 93 s; a 30-s clip at 30 frames per second in about 170 s), better done on the
+charger.
+
 A video missing from the file window? Its **Downloads** view lists only files Android
 marked as downloads. A clip saved by another app (for example WhatsApp) and then moved into
 the Download folder is missing there. Tap ☰ in the file window and choose **Videos**, or

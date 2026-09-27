@@ -17,9 +17,16 @@
 // GPU is kept only when the two embeddings agree (cosine >= [GPU_MIN_AGREEMENT]). The
 // verdict is remembered per model file and Android build (a system update, which usually
 // brings new GPU drivers, checks again), so later loads cost nothing.
+//
+// Memory (round 243): setting a large model up on the GPU needs several times its file
+// size in memory; on a 3.8 GB phone Android's low-memory killer closed the whole app while
+// BioCLIP 2 was being set up there. The GPU is therefore tried only when the estimate
+// ([GPU_MEMORY_FACTOR] × file size) stays under [GPU_MEMORY_SHARE] of the phone's memory;
+// otherwise the model runs on the CPU with a note saying why.
 
 package com.ultralytics.yolo
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -42,9 +49,30 @@ class Embedder(
          *  lands far below. (32-bit GPU maths needs ~1.2 GB of GPU memory for BioCLIP 2: Android
          *  killed the app on the 7.4 GB test phone.) */
         const val GPU_MIN_AGREEMENT = 0.995
+
+        /** Memory a GPU setup needs, as a multiple of the model file's size: BioCLIP 2 (609 MB)
+         *  took the app to 2.7 GB while it was set up on the 3.8 GB Samsung (round 243). */
+        const val GPU_MEMORY_FACTOR = 4.5
+
+        /** Largest share of the phone's memory that estimate may take (the rest is Android and
+         *  other apps; the 7.4 GB Xiaomi runs BioCLIP 2 on the GPU, the 3.8 GB Samsung cannot). */
+        const val GPU_MEMORY_SHARE = 0.6
+
+        /** Why [modelPath] should not be set up on this phone's GPU, or null when it fits. */
+        fun gpuMemoryNote(context: Context, modelPath: String): String? {
+            val am = context.getSystemService(ActivityManager::class.java) ?: return null
+            val info = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            val need = File(modelPath).length() * GPU_MEMORY_FACTOR
+            if (info.totalMem <= 0 || need <= info.totalMem * GPU_MEMORY_SHARE) return null
+            return "this phone has %.1f GB of memory; setting this model up on the GPU needs about %.1f GB, so it runs on the CPU"
+                .format(info.totalMem / 1e9, need / 1e9)
+        }
     }
 
-    private var rt: InferenceModel = InferenceModel.create(context, modelPath, useGpu, "Embedder", cpuThreads)
+    private val memoryNote: String? = if (useGpu) gpuMemoryNote(context, modelPath) else null
+
+    private var rt: InferenceModel =
+        InferenceModel.create(context, modelPath, useGpu && memoryNote == null, "Embedder", cpuThreads)
 
     /** Cosine of the GPU and CPU embeddings of the test picture, when the GPU check ran or
      *  was remembered; null when the model runs on the CPU without a GPU verdict. */
@@ -60,7 +88,7 @@ class Embedder(
     val dim: Int
 
     val accelerator: String get() = rt.accelerator
-    val accelerationNote: String? get() = checkNote ?: rt.accelerationNote
+    val accelerationNote: String? get() = memoryNote ?: checkNote ?: rt.accelerationNote
 
     /** Threads the CPU engine runs on (the count behind "0 = automatic"); null on the GPU. */
     val cpuThreads: Int? get() = if (rt.accelerator == "CPU") (rt as? LiteRtModel)?.cpuThreads else null

@@ -141,7 +141,7 @@ void main() {
     // The session picker at the top (the rest of the list builds as it scrolls).
     await waitFor(find.textContaining('${all.deleteNames.length} analyzed)'));
     final list = find.byType(Scrollable).first;
-    final deleteAll = find.textContaining('Delete all ${all.deleteNames.length} clips, keep the saved frames');
+    final deleteAll = find.textContaining(', keep the saved frames');
     await tester.scrollUntilVisible(deleteAll, 300, scrollable: list);
     await tester.drag(list, const Offset(0, -600));
     await tester.pump(const Duration(milliseconds: 300));

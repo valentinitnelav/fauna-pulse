@@ -269,7 +269,17 @@ test phone its embeddings matched the CPU to 0.9995 on the test picture and 0.99
 on real crops, which moved a visit's confidence by up to 0.03 without changing any answer.
 32-bit GPU maths would match more closely but needs about 1.2 GB of GPU memory for
 BioCLIP 2; Android closed the app for lack of memory on the 7.4 GB test phone, so it is not
-offered. `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
+offered.
+
+Setting a model up on the GPU also needs several times its file size in ordinary memory
+for a moment. On the second test phone (Samsung Galaxy M12: 3.9 GB, Exynos 850 with a
+Mali-G52 GPU) the app reached 2.7 GB while BioCLIP 2 was being set up there and Android
+closed it. Since round 243 the app first compares the need, about 4.5 × the file size, with
+the phone's memory, and tries the GPU only when that stays under 60 % of it; otherwise it
+runs on the CPU with a note such as "this phone has 3.9 GB of memory; setting this model up
+on the GPU needs about 2.7 GB, so it runs on the CPU". On that phone the CPU takes about
+15.5 s per crop (2 threads; 10 crops in about 3 minutes), so identification there is a job
+to leave running on the charger. `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
 `gpu_agreement` (DATA_GUIDE §8). Since round 211 the reason is shown on the screen after
 loading (and in the "Last run" card) instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
 thread pool, so it does change how the matrix maths is spread; whether more threads are
@@ -359,6 +369,9 @@ keeps the column names so the same scripts read both outputs, with its own formu
   is slower but gives the same answers. The int8 export is the CPU-friendly variant.
 - *"GPU not used: the GPU's results differed from the CPU's"*: this phone's GPU failed the
   first-use check; the app uses the CPU for that model until the next Android update.
+- *"GPU not used: this phone has N GB of memory …"*: the model is too large to set up on
+  this phone's GPU without Android closing the app (round 243); the CPU gives the same
+  answers, only slower.
 - *The model load fails outright:* the phone has too little free RAM for the file (fp16
   needs ~1 GB free, BioCLIP 2.5 ~2 GB) or the export is broken; run `verify_parity.py`
   on the PC.

@@ -27,6 +27,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart' show SavedFramesChunk, S
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 import 'summary_tabs_test.dart' show expectSummaryRowValue;
+import 'video_cut_off_test.dart' show box;
 
 Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   for (var i = 0; i < 250; i++) {
@@ -375,7 +376,7 @@ void main() {
     expect(find.text('Videos: 1 clip, 3 KB (1 deleted before).'), findsOneWidget);
 
     // Then all: the session stays, the visits too.
-    final all = find.textContaining('Delete all 1 clips, keep the saved frames');
+    final all = find.textContaining('Delete the only clip, keep the saved frames');
     // The "Deleted 1 video" snack bar covers the end of the list for 4 s.
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
@@ -430,6 +431,72 @@ void main() {
     await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
     final whole = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
     expect(whole.selected, {false}, reason: 'whole picture');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a clip cut off by a killed app: said, left out, deletable at 360 px (r243)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_analysis_cut_off');
+    final session = Directory('${tmp.path}/Balcony');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/roi_tok1_a.mp4').writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 100), ...box('moov', 20)]);
+    final cut = File('${session.path}/videos/roi_tok1_b.mp4')
+      ..writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 2000, sizeField: 0)]);
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      [
+        '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"timelapse","timeLapseSaveAs":"video"}}',
+        '{"type":"video_clip","time_ms":11000,"file":"videos/roi_tok1_a.mp4","duration_ms":10000,"burst":0}',
+      ].join('\n'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.textContaining('1 clip was cut off: the app stopped while recording it'), 200, scrollable: list);
+    final delete = find.textContaining('Delete the cut-off clip (2 KB)');
+    await tester.scrollUntilVisible(delete, 200, scrollable: list);
+    await tester.pump();
+    expect(find.text('Analyze 1 clip'), findsOneWidget, reason: 'only the readable clip is pending');
+    expect(tester.takeException(), isNull);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete the cut-off clip?'), findsOneWidget);
+    expect(find.textContaining('roi_tok1_b.mp4. It was never finished'), findsOneWidget);
+    await tester.tap(find.text('Delete 1'));
+    await _pumpUntil(tester, find.textContaining('freed.'));
+    expect(cut.existsSync(), isFalse);
+    // The screen reads the session again after the snack bar.
+    for (var i = 0; i < 100 && find.textContaining('cut off').evaluate().isNotEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.textContaining('cut off'), findsNothing);
+    expect(find.text('Analyze 1 clip'), findsOneWidget);
+    expect(File('${session.path}/session.jsonl').readAsStringSync(), contains('"mode":"cut_off"'));
+
+    // Every clip cut off (killed in the first burst): no "videos were deleted".
+    File('${session.path}/videos/roi_tok1_a.mp4').writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 100, sizeField: 0)]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('Balcony'));
+    await tester.scrollUntilVisible(find.text('No clip can be read'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.textContaining('1 clip was cut off'), 200, scrollable: find.byType(Scrollable).first);
     expect(tester.takeException(), isNull);
   });
 

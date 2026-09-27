@@ -1017,7 +1017,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // via the YOLOView prop) which updates the native frame-skip interval with
       // no camera rebind (analysis resolution is unchanged).
       final thr = _throttle;
-      if (thr != null && inferMs > 0) {
+      // Only the AI mode's inference times (round 243): the detector also runs for a moment
+      // before a time-lapse or motion session's mode reaches the native side, and a slow
+      // phone's first frames pulled the cap down for the whole session.
+      if (thr != null && inferMs > 0 && _config.detectorEnabled) {
         final cap = thr.update(inferMs);
         if (cap != _appliedCapFps && mounted) {
           setState(() => _appliedCapFps = cap);

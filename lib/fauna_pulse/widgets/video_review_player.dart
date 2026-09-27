@@ -101,6 +101,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   /// Clips deleted to free storage, with when (round 236).
   Map<String, DateTime> _deleted = const {};
+
+  /// Clips cut off by a killed app: unreadable, left out of the list (round 243).
+  int _cutOff = 0;
   int _clip = 0;
 
   VideoPlayerController? _controller;
@@ -185,7 +188,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     } catch (e) {
       logSwallowed('video_box_timeline', e);
     }
-    final files = {for (final f in VideoDetector.clipsOf(widget.sessionDir)) f.uri.pathSegments.last};
+    final all = VideoDetector.clipsOf(widget.sessionDir);
+    final files = {for (final f in all.where(VideoDetector.isReadableVideo)) f.uri.pathSegments.last};
     final deleted = await ClipCleanup.deletedClips(widget.sessionDir);
     final keptMs = <String, List<int>>{};
     final framesDir = '${widget.sessionDir.path}/${VideoTracker.framesDirName}';
@@ -200,6 +204,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       _liveTimeline = live;
       if (after.clips.isEmpty) _showAfter = false;
       _files = files;
+      _cutOff = all.length - files.length;
       _deleted = deleted;
       _clips = clips;
       _keptMs = keptMs;
@@ -416,6 +421,15 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
         ...widget.header,
+        if (_cutOff > 0) ...[
+          const SizedBox(height: 6),
+          Text(
+            '$_cutOff ${_cutOff == 1 ? 'clip was' : 'clips were'} cut off: the app stopped while recording, so '
+            '${_cutOff == 1 ? 'it was' : 'they were'} never finished and cannot be played ("Run AI on videos" '
+            'can delete ${_cutOff == 1 ? 'it' : 'them'}).',
+            style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+          ),
+        ],
         const SizedBox(height: 8),
         if (_loading)
           const Padding(

@@ -959,8 +959,8 @@ stored time; video editors reset it to the export time.
   as fractions of the upright picture, side as a fraction of its width, or `null` for the
   whole picture, `max_side_px`), `model_name`, `use_gpu`, `thermal_limit_c` (the pause
   temperature, round 229+), `sample_s` (the "Measure the phone every" setting, round
-  232+), `clips_total`, `clips_pending`, `started_over` (when earlier results were
-  replaced), `app_version`.
+  232+), `clips_total`, `clips_pending`, `clips_cut_off` (round 243+, see below),
+  `started_over` (when earlier results were replaced), `app_version`.
   Results made with other `settings` are never mixed: a run with changed settings asks,
   then starts the file over.
 * `video_clip_start` — per clip: `clip`, `start_epoch_ms`, `start_time_source`,
@@ -976,6 +976,16 @@ stored time; video editors reset it to the export time.
   clip failed (`error`, `at_pts_us`).
 * `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
   `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
+
+**Cut-off clips (round 243+).** Android writes an MP4's index (the `moov` box) only when
+the recording is closed. A clip that was still open when the app was killed (battery, the
+system, a forced stop) has its picture data but no index, so no player or decoder can read
+it. The app checks the file's top-level boxes: an empty file, or one without `moov` whose
+last box has size 0 or runs past the end of the file, is *cut off*. Such clips are not
+analysed and not counted in `clips_total`; `clips_cut_off` says how many there were. *Run
+AI on videos* names them and offers to delete them (cleanup mode `cut_off`, below); the
+Video tab leaves them out with a note. A file that does not start with an MP4 `ftyp` box
+(another container) is left to the decoder as before.
 
 **The phone during the analysis (round 232+).** Every `sample_s` seconds of a run, also
 while it waits for the phone to cool down, and once more at the end of each run, the run
@@ -1136,7 +1146,7 @@ Each deletion appends one record to `session.jsonl`, after `end_of_session`:
 |---|---|
 | `type` | `video_cleanup` |
 | `time_ms`, `time_iso` | when |
-| `mode` | `without_visits` or `all` |
+| `mode` | `without_visits`, `all`, or `cut_off` (round 243+: clips cut off by a killed app, above) |
 | `clips` | the file names deleted (as in `videos/`) |
 | `freed_bytes` | the space freed |
 | `visits_run_id` | the `run_id` of the *Find visits* run the choice was based on |

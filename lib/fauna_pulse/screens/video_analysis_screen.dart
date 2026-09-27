@@ -193,6 +193,11 @@ class _VideoSession {
   /// stay the live AI's; the ones found here are for comparison (round 241).
   final bool liveAi;
 
+  /// Round 243: clips that cannot be read because the app stopped while
+  /// recording them (VideoDetector.isReadableVideo); left out of [clips].
+  final List<String> cutOff;
+  final int cutOffBytes;
+
   const _VideoSession(
     this.name,
     this.dir,
@@ -206,6 +211,8 @@ class _VideoSession {
     this.missingClips, {
     this.recorded = false,
     this.liveAi = false,
+    this.cutOff = const [],
+    this.cutOffBytes = 0,
   });
 
   int get allClipCount => clips.length + missingClips.length;
@@ -342,7 +349,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     return found;
   }
 
-  static Future<_VideoSession> _readSession(Directory dir, List<File> files) async {
+  static Future<_VideoSession> _readSession(Directory dir, List<File> allFiles) async {
+    final files = allFiles.where(VideoDetector.isReadableVideo).toList();
+    final cutOff = allFiles.where((f) => !files.contains(f)).toList();
     final records = await VideoDetector.clipRecordsFromLog(dir);
     final lengths = {
       for (final e in records.entries)
@@ -377,10 +386,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       resume.settings,
       runMs,
       await VideoTracker.readSummary(dir),
-      {...lengths.keys, ...resume.doneClips}.difference({for (final f in files) f.path.split('/').last}),
+      {...lengths.keys, ...resume.doneClips}.difference({for (final f in allFiles) f.path.split('/').last}),
       // Recorded clips carry their burst (round 238) or live segment (round 240) number.
       recorded: records.values.any((r) => r.containsKey('burst') || r.containsKey('segment')),
       liveAi: records.values.any((r) => r.containsKey('segment')),
+      cutOff: [for (final f in cutOff) f.path.split('/').last],
+      cutOffBytes: cutOff.fold(0, (s, f) => s + f.lengthSync()),
     );
   }
 
@@ -1028,7 +1039,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             s == null
                 ? 'Pick a session to analyze'
                 : s.clips.isEmpty
-                ? 'The videos were deleted'
+                ? (s.cutOff.isNotEmpty && s.doneClips.isEmpty ? 'No clip can be read' : 'The videos were deleted')
                 : allDone
                 ? 'All clips analyzed with these settings'
                 : changed.isNotEmpty
@@ -1038,6 +1049,25 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                 : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}',
           ),
         ),
+        if (s != null && s.cutOff.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${s.cutOff.length} ${s.cutOff.length == 1 ? 'clip was' : 'clips were'} cut off: the app stopped '
+            'while recording ${s.cutOff.length == 1 ? 'it' : 'them'} (battery, the system or a forced stop), so '
+            'the file was never finished and cannot be read. Left out here.',
+            style: const TextStyle(color: Colors.amber, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade300),
+            onPressed: _busy ? null : () async => _confirmDeleteClips(s, await ClipCleanup.planCutOff(s.dir)),
+            icon: const Icon(Icons.broken_image_outlined),
+            label: Text(
+              'Delete ${s.cutOff.length == 1 ? 'the cut-off clip' : 'the ${s.cutOff.length} cut-off clips'} '
+              '(${formatBytes(s.cutOffBytes)})…',
+            ),
+          ),
+        ],
         if (s != null && s.doneClips.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
@@ -1282,7 +1312,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               ? null
               : () async => _confirmDeleteClips(s, await ClipCleanup.planAll(s.dir)),
           icon: const Icon(Icons.delete_sweep_outlined),
-          label: Text('Delete all ${s.clips.length} clips, keep the saved frames (${formatBytes(s.totalBytes)})…'),
+          label: Text(
+            'Delete ${s.clips.length == 1 ? 'the only clip' : 'all ${s.clips.length} clips'}, keep the saved frames '
+            '(${formatBytes(s.totalBytes)})…',
+          ),
         ),
         if (allBlocked != null) Text(allBlocked, style: helperTextStyle),
       ],
@@ -1293,16 +1326,23 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (plan.isEmpty) return;
     final n = plan.deleteNames.length;
     final all = plan.mode == ClipCleanup.modeAll;
+    final cut = plan.mode == ClipCleanup.modeCutOff;
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(all ? 'Delete all videos?' : 'Delete the clips without any visit?'),
+        title: Text(
+          all
+              ? 'Delete all videos?'
+              : cut
+              ? 'Delete the cut-off ${n == 1 ? 'clip' : 'clips'}?'
+              : 'Delete the clips without any visit?',
+        ),
         content: SingleChildScrollView(
           child: Text(
             'This permanently deletes $n ${n == 1 ? 'video' : 'videos'} '
             '(${formatBytes(plan.deleteBytes)})${all ? '' : ': ${plan.deleteNames.join(', ')}'}. '
-            'The boxes the AI found, the visits and the kept frames stay, and "Find visits" can run '
-            'again. The deleted clips can no longer be played, analyzed again or give other frames. '
+            '${cut ? '${n == 1 ? 'It was' : 'They were'} never finished, so nothing in ${n == 1 ? 'it' : 'them'} can be read; the rest of the session stays. ' : 'The boxes the AI found, the visits and the kept frames stay, and "Find visits" can run '
+                      'again. The deleted clips can no longer be played, analyzed again or give other frames. '}'
             'This cannot be undone.',
             style: const TextStyle(fontSize: 13),
           ),

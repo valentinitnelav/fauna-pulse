@@ -2609,7 +2609,11 @@ class YOLOView @JvmOverloads constructor(
         // shouldRunInference() is stateful (advances the cap clock), so
         // remember its verdict instead of asking twice per frame.
         var inferenceApproved = false
-        if (!motionGateEnabled) {
+        // Round 243: not in time-lapse mode, where no inference runs and the frames are chosen by
+        // the time-lapse sampler or the video clip's clock above. A cap learned from the few
+        // detector frames before the mode switch (3 per second on a slow phone) otherwise
+        // throttled every time-lapse photo and video frame for the whole session.
+        if (!motionGateEnabled && !timeLapseMode) {
             if (shouldRunInference()) {
                 inferenceApproved = true
             } else if (videoDue) {

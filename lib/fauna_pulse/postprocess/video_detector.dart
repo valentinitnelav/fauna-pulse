@@ -247,6 +247,53 @@ class VideoDetector {
        now = now ?? DateTime.now,
        sleep = sleep ?? Future<void>.delayed;
 
+  /// Whether [f] can be read as a video (round 243). An MP4/MOV file needs its index
+  /// (the `moov` box), which Android writes only when a recording is closed: a clip cut
+  /// off because the app was killed while recording (battery, the system, a force stop)
+  /// has none, and no player or decoder can read it. Only that case and an empty file
+  /// count as unreadable: the file must start like an MP4 (an `ftyp` box, which Android
+  /// writes first) and have no index among its top-level boxes. Anything else is left to
+  /// the decoder. Reads the box headers only (a few bytes each).
+  static bool isReadableVideo(File f) {
+    const isoBmff = {'mp4', 'mov', 'm4v', '3gp'};
+    if (!isoBmff.contains(f.path.split('.').last.toLowerCase())) return true;
+    RandomAccessFile? raf;
+    try {
+      final len = f.lengthSync();
+      if (len == 0) return false;
+      raf = f.openSync();
+      final head = raf.readSync(8);
+      if (head.length < 8 || String.fromCharCodes(head.sublist(4, 8)) != 'ftyp') return true;
+      var pos = 0;
+      while (pos + 8 <= len) {
+        raf.setPositionSync(pos);
+        final h = raf.readSync(16);
+        if (h.length < 8) return false;
+        var size = (h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3];
+        if (String.fromCharCodes(h.sublist(4, 8)) == 'moov') return true;
+        if (size == 1 && h.length == 16) {
+          size = 0;
+          for (var i = 8; i < 16; i++) {
+            size = (size << 8) | h[i];
+          }
+        } else if (size == 0) {
+          return false; // "runs to the end of the file": no index after it
+        }
+        if (size < 8) return false;
+        pos += size;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      raf?.closeSync();
+    }
+  }
+
+  /// Clips of the session that cannot be read (see [isReadableVideo]).
+  static List<File> cutOffClipsOf(Directory sessionDir) =>
+      clipsOf(sessionDir).where((f) => !isReadableVideo(f)).toList();
+
   /// The session's clips (`videos/*`), sorted by file name.
   static List<File> clipsOf(Directory sessionDir) {
     final dir = Directory('${sessionDir.path}/videos');
@@ -308,7 +355,10 @@ class VideoDetector {
     final replace = startOver && outFile.existsSync();
     if (replace) resume = const VideoResume(null, {}, {});
 
-    final clips = clipsOf(sessionDir);
+    // A clip cut off by a killed app cannot be read; it is left out rather than retried
+    // on every run (round 243).
+    final all = clipsOf(sessionDir);
+    final clips = all.where(isReadableVideo).toList();
     final pending = clips.where((f) => !resume.doneClips.contains(f.path.split('/').last)).toList();
     final logStarts = await clipStartsFromLog(sessionDir);
 
@@ -324,6 +374,7 @@ class VideoDetector {
       'thermal_limit_c': thermalLimitC,
       'clips_total': clips.length,
       'clips_pending': pending.length,
+      if (all.length > clips.length) 'clips_cut_off': all.length - clips.length,
       'sample_s': every.inSeconds,
       if (replace) 'started_over': true,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
