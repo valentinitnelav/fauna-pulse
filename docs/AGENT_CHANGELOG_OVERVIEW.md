@@ -83,6 +83,19 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 ## Key invariants
 
+- **Every native camera view gets the screen's live settings (round 244).** `YOLOView`
+  is keyed on the stream size, so the automatic stream pick (r109) or a Settings change
+  builds a NEW native view that knows only its creation params (model, thresholds, lens
+  facing, stream). `YOLOView.onNativeViewCreated` → camera screen resets
+  `_captureProbeStarted`, so the next frame map re-sends ROI, motion gate, camera fps
+  cap, time-lapse mode and re-runs the probes (lens, focus preset). Anything new that is
+  sent to the native view through the controller must go into that start-up sequence,
+  not only into one-off calls. Thresholds travel as creation params;
+  `YOLOViewController.init` re-sends them only when set on the controller before
+  attach (it used to overwrite the user's confidence/IoU with 0.25/0.7). Diagnose with
+  logcat `FRAMEPERF … gate=on awake= frames= wakes=motion/box/roi/settings`, "YOLOView
+  created", "confidence threshold"; check `integration_test/view_recreate_check_test.dart`.
+
 - **Repository branch and dependency workflow (round 202).** `main` is the
   stable default branch; `develop` is the integration branch and the base for
   normal contribution and Dependabot version-update pull requests. Work happens
@@ -737,9 +750,9 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   r243 (Exynos 850 / Mali-G52, 3.9 GB, Android 13; Play build replaced by a debug build with
   the owner's consent): BioCLIP 2 GPU setup → lmkd kill at 2.7 GB, now refused by the
   Embedder memory guard (CPU 15.5 s/crop); live AI + ROI video clips hold ~10 fps (camera
-  ~13 fps, frames arriving during the 90–130 ms inference are lost); **the motion gate never
-  slept** in live check D (open: log what wakes it); first burst clip on a fresh install
-  starts late (stream switch).
+  ~13 fps, frames arriving during the 90–130 ms inference are lost); r243's "motion gate
+  never slept" was the r244 camera-view rebuild bug (fixed, not Samsung-specific); first
+  burst clip on a fresh install starts late (stream switch).
 
 ## Pointers
 

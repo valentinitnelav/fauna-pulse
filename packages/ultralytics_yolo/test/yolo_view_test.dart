@@ -318,6 +318,7 @@ void main() {
         final zoomLevels = <double>[];
         final loadedModels = <String>[];
         final controlCalls = <MethodCall>[];
+        var nativeViews = 0;
         MockStreamHandlerEventSink? events;
 
         await tester.pumpWidget(
@@ -348,6 +349,7 @@ void main() {
               onPerformanceMetrics: metrics.add,
               onZoomChanged: zoomLevels.add,
               onModelLoad: (modelPath, _) => loadedModels.add(modelPath),
+              onNativeViewCreated: () => nativeViews++,
             ),
           ),
         );
@@ -420,6 +422,13 @@ void main() {
           controlCalls.map((call) => call.method),
           contains('setStreamingConfig'),
         );
+        // FaunaPulse r244: the view keeps its creation thresholds (no setThresholds with the
+        // controller's defaults), and the app hears about the new native view.
+        expect(
+          controlCalls.map((call) => call.method),
+          isNot(contains('setThresholds')),
+        );
+        expect(nativeViews, 1);
 
         events!.success({'type': 'zoom', 'value': 1.8});
         await tester.pump();

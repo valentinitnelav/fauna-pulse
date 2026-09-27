@@ -123,6 +123,43 @@ void main() {
       YOLOTestHelpers.assertMethodCalled(log, 'captureFrame');
     });
 
+    // FaunaPulse round 244: init() used to send the controller's default thresholds (0.25 / 0.7)
+    // on every attach, overwriting the thresholds the view was created with.
+    test('init sends no thresholds unless they were set before it', () {
+      controller.adoptViewThresholds(confidence: 0.99, iou: 0.5);
+      controller.init(mockChannel, 1);
+      expect(log.where((c) => c.method == 'setThresholds'), isEmpty);
+      expect(controller.confidenceThreshold, 0.99);
+      expect(controller.iouThreshold, 0.5);
+    });
+
+    test('thresholds set before init are sent on init and win over the view\'s', () {
+      controller.setThresholds(confidenceThreshold: 0.4);
+      expect(log, isEmpty);
+      controller.adoptViewThresholds(confidence: 0.99, iou: 0.5);
+      controller.init(mockChannel, 1);
+      YOLOTestHelpers.assertMethodCalled(
+        log,
+        'setThresholds',
+        arguments: {'confidenceThreshold': 0.4, 'iouThreshold': 0.7, 'numItemsThreshold': 30},
+      );
+      // Sent once; a second attach (a new platform view) does not repeat it.
+      log.clear();
+      controller.init(mockChannel, 2);
+      expect(log.where((c) => c.method == 'setThresholds'), isEmpty);
+    });
+
+    test('a later partial setThresholds keeps the view\'s other threshold', () async {
+      controller.adoptViewThresholds(confidence: 0.99, iou: 0.5);
+      controller.init(mockChannel, 1);
+      await controller.setThresholds(iouThreshold: 0.6);
+      YOLOTestHelpers.assertMethodCalled(
+        log,
+        'setThresholds',
+        arguments: {'confidenceThreshold': 0.99, 'iouThreshold': 0.6, 'numItemsThreshold': 30},
+      );
+    });
+
     test(
       'setShowOverlays before init is remembered and applied on init',
       () async {

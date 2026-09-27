@@ -3323,6 +3323,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ),
             onStreamingData: _onStreamingData,
+            // A new native view (round 244): the first one, and a new one whenever the stream
+            // size (the key above) changes, by the automatic pick or in Settings. It starts with
+            // only the model and thresholds, so the next frame map runs the start-up sequence
+            // again: ROI, motion gate, camera frame-rate cap, time-lapse mode, lens and focus.
+            // Before, a new view ran without them (no ROI crop, gate off) until the screen closed.
+            onNativeViewCreated: () => _captureProbeStarted = false,
             onModelLoad: (modelPath, task) {
               _controller.setShowOverlays(false);
               // Tell the native side to run inference only on the ROI crop.

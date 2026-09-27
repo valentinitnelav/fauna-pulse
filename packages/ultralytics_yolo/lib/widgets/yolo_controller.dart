@@ -39,6 +39,12 @@ class YOLOViewController {
   bool _torchEnabled = false;
   bool _showOverlays = true;
 
+  // FaunaPulse (round 244): thresholds were set on this controller before the view attached.
+  // Only then does [init] send them. Sending the defaults (0.25 / 0.7) on every attach
+  // overwrote the thresholds the view was created with ([YOLOView.confidenceThreshold],
+  // [YOLOView.iouThreshold]), so live detection ran at 0.25 whatever the app had asked for.
+  bool _thresholdsPending = false;
+
   final StreamController<double> _zoomController =
       StreamController<double>.broadcast();
   final StreamController<String> _lensController =
@@ -77,15 +83,27 @@ class YOLOViewController {
   void init(MethodChannel methodChannel, int viewId) {
     _methodChannel = methodChannel;
     _viewId = viewId;
-    _invoke('setThresholds', {
-      'confidenceThreshold': _confidenceThreshold,
-      'iouThreshold': _iouThreshold,
-      'numItemsThreshold': _numItemsThreshold,
-    });
+    if (_thresholdsPending) {
+      _thresholdsPending = false;
+      _invoke('setThresholds', {
+        'confidenceThreshold': _confidenceThreshold,
+        'iouThreshold': _iouThreshold,
+        'numItemsThreshold': _numItemsThreshold,
+      });
+    }
     // Re-apply state set before the platform view attached, which would otherwise be silently dropped.
     if (!_showOverlays) {
       _invoke('setShowOverlays', {'visible': false});
     }
+  }
+
+  /// Takes over the thresholds a [YOLOView] was created with, so this controller's copies match
+  /// the native side (a later [setThresholds] sends all three values). Thresholds set on the
+  /// controller before the view attached are kept: [init] sends those.
+  void adoptViewThresholds({required double confidence, required double iou}) {
+    if (_thresholdsPending) return;
+    _confidenceThreshold = confidence.clamp(0.0, 1.0);
+    _iouThreshold = iou.clamp(0.0, 1.0);
   }
 
   Future<T?> _invoke<T>(String method, [Map<String, dynamic>? args]) async {
@@ -101,6 +119,7 @@ class YOLOViewController {
 
   Future<void> setConfidenceThreshold(double threshold) async {
     _confidenceThreshold = threshold.clamp(0.0, 1.0);
+    if (_methodChannel == null) _thresholdsPending = true;
     await _invoke('setConfidenceThreshold', {
       'threshold': _confidenceThreshold,
     });
@@ -108,11 +127,13 @@ class YOLOViewController {
 
   Future<void> setIoUThreshold(double threshold) async {
     _iouThreshold = threshold.clamp(0.0, 1.0);
+    if (_methodChannel == null) _thresholdsPending = true;
     await _invoke('setIoUThreshold', {'threshold': _iouThreshold});
   }
 
   Future<void> setNumItemsThreshold(int numItems) async {
     _numItemsThreshold = numItems.clamp(1, 100);
+    if (_methodChannel == null) _thresholdsPending = true;
     await _invoke('setNumItemsThreshold', {'numItems': _numItemsThreshold});
   }
 
@@ -130,6 +151,7 @@ class YOLOViewController {
     if (numItemsThreshold != null) {
       _numItemsThreshold = numItemsThreshold.clamp(1, 100);
     }
+    if (_methodChannel == null) _thresholdsPending = true;
     await _invoke('setThresholds', {
       'confidenceThreshold': _confidenceThreshold,
       'iouThreshold': _iouThreshold,
