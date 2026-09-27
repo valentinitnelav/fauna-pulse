@@ -131,4 +131,34 @@ void main() {
       },
     );
   });
+
+  group('exportVideosToGallery (round 239)', () {
+    const channel = MethodChannel('faunapulse/crop');
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('one clip per call into the album, counts add up, a failed call is counted', () async {
+      final calls = <List<Object?>>[];
+      final progress = <int>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'saveVideosToGallery');
+        expect((call.arguments as Map)['album'], 'Balcony');
+        final paths = (call.arguments as Map)['paths'] as List<Object?>;
+        calls.add(paths);
+        if (calls.length == 2) throw PlatformException(code: 'io');
+        return {'supported': true, 'exported': calls.length == 3 ? 0 : 1, 'skipped': calls.length == 3 ? 1 : 0, 'failed': 0};
+      });
+      final r = await exportVideosToGallery(
+        [for (var i = 0; i < 3; i++) File('/fake/videos/roi_$i.mp4')],
+        'Balcony',
+        onProgress: (done, _) => progress.add(done),
+      );
+      expect(calls.map((c) => c.length), [1, 1, 1]);
+      expect(progress, [1, 2, 3]);
+      expect((r.supported, r.exported, r.skipped, r.failed), (true, 1, 1, 1));
+    });
+  });
 }

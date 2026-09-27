@@ -185,6 +185,10 @@ class _VideoSession {
   /// The last "Find visits", or null.
   final PostTrackSummary? visits;
 
+  /// Clips recorded by the app as time-lapse video bursts (round 239): each
+  /// is already the camera's ROI square.
+  final bool recorded;
+
   const _VideoSession(
     this.name,
     this.dir,
@@ -195,8 +199,9 @@ class _VideoSession {
     this.lastSettings,
     this.detectionsRunMs,
     this.visits,
-    this.missingClips,
-  );
+    this.missingClips, {
+    this.recorded = false,
+  });
 
   int get allClipCount => clips.length + missingClips.length;
 
@@ -333,20 +338,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   static Future<_VideoSession> _readSession(Directory dir, List<File> files) async {
-    final lengths = <String, int>{};
-    final log = File('${dir.path}/session.jsonl');
-    if (log.existsSync()) {
-      final lines = log.openRead().transform(utf8.decoder).transform(const LineSplitter());
-      await for (final line in lines) {
-        if (!line.contains('"video_clip"')) continue;
-        try {
-          final rec = jsonDecode(line) as Map;
-          final file = rec['file'] as String?;
-          final ms = (rec['duration_ms'] as num?)?.toInt();
-          if (rec['type'] == 'video_clip' && file != null && ms != null) lengths[file.split('/').last] = ms;
-        } catch (_) {}
-      }
-    }
+    final records = await VideoDetector.clipRecordsFromLog(dir);
+    final lengths = {
+      for (final e in records.entries)
+        if (e.value['duration_ms'] case final num ms) e.key: ms.toInt(),
+    };
     var resume = const VideoResume(null, {}, {});
     int? runMs;
     final out = File('${dir.path}/${VideoDetector.outputFileName}');
@@ -377,6 +373,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       runMs,
       await VideoTracker.readSummary(dir),
       {...lengths.keys, ...resume.doneClips}.difference({for (final f in files) f.path.split('/').last}),
+      // Recorded clips carry their burst number (round 238).
+      recorded: records.values.any((r) => r.containsKey('burst')),
     );
   }
 
@@ -959,6 +957,15 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               ? null
               : (s) => s.first ? _editSquare() : setState(() => _roi = null),
         ),
+        if (_session?.recorded ?? false)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'These clips were recorded by the app as the camera\'s square (time-lapse video '
+              'bursts), so the whole picture is that square. A smaller square analyses only part of it.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
         if (roi != null) ...[
           const SizedBox(height: 8),
           Row(

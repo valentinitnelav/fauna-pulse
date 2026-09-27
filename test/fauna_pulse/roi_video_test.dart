@@ -82,6 +82,30 @@ void main() {
     });
   });
 
+  test('clip totals: clips, bytes, filmed time and bursts without a clip (r239)', () async {
+    final tmp = Directory.systemTemp.createTempSync('faunapulse_clip_totals');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    File('${tmp.path}/session.jsonl').writeAsStringSync(
+      '${[
+        {'type': 'start_of_session', 'time_ms': 1},
+        {'type': 'video_clip', 'file': 'videos/a.mp4', 'duration_ms': 9750, 'size_bytes': 1259864, 'burst': 0},
+        {'type': 'video_skipped', 'burst': 1, 'reason': 'camera_paused'},
+        {'type': 'video_clip', 'file': 'videos/b.mp4', 'duration_ms': 6000, 'size_bytes': 772088, 'burst': 1},
+        {'type': 'video_skipped', 'burst': 2, 'reason': 'storage_low'},
+        {'type': 'video_skipped', 'burst': 2, 'reason': 'storage_low'},
+      ].map(jsonEncode).join('\n')}\n',
+    );
+    final t = await VideoClipTotals.read(tmp);
+    expect(t.count, 2);
+    expect(t.bytes, 1259864 + 772088);
+    expect(t.durationMs, 15750);
+    expect(t.skippedBursts, 1, reason: 'burst 1 got a clip after all');
+    expect(t.label, '2 clips · 15.8 s filmed · 1.9 MB');
+    expect(const VideoClipTotals(1, 0, 125000).label, '1 clip · 2 min 5 s filmed · 0 B');
+    expect(const VideoClipTotals(3, 0, 3725000).label, '3 clips · 1 h 2 min filmed · 0 B');
+    expect((await VideoClipTotals.read(Directory('${tmp.path}/none'))).count, 0);
+  });
+
   test('clip names are the photo names with .mp4', () {
     final ms = DateTime(2026, 9, 27, 14, 5, 9, 42).millisecondsSinceEpoch;
     expect(roiVideoFileName(ms, 'ab12'), 'roi_ab12_2026-09-27_140509_042.mp4');

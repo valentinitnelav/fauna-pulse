@@ -32,6 +32,7 @@ import '../models/session_config.dart';
 
 import '../capture/crop_export.dart';
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
+import '../capture/roi_video.dart' show VideoClipTotals;
 import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
@@ -143,6 +144,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Videos deleted to free storage and the space freed (round 236, from
   /// the `video_cleanup` records after the session's end).
   int _videosDeleted = 0;
+
+  /// The clips of a recorded video session (round 239), from the log.
+  VideoClipTotals _clipTotals = VideoClipTotals.none;
   int _videosFreedBytes = 0;
 
   // Imported videos (round 229): the "Run AI on videos" settings, i.e. the
@@ -246,6 +250,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _galleryExportBusy = false;
   int _galleryExportDone = 0;
   int _galleryExportTotal = 0;
+  // Round 239: the running copy is of video clips, not photos.
+  bool _galleryExportVideos = false;
 
   @override
   void initState() {
@@ -256,6 +262,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _loadPostHoc();
     _loadVideoRun();
     _loadIdentification();
+    _loadClipTotals();
+  }
+
+  Future<void> _loadClipTotals() async {
+    try {
+      final t = await VideoClipTotals.read(widget.logFile.parent);
+      if (mounted && t.count + t.skippedBursts > 0) setState(() => _clipTotals = t);
+    } catch (e) {
+      logSwallowed('summary_clip_totals', e);
+    }
   }
 
   /// Reads the video analysis settings from the head of
@@ -562,7 +578,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _spans.addAll(index.trackSpans);
       _trackSource = index.trackSource;
       _postTrackStart = index.postTrackStart;
-      if (_importedVideoSession) {
+      if (_showRunGraphs) {
         final samples = await VideoRunSamples.read(
           File('${widget.logFile.parent.path}/${VideoDetector.outputFileName}'),
         );
@@ -948,11 +964,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// settings, and the AI runs afterwards ("Run AI on videos").
   bool get _importedVideoSession => _startRec?['source'] == 'imported_video';
 
+  /// Time-lapse bursts recorded as video clips (round 238): a live camera
+  /// session (its own temperature, fps and power records), but its clips are
+  /// analysed afterwards like imported ones.
+  bool get _recordedVideoSession =>
+      _timeLapseSession && _setting('timeLapseSaveAs') == 'video';
+
+  /// Either kind of video session: a Video tab, "Run AI on videos".
+  bool get _videoSession => _importedVideoSession || _recordedVideoSession;
+
+  /// The extra graphs show the phone while the AI ran on the videos (round
+  /// 232) instead of during the recording: always for imported videos, and
+  /// by choice for recorded bursts (round 239).
+  bool get _showRunGraphs =>
+      _importedVideoSession || (_recordedVideoSession && _graphsOfAnalysis);
+  bool _graphsOfAnalysis = false;
+
   /// Plain-language mode shown first in Setup's Overview. Sessions older
   /// than the capture-trigger setting were AI-detector sessions unless they
   /// carry the legacy motion-only flag handled above.
   String get _captureModeLabel => _importedVideoSession
       ? 'Imported videos (AI runs afterwards)'
+      : _recordedVideoSession
+      ? 'Time-lapse video bursts (AI runs afterwards)'
       : _timeLapseSession
       ? 'Time-lapse photo bursts (no AI)'
       : _motionOnlySession
@@ -1109,7 +1143,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     // --- Model & detection ---
     rows.add(_subhead('Model & detection'));
-    if (_importedVideoSession) {
+    if (_videoSession) {
       // Round 229: what "Run AI on videos" used (video_detections.jsonl);
       // labels match that screen's controls.
       final run = _videoRun;
@@ -1255,7 +1289,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     // --- Photos & capture ---
-    rows.add(_subhead(_importedVideoSession ? 'Videos' : 'Photos & capture'));
+    rows.add(
+      _subhead(
+        _importedVideoSession
+            ? 'Videos'
+            : _recordedVideoSession
+            ? 'Time-lapse video'
+            : 'Photos & capture',
+      ),
+    );
     add(
       'Output folder',
       _setting('folderName') ?? widget.logFile.parent.path.split('/').last,
@@ -1266,9 +1308,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Clips', video['clips']);
       final bytes = video['total_bytes'];
       add('Video files', bytes is num ? formatBytes(bytes.toInt()) : null);
-      if (_videosDeleted > 0) {
-        add('Videos deleted', '$_videosDeleted (${formatBytes(_videosFreedBytes)} freed)');
-      }
+    } else if (_recordedVideoSession) {
+      // Round 239: from the clips' own `video_clip` records.
+      final t = _clipTotals;
+      add('Clips', t.count);
+      add('Video files', formatBytes(t.bytes));
+      add('Filmed time (all clips)', _hmsLabel(t.durationMs));
+      if (t.skippedBursts > 0) add('Bursts without a clip', t.skippedBursts);
+    }
+    if (_videosDeleted > 0) {
+      add('Videos deleted', '$_videosDeleted (${formatBytes(_videosFreedBytes)} freed)');
     }
     // The session's operating mode (round 97 enum; older sessions carry the
     // motion-only bool shown in Heat management instead — add() skips null).
@@ -1533,12 +1582,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final trackNa = noAi && !afterwards;
     rows.add(
       _subhead(
-        _importedVideoSession && !afterwards
+        _videoSession && !afterwards
             ? 'Visit tracking'
             : 'Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
       ),
     );
-    if (_importedVideoSession) {
+    if (_videoSession) {
       addNote(
         afterwards
             ? 'Visits found afterwards with "Find visits" on the "Run AI on '
@@ -1579,7 +1628,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
     }
     // Round 234: frames "Find visits" kept of each visit.
-    if (afterwards && _importedVideoSession) {
+    if (afterwards && _videoSession) {
       final keep = KeepFramesSettings.fromJson(_post('keep_frames'));
       add(
         'Kept frames per visit',
@@ -1731,12 +1780,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // Imported videos (round 229): the clips' total length. The session
       // runs from the first clip's start to the last one's end, gaps
       // included, and those gaps were not filmed.
-      if ((_startRec?['video'] as Map?)?['total_duration_ms']
+      if (((_startRec?['video'] as Map?)?['total_duration_ms'] ??
+              (_recordedVideoSession ? _clipTotals.durationMs : null))
           case final num filmedMs)
         _stat('Filmed time (all clips)', _hmsLabel(filmedMs.toInt())),
       _stat(
         'Model',
-        _importedVideoSession
+        _videoSession
             ? '${_videoRun?['model_name'] ?? 'Not analyzed yet'}'
             : _noAiSession
             ? 'Not applicable (no AI detector used)'
@@ -1798,6 +1848,45 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// on disk (`roi_frames/` + the reference photos in `gt_frames/`), not
   /// from the log, so crash-ended sessions (whose log may be missing its
   /// tail) still export every file.
+  /// Round 239: "Copy videos" on the Video tab, like the photos.
+  Future<void> _confirmExportVideosToGallery() async {
+    final files = VideoDetector.clipsOf(widget.logFile.parent);
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This session has no videos left to copy (they were deleted).')),
+      );
+      return;
+    }
+    final bytes = files.fold<int>(0, (s, f) => s + f.lengthSync());
+    final album = galleryAlbumName(
+      widget.logFile.parent.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
+    );
+    final n = files.length;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Copy $n ${n == 1 ? 'video' : 'videos'} to Gallery?'),
+        content: Text(
+          'Copies the video clips of this session into the phone\'s Gallery '
+          'app, as the album "Movies/FaunaPulse/$album". The copies take about '
+          '${formatBytes(bytes)} of extra storage; the originals stay in the '
+          'session folder, and deleting those later ("Free storage") leaves the '
+          'copies alone. Videos already copied are skipped, so re-running is safe.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Copy', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    await _runGalleryExport(files, album, videos: true);
+  }
+
   Future<void> _confirmExportPhotosToGallery() async {
     // Old sessions' gt_frames files may share roi_ names with detection
     // photos of the same millisecond — the native same-name skip would then
@@ -1856,31 +1945,33 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Runs the chunked copy with a progress bar, then reports the counts.
   /// `exportPhotosToGallery` never throws (failures are counted and logged),
   /// so the try/finally only guarantees the busy flag resets.
-  Future<void> _runGalleryExport(List<File> files, String album) async {
+  Future<void> _runGalleryExport(List<File> files, String album, {bool videos = false}) async {
     setState(() {
       _galleryExportBusy = true;
+      _galleryExportVideos = videos;
       _galleryExportDone = 0;
       _galleryExportTotal = files.length;
     });
     GalleryExportResult res;
+    void progress(int done, int total) {
+      if (mounted) setState(() => _galleryExportDone = done);
+    }
+
     try {
-      res = await exportPhotosToGallery(
-        files,
-        album,
-        onProgress: (done, total) {
-          if (mounted) setState(() => _galleryExportDone = done);
-        },
-      );
+      res = videos
+          ? await exportVideosToGallery(files, album, onProgress: progress)
+          : await exportPhotosToGallery(files, album, onProgress: progress);
     } finally {
       if (mounted) setState(() => _galleryExportBusy = false);
     }
     if (!mounted) return;
+    final what = videos ? 'videos' : 'photos';
     final msg = !res.supported
         ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
-              'older Android. The photos are still on the phone in the '
+              'older Android. The $what are still on the phone in the '
               'session folder (reachable over USB).'
-        : 'Copied ${res.exported} photos to Gallery ▸ '
-              'Pictures/FaunaPulse/$album.'
+        : 'Copied ${res.exported} $what to Gallery ▸ '
+              '${videos ? 'Movies' : 'Pictures'}/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
               '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -1925,7 +2016,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Imported videos get a "Video" tab instead of "Photos" (round 231).
   /// Until the start record is read, a videos/ folder decides, so the tab
   /// label does not flip once loading is done.
-  bool get _videoTab => _startRec == null ? _hasVideoFolder : _importedVideoSession;
+  bool get _videoTab => _startRec == null ? _hasVideoFolder : _videoSession;
   late final bool _hasVideoFolder = Directory(
     '${widget.logFile.parent.path}/videos',
   ).existsSync();
@@ -1947,6 +2038,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       padding: _tabPadding,
       onOpenAnalysis: _openVideoAnalysis,
       scrollLocked: _photoViewerZoomed,
+      header: [
+        if (_clipTotals.count > 0) ...[
+          const SizedBox(height: 6),
+          Text(_clipTotals.label, style: const TextStyle(fontSize: 13)),
+        ],
+      ],
       footer: _photoSection(videoFrames: true),
     );
   }
@@ -1966,6 +2063,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     await _loadVideoRun();
     if (!mounted) return;
     _indexFuture = null;
+    _clearGraphData();
+    if (_graphsRequested) await _loadGraphs();
+    // New visits keep other frames, and may outdate the identification.
+    if (_photosRequested && mounted) await _loadPhotos();
+    if (mounted) await _loadIdentification();
+  }
+
+  /// Empties what [_loadGraphs] fills, before it runs again.
+  void _clearGraphData() {
     _spans.clear();
     _temps.clear();
     _headroom.clear();
@@ -1976,10 +2082,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _energyTotalWh = _powerAvg = _powerMedian = _powerMin = _powerMax = null;
     _chargingDuringSession = false;
     _uniqueTracks = null;
-    if (_graphsRequested) await _loadGraphs();
-    // New visits keep other frames, and may outdate the identification.
-    if (_photosRequested && mounted) await _loadPhotos();
-    if (mounted) await _loadIdentification();
   }
 
   Widget _photosTab() {
@@ -2059,9 +2161,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? '${_spans.length} (found afterwards in the photos)'
           : _motionOnlySession
           ? 'n/a (motion-only capture — detector off)'
-          : _timeLapseSession
+          : _timeLapseSession && !_recordedVideoSession
           ? 'n/a (time-lapse — detector off)'
-          : _importedVideoSession
+          : _videoSession
           ? (_visitsAfterwards
                 ? '${_spans.length} (found afterwards in the videos)'
                 : _graphsLoading
@@ -2120,126 +2222,153 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       )
-    else if (_extraGraphsExpanded && _importedVideoSession)
-      ..._videoRunGraphs()
-    else if (_extraGraphsExpanded) ...[
-      const SizedBox(height: 12),
-      const Text(
-        'Phone temperature over the session (°C)',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 12),
-      _series(_temps, const Color(0xFFFF7043), '°'),
-      _statsText(_temps, decimals: 1, unit: '°C'),
-      if (_headroom.length >= 2) ...[
-        const SizedBox(height: 28),
-        const Text(
-          'Thermal headroom (0 = cool → 1 = throttling)',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'How close the phone is to slowing itself down to cool off, from the '
-          'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
-          '1). When this nears 1 the phone throttles and the FPS drops — a faster, '
-          'more comparable signal than battery temperature.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        _series(_headroom, const Color(0xFFEF5350), ''),
-      ] else ...[
-        const SizedBox(height: 12),
-        const Text(
-          'Thermal headroom: not reported by this phone (common on many devices — '
-          'e.g. the Xiaomi here). This is not a bug. Use the Temperature and '
-          'Inference-time graphs as the throttle indicators on this device.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ],
+    else if (_extraGraphsExpanded && _showRunGraphs) ...[
+      if (_recordedVideoSession) _graphsSourceSwitch(),
+      ..._videoRunGraphs(),
+    ] else if (_extraGraphsExpanded && _recordedVideoSession && _videoRun != null) ...[
+      _graphsSourceSwitch(),
+      ..._liveGraphs(),
+    ]
+    else if (_extraGraphsExpanded)
+      ..._liveGraphs(),
+  ];
+
+  /// The recording's own temperature, FPS and power graphs.
+  List<Widget> _liveGraphs() => [
+    const SizedBox(height: 12),
+    const Text(
+      'Phone temperature over the session (°C)',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    const SizedBox(height: 12),
+    _series(_temps, const Color(0xFFFF7043), '°'),
+    _statsText(_temps, decimals: 1, unit: '°C'),
+    if (_headroom.length >= 2) ...[
       const SizedBox(height: 28),
       const Text(
-        'Detector FPS over the session',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 12),
-      _series(_fps, const Color(0xFF66BB6A), ''),
-      _statsText(_fps, decimals: 1, unit: ' fps'),
-      if (_infMs.length >= 2) ...[
-        const SizedBox(height: 28),
-        const Text(
-          'Detector inference time (ms) — throttle signal',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        // Precision matters here (round 188, owner question): the plotted
-        // `inf_ms` is the native timer around rtModel.run() ONLY — tensor
-        // upload, interpreter run, output read-back. Image prep (`pre_ms`)
-        // and box post-processing/NMS (`post_ms`) are logged in the same fps
-        // records but are NOT in this graph. Raw per-frame values, never
-        // smoothed. Keep this text in sync with ObjectDetector.kt's timing.
-        const Text(
-          'Milliseconds the detector model itself needs per frame: only the '
-          'neural-network run on the chip (including handing the prepared '
-          'image in and reading the results out). Image preparation before '
-          'it and detection-box post-processing after it are NOT included — '
-          'they are recorded separately in the data log (pre_ms and post_ms) '
-          'and are normally much smaller. Each point is a raw single-frame '
-          'value, not an average. This number climbs when the chip slows '
-          'itself to cool off (thermal throttling) — often before battery '
-          'temperature moves — which is what makes the FPS above drop. Read '
-          'it against the FPS and temperature graphs on the same left→right '
-          'time axis.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        _series(_infMs, const Color(0xFF42A5F5), ' ms'),
-        _statsText(_infMs, decimals: 1, unit: ' ms'),
-      ],
-      const SizedBox(height: 28),
-      const Text(
-        'Power draw over the session (W)',
+        'Thermal headroom (0 = cool → 1 = throttling)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
-      if (_chargingDuringSession)
-        const Text(
-          'Not shown: the phone was plugged in during (part of) this session. '
-          'The battery sensor then measures charging current — not what the '
-          'phone consumes — so a power or energy estimate would be wrong. '
-          'Record a full session on battery to see this graph.',
-          style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
-        )
-      else ...[
-        // Honesty text (round 188, owner question): name the estimate's
-        // source and the silent corrections, and frame the battery-% drop
-        // as the cross-check. Keep in sync with [_buildEnergySeries].
-        const Text(
-          'Watts (W) = how fast energy is being used right now. Estimated '
-          'from the phone\'s own battery sensors (current × voltage, '
-          'lightly smoothed); the app corrects known phone quirks (some '
-          'report milliamps instead of microamps, some report a doubled '
-          'two-cell voltage). Phone battery sensors are coarse, so treat '
-          'this as a good indication rather than a lab measurement — the '
-          'battery-percentage drop below is an independent cross-check.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
+      const Text(
+        'How close the phone is to slowing itself down to cool off, from the '
+        'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
+        '1). When this nears 1 the phone throttles and the FPS drops — a faster, '
+        'more comparable signal than battery temperature.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      _series(_headroom, const Color(0xFFEF5350), ''),
+    ] else ...[
+      const SizedBox(height: 12),
+      const Text(
+        'Thermal headroom: not reported by this phone (common on many devices — '
+        'e.g. the Xiaomi here). This is not a bug. Use the Temperature and '
+        'Inference-time graphs as the throttle indicators on this device.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+    ],
+    const SizedBox(height: 28),
+    const Text(
+      'Detector FPS over the session',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    const SizedBox(height: 12),
+    _series(_fps, const Color(0xFF66BB6A), ''),
+    _statsText(_fps, decimals: 1, unit: ' fps'),
+    if (_infMs.length >= 2) ...[
+      const SizedBox(height: 28),
+      const Text(
+        'Detector inference time (ms) — throttle signal',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      // Precision matters here (round 188, owner question): the plotted
+      // `inf_ms` is the native timer around rtModel.run() ONLY — tensor
+      // upload, interpreter run, output read-back. Image prep (`pre_ms`)
+      // and box post-processing/NMS (`post_ms`) are logged in the same fps
+      // records but are NOT in this graph. Raw per-frame values, never
+      // smoothed. Keep this text in sync with ObjectDetector.kt's timing.
+      const Text(
+        'Milliseconds the detector model itself needs per frame: only the '
+        'neural-network run on the chip (including handing the prepared '
+        'image in and reading the results out). Image preparation before '
+        'it and detection-box post-processing after it are NOT included — '
+        'they are recorded separately in the data log (pre_ms and post_ms) '
+        'and are normally much smaller. Each point is a raw single-frame '
+        'value, not an average. This number climbs when the chip slows '
+        'itself to cool off (thermal throttling) — often before battery '
+        'temperature moves — which is what makes the FPS above drop. Read '
+        'it against the FPS and temperature graphs on the same left→right '
+        'time axis.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      _series(_infMs, const Color(0xFF42A5F5), ' ms'),
+      _statsText(_infMs, decimals: 1, unit: ' ms'),
+    ],
+    const SizedBox(height: 28),
+    const Text(
+      'Power draw over the session (W)',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    const SizedBox(height: 4),
+    if (_chargingDuringSession)
+      const Text(
+        'Not shown: the phone was plugged in during (part of) this session. '
+        'The battery sensor then measures charging current — not what the '
+        'phone consumes — so a power or energy estimate would be wrong. '
+        'Record a full session on battery to see this graph.',
+        style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+      )
+    else ...[
+      // Honesty text (round 188, owner question): name the estimate's
+      // source and the silent corrections, and frame the battery-% drop
+      // as the cross-check. Keep in sync with [_buildEnergySeries].
+      const Text(
+        'Watts (W) = how fast energy is being used right now. Estimated '
+        'from the phone\'s own battery sensors (current × voltage, '
+        'lightly smoothed); the app corrects known phone quirks (some '
+        'report milliamps instead of microamps, some report a doubled '
+        'two-cell voltage). Phone battery sensors are coarse, so treat '
+        'this as a good indication rather than a lab measurement — the '
+        'battery-percentage drop below is an independent cross-check.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      _series(_power, const Color(0xFFFFCA28), 'W'),
+      if (_powerAvg != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Average power ${_powerAvg!.toStringAsFixed(2)} W '
+          '(median ${_powerMedian!.toStringAsFixed(2)} W; '
+          'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
+          'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
+          '(the power curve summed over the session); '
+          'battery level dropped $_batteryUsedLabel.',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
-        const SizedBox(height: 12),
-        _series(_power, const Color(0xFFFFCA28), 'W'),
-        if (_powerAvg != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Average power ${_powerAvg!.toStringAsFixed(2)} W '
-            '(median ${_powerMedian!.toStringAsFixed(2)} W; '
-            'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
-            'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
-            '(the power curve summed over the session); '
-            'battery level dropped $_batteryUsedLabel.',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-        ],
       ],
     ],
   ];
+
+  /// Recorded bursts (round 239): which graphs the extra section shows.
+  Widget _graphsSourceSwitch() => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(value: false, label: Text('While recording')),
+        ButtonSegment(value: true, label: Text('While the AI ran')),
+      ],
+      selected: {_graphsOfAnalysis},
+      showSelectedIcon: false,
+      onSelectionChanged: (s) async {
+        setState(() => _graphsOfAnalysis = s.first);
+        _clearGraphData();
+        await _loadGraphs();
+      },
+    ),
+  );
 
   /// The extra graphs of an imported video session (round 232): the phone
   /// while "Run AI on videos" ran, from the samples [VideoDetector] writes,
@@ -2707,6 +2836,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             }
           },
         ),
+      // --- Copy the video clips to the Gallery (round 239, Video tab) ---
+      if (videoFrames) ...[
+        const Divider(height: 32, color: Colors.white24),
+        const HelpLabel(
+          label: 'Copy videos to gallery',
+          labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          helperText:
+              'Copies the video clips of this session into the phone\'s own Gallery app, as one '
+              'album under Movies/FaunaPulse, to watch them or share them with other apps. The '
+              'copies take extra storage (the originals stay in the session folder). They are '
+              'plain videos: the AI\'s boxes are not drawn into them.',
+        ),
+        const SizedBox(height: 8),
+        ..._galleryProgress(videos: true),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: _galleryExportBusy ? null : _confirmExportVideosToGallery,
+            icon: const Icon(Icons.video_library),
+            label: const Text('Copy videos'),
+          ),
+        ),
+      ],
       // --- Copy photos to the phone's own Gallery app (round 93; moved here
       // from the retired Overview tab, round 187) ---
       const Divider(height: 32, color: Colors.white24),
@@ -2724,19 +2876,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'in this app\'s photo viewer are not part of the image files.',
       ),
       const SizedBox(height: 8),
-      if (_galleryExportBusy) ...[
-        LinearProgressIndicator(
-          value: _galleryExportTotal == 0
-              ? null
-              : _galleryExportDone / _galleryExportTotal,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Copying photo $_galleryExportDone of $_galleryExportTotal…',
-          style: const TextStyle(fontSize: 12),
-        ),
-        const SizedBox(height: 8),
-      ],
+      ..._galleryProgress(videos: false),
       Align(
         alignment: Alignment.centerLeft,
         child: FilledButton.tonalIcon(
@@ -2748,6 +2888,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ..._identifySection(),
     ];
   }
+
+  /// The progress of a running gallery copy, under the section that started it.
+  List<Widget> _galleryProgress({required bool videos}) => [
+    if (_galleryExportBusy && _galleryExportVideos == videos) ...[
+      LinearProgressIndicator(
+        value: _galleryExportTotal == 0 ? null : _galleryExportDone / _galleryExportTotal,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Copying ${videos ? 'video' : 'photo'} $_galleryExportDone of $_galleryExportTotal…',
+        style: const TextStyle(fontSize: 12),
+      ),
+      const SizedBox(height: 8),
+    ],
+  ];
 
   /// "Identify organisms" (round 208), at the end of the Photos tab and of
   /// the Video tab (round 231).
@@ -3005,16 +3160,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ? 'Motion-only capture session — the AI detector was off, so '
                     'no visits or tracks were recorded. Photos were taken on '
                     'ROI motion; see the Photos tab.'
-              : _timeLapseSession
+              : _timeLapseSession && !_videoSession
               ? 'Time-lapse session — the AI detector was off, so no visits '
                     'or tracks were recorded. Photos were taken in scheduled '
                     'bursts; see the Photos tab.'
               : _visitsAfterwards
               ? 'No visits found in the videos.'
-              : _importedVideoSession
-              ? 'Imported videos: no visits yet. "Run AI on videos" on the '
-                    'home screen finds the insects, then "Find visits" there '
-                    'follows each one from frame to frame.'
+              : _videoSession
+              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no visits yet. "Run AI on videos" '
+                    '(Video tab, or the session\'s gear menu on the home screen) finds the '
+                    'insects, then "Find visits" there follows each one from frame to frame.'
               : 'No visits recorded.',
           textAlign: TextAlign.center,
         ),

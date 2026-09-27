@@ -18,7 +18,11 @@ Terms used below:
 
 ## 1. The workflow
 
-1. **Import**: home screen ⋮ → *Import videos…*. One session per site and day works
+1. **Import or record**: home screen ⋮ → *Import videos…* for clips filmed elsewhere, or
+   record them with the app itself (round 238): capture trigger *Time-lapse*, *Save bursts
+   as: Video*. Recorded clips are already the ROI square, carry the camera's own start
+   time, and go straight to step 2 (their session summary opens on the Video tab with a
+   *Run AI on videos* button). For imported clips: one session per site and day works
    best. Check the start time on the import sheet: visits per hour and the dashboard use
    it. Optionally, draw a square around the flower. The analysed area is scaled down to
    the model's input size, so a small insect in a whole 4K frame shrinks to a few pixels;

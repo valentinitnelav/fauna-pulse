@@ -48,6 +48,9 @@ class VideoReviewPlayer extends StatefulWidget {
   /// organisms").
   final List<Widget> footer;
 
+  /// Shown under the tab's explanation (round 239: the clips' totals).
+  final List<Widget> header;
+
   /// Freezes the list's scrolling while a kept frame below is zoomed, so a
   /// drag pans the picture instead of scrolling the page away.
   final bool scrollLocked;
@@ -58,6 +61,7 @@ class VideoReviewPlayer extends StatefulWidget {
     required this.padding,
     required this.onOpenAnalysis,
     this.footer = const [],
+    this.header = const [],
     this.scrollLocked = false,
   });
 
@@ -386,6 +390,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           'can trail a fast insect a little. Sound is off unless you switch it on.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
         ),
+        ...widget.header,
         const SizedBox(height: 8),
         if (_loading)
           const Padding(
@@ -459,7 +464,19 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           const SizedBox(height: 12),
           // With every video deleted (round 236) nothing can be analysed
           // again; "Find visits" there still works.
-          if (_files.isEmpty)
+          if (_files.isNotEmpty && _timeline.clips.isEmpty)
+            // Round 239: before the first analysis there is no square to
+            // move yet (recorded bursts, fresh imports).
+            const HelpLabel(
+              label: 'Not analysed yet',
+              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              helperText:
+                  '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
+                  'be stopped and continued; keep the phone charging. "Find visits" there then '
+                  'follows each insect from frame to frame, and the boxes and visits show on the '
+                  'video here.',
+            )
+          else if (_files.isEmpty)
             const HelpLabel(
               label: 'Other visit settings?',
               labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),

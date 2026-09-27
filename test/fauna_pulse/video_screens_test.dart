@@ -404,6 +404,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('recorded video bursts: whole picture by default, with the reason (r239)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_analysis_recorded');
+    final session = Directory('${tmp.path}/Balcony');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/roi_tok1_a.mp4').writeAsStringSync('video');
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      [
+        '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"timelapse","timeLapseSaveAs":"video"}}',
+        '{"type":"video_clip","time_ms":11000,"file":"videos/roi_tok1_a.mp4","duration_ms":10000,"burst":0}',
+        '{"type":"end_of_session","time_ms":20000,"ended_normally":true}',
+      ].join('\n'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    final whole = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
+    expect(whole.selected, {false}, reason: 'whole picture');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('square editor fits 360 px and returns a side on the 32-pixel grid', (tester) async {
     simulateBottomSystemBar(tester);
     final png = base64Decode(

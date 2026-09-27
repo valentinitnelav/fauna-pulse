@@ -19,6 +19,7 @@
 //                          stop_failed), message
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -265,5 +266,53 @@ class TimeLapseVideoClips {
       if (r['flushed'] == false) 'flushed': false,
       'error': ?r['error'],
     });
+  }
+}
+
+/// Totals of a session's clips from its log (round 239): the `video_clip`
+/// records, and the bursts with a `video_skipped` record and no clip.
+class VideoClipTotals {
+  final int count;
+  final int bytes;
+  final int durationMs;
+  final int skippedBursts;
+  const VideoClipTotals(this.count, this.bytes, this.durationMs, [this.skippedBursts = 0]);
+
+  static const none = VideoClipTotals(0, 0, 0);
+
+  /// "3 clips · 25.7 s filmed · 3.3 MB".
+  String get label {
+    final s = durationMs / 1000;
+    final filmed = s < 60
+        ? '${s.toStringAsFixed(1)} s'
+        : s < 3600
+        ? '${s ~/ 60} min ${(s % 60).floor()} s'
+        : '${s ~/ 3600} h ${(s % 3600) ~/ 60} min';
+    return '$count clip${count == 1 ? '' : 's'} · $filmed filmed · ${formatBytes(bytes)}';
+  }
+
+  static Future<VideoClipTotals> read(Directory sessionDir) async {
+    final log = File('${sessionDir.path}/session.jsonl');
+    if (!log.existsSync()) return none;
+    var count = 0, bytes = 0, ms = 0;
+    final clipBursts = <int>{};
+    final skipped = <int>{};
+    final lines = log.openRead().transform(utf8.decoder).transform(const LineSplitter());
+    await for (final line in lines) {
+      if (!line.contains('"video_clip"') && !line.contains('"video_skipped"')) continue;
+      try {
+        final rec = jsonDecode(line) as Map<String, dynamic>;
+        final burst = (rec['burst'] as num?)?.toInt();
+        if (rec['type'] == 'video_clip') {
+          count++;
+          bytes += (rec['size_bytes'] as num?)?.toInt() ?? 0;
+          ms += (rec['duration_ms'] as num?)?.toInt() ?? 0;
+          if (burst != null) clipBursts.add(burst);
+        } else if (rec['type'] == 'video_skipped' && burst != null) {
+          skipped.add(burst);
+        }
+      } catch (_) {}
+    }
+    return VideoClipTotals(count, bytes, ms, skipped.difference(clipBursts).length);
   }
 }

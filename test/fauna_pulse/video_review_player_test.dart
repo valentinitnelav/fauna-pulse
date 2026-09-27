@@ -20,6 +20,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -178,6 +179,65 @@ void _writeDetections(Directory dir, String clip, {List<double>? roi, List<int>?
       }),
     ].join('\n')}\n',
   );
+}
+
+/// A session recorded with time-lapse video bursts (round 238): two clips
+/// (fake files) and a third burst without one (storage low).
+Directory _recordedSession() {
+  final tmp = Directory.systemTemp.createTempSync('video_bursts');
+  addTearDown(() {
+    try {
+      tmp.deleteSync(recursive: true);
+    } catch (_) {}
+  });
+  final dir = Directory('${tmp.path}/sessions/Balcony')..createSync(recursive: true);
+  final videos = Directory('${dir.path}/videos')..createSync();
+  const a = 'roi_tok1_2026-09-27_120000_000.mp4', b = 'roi_tok1_2026-09-27_120025_000.mp4';
+  for (final n in [a, b]) {
+    File('${videos.path}/$n').writeAsStringSync('video');
+  }
+  final t0 = DateTime(2026, 9, 27, 12).millisecondsSinceEpoch;
+  String rec(String type, int ms, Map<String, dynamic> m) => jsonEncode({'type': type, 'time_ms': ms, ...m});
+  Map<String, dynamic> clip(String n, int burst, int start) => {
+    'file': 'videos/$n',
+    'start_epoch_ms': start,
+    'start_time_source': 'camera',
+    'duration_ms': 10000,
+    'size_bytes': 1200000,
+    'width': 480,
+    'height': 480,
+    'rotation': 0,
+    'codec': 'video/avc',
+    'frame_count': 150,
+    'fps_mean': 15.0,
+    'fps_nominal': 15,
+    'frames_skipped': 0,
+    'burst': burst,
+    'end_reason': 'burst_end',
+  };
+  File('${dir.path}/session.jsonl').writeAsStringSync(
+    '${[
+      rec('start_of_session', t0, {
+        'file_token': 'tok1',
+        'config': {
+          'captureTrigger': 'timelapse',
+          'timeLapseSaveAs': 'video',
+          'timeLapseVideoFps': 15,
+          'durationSeconds': 10.0,
+          'timeLapseGapSeconds': 15.0,
+          'stepSeconds': 1.0,
+        },
+      }),
+      rec('timelapse_video_start', t0, {'file': 'videos/$a', 'burst': 0, 'fps': 15, 'side_px': 480}),
+      rec('thermal', t0 + 5000, {'battery_temp_c': 30.0}),
+      rec('video_clip', t0 + 10000, clip(a, 0, t0)),
+      rec('timelapse_video_start', t0 + 25000, {'file': 'videos/$b', 'burst': 1, 'fps': 15, 'side_px': 480}),
+      rec('video_clip', t0 + 35000, clip(b, 1, t0 + 25000)),
+      rec('video_skipped', t0 + 50000, {'burst': 2, 'reason': 'storage_low'}),
+      rec('end_of_session', t0 + 55000, {'ended_normally': true, 'unique_track_count': 0}),
+    ].join('\n')}\n',
+  );
+  return dir;
 }
 
 void main() {
@@ -438,6 +498,83 @@ void main() {
     await tester.tap(find.text('$b · not analysed').last);
     await _pumpUntil(tester, find.textContaining('This clip was not analysed yet'));
     expect(player.calls.where((c) => c.startsWith('create')), ['create $a', 'create $b']);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('recorded video bursts: Video tab, clip line, copy videos, Setup rows, graphs switch (r239)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final dir = _recordedSession();
+    const channel = MethodChannel('faunapulse/crop');
+    final copied = <List<Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'saveVideosToGallery');
+      expect((call.arguments as Map)['album'], 'Balcony');
+      copied.add((call.arguments as Map)['paths'] as List<Object?>);
+      return {'supported': true, 'exported': 1, 'skipped': 0, 'failed': 0};
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.text('Video'), findsOneWidget);
+    expect(find.text('Photos'), findsNothing);
+    await _pumpUntil(tester, find.text('2 clips · 20.0 s filmed · 2.3 MB'));
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Not analysed yet'), 200, scrollable: scrollable);
+    expect(find.text('Square in the wrong place?'), findsNothing);
+    expect(find.text('Run AI on videos'), findsOneWidget);
+
+    // Copy videos: one clip per call, then the counts.
+    await tester.scrollUntilVisible(find.text('Copy videos'), 200, scrollable: scrollable);
+    expectAboveBottomInset(tester, find.text('Copy videos'), label: 'Copy videos');
+    await tester.tap(find.text('Copy videos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy 2 videos to Gallery?'), findsOneWidget);
+    expect(find.textContaining('"Movies/FaunaPulse/Balcony"'), findsOneWidget);
+    await tester.tap(find.text('Copy'));
+    await _pumpUntil(tester, find.textContaining('Copied 2 videos to Gallery ▸ Movies/FaunaPulse/Balcony.'));
+    expect(copied.map((c) => c.length), [1, 1]);
+    expect(copied.first.single, endsWith('videos/roi_tok1_2026-09-27_120000_000.mp4'));
+    expect(tester.takeException(), isNull);
+    // The snack bar's 4 s start after its entrance animation.
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    // Setup: the mode and the clips.
+    await tester.tap(find.text('Setup'));
+    await tester.pumpAndSettle();
+    final setup = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Time-lapse video bursts (AI runs afterwards)'), 200, scrollable: setup);
+    await tester.scrollUntilVisible(find.textContaining('All session settings'), 200, scrollable: setup);
+    await tester.tap(find.textContaining('All session settings'));
+    await tester.pumpAndSettle();
+    await expectSummaryRowValue(tester, setup, label: 'Clips', value: '2');
+    await expectSummaryRowValue(tester, setup, label: 'Bursts without a clip', value: '1');
+    await expectSummaryRowValue(tester, setup, label: 'Save bursts as', value: 'video');
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    // After an analysis and Find visits: the visits, and the graphs can show
+    // the recording or the analysis run.
+    _writeDetections(dir, 'roi_tok1_2026-09-27_120000_000.mp4');
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1)));
+    await _pumpUntil(tester, find.text('1 (found afterwards in the videos)'));
+    final graphs = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.textContaining('Extra graphs'), 300, scrollable: graphs);
+    if (find.text('While recording').evaluate().isEmpty) {
+      await tester.tap(find.textContaining('Extra graphs'));
+      await tester.pumpAndSettle();
+    }
+    await tester.scrollUntilVisible(find.text('While the AI ran'), 200, scrollable: graphs);
+    expect(find.text('Phone temperature over the session (°C)'), findsOneWidget);
+    await tester.tap(find.text('While the AI ran'));
+    await _pumpUntil(tester, find.textContaining('No measurements yet.'));
+    expect(find.text('Phone temperature over the session (°C)'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());

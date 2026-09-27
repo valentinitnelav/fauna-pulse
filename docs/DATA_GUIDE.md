@@ -299,6 +299,14 @@ afterwards like imported videos (§9).
 While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
 `camera_paused` and a new clip starts for the same `burst` once the camera is back.
 
+Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
+Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
+clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`
+and `visits.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
+`power` records describe the phone during the recording. *Copy videos* (Video tab) copies
+the clips into the phone's Gallery under `Movies/FaunaPulse/<session>` (Android 10+);
+the copies are not recorded in the session log.
+
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 
 Written only in time-lapse sessions with "Turn camera off between bursts"
@@ -912,6 +920,8 @@ logged). `session.jsonl` then only records where the clips came from: the start 
 | `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file picker copies every file it hands over. |
 | `after_previous` | A clip with an uncertain time that would overlap the clip before it, placed right after that clip (so several WhatsApp clips from one day play one after the other instead of all at noon). Clips with a reliable time never move, so a real overlap (two cameras) stays visible. |
 | `user` | The user set the start on the import screen. |
+| `camera` | Recorded by the app (time-lapse video bursts, round 238): the camera's time of the first frame. |
+| `clock` | Recorded by the app, but the camera gave no usable time: the phone's clock when the clip opened. |
 
 When the file name's time and the stored time differ by more than 2 minutes, the name wins
 but the import screen marks the time as uncertain. Messengers such as WhatsApp remove the

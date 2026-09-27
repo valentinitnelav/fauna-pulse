@@ -258,24 +258,29 @@ class VideoDetector {
     return files;
   }
 
-  /// Clip start times (epoch ms) the session log knows, by file name: the
-  /// import sheet or the recorder writes one `video_clip` record per clip.
-  static Future<Map<String, int>> clipStartsFromLog(Directory sessionDir) async {
+  /// The session log's `video_clip` records by file name: the import sheet
+  /// or the time-lapse video recorder (round 238) writes one per clip.
+  static Future<Map<String, Map<String, dynamic>>> clipRecordsFromLog(Directory sessionDir) async {
     final log = File('${sessionDir.path}/session.jsonl');
-    final out = <String, int>{};
+    final out = <String, Map<String, dynamic>>{};
     if (!log.existsSync()) return out;
     final lines = log.openRead().transform(utf8.decoder).transform(const LineSplitter());
     await for (final line in lines) {
       if (!line.contains('"video_clip"')) continue;
       try {
-        final rec = jsonDecode(line) as Map;
+        final rec = jsonDecode(line) as Map<String, dynamic>;
         final file = rec['file'] as String?;
-        final start = (rec['start_epoch_ms'] as num?)?.toInt();
-        if (rec['type'] == 'video_clip' && file != null && start != null) out[file.split('/').last] = start;
+        if (rec['type'] == 'video_clip' && file != null) out[file.split('/').last] = rec;
       } catch (_) {}
     }
     return out;
   }
+
+  /// Clip start times (epoch ms) the session log knows, by file name.
+  static Future<Map<String, int>> clipStartsFromLog(Directory sessionDir) async => {
+    for (final e in (await clipRecordsFromLog(sessionDir)).entries)
+      if (e.value['start_epoch_ms'] case final num start) e.key: start.toInt(),
+  };
 
   /// Analyses every clip of [sessionDir] that is not finished yet, appending
   /// to [outputFileName]. Throws [VideoSettingsChanged] when the existing
