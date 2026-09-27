@@ -189,6 +189,10 @@ class _VideoSession {
   /// is already the camera's ROI square.
   final bool recorded;
 
+  /// Clips recorded while the live AI ran (round 240): the session's visits
+  /// stay the live AI's; the ones found here are for comparison (round 241).
+  final bool liveAi;
+
   const _VideoSession(
     this.name,
     this.dir,
@@ -201,6 +205,7 @@ class _VideoSession {
     this.visits,
     this.missingClips, {
     this.recorded = false,
+    this.liveAi = false,
   });
 
   int get allClipCount => clips.length + missingClips.length;
@@ -375,6 +380,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       {...lengths.keys, ...resume.doneClips}.difference({for (final f in files) f.path.split('/').last}),
       // Recorded clips carry their burst (round 238) or live segment (round 240) number.
       recorded: records.values.any((r) => r.containsKey('burst') || r.containsKey('segment')),
+      liveAi: records.values.any((r) => r.containsKey('segment')),
     );
   }
 
@@ -626,7 +632,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         occlusionSeconds: _prefs.occlusionSeconds,
         minHitsSeconds: _prefs.minVisitSeconds,
       );
-      final r = await _trackInBackground(session.dir.path, config, _prefs.keep);
+      final r = await _trackInBackground(session.dir.path, config, _keepFor(session));
       keptFrames = r.keptFrames;
       message =
           'Found ${r.visits} ${r.visits == 1 ? 'visit' : 'visits'} in ${r.clipsTracked} '
@@ -711,6 +717,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   // Static, so the background isolate carries only the path and settings.
+  /// The kept-frames rule for [s]; none for a live AI session (round 241):
+  /// its `roi_frames/` holds the live photos, which stay the session's own.
+  KeepFramesSettings? _keepFor(_VideoSession s) => s.liveAi ? null : _prefs.keep;
+
   static Future<VideoTrackResult> _trackInBackground(String path, SessionConfig config, KeepFramesSettings? keep) =>
       Isolate.run(() => VideoTracker.run(Directory(path), config, keep: keep));
   static Future<String?> _zipInBackground(String dir, String zip) =>
@@ -1057,7 +1067,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         (v.occlusionSeconds != _prefs.occlusionSeconds ||
             v.minHitsSeconds != _prefs.minVisitSeconds ||
             v.algorithm != _algorithm.name ||
-            v.keep != _prefs.keep);
+            v.keep != _keepFor(s));
     const amber = TextStyle(color: Colors.amber, fontSize: 13);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1071,6 +1081,16 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               'many frames counts as one visit. Takes seconds and can be repeated with other settings '
               'without analyzing the videos again.',
         ),
+        if (s.liveAi)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'These clips were recorded while the live AI ran. The visits found here are for '
+              'comparison: the session\'s Video tab shows them next to the live AI\'s ("Live AI | AI '
+              'afterwards"), while the session\'s visits, graphs and dashboard stay the live AI\'s.',
+              style: helperTextStyle,
+            ),
+          ),
         const SizedBox(height: 8),
         NumericSettingField(
           label: 'Occlusion tolerance',
@@ -1109,61 +1129,68 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           style: helperTextStyle,
         ),
         const SizedBox(height: 4),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Keep frames of each visit'),
-          subtitle: const Text(
-            'Saves pictures of every visit from the videos, like the photos the live camera takes, so '
-            'you can look at the visitors and identify them. Uses some storage: one picture is about '
-            'as big as a live photo.',
+        if (s.liveAi)
+          const Text(
+            'No frames are kept for these visits: the live AI\'s own photos stay the session\'s pictures.',
             style: helperTextStyle,
+          )
+        else ...[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Keep frames of each visit'),
+            subtitle: const Text(
+              'Saves pictures of every visit from the videos, like the photos the live camera takes, so '
+              'you can look at the visitors and identify them. Uses some storage: one picture is about '
+              'as big as a live photo.',
+              style: helperTextStyle,
+            ),
+            value: _prefs.keepFrames,
+            onChanged: busy
+                ? null
+                : (x) {
+                    setState(() => _prefs.keepFrames = x);
+                    _prefs.save();
+                  },
           ),
-          value: _prefs.keepFrames,
-          onChanged: busy
-              ? null
-              : (x) {
-                  setState(() => _prefs.keepFrames = x);
-                  _prefs.save();
-                },
-        ),
-        if (!_prefs.keepFrames && kept.saved > 0)
-          Text(
-            'Finding visits again with this off removes the ${kept.saved} frames saved before; '
-            'they can be saved again from the videos later.',
-            style: const TextStyle(color: Colors.amber, fontSize: 13),
-          ),
-        if (_prefs.keepFrames) ...[
-          NumericSettingField(
-            label: 'Keep a frame every',
-            value: _prefs.keepStepSeconds,
-            min: 0.1,
-            max: 10,
-            decimals: 1,
-            unitSuffix: 's',
-            helperText:
-                'The first frame of a visit is always kept, then one after each such step. Default 1 s, '
-                'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
-            onChanged: (x) {
-              setState(() => _prefs.keepStepSeconds = x);
-              _prefs.save();
-            },
-          ),
-          NumericSettingField(
-            label: 'For up to',
-            value: _prefs.keepDurationSeconds,
-            min: 1,
-            max: 300,
-            decimals: 0,
-            unitSuffix: 's',
-            helperText:
-                'How long into a visit frames keep being saved; a long visit gives no more after this. '
-                'Default 10 s, as the live camera\'s photo duration. With these two settings a visit '
-                'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
-            onChanged: (x) {
-              setState(() => _prefs.keepDurationSeconds = x);
-              _prefs.save();
-            },
-          ),
+          if (!_prefs.keepFrames && kept.saved > 0)
+            Text(
+              'Finding visits again with this off removes the ${kept.saved} frames saved before; '
+              'they can be saved again from the videos later.',
+              style: const TextStyle(color: Colors.amber, fontSize: 13),
+            ),
+          if (_prefs.keepFrames) ...[
+            NumericSettingField(
+              label: 'Keep a frame every',
+              value: _prefs.keepStepSeconds,
+              min: 0.1,
+              max: 10,
+              decimals: 1,
+              unitSuffix: 's',
+              helperText:
+                  'The first frame of a visit is always kept, then one after each such step. Default 1 s, '
+                  'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
+              onChanged: (x) {
+                setState(() => _prefs.keepStepSeconds = x);
+                _prefs.save();
+              },
+            ),
+            NumericSettingField(
+              label: 'For up to',
+              value: _prefs.keepDurationSeconds,
+              min: 1,
+              max: 300,
+              decimals: 0,
+              unitSuffix: 's',
+              helperText:
+                  'How long into a visit frames keep being saved; a long visit gives no more after this. '
+                  'Default 10 s, as the live camera\'s photo duration. With these two settings a visit '
+                  'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
+              onChanged: (x) {
+                setState(() => _prefs.keepDurationSeconds = x);
+                _prefs.save();
+              },
+            ),
+          ],
         ],
         const SizedBox(height: 8),
         FilledButton.tonalIcon(

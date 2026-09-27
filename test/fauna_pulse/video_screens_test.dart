@@ -433,6 +433,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('live AI session: visits for comparison, no kept frames (r241)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_analysis_live');
+    final session = Directory('${tmp.path}/Lavender');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/a.mp4').writeAsStringSync('video');
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      [
+        '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"detector","liveAiVideo":true}}',
+        '{"type":"video_clip","time_ms":11000,"file":"videos/a.mp4","duration_ms":10000,"segment":0}',
+        '{"type":"end_of_session","time_ms":20000,"ended_normally":true}',
+      ].join('\n'),
+    );
+    final settings = const VideoRunConfig(
+      modelPath: 'test_model',
+      modelName: 'test_model.tflite',
+      confidence: 0.25,
+      iou: 0.7,
+      useGpu: true,
+    ).identity;
+    File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      [
+        jsonEncode({'type': 'video_run_start', 'settings': settings}),
+        '{"type":"video_clip_done","clip":"a.mp4"}',
+      ].join('\n'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.textContaining('The visits found here are for comparison'), 200, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('No frames are kept for these visits'), 200, scrollable: list);
+    expect(find.text('Keep frames of each visit'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('square editor fits 360 px and returns a side on the 32-pixel grid', (tester) async {
     simulateBottomSystemBar(tester);
     final png = base64Decode(

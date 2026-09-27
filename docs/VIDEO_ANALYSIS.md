@@ -27,6 +27,10 @@ Terms used below:
    it. Optionally, draw a square around the flower. The analysed area is scaled down to
    the model's input size, so a small insect in a whole 4K frame shrinks to a few pixels;
    a square keeps it large.
+   A live AI session with *Also record the ROI as video* (round 240) can be analysed the
+   same way, for comparison with what the live AI found: its Video tab then switches between
+   *Live AI* and *AI afterwards* on the same clips (round 241), which shows, for example,
+   visits the live AI missed while the phone was hot or the motion gate slept.
 2. **Run AI on videos** (home screen): model, confidence threshold and *Frames analyzed
    per second* (default 15, the live AI's rate). This is the slow step (it can be paused
    and continued). It finds boxes only.

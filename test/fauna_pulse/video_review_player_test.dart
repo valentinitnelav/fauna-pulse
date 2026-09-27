@@ -643,10 +643,44 @@ void main() {
     expect(find.text('All AI boxes'), findsNothing);
     expect(find.text('Not analysed yet'), findsNothing);
     expect(find.text('Square in the wrong place?'), findsNothing);
+    expect(find.text('Live AI'), findsNothing, reason: 'nothing analysed afterwards yet');
+    await tester.scrollUntilVisible(find.text('Compare with the AI afterwards'), 200, scrollable: scrollable);
+    expect(find.widgetWithText(FilledButton, 'Run AI on videos'), findsOneWidget);
     // The session's own photos follow, and the clips can be copied.
     await tester.scrollUntilVisible(find.textContaining('Saved photos'), 200, scrollable: scrollable);
     await tester.scrollUntilVisible(find.text('Copy videos'), 200, scrollable: scrollable);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    // Round 241: the same clip analysed afterwards (a bee from 1 to 3 s).
+    _writeDetections(dir, clip);
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.text('AI afterwards', skipOffstage: false));
+    final list2 = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: list2);
+    await tester.scrollUntilVisible(find.text('#7'), 100, scrollable: list2);
+    await tester.scrollUntilVisible(find.text('AI afterwards'), -200, scrollable: list2);
+    await tester.tap(find.text('AI afterwards'));
+    await tester.pumpAndSettle();
+    expect(find.text('All AI boxes'), findsOneWidget);
+    final after = VideoBoxTimeline.readSync(dir.path).clips[clip]!.visits.single;
+    expect(after.trackId, isNot(7));
+    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: list2);
+    await tester.scrollUntilVisible(find.text('#${after.trackId}'), 100, scrollable: list2);
+    expect(find.text('#7'), findsNothing, reason: 'the afterwards visit has its own number');
+    expect(find.text('Compare with the AI afterwards'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Live AI'), -200, scrollable: list2);
+    await tester.tap(find.text('Live AI'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.widgetWithText(FilledButton, 'Run AI on videos again'), 200, scrollable: list2);
+    expect(tester.takeException(), isNull);
+
+    // Graphs: the live count, and the afterwards one for comparison.
+    await tester.tap(find.text('Graphs'));
+    await _pumpUntil(tester, find.text('1 (for comparison; Video tab)'));
+    expect(find.text('Visits found afterwards in the videos'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

@@ -311,6 +311,15 @@ motion gate lets the detector sleep. Each clip is the live ROI square, so a live
 `frame_sensor_ms` − the clip's `start_epoch_ms` (the same camera clock); the summary's
 Video tab draws the live boxes that way.
 
+Round 241: such clips can be analysed again with *Run AI on videos* for comparison. The
+files it writes (`video_detections.jsonl`, `post_tracks.jsonl`, `visits.csv`, `mot/`) sit
+next to the live `session.jsonl`, but the session's visits, graphs, dashboard and
+identification stay the live AI's (a live AI session's track source is always the live
+log, §9 `trackSourceOf`). *Find visits* keeps no frames for a live session (`keep_frames`
+null in `post_track_start`), so `roi_frames/` holds only the live photos. The Video tab's
+*Live AI | AI afterwards* switch shows either set of boxes on the same clips; the two sets
+number their visits independently.
+
 Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
 Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
 clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`

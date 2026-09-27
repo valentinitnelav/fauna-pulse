@@ -83,7 +83,15 @@ class VideoReviewPlayer extends StatefulWidget {
 
 class VideoReviewPlayerState extends State<VideoReviewPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  VideoBoxTimeline _timeline = VideoBoxTimeline.empty;
+  /// The boxes of "Run AI on videos", and in a live session (round 240) the
+  /// live AI's; [_showAfter] picks which one a live session shows (round 241).
+  VideoBoxTimeline _afterTimeline = VideoBoxTimeline.empty;
+  VideoBoxTimeline _liveTimeline = VideoBoxTimeline.empty;
+  bool _showAfter = false;
+  VideoBoxTimeline get _timeline => widget.live && !_showAfter ? _liveTimeline : _afterTimeline;
+
+  /// A live session whose clips were also analysed afterwards.
+  bool get _canCompare => widget.live && _afterTimeline.clips.isNotEmpty;
   bool _loading = true;
 
   /// Clip names: the files in videos/ plus clips known only from the records
@@ -170,11 +178,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   }
 
   Future<void> _load() async {
-    var timeline = VideoBoxTimeline.empty;
+    var after = VideoBoxTimeline.empty, live = VideoBoxTimeline.empty;
     try {
-      timeline = widget.live
-          ? await VideoBoxTimeline.loadLive(widget.sessionDir)
-          : await VideoBoxTimeline.load(widget.sessionDir);
+      after = await VideoBoxTimeline.load(widget.sessionDir);
+      if (widget.live) live = await VideoBoxTimeline.loadLive(widget.sessionDir);
     } catch (e) {
       logSwallowed('video_box_timeline', e);
     }
@@ -187,9 +194,11 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     }
     if (!mounted) return;
     final before = _clips.isEmpty ? null : _clips[_clip];
-    final clips = {...files, ...timeline.clips.keys}.toList()..sort();
+    final clips = {...files, ...after.clips.keys, ...live.clips.keys}.toList()..sort();
     setState(() {
-      _timeline = timeline;
+      _afterTimeline = after;
+      _liveTimeline = live;
+      if (after.clips.isEmpty) _showAfter = false;
       _files = files;
       _deleted = deleted;
       _clips = clips;
@@ -432,6 +441,29 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               ],
             ),
           ),
+          // Round 241: the live AI's boxes, or those of "Run AI on videos" on the same clips.
+          if (_canCompare) ...[
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Live AI')),
+                ButtonSegment(value: true, label: Text('AI afterwards')),
+              ],
+              selected: {_showAfter},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() {
+                _showAfter = s.first;
+                _allBoxes = false;
+              }),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Live AI: the boxes found while recording (the session\'s visits). AI afterwards: '
+              '"Run AI on videos" on these clips, with its own visit numbers. Switch at any moment '
+              'to compare the same frames.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
           if (area != null) ...[
             const SizedBox(height: 8),
             SegmentedButton<bool>(
@@ -478,8 +510,28 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               ),
             ),
           ],
-          // Live clips (round 240): the live AI's boxes only, nothing to analyse here yet.
-          if (!_timeline.live) ...[
+          // Live view (rounds 240, 241): compare with the AI afterwards.
+          if (_timeline.live) ...[
+            const SizedBox(height: 12),
+            const HelpLabel(
+              label: 'Compare with the AI afterwards',
+              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              helperText:
+                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find visits" '
+                  'there links the boxes into visits. Then "AI afterwards" above shows those boxes on '
+                  'the same frames, for example to see whether the live AI missed insects while the '
+                  'phone was hot or the motion gate slept. The session\'s own visits stay the live AI\'s.',
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: _files.isEmpty ? null : _openAnalysis,
+                icon: const Icon(Icons.compare),
+                label: Text(_afterTimeline.clips.isEmpty ? 'Run AI on videos' : 'Run AI on videos again'),
+              ),
+            ),
+          ] else ...[
             const SizedBox(height: 12),
             // With every video deleted (round 236) nothing can be analysed
             // again; "Find visits" there still works.
@@ -764,12 +816,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       TextSpan(
         style: const TextStyle(color: Colors.white70, fontSize: 12),
         children: visits
-            ? const [
-                TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
+            ? [
+                const TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
-                  text: 'a visit: its number (the same as in visits.csv and the photos), the insect '
-                      "class and the AI's confidence. A faded box: the AI missed the insect on this "
-                      'frame and the tracker kept its place.',
+                  text: 'a visit: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in visits.csv'}), '
+                      "the insect class and the AI's confidence. A faded box: the AI missed the insect "
+                      'on this frame and the tracker kept its place.',
                 ),
               ]
             : const [

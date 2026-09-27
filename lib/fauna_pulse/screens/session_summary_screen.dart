@@ -47,7 +47,7 @@ import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_run_samples.dart';
-import '../postprocess/video_tracker.dart' show KeepFramesSettings;
+import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import '../identification/identification_job.dart' show IdentificationJob;
 import '../identification/identification_store.dart' show IdentificationPaths, LatestIdentification;
 import 'identification_results_screen.dart';
@@ -147,6 +147,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// The clips of a recorded video session (round 239), from the log.
   VideoClipTotals _clipTotals = VideoClipTotals.none;
+
+  /// Visits "Find visits" found in the clips of a live AI session, for
+  /// comparison with the live AI's (round 241); null before it ran.
+  int? _afterVisits;
   int _videosFreedBytes = 0;
 
   // Imported videos (round 229): the "Run AI on videos" settings, i.e. the
@@ -159,6 +163,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // phone was plugged in (which would invalidate the estimate).
   int? _startBatteryPct, _endBatteryPct;
   bool _chargingDuringSession = false;
+  // The start/end records' own charging flags, kept for graph reloads.
+  bool _chargingAtStartOrEnd = false;
 
   // --- Stage 2: graphs (full parse, on demand) ---
   bool _graphsRequested = false;
@@ -268,7 +274,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Future<void> _loadClipTotals() async {
     try {
       final t = await VideoClipTotals.read(widget.logFile.parent);
-      if (mounted && t.count + t.skippedBursts > 0) setState(() => _clipTotals = t);
+      final after = await VideoTracker.readSummary(widget.logFile.parent);
+      if (!mounted) return;
+      setState(() {
+        if (t.count + t.skippedBursts > 0) _clipTotals = t;
+        _afterVisits = after?.visits;
+      });
     } catch (e) {
       logSwallowed('summary_clip_totals', e);
     }
@@ -552,7 +563,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final th = rec?['thermal'];
     if (th is! Map) return;
     if (th['is_charging'] == true || th['is_plugged'] == true) {
-      _chargingDuringSession = true;
+      _chargingDuringSession = _chargingAtStartOrEnd = true;
     }
   }
 
@@ -981,7 +992,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// 232) instead of during the recording: always for imported videos, and
   /// by choice for recorded bursts (round 239).
   bool get _showRunGraphs =>
-      _importedVideoSession || (_recordedVideoSession && _graphsOfAnalysis);
+      _importedVideoSession || ((_recordedVideoSession || _liveVideoSession) && _graphsOfAnalysis);
   bool _graphsOfAnalysis = false;
 
   /// Plain-language mode shown first in Setup's Overview. Sessions older
@@ -2080,6 +2091,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // New visits keep other frames, and may outdate the identification.
     if (_photosRequested && mounted) await _loadPhotos();
     if (mounted) await _loadIdentification();
+    if (mounted) await _loadClipTotals();
   }
 
   /// Empties what [_loadGraphs] fills, before it runs again.
@@ -2092,8 +2104,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _power.clear();
     _videoSamples = null;
     _energyTotalWh = _powerAvg = _powerMedian = _powerMin = _powerMax = null;
-    _chargingDuringSession = false;
-    _uniqueTracks = null;
+    _chargingDuringSession = _chargingAtStartOrEnd;
+    // Not _uniqueTracks: read once from the end record, a live session's
+    // visit count (round 241: the graphs switch reloads the graphs only).
   }
 
   Widget _photosTab() {
@@ -2183,6 +2196,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 : 'none yet ("Find visits" on "Run AI on videos")')
           : _uniqueTracks?.toString() ?? 'unknown',
     ),
+    // Round 241: the same clips analysed afterwards, for comparison.
+    if (_liveVideoSession && _afterVisits != null)
+      _stat('Visits found afterwards in the videos', '$_afterVisits (for comparison; Video tab)'),
     const SizedBox(height: 8),
     const Text(
       'Visit timeline (each lane is one tracked object)',
@@ -2235,9 +2251,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
       )
     else if (_extraGraphsExpanded && _showRunGraphs) ...[
-      if (_recordedVideoSession) _graphsSourceSwitch(),
+      if (_recordedVideoSession || _liveVideoSession) _graphsSourceSwitch(),
       ..._videoRunGraphs(),
-    ] else if (_extraGraphsExpanded && _recordedVideoSession && _videoRun != null) ...[
+    ] else if (_extraGraphsExpanded && (_recordedVideoSession || _liveVideoSession) && _videoRun != null) ...[
       _graphsSourceSwitch(),
       ..._liveGraphs(),
     ]
