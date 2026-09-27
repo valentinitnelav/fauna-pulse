@@ -12,9 +12,14 @@
 // Processing happens at full speed with no real-time constraint. The screen
 // holds a wakelock (keeps the screen on) for the duration; long runs are best
 // done indoors with the phone charging.
+//
+// Round 237: "Visits" follows the insects from photo to photo
+// (postprocess/photo_tracker.dart) in motion and time-lapse sessions whose
+// photo step is at most 0.5 s; for sparser photos it explains why not.
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -30,9 +35,11 @@ import '../logging/device_storage.dart';
 import '../models/model_catalog.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
+import '../postprocess/photo_tracker.dart';
 import '../postprocess/post_detector.dart';
 import '../postprocess/sahi.dart';
 import '../postprocess/sahi_profile.dart';
+import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResult, VideoTracker;
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
@@ -78,7 +85,11 @@ class AnalysisScreen extends StatefulWidget {
   /// Optional session folder to preselect (e.g. long-press on a home row).
   final String? initialSessionPath;
 
-  const AnalysisScreen({super.key, this.initialSessionPath});
+  /// Tests replace the sessions folder and the model list.
+  final Directory? sessionsDir;
+  final List<ModelEntry>? models;
+
+  const AnalysisScreen({super.key, this.initialSessionPath, this.sessionsDir, this.models});
 
   @override
   State<AnalysisScreen> createState() => _AnalysisScreenState();
@@ -97,6 +108,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   static const _prefSahiFullPass = 'analysis_sahi_full_pass';
   static const _prefSahiMergeIou = 'analysis_sahi_merge_iou';
   static const _prefSahiMinBoxPct = 'analysis_sahi_min_box_pct';
+  static const _prefOcclusion = 'analysis_occlusion_s';
+  static const _prefMinVisit = 'analysis_min_visit_s';
+
+  /// "Visits" (round 237): the photo tracker's own settings, apart from the
+  /// camera's and the video screen's, and the selected session's state.
+  double _occlusionSeconds = 3.0;
+  double _minVisitSeconds = 0.2;
+  PhotoTrackability? _trackability;
+  PostTrackSummary? _visits;
+  bool _tracking = false;
 
   bool _loading = true;
   List<_AnalyzableSession> _sessions = const [];
@@ -157,7 +178,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final models = await ModelCatalog.build();
+    final models = widget.models ?? await ModelCatalog.build();
     final sessions = await _scanSessions();
     if (!mounted) return;
     final savedModel = prefs.getString(_prefModel);
@@ -167,6 +188,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _confidence = prefs.getDouble(_prefConf) ?? 0.25;
       _iou = prefs.getDouble(_prefIou) ?? 0.7;
       _keepGap = prefs.getDouble(_prefKeepGap) ?? 2.0;
+      _occlusionSeconds = prefs.getDouble(_prefOcclusion) ?? 3.0;
+      _minVisitSeconds = prefs.getDouble(_prefMinVisit) ?? 0.2;
       _sahiEnabled = prefs.getBool(_prefSahiEnabled) ?? false;
       _sahiTilePx = prefs.getInt(_prefSahiTilePx) ?? 0;
       _sahiOverlapPct = prefs.getDouble(_prefSahiOverlapPct) ?? 25;
@@ -263,16 +286,35 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         _lastRunMinBoxFrac = lastRunMinBox;
       });
     }
+    await _loadVisits();
+  }
+
+  /// The selected session's photo spacing and its last "Find visits".
+  Future<void> _loadVisits() async {
+    final session = _session;
+    PhotoTrackability? t;
+    PostTrackSummary? v;
+    if (session != null) {
+      t = await PhotoTracker.trackability(session.dir);
+      v = await VideoTracker.readSummary(session.dir);
+    }
+    if (mounted && _session == session) {
+      setState(() {
+        _trackability = t;
+        _visits = v;
+      });
+    }
   }
 
   /// Same sessions folder the home screen lists, but with photo counts.
   Future<List<_AnalyzableSession>> _scanSessions() async {
     final found = <_AnalyzableSession>[];
     try {
-      final base =
-          (await getExternalStorageDirectory()) ??
-          await getApplicationDocumentsDirectory();
-      final dir = Directory('${base.path}/sessions');
+      var dir = widget.sessionsDir;
+      if (dir == null) {
+        final base = (await getExternalStorageDirectory()) ?? await getApplicationDocumentsDirectory();
+        dir = Directory('${base.path}/sessions');
+      }
       if (!await dir.exists()) return found;
       for (final entity in dir.listSync()) {
         if (entity is! Directory) continue;
@@ -550,6 +592,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 if (_running) _progressPanel() else _startButton(),
                 if (!_running && _outcomes != null) ...[
                   const SizedBox(height: 20),
+                  ..._visitsSection(),
                   _cleanupSection(),
                 ],
                 const SizedBox(height: 12),
@@ -878,7 +921,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       children: [
         FilledButton.icon(
           onPressed:
-              (session == null || _model == null || nothingToDo || sameModelAsLive)
+              (session == null || _model == null || nothingToDo || sameModelAsLive || _tracking)
               ? null
               : _start,
           icon: const Icon(Icons.play_arrow),
@@ -901,6 +944,122 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   /// Storage triage over the analysis results: keep photos with a detection
   /// (plus their close-in-time neighbours — a missed detection between two
   /// hits is most likely the same insect) and offer to delete the rest.
+  /// "Visits" (round 237): follows the insects from photo to photo when the
+  /// photos are close enough in time, else says why it can't.
+  List<Widget> _visitsSection() {
+    final t = _trackability;
+    final v = _visits;
+    if (_session == null || t == null || t.trackedLive || t.analysedPhotos == 0) return const [];
+    final busy = _running || _tracking || _cleanupBusy;
+    const amber = TextStyle(color: Colors.amber, fontSize: 13);
+    final step = t.stepSeconds;
+    return [
+      const HelpLabel(
+        label: 'Visits',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        helperText:
+            'Follows each insect from photo to photo, as the live camera does with the AI on, so one '
+            'insect seen in many photos counts as one visit. The summary then shows the visits and '
+            'which photos belong to each, and "Identify organisms" answers per visit. Takes seconds '
+            'and can be repeated with other settings.',
+      ),
+      const SizedBox(height: 6),
+      if (t.tooSparse)
+        Text(
+          '${step == null ? 'This session\'s photo step is not known, so its photos' : 'Photos ${_numStr(step)} s apart'} '
+          'are too far apart to follow an insect: it can move too far between two photos to be '
+          'recognised as the same one. Finding visits needs a photo every '
+          '${_numStr(PhotoTracker.maxStepSeconds)} s or more often (Settings → "Photo step", with the '
+          'fast photo source). The photos with an insect still show in the summary.',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        )
+      else ...[
+        NumericSettingField(
+          label: 'Occlusion tolerance',
+          value: _occlusionSeconds,
+          min: 0.2,
+          max: 10,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
+              'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
+              'step, or every visit breaks into pieces.',
+          onChanged: (x) async {
+            setState(() => _occlusionSeconds = x);
+            (await SharedPreferences.getInstance()).setDouble(_prefOcclusion, x);
+          },
+        ),
+        NumericSettingField(
+          label: 'Minimum visit length',
+          value: _minVisitSeconds,
+          min: 0,
+          max: 2,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'How long an insect must be seen before it counts as a visit; shorter sightings are '
+              'dropped as noise. Default 0.2 s, as the live camera.',
+          onChanged: (x) async {
+            setState(() => _minVisitSeconds = x);
+            (await SharedPreferences.getInstance()).setDouble(_prefMinVisit, x);
+          },
+        ),
+        const SizedBox(height: 6),
+        FilledButton.tonalIcon(
+          onPressed: busy ? null : _findVisits,
+          icon: const Icon(Icons.timeline),
+          label: Text(_tracking ? 'Finding visits…' : v == null ? 'Find visits' : 'Find visits again'),
+        ),
+        if (v != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${v.visits} ${v.visits == 1 ? 'visit' : 'visits'} (occlusion tolerance '
+            '${v.occlusionSeconds.toStringAsFixed(1)} s, minimum visit ${v.minHitsSeconds.toStringAsFixed(1)} s).',
+          ),
+          if (t.lastRunMs != null && v.detectionsRunMs != t.lastRunMs)
+            const Text('The photos were analyzed again since: find visits again to include that.', style: amber)
+          else if (v.occlusionSeconds != _occlusionSeconds || v.minHitsSeconds != _minVisitSeconds)
+            const Text('Settings changed: find visits again to use them.', style: amber),
+          const Text(
+            'Saved in the session folder: visits.csv (one row per visit) and post_tracks.jsonl.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ],
+      ],
+      const SizedBox(height: 20),
+    ];
+  }
+
+  /// Off the screen's thread; static, so the isolate gets only these two
+  /// values and not the screen.
+  static Future<VideoTrackResult> _trackInBackground(String path, SessionConfig config) =>
+      Isolate.run(() => PhotoTracker.run(Directory(path), config));
+
+  static String _numStr(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
+  Future<void> _findVisits() async {
+    final session = _session;
+    if (session == null || _tracking) return;
+    setState(() => _tracking = true);
+    String message;
+    try {
+      final config = (await SessionConfig.load()).copyWith(
+        occlusionSeconds: _occlusionSeconds,
+        minHitsSeconds: _minVisitSeconds,
+      );
+      final r = await _trackInBackground(session.dir.path, config);
+      message = 'Found ${r.visits} ${r.visits == 1 ? 'visit' : 'visits'} in ${r.frames} photos.';
+    } catch (e) {
+      logSwallowed('analysis_find_visits', e);
+      message = 'Finding visits failed: $e';
+    }
+    if (!mounted) return;
+    setState(() => _tracking = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await _loadVisits();
+  }
+
   Widget _cleanupSection() {
     final session = _session;
     final recorded = _outcomes;

@@ -229,6 +229,20 @@ you can try a different model or different tiling settings on a finished
 session. The newest result per photo wins downstream (see
 [DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
+### Visits (round 237)
+
+Shown once photos of a motion or time-lapse session are analysed. *Find
+visits* follows each insect from photo to photo, as the live camera does with
+the AI on, and writes `post_tracks.jsonl` and `visits.csv`; the summary,
+dashboard and identification then use those visits. Only offered when the
+session's photo step is at most 0.5 s; for sparser photos the section says
+that an insect can move too far between two photos to be followed.
+
+| Setting | Default (range) | What it does |
+|---|---|---|
+| **Occlusion tolerance** | `3 s` (0.2–10) | How long an insect can be missing (hidden, or missed in a photo) and keep its number. Same default as the live camera; keep it well above the photo step. Saved as `analysis_occlusion_s`, logged as `occlusion_seconds` in `post_track_start` and shown on the summary's Setup tab. |
+| **Minimum visit length** | `0.2 s` (0–2) | How long an insect must be seen before it counts as a visit. Same default as the live camera. Saved as `analysis_min_visit_s`, logged as `min_hits_seconds` in `post_track_start` and shown on the Setup tab. The tracking method (ByteTrack or C-BIoU) is the camera's: Settings → AI → Visit tracking → Advanced. |
+
 ## Video analysis (Run AI on videos screen)
 
 Round 227. Videos come in through the home screen's ⋮ menu → *Import videos…*, which

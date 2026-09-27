@@ -969,6 +969,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// A value of the `post_track_start` record (visits found afterwards).
   Object? _post(String key) => _postTrackStart?[key];
 
+  /// Visits found afterwards in a motion or time-lapse session's photos
+  /// (round 237) rather than in videos.
+  bool get _visitsFromPhotos => _visitsAfterwards && _post('source') == 'photos';
+
   /// The tracker settings block of visits found afterwards.
   Map? get _postTracker => _post('tracker') as Map?;
 
@@ -1536,6 +1540,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             : 'Not run yet: "Find visits" on the "Run AI on videos" screen '
                   'follows each insect from frame to frame.',
       );
+    } else if (_visitsFromPhotos) {
+      addNote(
+        'Visits found afterwards in the photos with "Find visits" on the '
+        '"Run AI on photos" screen.',
+      );
     } else if (noAi) {
       addNote(
         'Not applicable: tracking requires the detector ($modeName mode).',
@@ -2040,7 +2049,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // right above the timeline it summarizes.
     _stat(
       'Visits (track IDs)',
-      _motionOnlySession
+      _visitsFromPhotos
+          ? '${_spans.length} (found afterwards in the photos)'
+          : _motionOnlySession
           ? 'n/a (motion-only capture — detector off)'
           : _timeLapseSession
           ? 'n/a (time-lapse — detector off)'
@@ -2066,10 +2077,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_visitsAfterwards) ...[
       const SizedBox(height: 4),
       Text(
-        'Found afterwards in the videos with "Find visits" (occlusion '
+        'Found afterwards in the ${_visitsFromPhotos ? 'photos' : 'videos'} with "Find visits" (occlusion '
         'tolerance ${_numStr(_post('occlusion_seconds'))} s, minimum visit '
-        'length ${_numStr(_post('min_hits_seconds'))} s). Time between '
-        'clips was not filmed.',
+        'length ${_numStr(_post('min_hits_seconds'))} s). '
+        '${_visitsFromPhotos ? (_timeLapseSession ? 'Time between bursts was not photographed.' : '') : 'Time between clips was not filmed.'}',
         style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
     ],
@@ -2678,6 +2689,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
           ),
           postBoxes: _postBoxesByName,
+          visitsFromPhotos: _visitsFromPhotos,
           deleteMarked: _postDeleteMarked,
           keepDecisions: _postDecisions,
           onShowInVideo: videoFrames
@@ -2981,7 +2993,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       return Center(
         key: _timelineKey,
         child: Text(
-          _motionOnlySession
+          _visitsFromPhotos
+              ? 'No visits found in the photos.'
+              : _motionOnlySession
               ? 'Motion-only capture session — the AI detector was off, so '
                     'no visits or tracks were recorded. Photos were taken on '
                     'ROI motion; see the Photos tab.'
@@ -3265,6 +3279,11 @@ class _PhotoViewer extends StatefulWidget {
   /// of the live boxes when the named file is the one being shown.
   final Map<String, List<_DetBox>> postBoxes;
 
+  /// Visits were found in these photos afterwards (round 237): a photo's
+  /// tracked boxes are its analysis boxes with visit numbers, so the green
+  /// ones are drawn only where no visit has a box.
+  final bool visitsFromPhotos;
+
   /// File names the post-hoc cleanup would delete (no detection nearby) —
   /// shown with a translucent red ✕ + note so the user can review before
   /// deleting.
@@ -3291,6 +3310,7 @@ class _PhotoViewer extends StatefulWidget {
     this.onShowInVideo,
     this.location,
     this.postBoxes = const {},
+    this.visitsFromPhotos = false,
     this.deleteMarked = const {},
     this.keepDecisions = const {},
   });
@@ -3524,6 +3544,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   List<_DetBox> _boxesFor(_PhotoSample p) =>
       _showLive && p.liveFile != null ? p.boxes : (p.stillBoxes ?? p.boxes);
 
+  /// The green analysis boxes drawn on [p].
+  List<_DetBox> _postBoxesFor(_PhotoSample p) {
+    if (widget.visitsFromPhotos && _boxesFor(p).isNotEmpty) return const [];
+    return widget.postBoxes[_shownNameFor(p)] ?? const [];
+  }
+
   /// The pager caption's count — everything the overlay actually DRAWS for
   /// the current view (round 178, owner bug: a SAHI-analyzed time-lapse
   /// photo read "0 detections" under five green analysis boxes, because only
@@ -3531,7 +3557,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   /// named separately so an AI session's live count keeps its meaning.
   String _detectionCountLabel(_PhotoSample p) {
     final live = _boxesFor(p).length;
-    final post = widget.postBoxes[_shownNameFor(p)]?.length ?? 0;
+    final post = _postBoxesFor(p).length;
+    if (widget.visitsFromPhotos && live > 0) return '$live in visit${live == 1 ? '' : 's'}';
     if (post == 0) return '$live detection${live == 1 ? '' : 's'}';
     if (live == 0) return '$post analysis detection${post == 1 ? '' : 's'}';
     return '$live live + $post analysis detections';
@@ -3984,10 +4011,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                                 // Post-hoc boxes (green) are
                                                 // normalized to the shown file
                                                 // itself, so they overlay 1:1.
-                                                ...?widget
-                                                    .postBoxes[_shownNameFor(
-                                                  p,
-                                                )],
+                                                ..._postBoxesFor(p),
                                               ],
                                               _transformFor(
                                                 i,

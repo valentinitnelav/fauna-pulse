@@ -682,6 +682,36 @@ publication-grade boxes re-run offline (§5b). The tiling is FaunaPulse's own pu
 background and per-setting docs are in
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).
 
+### Visits found in the photos (round 237+)
+
+For a motion or time-lapse session whose photo step is at most 0.5 s, *Find visits* on
+the same screen follows each insect from photo to photo with the tracker a live session
+uses (with the screen's own occlusion tolerance and minimum visit length). At a photo a
+second an insect can move too far between two photos to be matched, so sparser sessions
+get an explanation instead. It writes the same files as *Find visits* on videos (§9),
+replaced on every run:
+
+* `post_tracks.jsonl`: `post_track_start` with `source: "photos"`, `photos` (moments
+  used), `photo_step_s`, `detections_run_ms` (`time_ms` of the newest `post_start`: a
+  later analysis makes these visits outdated), `detection_settings` (that run's model and
+  thresholds), `occlusion_seconds`, `min_hits_seconds`, `tracker`, `clips: []` and, for
+  time-lapse sessions, `observed_ms` = the time the bursts cover (photos closer than five
+  photo steps, at least 1 s, form one burst, which covers from its first photo to one step
+  after its last; a motion session watched the whole time, so its span counts). Then
+  `detections` records (one per photo with a visit; each track entry names the photo in
+  `jpeg` unless the tracker only predicted it, `coasted: true`; `box_in_roi` is the box in
+  the photo), `track_event` records and `post_track_end`.
+* `visits.csv`: as for videos, with an empty `clip` and `start_s`/`end_s` counted from the
+  session's start.
+
+The newest result per photo is used; a photo whose analysis failed is left out (the
+tracker bridges it). A high-res photo and its `_live` companion are one moment: the
+photo's own boxes are used, the companion's only when the photo has none. The summary,
+dashboard and identification then read these visits as they read the live ones: each
+visit's photos are the ones whose `jpeg` it names, and identification answers per visit.
+The photo viewer draws a photo's boxes with their visit numbers and keeps the green
+analysis boxes for photos without a visit.
+
 ## 7. Derived cache files (safe to ignore)
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the

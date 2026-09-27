@@ -259,7 +259,9 @@ class SessionLogIndex {
     // Pass 2 (round 114/115): only when at least one high-res photo has a
     // known content moment. Streams the file again instead of keeping every
     // line in memory (the old screen code re-iterated a full line list).
-    if (b.contentMsByFile.isNotEmpty) {
+    // Round 237: visits found afterwards in the photos carry each photo's own
+    // boxes, which already fit its content.
+    if (b.contentMsByFile.isNotEmpty && b.postTrackStart?['source'] != 'photos') {
       final acc = FrameBracketAccumulator(b.contentMsByFile);
       final intervals = <int>[];
       int? prevFrameMs;
@@ -354,8 +356,11 @@ class _IndexBuilder {
   TrackSource trackSource = TrackSource.live;
   Map<String, dynamic>? postTrackStart;
 
-  /// Record types that describe tracked insects (round 229).
-  static const _trackTypes = {'detection', 'detections', 'capture'};
+  /// Record types that describe tracked insects (round 229). Round 237:
+  /// `capture` records describe photos wherever they are, so they are read
+  /// from both files: session.jsonl holds a photo session's own photos (size,
+  /// `_live` companion), post_tracks.jsonl the frames kept from videos.
+  static const _trackTypes = {'detection', 'detections'};
 
   /// Per high-res photo: its content moment — the pass-2 work list.
   final Map<String, int> contentMsByFile = {};
@@ -387,8 +392,9 @@ class _IndexBuilder {
     if (line.trim().isEmpty) return;
     final rec = SessionLogIndex._tryDecode(line);
     if (rec == null) return;
-    if (_trackTypes.contains(rec['type']) ? !tracks : !other) {
-      if (rec['type'] == 'post_track_start') postTrackStart ??= rec;
+    final type = rec['type'];
+    if (type != 'capture' && (_trackTypes.contains(type) ? !tracks : !other)) {
+      if (type == 'post_track_start') postTrackStart ??= rec;
       return;
     }
     final t = (rec['time_ms'] as num?)?.toInt();
