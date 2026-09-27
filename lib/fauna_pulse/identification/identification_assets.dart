@@ -273,3 +273,12 @@ class IdentifyPrefs {
     'drop_factor': dropFactor,
   };
 }
+
+/// Why the GPU was not used, for the Identify screen (round 242): the native
+/// reason, plus what to do when the GPU could not compile the model, the
+/// usual cause being a BioCLIP file exported before round 242 (its attention
+/// layers use tensors the phone's GPU cannot run).
+String gpuNoteText(String note) => note.contains('Failed to compile')
+    ? '$note. BioCLIP files exported before round 242 cannot run on a GPU; export the model '
+          'again (tool/bioclip_export) or get the newer file (see IDENTIFICATION.md)'
+    : note;

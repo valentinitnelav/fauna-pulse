@@ -193,7 +193,8 @@ documented behaviour.
   xnnPackFlags, xnnPackWeightCachePath)` — verified with javap against the
   AAR. XNNPACK itself is already LiteRT's default CPU backend, so there was
   nothing to "add"; `numThreads` is now plumbed through (`cpuThreads` setting,
-  0 = runtime default) and measured by the A4 benchmark. `xnnPackFlags` left
+  0 = runtime default, which is 1 thread; automatic = 2 since round 226, see
+  Part F) and measured by the A4 benchmark. `xnnPackFlags` left
   alone (exotic), and the weight cache deliberately skipped: a cache file
   corrupted by a mid-write kill would be re-read by native code at next launch
   with no crash-guard around it, for only a small load-time win.)*
@@ -1524,3 +1525,70 @@ longer calls the camera screen a "god class slated for extraction" (the r73
   reports; 2) E3 parking + E5 index; 3) E4 measurement-gated cap; 4) E6 if
   profiling supports it; 5) E8 documentation, E9 experiments, E10 truth pass
   (E10 is cheap and can land any time).
+
+## Part F: Round 226 re-audit against upstream v0.6.15 (2026-09-24)
+
+Trigger: the owner noticed upstream release notes promising faster Android
+LiteRT CPU inference (0.6.12 "multi-threaded", 0.6.13 "faster") and
+downloaded upstream main (pubspec 0.6.15) to
+`~/InsectDetectApp/yolo-flutter-app-main`. Method: diff of the Android and
+plugin-Dart sources since the last audit (0.6.11, Part E), then an on-device
+timing of every CPU thread count on both test phones before choosing a value.
+
+### F0. Verdict (recorded so this is never redone)
+
+| Upstream change | Version | Fork status |
+|---|---|---|
+| CPU engine gets `numThreads = availableProcessors().coerceIn(1, 4)` (the only Android speed change) | 0.6.12/0.6.13 | **Ported with a measured, different value: 2** (F1) |
+| Output names `output0`, `output1`, … tried before `Identity_*` | 0.6.14 | **Ported** (`LiteRtModel.kt`, now tries `output_$i`, `output$i`, `Identity*`) |
+| Sync/close lifecycle fix | 0.6.11 | Already in the fork (r161, E2) |
+| CHW preprocessing + LUT normalisation | 0.6.8 | Already in the fork (r155, D2) |
+| `clearLetterboxPadding` (paint only the pad strips black) | 0.6.8 | **Not ported**: the fork clears the whole reused bitmap with one `drawColor(BLACK)`, same pixels, ~0.1 ms at 640 px; the live ROI crop is square and has no padding at all |
+| iOS label parser, Apple Core AI | 0.6.14/0.6.15 | iOS only, not ours |
+| Docs: export with `nms=None`; `end2end` becomes metadata (`ultralytics>=8.4.142`) | docs | **Hazard note only.** `packages/ultralytics_yolo/scripts/export-tflite-models.py` still passes `nms=False, end2end=False`; with a newer ultralytics that may warn or change the output head. The app decodes both heads ([1,84,8400] and [1,300,6]), so a re-export stays readable, but check the output shape in the load log after any re-export. |
+
+Android dependencies unchanged (LiteRT 2.1.5).
+
+### F1. [x] CPU thread default: 2, not LiteRT's 1 and not upstream's up to 4
+
+The fork's "0 = automatic" passed no thread count, so LiteRT used its own
+default, which the benchmark shows is **one thread** (0 and 1 timed the same
+on both phones). Timed with `integration_test/cpu_threads_check_test.dart`
+(engine benchmark, noise input, 20 runs per value, run forward then in
+reverse order so warming up does not favour either end; averages in ms, the
+two orders agreed within a few %):
+
+| Phone (cores) | Model | 1 | 2 | 4 | 8 | GPU |
+|---|---|---|---|---|---|---|
+| Xiaomi 2107113SG (4 small + 3 mid + 1 big) | MDV6 int8 256 | 83 | 47 | 65-67 | 116-120 | not available |
+| | MDV6 fp16 320 | 225 | 117 | 102 | 143-149 | not available |
+| | ArthroNat int8 640 | 548 | 290 | 248-312 | 332-362 | 19.5 |
+| | yolo26n int8 640 | 580 | 307 | 268 | 362-448 | 23.5 |
+| | BioCLIP-2 image fp16 224 (3 runs) | 23 370-23 500 | 9 380-9 430 | 7 030-7 100 | 7 720-8 070 | fails to compile |
+| Samsung RF8T403A3AT (8 equal cores) | MDV6 int8 256 | 221 | 116-118 | 127-130 | 197-201 | not available |
+| | MDV6 fp16 320 | 377 | 191 | 171-175 | 243-248 | not available |
+| | ArthroNat int8 640 | 1 324 | 693 | 599 | 742-749 | 186 |
+| | yolo26n int8 640 | 1 262-1 273 | 672-703 | 597-599 | 763-767 | 200 |
+
+Decision: **automatic = 2 threads** (`LiteRtModel.automaticCpuThreads()`,
+`availableProcessors().coerceIn(1, 2)`). Two threads were ~1.9x faster than
+one on every detector (2.5x for BioCLIP) for about the same total CPU time.
+Four were slower than two on the small MDV6 int8 model on both phones and at
+most ~15% faster on the 640-px detectors (~25% on BioCLIP), for twice the
+busy cores; heat is the binding constraint in the field (see the thermal
+pause, the FPS-throttle diagnosis), so the extra cores are not free. Eight
+were slower than two everywhere. The user can still set any count (AI tab
+and identification screen); both helper texts give the reason.
+
+Reach: the value applies wherever a CPU engine is created with 0 threads:
+live sessions (MDV6, the default model, has no GPU path on either phone, so
+this is the main live gain), the video pass (r225), photo analysis and SAHI
+(the plain `YOLO` load passes no thread count), and the identification
+embedder. GPU runs are unaffected. The engine benchmark labels the automatic
+row with its resolved count ("CPU (automatic: 2 threads)"), the LiteRT load
+log line prints it, and the identification "Test speed" result and
+`identify_start` (`cpu_threads_used`) record it.
+
+Not measured yet: sustained heat of 2 vs 1 thread over a long live session
+(the benchmark is seconds long). If a paired run ever shows 2 threads
+throttling sooner for no net FPS gain, revisit.

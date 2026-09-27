@@ -134,7 +134,8 @@ Future<String> sampleFilteredFile(
 /// Samples the diagnostic files of [sessionDir] for a report: the session
 /// log's event records (flood types filtered out, location redacted), both
 /// saved logcat captures (noise filtered), and the post-hoc analysis run
-/// summaries when present. Missing files are skipped; sampling never throws.
+/// summaries when present (photos, and since round 229 videos and their
+/// visits). Missing files are skipped; sampling never throws.
 Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
   final extras = <ReportExtra>[];
   Future<void> add(
@@ -181,6 +182,24 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
     'post_detections.jsonl',
     'post_detections_runs.jsonl',
     keepPostDetectionLine,
+    omissionMarker: jsonlOmissionMarker,
+    head: 40,
+    tail: 40,
+  );
+  // Video analysis (round 229): the run and clip records (settings, clip
+  // facts, errors, totals), not the per-frame boxes and tracks.
+  await add(
+    'video_detections.jsonl',
+    'video_detections_runs.jsonl',
+    keepSessionEventLine,
+    omissionMarker: jsonlOmissionMarker,
+    head: 40,
+    tail: 40,
+  );
+  await add(
+    'post_tracks.jsonl',
+    'post_tracks_runs.jsonl',
+    keepSessionEventLine,
     omissionMarker: jsonlOmissionMarker,
     head: 40,
     tail: 40,

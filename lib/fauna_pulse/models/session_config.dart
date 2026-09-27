@@ -83,6 +83,11 @@ RoiCaptureMode _captureModeFromJson(Map<String, dynamic> j) {
 ///    offline detection/tracking on the saved photos.
 enum CaptureTrigger { detector, motion, timelapse }
 
+/// What a time-lapse burst saves (round 238): square ROI photos (the
+/// original mode), or one MP4 video clip of the ROI per burst, for "Run AI on
+/// videos" afterwards. Wire names are the enum names.
+enum TimeLapseSaveAs { photos, video }
+
 /// Moves missing and obsolete model selections to the current bundled MDV6
 /// default. YOLO26 remains selectable for the project owner's debug builds,
 /// but an upgraded release must not try to download that retired default.
@@ -135,7 +140,13 @@ double _timeLapseGapFromJson(Map<String, dynamic> j) {
 /// (round 147). Deliberately additive: the values themselves keep their
 /// normal types — replacing them with "n/a" or null would break typed
 /// parsing downstream (e.g. a numeric pandas column turning into strings).
-List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
+/// [saveAs] matters only for time-lapse: video bursts (round 238) take no
+/// photos, so the photo-timing and photo-source keys are inert there.
+List<String> notApplicableConfigKeys(
+  CaptureTrigger trigger, {
+  TimeLapseSaveAs saveAs = TimeLapseSaveAs.photos,
+  bool liveAiVideo = false,
+}) {
   // Settings that only matter while the detector actually runs.
   const aiKeys = [
     'modelPath',
@@ -155,6 +166,8 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
     'cbiouParams',
     'logRawDetections',
     'showBoxes',
+    'liveAiVideo',
+    'liveAiVideoFps',
   ];
   // The motion gate and its sensitivity tuning; used by the AI mode (as the
   // heat-saving sleep) AND by the motion trigger (as the capture sensitivity),
@@ -169,12 +182,15 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
   ];
   switch (trigger) {
     case CaptureTrigger.detector:
-      return const [
+      return [
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
         'timeLapseTorch',
         'timeLapseTorchLeadSeconds',
+        'timeLapseSaveAs',
+        'timeLapseVideoFps',
+        if (!liveAiVideo) 'liveAiVideoFps',
       ];
     case CaptureTrigger.motion:
       return [
@@ -184,12 +200,28 @@ List<String> notApplicableConfigKeys(CaptureTrigger trigger) {
         'timeLapseWakeLeadSeconds',
         'timeLapseTorch',
         'timeLapseTorchLeadSeconds',
+        'timeLapseSaveAs',
+        'timeLapseVideoFps',
       ];
     case CaptureTrigger.timelapse:
       // Reference photos are inert here too: the whole session is already
       // clock-driven photos, so a second periodic sampler would only
       // duplicate them.
-      return [...aiKeys, ...gateKeys, 'gtFramesEnabled', 'gtFrameSeconds'];
+      return [
+        ...aiKeys,
+        ...gateKeys,
+        'gtFramesEnabled',
+        'gtFrameSeconds',
+        if (saveAs == TimeLapseSaveAs.photos) 'timeLapseVideoFps',
+        // Video bursts: one clip per burst, no photos, no capture flash.
+        if (saveAs == TimeLapseSaveAs.video) ...[
+          'stepSeconds',
+          'captureMode',
+          'fullResPhotos',
+          'stillSyncCompanion',
+          'flashOnCapture',
+        ],
+      ];
   }
 }
 
@@ -378,6 +410,10 @@ class SessionConfig {
   /// Convenience: clock-triggered time-lapse mode (round 97).
   bool get timeLapseCapture => captureTrigger == CaptureTrigger.timelapse;
 
+  /// Time-lapse bursts recorded as video clips instead of photos (round 238).
+  bool get timeLapseVideo =>
+      timeLapseCapture && timeLapseSaveAs == TimeLapseSaveAs.video;
+
   /// Convenience: the AI pipeline (detector + tracker) actually runs.
   bool get detectorEnabled => captureTrigger == CaptureTrigger.detector;
 
@@ -433,6 +469,17 @@ class SessionConfig {
   /// rebound. The first burst of a recording starts immediately, so it gets
   /// no lead.
   final double timeLapseTorchLeadSeconds;
+
+  /// Time-lapse only (round 238): whether each burst is saved as photos
+  /// (every [stepSeconds]) or as one MP4 clip of the ROI. A clip keeps every
+  /// frame at [timeLapseVideoFps], so fast insects can be followed from frame
+  /// to frame; the video's side follows [targetRoiSavedPx] like the photos.
+  final TimeLapseSaveAs timeLapseSaveAs;
+
+  /// Frames per second of time-lapse video clips (round 238, 1 to 30). The
+  /// camera must deliver at least this many, so a positive [cameraFpsCap]
+  /// below it limits the clip to the cap (the settings warn).
+  final int timeLapseVideoFps;
 
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
   /// nearest it supports; its short side caps how large a fast (no-stall) ROI
@@ -551,6 +598,18 @@ class SessionConfig {
   /// default — at 10 FPS it adds roughly 1–2 MB per hour to the session log.
   final bool logRawDetections;
 
+  /// AI detector only (round 240, video plan 3b): also record the ROI as
+  /// MP4 clips (5-minute segments in `videos/`) while the live AI runs, so
+  /// what the live AI saw can be checked afterwards: its boxes play on the
+  /// clips in the summary, and the clips can be counted by hand or analysed
+  /// again with "Run AI on videos". Off by default: every frame of the clip
+  /// is processed even while the motion gate lets the detector sleep, which
+  /// costs heat and storage.
+  final bool liveAiVideo;
+
+  /// Frames per second of those clips (1 to 30, default 15).
+  final int liveAiVideoFps;
+
   /// "Reference photos" (UI name; wire names frozen from the round-107
   /// "ground-truth frames" original: JSON keys `gtFramesEnabled` /
   /// `gtFrameSeconds`, folder `gt_frames/`, record `gt_capture`): save a
@@ -614,6 +673,8 @@ class SessionConfig {
     this.timeLapseWakeLeadSeconds = 10.0,
     this.timeLapseTorch = false,
     this.timeLapseTorchLeadSeconds = 5.0,
+    this.timeLapseSaveAs = TimeLapseSaveAs.photos,
+    this.timeLapseVideoFps = 15,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -631,6 +692,8 @@ class SessionConfig {
     this.trackerParams = const ByteTrackParams(),
     this.cbiouParams = const CBiouParams(),
     this.logRawDetections = false,
+    this.liveAiVideo = false,
+    this.liveAiVideoFps = 15,
     this.gtFramesEnabled = true,
     this.gtFrameSeconds = 30.0,
     this.highResSyncCompanion = true,
@@ -682,6 +745,24 @@ class SessionConfig {
     return (minHitsSeconds * fps).round().clamp(1, 600);
   }
 
+  /// A fresh tracker of the chosen algorithm with its frame budgets derived
+  /// for [detectorFps]. The one builder for live sessions (camera screen)
+  /// and offline tracking of videos (postprocess/video_tracker.dart).
+  InsectTracker buildTracker(double detectorFps) {
+    final buffer = occlusionFramesFor(detectorFps);
+    final hits = minHitsFramesFor(detectorFps);
+    switch (trackerAlgorithm) {
+      case TrackerAlgorithm.cbiou:
+        return CBiouTracker(
+          params: cbiouParams.copyWith(trackBuffer: buffer, minHitsToConfirm: hits),
+        );
+      case TrackerAlgorithm.bytetrack:
+        return ByteTracker(
+          params: trackerParams.copyWith(trackBuffer: buffer, minHitsToConfirm: hits),
+        );
+    }
+  }
+
   SessionConfig copyWith({
     String? modelPath,
     YOLOTask? task,
@@ -717,6 +798,8 @@ class SessionConfig {
     double? timeLapseWakeLeadSeconds,
     bool? timeLapseTorch,
     double? timeLapseTorchLeadSeconds,
+    TimeLapseSaveAs? timeLapseSaveAs,
+    int? timeLapseVideoFps,
     int? streamWidth,
     int? streamHeight,
     bool? streamResolutionExplicit,
@@ -733,6 +816,8 @@ class SessionConfig {
     ByteTrackParams? trackerParams,
     CBiouParams? cbiouParams,
     bool? logRawDetections,
+    bool? liveAiVideo,
+    int? liveAiVideoFps,
     bool? gtFramesEnabled,
     double? gtFrameSeconds,
     bool? highResSyncCompanion,
@@ -774,6 +859,8 @@ class SessionConfig {
     timeLapseTorch: timeLapseTorch ?? this.timeLapseTorch,
     timeLapseTorchLeadSeconds:
         timeLapseTorchLeadSeconds ?? this.timeLapseTorchLeadSeconds,
+    timeLapseSaveAs: timeLapseSaveAs ?? this.timeLapseSaveAs,
+    timeLapseVideoFps: timeLapseVideoFps ?? this.timeLapseVideoFps,
     streamWidth: streamWidth ?? this.streamWidth,
     streamHeight: streamHeight ?? this.streamHeight,
     streamResolutionExplicit:
@@ -791,6 +878,8 @@ class SessionConfig {
     trackerParams: trackerParams ?? this.trackerParams,
     cbiouParams: cbiouParams ?? this.cbiouParams,
     logRawDetections: logRawDetections ?? this.logRawDetections,
+    liveAiVideo: liveAiVideo ?? this.liveAiVideo,
+    liveAiVideoFps: liveAiVideoFps ?? this.liveAiVideoFps,
     gtFramesEnabled: gtFramesEnabled ?? this.gtFramesEnabled,
     gtFrameSeconds: gtFrameSeconds ?? this.gtFrameSeconds,
     highResSyncCompanion: highResSyncCompanion ?? this.highResSyncCompanion,
@@ -878,6 +967,8 @@ class SessionConfig {
     'timeLapseWakeLeadSeconds': timeLapseWakeLeadSeconds,
     'timeLapseTorch': timeLapseTorch,
     'timeLapseTorchLeadSeconds': timeLapseTorchLeadSeconds,
+    'timeLapseSaveAs': timeLapseSaveAs.name,
+    'timeLapseVideoFps': timeLapseVideoFps,
     'streamWidth': streamWidth,
     'streamHeight': streamHeight,
     'streamResolutionExplicit': streamResolutionExplicit,
@@ -897,6 +988,8 @@ class SessionConfig {
     'trackerParams': trackerParams.toJson(),
     'cbiouParams': cbiouParams.toJson(),
     'logRawDetections': logRawDetections,
+    'liveAiVideo': liveAiVideo,
+    'liveAiVideoFps': liveAiVideoFps,
     'gtFramesEnabled': gtFramesEnabled,
     'gtFrameSeconds': gtFrameSeconds,
     // Frozen wire key from the r108 name; the Dart field renamed in r112.
@@ -942,6 +1035,14 @@ class SessionConfig {
     timeLapseTorch: j['timeLapseTorch'] as bool? ?? false,
     timeLapseTorchLeadSeconds:
         (j['timeLapseTorchLeadSeconds'] as num?)?.toDouble() ?? 5.0,
+    timeLapseSaveAs: TimeLapseSaveAs.values.firstWhere(
+      (v) => v.name == j['timeLapseSaveAs'],
+      orElse: () => TimeLapseSaveAs.photos,
+    ),
+    timeLapseVideoFps: ((j['timeLapseVideoFps'] as num?)?.round() ?? 15).clamp(
+      1,
+      30,
+    ),
     streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
     streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
     // Pre-round-109 configs lack the key. A stored size that differs from the
@@ -985,6 +1086,8 @@ class SessionConfig {
           )
         : const CBiouParams(),
     logRawDetections: j['logRawDetections'] as bool? ?? false,
+    liveAiVideo: j['liveAiVideo'] as bool? ?? false,
+    liveAiVideoFps: ((j['liveAiVideoFps'] as num?)?.round() ?? 15).clamp(1, 30),
     // Default flip (reference-photos promotion round): only configs MISSING
     // these keys (fresh installs, configs last saved before r107) get the new
     // on/30 s defaults — toJson always writes the keys, so an explicitly

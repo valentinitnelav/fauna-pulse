@@ -94,6 +94,13 @@ The `roi` sub-object (also used in `roi_update`):
 > `width_px / frame_width_px × analysis_frame_width_px`, snapped to the
 > nearest multiple of 32.
 
+**Imported videos (round 227+):** a session made with *Import videos…* has
+`source: "imported_video"` in its start record, plus `imported_at`,
+`file_token`, the app/build fields and a `video` summary (`clips`,
+`total_duration_ms`, `total_bytes`, and `start_shift_ms` when the user
+corrected the start). It has no camera fields and no `config`, because no
+camera ran. Its `time_ms` is the first clip's start. See §9.
+
 ### `detections` — the core record, one per processed frame with insects
 
 This is what you count. One line per frame; the frame's insects are entries in
@@ -253,6 +260,74 @@ one's start); pre-174 sessions carry `timeLapseIntervalSeconds` instead
 (START-TO-START spacing) — convert via gap = interval − duration when
 comparing across the change.
 
+### Time-lapse video bursts: `timelapse_video_start`, `video_clip`, `video_skipped` (round 238+)
+
+With *Save bursts as: Video* (start record `config.timeLapseSaveAs` = `"video"`) each
+burst is saved as one MP4 clip of the ROI in `videos/` instead of photos, so
+`roi_frames/` stays empty and there are no `timelapse_capture` or `capture` records. The
+clip is the ROI square, upright, at the "Saved photo side" (smaller when the ROI covers
+fewer camera pixels, or when the phone's video encoder needs it), H.264 at
+`config.timeLapseVideoFps` frames per second, a key frame every second, about 0.25 bits
+per pixel per frame (≈ 4 Mbit/s for 1024 px at 15 fps). A continuous time-lapse
+(`timeLapseGapSeconds` 0) starts a new clip every burst length. The clips are analysed
+afterwards like imported videos (§9).
+
+* `timelapse_video_start`: a clip was opened. `file` (`videos/roi_<token>_<date>_<time>_<ms>.mp4`),
+  `burst` (as in `timelapse_capture`), `fps`, `side_px`, `requested_side_px` (only when the
+  encoder took a smaller side), `bitrate` (bits per second), `encoder` (the phone's codec
+  name). A start without a matching `video_clip` means the app was killed while that clip
+  was open; such a file is usually unreadable.
+* `video_clip`: the clip was closed; the same fields as an imported clip (§9) plus how it
+  was recorded. `start_epoch_ms` is the camera's time of the first frame
+  (`start_time_source` `camera`; `clock` only if the camera gave no usable time). A
+  frame's clock time is `start_epoch_ms` + its time inside the file (which starts at 0).
+  Each frame carries the camera's own capture time, so the gaps between frames in the file
+  are the camera's true gaps. `frames_skipped` = frames the camera
+  delivered on time but the encoder was still busy with the previous one (it should be
+  0 or close to it). `burst`, `end_reason` (`burst_end`, `session_end`, `camera_paused`,
+  `camera_parked`, `camera_stopped`), `first_pts_us` (the camera's clock, time since the
+  phone was switched on; for diagnosis only), `bitrate`, `encoder`, `crop_ms_mean` (cutting the ROI out of a
+  camera frame) and `draw_ms_mean` (handing it to the encoder), `flushed: false` when
+  the encoder did not hand over its last frames within 2 s, `error` when something failed.
+  This record is written when the clip ends, so its `time_ms` is the end.
+* `video_skipped`: a burst, or part of one, without a clip. `burst`, `reason`
+  (`storage_low`: less than 1 GB free, checked again every second; `start_failed`: the
+  encoder refused, see `message`; `no_frames`: the camera delivered no frame before the
+  clip ended, and the empty file was deleted; `stop_failed`: the clip did not close in
+  time, `file` may be unreadable), `message`.
+
+While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
+`camera_paused` and a new clip starts for the same `burst` once the camera is back.
+
+**Live AI + ROI video (round 240).** An AI-detector session with *Also record the ROI as
+video* (start record `config.liveAiVideo: true`, `config.liveAiVideoFps`) records the same
+kind of clips while the live AI runs, as 5-minute pieces (a new clip every 5 minutes, so
+a killed app loses at most the open one): `live_video_start` instead of
+`timelapse_video_start`, and `segment` (0, 1, 2 …, counted from the recording start)
+instead of `burst` in it, in `video_clip` and in `video_skipped`; `end_reason` is
+`segment_end` when the next piece started. The clip keeps its frame rate even while the
+motion gate lets the detector sleep. Each clip is the live ROI square, so a live
+`detections` box (`box_in_roi`) is its place in the video, and its place in time is
+`frame_sensor_ms` − the clip's `start_epoch_ms` (the same camera clock); the summary's
+Video tab draws the live boxes that way.
+
+Round 241: such clips can be analysed again with *Run AI on videos* for comparison. The
+files it writes (`video_detections.jsonl`, `post_tracks.jsonl`, `visits.csv`, `mot/`) sit
+next to the live `session.jsonl`, but the session's visits, graphs, dashboard and
+identification stay the live AI's (a live AI session's track source is always the live
+log, §9 `trackSourceOf`). *Find visits* keeps no frames for a live session (`keep_frames`
+null in `post_track_start`), so `roi_frames/` holds only the live photos. The Video tab's
+*Live AI | AI afterwards* switch shows either set of boxes on the same clips; the two sets
+number their visits independently.
+
+Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
+Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
+clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`
+and `visits.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
+`power` records describe the phone during the recording. *Copy videos* (Video tab) copies
+the clips into the phone's Gallery under `Movies/FaunaPulse/<session>` (Android 10+);
+the copies are not recorded in the session log.
+
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 
 Written only in time-lapse sessions with "Turn camera off between bursts"
@@ -403,10 +478,11 @@ JSONL throughout.
 ### `end_of_session` — one per session, last line (absent = crash)
 
 `ended_normally` (`true` only on a clean stop), `battery_percent`,
-`unique_track_count`, and a final `thermal` reading. (One exception to "last
+`unique_track_count`, and a final `thermal` reading. (Exceptions to "last
 line": a `session_renamed` record, below, lands after it if the session was
-renamed later — detect a crash by the record's *absence*, as in §2, not by
-its position.)
+renamed later, and so does a `video_cleanup` record when videos were deleted
+to free storage (round 236, §9) — detect a crash by the record's *absence*,
+as in §2, not by its position.)
 
 ### `session_renamed` — the session was renamed after recording (round 182+)
 
@@ -674,6 +750,36 @@ publication-grade boxes re-run offline (§5b). The tiling is FaunaPulse's own pu
 background and per-setting docs are in
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).
 
+### Visits found in the photos (round 237+)
+
+For a motion or time-lapse session whose photo step is at most 0.5 s, *Find visits* on
+the same screen follows each insect from photo to photo with the tracker a live session
+uses (with the screen's own occlusion tolerance and minimum visit length). At a photo a
+second an insect can move too far between two photos to be matched, so sparser sessions
+get an explanation instead. It writes the same files as *Find visits* on videos (§9),
+replaced on every run:
+
+* `post_tracks.jsonl`: `post_track_start` with `source: "photos"`, `photos` (moments
+  used), `photo_step_s`, `detections_run_ms` (`time_ms` of the newest `post_start`: a
+  later analysis makes these visits outdated), `detection_settings` (that run's model and
+  thresholds), `occlusion_seconds`, `min_hits_seconds`, `tracker`, `clips: []` and, for
+  time-lapse sessions, `observed_ms` = the time the bursts cover (photos closer than five
+  photo steps, at least 1 s, form one burst, which covers from its first photo to one step
+  after its last; a motion session watched the whole time, so its span counts). Then
+  `detections` records (one per photo with a visit; each track entry names the photo in
+  `jpeg` unless the tracker only predicted it, `coasted: true`; `box_in_roi` is the box in
+  the photo), `track_event` records and `post_track_end`.
+* `visits.csv`: as for videos, with an empty `clip` and `start_s`/`end_s` counted from the
+  session's start.
+
+The newest result per photo is used; a photo whose analysis failed is left out (the
+tracker bridges it). A high-res photo and its `_live` companion are one moment: the
+photo's own boxes are used, the companion's only when the photo has none. The summary,
+dashboard and identification then read these visits as they read the live ones: each
+visit's photos are the ones whose `jpeg` it names, and identification answers per visit.
+The photo viewer draws a photo's boxes with their visit numbers and keeps the green
+analysis boxes for photos without a visit.
+
 ## 7. Derived cache files (safe to ignore)
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
@@ -698,7 +804,7 @@ Append-only (resumable). Records:
 
 | `type` | Fields |
 |---|---|
-| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version` |
+| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`; round 242: `gpu_note` (why the GPU was not used, when asked for) and `gpu_agreement` (cosine of the GPU and CPU embeddings of the first-use test picture, see IDENTIFICATION.md)), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `visits_run_id` (round 234, visits found in videos only: the *Find visits* run the crops' track ids come from; a run after a new *Find visits* deletes both files and starts over) |
 | `crop` | `key` (resume key: source|track|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
 | `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
 | `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms`, `avg_embed_ms`, `error` |
@@ -781,7 +887,14 @@ Counts for the app: `tracks_total` (visits after the optional merge), `visits_me
 rank), a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`, `p`, `n_crops`;
 plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's
 provenance. The app's session summary reads this list to label photos, never the full
-tracks file.
+tracks file. `capture` holds the photo rule the photos were taken by (`photo_step_s`,
+`photo_duration_s`, round 216; for visits found in videos the kept-frames rule of their
+*Find visits* run) and, for visits found in videos, `visits_run_id` (round 234): the
+`run_id` of the `post_tracks.jsonl` whose track ids the results use. *Find visits*
+numbers the visits anew each time, so when the current `run_id` differs the results
+screen says to run identification again, the session summary shows no answers on the
+frames (a note says why), and re-scoring the stored crops refuses (round 235): their
+`track_id`s belong to the earlier visits. The next *Continue / re-run* starts over.
 
 R sketch:
 
@@ -790,3 +903,296 @@ tr <- read.csv("identification/tracks_<pack>.csv")
 table(tr$identified_rank)
 aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = length)
 ```
+
+## 9. Imported videos (`videos/`, `video_detections.jsonl`), round 225+
+
+*Import videos…* (home screen ⋮ menu, round 227) makes a session from video files
+filmed elsewhere: the phone's camera app, a collaborator, a published dataset. The files
+are moved into `<session>/videos/` (names made file-system safe; the original name is
+logged). `session.jsonl` then only records where the clips came from: the start record
+(§3), one `video_clip` record per clip in start order, and an `end_of_session` with
+`ended_normally: true` whose `time_ms` is the last clip's end. It has no `detections` or
+`track_event` records; the boxes come from the analysis pass below.
+
+### `video_clip` — one per imported clip
+
+| Field | Meaning |
+|---|---|
+| `time_ms` | The clip's start (same as `start_epoch_ms`). |
+| `file` | Path inside the session folder (`videos/<name>`). |
+| `original_name` | The file's name on the phone before the import. |
+| `start_epoch_ms` | When the clip started (Unix epoch ms). |
+| `start_time_source` | Where that start came from (table below). |
+| `start_time_guess_source` | Only when the clip's own guess was replaced (`after_previous` or `user`): what that guess was. |
+| `start_time_shift_ms` | Only when the user corrected the start; every clip moves by the same amount. |
+| `duration_ms`, `size_bytes` | Length and file size. |
+| `width`, `height`, `rotation` | Picture size as seen upright, and the turn (degrees) stored in the file. |
+| `codec`, `frame_count`, `fps_mean`, `fps_nominal` | Video format; the mean frames per second from the frames' own time stamps, and the rate the file header claims. Phone videos often have a variable frame rate, so the app computes times from each frame's time stamp, never from frame number ÷ fps. |
+| `stored_time_ms` | The time stored in the file, when there is one (see `metadata` below). |
+
+**Where a clip's start comes from** (`start_time_source`), most reliable first:
+
+| Value | Meaning |
+|---|---|
+| `session_log` | Read back from the `video_clip` record (what the analysis pass uses). |
+| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it. |
+| `metadata` | The time stored in the file **minus the clip length**: Android phones store when recording *stopped* (checked on a Xiaomi clip, round 226). |
+| `file_name_date` | Only the day is in the name (WhatsApp: `VID-20260924-WA0005.mp4`); noon is assumed. Uncertain. |
+| `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file picker copies every file it hands over. |
+| `after_previous` | A clip with an uncertain time that would overlap the clip before it, placed right after that clip (so several WhatsApp clips from one day play one after the other instead of all at noon). Clips with a reliable time never move, so a real overlap (two cameras) stays visible. |
+| `user` | The user set the start on the import screen. |
+| `camera` | Recorded by the app (time-lapse video bursts, round 238): the camera's time of the first frame. |
+| `clock` | Recorded by the app, but the camera gave no usable time: the phone's clock when the clip opened. |
+
+When the file name's time and the stored time differ by more than 2 minutes, the name wins
+but the import screen marks the time as uncertain. Messengers such as WhatsApp remove the
+stored time; video editors reset it to the export time.
+
+### `video_detections.jsonl` — "Run AI on videos" (round 225+)
+
+"Run AI on videos" (home screen) runs a detector over every clip and appends to
+`<session>/video_detections.jsonl`, following the same append-only JSONL rules as
+`session.jsonl` (records carry `time_ms` = when written, no `time_iso`):
+
+* `video_run_start` — one per run: `settings` (`model`, `confidence`, `iou`,
+  `analysis_fps` = frames looked at per video second, `roi` = `[center_x, center_y, side]`
+  as fractions of the upright picture, side as a fraction of its width, or `null` for the
+  whole picture, `max_side_px`), `model_name`, `use_gpu`, `thermal_limit_c` (the pause
+  temperature, round 229+), `sample_s` (the "Measure the phone every" setting, round
+  232+), `clips_total`, `clips_pending`, `started_over` (when earlier results were
+  replaced), `app_version`.
+  Results made with other `settings` are never mixed: a run with changed settings asks,
+  then starts the file over.
+* `video_clip_start` — per clip: `clip`, `start_epoch_ms`, `start_time_source`,
+  `resume_from_pts_us` (when a stopped run continued), and the format fields.
+* `raw_detections` — per analysed frame: `clip`, `pts_us` (the frame's time stamp in the
+  file), `frame` (0-based in display order, as CVAT counts), `frame_ms` (epoch ms = clip
+  start + time stamp offset) and `boxes` as `[left, top, right, bottom, conf, class]`
+  normalized 0–1 **to the whole upright frame**, also with a square. This is the live
+  log's `raw_detections` shape (§3), so the tracker replay tools read it.
+* `video_clip_done` — per clip: `frames_analysed`, `frames_decoded`, `frame_width`,
+  `frame_height`, `roi_px` (the square in video pixels), `class_names`, and time sums
+  `decode_ms`, `convert_ms`, `infer_ms`, `elapsed_ms`. `video_clip_error` instead when a
+  clip failed (`error`, `at_pts_us`).
+* `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
+  `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
+
+**The phone during the analysis (round 232+).** Every `sample_s` seconds of a run, also
+while it waits for the phone to cool down, and once more at the end of each run, the run
+writes one sample: up to three records with the same `time_ms`, named as in live sessions
+(§3) so one script reads both.
+
+* `thermal` — the live record's fields without the storage ones, plus `clip` (the clip
+  being analysed) and `paused: true` while the run waits to cool down.
+* `power` — the live record's fields, with the same raw-sensor caveats (§3: some phones
+  report milliamps, the Xiaomi a two-cell voltage, and any `is_charging` or `is_plugged`
+  makes the power figures meaningless).
+* `analysis_speed` — the time since the previous sample: `clip`, `period_ms`, `frames`
+  (analysed), `frames_decoded`, `frames_per_s` (analysed frames per second of clock
+  time; cooling pauses count, so it is 0 during a pause), `paused_ms` (the part spent
+  cooling down), and per analysed frame the mean `decode_ms` (reading frames from the
+  video, including the frames skipped to reach the analysis rate), `convert_ms` (cutting
+  out the square and scaling it; from round 233 split over several cores, so it is the
+  waiting time, not the summed work of the cores) and `detect_ms` (the detector call: input preparation,
+  the model and box decoding). The three means are left out when no frame was analysed;
+  the record is left out when nothing was analysed and nothing paused (the first sample
+  of a run).
+* `video_thermal_pause` (`clip`, `temp_c`, `limit_c`, `resume_below_c`) and
+  `video_thermal_resume` (`clip`, `temp_c`, `paused_ms`, `cancelled: true` when the run
+  was stopped while waiting) mark each cooling pause.
+
+The summary's Graphs tab (under *Extra graphs*) plots these instead of the live graphs,
+on the analysis time: runs placed back to back with a gap between them (5 sample
+intervals, at least a minute), cooling pauses shaded. *Share results* adds them as
+`phone_during_analysis.csv`, one row per sample on the same clock:
+`run` (1, 2, … per start of *Run AI on videos*), `time_s` (the graphs' time axis),
+`epoch_ms` (the records' `time_ms`), `clip`, `temp_c`, `headroom`, `thermal_status`,
+`power_w`, `battery_current_ua`, `battery_voltage_mv` (raw, as logged; the two sensor
+columns are there to apply the §3 corrections), `charging`, `plugged`, `frames_per_s`,
+`frames` (analysed since the previous row), `decode_ms`, `convert_ms`, `detect_ms`,
+`paused`, `paused_ms` (the part of the period spent cooling down). Empty cells are
+values the phone did not report, or no frames in that period. A battery current of
+exactly 0 counts as not reported, so `power_w` is empty whenever a full battery on the
+charger lets the phone run from the charger alone (it happens in cooling pauses).
+Rows cover different numbers of frames (the last one of a run is shorter, and the
+first frames of a run can be slower while the detector warms up), so average the
+per-frame columns weighted by `frames`:
+
+```r
+p <- read.csv("phone_during_analysis.csv")
+plot(p$time_s / 60, p$temp_c, type = "l", xlab = "analysis time (min)", ylab = "battery °C")
+# Detector ms per frame in each run: does it slow down in later runs?
+sapply(split(p, p$run), function(d) weighted.mean(d$detect_ms, d$frames, na.rm = TRUE))
+```
+
+```python
+import pandas as pd
+p = pd.read_csv("phone_during_analysis.csv")
+p.plot(x="time_s", y=["temp_c", "frames_per_s"], secondary_y="frames_per_s")
+d = p.dropna(subset=["detect_ms"])
+(d.detect_ms * d.frames).groupby(d.run).sum() / d.frames.groupby(d.run).sum()
+```
+
+The file holds boxes and these samples only; the next files turn the boxes into visits.
+
+### Visits: `post_tracks.jsonl`, `visits.csv`, `mot/` (round 228+)
+
+*Find visits* (under the analysis on the "Run AI on videos" screen, and automatically
+after each finished analysis) runs the boxes through the same tracker a live session
+uses (ByteTrack or C-BIoU, chosen under camera Settings, with the screen's own
+**occlusion tolerance** and **minimum visit length**). It follows each insect from frame
+to frame, so one insect seen in many frames counts as one visit. It takes seconds and
+never re-runs the detector, so it can be repeated with other settings; each run
+**replaces** these three outputs (each is written under a temporary name and renamed when
+complete, so a crash never leaves half a file in place of a good one):
+
+* `post_tracks.jsonl`: shaped like the live log. `post_track_start` first (`run_id`,
+  `detections_run_ms` = `time_ms` of the analysis run's first `video_run_start`, the
+  `detection_settings`, `occlusion_seconds`, `min_hits_seconds`, `tracker` = the effective
+  tracker parameters, `clips`, `observed_ms` = filmed time of the tracked clips, overlaps
+  counted once (round 229+), `clips_continuing_previous`, `clips_left_out`; round 234:
+  `keep_frames` = `{step_seconds, duration_seconds}` or null when no frames were kept,
+  and with it `file_token`, the name token of the kept frames), then
+  `detections` and `track_event` records as in §3 (with `time_ms` = the frame's own time,
+  plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live;
+  a track entry names its kept frame in `jpeg`, as live photos do), `capture` records for
+  the kept frames (below), and `post_track_end` last (`visits`, `frames`, `detections`,
+  `clips_tracked`, `kept_frames`, `elapsed_ms`).
+* `visits.csv`: one row per visit (confirmed track id), for spreadsheets and R:
+  `track_id, clip, start_time` (wall clock), `start_s, end_s, duration_s` (seconds from
+  the start of the clip the visit began in, the position a video player shows),
+  `n_frames` (frames with a box), `mean_conf` and `class` (the class seen in most frames).
+* `mot/<clip>.txt`: every tracked box in the MOTChallenge text format
+  `frame,id,x,y,w,h,conf,-1,-1,-1` (frames counted from 1 in display order, box
+  left/top/width/height in video pixels). Tracking benchmarks (TrackEval) read it as is;
+  for CVAT, `tool/video_eval/mot_to_cvat.py` adds the class column CVAT expects (round
+  230). A clip without any box gets an empty file.
+
+Worth knowing when comparing with a hand count:
+
+* As in live sessions, a track shows up only once confirmed (after the minimum visit
+  length), so `mot/` and `detections` lack each visit's first frames. `start_s` is the
+  tracker's first sighting, before confirmation; `n_frames` counts from confirmation.
+* Only clips whose analysis finished are tracked (`clips_left_out` lists the others).
+* One tracker follows an insect from one clip into the next only when the next clip's
+  first analysed frame comes after the previous clip's last one, within the occlusion
+  tolerance (clips recorded back to back). The visit keeps the first clip's clock, so its
+  `end_s` can exceed that clip's length. Otherwise the tracker starts afresh, since
+  imported files can overlap or carry wrong clocks. Track ids stay unique per session.
+* Times come from each frame's own time stamp, never from frame number ÷ fps.
+* At a low analysis rate, keep the occlusion tolerance well above the time between two
+  analysed frames, or every visit breaks into pieces.
+
+### Kept frames: `roi_frames/` (round 234+)
+
+With *Keep frames of each visit* on (the default), *Find visits* also chooses pictures of
+each visit by the rule live photos follow: the visit's first frame, then one every *Keep a
+frame every* seconds (default 1 s) for up to *For up to* seconds (default 10 s) after the
+visit was first seen. Visits in the same frame share one picture. So a session keeps about
+`visits × (1 + duration ÷ step)` frames, fewer for visits shorter than the duration.
+
+* Each frame gets a `capture` record in `post_tracks.jsonl`: `file` (a live photo name,
+  `roi_<token>_<date>_<time>_<ms>.jpg` with the frame's wall-clock time), `captured_at_ms`,
+  `track_ids`, `source: "video"`, `clip`, `frame`, `pts_us` (the frame's position in the
+  clip in µs; the Video tab's player position is `pts_us ÷ 1000` ms), `roi_px` (the
+  analysed area `[x, y, width, height]` in upright video pixels) and its size: `saved_px`
+  for a square, `saved_w` and `saved_h` otherwise.
+* Right after *Find visits*, the app reads each clip once from front to back and saves the
+  analysed area of each chosen frame at full size (JPEG quality 90) into `roi_frames/`,
+  where live photos go, so the gallery copy and identification treat them like photos. A
+  frame whose file is there is not saved again: a stopped or interrupted saving continues
+  with *Save the remaining frames*, and finding the visits again with the same rule only
+  saves the frames that changed.
+* A later *Find visits* deletes the kept frames it no longer keeps. It never overwrites or
+  deletes a file no run kept (a name already taken moves on by 1 ms), nor a kept frame
+  whose video is no longer in `videos/`, since it could not be made again.
+* The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
+  moves the player to the frame's moment and scrolls it, with its controls, to the top of
+  the tab. White ticks under the player's time bar mark the saved kept frames (round 235).
+  The *Run AI on videos* screen shows how many are saved and the storage they take.
+
+### Freeing storage: deleting the videos (round 236+)
+
+The videos take most of a session's space. Once the visits are found, *Free storage* on
+the *Run AI on videos* screen offers two deletions, each after a confirmation; the videos
+are kept unless you choose one:
+
+* **Delete the clips without any visit**: clips that the current *Find visits* followed
+  and in which no visit has a box (a visit running on into the next clip keeps that clip).
+* **Delete all clips, keep the saved frames**: offered once every clip is analysed, the
+  visits include the latest analysis and every kept frame is saved.
+
+What stays: `video_detections.jsonl` (the AI's boxes), `post_tracks.jsonl`, `visits.csv`,
+`mot/` and the kept frames in `roi_frames/`. *Find visits* still runs from the boxes; a
+kept frame whose clip is gone is never overwritten or deleted, and a frame that a new rule
+would need from a deleted clip is counted as "can no longer be saved". What goes: playing
+the clip, analysing it again (another square or model; analysing the remaining clips
+again with other settings also drops the deleted clips' boxes, and the dialog says so)
+and keeping other frames from it.
+
+Each deletion appends one record to `session.jsonl`, after `end_of_session`:
+
+| Field | Meaning |
+|---|---|
+| `type` | `video_cleanup` |
+| `time_ms`, `time_iso` | when |
+| `mode` | `without_visits` or `all` |
+| `clips` | the file names deleted (as in `videos/`) |
+| `freed_bytes` | the space freed |
+| `visits_run_id` | the `run_id` of the *Find visits* run the choice was based on |
+
+The summary's Setup tab adds a *Videos deleted* row (count and space freed); on the Video
+tab a deleted clip says when it was deleted, and its boxes, visits and kept frames still
+show.
+
+*Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
+(to track again on a computer), `session.jsonl` (clip start times) and, once runs have
+measured the phone (round 232+), `phone_during_analysis.csv` (above). How to count the
+same clips by hand, score the app against that count and find the lowest frame rate that
+still counts visits correctly: [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) (round 230).
+
+### Where the app reads these visits (round 229+)
+
+The session summary (visit count and timeline, Setup rows), the dashboard and
+identification read a session's visits from **one** file: `post_tracks.jsonl` when it
+exists and the session did not track live (imported videos, or a motion or time-lapse
+session), `session.jsonl` otherwise. The two are never added together. The dashboard counts
+an imported session once *Find visits* has run, and its visits per hour use `observed_ms`
+(the filmed time), not the span from the first clip's start to the last one's end, since
+the gaps between clips were not filmed. A problem report carries the run records of both
+files (`video_detections_runs.jsonl`, `post_tracks_runs.jsonl`), without the per-frame
+boxes.
+
+### The Video tab: watching the boxes (round 231+)
+
+For an imported video session the summary's first tab is **Video** (live sessions keep
+*Photos*). It plays the session's clips with the AI's boxes drawn on them, so you can see
+what the AI found and whether the analysed square was well placed. The tab only reads
+`video_detections.jsonl`, `post_tracks.jsonl` and the kept frames in `roi_frames/` (round
+234, shown under the player); it writes nothing.
+
+* **Which boxes show at a moment.** The player's position counts from the clip's first
+  frame, the same clock as `start_s`/`end_s` in `visits.csv`. It shows the boxes of the
+  last analysed frame at or before that position and keeps them for at most 1.5 times the
+  step between analysed frames (150 ms at 10 frames per second). Parts of a clip that were
+  never analysed (a gap, the tail of a stopped analysis) show no boxes, never old ones. At
+  an analysis rate below the video's frame rate the boxes move in small steps, and at
+  higher playback speeds they can trail a fast insect a little.
+* **Visits or all AI boxes.** Once *Find visits* has run, the boxes are the tracked ones
+  from `post_tracks.jsonl`, labelled `#<track id> class conf` with the same number as in
+  `visits.csv`. A faded box is a frame where the detector missed the insect and the tracker
+  kept its place. The *All AI boxes* switch shows every `raw_detections` box instead,
+  including those *Find visits* did not count (a visit shorter than the minimum length,
+  or the frames before a track was confirmed, see above). Before *Find visits*, and when
+  the videos were analysed again after it (the visits' `detections_run_ms` no longer
+  matches the analysis run), only the AI boxes are shown, with a note.
+* **Whole frame or what the AI saw.** When a square was analysed, *Whole frame* draws it
+  and darkens the part left out; *What the AI saw* zooms onto the square. The square comes
+  from `roi_px` in `video_clip_done`, or from the run's `settings.roi` for a clip whose
+  analysis has not finished. Insects outside the square or cut by its edge mean the square
+  should move: *Change square and analyse again* opens *Run AI on videos* for the session,
+  and the tab reloads on return.
+* **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
+  visit (each starts 1 s before the visit); speed 0.5×, 1×, 2× or 4×; sound is off until
+  switched on. The coloured bars under the time bar mark the visits, and tapping a visit in
+  the list below the player jumps to it.

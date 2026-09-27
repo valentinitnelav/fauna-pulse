@@ -154,6 +154,10 @@ class EmbeddingIndex {
   /// are retried when the "smallest box" setting is lowered below it.
   final Map<String, int> tooSmallPx;
 
+  /// `run_id` of the "Find visits" run whose track ids these crops carry
+  /// (round 234; videos only): finding the visits again renumbers them.
+  final int? visitsRunId;
+
   const EmbeddingIndex({
     required this.records,
     required this.skippedKeys,
@@ -162,6 +166,7 @@ class EmbeddingIndex {
     this.margin,
     this.minCropPx,
     this.tooSmallPx = const {},
+    this.visitsRunId,
   });
 
   /// Keys to leave alone for a run with [minCropPx]: everything skipped
@@ -189,6 +194,7 @@ class EmbeddingIndex {
     String? modelId;
     double? margin;
     int? minCropPx;
+    int? visitsRunId;
     for (final line in const LineSplitter().convert(jsonl)) {
       if (line.trim().isEmpty) continue;
       Map<String, dynamic> rec;
@@ -213,6 +219,7 @@ class EmbeddingIndex {
           modelId ??= rec['model'] as String?;
           margin ??= (rec['margin'] as num?)?.toDouble();
           minCropPx ??= (rec['min_crop_px'] as num?)?.toInt();
+          visitsRunId ??= (rec['visits_run_id'] as num?)?.toInt();
       }
     }
     return EmbeddingIndex(
@@ -223,6 +230,7 @@ class EmbeddingIndex {
       margin: margin,
       minCropPx: minCropPx,
       tooSmallPx: tooSmall,
+      visitsRunId: visitsRunId,
     );
   }
 }
@@ -781,12 +789,18 @@ class LatestIdentification {
   /// AI sessions: by track id. No-AI sessions: by photo file name.
   final Map<int, TrackIdentity> byTrack;
   final Map<String, TrackIdentity> byPhoto;
+
+  /// The "Find visits" run whose visit numbers [byTrack] uses (videos only,
+  /// round 235): when the visits were found again since, the numbers point
+  /// at other visits.
+  final int? visitsRunId;
   const LatestIdentification({
     required this.packId,
     required this.generatedIso,
     required this.summaryFile,
     required this.byTrack,
     required this.byPhoto,
+    this.visitsRunId,
   });
 
   /// `summary_<pack>.json` → `<pack>`.
@@ -826,6 +840,7 @@ class LatestIdentification {
       summaryFile: summaries.first,
       byTrack: byTrack,
       byPhoto: byPhoto,
+      visitsRunId: ((s['capture'] as Map?)?['visits_run_id'] as num?)?.toInt(),
     );
   }
 }

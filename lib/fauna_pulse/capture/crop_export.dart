@@ -386,17 +386,34 @@ Future<GalleryExportResult> exportPhotosToGallery(
   List<File> photos,
   String album, {
   void Function(int done, int total)? onProgress,
-}) async {
-  final total = photos.length;
+}) => _exportToGallery(photos, album, 'saveImagesToGallery', kGalleryExportChunk, onProgress);
+
+/// Round 239: copies a session's video clips into the shared Gallery under
+/// Movies/FaunaPulse/[album], one clip per call (clips can be hundreds of
+/// MB, so the progress bar moves per clip). Same rules as the photos.
+Future<GalleryExportResult> exportVideosToGallery(
+  List<File> clips,
+  String album, {
+  void Function(int done, int total)? onProgress,
+}) => _exportToGallery(clips, album, 'saveVideosToGallery', 1, onProgress);
+
+Future<GalleryExportResult> _exportToGallery(
+  List<File> files,
+  String album,
+  String method,
+  int chunkSize,
+  void Function(int done, int total)? onProgress,
+) async {
+  final total = files.length;
   var exported = 0, skipped = 0, failed = 0;
-  for (var i = 0; i < total; i += kGalleryExportChunk) {
-    final chunk = photos.sublist(i, min(i + kGalleryExportChunk, total));
+  for (var i = 0; i < total; i += chunkSize) {
+    final chunk = files.sublist(i, min(i + chunkSize, total));
     try {
       final r = await _channel.invokeMapMethod<String, Object?>(
-        'saveImagesToGallery',
+        method,
         {'paths': chunk.map((f) => f.path).toList(), 'album': album},
       );
-      if (r == null) throw StateError('null reply from saveImagesToGallery');
+      if (r == null) throw StateError('null reply from $method');
       if (r['supported'] != true) {
         // Pre-Android-10 phone: no point sending the remaining chunks.
         return const GalleryExportResult(false, 0, 0, 0);
@@ -408,7 +425,7 @@ Future<GalleryExportResult> exportPhotosToGallery(
       logSwallowed('gallery_batch_export', e);
       failed += chunk.length;
     }
-    onProgress?.call(min(i + kGalleryExportChunk, total), total);
+    onProgress?.call(min(i + chunkSize, total), total);
   }
   return GalleryExportResult(true, exported, skipped, failed);
 }

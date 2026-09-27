@@ -29,11 +29,11 @@ class LiteRtModel(
     modelPath: String,
     useGpu: Boolean,
     private val tag: String,
-    // CPU inference threads. 0 = leave it to the runtime's default. LiteRT's CPU backend is
+    // CPU inference threads. 0 = automatic ([automaticCpuThreads]). LiteRT's CPU backend is
     // XNNPACK (a library of hand-optimized CPU kernels that TFLite/LiteRT uses automatically);
     // this only tunes how many threads those kernels may spread across. More threads can be
     // faster but also draws more power/heat - benchmark before changing (see benchmarkAccelerators).
-    private val cpuThreads: Int = 0,
+    cpuThreads: Int = 0,
 ) : InferenceModel {
     private data class PreparedModel(
         val model: CompiledModel,
@@ -53,6 +53,9 @@ class LiteRtModel(
 
     /** Accelerator actually in use after the ladder resolves: "GPU" or "CPU". */
     override val accelerator: String
+
+    /** Threads the CPU engine was given (the resolved count, never 0); unused on the GPU. */
+    val cpuThreads: Int = if (cpuThreads > 0) cpuThreads else automaticCpuThreads()
     override val accelerationNote: String?
 
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3], regardless of the model's native
@@ -156,7 +159,7 @@ class LiteRtModel(
 
         Log.i(
             tag,
-            "LiteRT compiled on $acc; inputDims=${inputDims.toList()} " +
+            "LiteRT compiled on $acc${if (acc == "CPU") " ($cpuThreads threads)" else ""}; inputDims=${inputDims.toList()} " +
                 "layout=${if (inputUsesNchw) "NCHW" else "NHWC"} " +
                 "outputDims=${outputDims.map { it.toList() }} outputCounts=${outputElementCounts.toList()}",
         )
@@ -193,7 +196,7 @@ class LiteRtModel(
 
     private fun prepareModel(modelPath: String, accelerator: Accelerator, gpuCacheDir: java.io.File): PreparedModel {
         val options = CompiledModel.Options(accelerator)
-        if (accelerator == Accelerator.CPU && cpuThreads > 0) {
+        if (accelerator == Accelerator.CPU) {
             // litert 2.1.5 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. Only
             // numThreads is set here: flags are exotic, and the weight cache is deliberately
             // skipped - a cache file corrupted by a mid-write kill would be read back by
@@ -263,11 +266,12 @@ class LiteRtModel(
                 compiled.run(inputs, outputs)
             }
             val outputTensorTypes = List(outputs.size) { i ->
-                // litert-torch (format=litert) names signature outputs output_0, output_1, …; legacy onnx2tf
-                // exports name them Identity, Identity_1, …. Try both so the output shape resolves for either
-                // export; a miss leaves that outputDims entry empty (detect falls back to the element count).
+                // litert-torch (format=litert) names signature outputs output_0, output_1, …; current Ultralytics
+                // TFLite exports use output0, output1, … (upstream 0.6.14); legacy onnx2tf exports name them
+                // Identity, Identity_1, …. Try all three so the output shape resolves for any export; a miss leaves
+                // that outputDims entry empty (detect falls back to the element count, segment/pose need it).
                 val legacyName = if (i == 0) "Identity" else "Identity_$i"
-                sequenceOf("output_$i", legacyName).firstNotNullOfOrNull { name ->
+                sequenceOf("output_$i", "output$i", legacyName).firstNotNullOfOrNull { name ->
                     try {
                         compiled.getOutputTensorType(outputName = name)
                     } catch (_: Throwable) {
@@ -335,6 +339,17 @@ class LiteRtModel(
         } catch (_: Throwable) {
             // best-effort
         }
+    }
+
+    companion object {
+        /**
+         * Thread count behind "0 = automatic". LiteRT's own default is ONE thread (round 226: 0 and 1
+         * timed the same on both test phones). Upstream 0.6.12 moved to up to 4; measured on the Xiaomi
+         * (1+3+4 cores) and the Samsung (8 small cores), 2 threads was ~1.9x faster than 1 on every
+         * bundled detector, while 4 was slower than 2 on the small models and at most ~15% faster on
+         * the 640-px ones, for twice the busy cores (more heat). 8 was slower than 2 everywhere.
+         */
+        fun automaticCpuThreads(): Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 2)
     }
 
     private fun closeBuffers(inputs: List<TensorBuffer>, outputs: List<TensorBuffer>) {

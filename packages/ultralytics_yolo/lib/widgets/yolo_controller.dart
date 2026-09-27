@@ -371,6 +371,45 @@ class YOLOViewController {
         'sampleFps': sampleFps,
       });
 
+  /// Starts recording the ROI of the live frames into an H.264 MP4 clip at
+  /// [path] (FaunaPulse, round 238: time-lapse video bursts; only while
+  /// time-lapse mode is on). The clip is [sidePx] square (made smaller when
+  /// the phone's encoder needs it) at [fps] frames per second; the ROI
+  /// ([cx], [cy], [side], as in [setInferenceRoi]) follows later ROI changes.
+  /// Returns `{sidePx, bitrate, encoder}`, or `{error}` when no clip could be
+  /// opened, or null where unimplemented. Android only.
+  Future<Map<String, dynamic>?> startRoiVideo({
+    required String path,
+    required int sidePx,
+    required int fps,
+    required double cx,
+    required double cy,
+    required double side,
+    double bitsPerPixel = 0.25,
+  }) async {
+    final r = await _invoke<Map<dynamic, dynamic>>('startRoiVideo', {
+      'path': path,
+      'sidePx': sidePx,
+      'fps': fps,
+      'cx': cx,
+      'cy': cy,
+      'side': side,
+      'bitsPerPixel': bitsPerPixel,
+    });
+    return r?.cast<String, dynamic>();
+  }
+
+  /// Ends the clip started with [startRoiVideo] and returns its facts
+  /// (`frames`, `skipped`, `firstEpochMs`, `durationMs`, `bytes`, …), or null
+  /// when none was open. A clip the camera closed by itself (pause) is
+  /// returned here too. Android only.
+  Future<Map<String, dynamic>?> stopRoiVideo({String reason = 'stopped'}) async {
+    final r = await _invoke<Map<dynamic, dynamic>>('stopRoiVideo', {
+      'reason': reason,
+    });
+    return r?.cast<String, dynamic>();
+  }
+
   /// Caps the camera's own frame rate (FaunaPulse, round 82).
   ///
   /// Different from the inference FPS cap: that one only skips frames in

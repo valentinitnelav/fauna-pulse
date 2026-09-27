@@ -19,9 +19,12 @@ import 'dart:typed_data';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
+import '../logging/thermal_pause.dart';
+import '../logging/track_source.dart';
 import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
 import '../postprocess/post_detector.dart' show PostDetector;
+import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import 'crop_planner.dart';
 import 'crop_worker.dart';
 import 'identification_store.dart';
@@ -33,9 +36,6 @@ typedef EmbedFn = Future<List<Float32List>> Function(List<Uint8List> rgb);
 
 /// Cuts the crops of one photo (default: the isolate worker).
 typedef CropFn = Future<List<CropResult>> Function(CropBatchArgs args);
-
-/// Reads the phone's thermal state (default: DeviceThermal.read).
-typedef ThermalFn = Future<ThermalReading> Function();
 
 class IdentifyProgress {
   /// 'planning' | 'embedding' | 'paused' | 'scoring' | 'done'
@@ -229,6 +229,9 @@ class IdentificationJob {
 
     onProgress?.call(const IdentifyProgress(stage: 'planning', done: 0, total: 0, avgMs: 0));
     final tasks = await planSession(sessionDir, maxCropsPerTrack: settings.maxCropsPerTrack);
+    // Round 234: visits found in videos are numbered anew by each "Find
+    // visits"; crops stored under the old numbers can't be continued.
+    final visitsRunId = await currentVisitsRunId(sessionDir);
 
     // Resume state: an intact jsonl/bin pair is continued; anything
     // inconsistent (dim changed, rows missing, bin short) is redone.
@@ -239,8 +242,14 @@ class IdentificationJob {
       final intact = existing.contiguous &&
           (existing.dim == null || existing.dim == settings.dim) &&
           binLen >= existing.rows * settings.dim * 4;
-      if (!intact) {
-        logSwallowed('identify_resume_reset', StateError('inconsistent embeddings files; starting over'));
+      final renumbered = existing.visitsRunId != visitsRunId;
+      if (!intact || renumbered) {
+        logSwallowed(
+          'identify_resume_reset',
+          StateError(
+            renumbered ? 'visits were found again since; starting over' : 'inconsistent embeddings files; starting over',
+          ),
+        );
         if (jsonlFile.existsSync()) jsonlFile.deleteSync();
         if (binFile.existsSync()) binFile.deleteSync();
         existing = const EmbeddingIndex(records: [], skippedKeys: {}, dim: null, modelId: null);
@@ -270,6 +279,7 @@ class IdentificationJob {
       'crops_planned': tasks.length,
       'crops_pending': pending.length,
       'crops_done_before': done.length,
+      'visits_run_id': ?visitsRunId,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
@@ -312,26 +322,21 @@ class IdentificationJob {
         }
         // Thermal governor: pause while the battery is warm. The reading is
         // also shown during normal embedding (round 210 temperature gauge).
-        double? temp;
-        try {
-          var reading = await thermal();
-          temp = reading.batteryTempC;
-          if (temp != null && temp >= settings.thermalLimitC) {
-            pauses++;
-            while (temp != null && temp > settings.thermalLimitC - 3) {
-              emit('paused', tempC: temp, note: 'Phone warm ($temp °C); resuming below ${(settings.thermalLimitC - 3).toStringAsFixed(0)} °C');
-              await Future<void>.delayed(pausePoll);
-              if (isCancelled?.call() ?? false) break;
-              reading = await thermal();
-              temp = reading.batteryTempC;
-            }
-            if (isCancelled?.call() ?? false) {
-              cancelled = true;
-              break;
-            }
+        final warm = await waitWhileWarm(
+          thermal: thermal,
+          limitC: settings.thermalLimitC,
+          poll: pausePoll,
+          isCancelled: isCancelled,
+          onPaused: (t, note) => emit('paused', tempC: t, note: note),
+          errorTag: 'identify_thermal',
+        );
+        final temp = warm.tempC;
+        if (warm.paused) {
+          pauses++;
+          if (isCancelled?.call() ?? false) {
+            cancelled = true;
+            break;
           }
-        } catch (e) {
-          logSwallowed('identify_thermal', e);
         }
 
         final source = entry.key;
@@ -472,6 +477,20 @@ class IdentificationJob {
     );
   }
 
+  /// The `run_id` of the "Find visits" run whose numbers a session's visits
+  /// carry now, for visits found afterwards in videos; null for visits
+  /// tracked live (their numbers never change). Round 235.
+  static Future<int?> currentVisitsRunId(Directory sessionDir) async =>
+      trackSourceOf(sessionDir) == TrackSource.afterwards ? (await VideoTracker.readSummary(sessionDir))?.runId : null;
+
+  /// The stored crops of [modelName] carry visit numbers of an earlier "Find
+  /// visits" run: re-scoring them would pair answers with the wrong visits,
+  /// and the next run starts over (round 235).
+  static Future<bool> cropsOutdated(Directory sessionDir, String modelName) async {
+    final stored = await storedIndex(sessionDir, modelName);
+    return stored != null && stored.visitsRunId != await currentVisitsRunId(sessionDir);
+  }
+
   /// The crop settings the stored embeddings of [modelName] were made with
   /// (round 213), or null when there are none. The screen compares them with
   /// the current settings before a re-run.
@@ -531,18 +550,32 @@ class IdentificationJob {
 
     // Track spans + ids from the session log (cheap head/tail-free parse of
     // only the record types the index keeps; done synchronously here because
-    // we are already on a worker isolate).
+    // we are already on a worker isolate). Round 229: visits found afterwards
+    // in a session's videos come from post_tracks.jsonl instead (never both);
+    // the start record always comes from session.jsonl.
     final spans = <int, (int, int)>{};
     final detCounts = <int, int>{};
     final log = File('${sessionDir.path}/session.jsonl');
+    final tracksFile = tracksFileOf(sessionDir);
     String deviceId = '';
     // Round 216: the session's photo schedule, so the results screen can say
     // "one photo every 1 s during the first 10 s of a track id" with the
     // real values instead of the defaults.
     double? photoStepS, photoDurationS;
-    if (log.existsSync()) {
-      for (final line in const LineSplitter().convert(log.readAsStringSync())) {
-        if (!line.contains('"track') && !line.contains('"start_of_session"')) continue;
+    // Round 234: visits found in videos keep their frames by the rule of
+    // their "Find visits" run (post_track_start), whose run_id the results
+    // screen compares with the current one.
+    int? visitsRunId;
+    KeepFramesSettings? keep;
+    for (final file in tracksFile.path == log.path ? [log] : [log, tracksFile]) {
+      if (!file.existsSync()) continue;
+      final readTracks = file.path == tracksFile.path;
+      for (final line in const LineSplitter().convert(file.readAsStringSync())) {
+        if (!line.contains('"track') &&
+            !line.contains('"start_of_session"') &&
+            !line.contains('"post_track_start"')) {
+          continue;
+        }
         Map<String, dynamic> rec;
         try {
           rec = jsonDecode(line) as Map<String, dynamic>;
@@ -560,12 +593,17 @@ class IdentificationJob {
             photoDurationS = (cfg['durationSeconds'] as num?)?.toDouble();
           }
         }
+        if (readTracks && rec['type'] == 'post_track_start') {
+          visitsRunId = (rec['run_id'] as num?)?.toInt();
+          keep = KeepFramesSettings.fromJson(rec['keep_frames']);
+        }
         void extend(int? id) {
           if (id == null || t == null) return;
           detCounts[id] = (detCounts[id] ?? 0) + 1;
           final s = spans[id];
           spans[id] = s == null ? (t, t) : (s.$1 < t ? s.$1 : t, s.$2 > t ? s.$2 : t);
         }
+        if (!readTracks) continue;
         if (rec['type'] == 'detections') {
           final tracks = rec['tracks'];
           if (tracks is List) {
@@ -577,6 +615,15 @@ class IdentificationJob {
           extend((rec['track_id'] as num?)?.toInt());
         }
       }
+    }
+
+    // Round 235: crops cut for visits that were found again since carry the
+    // old numbers; scoring them against the new visits would mismatch both.
+    if (visitsRunId != index.visitsRunId) {
+      throw StateError(
+        'The visits were found again since these crops were made. Run identification again '
+        '("Continue / re-run"); it starts over by itself.',
+      );
     }
 
     // Group crops per track (crops without a track id stand alone).
@@ -652,7 +699,11 @@ class IdentificationJob {
       tracks: scored,
       settings: settings,
       appVersion: appVersion,
-      capture: {'photo_step_s': photoStepS, 'photo_duration_s': photoDurationS},
+      capture: {
+        'photo_step_s': keep?.stepSeconds ?? photoStepS,
+        'photo_duration_s': keep?.durationSeconds ?? photoDurationS,
+        'visits_run_id': ?visitsRunId,
+      },
     );
   }
 }

@@ -33,6 +33,7 @@ import 'package:flutter/services.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../capture/roi_capture.dart';
+import '../capture/roi_video.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
@@ -392,6 +393,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ),
       ),
+      if (_c.timeLapseCapture) ..._timeLapseSaveAsFields(),
+      // Round 240 (video plan): always visible in AI mode, not behind an ⓘ.
+      if (_c.detectorEnabled)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Live AI warms the phone: the detector works on the camera picture all session '
+            'long, and older or hot phones can drop to a few frames per second, missing fast '
+            'insects. For long or hot sessions, choose "Time-lapse" with "Save bursts as: '
+            'Video" and run the AI later at home ("Run AI on videos").',
+            style: TextStyle(color: Colors.white60, fontSize: 12),
+          ),
+        ),
       const SizedBox(height: 12),
 
       // Session length sits right after the trigger (round 159): folder,
@@ -400,24 +414,28 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ..._sessionLengthFields(),
       const SizedBox(height: 8),
 
-      NumericSettingField(
-        label: 'Photo step',
-        value: _c.stepSeconds,
-        min: 0.1,
-        max: 10,
-        decimals: 1,
-        unitSuffix: 's',
-        helperText:
-            'Seconds between saved ROI photos — of the same track id (AI '
-            'detector on) or within one motion/time-lapse burst (0.1–10). '
-            'Default 1. Steps below ~0.5 s need the "fast" photo source: '
-            'high-res photos take 0.5–1.5 s each and cannot keep up. '
-            'Fast photos are capped at the live-stream short side, so raise '
-            'the stream resolution if fast bursts need bigger photos.',
-        onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
+      _applicableIf(
+        !_c.timeLapseVideo,
+        'Not used for video bursts: a clip keeps every frame.',
+        NumericSettingField(
+          label: 'Photo step',
+          value: _c.stepSeconds,
+          min: 0.1,
+          max: 10,
+          decimals: 1,
+          unitSuffix: 's',
+          helperText:
+              'Seconds between saved ROI photos — of the same track id (AI '
+              'detector on) or within one motion/time-lapse burst (0.1–10). '
+              'Default 1. Steps below ~0.5 s need the "fast" photo source: '
+              'high-res photos take 0.5–1.5 s each and cannot keep up. '
+              'Fast photos are capped at the live-stream short side, so raise '
+              'the stream resolution if fast bursts need bigger photos.',
+          onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
+        ),
       ),
       DurationSettingField(
-        label: 'Photo duration',
+        label: _c.timeLapseVideo ? 'Burst duration (clip length)' : 'Photo duration',
         valueSeconds: _c.durationSeconds,
         minSeconds: 1,
         maxSeconds: 86400,
@@ -530,7 +548,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 setState(() => _c = _c.copyWith(timeLapseTorchLeadSeconds: v)),
           ),
       ],
-      if (!_c.isTimeLapseValid)
+      if (!_c.isTimeLapseValid && !_c.timeLapseVideo)
         const Padding(
           padding: EdgeInsets.only(bottom: 8),
           child: Text(
@@ -838,9 +856,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'list is the square size every camera frame is shrunk to for '
             'the model: smaller runs faster, larger sees tiny insects '
             'better.',
-        child: Row(
+        // Round 240: the two buttons wrap under the label; in one row with
+        // it they overflowed a 360-px-wide phone by 42 px.
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(child: _label('Detection model')),
+            _label('Detection model'),
             TextButton.icon(
               onPressed: _modelsLoading ? null : _downloadModel,
               icon: const Icon(Icons.cloud_download_outlined, size: 18),
@@ -1011,6 +1032,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       _trackerFields(),
       const SizedBox(height: 8),
+      const Divider(color: Colors.white24),
+      _liveVideoSection(),
+      const SizedBox(height: 8),
     ];
     if (_c.detectorEnabled) return ListView(children: children);
     return ListView(
@@ -1086,9 +1110,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         isInt: true,
         helperText:
             'How many processor cores the model may use when it runs on the '
-            'CPU (GPU runs ignore this). 0 lets the runtime decide. More '
-            'threads can be faster but draw more power and heat — run the '
-            'benchmark below before changing it.',
+            'CPU (GPU runs ignore this). 0 = automatic, which uses 2: on the '
+            'test phones that was about twice as fast as 1, while 4 was at '
+            'most slightly faster and keeps twice as many cores busy (more '
+            'heat). Run the benchmark below before changing it.',
         onChanged: (v) =>
             setState(() => _c = _c.copyWith(cpuThreads: v.round())),
       ),
@@ -1327,6 +1352,62 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
         ..._advancedTrackerSection(isCbiou, p, update, cp, updateC),
+      ],
+    );
+  }
+
+  /// Round 240 (video plan 3b): record the ROI as video while the live AI
+  /// runs, to check afterwards what it found and missed.
+  Widget _liveVideoSection() {
+    final cap = _c.cameraFpsCap;
+    return FoldSection(
+      title: 'Check the live AI (advanced)',
+      subtitle: 'Also record the ROI as video while the AI runs.',
+      initiallyExpanded: _c.liveAiVideo,
+      children: [
+        HelpSwitchTile(
+          title: 'Also record the ROI as video',
+          helperText:
+              'Records the ROI square as MP4 clips (a new clip every 5 minutes, in the session\'s '
+              'videos folder) while the AI detects live. Afterwards the session summary plays '
+              'the clips with the boxes the live AI found, so you can see what it caught and what '
+              'it missed, count the visits by hand, or run the AI again on the clips ("Run AI on '
+              'videos"). Off by default: it costs storage (estimate below) and heat, because every '
+              'frame of the clip is processed even while the motion gate lets the detector sleep.',
+          value: _c.liveAiVideo,
+          onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideo: v)),
+        ),
+        if (_c.liveAiVideo) ...[
+          NumericSettingField(
+            label: 'Video frame rate',
+            value: _c.liveAiVideoFps.toDouble(),
+            min: 1,
+            max: 30,
+            isInt: true,
+            unitSuffix: 'FPS',
+            helperText:
+                'Frames per second in the clips (1 to 30). Default 15, the camera frame rate cap '
+                'the app ships with (Power tab), so the camera delivers every frame the clip '
+                'needs. Lower rates save storage and heat.',
+            onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideoFps: v.round())),
+          ),
+          if (cap > 0 && cap < _c.liveAiVideoFps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'The camera is capped at $cap frames per second (Power tab → "Camera frame rate '
+                'cap"), so the clips get at most $cap.',
+                style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              liveAiVideoStorageEstimate(_c),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1582,6 +1663,106 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   // --- Tab 3: Photos — what saved photos look like ------------------------
 
+  /// [child] as usual when [applies]; otherwise greyed and not editable,
+  /// with [note] saying why (the stored value is kept for later).
+  Widget _applicableIf(bool applies, String note, Widget child) {
+    if (applies) return child;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(note, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  /// Time-lapse only (round 238): photos or one video clip per burst, the
+  /// clip frame rate, a storage estimate and the camera-cap warning.
+  List<Widget> _timeLapseSaveAsFields() {
+    final video = _c.timeLapseSaveAs == TimeLapseSaveAs.video;
+    final cap = _c.cameraFpsCap;
+    return [
+      const SizedBox(height: 12),
+      const HelpLabel(
+        label: 'Save bursts as',
+        helperText:
+            'Photos (the default) save one square photo of the ROI every '
+            '"Photo step". Video saves each burst as one MP4 clip of the ROI '
+            'with every frame (see "Video frame rate"), so an insect can be '
+            'followed from frame to frame. The AI runs later, at home: on the '
+            'home screen, the session\'s gear menu → "Run AI on videos" finds '
+            'the insects and their visits. Video needs more storage (estimate '
+            'below). The clip\'s side is the "Saved photo side" on the Photos '
+            'tab (smaller when the ROI covers fewer camera pixels).',
+      ),
+      DropdownButton<TimeLapseSaveAs>(
+        value: _c.timeLapseSaveAs,
+        isExpanded: true,
+        dropdownColor: Colors.black87,
+        items: const [
+          DropdownMenuItem(
+            value: TimeLapseSaveAs.photos,
+            child: Text(
+              'Photos',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          DropdownMenuItem(
+            value: TimeLapseSaveAs.video,
+            child: Text(
+              'Video (MP4), AI later on "Run AI on videos"',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+        onChanged: (v) => setState(() => _c = _c.copyWith(timeLapseSaveAs: v)),
+      ),
+      if (video) ...[
+        const SizedBox(height: 8),
+        NumericSettingField(
+          label: 'Video frame rate',
+          value: _c.timeLapseVideoFps.toDouble(),
+          min: 1,
+          max: 30,
+          isInt: true,
+          unitSuffix: 'FPS',
+          helperText:
+              'Frames per second in each clip (1 to 30). Default 15: enough to '
+              'follow a bee from frame to frame, and the same as the camera '
+              'frame rate cap the app ships with (Power tab), so the camera '
+              'delivers every frame the clip needs. Higher rates need more '
+              'storage and a higher camera cap; lower rates save storage, but '
+              'a fast insect may move too far between two frames to be '
+              'recognised as the same one.',
+          onChanged: (v) => setState(() => _c = _c.copyWith(timeLapseVideoFps: v.round())),
+        ),
+        if (cap > 0 && cap < _c.timeLapseVideoFps)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'The camera is capped at $cap frames per second (Power tab → '
+              '"Camera frame rate cap"), so the clips get at most $cap. Raise '
+              'the cap to ${_c.timeLapseVideoFps} or lower the video frame '
+              'rate. A higher cap also warms the phone between bursts, unless '
+              '"Turn camera off between bursts" is on.',
+              style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            roiVideoStorageEstimate(_c),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ),
+      ],
+    ];
+  }
+
   Widget _photosTab() => ListView(
     children: [
       // Saved photo side leads the tab (round 159): it answers "how big are
@@ -1609,7 +1790,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'and the ROI readout on the camera screen shows ⚠ — move the '
             'phone closer or switch lens. Values snap to a multiple of 32. '
             'The app ships set to 1024, and the "Auto" stream size (in '
-            'Advanced below) follows whatever you enter here.',
+            'Advanced below) follows whatever you enter here. Time-lapse '
+            'video clips get this side too.',
         onChanged: (v) => setState(() {
           _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v));
           // The Auto stream pick follows this target (round 122): keep the
@@ -1629,63 +1811,73 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       const SizedBox(height: 16),
 
-      HelpLabel(
-        label: 'ROI photo source',
-        helperText:
-            'Fast crops (the default) cut each photo out of the live video '
-            'frame: no camera stall, and the photo shows the exact trigger '
-            'moment. High-res photos'
-            '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
-            ' put more pixels on a small flower, but each one pauses the '
-            'AI pipeline for up to ~1.5 s (more on older phones), lands a '
-            'fraction of a second after the detection, and often shows '
-            'motion blur. A blurred high-res photo carries LESS usable '
-            'detail than a smaller crisp crop, so more pixels are not '
-            'automatically better for later classification. Auto: per '
-            'photo, fast crop when it meets the "Saved photo side" set '
-            'above, high-res otherwise.',
-      ),
-      DropdownButton<RoiCaptureMode>(
-        value: _c.captureMode,
-        isExpanded: true,
-        dropdownColor: Colors.black87,
-        items: const [
-          DropdownMenuItem(
-            value: RoiCaptureMode.fast,
-            child: Text(
-              'Fast crops only (live frame)',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+      _applicableIf(
+        !_c.timeLapseVideo,
+        'Not used for time-lapse video bursts: the clips are cut from the '
+        'live frames, like fast photos.',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            HelpLabel(
+              label: 'ROI photo source',
+              helperText:
+                  'Fast crops (the default) cut each photo out of the live video '
+                  'frame: no camera stall, and the photo shows the exact trigger '
+                  'moment. High-res photos'
+                  '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
+                  ' put more pixels on a small flower, but each one pauses the '
+                  'AI pipeline for up to ~1.5 s (more on older phones), lands a '
+                  'fraction of a second after the detection, and often shows '
+                  'motion blur. A blurred high-res photo carries LESS usable '
+                  'detail than a smaller crisp crop, so more pixels are not '
+                  'automatically better for later classification. Auto: per '
+                  'photo, fast crop when it meets the "Saved photo side" set '
+                  'above, high-res otherwise.',
             ),
-          ),
-          DropdownMenuItem(
-            value: RoiCaptureMode.auto,
-            child: Text(
-              'Auto — high-res only when needed',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+            DropdownButton<RoiCaptureMode>(
+              value: _c.captureMode,
+              isExpanded: true,
+              dropdownColor: Colors.black87,
+              items: const [
+                DropdownMenuItem(
+                  value: RoiCaptureMode.fast,
+                  child: Text(
+                    'Fast crops only (live frame)',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: RoiCaptureMode.auto,
+                  child: Text(
+                    'Auto — high-res only when needed',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: RoiCaptureMode.highRes,
+                  child: Text(
+                    'High-res photos always (full resolution)',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+              ],
+              onChanged: (m) => setState(() => _c = _c.copyWith(captureMode: m)),
             ),
-          ),
-          DropdownMenuItem(
-            value: RoiCaptureMode.highRes,
-            child: Text(
-              'High-res photos always (full resolution)',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+            HelpSwitchTile(
+              title: 'Sync companion photo (high-res)',
+              helperText:
+                  'Only applies when a photo takes the HIGH-RES path (never in '
+                  'fast mode). A high-res photo lands up to ~1 s after the '
+                  'detection that triggered it, so a fast insect can be gone '
+                  'from it. With this on, the trigger-moment live crop is saved '
+                  'next to the high-res photo ("…_live.jpg"): lower resolution, '
+                  'but the insect is in it. Adds roughly 50–200 KB per photo.',
+              value: _c.highResSyncCompanion,
+              onChanged: (v) =>
+                  setState(() => _c = _c.copyWith(highResSyncCompanion: v)),
             ),
-          ),
-        ],
-        onChanged: (m) => setState(() => _c = _c.copyWith(captureMode: m)),
-      ),
-      HelpSwitchTile(
-        title: 'Sync companion photo (high-res)',
-        helperText:
-            'Only applies when a photo takes the HIGH-RES path (never in '
-            'fast mode). A high-res photo lands up to ~1 s after the '
-            'detection that triggered it, so a fast insect can be gone '
-            'from it. With this on, the trigger-moment live crop is saved '
-            'next to the high-res photo ("…_live.jpg"): lower resolution, '
-            'but the insect is in it. Adds roughly 50–200 KB per photo.',
-        value: _c.highResSyncCompanion,
-        onChanged: (v) =>
-            setState(() => _c = _c.copyWith(highResSyncCompanion: v)),
+          ],
+        ),
       ),
       const Divider(color: Colors.white24),
       const Text(

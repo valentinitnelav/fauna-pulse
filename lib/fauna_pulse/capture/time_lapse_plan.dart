@@ -69,6 +69,16 @@ class TimeLapsePlan {
   int nextBurstStartAt(int sinceStartMs) =>
       (cycleIndexAt(sinceStartMs) + 1) * cycleMs;
 
+  /// Milliseconds until the burst phase next changes: this burst ends, the
+  /// next one starts, or (continuous) the next burst begins. Video bursts
+  /// (round 238) tick on these edges so each clip starts and ends on time.
+  int nextEdgeDelayMs(int sinceStartMs) {
+    final t = sinceStartMs < 0 ? 0 : sinceStartMs;
+    final inCycle = t % cycleMs;
+    if (!continuous && inCycle <= burstMs) return burstMs + 1 - inCycle;
+    return cycleMs - inCycle;
+  }
+
   /// How long the driving timer should sleep from [sinceStartMs]: one step
   /// while photos are flowing, otherwise until the next burst begins. The
   /// caller is expected to cap this (e.g. at 60 s) so clock jumps and doze

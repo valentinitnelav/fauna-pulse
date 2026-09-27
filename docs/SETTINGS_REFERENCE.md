@@ -40,7 +40,7 @@ come back as soon as a mode that uses them is selected.
 | **Model** | `yolo26n` | Which AI model detects insects. Only the bundled "nano" model ships with the app; other `.tflite` models must be added to the phone first (see [INSTALL.md](INSTALL.md)). Change to use a custom-trained model. |
 | **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
 | **IoU threshold** | `0.7` | *(AI tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
-| **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). Run the engine benchmark in the same fold before changing it. |
+| **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2 since round 226 (LiteRT's own default is 1; on both test phones 2 was ~1.9× faster than 1, and 4 at most ~15% faster than 2 for twice the busy cores). Run the engine benchmark in the same fold before changing it. |
 
 ## Region of Interest & photos
 
@@ -49,6 +49,10 @@ come back as soon as a mode that uses them is selected.
 | **Target plant / folder name** | `session` | Names the output folder (usually the target flower species). |
 | **Time-lapse step** | `1.0 s` | Seconds between saved photos while a visit is ongoing. The first photo is taken the moment an insect is detected, then every step. Larger = fewer photos. |
 | **Capture duration** | `10.0 s` | Total seconds to keep photographing one insect (track), from first detection. **Must be a whole multiple of the step** (e.g. step 1 s, duration 10 s → up to 10 photos). The app warns if it isn't. |
+| **Also record the ROI as video (AI tab → Check the live AI, AI mode only)** | `off` | Round 240 (video plan 3b). Records the ROI square as MP4 clips while the live AI runs, a new clip every 5 minutes, in the session's `videos/` folder. The session summary then opens on a Video tab that plays the clips with the live AI's own boxes and visit list (the session's photos follow below the player), so what the live AI caught and missed can be checked, counted by hand, or analysed again with *Run AI on videos*. Costs storage (estimate under the switch: the whole session is filmed) and heat: every frame of the clip is converted even while the motion gate lets the detector sleep. Records: `live_video_start`, `video_clip`, `video_skipped` with `segment` (DATA_GUIDE §3). |
+| **Video frame rate (live AI video)** | `15 FPS` | Round 240. Frames per second of those clips, 1 to 30; a positive *Camera frame rate cap* below it limits the clips to the cap (amber note). |
+| **Save bursts as (time-lapse only)** | `Photos` | Round 238. *Photos* saves one square ROI photo every *Photo step*. *Video (MP4)* saves each burst as one clip of the ROI with every frame (see *Video frame rate*), so an insect can be followed from frame to frame; the AI runs later on *Run AI on videos* (session gear menu), as for imported videos. The clip's side is the *Saved photo side* (Photos tab; smaller when the ROI covers fewer camera pixels). In video mode *Photo step*, *ROI photo source* and the companion photo are greyed (not used), *Photo duration* reads *Burst duration (clip length)*, and a storage estimate shows under the setting (up to about 2.0 GB per recorded hour at 1024 px and 15 fps: the bit rate plus 20 %, the overshoot measured on the Xiaomi; the session estimate scales it by burst ÷ (burst + break)). Records: `timelapse_video_start`, `video_clip`, `video_skipped` (DATA_GUIDE §3). |
+| **Video frame rate (time-lapse video only)** | `15 FPS` | Round 238. Frames per second in each clip, 1 to 30. 15 matches the camera frame rate cap the app ships with, so the camera delivers every frame the clip needs; enough to follow a bee from frame to frame. A positive *Camera frame rate cap* below this rate limits the clips to the cap, and an amber note says so (raise the cap, or lower this). Higher rates cost storage roughly in proportion. |
 | **Time between bursts (time-lapse only)** | `30 min` | Round 97; renamed and redefined in round 174. The BREAK between photo bursts: after each burst (a photo every step for the photo duration) the camera waits this long before the next burst starts — this break is exactly when *Turn camera off between bursts* can power the camera down. `0` = no break, photos flow continuously every step. Before round 174 the setting ("Repeat burst every") counted START-TO-START of consecutive bursts, so a value ≤ the photo duration silently meant continuous; saved configs migrate automatically (break = old interval − duration, effective timing unchanged). |
 | **Turn camera off between bursts (time-lapse only)** | `off` | Round 163. Big heat/power saver for sparse time-lapses: after each burst the camera hardware is fully turned off ("parked") and turned back on shortly before the next burst (see *Camera wake lead* below) so it is warm when the first photo is due. The **preview freezes** while the camera is off — the mode chip adds "camera off" so you know it is intentional. Only takes effect when *Time between bursts* is at least 30 s (otherwise the camera simply stays on). Reliability first: if the camera ever fails to deliver frames within 20 s of a wake, it stays on for the rest of the session and the failure is logged (`camera_sleep` records; see DATA_GUIDE). Off by default because turning the camera off/on is the riskier path — validate one session before a long unattended deployment. Combines with the screen-off (moon) button: the moon saves the screen, this saves the camera — use both for unattended runs. |
 | **Camera wake lead (time-lapse only)** | `10 s` | Round 164. How many seconds before each burst the parked camera is turned back on. A full power-off parks the lens motor and discards the exposure state, so the wake needs real time for the motor to travel back to your locked focus and for exposure to ramp — a 5 s field test produced a dark, blurry first burst photo, hence the 10 s default. Range 1–60 s. Raise it if first photos still look off; lower it only if your first-photo quality holds up. |
@@ -229,6 +233,48 @@ you can try a different model or different tiling settings on a finished
 session. The newest result per photo wins downstream (see
 [DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
+### Visits (round 237)
+
+Shown once photos of a motion or time-lapse session are analysed. *Find
+visits* follows each insect from photo to photo, as the live camera does with
+the AI on, and writes `post_tracks.jsonl` and `visits.csv`; the summary,
+dashboard and identification then use those visits. Only offered when the
+session's photo step is at most 0.5 s; for sparser photos the section says
+that an insect can move too far between two photos to be followed.
+
+| Setting | Default (range) | What it does |
+|---|---|---|
+| **Occlusion tolerance** | `3 s` (0.2–10) | How long an insect can be missing (hidden, or missed in a photo) and keep its number. Same default as the live camera; keep it well above the photo step. Saved as `analysis_occlusion_s`, logged as `occlusion_seconds` in `post_track_start` and shown on the summary's Setup tab. |
+| **Minimum visit length** | `0.2 s` (0–2) | How long an insect must be seen before it counts as a visit. Same default as the live camera. Saved as `analysis_min_visit_s`, logged as `min_hits_seconds` in `post_track_start` and shown on the Setup tab. The tracking method (ByteTrack or C-BIoU) is the camera's: Settings → AI → Visit tracking → Advanced. |
+
+## Video analysis (Run AI on videos screen)
+
+Round 227. Videos come in through the home screen's ⋮ menu → *Import videos…*, which
+asks only for a session name and when filming started (both logged, see
+[DATA_GUIDE.md §9](DATA_GUIDE.md)). "Run AI on videos" then finds the insects in them.
+Like the photo analysis, these settings belong to the analysis, not to a recording: they
+are stored on the phone (`video_analysis_*`) and echoed into the `settings` of every
+`video_run_start` record. A session's results always come from one set of settings: after
+a change the screen offers "Analyze again with these settings", which replaces the earlier
+results after asking. Since round 229 the session summary's Setup tab lists them (Model &
+detection, Visit tracking), read back from the last run's records; the pause temperature is
+logged as `thermal_limit_c`.
+
+| Setting | Default | What it does / when to change |
+|---|---|---|
+| **Detection model** | the last one used (first in the list the first time) | Any model from camera Settings → AI. There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
+| **Confidence threshold** | `0.25` | Minimum score for a box to count; the live camera's default. |
+| **Frames analyzed per second** | `15` (1–30) | How many pictures of each video second the AI looks at. 15 is what the live camera analyzes, so results compare with live sessions. Fewer is faster, but an insect can move far between two looks and be missed or counted twice. Asking for more than the video has changes nothing (most phone videos have 30). To measure which rate is enough for your videos: [VIDEO_ANALYSIS.md §5](VIDEO_ANALYSIS.md#5-which-frame-rate-is-enough-the-sweep). |
+| **Area to analyze** | Whole picture | Or *A square*, placed on the first frame of the first clip (drag, pinch or slider), its side snapped to a multiple of 32 video pixels as on the live camera. Insects outside it are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the square of its last run, so *Continue* works without placing it again. |
+| **IoU threshold** (Advanced) | `0.7` | Overlap level at which two boxes merge into one; the live camera's default. |
+| **Pause above battery temperature** (Advanced) | `40 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. |
+| **Measure the phone every** (Advanced, r232) | `10 s` (5–60) | How often the battery temperature, power use and analysis speed are written down during a run, also while it pauses to cool down. They make the summary's video graphs and `phone_during_analysis.csv` (DATA_GUIDE §9). 10 s is the live camera's temperature and power interval; shorter shows quick changes but gives a longer file. Saved as `video_analysis_sample_s`, logged as `sample_s` in `video_run_start` (not part of `settings`, so a change never makes the run start over) and shown on the Setup tab. |
+| **Occlusion tolerance** (Visits, r228) | `3 s` (0.2–10) | How long an insect can vanish (e.g. behind a petal) and keep its number when *Find visits* follows it from frame to frame. Longer: fewer visits split in two; too long: two visitors can merge into one. Keep it well above the time between two analyzed frames. Same default as the live camera; saved as `video_analysis_occlusion_s` and logged in `post_track_start`. |
+| **Minimum visit length** (Visits, r228) | `0.2 s` (0–2) | How long an insect must be seen before it counts as a visit; shorter sightings are dropped as noise. Same default as the live camera; saved as `video_analysis_min_visit_s` and logged in `post_track_start`. The tracking method itself (ByteTrack or C-BIoU and its fine-tuning) is shared with the camera: Settings → AI → Visit tracking → Advanced. |
+| **Keep frames of each visit** (Visits, r234) | on | After *Find visits*, saves pictures of every visit from the clips into `roi_frames/`, like the photos the live camera takes, for looking at the visitors and for *Identify organisms*. One picture is about as big as a live photo (the analysed area at full size). Off: *Find visits* keeps none and removes the ones kept before (a note says how many), unless their video is gone. Saved as `video_analysis_keep_frames`; logged as `keep_frames` in `post_track_start` (null when off). Shown on the Setup tab as *Kept frames per visit*. |
+| **Keep a frame every** (Visits, r234) | `1 s` (0.1–10) | The first frame of a visit is always kept, then one after each such step, as the live camera's photo step. Shorter catches more poses but fills more storage. Saved as `video_analysis_keep_step_s`; logged as `keep_frames.step_seconds`. |
+| **For up to** (Visits, r234) | `10 s` (1–300) | How long into a visit frames keep being saved, as the live camera's photo duration; a long visit gives no more after this. A visit gives up to about 1 + this ÷ the step frames. Saved as `video_analysis_keep_duration_s`; logged as `keep_frames.duration_seconds`. |
+
 ---
 
 **Note for developers:** by project rule, every new tunable ships with a
@@ -244,7 +290,7 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Setting | Default | Meaning |
 |---|---|---|
 | Use the GPU when it can run the model | on | Tries a GPU compile, automatic CPU fallback with the reason shown on screen (r211). Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
-| CPU threads | 0 (automatic) | XNNPACK thread count for the CPU path; more = usually faster but warmer. Measure with "Test speed". |
+| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi: 23.4 s per crop on 1 thread, 9.4 s on 2, 7.1 s on 4, 7.7 s on 8; 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |

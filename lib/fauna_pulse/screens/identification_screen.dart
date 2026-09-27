@@ -6,6 +6,10 @@
 // only wires the native embedder (ImageEmbedder) into the job, keeps the
 // screen awake and shows progress. Long runs are meant for a plugged-in
 // phone indoors (plan section 11.12).
+//
+// Round 235: when the visits of a video session were found again since the
+// stored crops were made, "Re-score with this pack" is hidden (the crops
+// carry the old visit numbers) and a note says the next run starts over.
 
 import 'dart:async';
 import 'dart:io';
@@ -28,6 +32,7 @@ import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
 
 class IdentificationScreen extends StatefulWidget {
@@ -64,6 +69,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   String? _accelNote;
   bool _testingSpeed = false;
   String? _speedResult;
+
+  /// The stored crops carry visit numbers of an earlier "Find visits" run.
+  bool _visitsChanged = false;
 
   String get _sessionName => widget.sessionDir.path.split('/').last;
 
@@ -118,7 +126,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
     await _plan();
+    await _checkVisits();
     await _loadSpeed();
+  }
+
+  Future<void> _checkVisits() async {
+    final m = _model;
+    final changed = m != null && await IdentificationJob.cropsOutdated(widget.sessionDir, m.path.split('/').last);
+    if (mounted) setState(() => _visitsChanged = changed);
   }
 
   Future<void> _plan() async {
@@ -198,6 +213,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       }
     });
     if (packs) await _selectPack(_pack);
+    if (!packs) await _checkVisits();
   }
 
   void _snack(String text) {
@@ -217,6 +233,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// reused. Asks the user to keep them or recompute everything. Returns
   /// null when cancelled, true = start over.
   Future<bool?> _confirmCropSettings(IdentifyPrefs prefs, String modelName) async {
+    // Crops of visits found again since are redone anyway (round 235).
+    if (await IdentificationJob.cropsOutdated(widget.sessionDir, modelName)) return true;
     final stored = await IdentificationJob.storedIndex(widget.sessionDir, modelName);
     if (stored == null || stored.records.isEmpty || stored.margin == null) return false;
     if ((stored.margin! - prefs.margin).abs() < 1e-6) return false;
@@ -307,7 +325,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           flagMinDetConf: prefs.flagMinDetConf,
           flagMinOrderP: prefs.flagMinOrderP,
           dropFactor: prefs.dropFactor,
-          extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads},
+          extra: {
+            'use_gpu': prefs.useGpu,
+            'cpu_threads': prefs.cpuThreads,
+            'cpu_threads_used': ?info.cpuThreads,
+            // Round 242: why the GPU was not used, and how closely it matched the CPU.
+            'gpu_note': ?info.accelerationNote,
+            'gpu_agreement': ?info.gpuAgreement,
+          },
         ),
         packFile: pack,
         appVersion: '${pinfo.version}+${pinfo.buildNumber}',
@@ -342,6 +367,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _result = result;
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
+    await _checkVisits();
   }
 
   Widget _buttonNote(String name, String text) => Padding(
@@ -393,11 +419,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final sw = Stopwatch()..start();
       await ImageEmbedder.embed(rgb);
       final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
-      final threads = prefs.cpuThreads == 0 ? 'automatic' : '${prefs.cpuThreads}';
+      final auto = prefs.cpuThreads == 0, used = info.cpuThreads;
+      final threads = used == null ? (auto ? 'automatic' : '${prefs.cpuThreads}') : '${auto ? 'automatic: ' : ''}$used';
+      final agree = info.gpuAgreement;
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
           '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
-          '${info.accelerationNote != null ? '\nGPU not used: ${info.accelerationNote}.' : ''}';
+          '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
+          '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
       _accelNote = info.accelerationNote;
     } catch (e) {
       logSwallowed('identify_speed_test', e);
@@ -567,6 +596,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         onChanged: (p) {
           setState(() => _model = _models.firstWhere((f) => f.path == p));
           _loadSpeed();
+          _checkVisits();
         },
       ),
       const SizedBox(height: 8),
@@ -667,7 +697,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             icon: const Icon(Icons.speed),
             label: Text(_testingSpeed ? 'Testing…' : 'Test speed'),
           ),
-          if (_hasEmbeddings && _pack != null)
+          if (_hasEmbeddings && _pack != null && !_visitsChanged)
             OutlinedButton.icon(
               onPressed: _rescore,
               icon: const Icon(Icons.refresh),
@@ -681,6 +711,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
+      if (_visitsChanged)
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text(
+            'The visits were found again since the last run, so its stored results no longer match '
+            'them. Continue / re-run starts over.',
+            style: TextStyle(color: Colors.amber, fontSize: 12),
+          ),
+        ),
       // Round 218: one line per visible button (owner: too many buttons
       // without saying what each does).
       Padding(
@@ -698,7 +737,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                         'results.',
             ),
             _buttonNote('Test speed', 'times the model on 8 of this session\'s crops with the current GPU and thread settings; writes nothing.'),
-            if (_hasEmbeddings && _pack != null)
+            if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
                 'Re-score with this pack',
                 'recomputes the results from the stored model outputs without running the model: use it '
@@ -750,7 +789,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
           '${p != null && p.avgMs > 0 ? ' — ${(p.avgMs / 1000).toStringAsFixed(1)} s per crop' : ''}',
           style: helperTextStyle),
-      if (p?.tempC != null) ..._temperatureGauge(p!.tempC!, p.stage == 'paused'),
+      if (p?.tempC != null)
+        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? 40, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerLeft,
@@ -760,50 +800,6 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           label: Text(_cancel ? 'Stopping after this photo…' : 'Cancel (keeps what is done)'),
         ),
       ),
-    ];
-  }
-
-  /// Battery temperature against the pause limit (round 210): a bar that
-  /// turns from green to amber to red, and cooling advice while paused.
-  List<Widget> _temperatureGauge(double tempC, bool paused) {
-    final limit = _prefs?.thermalLimitC ?? 40;
-    const floor = 25.0;
-    final frac = ((tempC - floor) / (limit - floor)).clamp(0.0, 1.0);
-    final color = tempC >= limit
-        ? Colors.redAccent
-        : tempC >= limit - 4
-        ? Colors.amber
-        : Colors.lightGreen;
-    return [
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Icon(Icons.device_thermostat, size: 18, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(value: frac, minHeight: 8, color: color, backgroundColor: Colors.white12),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('${tempC.toStringAsFixed(1)} °C', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-        ],
-      ),
-      Text(
-        'Battery temperature; the run pauses at ${limit.toStringAsFixed(0)} °C and resumes below '
-        '${(limit - 3).toStringAsFixed(0)} °C (limit under Advanced settings).',
-        style: helperTextStyle,
-      ),
-      if (paused)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text(
-            'Cooling down. Put the phone on a cool, hard surface out of the sun (or in front of a '
-            'fan); a case traps heat. It resumes by itself.',
-            style: TextStyle(color: Colors.amber, fontSize: 12),
-          ),
-        ),
     ];
   }
 
@@ -823,7 +819,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           style: const TextStyle(color: Colors.white),
         ),
         if (r.embedded > 0 && _accelNote != null)
-          Text('GPU not used: $_accelNote.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+          Text('GPU not used: ${gpuNoteText(_accelNote!)}.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(
@@ -872,11 +868,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           value: prefs.useGpu,
           onChanged: (v) => _edit(() => prefs.useGpu = v),
           helperText:
-              'Tries to compile the model for the phone\'s GPU, the same path the live detector '
-              'uses. Large transformer models like BioCLIP often cannot be compiled by the GPU '
-              'driver or do not fit its memory; the app then falls back to the CPU and shows the '
-              'reason after loading. The GPU is not automatically faster: use "Test speed" to '
-              'compare on this phone. Off = CPU only.',
+              'Runs the model on the phone\'s graphics processor (GPU) when it can. On the test phone '
+              'that took 0.27 s per crop instead of 2.6 s on the CPU, so a large session is '
+              'identified about ten times faster. GPUs differ between phones and Android versions: '
+              'the first time a model runs on this phone\'s GPU, the app compares its result on a '
+              'test picture with the CPU\'s and keeps the GPU only when they agree. When the GPU '
+              'cannot compile the model, does not match the CPU or runs out of memory, the app uses '
+              'the CPU and says why after loading. BioCLIP files exported before round 242 cannot '
+              'run on any GPU (see IDENTIFICATION.md). "Test speed" shows what this phone does. '
+              'Off = CPU only.',
         ),
         NumericSettingField(
           label: 'CPU threads (0 = automatic)',
@@ -886,10 +886,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           isInt: true,
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText:
-              'How many threads the CPU engine (XNNPACK) may spread the model\'s matrix maths '
-              'across; 0 = the engine\'s own default. More threads are usually faster on the big '
-              'cores but heat the phone sooner (which triggers the pause). "Test speed" shows the '
-              'real effect of a value on this phone.',
+              'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
+              'on the test phone that was 2.5 times as fast as 1. 4 was about a quarter faster '
+              'again but keeps twice as many cores busy, so the phone warms up sooner (which '
+              'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),
         NumericSettingField(
           label: 'Crop margin',

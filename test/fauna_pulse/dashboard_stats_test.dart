@@ -237,5 +237,67 @@ void main() {
       expect(stats.aiMode, isFalse);
       expect(stats.visits, isEmpty);
     });
+
+    // Round 229: imported videos count once "Find visits" has run.
+    String importedStart(int ms) => jsonEncode({
+      'type': 'start_of_session',
+      'time_ms': ms,
+      'source': 'imported_video',
+    });
+
+    File writePost(List<String> lines, {int observedMs = 60000}) =>
+        File('${tmp.path}/post_tracks.jsonl')..writeAsStringSync(
+          '${[
+            jsonEncode({'type': 'post_track_start', 'time_ms': 1000, 'observed_ms': observedMs}),
+            ...lines,
+          ].join('\n')}\n',
+        );
+
+    test('imported videos count once visits were found afterwards', () async {
+      writeLog(tmp, [importedStart(1000), end(3600000)]);
+      final before = await DashboardStatsCache.forSession(tmp);
+      expect(before.aiMode, isFalse);
+
+      writePost([
+        detections(2000, [1]),
+        detections(4000, [1]),
+      ]);
+      final after = await DashboardStatsCache.forSession(tmp);
+      expect(after.aiMode, isTrue);
+      expect(after.visits, [(2000, 4000)]);
+      // Visits per hour use the filmed time, not start to end.
+      expect(after.observedMs, 60000);
+      expect(after.recordedMs, 60000);
+      expect(aggregateDashboard([after]).totalRecordedMs, 60000);
+    });
+
+    test('running "Find visits" again invalidates the cache', () async {
+      writeLog(tmp, [importedStart(1000), end(9000)]);
+      writePost([detections(2000, [1])]);
+      expect((await DashboardStatsCache.forSession(tmp)).visits, hasLength(1));
+      writePost([
+        detections(2000, [1]),
+        detections(6000, [2]),
+      ]);
+      expect((await DashboardStatsCache.forSession(tmp)).visits, hasLength(2));
+    });
+
+    test('a live AI session ignores a post_tracks.jsonl', () async {
+      writeLog(tmp, [start(1000), detections(2000, [1]), end(9000)]);
+      writePost([
+        detections(3000, [5]),
+        detections(4000, [6]),
+      ]);
+      final stats = await DashboardStatsCache.forSession(tmp);
+      expect(stats.visits, [(2000, 2000)]);
+      expect(stats.observedMs, isNull);
+      expect(stats.recordedMs, 8000);
+    });
+
+    test('filmed time survives the cache round trip', () {
+      const s = SessionDashboardStats(startMs: 1, endMs: 2, aiMode: true, visits: [], observedMs: 7);
+      expect(SessionDashboardStats.fromJson(s.toJson()).observedMs, 7);
+      expect(session(startMs: 1).toJson().containsKey('observed_ms'), isFalse);
+    });
   });
 }

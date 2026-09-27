@@ -70,6 +70,18 @@ void main() {
       ]);
       expect(frames.map((f) => f.timestampMs), [1000, 2000]);
     });
+
+    test('keeps the clip, frame number and pts of video records (r228)', () {
+      final frames = parseRawDetectionLines([
+        '{"type":"raw_detections","frame_ms":5000,"clip":"a.mp4","pts_us":2000000,"frame":60,"boxes":[]}',
+        rawLine(6000, []),
+      ]);
+      expect(frames.first.clip, 'a.mp4');
+      expect(frames.first.frameIndex, 60);
+      expect(frames.first.ptsUs, 2000000);
+      expect(frames.last.clip, isNull); // live records have none
+      expect(frames.last.ptsUs, isNull);
+    });
   });
 
   group('replayTracker', () {
@@ -119,6 +131,26 @@ void main() {
         occlusionSeconds: 3.0,
       );
       expect(report.visits, 2);
+    });
+
+    test('onFrame sees every frame with its confirmed tracks and events (r228)', () {
+      final frames = parseRawDetectionLines(visitLines(0, 2000, 100, 0.40));
+      var calls = 0;
+      final ids = <int>{};
+      final created = <int>[];
+      replayTracker(
+        tracker: ByteTracker(),
+        frames: frames,
+        initialFps: 10,
+        onFrame: (frame, tracks, events) {
+          calls++;
+          ids.addAll(tracks.map((t) => t.id));
+          created.addAll(events.where((e) => e.kind == TrackEventKind.created).map((e) => e.trackId));
+        },
+      );
+      expect(calls, frames.length);
+      expect(ids, {1});
+      expect(created, [1]);
     });
   });
 

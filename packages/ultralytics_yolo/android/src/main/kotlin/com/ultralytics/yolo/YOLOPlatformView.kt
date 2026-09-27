@@ -631,6 +631,31 @@ class YOLOPlatformView(
                     yoloView.setTimeLapse(enabled, sampleFps)
                     result.success(null)
                 }
+                "startRoiVideo" -> {
+                    // FaunaPulse (round 238): open an MP4 clip of the ROI for a time-lapse
+                    // video burst. A failure comes back as {error}, so Dart can log why.
+                    try {
+                        result.success(
+                            yoloView.startRoiVideo(
+                                path = call.argument<String>("path") ?: "",
+                                sidePx = call.argument<Int>("sidePx") ?: 1024,
+                                fps = call.argument<Int>("fps") ?: 15,
+                                bitsPerPixel = call.argument<Double>("bitsPerPixel") ?: 0.25,
+                                cx = call.argument<Double>("cx") ?: 0.5,
+                                cy = call.argument<Double>("cy") ?: 0.5,
+                                side = call.argument<Double>("side") ?: 0.5,
+                            )
+                        )
+                    } catch (e: Exception) {
+                        result.success(mapOf("error" to (e.message ?: e.toString())))
+                    }
+                }
+                "stopRoiVideo" -> {
+                    // Ends the clip; the answer (its facts, or null) arrives within ~2 s.
+                    yoloView.stopRoiVideo(call.argument<String>("reason") ?: "stopped") { facts ->
+                        result.success(facts)
+                    }
+                }
                 "setCameraFpsCap" -> {
                     // FaunaPulse (round 82): slow the camera hardware itself (sensor/ISP),
                     // not just inference. 0 = device default. See YOLOView.setCameraFpsCap.

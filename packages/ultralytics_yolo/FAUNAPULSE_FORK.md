@@ -28,8 +28,9 @@ upstream release safely. Written in round 169 (perf review E10).
 | r128 (review Part C) | 0.6.10 | Live pipeline at parity; the C1 inference-cap finding led to the round-129 deadline scheduler. |
 | r153 (review Part D) | still 0.6.10 | Nothing on the live path worth porting; D1-D3 landed as fork improvements instead. |
 | r160 (review Part E) | 0.6.11 | Glanced: iOS-only change, Android parity stands. |
+| r226 (review Part F) | 0.6.15 | Ported the multi-threaded CPU default with a measured choice (2 threads, not upstream's up to 4) and the `output$i` output names; the rest was already in the fork or not applicable. |
 
-Details and rationale live in `docs/PERF_AND_ROBUSTNESS_REVIEW.md` Parts C-E.
+Details and rationale live in `docs/PERF_AND_ROBUSTNESS_REVIEW.md` Parts C-F.
 One piece of upstream work-in-progress was adopted early: `OrtQnnModel.kt`
 (Snapdragon-NPU `*_qnn.onnx` context binaries) originates from upstream PR
 #526; the model picker exposes it since round 150. Note QNN context binaries
@@ -77,6 +78,10 @@ The headline changes, with the round that introduced each (full rationale in
 - **User-triggered engine benchmark**, `benchmarkAccelerators` in
   `YOLOPlugin.kt` (r76): GPU vs CPU thread variants on noise input;
   deliberately never run automatically.
+- **CPU thread default** (r226, review F): "0 = automatic" resolves to 2
+  threads (`LiteRtModel.automaticCpuThreads`); LiteRT's own default is 1,
+  upstream 0.6.12 uses up to 4. Measured on both test phones with
+  `integration_test/cpu_threads_check_test.dart`.
 - **Native lifecycle overhaul** (r161, review E2): real `YOLO.close()`,
   remove-then-close instance dispose, a plugin-owned cancellable scope instead
   of `GlobalScope`, one owned model-load executor with a generation token, and
@@ -118,6 +123,9 @@ push, gate config, lens/focus, fast crop) and `YOLO.predict` options.
 4. Verify: `flutter analyze`, `flutter test test/fauna_pulse`,
    `flutter build apk --debug`, then a device smoke test (live detection,
    photo capture, model switch, gate sleep/wake).
+   If upstream changes the CPU or GPU engine setup, re-time it on both phones
+   with `integration_test/cpu_threads_check_test.dart` (the header has the
+   command; always pass `--no-uninstall`).
 5. Record the audit: a note in `docs/PERF_AND_ROBUSTNESS_REVIEW.md`, a round
    entry in `docs/AGENT_CHANGELOG.md`, and a new row in this file's audit
    table.

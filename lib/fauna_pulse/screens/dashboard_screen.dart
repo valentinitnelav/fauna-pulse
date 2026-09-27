@@ -159,12 +159,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (agg.otherSessions > 0) ...[
                 const SizedBox(height: 12),
                 Text(
-                  '${agg.otherSessions} motion/time-lapse '
+                  '${agg.otherSessions} '
                   'session${agg.otherSessions == 1 ? '' : 's'} in this '
                   'period ${agg.otherSessions == 1 ? 'is' : 'are'} not '
-                  'counted: without the AI detector there are no track ids '
-                  'to sum. Tip: "Run AI on photos" analyzes their saved '
-                  'photos.',
+                  'counted: motion or time-lapse mode has no track ids to '
+                  'sum, and imported videos count once "Find visits" has '
+                  'run on the "Run AI on videos" screen.',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ],
@@ -183,11 +183,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         Text(
           agg.otherSessions > 0
-              ? 'No AI-mode sessions in this period. The dashboard counts '
-                    'visits via track ids, which only exist when the AI '
-                    'detector records a session — the ${agg.otherSessions} '
-                    'motion/time-lapse session'
-                    '${agg.otherSessions == 1 ? '' : 's'} here '
+              ? 'No sessions with visits in this period. The dashboard '
+                    'counts visits via track ids, which exist when the AI '
+                    'detector records a session, or after "Find visits" on '
+                    'imported videos. The ${agg.otherSessions} '
+                    'session${agg.otherSessions == 1 ? '' : 's'} here '
                     'ha${agg.otherSessions == 1 ? 's' : 've'} none.'
               : 'No sessions in this period yet. Record a session with the '
                     'AI detector and its visits will show up here.',

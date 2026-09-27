@@ -5,6 +5,8 @@
 // FPS, clamp to >= 1 frame) so the tracker behaves the same regardless of the
 // live frame rate.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/models/schedule_window.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
@@ -295,6 +297,19 @@ void main() {
       const hits = SessionConfig(minHitsSeconds: 0.5);
       expect(hits.minHitsFramesFor(20), occ.occlusionFramesFor(20)); // both 10
     });
+  });
+
+  test('buildTracker: chosen algorithm, budgets in frames for the given fps (r228)', () {
+    // One builder for live sessions and offline tracking of videos.
+    const c = SessionConfig(occlusionSeconds: 2.0, minHitsSeconds: 0.4, trackerAlgorithm: TrackerAlgorithm.cbiou);
+    final t = c.buildTracker(10);
+    expect(t, isA<CBiouTracker>());
+    expect(t.trackBuffer, 20);
+    expect(t.minHitsToConfirm, 4);
+    final b = c.copyWith(trackerAlgorithm: TrackerAlgorithm.bytetrack).buildTracker(2);
+    expect(b, isA<ByteTracker>());
+    expect(b.trackBuffer, 4);
+    expect(b.minHitsToConfirm, 1); // 0.4 s at 2 fps rounds to 1 frame
   });
 
   test('minHitsSeconds round-trips through toJson/fromJson', () {
@@ -709,12 +724,14 @@ void main() {
     test('every listed key exists in toJson() for every trigger', () {
       final jsonKeys = const SessionConfig().toJson().keys.toSet();
       for (final trigger in CaptureTrigger.values) {
-        for (final key in notApplicableConfigKeys(trigger)) {
-          expect(
-            jsonKeys.contains(key),
-            true,
-            reason: '$key (for $trigger) is not a SessionConfig.toJson() key',
-          );
+        for (final (saveAs, live) in [for (final v in TimeLapseSaveAs.values) for (final l in [false, true]) (v, l)]) {
+          for (final key in notApplicableConfigKeys(trigger, saveAs: saveAs, liveAiVideo: live)) {
+            expect(
+              jsonKeys.contains(key),
+              true,
+              reason: '$key (for $trigger) is not a SessionConfig.toJson() key',
+            );
+          }
         }
       }
     });
@@ -727,7 +744,13 @@ void main() {
         'timeLapseWakeLeadSeconds',
         'timeLapseTorch',
         'timeLapseTorchLeadSeconds',
+        'timeLapseSaveAs',
+        'timeLapseVideoFps',
+        'liveAiVideoFps',
       ]);
+      // Live AI + ROI video (round 240): its frame rate applies once it is on.
+      expect(notApplicableConfigKeys(CaptureTrigger.detector, liveAiVideo: true), isNot(contains('liveAiVideoFps')));
+      expect(notApplicableConfigKeys(CaptureTrigger.timelapse), containsAll(['liveAiVideo', 'liveAiVideoFps']));
       // Motion: AI keys inert, but the gate keys APPLY (they are the capture
       // sensitivity) — and wake duration governs how long photos continue.
       final motion = notApplicableConfigKeys(CaptureTrigger.motion);
@@ -759,6 +782,67 @@ void main() {
       expect(tl, isNot(contains('timeLapseTorch')));
       expect(tl, isNot(contains('timeLapseTorchLeadSeconds')));
       expect(tl, isNot(contains('stepSeconds')));
+      expect(tl, isNot(contains('timeLapseSaveAs')));
+      expect(tl, contains('timeLapseVideoFps'));
+      // Video bursts (round 238): no photos, so the photo step and source are
+      // inert; the burst timing and the video frame rate apply.
+      final video = notApplicableConfigKeys(
+        CaptureTrigger.timelapse,
+        saveAs: TimeLapseSaveAs.video,
+      );
+      expect(video, containsAll(['stepSeconds', 'captureMode', 'stillSyncCompanion', 'flashOnCapture']));
+      expect(video, isNot(contains('timeLapseVideoFps')));
+      expect(video, isNot(contains('durationSeconds')));
+      expect(video, isNot(contains('timeLapseGapSeconds')));
+      expect(video, isNot(contains('targetRoiSavedPx')));
+    });
+  });
+
+  test('live AI + ROI video (round 240): off at 15 fps, JSON round trip, old configs', () {
+    const c = SessionConfig();
+    expect((c.liveAiVideo, c.liveAiVideoFps), (false, 15));
+    final j = c.copyWith(liveAiVideo: true, liveAiVideoFps: 10).toJson();
+    expect((j['liveAiVideo'], j['liveAiVideoFps']), (true, 10));
+    final back = SessionConfig.fromJson(jsonDecode(jsonEncode(j)) as Map<String, dynamic>);
+    expect((back.liveAiVideo, back.liveAiVideoFps), (true, 10));
+    final old = Map<String, dynamic>.from(j)
+      ..remove('liveAiVideo')
+      ..remove('liveAiVideoFps');
+    expect((SessionConfig.fromJson(old).liveAiVideo, SessionConfig.fromJson(old).liveAiVideoFps), (false, 15));
+    expect(SessionConfig.fromJson({...j, 'liveAiVideoFps': 0}).liveAiVideoFps, 1);
+  });
+
+  group('time-lapse video bursts (round 238)', () {
+    test('defaults: photos at 15 fps; only time-lapse + video counts as video', () {
+      const c = SessionConfig();
+      expect(c.timeLapseSaveAs, TimeLapseSaveAs.photos);
+      expect(c.timeLapseVideoFps, 15);
+      expect(c.timeLapseVideo, isFalse);
+      final v = c.copyWith(timeLapseSaveAs: TimeLapseSaveAs.video);
+      expect(v.timeLapseVideo, isFalse, reason: 'the detector trigger ignores it');
+      expect(v.copyWith(captureTrigger: CaptureTrigger.timelapse).timeLapseVideo, isTrue);
+    });
+
+    test('round trip through JSON, and older configs load as photos', () {
+      final c = const SessionConfig().copyWith(
+        captureTrigger: CaptureTrigger.timelapse,
+        timeLapseSaveAs: TimeLapseSaveAs.video,
+        timeLapseVideoFps: 24,
+      );
+      final j = c.toJson();
+      expect(j['timeLapseSaveAs'], 'video');
+      expect(j['timeLapseVideoFps'], 24);
+      final back = SessionConfig.fromJson(jsonDecode(jsonEncode(j)) as Map<String, dynamic>);
+      expect(back.timeLapseSaveAs, TimeLapseSaveAs.video);
+      expect(back.timeLapseVideoFps, 24);
+      expect(back.timeLapseVideo, isTrue);
+      final old = Map<String, dynamic>.from(j)
+        ..remove('timeLapseSaveAs')
+        ..remove('timeLapseVideoFps');
+      final legacy = SessionConfig.fromJson(old);
+      expect(legacy.timeLapseSaveAs, TimeLapseSaveAs.photos);
+      expect(legacy.timeLapseVideoFps, 15);
+      expect(SessionConfig.fromJson({...j, 'timeLapseVideoFps': 99}).timeLapseVideoFps, 30);
     });
   });
 }

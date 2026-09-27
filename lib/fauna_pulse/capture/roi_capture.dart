@@ -503,7 +503,10 @@ class RoiCaptureScheduler {
     this.onError,
   });
 
-  final Map<int, _Window> _windows = {};
+  late final TrackKeepRule _rule = TrackKeepRule(
+    stepMs: stepMs,
+    durationMs: durationMs,
+  );
   bool _busy = false;
 
   /// Decides, synchronously, whether a photo is due this frame. If so it
@@ -514,37 +517,8 @@ class RoiCaptureScheduler {
   /// Call [capture] with the returned value to actually grab and save the JPEG.
   PendingCapture? evaluate(List<Track> tracks, int nowMs) {
     if (_busy) return null;
-
-    final activeIds = <int>{};
-    final dueIds = <int>[];
-    for (final t in tracks) {
-      activeIds.add(t.id);
-      final w = _windows.putIfAbsent(
-        t.id,
-        () => _Window(startMs: nowMs, lastCaptureMs: null, lastSeenMs: nowMs),
-      );
-      w.lastSeenMs = nowMs;
-      final expired = nowMs - w.startMs > durationMs;
-      if (expired) continue;
-      final due = w.lastCaptureMs == null || nowMs - w.lastCaptureMs! >= stepMs;
-      if (due) dueIds.add(t.id);
-    }
-
-    // Forget a window only after the track has been GONE for longer than the
-    // capture duration — i.e. the tracker has truly dropped it (track ids are
-    // never reused, so it can't come back). A momentary "lost" blip must NOT
-    // delete the window, or the same id returning would wrongly restart a fresh
-    // capture window and double the photos.
-    _windows.removeWhere(
-      (id, w) => !activeIds.contains(id) && nowMs - w.lastSeenMs > durationMs,
-    );
-
+    final dueIds = _rule.due([for (final t in tracks) t.id], nowMs);
     if (dueIds.isEmpty) return null;
-
-    // Optimistically mark as photographed so the next frames respect the step.
-    for (final id in dueIds) {
-      _windows[id]?.lastCaptureMs = nowMs;
-    }
     return PendingCapture(
       fileName: roiPhotoFileName(nowMs, sessionToken, prefix: filePrefix),
       trackIds: dueIds,
@@ -775,6 +749,53 @@ class RoiCaptureScheduler {
     } finally {
       _busy = false;
     }
+  }
+}
+
+/// The per-track photo rule: a track's first photo at once, then one every
+/// [stepMs], until [durationMs] after the track was first seen. Pure, so live
+/// capture ([RoiCaptureScheduler]) and the frames kept from videos
+/// (video_tracker.dart, round 234) follow the very same rule.
+class TrackKeepRule {
+  final int stepMs;
+  final int durationMs;
+
+  TrackKeepRule({required this.stepMs, required this.durationMs});
+
+  final Map<int, _Window> _windows = {};
+
+  /// The ids among [trackIds] whose photo is due at [nowMs], in the given
+  /// order; they count as photographed now, so the next frames respect the
+  /// step.
+  List<int> due(Iterable<int> trackIds, int nowMs) {
+    final activeIds = <int>{};
+    final dueIds = <int>[];
+    for (final id in trackIds) {
+      activeIds.add(id);
+      final w = _windows.putIfAbsent(
+        id,
+        () => _Window(startMs: nowMs, lastCaptureMs: null, lastSeenMs: nowMs),
+      );
+      w.lastSeenMs = nowMs;
+      final expired = nowMs - w.startMs > durationMs;
+      if (expired) continue;
+      final due = w.lastCaptureMs == null || nowMs - w.lastCaptureMs! >= stepMs;
+      if (due) dueIds.add(id);
+    }
+
+    // Forget a window only after the track has been GONE for longer than the
+    // capture duration — i.e. the tracker has truly dropped it (track ids are
+    // never reused, so it can't come back). A momentary "lost" blip must NOT
+    // delete the window, or the same id returning would wrongly restart a fresh
+    // capture window and double the photos.
+    _windows.removeWhere(
+      (id, w) => !activeIds.contains(id) && nowMs - w.lastSeenMs > durationMs,
+    );
+
+    for (final id in dueIds) {
+      _windows[id]?.lastCaptureMs = nowMs;
+    }
+    return dueIds;
   }
 }
 

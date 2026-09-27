@@ -26,6 +26,7 @@ import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../logging/diagnostics.dart';
 import '../logging/session_logger.dart';
+import '../models/roi.dart' show boxInRoi;
 import '../models/track.dart';
 import '../services/recording_keepalive.dart';
 
@@ -39,6 +40,14 @@ class SessionRecorder {
   SessionLogger? _logger;
 
   RoiCaptureScheduler? _capture;
+
+  /// The session folder and the photo/clip file token of the current (or
+  /// last) recording; null before the first one. Time-lapse video clips
+  /// (round 238) go into `videos/` of this folder.
+  Directory? get sessionDir => _sessionDir;
+  Directory? _sessionDir;
+  String? get fileToken => _fileToken;
+  String? _fileToken;
 
   /// Reference photos (r107 as "ground-truth frames"; wire names stay gt_*):
   /// a second, independent scheduler writing periodic ROI photos into
@@ -169,6 +178,8 @@ class SessionRecorder {
     await Permission.notification.request();
     await RecordingKeepAlive.start();
 
+    _sessionDir = dir;
+    _fileToken = fileToken;
     _logger = logger;
     _recording = true;
   }
@@ -304,7 +315,7 @@ class SessionRecorder {
               'class_index': t.classIndex,
               'class_name': t.className,
               'confidence': t.confidence,
-              'box_in_roi': _boxInRoi(t.box, roiRect),
+              'box_in_roi': boxInRoi(t.box, roiRect),
               // Both trackers only return tracks matched to a detection THIS
               // frame, so every box logged here is detector-observed. If a
               // future tracker ever returns a velocity-coasted box, this
@@ -332,7 +343,7 @@ class SessionRecorder {
         'event': e.kind.name,
         'track_id': e.trackId,
         'frame_ms': e.atMs,
-        'box_in_roi': _boxInRoi(e.box, roiRect),
+        'box_in_roi': boxInRoi(e.box, roiRect),
         'hits': e.hits,
         'first_seen_ms': e.firstSeenMs,
         'last_seen_ms': e.lastSeenMs,
@@ -440,19 +451,6 @@ class SessionRecorder {
       // Diagnostics are best-effort; never let them break a recording.
       logSwallowed('save_logcat', e);
     }
-  }
-
-  /// Expresses a normalized frame box as coordinates inside the ROI (0..1),
-  /// per CLAUDE.md (boxes are stored relative to the ROI they were found in).
-  static Map<String, double> _boxInRoi(Rect box, Rect roi) {
-    final rw = roi.width == 0 ? 1.0 : roi.width;
-    final rh = roi.height == 0 ? 1.0 : roi.height;
-    return {
-      'left': (box.left - roi.left) / rw,
-      'top': (box.top - roi.top) / rh,
-      'right': (box.right - roi.left) / rw,
-      'bottom': (box.bottom - roi.top) / rh,
-    };
   }
 
   /// Creates `…/Android/data/<pkg>/files/sessions/<folder>/` (USB-visible).

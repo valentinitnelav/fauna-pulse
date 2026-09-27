@@ -24,6 +24,10 @@
 //  * The cheap head/tail stats path (`_loadStats` in the summary screen,
 //    same pattern in home/analysis screens) stays separate on purpose — the
 //    headline numbers must appear before this full parse finishes.
+//  * Round 229: visits found afterwards from a session's videos live in
+//    post_tracks.jsonl (track_source.dart). Then the track records
+//    (`detection`, `detections`, `capture`) are read from that file ONLY and
+//    everything else from session.jsonl: the two are never mixed.
 
 import 'dart:convert';
 import 'dart:io';
@@ -31,6 +35,7 @@ import 'dart:isolate';
 
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import 'photo_box_matcher.dart';
+import 'track_source.dart';
 
 /// One `power` record's raw readings (unit quirks are handled at display
 /// time by the summary's energy-series builder, not here).
@@ -127,6 +132,11 @@ class IndexedPhoto {
   /// True for a reference photo (gt_frames/): clock-driven, no boxes.
   final bool isReference;
 
+  /// Round 234: a frame kept from an imported video, with the clip it came
+  /// from and its moment there (microseconds); null for camera photos.
+  final String? clip;
+  final int? ptsUs;
+
   const IndexedPhoto({
     required this.name,
     required this.boxes,
@@ -145,6 +155,8 @@ class IndexedPhoto {
     required this.stillWithinTol,
     required this.stillMatchNote,
     required this.isReference,
+    this.clip,
+    this.ptsUs,
   });
 }
 
@@ -185,6 +197,13 @@ class SessionLogIndex {
 
   final List<RoiHistoryEntry> roiHistory;
 
+  /// Where [trackSpans] came from (round 229).
+  final TrackSource trackSource;
+
+  /// The `post_track_start` record of post_tracks.jsonl (tracking settings
+  /// of visits found afterwards), or null for live tracks.
+  final Map<String, dynamic>? postTrackStart;
+
   const SessionLogIndex({
     required this.startRecord,
     required this.trackSpans,
@@ -197,31 +216,56 @@ class SessionLogIndex {
     required this.photos,
     required this.referenceNames,
     required this.roiHistory,
+    this.trackSource = TrackSource.live,
+    this.postTrackStart,
   });
 
   /// Builds the index OFF the UI isolate. The whole parse (including the
   /// second bracket-matching pass) runs in a worker isolate; only the
-  /// aggregate result is copied back.
+  /// aggregate result is copied back. Track records come from the file
+  /// [trackSourceOf] names.
   static Future<SessionLogIndex> build(File logFile) {
     final path = logFile.path;
-    return Isolate.run(() => parseFile(path));
+    return Isolate.run(() => _parseWithTrackSource(path));
+  }
+
+  static Future<SessionLogIndex> _parseWithTrackSource(String path) {
+    final dir = File(path).parent;
+    return parseFile(
+      path,
+      tracksPath: trackSourceOf(dir) == TrackSource.afterwards
+          ? '${dir.path}/$postTracksFileName'
+          : null,
+    );
   }
 
   /// The parse itself — same isolate as the caller (used directly in tests;
-  /// [build] wraps it in `Isolate.run` for the app).
-  static Future<SessionLogIndex> parseFile(String path) async {
+  /// [build] wraps it in `Isolate.run` for the app). With [tracksPath], the
+  /// track records come from that file only (round 229).
+  static Future<SessionLogIndex> parseFile(
+    String path, {
+    String? tracksPath,
+  }) async {
     final b = _IndexBuilder();
     await for (final line in _lines(path)) {
-      b.feed(line);
+      b.feed(line, tracks: tracksPath == null);
+    }
+    if (tracksPath != null) {
+      b.trackSource = TrackSource.afterwards;
+      await for (final line in _lines(tracksPath)) {
+        b.feed(line, other: false);
+      }
     }
     // Pass 2 (round 114/115): only when at least one high-res photo has a
     // known content moment. Streams the file again instead of keeping every
     // line in memory (the old screen code re-iterated a full line list).
-    if (b.contentMsByFile.isNotEmpty) {
+    // Round 237: visits found afterwards in the photos carry each photo's own
+    // boxes, which already fit its content.
+    if (b.contentMsByFile.isNotEmpty && b.postTrackStart?['source'] != 'photos') {
       final acc = FrameBracketAccumulator(b.contentMsByFile);
       final intervals = <int>[];
       int? prevFrameMs;
-      await for (final line in _lines(path)) {
+      await for (final line in _lines(tracksPath ?? path)) {
         // Cheap prefilter (same as the old screen pass): only round-114+
         // detections records carry `frame_ms`.
         if (!line.contains('"detections"') || !line.contains('"frame_ms"')) {
@@ -286,6 +330,8 @@ class _PhotoAcc {
   bool stillWithinTol = false;
   String? stillMatchNote;
   bool isReference = false;
+  String? clip;
+  int? ptsUs;
 
   _PhotoAcc(this.name);
 }
@@ -307,6 +353,14 @@ class _IndexBuilder {
   /// time-matching across an ROI move (round 114).
   final List<int> roiUpdateTimes = [];
   final List<RoiHistoryEntry> roiHistory = [];
+  TrackSource trackSource = TrackSource.live;
+  Map<String, dynamic>? postTrackStart;
+
+  /// Record types that describe tracked insects (round 229). Round 237:
+  /// `capture` records describe photos wherever they are, so they are read
+  /// from both files: session.jsonl holds a photo session's own photos (size,
+  /// `_live` companion), post_tracks.jsonl the frames kept from videos.
+  static const _trackTypes = {'detection', 'detections'};
 
   /// Per high-res photo: its content moment — the pass-2 work list.
   final Map<String, int> contentMsByFile = {};
@@ -332,10 +386,17 @@ class _IndexBuilder {
     return acc;
   }
 
-  void feed(String line) {
+  /// Reads one log line. [tracks] / [other] switch the track record types
+  /// and all remaining types on or off (round 229: two files, never mixed).
+  void feed(String line, {bool tracks = true, bool other = true}) {
     if (line.trim().isEmpty) return;
     final rec = SessionLogIndex._tryDecode(line);
     if (rec == null) return;
+    final type = rec['type'];
+    if (type != 'capture' && (_trackTypes.contains(type) ? !tracks : !other)) {
+      if (type == 'post_track_start') postTrackStart ??= rec;
+      return;
+    }
     final t = (rec['time_ms'] as num?)?.toInt();
     switch (rec['type']) {
       case 'start_of_session':
@@ -487,6 +548,20 @@ class _IndexBuilder {
       p.resW = px;
       p.resH = px;
     }
+    // A frame kept from a video (round 234): the whole picture may have been
+    // analysed, so it need not be square; it knows its clip and moment.
+    final w = (rec['saved_w'] as num?)?.toInt();
+    final h = (rec['saved_h'] as num?)?.toInt();
+    if (w != null && h != null && w > 0 && h > 0) {
+      p.resW = w;
+      p.resH = h;
+    }
+    final clip = rec['clip'];
+    final pts = (rec['pts_us'] as num?)?.toInt();
+    if (clip is String && pts != null) {
+      p.clip = clip;
+      p.ptsUs = pts;
+    }
     // Sync companion (r108) + content lag: only high-res-path records carry
     // these; fast-path photos ARE live crops, so they have neither.
     final liveJpeg = rec['live_jpeg'] as String?;
@@ -613,9 +688,13 @@ class _IndexBuilder {
           stillWithinTol: p.stillWithinTol,
           stillMatchNote: p.stillMatchNote,
           isReference: p.isReference,
+          clip: p.clip,
+          ptsUs: p.ptsUs,
         ),
     },
     referenceNames: referenceNames,
     roiHistory: roiHistory,
+    trackSource: trackSource,
+    postTrackStart: postTrackStart,
   );
 }

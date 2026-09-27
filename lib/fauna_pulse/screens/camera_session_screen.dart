@@ -7,6 +7,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
+import '../capture/roi_video.dart';
 import '../capture/time_lapse_plan.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -37,8 +39,6 @@ import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
-import '../tracking/byte_track.dart';
-import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
 import '../widgets/calibrating_banner.dart';
 import '../widgets/location_dialog.dart';
@@ -391,6 +391,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   int _timeLapseStartMs = 0;
   int _tlLastCycle = -1;
   bool _tlBurstActive = false;
+
+  // Time-lapse video bursts (round 238): non-null while recording with
+  // "Save bursts as: Video". Opens one clip per burst on the tick below.
+  TimeLapseVideoClips? _tlVideo;
+
+  // Live AI + ROI video (round 240): 5-minute clips while the AI records,
+  // kept in step by a 1 s timer (none while the camera is paused).
+  TimeLapseVideoClips? _liveVideo;
+  Timer? _liveVideoTimer;
+  int _liveVideoStartMs = 0;
 
   // Camera parking between time-lapse bursts (round 163, perf review E3):
   // non-null only while recording in time-lapse mode with the user's
@@ -1546,6 +1556,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // captureTrigger) to know what applied.
         'config_not_applicable': notApplicableConfigKeys(
           _config.captureTrigger,
+          saveAs: _config.timeLapseSaveAs,
+          liveAiVideo: _config.liveAiVideo,
         ),
       },
       captureBuilder: (framesDir, fileToken) => RoiCaptureScheduler(
@@ -1797,8 +1809,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             )
           : null;
       _tlCameraBusy = false;
+      final dir = _recorder.sessionDir;
+      _tlVideo = _config.timeLapseVideo && dir != null
+          ? _videoClips(dir, fps: _config.timeLapseVideoFps)
+          : null;
       _timeLapseTimer?.cancel();
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+    }
+
+    // Live AI + ROI video (round 240, opt-in): clips while the AI records.
+    final liveDir = _recorder.sessionDir;
+    if (_config.detectorEnabled && _config.liveAiVideo && liveDir != null) {
+      _liveVideo = _videoClips(liveDir, fps: _config.liveAiVideoFps, live: true);
+      _liveVideoStartMs = DateTime.now().millisecondsSinceEpoch;
+      _liveVideoTimer?.cancel();
+      _liveVideoTimer = Timer.periodic(const Duration(seconds: 1), (_) => _liveVideoTick());
+      _liveVideoTick();
     }
 
     // Reference photos: first one right away, then the 1 s tick keeps
@@ -1868,6 +1894,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             .catchError((Object e) => _logAsyncError('timelapse_torch', e)),
       );
     }
+    // The open video clip closes (and is logged) before the session log
+    // closes; the clips controller bounds the wait.
+    final video = _tlVideo;
+    _tlVideo = null;
+    await video?.stop('session_end');
+    _liveVideoTimer?.cancel();
+    _liveVideoTimer = null;
+    final liveVideo = _liveVideo;
+    _liveVideo = null;
+    await liveVideo?.stop('session_end');
     if (_tlBurstActive) {
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
@@ -2292,26 +2328,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// and the given (smoothed) detector FPS. Centralised so the init and the
   /// settings-apply construct the tracker the same way; the per-second live
   /// refresh only re-derives the frame budgets via [InsectTracker.setFrameBudgets].
-  InsectTracker _buildTracker(double detectorFps) {
-    final buffer = _config.occlusionFramesFor(detectorFps);
-    final hits = _config.minHitsFramesFor(detectorFps);
-    switch (_config.trackerAlgorithm) {
-      case TrackerAlgorithm.cbiou:
-        return CBiouTracker(
-          params: _config.cbiouParams.copyWith(
-            trackBuffer: buffer,
-            minHitsToConfirm: hits,
-          ),
-        );
-      case TrackerAlgorithm.bytetrack:
-        return ByteTracker(
-          params: _config.trackerParams.copyWith(
-            trackBuffer: buffer,
-            minHitsToConfirm: hits,
-          ),
-        );
-    }
-  }
+  /// The builder itself lives in [SessionConfig.buildTracker] (round 228),
+  /// shared with offline tracking of videos.
+  InsectTracker _buildTracker(double detectorFps) => _config.buildTracker(detectorFps);
 
   /// The explicit user-selected inference-rate ceiling (FPS).
   int get _inferenceCeilFps => _config.inferenceFps;
@@ -2764,18 +2783,72 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
+
+  /// The clips controller of this recording (time-lapse bursts, or live AI
+  /// segments when [live]).
+  TimeLapseVideoClips _videoClips(Directory dir, {required int fps, bool live = false}) => TimeLapseVideoClips(
+    videosDir: Directory('${dir.path}/videos'),
+    fileToken: _recorder.fileToken ?? 'vid',
+    fps: fps,
+    live: live,
+    // The same size a fast ROI photo would have now.
+    sidePx: () {
+      final px = savedSidePx(_roi.sideFraction, _imageWidth, _imageHeight);
+      return capSavedSidePx(px > 0 ? px : _config.targetRoiSavedPx, _config.targetRoiSavedPx);
+    },
+    startNative: (path, side, fps) => _controller.startRoiVideo(
+      path: path,
+      sidePx: side,
+      fps: fps,
+      cx: _roi.centerX,
+      cy: _roi.centerY,
+      side: _roi.sideFraction,
+      bitsPerPixel: kRoiVideoBitsPerPixel,
+    ),
+    stopNative: (reason) => _controller.stopRoiVideo(reason: reason),
+    logger: () => _logger,
+    storageLow: () => _storageVN.value.isLow,
+    onProblem: (reason, message) {
+      if (!mounted || reason == 'no_frames') return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason == 'storage_low'
+                ? 'Storage is almost full: no video is recorded until space is freed.'
+                : '${live ? 'The video' : 'The video of this burst'} could not be recorded: $message',
+          ),
+        ),
+      );
+    },
+  );
+
   /// Applies time-lapse mode natively. The frame-sampling rate follows the
   /// burst phase: high during a burst so fast ROI crops stay fresher than
   /// half a photo step, 1 fps between bursts (just frame-cache freshness for
   /// the next burst's first photo + the 1 Hz heartbeat).
   void _pushTimeLapse() {
-    final burstFps = (2 / _config.stepSeconds).ceil().clamp(1, 30);
+    // Video bursts convert every frame of the clip (round 238; the clip's own
+    // frame clock takes over natively once it is open).
+    final burstFps = _config.timeLapseVideo
+        ? _config.timeLapseVideoFps
+        : (2 / _config.stepSeconds).ceil().clamp(1, 30);
     _controller
         .setTimeLapse(
           enabled: _config.timeLapseCapture,
           sampleFps: _config.timeLapseCapture && _tlBurstActive ? burstFps : 1,
         )
         .catchError((Object e) => _logAsyncError('set_time_lapse', e));
+  }
+
+  /// Live AI + ROI video (round 240): the segment that should be recording
+  /// now (a new clip every [kLiveVideoSegmentMs]), none while the camera is
+  /// paused (settings, summary, cool-down); the clip reopens when it is back.
+  void _liveVideoTick() {
+    final v = _liveVideo;
+    if (v == null || !_recording) return;
+    final segment = (DateTime.now().millisecondsSinceEpoch - _liveVideoStartMs) ~/ kLiveVideoSegmentMs;
+    unawaited(v.sync(_paused ? null : segment, endReason: _paused ? 'camera_paused' : 'segment_end'));
+    if (mounted) setState(() {}); // chip suffix
   }
 
   /// Time-lapse driving tick (self-rescheduling one-shot; capped at 60 s so
@@ -2796,7 +2869,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // [_tlLastCycle] untouched so the burst window is re-armed the moment
     // fresh frames confirm); the plan math preserves the wall-clock grid, so
     // a late wake starts this burst's photos late without shifting the next.
-    if (inBurst && (cam == null || cam.framesUsable)) {
+    final video = _tlVideo;
+    if (video != null) {
+      // Video bursts (round 238): one clip per burst (a continuous time-lapse
+      // starts a new clip every burst length). No clip while the camera is
+      // paused, parked or still warming up: its frames would be stale.
+      final cameraOn = !_paused && (cam == null || cam.framesUsable);
+      unawaited(
+        video.sync(
+          inBurst && cameraOn ? plan.cycleIndexAt(t) : null,
+          endReason: inBurst && !cameraOn ? 'camera_paused' : 'burst_end',
+        ),
+      );
+    } else if (inBurst && (cam == null || cam.framesUsable)) {
       final cycle = plan.cycleIndexAt(t);
       if (cycle != _tlLastCycle) {
         _tlLastCycle = cycle;
@@ -2844,6 +2929,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // own cadence (next burst start) would wake 10 s too late. Same for the
     // torch's flip edges (torch-on lead, burst-end OFF edge).
     var delayMs = plan.nextTickDelayMs(t);
+    if (video != null) {
+      // Clips start and end on the burst edges; inside a burst a tick every
+      // second notices a paused or resumed camera.
+      final edge = plan.nextEdgeDelayMs(t);
+      delayMs = inBurst && edge > 1000 ? 1000 : edge;
+    }
     final camDelay = cam?.nextEventDelayMs(t);
     if (camDelay != null && camDelay < delayMs) delayMs = camDelay;
     final torchDelay = _tlTorchPlan?.nextEventDelayMs(t);
@@ -2916,6 +3007,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       final plan = _timeLapsePlan;
       if (plan == null || !_recording) return;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
+      // A clip still open (a doze-late tick) ends before the camera goes.
+      await _tlVideo?.stop('camera_parked');
       try {
         await _controller.pause();
         _paused = true;
@@ -3861,14 +3954,24 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           String label;
           bool active;
           final plan = _timeLapsePlan;
+          // Short enough for the chip at phone width (round 238: "TIME-LAPSE
+          // VIDEO: RECORDING" was cut off on the Xiaomi).
+          final kind = _config.timeLapseVideo ? 'VIDEO' : 'TIME-LAPSE';
           if (!_recording || plan == null) {
-            label = 'TIME-LAPSE: press REC';
+            label = '$kind: press REC';
             active = false;
           } else {
             final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
             active = plan.inBurstAt(t);
             if (active) {
-              label = 'TIME-LAPSE: CAPTURING';
+              label = !_config.timeLapseVideo
+                  ? '$kind: CAPTURING'
+                  : switch ((_tlVideo?.recording ?? false, _tlVideo?.problem)) {
+                      (true, _) => '$kind: RECORDING',
+                      (_, 'storage_low') => '$kind: STORAGE FULL',
+                      (_, 'start_failed') => '$kind: FAILED',
+                      _ => '$kind: STARTING',
+                    };
             } else {
               final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
               final mm = (waitS ~/ 60).toString().padLeft(2, '0');
@@ -3897,14 +4000,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         label: _gateIdle ? 'MOTION: WAITING' : 'MOTION: CAPTURING',
       );
     }
+    // Round 240: a live-AI clip is recording (short labels: the chip holds
+    // about 20 characters at phone width).
+    final video = _liveVideo?.recording ?? false;
     if (_config.motionGateEnabled) {
       return _modeChipShell(
         color: _gateIdle ? _chipWaitingColor : _chipActiveColor,
-        label: _gateIdle ? 'DETECTOR SLEEPING' : 'DETECTOR ON',
+        label: _gateIdle
+            ? (video ? 'SLEEPING · VIDEO ON' : 'DETECTOR SLEEPING')
+            : (video ? 'DETECTOR ON · VIDEO' : 'DETECTOR ON'),
       );
     }
     // Plain AI mode (no gate): the detector runs on every frame.
-    return _modeChipShell(color: _chipActiveColor, label: 'DETECTOR ON');
+    return _modeChipShell(color: _chipActiveColor, label: video ? 'DETECTOR ON · VIDEO' : 'DETECTOR ON');
   }
 
   Widget _chip(String text) => Container(

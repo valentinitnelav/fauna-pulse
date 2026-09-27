@@ -60,6 +60,17 @@ out/bioclip-2_image_fp16.tflite   the model for the phone
 out/bioclip-2_image_fp16.json     manifest: embedding size 768, input 224x224, logit scale 100, sha256
 ```
 
+**GPU-friendly attention (round 242, the default).** Every attention layer is exported as
+plain matrix steps with tensors of at most 4 dimensions (`--attention 4d`). PyTorch's own
+attention layer passes the data through 5-dimensional tensors, which the phone's GPU engine
+cannot run: files exported before round 242 therefore always fall back to the CPU (the
+phone's log says `RESHAPE ... has bad input dims size`; only 63 of 1488 steps could go to
+the GPU). With the 4d export all 1392 steps run on the GPU. The weights and the maths are
+the same: against PyTorch, both exports gave cosine 1.0000 and the same top family and
+species on 38 frames. On the Xiaomi test phone one crop took 0.27 s on the GPU instead of
+2.6 s on the CPU. `--attention torch` makes the old kind of file (for comparison only).
+The manifest records which kind a file is (`"attention": "4d"`).
+
 Options: `--precision int8` (dynamic-range int8, about 0.3 GB, for phones without a
 usable GPU), `--precision fp32` (nothing cast, 1.2 GB; also runs on the phone),
 `--keep-fp32` (keep the float32 intermediate, useful for `verify_parity.py`),
@@ -72,7 +83,8 @@ Check the file before copying it anywhere:
 python inspect_tflite.py out/bioclip-2_image_fp16.tflite
 ```
 
-Expected: `FULLY_CONNECTED: {'fp16/int8 weights (dequantized)': 97}`, input
+Expected (4d export): `FULLY_CONNECTED: {'fp16/int8 weights (dequantized)': 145}` (the
+attention's in-projection is split into three), input
 `serving_default_args_0 [1, 3, 224, 224]`, output `serving_default_output_0_output [1, 768]`.
 If it says `weights computed at runtime (unfolded)`, the conversion ran in the
 memory-saving mode (see Troubleshooting).
