@@ -391,6 +391,45 @@ object ImageUtils {
         return out.toByteArray()
     }
 
+    /**
+     * Round 238 (time-lapse video bursts): where the upright ROI square ([roiCx], [roiCy],
+     * [roiSide] as in [prepareBitmapForModelRoi]) lies in the UNROTATED camera frame, plus the
+     * clockwise turn that makes it upright. Copying this square as it is (a plain row copy) and
+     * turning it on the GPU costs a fraction of the CPU of drawing it rotated. The square is
+     * kept inside the frame. Null when the frame is too small.
+     */
+    @JvmStatic
+    fun roiSourceSquare(
+        bitmapWidth: Int,
+        bitmapHeight: Int,
+        isLandscape: Boolean,
+        isFrontCamera: Boolean,
+        rotationDegrees: Int?,
+        roiCx: Float,
+        roiCy: Float,
+        roiSide: Float,
+    ): Pair<Rect, Int>? {
+        val degrees = cameraRotationDegrees(true, isLandscape, isFrontCamera, rotationDegrees)
+        val w = bitmapWidth
+        val h = bitmapHeight
+        val rotated = degrees % 180 != 0
+        val ow = if (rotated) h else w
+        val oh = if (rotated) w else h
+        if (min(ow, oh) < 2) return null
+        val side = (roiSide * ow).roundToInt().coerceIn(2, min(ow, oh))
+        val u0 = (roiCx * ow - side / 2f).roundToInt().coerceIn(0, ow - side)
+        val v0 = (roiCy * oh - side / 2f).roundToInt().coerceIn(0, oh - side)
+        // Upright (u, v) ← frame (x, y): 90° x = v, y = h−1−u; 180° x = w−1−u, y = h−1−v;
+        // 270° x = w−1−v, y = u.
+        val (x0, y0) = when (degrees) {
+            90 -> v0 to h - u0 - side
+            180 -> w - u0 - side to h - v0 - side
+            270 -> w - v0 - side to u0
+            else -> u0 to v0
+        }
+        return Rect(x0, y0, x0 + side, y0 + side) to degrees
+    }
+
     private fun cameraRotationDegrees(
         rotateForCamera: Boolean,
         isLandscape: Boolean,

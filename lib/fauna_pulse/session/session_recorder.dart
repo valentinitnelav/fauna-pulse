@@ -41,6 +41,14 @@ class SessionRecorder {
 
   RoiCaptureScheduler? _capture;
 
+  /// The session folder and the photo/clip file token of the current (or
+  /// last) recording; null before the first one. Time-lapse video clips
+  /// (round 238) go into `videos/` of this folder.
+  Directory? get sessionDir => _sessionDir;
+  Directory? _sessionDir;
+  String? get fileToken => _fileToken;
+  String? _fileToken;
+
   /// Reference photos (r107 as "ground-truth frames"; wire names stay gt_*):
   /// a second, independent scheduler writing periodic ROI photos into
   /// `gt_frames/` regardless of detections. Only exists when the session was
@@ -170,6 +178,8 @@ class SessionRecorder {
     await Permission.notification.request();
     await RecordingKeepAlive.start();
 
+    _sessionDir = dir;
+    _fileToken = fileToken;
     _logger = logger;
     _recording = true;
   }

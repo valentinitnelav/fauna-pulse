@@ -260,6 +260,45 @@ one's start); pre-174 sessions carry `timeLapseIntervalSeconds` instead
 (START-TO-START spacing) — convert via gap = interval − duration when
 comparing across the change.
 
+### Time-lapse video bursts: `timelapse_video_start`, `video_clip`, `video_skipped` (round 238+)
+
+With *Save bursts as: Video* (start record `config.timeLapseSaveAs` = `"video"`) each
+burst is saved as one MP4 clip of the ROI in `videos/` instead of photos, so
+`roi_frames/` stays empty and there are no `timelapse_capture` or `capture` records. The
+clip is the ROI square, upright, at the "Saved photo side" (smaller when the ROI covers
+fewer camera pixels, or when the phone's video encoder needs it), H.264 at
+`config.timeLapseVideoFps` frames per second, a key frame every second, about 0.25 bits
+per pixel per frame (≈ 4 Mbit/s for 1024 px at 15 fps). A continuous time-lapse
+(`timeLapseGapSeconds` 0) starts a new clip every burst length. The clips are analysed
+afterwards like imported videos (§9).
+
+* `timelapse_video_start`: a clip was opened. `file` (`videos/roi_<token>_<date>_<time>_<ms>.mp4`),
+  `burst` (as in `timelapse_capture`), `fps`, `side_px`, `requested_side_px` (only when the
+  encoder took a smaller side), `bitrate` (bits per second), `encoder` (the phone's codec
+  name). A start without a matching `video_clip` means the app was killed while that clip
+  was open; such a file is usually unreadable.
+* `video_clip`: the clip was closed; the same fields as an imported clip (§9) plus how it
+  was recorded. `start_epoch_ms` is the camera's time of the first frame
+  (`start_time_source` `camera`; `clock` only if the camera gave no usable time). A
+  frame's clock time is `start_epoch_ms` + its time inside the file (which starts at 0).
+  Each frame carries the camera's own capture time, so the gaps between frames in the file
+  are the camera's true gaps. `frames_skipped` = frames the camera
+  delivered on time but the encoder was still busy with the previous one (it should be
+  0 or close to it). `burst`, `end_reason` (`burst_end`, `session_end`, `camera_paused`,
+  `camera_parked`, `camera_stopped`), `first_pts_us` (the camera's clock, time since the
+  phone was switched on; for diagnosis only), `bitrate`, `encoder`, `crop_ms_mean` (cutting the ROI out of a
+  camera frame) and `draw_ms_mean` (handing it to the encoder), `flushed: false` when
+  the encoder did not hand over its last frames within 2 s, `error` when something failed.
+  This record is written when the clip ends, so its `time_ms` is the end.
+* `video_skipped`: a burst, or part of one, without a clip. `burst`, `reason`
+  (`storage_low`: less than 1 GB free, checked again every second; `start_failed`: the
+  encoder refused, see `message`; `no_frames`: the camera delivered no frame before the
+  clip ended, and the empty file was deleted; `stop_failed`: the clip did not close in
+  time, `file` may be unreadable), `message`.
+
+While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
+`camera_paused` and a new clip starts for the same `burst` once the camera is back.
+
 ### `camera_sleep` — time-lapse camera parking transitions (round 163+)
 
 Written only in time-lapse sessions with "Turn camera off between bursts"

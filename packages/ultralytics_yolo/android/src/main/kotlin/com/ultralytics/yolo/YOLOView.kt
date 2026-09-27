@@ -462,6 +462,54 @@ class YOLOView @JvmOverloads constructor(
         Log.i(TAG, "TimeLapse ${if (enabled) "ON" else "OFF"} sampleFps=$sampleFps")
     }
 
+    // Time-lapse video bursts (round 238): while a clip is open, the time-lapse branch of onFrame
+    // hands the ROI of each due frame to the writer, whose own frame clock replaces the time-lapse
+    // sampling rate above. The ROI follows the live one (a drag moves the crop; the clip keeps its
+    // size); the start ROI is used only while none is set.
+    @Volatile private var roiVideo: RoiVideoWriter? = null
+    @Volatile private var roiVideoStartRoi: InferenceRoi? = null
+    // A clip the view closed by itself (camera paused or stopped), kept until Dart stops it, so
+    // its facts still reach the session log. Main thread only.
+    private var roiVideoClosedByView: RoiVideoWriter? = null
+
+    /** Opens an MP4 clip of the ROI at [path] (see [RoiVideoWriter.start]); a clip still open is
+     *  ended first. Returns the side, bit rate and encoder actually used. Throws on failure. */
+    fun startRoiVideo(
+        path: String,
+        sidePx: Int,
+        fps: Int,
+        bitsPerPixel: Double,
+        cx: Double,
+        cy: Double,
+        side: Double,
+    ): Map<String, Any?> {
+        roiVideo?.finish("replaced", null)
+        roiVideo = null
+        roiVideoClosedByView = null
+        val writer = RoiVideoWriter.start(path, sidePx, fps, bitsPerPixel)
+        roiVideoStartRoi = InferenceRoi(cx.toFloat(), cy.toFloat(), side.toFloat())
+        roiVideo = writer
+        return mapOf("sidePx" to writer.sidePx, "bitrate" to writer.bitrate, "encoder" to writer.encoderName)
+    }
+
+    /** Ends the open clip (or hands back the one the view closed itself); [done] gets its facts
+     *  on the main thread, or null when there was none. */
+    fun stopRoiVideo(reason: String, done: (Map<String, Any?>?) -> Unit) {
+        val writer = roiVideo ?: roiVideoClosedByView
+        roiVideo = null
+        roiVideoClosedByView = null
+        if (writer == null) done(null) else writer.finish(reason, done)
+    }
+
+    /** The camera is going away (pause, stop): a clip cannot get more frames, so close it now
+     *  rather than leave the file open; Dart collects its facts with [stopRoiVideo]. */
+    private fun closeRoiVideoFromView(reason: String) {
+        val writer = roiVideo ?: return
+        roiVideo = null
+        roiVideoClosedByView = writer
+        writer.finish(reason, null)
+    }
+
     /**
      * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
      * per-pixel brightness change (0..255) that counts as "changed"; [areaFraction]
@@ -994,6 +1042,7 @@ class YOLOView @JvmOverloads constructor(
     fun pauseCamera() {
         isStopped = true
         intentionallyPaused = true
+        closeRoiVideoFromView("camera_paused")
         try {
             imageAnalysisUseCase?.clearAnalyzer()
             if (::cameraProviderFuture.isInitialized) {
@@ -2467,12 +2516,21 @@ class YOLOView @JvmOverloads constructor(
         // Dart (raised during a burst so fast crops stay fresh, ~1 fps
         // between bursts). No gate, no inference — see the branch below.
         if (timeLapseMode) {
-            val nowTl = System.nanoTime()
-            if (nowTl - lastTimeLapseSampleNs < timeLapseSampleNs) {
-                imageProxy.close()
-                return
+            val video = roiVideo
+            if (video != null) {
+                // A video burst is recording: the writer's frame clock decides (round 238).
+                if (!video.wants(imageProxy.imageInfo.timestamp)) {
+                    imageProxy.close()
+                    return
+                }
+            } else {
+                val nowTl = System.nanoTime()
+                if (nowTl - lastTimeLapseSampleNs < timeLapseSampleNs) {
+                    imageProxy.close()
+                    return
+                }
+                lastTimeLapseSampleNs = nowTl
             }
-            lastTimeLapseSampleNs = nowTl
         }
 
         perfFramesIn++
@@ -2565,6 +2623,28 @@ class YOLOView @JvmOverloads constructor(
         // watchdog and its ROI/still-probe bootstrap stay fed. BEFORE the
         // predictor block: the detector path stays untouched when off.
         if (timeLapseMode) {
+            // Video burst (round 238): the ROI square of this frame goes into the open clip. Only
+            // a plain copy of the unrotated square happens here; the writer turns it upright and
+            // scales it to the clip's side on the GPU.
+            val video = roiVideo
+            val videoRoi = inferenceRoi ?: roiVideoStartRoi
+            if (video != null && videoRoi != null) {
+                val ts = imageProxy.imageInfo.timestamp
+                ImageUtils.roiSourceSquare(
+                    bitmapWidth = bitmap.width,
+                    bitmapHeight = bitmap.height,
+                    isLandscape = frameIsLandscape,
+                    isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
+                    rotationDegrees = imageProxy.imageInfo.rotationDegrees,
+                    roiCx = videoRoi.cx,
+                    roiCy = videoRoi.cy,
+                    roiSide = videoRoi.side,
+                )?.let { (square, degrees) ->
+                    video.offer(ts, sensorNanosToEpochMs(ts), square.width(), degrees) { target ->
+                        Canvas(target).drawBitmap(bitmap, square, Rect(0, 0, square.width(), square.height()), null)
+                    }
+                }
+            }
             val nowTl = System.nanoTime()
             if (nowTl - lastTimeLapseEmitNs >= 1_000_000_000L) {
                 lastTimeLapseEmitNs = nowTl
@@ -3693,6 +3773,7 @@ class YOLOView @JvmOverloads constructor(
     fun stop() {
         // Set stopped flag first to prevent new frames from being processed
         isStopped = true
+        closeRoiVideoFromView("camera_stopped")
         // A full teardown is not an intentional pause; a later lifecycle restart should rebind normally.
         intentionallyPaused = false
 

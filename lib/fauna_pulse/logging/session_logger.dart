@@ -319,6 +319,16 @@ class SessionLogger {
   void logVideoClip(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('video_clip', payload, at: at);
 
+  /// A time-lapse video clip was opened (round 238, see capture/roi_video.dart);
+  /// its `video_clip` record follows when it closes.
+  void logTimeLapseVideoStart(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('timelapse_video_start', payload, at: at);
+
+  /// A time-lapse video burst, or part of one, without a clip, and why
+  /// (round 238).
+  void logVideoSkipped(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('video_skipped', payload, at: at);
+
   /// Final record. `ended_normally: true` is written only on a clean stop;
   /// its absence (the line never got written) signals a crash.
   void logEnd(Map<String, dynamic> payload, {DateTime? at}) =>

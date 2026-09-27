@@ -1317,10 +1317,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       suffix: ' s',
       na: tlNa || _setting('timeLapseTorch') != true,
     );
+    // Round 238: bursts saved as photos or as video clips. Older sessions
+    // carry no key; add() skips null.
+    final tlVideo = !tlNa && _setting('timeLapseSaveAs') == 'video';
+    add('Save bursts as', _setting('timeLapseSaveAs'), na: tlNa);
+    add('Video frame rate', _setting('timeLapseVideoFps'), suffix: ' fps', na: !tlVideo);
     add(
       'Photo step interval',
       _setting('stepSeconds', 'step_seconds'),
       suffix: ' s',
+      na: tlVideo,
     );
     add(
       'Photo capture duration',

@@ -189,12 +189,18 @@ void main() {
     await shot('photo_visits_graphs');
     await tester.tap(find.text('Photos'));
     await tester.pump(const Duration(seconds: 2));
+    // Every photo in capture order, so the pager reaches a visit; the
+    // viewer's arrows sit below the screen until scrolled into view.
+    await tester.tap(find.textContaining('All ('));
+    await tester.pump(const Duration(seconds: 1));
     final inVisit = find.textContaining(RegExp(r'in visits?$'));
     final pager = find.byIcon(Icons.chevron_right);
-    for (var i = 0; i < 12 && inVisit.evaluate().isEmpty && pager.evaluate().isNotEmpty; i++) {
+    if (pager.evaluate().isNotEmpty) await tester.ensureVisible(pager.first);
+    for (var i = 0; i < 160 && inVisit.evaluate().isEmpty && pager.evaluate().isNotEmpty; i++) {
       await tester.tap(pager.first);
-      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 300));
     }
+    if (inVisit.evaluate().isNotEmpty) await tester.ensureVisible(inVisit.first);
     _log('PHOTO ${inVisit.evaluate().isEmpty ? 'no visit photo in the sample' : 'a photo of a visit shown'}');
     await shot('photo_visits_photos');
     await tester.pumpWidget(const SizedBox());

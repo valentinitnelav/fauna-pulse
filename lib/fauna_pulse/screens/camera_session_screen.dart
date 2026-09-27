@@ -7,6 +7,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart';
+import '../capture/roi_video.dart';
 import '../capture/time_lapse_plan.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -389,6 +391,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   int _timeLapseStartMs = 0;
   int _tlLastCycle = -1;
   bool _tlBurstActive = false;
+
+  // Time-lapse video bursts (round 238): non-null while recording with
+  // "Save bursts as: Video". Opens one clip per burst on the tick below.
+  TimeLapseVideoClips? _tlVideo;
 
   // Camera parking between time-lapse bursts (round 163, perf review E3):
   // non-null only while recording in time-lapse mode with the user's
@@ -1544,6 +1550,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // captureTrigger) to know what applied.
         'config_not_applicable': notApplicableConfigKeys(
           _config.captureTrigger,
+          saveAs: _config.timeLapseSaveAs,
         ),
       },
       captureBuilder: (framesDir, fileToken) => RoiCaptureScheduler(
@@ -1795,6 +1802,43 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             )
           : null;
       _tlCameraBusy = false;
+      final dir = _recorder.sessionDir;
+      _tlVideo = _config.timeLapseVideo && dir != null
+          ? TimeLapseVideoClips(
+              videosDir: Directory('${dir.path}/videos'),
+              fileToken: _recorder.fileToken ?? 'vid',
+              fps: _config.timeLapseVideoFps,
+              // The same size a fast ROI photo would have now.
+              sidePx: () {
+                final px = savedSidePx(_roi.sideFraction, _imageWidth, _imageHeight);
+                return capSavedSidePx(px > 0 ? px : _config.targetRoiSavedPx, _config.targetRoiSavedPx);
+              },
+              startNative: (path, side, fps) => _controller.startRoiVideo(
+                path: path,
+                sidePx: side,
+                fps: fps,
+                cx: _roi.centerX,
+                cy: _roi.centerY,
+                side: _roi.sideFraction,
+                bitsPerPixel: kRoiVideoBitsPerPixel,
+              ),
+              stopNative: (reason) => _controller.stopRoiVideo(reason: reason),
+              logger: () => _logger,
+              storageLow: () => _storageVN.value.isLow,
+              onProblem: (reason, message) {
+                if (!mounted || reason == 'no_frames') return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      reason == 'storage_low'
+                          ? 'Storage is almost full: no video is recorded until space is freed.'
+                          : 'The video of this burst could not be recorded: $message',
+                    ),
+                  ),
+                );
+              },
+            )
+          : null;
       _timeLapseTimer?.cancel();
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
     }
@@ -1866,6 +1910,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             .catchError((Object e) => _logAsyncError('timelapse_torch', e)),
       );
     }
+    // The open video clip closes (and is logged) before the session log
+    // closes; the clips controller bounds the wait.
+    final video = _tlVideo;
+    _tlVideo = null;
+    await video?.stop('session_end');
     if (_tlBurstActive) {
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
@@ -2750,7 +2799,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// half a photo step, 1 fps between bursts (just frame-cache freshness for
   /// the next burst's first photo + the 1 Hz heartbeat).
   void _pushTimeLapse() {
-    final burstFps = (2 / _config.stepSeconds).ceil().clamp(1, 30);
+    // Video bursts convert every frame of the clip (round 238; the clip's own
+    // frame clock takes over natively once it is open).
+    final burstFps = _config.timeLapseVideo
+        ? _config.timeLapseVideoFps
+        : (2 / _config.stepSeconds).ceil().clamp(1, 30);
     _controller
         .setTimeLapse(
           enabled: _config.timeLapseCapture,
@@ -2777,7 +2830,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // [_tlLastCycle] untouched so the burst window is re-armed the moment
     // fresh frames confirm); the plan math preserves the wall-clock grid, so
     // a late wake starts this burst's photos late without shifting the next.
-    if (inBurst && (cam == null || cam.framesUsable)) {
+    final video = _tlVideo;
+    if (video != null) {
+      // Video bursts (round 238): one clip per burst (a continuous time-lapse
+      // starts a new clip every burst length). No clip while the camera is
+      // paused, parked or still warming up: its frames would be stale.
+      final cameraOn = !_paused && (cam == null || cam.framesUsable);
+      unawaited(
+        video.sync(
+          inBurst && cameraOn ? plan.cycleIndexAt(t) : null,
+          endReason: inBurst && !cameraOn ? 'camera_paused' : 'burst_end',
+        ),
+      );
+    } else if (inBurst && (cam == null || cam.framesUsable)) {
       final cycle = plan.cycleIndexAt(t);
       if (cycle != _tlLastCycle) {
         _tlLastCycle = cycle;
@@ -2825,6 +2890,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // own cadence (next burst start) would wake 10 s too late. Same for the
     // torch's flip edges (torch-on lead, burst-end OFF edge).
     var delayMs = plan.nextTickDelayMs(t);
+    if (video != null) {
+      // Clips start and end on the burst edges; inside a burst a tick every
+      // second notices a paused or resumed camera.
+      final edge = plan.nextEdgeDelayMs(t);
+      delayMs = inBurst && edge > 1000 ? 1000 : edge;
+    }
     final camDelay = cam?.nextEventDelayMs(t);
     if (camDelay != null && camDelay < delayMs) delayMs = camDelay;
     final torchDelay = _tlTorchPlan?.nextEventDelayMs(t);
@@ -2897,6 +2968,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       final plan = _timeLapsePlan;
       if (plan == null || !_recording) return;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
+      // A clip still open (a doze-late tick) ends before the camera goes.
+      await _tlVideo?.stop('camera_parked');
       try {
         await _controller.pause();
         _paused = true;
@@ -3842,14 +3915,24 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           String label;
           bool active;
           final plan = _timeLapsePlan;
+          // Short enough for the chip at phone width (round 238: "TIME-LAPSE
+          // VIDEO: RECORDING" was cut off on the Xiaomi).
+          final kind = _config.timeLapseVideo ? 'VIDEO' : 'TIME-LAPSE';
           if (!_recording || plan == null) {
-            label = 'TIME-LAPSE: press REC';
+            label = '$kind: press REC';
             active = false;
           } else {
             final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
             active = plan.inBurstAt(t);
             if (active) {
-              label = 'TIME-LAPSE: CAPTURING';
+              label = !_config.timeLapseVideo
+                  ? '$kind: CAPTURING'
+                  : switch ((_tlVideo?.recording ?? false, _tlVideo?.problem)) {
+                      (true, _) => '$kind: RECORDING',
+                      (_, 'storage_low') => '$kind: STORAGE FULL',
+                      (_, 'start_failed') => '$kind: FAILED',
+                      _ => '$kind: STARTING',
+                    };
             } else {
               final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
               final mm = (waitS ~/ 60).toString().padLeft(2, '0');
