@@ -8,6 +8,10 @@
 //  * post_tracks.jsonl (pass 2, "Find visits"): the tracked boxes with their
 //    visit numbers (`detections`), stored relative to the analysed area.
 //
+// Round 240: a live AI session that also recorded the ROI as video has a
+// third source, the live AI's own tracked boxes in session.jsonl, placed on
+// its clips by camera time ([readLiveSync]).
+//
 // A frame's place in the clip is its own time stamp in the video (`pts_us`),
 // the same clock the player reports. A box stays on screen until the next
 // analysed frame, and at most 1.5 analysed-frame steps: gaps, a stopped
@@ -161,9 +165,86 @@ class VideoBoxTimeline {
   /// "Find visits" ran on an earlier analysis: its visits no longer match.
   final bool visitsStale;
 
-  const VideoBoxTimeline({required this.clips, required this.hasVisits, required this.visitsStale});
+  /// The boxes are the live AI's, found while recording (round 240).
+  final bool live;
+
+  const VideoBoxTimeline({required this.clips, required this.hasVisits, required this.visitsStale, this.live = false});
 
   static const empty = VideoBoxTimeline(clips: {}, hasVisits: false, visitsStale: false);
+
+  /// Reads the live AI's boxes for the session's clips off the UI isolate.
+  static Future<VideoBoxTimeline> loadLive(Directory sessionDir) {
+    final path = sessionDir.path;
+    return Isolate.run(() => readLiveSync(path));
+  }
+
+  /// Round 240: the live AI's tracked boxes (session.jsonl `detections`) on
+  /// the clips recorded during that session (`video_clip` records). Each clip
+  /// is the live ROI square, so a box's `box_in_roi` is its place in the
+  /// video; a record's place in a clip is its camera time (`frame_sensor_ms`,
+  /// the clock of the clip's `start_epoch_ms`) minus the clip's start. Frames
+  /// without an insect are not in the log, so a box shows for at most 1.5
+  /// typical steps between logged frames.
+  static VideoBoxTimeline readLiveSync(String sessionPath) {
+    final f = File('$sessionPath/session.jsonl');
+    if (!f.existsSync()) return empty;
+    final recs = _records(const LineSplitter().convert(utf8.decode(f.readAsBytesSync(), allowMalformed: true))).toList();
+    final spans = <(String, int, int)>[];
+    for (final rec in recs) {
+      if (rec['type'] != 'video_clip') continue;
+      final file = rec['file'] as String?;
+      final start = (rec['start_epoch_ms'] as num?)?.toInt();
+      final dur = (rec['duration_ms'] as num?)?.toInt();
+      if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
+    }
+    final c = {for (final (name, _, _) in spans) name: _ClipAcc()..done = true};
+    for (final rec in recs) {
+      if (rec['type'] != 'detections') continue;
+      final t = ((rec['frame_sensor_ms'] ?? rec['frame_ms']) as num?)?.toInt();
+      final tracks = rec['tracks'];
+      if (t == null || tracks is! List) continue;
+      for (final (name, start, dur) in spans) {
+        if (t < start || t > start + dur) continue;
+        final ms = t - start;
+        final a = c[name]!;
+        a.raw[ms] = const [];
+        a.tracked[ms] = [
+          for (final tr in tracks)
+            if (tr is Map && tr['box_in_roi'] is Map)
+              TimelineBox(
+                box: _fromArea((tr['box_in_roi'] as Map).cast<String, dynamic>(), const Rect.fromLTWH(0, 0, 1, 1)),
+                confidence: (tr['confidence'] as num?)?.toDouble() ?? 0,
+                className: '${tr['class_name'] ?? ''}',
+                trackId: (tr['track_id'] as num?)?.toInt(),
+                coasted: tr['coasted'] == true,
+              ),
+        ];
+        break;
+      }
+    }
+    return VideoBoxTimeline(
+      clips: {
+        for (final MapEntry(key: name, value: a) in c.entries)
+          name: ClipBoxes._(
+            clip: name,
+            done: true,
+            width: 0,
+            height: 0,
+            analysedArea: null,
+            settingsRoi: null,
+            tracked: true,
+            pos: a.raw.keys.toList()..sort(),
+            raw: [for (final _ in a.raw.keys) const <TimelineBox>[]],
+            trackedBoxes: a.tracked,
+            visits: _visits(a.tracked),
+            holdMs: _holdMs(a.raw.keys.toList()..sort()),
+          ),
+      },
+      hasVisits: true,
+      visitsStale: false,
+      live: true,
+    );
+  }
 
   /// Reads the session's two files off the UI isolate.
   static Future<VideoBoxTimeline> load(Directory sessionDir) {

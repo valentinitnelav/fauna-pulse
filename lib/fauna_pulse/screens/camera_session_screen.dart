@@ -396,6 +396,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // "Save bursts as: Video". Opens one clip per burst on the tick below.
   TimeLapseVideoClips? _tlVideo;
 
+  // Live AI + ROI video (round 240): 5-minute clips while the AI records,
+  // kept in step by a 1 s timer (none while the camera is paused).
+  TimeLapseVideoClips? _liveVideo;
+  Timer? _liveVideoTimer;
+  int _liveVideoStartMs = 0;
+
   // Camera parking between time-lapse bursts (round 163, perf review E3):
   // non-null only while recording in time-lapse mode with the user's
   // "Turn camera off between bursts" setting on. The coordinator is the pure
@@ -1551,6 +1557,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'config_not_applicable': notApplicableConfigKeys(
           _config.captureTrigger,
           saveAs: _config.timeLapseSaveAs,
+          liveAiVideo: _config.liveAiVideo,
         ),
       },
       captureBuilder: (framesDir, fileToken) => RoiCaptureScheduler(
@@ -1804,43 +1811,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _tlCameraBusy = false;
       final dir = _recorder.sessionDir;
       _tlVideo = _config.timeLapseVideo && dir != null
-          ? TimeLapseVideoClips(
-              videosDir: Directory('${dir.path}/videos'),
-              fileToken: _recorder.fileToken ?? 'vid',
-              fps: _config.timeLapseVideoFps,
-              // The same size a fast ROI photo would have now.
-              sidePx: () {
-                final px = savedSidePx(_roi.sideFraction, _imageWidth, _imageHeight);
-                return capSavedSidePx(px > 0 ? px : _config.targetRoiSavedPx, _config.targetRoiSavedPx);
-              },
-              startNative: (path, side, fps) => _controller.startRoiVideo(
-                path: path,
-                sidePx: side,
-                fps: fps,
-                cx: _roi.centerX,
-                cy: _roi.centerY,
-                side: _roi.sideFraction,
-                bitsPerPixel: kRoiVideoBitsPerPixel,
-              ),
-              stopNative: (reason) => _controller.stopRoiVideo(reason: reason),
-              logger: () => _logger,
-              storageLow: () => _storageVN.value.isLow,
-              onProblem: (reason, message) {
-                if (!mounted || reason == 'no_frames') return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      reason == 'storage_low'
-                          ? 'Storage is almost full: no video is recorded until space is freed.'
-                          : 'The video of this burst could not be recorded: $message',
-                    ),
-                  ),
-                );
-              },
-            )
+          ? _videoClips(dir, fps: _config.timeLapseVideoFps)
           : null;
       _timeLapseTimer?.cancel();
       _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+    }
+
+    // Live AI + ROI video (round 240, opt-in): clips while the AI records.
+    final liveDir = _recorder.sessionDir;
+    if (_config.detectorEnabled && _config.liveAiVideo && liveDir != null) {
+      _liveVideo = _videoClips(liveDir, fps: _config.liveAiVideoFps, live: true);
+      _liveVideoStartMs = DateTime.now().millisecondsSinceEpoch;
+      _liveVideoTimer?.cancel();
+      _liveVideoTimer = Timer.periodic(const Duration(seconds: 1), (_) => _liveVideoTick());
+      _liveVideoTick();
     }
 
     // Reference photos: first one right away, then the 1 s tick keeps
@@ -1915,6 +1899,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final video = _tlVideo;
     _tlVideo = null;
     await video?.stop('session_end');
+    _liveVideoTimer?.cancel();
+    _liveVideoTimer = null;
+    final liveVideo = _liveVideo;
+    _liveVideo = null;
+    await liveVideo?.stop('session_end');
     if (_tlBurstActive) {
       _tlBurstActive = false;
       _pushTimeLapse(); // back to the low between-burst sampling rate
@@ -2794,6 +2783,45 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
+
+  /// The clips controller of this recording (time-lapse bursts, or live AI
+  /// segments when [live]).
+  TimeLapseVideoClips _videoClips(Directory dir, {required int fps, bool live = false}) => TimeLapseVideoClips(
+    videosDir: Directory('${dir.path}/videos'),
+    fileToken: _recorder.fileToken ?? 'vid',
+    fps: fps,
+    live: live,
+    // The same size a fast ROI photo would have now.
+    sidePx: () {
+      final px = savedSidePx(_roi.sideFraction, _imageWidth, _imageHeight);
+      return capSavedSidePx(px > 0 ? px : _config.targetRoiSavedPx, _config.targetRoiSavedPx);
+    },
+    startNative: (path, side, fps) => _controller.startRoiVideo(
+      path: path,
+      sidePx: side,
+      fps: fps,
+      cx: _roi.centerX,
+      cy: _roi.centerY,
+      side: _roi.sideFraction,
+      bitsPerPixel: kRoiVideoBitsPerPixel,
+    ),
+    stopNative: (reason) => _controller.stopRoiVideo(reason: reason),
+    logger: () => _logger,
+    storageLow: () => _storageVN.value.isLow,
+    onProblem: (reason, message) {
+      if (!mounted || reason == 'no_frames') return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason == 'storage_low'
+                ? 'Storage is almost full: no video is recorded until space is freed.'
+                : '${live ? 'The video' : 'The video of this burst'} could not be recorded: $message',
+          ),
+        ),
+      );
+    },
+  );
+
   /// Applies time-lapse mode natively. The frame-sampling rate follows the
   /// burst phase: high during a burst so fast ROI crops stay fresher than
   /// half a photo step, 1 fps between bursts (just frame-cache freshness for
@@ -2810,6 +2838,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           sampleFps: _config.timeLapseCapture && _tlBurstActive ? burstFps : 1,
         )
         .catchError((Object e) => _logAsyncError('set_time_lapse', e));
+  }
+
+  /// Live AI + ROI video (round 240): the segment that should be recording
+  /// now (a new clip every [kLiveVideoSegmentMs]), none while the camera is
+  /// paused (settings, summary, cool-down); the clip reopens when it is back.
+  void _liveVideoTick() {
+    final v = _liveVideo;
+    if (v == null || !_recording) return;
+    final segment = (DateTime.now().millisecondsSinceEpoch - _liveVideoStartMs) ~/ kLiveVideoSegmentMs;
+    unawaited(v.sync(_paused ? null : segment, endReason: _paused ? 'camera_paused' : 'segment_end'));
+    if (mounted) setState(() {}); // chip suffix
   }
 
   /// Time-lapse driving tick (self-rescheduling one-shot; capped at 60 s so
@@ -3961,14 +4000,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         label: _gateIdle ? 'MOTION: WAITING' : 'MOTION: CAPTURING',
       );
     }
+    // Round 240: a live-AI clip is recording (short labels: the chip holds
+    // about 20 characters at phone width).
+    final video = _liveVideo?.recording ?? false;
     if (_config.motionGateEnabled) {
       return _modeChipShell(
         color: _gateIdle ? _chipWaitingColor : _chipActiveColor,
-        label: _gateIdle ? 'DETECTOR SLEEPING' : 'DETECTOR ON',
+        label: _gateIdle
+            ? (video ? 'SLEEPING · VIDEO ON' : 'DETECTOR SLEEPING')
+            : (video ? 'DETECTOR ON · VIDEO' : 'DETECTOR ON'),
       );
     }
     // Plain AI mode (no gate): the detector runs on every frame.
-    return _modeChipShell(color: _chipActiveColor, label: 'DETECTOR ON');
+    return _modeChipShell(color: _chipActiveColor, label: video ? 'DETECTOR ON · VIDEO' : 'DETECTOR ON');
   }
 
   Widget _chip(String text) => Container(

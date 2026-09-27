@@ -581,6 +581,77 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('live AI + ROI video: the Video tab plays the clips with the live boxes (r240)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final tmp = Directory.systemTemp.createTempSync('live_video');
+    addTearDown(() {
+      try {
+        tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+    final dir = Directory('${tmp.path}/sessions/Lavender')..createSync(recursive: true);
+    Directory('${dir.path}/videos').createSync();
+    Directory('${dir.path}/roi_frames').createSync();
+    const clip = 'roi_tok1_2026-09-27_150000_000.mp4';
+    File('${dir.path}/videos/$clip').writeAsStringSync('video');
+    final t0 = DateTime(2026, 9, 27, 15).millisecondsSinceEpoch;
+    String rec(String type, int ms, Map<String, dynamic> m) => jsonEncode({'type': type, 'time_ms': ms, ...m});
+    File('${dir.path}/session.jsonl').writeAsStringSync(
+      '${[
+        rec('start_of_session', t0, {
+          'file_token': 'tok1',
+          'config': {'captureTrigger': 'detector', 'liveAiVideo': true, 'liveAiVideoFps': 15},
+        }),
+        rec('live_video_start', t0, {'file': 'videos/$clip', 'segment': 0, 'fps': 15, 'side_px': 480}),
+        for (var ms = 2000; ms <= 4000; ms += 100)
+          rec('detections', t0 + ms + 30, {
+            'frame_sensor_ms': t0 + ms,
+            'tracks': [
+              {
+                'track_id': 7,
+                'class_name': 'bee',
+                'confidence': 0.9,
+                'box_in_roi': {'left': 0.4, 'top': 0.4, 'right': 0.5, 'bottom': 0.5},
+              },
+            ],
+          }),
+        rec('video_clip', t0 + 10000, {
+          'file': 'videos/$clip',
+          'start_epoch_ms': t0,
+          'start_time_source': 'camera',
+          'duration_ms': 10000,
+          'size_bytes': 900000,
+          'width': 480,
+          'height': 480,
+          'frame_count': 150,
+          'segment': 0,
+          'end_reason': 'session_end',
+        }),
+        rec('end_of_session', t0 + 11000, {'ended_normally': true, 'unique_track_count': 1}),
+      ].join('\n')}\n',
+    );
+
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.text('Video'), findsOneWidget);
+    expect(find.text("Videos with the live AI's boxes"), findsOneWidget);
+    await _pumpUntil(tester, find.text('1 clip · 10.0 s filmed · 879 KB'));
+    final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('#7'), 100, scrollable: scrollable);
+    expect(find.text('0:02.0 – 0:04.0'), findsOneWidget);
+    expect(find.text('All AI boxes'), findsNothing);
+    expect(find.text('Not analysed yet'), findsNothing);
+    expect(find.text('Square in the wrong place?'), findsNothing);
+    // The session's own photos follow, and the clips can be copied.
+    await tester.scrollUntilVisible(find.textContaining('Saved photos'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Copy videos'), 200, scrollable: scrollable);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets('live sessions keep the Photos tab', (tester) async {
     final log = writeSessionFixture(const []);
     await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 2)));

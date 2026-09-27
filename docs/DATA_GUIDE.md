@@ -299,6 +299,18 @@ afterwards like imported videos (§9).
 While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
 `camera_paused` and a new clip starts for the same `burst` once the camera is back.
 
+**Live AI + ROI video (round 240).** An AI-detector session with *Also record the ROI as
+video* (start record `config.liveAiVideo: true`, `config.liveAiVideoFps`) records the same
+kind of clips while the live AI runs, as 5-minute pieces (a new clip every 5 minutes, so
+a killed app loses at most the open one): `live_video_start` instead of
+`timelapse_video_start`, and `segment` (0, 1, 2 …, counted from the recording start)
+instead of `burst` in it, in `video_clip` and in `video_skipped`; `end_reason` is
+`segment_end` when the next piece started. The clip keeps its frame rate even while the
+motion gate lets the detector sleep. Each clip is the live ROI square, so a live
+`detections` box (`box_in_roi`) is its place in the video, and its place in time is
+`frame_sensor_ms` − the clip's `start_epoch_ms` (the same camera clock); the summary's
+Video tab draws the live boxes that way.
+
 Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
 Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
 clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`

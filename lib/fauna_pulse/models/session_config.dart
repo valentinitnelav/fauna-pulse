@@ -145,6 +145,7 @@ double _timeLapseGapFromJson(Map<String, dynamic> j) {
 List<String> notApplicableConfigKeys(
   CaptureTrigger trigger, {
   TimeLapseSaveAs saveAs = TimeLapseSaveAs.photos,
+  bool liveAiVideo = false,
 }) {
   // Settings that only matter while the detector actually runs.
   const aiKeys = [
@@ -165,6 +166,8 @@ List<String> notApplicableConfigKeys(
     'cbiouParams',
     'logRawDetections',
     'showBoxes',
+    'liveAiVideo',
+    'liveAiVideoFps',
   ];
   // The motion gate and its sensitivity tuning; used by the AI mode (as the
   // heat-saving sleep) AND by the motion trigger (as the capture sensitivity),
@@ -179,7 +182,7 @@ List<String> notApplicableConfigKeys(
   ];
   switch (trigger) {
     case CaptureTrigger.detector:
-      return const [
+      return [
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
@@ -187,6 +190,7 @@ List<String> notApplicableConfigKeys(
         'timeLapseTorchLeadSeconds',
         'timeLapseSaveAs',
         'timeLapseVideoFps',
+        if (!liveAiVideo) 'liveAiVideoFps',
       ];
     case CaptureTrigger.motion:
       return [
@@ -594,6 +598,18 @@ class SessionConfig {
   /// default — at 10 FPS it adds roughly 1–2 MB per hour to the session log.
   final bool logRawDetections;
 
+  /// AI detector only (round 240, video plan 3b): also record the ROI as
+  /// MP4 clips (5-minute segments in `videos/`) while the live AI runs, so
+  /// what the live AI saw can be checked afterwards: its boxes play on the
+  /// clips in the summary, and the clips can be counted by hand or analysed
+  /// again with "Run AI on videos". Off by default: every frame of the clip
+  /// is processed even while the motion gate lets the detector sleep, which
+  /// costs heat and storage.
+  final bool liveAiVideo;
+
+  /// Frames per second of those clips (1 to 30, default 15).
+  final int liveAiVideoFps;
+
   /// "Reference photos" (UI name; wire names frozen from the round-107
   /// "ground-truth frames" original: JSON keys `gtFramesEnabled` /
   /// `gtFrameSeconds`, folder `gt_frames/`, record `gt_capture`): save a
@@ -676,6 +692,8 @@ class SessionConfig {
     this.trackerParams = const ByteTrackParams(),
     this.cbiouParams = const CBiouParams(),
     this.logRawDetections = false,
+    this.liveAiVideo = false,
+    this.liveAiVideoFps = 15,
     this.gtFramesEnabled = true,
     this.gtFrameSeconds = 30.0,
     this.highResSyncCompanion = true,
@@ -798,6 +816,8 @@ class SessionConfig {
     ByteTrackParams? trackerParams,
     CBiouParams? cbiouParams,
     bool? logRawDetections,
+    bool? liveAiVideo,
+    int? liveAiVideoFps,
     bool? gtFramesEnabled,
     double? gtFrameSeconds,
     bool? highResSyncCompanion,
@@ -858,6 +878,8 @@ class SessionConfig {
     trackerParams: trackerParams ?? this.trackerParams,
     cbiouParams: cbiouParams ?? this.cbiouParams,
     logRawDetections: logRawDetections ?? this.logRawDetections,
+    liveAiVideo: liveAiVideo ?? this.liveAiVideo,
+    liveAiVideoFps: liveAiVideoFps ?? this.liveAiVideoFps,
     gtFramesEnabled: gtFramesEnabled ?? this.gtFramesEnabled,
     gtFrameSeconds: gtFrameSeconds ?? this.gtFrameSeconds,
     highResSyncCompanion: highResSyncCompanion ?? this.highResSyncCompanion,
@@ -966,6 +988,8 @@ class SessionConfig {
     'trackerParams': trackerParams.toJson(),
     'cbiouParams': cbiouParams.toJson(),
     'logRawDetections': logRawDetections,
+    'liveAiVideo': liveAiVideo,
+    'liveAiVideoFps': liveAiVideoFps,
     'gtFramesEnabled': gtFramesEnabled,
     'gtFrameSeconds': gtFrameSeconds,
     // Frozen wire key from the r108 name; the Dart field renamed in r112.
@@ -1062,6 +1086,8 @@ class SessionConfig {
           )
         : const CBiouParams(),
     logRawDetections: j['logRawDetections'] as bool? ?? false,
+    liveAiVideo: j['liveAiVideo'] as bool? ?? false,
+    liveAiVideoFps: ((j['liveAiVideoFps'] as num?)?.round() ?? 15).clamp(1, 30),
     // Default flip (reference-photos promotion round): only configs MISSING
     // these keys (fresh installs, configs last saved before r107) get the new
     // on/30 s defaults — toJson always writes the keys, so an explicitly

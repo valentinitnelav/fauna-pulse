@@ -724,8 +724,8 @@ void main() {
     test('every listed key exists in toJson() for every trigger', () {
       final jsonKeys = const SessionConfig().toJson().keys.toSet();
       for (final trigger in CaptureTrigger.values) {
-        for (final saveAs in TimeLapseSaveAs.values) {
-          for (final key in notApplicableConfigKeys(trigger, saveAs: saveAs)) {
+        for (final (saveAs, live) in [for (final v in TimeLapseSaveAs.values) for (final l in [false, true]) (v, l)]) {
+          for (final key in notApplicableConfigKeys(trigger, saveAs: saveAs, liveAiVideo: live)) {
             expect(
               jsonKeys.contains(key),
               true,
@@ -746,7 +746,11 @@ void main() {
         'timeLapseTorchLeadSeconds',
         'timeLapseSaveAs',
         'timeLapseVideoFps',
+        'liveAiVideoFps',
       ]);
+      // Live AI + ROI video (round 240): its frame rate applies once it is on.
+      expect(notApplicableConfigKeys(CaptureTrigger.detector, liveAiVideo: true), isNot(contains('liveAiVideoFps')));
+      expect(notApplicableConfigKeys(CaptureTrigger.timelapse), containsAll(['liveAiVideo', 'liveAiVideoFps']));
       // Motion: AI keys inert, but the gate keys APPLY (they are the capture
       // sensitivity) — and wake duration governs how long photos continue.
       final motion = notApplicableConfigKeys(CaptureTrigger.motion);
@@ -792,6 +796,20 @@ void main() {
       expect(video, isNot(contains('timeLapseGapSeconds')));
       expect(video, isNot(contains('targetRoiSavedPx')));
     });
+  });
+
+  test('live AI + ROI video (round 240): off at 15 fps, JSON round trip, old configs', () {
+    const c = SessionConfig();
+    expect((c.liveAiVideo, c.liveAiVideoFps), (false, 15));
+    final j = c.copyWith(liveAiVideo: true, liveAiVideoFps: 10).toJson();
+    expect((j['liveAiVideo'], j['liveAiVideoFps']), (true, 10));
+    final back = SessionConfig.fromJson(jsonDecode(jsonEncode(j)) as Map<String, dynamic>);
+    expect((back.liveAiVideo, back.liveAiVideoFps), (true, 10));
+    final old = Map<String, dynamic>.from(j)
+      ..remove('liveAiVideo')
+      ..remove('liveAiVideoFps');
+    expect((SessionConfig.fromJson(old).liveAiVideo, SessionConfig.fromJson(old).liveAiVideoFps), (false, 15));
+    expect(SessionConfig.fromJson({...j, 'liveAiVideoFps': 0}).liveAiVideoFps, 1);
   });
 
   group('time-lapse video bursts (round 238)', () {

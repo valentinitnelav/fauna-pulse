@@ -324,6 +324,11 @@ class SessionLogger {
   void logTimeLapseVideoStart(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('timelapse_video_start', payload, at: at);
 
+  /// A live-AI video clip was opened (round 240): as [logTimeLapseVideoStart]
+  /// with `segment` (5-minute pieces) instead of `burst`.
+  void logLiveVideoStart(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('live_video_start', payload, at: at);
+
   /// A time-lapse video burst, or part of one, without a clip, and why
   /// (round 238).
   void logVideoSkipped(Map<String, dynamic> payload, {DateTime? at}) =>

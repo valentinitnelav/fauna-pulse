@@ -17,6 +17,10 @@
 //   video_skipped          a burst, or part of one, without a clip: burst,
 //                          reason (storage_low / start_failed / no_frames /
 //                          stop_failed), message
+//
+// Round 240, live AI + ROI video: the same clips while the live AI runs, as
+// 5-minute segments ([kLiveVideoSegmentMs]); the records say `segment`
+// instead of `burst`, and the opening one is `live_video_start`.
 
 import 'dart:async';
 import 'dart:convert';
@@ -67,12 +71,19 @@ int plannedSessionMinutes(SessionConfig c) {
 /// The storage estimate under "Save bursts as" (plain language). The side is
 /// the "Saved photo side": clips are never larger, smaller when the ROI
 /// covers fewer camera pixels.
-String roiVideoStorageEstimate(SessionConfig c) {
+String roiVideoStorageEstimate(SessionConfig c) => _storageEstimate(
+  c,
+  c.timeLapseVideoFps,
+  timeLapseRecordedShare(c.durationSeconds, c.timeLapseGapSeconds),
+);
+
+/// The same for live AI + ROI video (round 240): the whole session is filmed.
+String liveAiVideoStorageEstimate(SessionConfig c) => _storageEstimate(c, c.liveAiVideoFps, 1);
+
+String _storageEstimate(SessionConfig c, int fps, double share) {
   final side = c.targetRoiSavedPx;
-  final fps = c.timeLapseVideoFps;
   final perHour = roiVideoBytesPerHour(side, fps);
   final minutes = plannedSessionMinutes(c);
-  final share = timeLapseRecordedShare(c.durationSeconds, c.timeLapseGapSeconds);
   final recordedMin = minutes * share;
   final total = perHour * recordedMin / 60;
   String mins(double m) => m >= 90
@@ -86,6 +97,11 @@ String roiVideoStorageEstimate(SessionConfig c) {
       'scene). $what records about ${mins(recordedMin)} of video: '
       'about ${formatBytes(total.round())}.';
 }
+
+/// Length of one live-AI clip (round 240): a new clip starts every 5 minutes,
+/// so an app killed mid-session loses at most the open one (an MP4 is only
+/// readable once closed).
+const int kLiveVideoSegmentMs = 5 * 60 * 1000;
 
 /// File name of a clip: the photo name with `.mp4`, so clips and photos of
 /// one session sort together and carry the session's token.
@@ -108,8 +124,13 @@ class TimeLapseVideoClips {
     required this.logger,
     this.storageLow,
     this.onProblem,
+    this.live = false,
     int Function()? now,
   }) : _now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
+
+  /// Live AI segments (round 240) instead of time-lapse bursts.
+  final bool live;
+  String get _indexKey => live ? 'segment' : 'burst';
 
   final Directory videosDir;
   final String fileToken;
@@ -181,7 +202,7 @@ class TimeLapseVideoClips {
     _noClipReason = reason;
     onProblem?.call(reason, message);
     logger()?.logVideoSkipped({
-      'burst': burst,
+      _indexKey: burst,
       'reason': reason,
       'file': ?file,
       'message': ?message,
@@ -208,15 +229,16 @@ class TimeLapseVideoClips {
     _startedMs = ms;
     _noClipReason = null;
     _side = (r['sidePx'] as num?)?.toInt() ?? side;
-    logger()?.logTimeLapseVideoStart({
+    final startRecord = {
       'file': _file,
-      'burst': burst,
+      _indexKey: burst,
       'fps': fps,
       'side_px': _side,
       if (_side != side) 'requested_side_px': side,
       'bitrate': r['bitrate'],
       'encoder': r['encoder'],
-    });
+    };
+    live ? logger()?.logLiveVideoStart(startRecord) : logger()?.logTimeLapseVideoStart(startRecord);
   }
 
   Future<void> _stop(String reason) async {
@@ -256,7 +278,7 @@ class TimeLapseVideoClips {
       'fps_mean': durationMs > 0 ? r2(frames * 1000 / durationMs) : null,
       'fps_nominal': fps,
       'frames_skipped': (r['skipped'] as num?)?.toInt() ?? 0,
-      'burst': burst,
+      _indexKey: burst,
       'end_reason': r['reason'] ?? reason,
       'first_pts_us': r['firstPtsUs'],
       'bitrate': r['bitrate'],
@@ -302,7 +324,7 @@ class VideoClipTotals {
       if (!line.contains('"video_clip"') && !line.contains('"video_skipped"')) continue;
       try {
         final rec = jsonDecode(line) as Map<String, dynamic>;
-        final burst = (rec['burst'] as num?)?.toInt();
+        final burst = ((rec['burst'] ?? rec['segment']) as num?)?.toInt();
         if (rec['type'] == 'video_clip') {
           count++;
           bytes += (rec['size_bytes'] as num?)?.toInt() ?? 0;

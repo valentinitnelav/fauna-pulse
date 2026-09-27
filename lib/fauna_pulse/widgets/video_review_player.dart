@@ -51,6 +51,10 @@ class VideoReviewPlayer extends StatefulWidget {
   /// Shown under the tab's explanation (round 239: the clips' totals).
   final List<Widget> header;
 
+  /// Clips recorded during a live AI session (round 240): the boxes are the
+  /// live AI's own (session.jsonl), not those of "Run AI on videos".
+  final bool live;
+
   /// Freezes the list's scrolling while a kept frame below is zoomed, so a
   /// drag pans the picture instead of scrolling the page away.
   final bool scrollLocked;
@@ -62,6 +66,7 @@ class VideoReviewPlayer extends StatefulWidget {
     required this.onOpenAnalysis,
     this.footer = const [],
     this.header = const [],
+    this.live = false,
     this.scrollLocked = false,
   });
 
@@ -167,7 +172,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   Future<void> _load() async {
     var timeline = VideoBoxTimeline.empty;
     try {
-      timeline = await VideoBoxTimeline.load(widget.sessionDir);
+      timeline = widget.live
+          ? await VideoBoxTimeline.loadLive(widget.sessionDir)
+          : await VideoBoxTimeline.load(widget.sessionDir);
     } catch (e) {
       logSwallowed('video_box_timeline', e);
     }
@@ -382,13 +389,22 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       padding: widget.padding,
       physics: widget.scrollLocked ? const NeverScrollableScrollPhysics() : null,
       children: [
-        const Text("Videos with the AI's boxes", style: TextStyle(fontWeight: FontWeight.bold)),
+        Text(
+          widget.live ? "Videos with the live AI's boxes" : "Videos with the AI's boxes",
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 4),
-        const Text(
-          'Plays the videos of this session with the boxes the AI found. Tap the video to pause '
-          'or play. Boxes are shown only on the frames the AI analysed, so at higher speeds they '
-          'can trail a fast insect a little. Sound is off unless you switch it on.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
+        Text(
+          widget.live
+              ? 'Plays the ROI videos recorded during this session with the boxes the live AI '
+                    'found at that moment, so you can see what it caught and what it missed. Tap '
+                    'the video to pause or play. Boxes show only on the frames the live AI logged '
+                    'with an insect. Sound is off unless you switch it on.'
+              : 'Plays the videos of this session with the boxes the AI found. Tap the video to '
+                    'pause or play. Boxes are shown only on the frames the AI analysed, so at '
+                    'higher speeds they can trail a fast insect a little. Sound is off unless you '
+                    'switch it on.',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
         ...widget.header,
         const SizedBox(height: 8),
@@ -435,7 +451,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
-          if (boxes != null && boxes.tracked) ...[
+          // The live log holds tracked boxes only (round 240).
+          if (boxes != null && boxes.tracked && !_timeline.live) ...[
             const SizedBox(height: 8),
             SegmentedButton<bool>(
               segments: const [
@@ -461,50 +478,53 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          // With every video deleted (round 236) nothing can be analysed
-          // again; "Find visits" there still works.
-          if (_files.isNotEmpty && _timeline.clips.isEmpty)
-            // Round 239: before the first analysis there is no square to
-            // move yet (recorded bursts, fresh imports).
-            const HelpLabel(
-              label: 'Not analysed yet',
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-              helperText:
-                  '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
-                  'be stopped and continued; keep the phone charging. "Find visits" there then '
-                  'follows each insect from frame to frame, and the boxes and visits show on the '
-                  'video here.',
-            )
-          else if (_files.isEmpty)
-            const HelpLabel(
-              label: 'Other visit settings?',
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-              helperText:
-                  'The videos were deleted to free storage, so they cannot be analysed again. '
-                  '"Run AI on videos" can still find the visits again from the saved boxes, for '
-                  'example with another occlusion tolerance or minimum visit length.',
-            )
-          else
-            const HelpLabel(
-              label: 'Square in the wrong place?',
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-              helperText:
-                  'Opens "Run AI on videos" for this session. There you can move or resize the '
-                  'square, analyse the videos again and then press "Find visits". The new boxes '
-                  'and visits replace the ones shown here.',
-            ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: _openAnalysis,
-              icon: Icon(_files.isEmpty ? Icons.timeline : Icons.crop_free),
-              label: Text(
-                _timeline.clips.isEmpty || _files.isEmpty ? 'Run AI on videos' : 'Change square and analyse again',
+          // Live clips (round 240): the live AI's boxes only, nothing to analyse here yet.
+          if (!_timeline.live) ...[
+            const SizedBox(height: 12),
+            // With every video deleted (round 236) nothing can be analysed
+            // again; "Find visits" there still works.
+            if (_files.isNotEmpty && _timeline.clips.isEmpty)
+              // Round 239: before the first analysis there is no square to
+              // move yet (recorded bursts, fresh imports).
+              const HelpLabel(
+                label: 'Not analysed yet',
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                helperText:
+                    '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
+                    'be stopped and continued; keep the phone charging. "Find visits" there then '
+                    'follows each insect from frame to frame, and the boxes and visits show on the '
+                    'video here.',
+              )
+            else if (_files.isEmpty)
+              const HelpLabel(
+                label: 'Other visit settings?',
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                helperText:
+                    'The videos were deleted to free storage, so they cannot be analysed again. '
+                    '"Run AI on videos" can still find the visits again from the saved boxes, for '
+                    'example with another occlusion tolerance or minimum visit length.',
+              )
+            else
+              const HelpLabel(
+                label: 'Square in the wrong place?',
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                helperText:
+                    'Opens "Run AI on videos" for this session. There you can move or resize the '
+                    'square, analyse the videos again and then press "Find visits". The new boxes '
+                    'and visits replace the ones shown here.',
+              ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: _openAnalysis,
+                icon: Icon(_files.isEmpty ? Icons.timeline : Icons.crop_free),
+                label: Text(
+                  _timeline.clips.isEmpty || _files.isEmpty ? 'Run AI on videos' : 'Change square and analyse again',
+                ),
               ),
             ),
-          ),
+          ],
           if (boxes != null && boxes.tracked) ..._visitRows(boxes),
         ],
         ...widget.footer,
@@ -553,6 +573,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           ? 'The video file of this clip is no longer on the phone.'
           : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
                 'free storage. Its boxes, visits and kept frames stay; only the video cannot be played.';
+    } else if (_timeline.live) {
+      if (boxes == null || boxes.visits.isEmpty) note = 'The live AI found no insect during this clip.';
     } else if (boxes == null) {
       note = 'This clip was not analysed yet, so there are no boxes. "Run AI on videos" '
           '(button below) finds the insects in it.';
@@ -745,9 +767,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ? const [
                 TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
-                  text: 'a visit: its number (the same as in visits.csv), the insect class and the '
-                      "AI's confidence. A faded box: the AI missed the insect on this frame and the "
-                      'tracker kept its place.',
+                  text: 'a visit: its number (the same as in visits.csv and the photos), the insect '
+                      "class and the AI's confidence. A faded box: the AI missed the insect on this "
+                      'frame and the tracker kept its place.',
                 ),
               ]
             : const [

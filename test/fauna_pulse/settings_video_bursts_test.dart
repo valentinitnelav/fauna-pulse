@@ -119,4 +119,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Save bursts as'), findsNothing);
   });
+
+  testWidgets('AI mode: the heat notice under the trigger; the live video fold (round 240)', (tester) async {
+    await open(tester, const SessionConfig(sessionMinutes: 60, cameraFpsCap: 10).copyWith(liveAiVideo: true));
+    await tester.scrollUntilVisible(find.textContaining('Live AI warms the phone'), 200, scrollable: list);
+    expect(find.textContaining('"Save bursts as: Video"'), findsOneWidget);
+    await tester.tap(find.text('AI'));
+    // The model list may still show its spinner, so no pumpAndSettle.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.scrollUntilVisible(find.text('Also record the ROI as video'), 300, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('A 60 min session records about 60 min of video'), 200, scrollable: list);
+    expect(find.text('Video frame rate'), findsOneWidget);
+    expect(find.textContaining('The camera is capped at 10 frames per second'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('time-lapse mode shows no heat notice', (tester) async {
+    await open(tester, const SessionConfig().copyWith(captureTrigger: CaptureTrigger.timelapse));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Live AI warms the phone'), findsNothing);
+  });
 }

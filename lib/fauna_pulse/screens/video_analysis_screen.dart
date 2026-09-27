@@ -373,8 +373,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       runMs,
       await VideoTracker.readSummary(dir),
       {...lengths.keys, ...resume.doneClips}.difference({for (final f in files) f.path.split('/').last}),
-      // Recorded clips carry their burst number (round 238).
-      recorded: records.values.any((r) => r.containsKey('burst')),
+      // Recorded clips carry their burst (round 238) or live segment (round 240) number.
+      recorded: records.values.any((r) => r.containsKey('burst') || r.containsKey('segment')),
     );
   }
 
@@ -961,8 +961,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-              'These clips were recorded by the app as the camera\'s square (time-lapse video '
-              'bursts), so the whole picture is that square. A smaller square analyses only part of it.',
+              'These clips were recorded by the app as the camera\'s square, so the whole picture '
+              'is that square. A smaller square analyses only part of it.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),

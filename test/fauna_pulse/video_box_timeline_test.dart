@@ -198,4 +198,53 @@ void main() {
     expect(t.clips['b.mp4']!.tracked, isFalse);
     expect(t.clips['b.mp4']!.rawAt(500).single.box, const Rect.fromLTRB(0.2, 0.4, 0.25, 0.48));
   });
+
+  test('live AI boxes on the clips recorded during the session (round 240)', () {
+    final tmp = Directory.systemTemp.createTempSync('live_timeline');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    const t0 = 1790000000000;
+    Map<String, dynamic> det(int t, int id, {bool coasted = false}) => {
+      'type': 'detections',
+      'time_ms': t + 40,
+      'frame_ms': t + 30,
+      'frame_sensor_ms': t,
+      'tracks': [
+        {
+          'track_id': id,
+          'class_name': 'bee',
+          'confidence': 0.8,
+          'box_in_roi': {'left': 0.1, 'top': 0.2, 'right': 0.3, 'bottom': 0.4},
+          if (coasted) 'coasted': true,
+        },
+      ],
+    };
+    File('${tmp.path}/session.jsonl').writeAsStringSync(
+      '${[
+        {'type': 'start_of_session', 'time_ms': t0, 'config': {'liveAiVideo': true}},
+        det(t0 - 500, 1), // before the first clip
+        for (var ms = 1000; ms <= 3000; ms += 100) det(t0 + ms, 2, coasted: ms == 2000),
+        {'type': 'video_clip', 'time_ms': t0 + 300000, 'file': 'videos/a.mp4', 'start_epoch_ms': t0, 'duration_ms': 300000},
+        det(t0 + 301000, 3),
+        {'type': 'video_clip', 'time_ms': t0 + 600000, 'file': 'videos/b.mp4', 'start_epoch_ms': t0 + 300500, 'duration_ms': 299000},
+        {'type': 'video_clip', 'time_ms': t0 + 700000, 'file': 'videos/c.mp4', 'start_epoch_ms': t0 + 600000, 'duration_ms': 60000},
+      ].map(jsonEncode).join('\n')}\n',
+    );
+    final t = VideoBoxTimeline.readLiveSync(tmp.path);
+    expect(t.live, isTrue);
+    expect(t.clips.keys.toSet(), {'a.mp4', 'b.mp4', 'c.mp4'});
+    final a = t.clips['a.mp4']!;
+    expect(a.tracked, isTrue);
+    expect(a.visits.single.trackId, 2);
+    expect((a.visits.single.startMs, a.visits.single.endMs), (1000, 3000));
+    // The box is the ROI box: the clip is the ROI.
+    final box = a.trackedAt(1500).single;
+    expect(box.box, const Rect.fromLTRB(0.1, 0.2, 0.3, 0.4));
+    expect(box.className, 'bee');
+    expect(a.trackedAt(2000).single.coasted, isTrue);
+    expect(a.rawAt(1500), isEmpty);
+    expect(a.trackedAt(5000), isEmpty, reason: 'held 1.5 steps at most');
+    expect(t.clips['b.mp4']!.visits.single.startMs, 500);
+    expect(t.clips['c.mp4']!.visits, isEmpty);
+    expect(VideoBoxTimeline.readLiveSync('${tmp.path}/none').clips, isEmpty);
+  });
 }

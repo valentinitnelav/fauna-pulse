@@ -394,6 +394,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
       ),
       if (_c.timeLapseCapture) ..._timeLapseSaveAsFields(),
+      // Round 240 (video plan): always visible in AI mode, not behind an ⓘ.
+      if (_c.detectorEnabled)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Live AI warms the phone: the detector works on the camera picture all session '
+            'long, and older or hot phones can drop to a few frames per second, missing fast '
+            'insects. For long or hot sessions, choose "Time-lapse" with "Save bursts as: '
+            'Video" and run the AI later at home ("Run AI on videos").',
+            style: TextStyle(color: Colors.white60, fontSize: 12),
+          ),
+        ),
       const SizedBox(height: 12),
 
       // Session length sits right after the trigger (round 159): folder,
@@ -844,9 +856,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'list is the square size every camera frame is shrunk to for '
             'the model: smaller runs faster, larger sees tiny insects '
             'better.',
-        child: Row(
+        // Round 240: the two buttons wrap under the label; in one row with
+        // it they overflowed a 360-px-wide phone by 42 px.
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(child: _label('Detection model')),
+            _label('Detection model'),
             TextButton.icon(
               onPressed: _modelsLoading ? null : _downloadModel,
               icon: const Icon(Icons.cloud_download_outlined, size: 18),
@@ -1016,6 +1031,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Advanced.',
       ),
       _trackerFields(),
+      const SizedBox(height: 8),
+      const Divider(color: Colors.white24),
+      _liveVideoSection(),
       const SizedBox(height: 8),
     ];
     if (_c.detectorEnabled) return ListView(children: children);
@@ -1334,6 +1352,62 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
         ..._advancedTrackerSection(isCbiou, p, update, cp, updateC),
+      ],
+    );
+  }
+
+  /// Round 240 (video plan 3b): record the ROI as video while the live AI
+  /// runs, to check afterwards what it found and missed.
+  Widget _liveVideoSection() {
+    final cap = _c.cameraFpsCap;
+    return FoldSection(
+      title: 'Check the live AI (advanced)',
+      subtitle: 'Also record the ROI as video while the AI runs.',
+      initiallyExpanded: _c.liveAiVideo,
+      children: [
+        HelpSwitchTile(
+          title: 'Also record the ROI as video',
+          helperText:
+              'Records the ROI square as MP4 clips (a new clip every 5 minutes, in the session\'s '
+              'videos folder) while the AI detects live. Afterwards the session summary plays '
+              'the clips with the boxes the live AI found, so you can see what it caught and what '
+              'it missed, count the visits by hand, or run the AI again on the clips ("Run AI on '
+              'videos"). Off by default: it costs storage (estimate below) and heat, because every '
+              'frame of the clip is processed even while the motion gate lets the detector sleep.',
+          value: _c.liveAiVideo,
+          onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideo: v)),
+        ),
+        if (_c.liveAiVideo) ...[
+          NumericSettingField(
+            label: 'Video frame rate',
+            value: _c.liveAiVideoFps.toDouble(),
+            min: 1,
+            max: 30,
+            isInt: true,
+            unitSuffix: 'FPS',
+            helperText:
+                'Frames per second in the clips (1 to 30). Default 15, the camera frame rate cap '
+                'the app ships with (Power tab), so the camera delivers every frame the clip '
+                'needs. Lower rates save storage and heat.',
+            onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideoFps: v.round())),
+          ),
+          if (cap > 0 && cap < _c.liveAiVideoFps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'The camera is capped at $cap frames per second (Power tab → "Camera frame rate '
+                'cap"), so the clips get at most $cap.',
+                style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              liveAiVideoStorageEstimate(_c),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -973,6 +973,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Either kind of video session: a Video tab, "Run AI on videos".
   bool get _videoSession => _importedVideoSession || _recordedVideoSession;
 
+  /// A live AI session that also recorded the ROI as video (round 240): a
+  /// Video tab with the live AI's boxes, its photos below the player.
+  bool get _liveVideoSession => !_noAiSession && _setting('liveAiVideo') == true;
+
   /// The extra graphs show the phone while the AI ran on the videos (round
   /// 232) instead of during the recording: always for imported videos, and
   /// by choice for recorded bursts (round 239).
@@ -1308,13 +1312,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Clips', video['clips']);
       final bytes = video['total_bytes'];
       add('Video files', bytes is num ? formatBytes(bytes.toInt()) : null);
-    } else if (_recordedVideoSession) {
-      // Round 239: from the clips' own `video_clip` records.
+    } else if (_recordedVideoSession || _liveVideoSession) {
+      // Round 239: from the clips' own `video_clip` records (round 240: also
+      // the 5-minute clips of a live AI session).
       final t = _clipTotals;
       add('Clips', t.count);
       add('Video files', formatBytes(t.bytes));
       add('Filmed time (all clips)', _hmsLabel(t.durationMs));
-      if (t.skippedBursts > 0) add('Bursts without a clip', t.skippedBursts);
+      if (t.skippedBursts > 0) {
+        add(_liveVideoSession ? '5-minute pieces without a clip' : 'Bursts without a clip', t.skippedBursts);
+      }
     }
     if (_videosDeleted > 0) {
       add('Videos deleted', '$_videosDeleted (${formatBytes(_videosFreedBytes)} freed)');
@@ -1663,6 +1670,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_setting('logRawDetections') == true) {
       add('Log raw detections', 'on (replayable session)', na: noAi);
     }
+    // Round 240: live AI + ROI video. Older sessions carry no key.
+    add('Record the ROI as video', _setting('liveAiVideo'), na: noAi);
+    add('Video frame rate (live AI)', _setting('liveAiVideoFps'), suffix: ' fps', na: noAi || _setting('liveAiVideo') != true);
     return [
       const Text(
         'Everything chosen at the start of this session, so the run can be '
@@ -2016,7 +2026,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Imported videos get a "Video" tab instead of "Photos" (round 231).
   /// Until the start record is read, a videos/ folder decides, so the tab
   /// label does not flip once loading is done.
-  bool get _videoTab => _startRec == null ? _hasVideoFolder : _videoSession;
+  bool get _videoTab => _startRec == null ? _hasVideoFolder : _videoSession || _liveVideoSession;
   late final bool _hasVideoFolder = Directory(
     '${widget.logFile.parent.path}/videos',
   ).existsSync();
@@ -2037,6 +2047,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       sessionDir: widget.logFile.parent,
       padding: _tabPadding,
       onOpenAnalysis: _openVideoAnalysis,
+      live: _liveVideoSession,
       scrollLocked: _photoViewerZoomed,
       header: [
         if (_clipTotals.count > 0) ...[
@@ -2044,7 +2055,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           Text(_clipTotals.label, style: const TextStyle(fontSize: 13)),
         ],
       ],
-      footer: _photoSection(videoFrames: true),
+      // A live session's own photos (round 240); otherwise the kept frames.
+      footer: _photoSection(videoFrames: !_liveVideoSession, withVideoCopy: true),
     );
   }
 
@@ -2660,7 +2672,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   /// The photo viewer with its explanations and actions; with [videoFrames]
   /// the frames kept from imported videos (round 234, under the player).
-  List<Widget> _photoSection({bool videoFrames = false}) {
+  List<Widget> _photoSection({bool videoFrames = false, bool withVideoCopy = false}) {
     final noun = videoFrames ? 'kept frame' : 'saved photo';
     return [
       if (videoFrames) ...[
@@ -2837,7 +2849,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           },
         ),
       // --- Copy the video clips to the Gallery (round 239, Video tab) ---
-      if (videoFrames) ...[
+      if (videoFrames || withVideoCopy) ...[
         const Divider(height: 32, color: Colors.white24),
         const HelpLabel(
           label: 'Copy videos to gallery',

@@ -510,6 +510,28 @@ class YOLOView @JvmOverloads constructor(
         writer.finish(reason, null)
     }
 
+    /** Analyzer thread: hands the ROI square of this converted frame to [video]. Only a plain copy
+     *  of the unrotated square happens here; the writer turns it upright and scales it to the
+     *  clip's side on the GPU. The ROI follows the live one. */
+    private fun offerRoiVideo(video: RoiVideoWriter, bitmap: Bitmap, imageProxy: ImageProxy, isLandscape: Boolean) {
+        val roi = inferenceRoi ?: roiVideoStartRoi ?: return
+        val ts = imageProxy.imageInfo.timestamp
+        ImageUtils.roiSourceSquare(
+            bitmapWidth = bitmap.width,
+            bitmapHeight = bitmap.height,
+            isLandscape = isLandscape,
+            isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
+            rotationDegrees = imageProxy.imageInfo.rotationDegrees,
+            roiCx = roi.cx,
+            roiCy = roi.cy,
+            roiSide = roi.side,
+        )?.let { (square, degrees) ->
+            video.offer(ts, sensorNanosToEpochMs(ts), square.width(), degrees) { target ->
+                Canvas(target).drawBitmap(bitmap, square, Rect(0, 0, square.width(), square.height()), null)
+            }
+        }
+    }
+
     /**
      * Enables/disables the motion gate and applies its tuning. [pixelDelta] is the
      * per-pixel brightness change (0..255) that counts as "changed"; [areaFraction]
@@ -2503,13 +2525,26 @@ class YOLOView @JvmOverloads constructor(
         // still noticed within ~0.2 s; once motion wakes the gate, every frame
         // flows again. Note: the delivered-FPS readout intentionally reflects
         // this (~5 while idle) — it reports frames the pipeline actually uses.
+        // Live AI + ROI video (round 240): a frame the open clip needs passes the two
+        // pre-conversion drops below (gate idle sampling, inference cap), so the clip keeps its
+        // frame rate. After conversion it goes into the clip, and it continues to the gate and
+        // the detector only when neither drop applied ([videoOnly] false). With no clip open
+        // nothing changes.
+        val liveVideo = if (timeLapseMode) null else roiVideo
+        val videoDue = liveVideo?.wants(imageProxy.imageInfo.timestamp) == true
+        var videoOnly = false
+
         if (motionGateEnabled && System.nanoTime() > gateAwakeUntilNs) {
             val nowIdle = System.nanoTime()
             if (nowIdle - lastGateSampleNs < gateIdleSampleNs) {
-                imageProxy.close()
-                return
+                if (!videoDue) {
+                    imageProxy.close()
+                    return
+                }
+                videoOnly = true
+            } else {
+                lastGateSampleNs = nowIdle
             }
-            lastGateSampleNs = nowIdle
         }
 
         // Time-lapse mode: same pre-conversion drop, but rate-controlled by
@@ -2575,11 +2610,14 @@ class YOLOView @JvmOverloads constructor(
         // remember its verdict instead of asking twice per frame.
         var inferenceApproved = false
         if (!motionGateEnabled) {
-            if (!shouldRunInference()) {
+            if (shouldRunInference()) {
+                inferenceApproved = true
+            } else if (videoDue) {
+                videoOnly = true
+            } else {
                 imageProxy.close()
                 return
             }
-            inferenceApproved = true
         }
 
         val tb0 = System.nanoTime()
@@ -2616,6 +2654,13 @@ class YOLOView @JvmOverloads constructor(
             return
         }
 
+        // Live AI + ROI video (round 240, see above).
+        if (videoDue && liveVideo != null) offerRoiVideo(liveVideo, bitmap, imageProxy, frameIsLandscape)
+        if (videoOnly) {
+            imageProxy.close()
+            return
+        }
+
         // FaunaPulse time-lapse capture mode: no detector, no motion
         // gate — photos are triggered by a Dart-side timer via the capture
         // channel methods. This branch only refreshes the frame cache (done
@@ -2623,28 +2668,8 @@ class YOLOView @JvmOverloads constructor(
         // watchdog and its ROI/still-probe bootstrap stay fed. BEFORE the
         // predictor block: the detector path stays untouched when off.
         if (timeLapseMode) {
-            // Video burst (round 238): the ROI square of this frame goes into the open clip. Only
-            // a plain copy of the unrotated square happens here; the writer turns it upright and
-            // scales it to the clip's side on the GPU.
-            val video = roiVideo
-            val videoRoi = inferenceRoi ?: roiVideoStartRoi
-            if (video != null && videoRoi != null) {
-                val ts = imageProxy.imageInfo.timestamp
-                ImageUtils.roiSourceSquare(
-                    bitmapWidth = bitmap.width,
-                    bitmapHeight = bitmap.height,
-                    isLandscape = frameIsLandscape,
-                    isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT,
-                    rotationDegrees = imageProxy.imageInfo.rotationDegrees,
-                    roiCx = videoRoi.cx,
-                    roiCy = videoRoi.cy,
-                    roiSide = videoRoi.side,
-                )?.let { (square, degrees) ->
-                    video.offer(ts, sensorNanosToEpochMs(ts), square.width(), degrees) { target ->
-                        Canvas(target).drawBitmap(bitmap, square, Rect(0, 0, square.width(), square.height()), null)
-                    }
-                }
-            }
+            // Video burst (round 238): the ROI square of this frame goes into the open clip.
+            roiVideo?.let { offerRoiVideo(it, bitmap, imageProxy, frameIsLandscape) }
             val nowTl = System.nanoTime()
             if (nowTl - lastTimeLapseEmitNs >= 1_000_000_000L) {
                 lastTimeLapseEmitNs = nowTl
