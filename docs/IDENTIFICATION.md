@@ -248,12 +248,30 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline; all are
 in the `identify_start` record.
 Settings are saved as you change them (round 210).
 
-**GPU and CPU threads, honestly (round 211).** The GPU switch is real: it asks LiteRT to
-compile the model for the phone's GPU, the same path the live detector uses (verified for
-the YOLO detectors). For the BioCLIP image tower it has NOT been verified to work on any
-phone: on the owner's Xiaomi the GPU compile fails and the app falls back to the CPU. Since
-round 211 the reason is shown on the screen after loading (and in the "Last run" card)
-instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
+**BioCLIP on the GPU (round 242).** The GPU switch (on by default) asks LiteRT to compile
+the model for the phone's GPU, the same path the live detector uses. BioCLIP files exported
+before round 242 cannot run on any GPU: their attention layers use 5-dimensional tensors,
+which the phone's GPU engine rejects, so the app fell back to the CPU ("Failed to compile
+model"; the screen now adds that a newer export is needed). Files exported since then
+(`tool/bioclip_export`, `--attention 4d`, the default) run entirely on the GPU with the
+same weights and maths. Measured on the Xiaomi test phone (plugged in): 0.27 s per crop on
+the GPU instead of 2.6 s on the CPU; identifying a session of 11 crops took 9.9 s instead
+of 35 s, with the same answer for each visit.
+
+GPUs differ between phones and Android versions, so the app checks each one. The first
+time a model runs on a phone's GPU, it embeds a fixed test picture on the GPU and on the
+CPU (one model in memory at a time) and keeps the GPU only when the two embeddings agree
+(cosine ≥ 0.995); otherwise it uses the CPU and says why. The verdict is stored per model
+file and Android build (`embedder_gpu_checks.txt` in the app's private files), so a system
+update, which usually brings new GPU drivers, checks again; the first load therefore takes
+longer once (about 20 s on the test phone). The GPU computes with 16-bit numbers: on the
+test phone its embeddings matched the CPU to 0.9995 on the test picture and 0.994 to 0.997
+on real crops, which moved a visit's confidence by up to 0.03 without changing any answer.
+32-bit GPU maths would match more closely but needs about 1.2 GB of GPU memory for
+BioCLIP 2; Android closed the app for lack of memory on the 7.4 GB test phone, so it is not
+offered. `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
+`gpu_agreement` (DATA_GUIDE §8). Since round 211 the reason is shown on the screen after
+loading (and in the "Last run" card) instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
 thread pool, so it does change how the matrix maths is spread; whether more threads are
 faster on a given phone is an empirical question. **Test speed** (Run section) loads the
 model with the current settings, embeds 8 of the session's own crops after a warm-up and
@@ -336,9 +354,11 @@ keeps the column names so the same scripts read both outputs, with its own formu
 
 ## Troubleshooting
 
-- *"Could not compile on GPU / falling back to CPU"* in logcat: normal for some phones;
-  the CPU path is slower but gives the same numbers. The int8 export is the CPU-friendly
-  variant.
+- *"GPU not used: Failed to compile model"*: the model file was exported before round 242
+  (export it again, see above), or this phone's GPU cannot compile or hold it; the CPU path
+  is slower but gives the same answers. The int8 export is the CPU-friendly variant.
+- *"GPU not used: the GPU's results differed from the CPU's"*: this phone's GPU failed the
+  first-use check; the app uses the CPU for that model until the next Android update.
 - *The model load fails outright:* the phone has too little free RAM for the file (fp16
   needs ~1 GB free, BioCLIP 2.5 ~2 GB) or the export is broken; run `verify_parity.py`
   on the PC.

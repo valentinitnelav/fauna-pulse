@@ -20,6 +20,13 @@ Converter: litert-torch >= 0.9 (formerly ai-edge-torch). It no longer needs Tens
 the float32 graph comes out of litert-torch and the weight casting is done afterwards
 with the ai-edge-quantizer package it depends on.
 
+Attention (round 242): by default every attention layer is exported as plain matrix
+steps with at most 4-dimensional tensors (--attention 4d). PyTorch's own attention
+passes the data through 5-dimensional tensors, which the phone's GPU engine cannot run
+("RESHAPE ... bad input dims size"), so the whole model fell back to the CPU; the
+maths and the weights are the same (verify_parity.py compares the two exports).
+--attention torch keeps PyTorch's own layers (the export before round 242).
+
 Usage (see README.md for the environment):
     python export_image_tower.py --model bioclip-2 --precision fp16 --out ./out
     python export_image_tower.py --model bioclip-2.5 --precision int8 --out ./out
@@ -57,7 +64,41 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def build_tower(model_key: str):
+def four_dim_attention(mha):
+    """nn.MultiheadAttention (self-attention, batch_first, no mask) as plain steps with
+    tensors of at most 4 dimensions, with the same weights: the phone's GPU engine
+    rejects PyTorch's 5-dimensional in-projection reshape. Same maths, so the embeddings
+    agree to float rounding."""
+    import torch
+
+    class FourDimAttention(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            e, h = mha.embed_dim, mha.num_heads
+            self.h, self.d = h, e // h
+            self.scale = self.d ** -0.5
+            w, b = mha.in_proj_weight.detach(), mha.in_proj_bias.detach()
+            self.q, self.k, self.v = (torch.nn.Linear(e, e) for _ in range(3))
+            for i, lin in enumerate((self.q, self.k, self.v)):
+                lin.weight.data = w[i * e:(i + 1) * e].clone()
+                lin.bias.data = b[i * e:(i + 1) * e].clone()
+            self.out = mha.out_proj
+
+        def forward(self, query, key=None, value=None, need_weights=False, attn_mask=None):
+            # Self-attention only (the image tower passes the same tensor three times).
+            assert attn_mask is None, "the image tower has no attention mask"
+            n, t, e = query.shape
+            q = self.q(query).reshape(n, t, self.h, self.d).permute(0, 2, 1, 3)  # [n, h, t, d]
+            k = self.k(query).reshape(n, t, self.h, self.d).permute(0, 2, 3, 1)  # [n, h, d, t]
+            v = self.v(query).reshape(n, t, self.h, self.d).permute(0, 2, 1, 3)  # [n, h, t, d]
+            a = torch.softmax(torch.matmul(q * self.scale, k), dim=-1)            # [n, h, t, t]
+            o = torch.matmul(a, v).permute(0, 2, 1, 3).reshape(n, t, e)
+            return self.out(o), None
+
+    return FourDimAttention()
+
+
+def build_tower(model_key: str, attention: str = "4d"):
     """Load the OpenCLIP model and wrap its image tower for export."""
     import torch
     import open_clip
@@ -65,6 +106,16 @@ def build_tower(model_key: str):
     model, _, _ = open_clip.create_model_and_transforms(MODELS[model_key])
     model.eval()
     logit_scale = float(model.logit_scale.exp().item())
+    if attention == "4d":
+        swapped = 0
+        for block in model.visual.transformer.resblocks:
+            attn = block.attn
+            if isinstance(attn, torch.nn.MultiheadAttention):
+                if not (attn.batch_first and attn._qkv_same_embed_dim and attn.bias_k is None):
+                    raise SystemExit("unexpected attention layout; export with --attention torch")
+                block.attn = four_dim_attention(attn).eval()
+                swapped += 1
+        print(f"attention: {swapped} layers as 4-dimensional steps (GPU-friendly)")
 
     class ImageTower(torch.nn.Module):
         def __init__(self, visual):
@@ -218,6 +269,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), default="bioclip-2")
     ap.add_argument("--precision", choices=["fp32", "fp16", "int8"], default="fp16")
+    ap.add_argument("--attention", choices=["4d", "torch"], default="4d",
+                    help="4d (default): attention as steps of at most 4 dimensions, so phone GPUs can run "
+                         "it; torch: PyTorch's own layers (exports before round 242)")
     ap.add_argument("--out", type=Path, default=Path("out"))
     ap.add_argument("--onnx", action="store_true", help="also write an fp32 ONNX file (PC parity / fallback)")
     ap.add_argument("--skip-tflite", action="store_true", help="only the ONNX + manifest (debugging)")
@@ -231,7 +285,7 @@ def main() -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     print(f"Loading {MODELS[args.model]} (downloads the checkpoint on first use)...")
-    tower, image_size, dim, logit_scale = build_tower(args.model)
+    tower, image_size, dim, logit_scale = build_tower(args.model, args.attention)
     print(f"image tower ready: input {image_size}x{image_size}, embedding dim {dim}, logit_scale {logit_scale:.2f}")
 
     stem = f"{args.model.replace('.', '')}_image_{args.precision}"
@@ -247,6 +301,7 @@ def main() -> int:
         "output": "L2-normalised embedding",
         "logit_scale": logit_scale,
         "precision": args.precision,
+        "attention": args.attention,
         "exported": date.today().isoformat(),
         "license": "MIT (model weights, Imageomics)",
     }

@@ -21,6 +21,11 @@ class ImageEmbedderInfo {
   /// "blocklisted"); null on GPU or when the GPU was not requested.
   final String? accelerationNote;
 
+  /// Round 242: how closely this phone's GPU matched the CPU on a fixed test
+  /// picture (cosine, 1 = identical) when the model was checked on the GPU;
+  /// the GPU is used only at 0.995 or more. Null when no GPU check applies.
+  final double? gpuAgreement;
+
   /// Threads the CPU engine runs on (the count behind "0 = automatic");
   /// null on the GPU.
   final int? cpuThreads;
@@ -33,6 +38,7 @@ class ImageEmbedderInfo {
 
   const ImageEmbedderInfo({
     required this.accelerator,
+    this.gpuAgreement,
     this.accelerationNote,
     this.cpuThreads,
     required this.inputWidth,
@@ -81,6 +87,7 @@ class ImageEmbedder {
     return ImageEmbedderInfo(
       accelerator: (r['accelerator'] as String?) ?? '?',
       accelerationNote: r['accelerationNote'] as String?,
+      gpuAgreement: (r['gpuAgreement'] as num?)?.toDouble(),
       cpuThreads: (r['cpuThreads'] as num?)?.toInt(),
       inputWidth: (r['inputWidth'] as num).toInt(),
       inputHeight: (r['inputHeight'] as num).toInt(),

@@ -833,6 +833,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             mapOf(
               "accelerator" to e.accelerator,
               "accelerationNote" to e.accelerationNote,
+              "gpuAgreement" to e.gpuAgreement,
               "cpuThreads" to e.cpuThreads,
               "inputWidth" to e.inputWidth,
               "inputHeight" to e.inputHeight,

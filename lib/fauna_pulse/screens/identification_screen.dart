@@ -325,7 +325,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           flagMinDetConf: prefs.flagMinDetConf,
           flagMinOrderP: prefs.flagMinOrderP,
           dropFactor: prefs.dropFactor,
-          extra: {'use_gpu': prefs.useGpu, 'cpu_threads': prefs.cpuThreads, 'cpu_threads_used': ?info.cpuThreads},
+          extra: {
+            'use_gpu': prefs.useGpu,
+            'cpu_threads': prefs.cpuThreads,
+            'cpu_threads_used': ?info.cpuThreads,
+            // Round 242: why the GPU was not used, and how closely it matched the CPU.
+            'gpu_note': ?info.accelerationNote,
+            'gpu_agreement': ?info.gpuAgreement,
+          },
         ),
         packFile: pack,
         appVersion: '${pinfo.version}+${pinfo.buildNumber}',
@@ -414,10 +421,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
       final auto = prefs.cpuThreads == 0, used = info.cpuThreads;
       final threads = used == null ? (auto ? 'automatic' : '${prefs.cpuThreads}') : '${auto ? 'automatic: ' : ''}$used';
+      final agree = info.gpuAgreement;
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
           '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
-          '${info.accelerationNote != null ? '\nGPU not used: ${info.accelerationNote}.' : ''}';
+          '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
+          '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
       _accelNote = info.accelerationNote;
     } catch (e) {
       logSwallowed('identify_speed_test', e);
@@ -810,7 +819,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           style: const TextStyle(color: Colors.white),
         ),
         if (r.embedded > 0 && _accelNote != null)
-          Text('GPU not used: $_accelNote.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+          Text('GPU not used: ${gpuNoteText(_accelNote!)}.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(
@@ -859,11 +868,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           value: prefs.useGpu,
           onChanged: (v) => _edit(() => prefs.useGpu = v),
           helperText:
-              'Tries to compile the model for the phone\'s GPU, the same path the live detector '
-              'uses. Large transformer models like BioCLIP often cannot be compiled by the GPU '
-              'driver or do not fit its memory; the app then falls back to the CPU and shows the '
-              'reason after loading. The GPU is not automatically faster: use "Test speed" to '
-              'compare on this phone. Off = CPU only.',
+              'Runs the model on the phone\'s graphics processor (GPU) when it can. On the test phone '
+              'that took 0.27 s per crop instead of 2.6 s on the CPU, so a large session is '
+              'identified about ten times faster. GPUs differ between phones and Android versions: '
+              'the first time a model runs on this phone\'s GPU, the app compares its result on a '
+              'test picture with the CPU\'s and keeps the GPU only when they agree. When the GPU '
+              'cannot compile the model, does not match the CPU or runs out of memory, the app uses '
+              'the CPU and says why after loading. BioCLIP files exported before round 242 cannot '
+              'run on any GPU (see IDENTIFICATION.md). "Test speed" shows what this phone does. '
+              'Off = CPU only.',
         ),
         NumericSettingField(
           label: 'CPU threads (0 = automatic)',
