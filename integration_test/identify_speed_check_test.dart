@@ -50,15 +50,21 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Test speed'));
     await waitFor(find.textContaining('Testing speed: '));
     _log('PROGRESS ${(tester.widget<Text>(find.textContaining('Testing speed: ')).data)}');
-    await waitFor(find.textContaining('Testing speed: Crop 2 of 10'), seconds: 300);
-    await tester.scrollUntilVisible(find.textContaining('Testing speed: '), 100, scrollable: list);
-    _log('SHOT identify_speed_progress');
-    _log('PROGRESS ${(tester.widget<Text>(find.textContaining('Testing speed: ')).data)}');
-    await tester.pump(const Duration(seconds: 3));
+    // A crop line, or already the result: on a GPU (about 0.3 s per crop) the ten crops can
+    // pass between two looks (Xiaomi, round 248).
+    await waitFor(find.textContaining(RegExp(r'Testing speed: Crop [2-9]|s per crop on the')), seconds: 300);
+    if (find.textContaining('Testing speed: Crop').evaluate().isNotEmpty) {
+      await tester.scrollUntilVisible(find.textContaining('Testing speed: '), 100, scrollable: list);
+      _log('SHOT identify_speed_progress');
+      _log('PROGRESS ${(tester.widget<Text>(find.textContaining('Testing speed: ')).data)}');
+      await tester.pump(const Duration(seconds: 3));
+    }
     await waitFor(find.textContaining('s per crop on the'), seconds: 600);
     final result = tester.widget<Text>(find.textContaining('s per crop on the')).data;
     _log('RESULT after ${DateTime.now().difference(started).inSeconds} s: $result');
-    expect(result, contains('10 crops after a warm-up'));
+    // 10 crops, or fewer when the session has fewer above the "Smallest box" setting (the result
+    // then says so; the owner's Xiaomi uses 96 px, round 248).
+    expect(result, anyOf(contains('10 crops after a warm-up'), contains('reach the "Smallest box"')));
     expect(find.textContaining('Testing speed: '), findsNothing);
     await tester.scrollUntilVisible(find.textContaining('s per crop on the'), 100, scrollable: list);
     _log('SHOT identify_speed_result');

@@ -443,7 +443,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final agree = info.gpuAgreement;
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
-          '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
+          '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crop${rgb.length == 1 ? '' : 's'} after a warm-up'
+          '${rgb.length < n ? ' (only ${rgb.length} of this session\'s crops reach the "Smallest box" of ${prefs.minCropPx} px)' : ''}.'
           '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
           '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
       _accelNote = info.accelerationNote;
