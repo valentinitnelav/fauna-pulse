@@ -740,7 +740,8 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
   today via Camera FPS cap = 12. Battery reports a 2-cell SERIES voltage (~8.8 V):
   raw logged `power_w` reads ~2× high; the summary halves >4.6 V per cell (r41),
   `tool/perf_summary.dart` deliberately does NOT (r188 warning in
-  PERFORMANCE_BENCHMARKING.md; aligning it is a recorded follow-up).
+  PERFORMANCE_BENCHMARKING.md; aligning it is a recorded follow-up). It offers the app only
+  its main lens (r246: a saved 0.6× resolves to 1×).
 - **Samsung `RF8T403A3AT`** (Galaxy M12-class, SM-M127F): secondary test device.
   Thermal character (r132, 5×1 h): never passed ~32 °C — compute-limited, not
   heat-limited (yolo26n ~260 ms ⇒ ~2.8 fps; int8 arthropod 65 ms ⇒ ~7 fps).

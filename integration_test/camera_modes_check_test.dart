@@ -10,11 +10,14 @@
 //  B. Video bursts with the same camera sleep and torch: 10-s clips, 35-s breaks, 100 s.
 //  C. Continuous video (no break): 20-s clips back to back, 50 s.
 //  D. Motion-only capture: the check blinks the torch every 4 s (through the screen's own
-//     camera controller), so a phone lying on a desk sees motion: photos, no detector.
-//  E. Live AI photos with the torch on and confidence 0.02, so a plain desk still gives boxes:
-//     with the arthropod model when imported (MegaDetector v6 gave none above 0.02 on a desk,
-//     round 245), raw boxes logged, and the tracker starting tracks from 0.02 too (default 0.5),
-//     so weak boxes become tracks and photos.
+//     camera controller), so even a still scene has motion: photos, no detector.
+//  E. Live AI photos. A still scene often has nothing to detect, so by default E only checks
+//     that what was tracked was photographed and saved; finding nothing is no failure. It runs
+//     with the torch on, confidence 0.02 (the arthropod model when imported), raw boxes logged
+//     and the tracker starting tracks from 0.02 (default 0.5), to give weak boxes a chance.
+//     With --dart-define=E_SUBJECT=true the phone looks at something its model detects (e.g. a
+//     screen playing a video of pollinators, or animals for MegaDetector): E then uses the
+//     phone's own model and thresholds and fails when nothing is tracked or photographed.
 //  F. A scheduled run with video bursts: a 2-minute window starting at the next minute; the
 //     app sleeps until then, records the window as its own session and ends the run.
 // --dart-define=MODES=ACF runs only those sessions (default all). The phone's saved settings
@@ -42,6 +45,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _folder = 'modes_check';
 const _modes = String.fromEnvironment('MODES', defaultValue: 'ABCDEF');
+const _eSubject = bool.fromEnvironment('E_SUBJECT');
 
 // ignore: avoid_print
 void _log(String s) => print(s);
@@ -321,27 +325,33 @@ void main() {
       }
     }
 
-    // E. Live AI photos with a very low confidence.
+    // E. Live AI photos: a subject in view (E_SUBJECT), or a still scene with weak boxes allowed.
     if (_modes.contains('E')) {
+      final live = base.copyWith(
+        captureTrigger: CaptureTrigger.detector,
+        logRawDetections: true,
+        motionGateEnabled: false,
+        liveAiVideo: false,
+        stepSeconds: 1,
+        durationSeconds: 5,
+      );
       final dir = await record(
         'E',
-        base.copyWith(
-          captureTrigger: CaptureTrigger.detector,
-          confidenceThreshold: 0.02,
-          modelPath: arthropod.existsSync() ? arthropod.path : null,
-          logRawDetections: true,
-          trackerAlgorithm: TrackerAlgorithm.bytetrack,
-          trackerParams: const ByteTrackParams(highThresh: 0.02),
-          motionGateEnabled: false,
-          liveAiVideo: false,
-          stepSeconds: 1,
-          durationSeconds: 5,
-        ),
+        _eSubject
+            ? live
+            : live.copyWith(
+                confidenceThreshold: 0.02,
+                modelPath: arthropod.existsSync() ? arthropod.path : null,
+                trackerAlgorithm: TrackerAlgorithm.bytetrack,
+                trackerParams: const ByteTrackParams(highThresh: 0.02),
+              ),
         40,
-        during: (sec) async {
-          if (sec == 0) await camera().setTorchMode(true);
-          if (sec == 39) await camera().setTorchMode(false);
-        },
+        during: _eSubject
+            ? null
+            : (sec) async {
+                if (sec == 0) await camera().setTorchMode(true);
+                if (sec == 39) await camera().setTorchMode(false);
+              },
       );
       if (dir != null) {
         final recs = readLog(dir);
@@ -349,15 +359,21 @@ void main() {
         final dets = recs.where((r) => r['type'] == 'detections').length;
         final raw = recs.where((r) => r['type'] == 'raw_detections').toList();
         final rawBoxes = raw.fold<int>(0, (n, r) => n + ((r['boxes'] as List?)?.length ?? 0));
-        _log('RAW E ${raw.length} records, $rawBoxes boxes');
-        // A phone lying face down sees a black picture even with the torch on: nothing to box.
-        if (rawBoxes == 0) _log('NOTE E: no box at all, the camera saw nothing (lens covered?); photo path not tested');
+        final boxFrames = raw.where((r) => (r['boxes'] as List?)?.isNotEmpty ?? false).length;
+        _log('RAW E ${raw.length} records, $rawBoxes boxes on $boxFrames frames');
         final caps = recs.where((r) => r['type'] == 'capture').toList();
         final missing = caps.where((c) => c['file'] is String && !File('${dir.path}/roi_frames/${c['file']}').existsSync());
         final start = recs.first['config'] as Map;
         _log('PHOTOS E ${caps.length} capture records, $dets detection records, '
             'confidence logged ${start['confidenceThreshold']}');
-        if (rawBoxes > 0 && dets == 0) problem('E', 'raw boxes but no tracked detections');
+        if (_eSubject) {
+          if (dets == 0) problem('E', 'nothing tracked although a subject was in view');
+        } else if (dets == 0) {
+          // A still scene: nothing, or a few stray boxes, which make no track (3 matching hits
+          // are needed; the Xiaomi, round 246: 3 lone boxes in 622 frames).
+          _log('NOTE E: nothing tracked, so the photo path was not tested; point the phone at a video of '
+              'pollinators or animals and pass E_SUBJECT=true to test it');
+        }
         if (dets > 0 && caps.isEmpty) problem('E', 'detections but no photos');
         if (missing.isNotEmpty) problem('E', '${missing.length} photos missing');
       }
