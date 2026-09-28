@@ -363,21 +363,21 @@ class _SettingsSheetState extends State<SettingsSheet> {
           DropdownMenuItem(
             value: CaptureTrigger.detector,
             child: Text(
-              'AI detector — detect, track & photograph insects',
+              'AI detector - detect & track in real time',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
           DropdownMenuItem(
             value: CaptureTrigger.motion,
             child: Text(
-              'Motion-triggered photos — no AI',
+              'Motion-triggered photos',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
           DropdownMenuItem(
             value: CaptureTrigger.timelapse,
             child: Text(
-              'Time-lapse photo bursts — no AI, no motion check',
+              'Time-lapse photo or video bursts',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
