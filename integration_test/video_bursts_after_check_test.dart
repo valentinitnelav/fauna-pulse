@@ -49,7 +49,7 @@ void main() {
     expect(VideoDetector.clipsOf(dir), isNotEmpty, reason: 'run video_bursts_check_test.dart first');
     final clips = VideoDetector.clipsOf(dir).length;
     // Start from "not analysed".
-    for (final name in [VideoDetector.outputFileName, 'post_tracks.jsonl', 'visits.csv']) {
+    for (final name in [VideoDetector.outputFileName, 'post_tracks.jsonl', 'track_ids.csv']) {
       final f = File('${dir.path}/$name');
       if (f.existsSync()) f.deleteSync();
     }
@@ -113,7 +113,7 @@ void main() {
     // The result line sits below the screen until scrolled to.
     await waitFor(find.textContaining('(occlusion tolerance', skipOffstage: false), seconds: 60);
     final summary = await VideoTracker.readSummary(dir);
-    _log('ANALYSED $clips clips in $analysedS s; visits ${summary?.visits}');
+    _log('ANALYSED $clips clips in $analysedS s; track IDs ${summary?.visits}');
     await scrollTo(find.textContaining('(occlusion tolerance'), 200);
     await shot('bursts_analysed');
     Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop();

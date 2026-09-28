@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 
 void main() {
-  testWidgets('AI session photo shows the per-visit identification row', (tester) async {
+  testWidgets('AI session photo shows the per-track ID identification row', (tester) async {
     SharedPreferences.setMockInitialValues({});
     const jpegName = 'roi_ai01_2026-08-04_120000_000.jpg';
     final tmp = Directory.systemTemp.createTempSync('summary_identified');

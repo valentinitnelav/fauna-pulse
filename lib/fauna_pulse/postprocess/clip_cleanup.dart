@@ -40,7 +40,7 @@ class ClipCleanupPlan {
 
 class ClipCleanup {
   static const recordType = 'video_cleanup';
-  static const modeWithoutVisits = 'without_visits';
+  static const modeWithoutVisits = 'without_track_ids'; // "without_visits" before round 248
   static const modeAll = 'all';
 
   /// Round 243: clips cut off by a killed app (see VideoDetector.isReadableVideo).
@@ -124,7 +124,7 @@ class ClipCleanup {
           'mode': plan.mode,
           'clips': deleted,
           'freed_bytes': freed,
-          'visits_run_id': ?(await VideoTracker.readSummary(sessionDir))?.runId,
+          'track_ids_run_id': ?(await VideoTracker.readSummary(sessionDir))?.runId,
         })}\n',
         mode: FileMode.append,
       );

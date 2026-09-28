@@ -44,7 +44,7 @@ void main() {
 
     final dir = Directory('${(await getExternalStorageDirectory())!.path}/sessions/live_video_check_2');
     expect(VideoDetector.clipsOf(dir), isNotEmpty, reason: 'run live_video_check_test.dart first');
-    for (final name in [VideoDetector.outputFileName, 'post_tracks.jsonl', 'visits.csv']) {
+    for (final name in [VideoDetector.outputFileName, 'post_tracks.jsonl', 'track_ids.csv']) {
       final f = File('${dir.path}/$name');
       if (f.existsSync()) f.deleteSync();
     }
@@ -98,11 +98,11 @@ void main() {
     await waitFor(find.text('All clips analyzed with these settings'), seconds: 600);
     final analysedS = DateTime.now().difference(runStart).inMilliseconds / 1000;
     await waitFor(find.textContaining('(occlusion tolerance', skipOffstage: false), seconds: 60);
-    await scrollTo(find.textContaining('No frames are kept for these visits'), 200);
-    expect(find.text('Keep frames of each visit'), findsNothing);
+    await scrollTo(find.textContaining('No frames are kept for these track IDs'), 200);
+    expect(find.text('Keep frames of each track ID'), findsNothing);
     await shot('live_analysis_screen');
     final summary = await VideoTracker.readSummary(dir);
-    _log('ANALYSED 1 clip in $analysedS s; afterwards visits ${summary?.visits}, kept ${summary?.keptFrames}');
+    _log('ANALYSED 1 clip in $analysedS s; afterwards track IDs ${summary?.visits}, kept ${summary?.keptFrames}');
     expect(summary?.keep, isNull);
     Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop();
     await tester.pump(const Duration(seconds: 2));
@@ -118,7 +118,7 @@ void main() {
 
     // 4. Graphs.
     await tester.tap(find.text('Graphs'));
-    await waitFor(find.text('Visits found afterwards in the videos'));
+    await waitFor(find.text('Track IDs found afterwards in the videos'));
     await shot('live_graphs');
     await scrollTo(find.textContaining('Extra graphs'), 300);
     if (find.text('While recording').evaluate().isEmpty) {

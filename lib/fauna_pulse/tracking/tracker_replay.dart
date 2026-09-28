@@ -216,7 +216,7 @@ class TrackerReplayReport {
 
   /// One human-readable block, for printing from the replay test.
   String summary() =>
-      '$algorithm: $visits visit(s) over $frames frames '
+      '$algorithm: $visits track ID(s) over $frames frames '
       '($detections detections), '
       'durations mean ${meanVisitS.toStringAsFixed(1)} s / '
       'median ${medianVisitS.toStringAsFixed(1)} s / '

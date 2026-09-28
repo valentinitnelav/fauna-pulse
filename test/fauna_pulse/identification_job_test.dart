@@ -173,7 +173,7 @@ void main() {
 
   // Round 229: visits found afterwards in imported videos. Scoring takes the
   // visit times from post_tracks.jsonl only, never merged with session.jsonl.
-  test('scoring reads visits found afterwards from post_tracks.jsonl', () async {
+  test('scoring reads track IDs found afterwards from post_tracks.jsonl', () async {
     final session = makeSession('v1');
     final job = IdentificationJob(
       embed: fakeEmbed,
@@ -356,18 +356,18 @@ void main() {
     return r.summary!;
   }
 
-  test('merge consecutive visits joins compatible, non-overlapping track ids', () async {
+  test('merge consecutive track IDs joins compatible, non-overlapping track IDs', () async {
     final session = makeMergeSession('m1');
     final off = await runMerge(session, merge: false);
     expect(off['tracks_total'], 3);
-    expect(off['visits_merged'], 0);
+    expect(off['track_ids_merged'], 0);
     // Every track is short here (≤ 2 detections, < 2 s) but none is weakly
     // supported at the default thresholds, so nothing is suspect.
     expect(off['suspect'], 0);
 
     final on = await runMerge(session, merge: true);
     expect(on['tracks_total'], 2);
-    expect(on['visits_merged'], 1);
+    expect(on['track_ids_merged'], 1);
     expect(on['tracks_before_merge'], 3);
     final paths = IdentificationPaths(session);
     final tracks = (jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
@@ -393,7 +393,7 @@ void main() {
   // Round 212: suspect = short AND weakly supported. Raising the detector
   // confidence threshold above track 2's 0.7 makes that single-frame track
   // suspect; tracks 1 and 3 (0.85 / 0.9) stay clean although equally short.
-  test('suspect flags mark short, weakly supported visits without dropping them', () async {
+  test('suspect flags mark short, weakly supported track IDs without dropping them', () async {
     final session = makeMergeSession('m2');
     final s = await runMerge(session, merge: false, flagMinDetConf: 0.75);
     expect(s['tracks_total'], 3);

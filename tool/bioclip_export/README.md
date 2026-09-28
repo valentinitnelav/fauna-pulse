@@ -278,7 +278,7 @@ https://doi.org/10.5281/zenodo.21822140), re-implemented in our own code:**
 - the API-based way of building the regional list (GBIF occurrence facets, minimum 3
   records) and his TreeOfLife-to-GBIF key mapping (`tol_gbif_taxon_keys_Arthropoda.csv`,
   downloaded from his release, not redistributed);
-- the per-visit CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
+- the per-track-ID CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
   `track_imgs`, `pred_imgs`, `bioclip_<rank>`) of his `_classified_final.csv`, so both
   tools' outputs can be analysed with the same scripts; the app's pooling rule itself
   differs (round 219: certainty-weighted average of the crops' embeddings scored once, the

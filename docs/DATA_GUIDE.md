@@ -5,6 +5,30 @@ recorded session into numbers. The app's scientific deliverable is the
 **visitation rate** — how often and how long insects visit a flower — and this
 document is how you get there from the raw log.
 
+**Track IDs and visits (round 248).** The app records every insect it follows from frame
+to frame as a **track ID**, and says "track ID" everywhere: on screen, in file names
+(`track_ids.csv`, `visits.csv` before round 248) and in field names (`track_ids`,
+`track_ids_run_id`, …; the old names are in the table below). In pollination ecology
+a track ID usually stands for one **visit** (an insect's stay on the flower), and the
+visitation rate below is computed from track IDs. The two differ where detection or tracking
+failed: some track IDs are false detections (a leaf, a shadow), one insect can be split into
+several track IDs (hidden longer than the occlusion tolerance), and two insects can be merged
+into one. [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) shows how to measure that against a hand count.
+
+Renamed in round 248 (the app and the PC scripts still read the old names in files written
+before):
+
+| Now | Before round 248 |
+|---|---|
+| `track_ids.csv` | `visits.csv` |
+| `post_track_end` field `track_ids` (`post_tracks.jsonl`) | `visits` |
+| `track_ids_run_id` (`identify_start`, identification summary `capture`, `video_cleanup`) | `visits_run_id` |
+| identification settings `merge_track_ids`, summary `track_ids_merged` | `merge_visits`, `visits_merged` |
+| `video_cleanup` mode `without_track_ids` | `without_visits` |
+| `dashboard_stats.json` field `track_ids` | `visits` |
+| frame-rate sweep files `track_ids_<tracker>_<fps>fps.csv` | `visits_<tracker>_<fps>fps.csv` |
+| `tool/video_eval/evaluate_track_ids.py`, score column `app_track_s` | `evaluate_visits.py` (still runs), `app_visit_s` |
+
 For the photo-resolution side of the data (`saves_px`, `analysis_frame_*`), see
 [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md).
 
@@ -110,7 +134,7 @@ insect instead, see the note below):
 | Field | Meaning |
 |---|---|
 | `tracks` | Array with one entry per tracked insect this frame. Entry fields below. |
-| `tracks[].track_id` | **Stable ID for one insect across frames — this defines a "visit".** |
+| `tracks[].track_id` | **Stable ID for one insect across frames — this defines a track ID** (in pollination ecology usually one visit, see "Track IDs and visits" above). |
 | `tracks[].class_index`, `tracks[].class_name` | Detected class. |
 | `tracks[].confidence` | Detection score (0..1). |
 | `tracks[].box_in_roi` | Bounding box **relative to the ROI**, all edges in 0..1 (`{left, top, right, bottom}`). 0 = ROI's left/top edge, 1 = right/bottom edge. |
@@ -120,7 +144,7 @@ insect instead, see the note below):
 | `tracks[].coasted` | Round 116+ safety flag, normally **absent**: every box in a `detections` record is detector-observed (the tracker never logs its velocity-predicted positions). It would read `true` only if a future tracker version logged a predicted box — treat such an entry as an estimate, not an observation. |
 
 > Note: a `detections` line is written for **every processed frame** with at
-> least one tracked insect, not once per visit. You reconstruct a visit by
+> least one tracked insect, not once per track ID. You reconstruct a track ID by
 > grouping consecutive entries that share a `track_id` (see §4).
 
 > **Legacy format (sessions recorded ≤ round 68, 2026-07-05):** one
@@ -131,8 +155,8 @@ insect instead, see the note below):
 
 ### `track_event` — track lifecycle transitions (round 116+)
 
-One line every time a track id changes life stage. Sessions recorded before
-round 116 don't have these lines — there, a track id simply stops appearing in
+One line every time a track ID changes life stage. Sessions recorded before
+round 116 don't have these lines — there, a track ID simply stops appearing in
 `detections` records and you cannot tell *why*: briefly hidden insect, insect
 gone for good, or simply no frames analyzed at all (a high-res photo pauses
 the analysis stream for 0.13–1.5 s, see §5b). These records make the four
@@ -140,9 +164,9 @@ cases explicit:
 
 | `event` | Meaning |
 |---|---|
-| `created` | The track was matched in enough frames to count as a visit — its id starts appearing in `detections` records from here. |
+| `created` | The track was matched in enough frames to count as a track ID — its id starts appearing in `detections` records from here. |
 | `lost` | The first frame the track was **not** matched (occlusion, missed detection, or the insect left). The id stays buffered for the occlusion tolerance in case it comes back. |
-| `recovered` | The lost track was matched again: same id, the same visit continues. |
+| `recovered` | The lost track was matched again: same id, the same track ID continues. |
 | `removed` | The id is gone for good. `reason` says why: `aged_out` (unmatched longer than the occlusion tolerance) or `gate_expired` (the motion gate slept longer than the tolerance, so the stale id must not be revived by a newly arriving insect). |
 
 Fields on every `track_event` line:
@@ -153,14 +177,14 @@ Fields on every `track_event` line:
 | `frame_ms` | The transition's frame timestamp (ms since epoch). For `gate_expired` removals it is the **last processed frame before the gate slept**; the line's own `time_ms` carries the wake moment. |
 | `box_in_roi` | The track's box at the transition, ROI-relative 0..1 like in `detections`. For `lost` it is the last box that was actually observed. |
 | `hits` | Total matched frames for this track so far. |
-| `first_seen_ms` | When the track's very first detection was seen — the **real visit start** (it precedes `created` by the confirmation lag, default 0.2 s). |
+| `first_seen_ms` | When the track's very first detection was seen — the **real track ID start** (it precedes `created` by the confirmation lag, default 0.2 s). |
 | `last_seen_ms` | The last real observation. On a `recovered` line this is the pre-gap moment, so `frame_ms − last_seen_ms` = the gap the id survived. |
 | `frames_missed` | Unmatched frames at the transition (only written when > 0). |
 | `reason` | Removals only: `aged_out` / `gate_expired`. |
 
 How to use them:
 
-* **Visit boundaries without per-frame grouping:** a visit runs from
+* **Track ID boundaries without per-frame grouping:** a track ID runs from
   `first_seen_ms` (on its `created` line) to `last_seen_ms` (on its `removed`
   line). The §4 snippets that group `detections` frames still work and give
   the same answer — these lines are just the direct route.
@@ -170,11 +194,11 @@ How to use them:
 * **Stitching fragmented ids:** when the tracker splits one insect into
   several ids, you'll see a `removed` and a `created` close together in time
   (`frame_ms`) and space (`box_in_roi`) — your cue to consider merging those
-  ids into one visit during analysis.
+  ids into one track ID during analysis.
 
 ### `raw_detections` — pre-tracking boxes (round 105, only when the evaluation toggle is on)
 
-Written only when Settings → AI → Visit tracking → Advanced → **Log raw
+Written only when Settings → AI → Tracking → Advanced → **Log raw
 detections** is enabled: one line per processed frame (empty frames included —
 the tracker ages its tracks by frames) with the detector's boxes **before**
 tracking. This is the input the offline tracker replay harness uses to compare
@@ -193,7 +217,7 @@ One record per periodic **reference photo** (Setup tab → Reference photos; on
 by default since round 152, every 30 s). These photos land in `gt_frames/`
 (not `roi_frames/`) and are taken on a fixed clock regardless of detections —
 an unbiased sample of what the camera saw. Use them to spot pollinators the
-live pipeline missed, or to hand-count the true visits when evaluating a
+live pipeline missed, or to hand-count the true track IDs when evaluating a
 tracker. The wire names are frozen from round 107: record type `gt_capture`,
 folder `gt_frames/`, config keys `gtFramesEnabled`/`gtFrameSeconds`. Fields:
 `jpeg` (filename), `captured_at_ms` (trigger moment), plus the same
@@ -312,18 +336,18 @@ motion gate lets the detector sleep. Each clip is the live ROI square, so a live
 Video tab draws the live boxes that way.
 
 Round 241: such clips can be analysed again with *Run AI on videos* for comparison. The
-files it writes (`video_detections.jsonl`, `post_tracks.jsonl`, `visits.csv`, `mot/`) sit
-next to the live `session.jsonl`, but the session's visits, graphs, dashboard and
+files it writes (`video_detections.jsonl`, `post_tracks.jsonl`, `track_ids.csv`, `mot/`) sit
+next to the live `session.jsonl`, but the session's track IDs, graphs, dashboard and
 identification stay the live AI's (a live AI session's track source is always the live
-log, §9 `trackSourceOf`). *Find visits* keeps no frames for a live session (`keep_frames`
+log, §9 `trackSourceOf`). *Find track IDs* keeps no frames for a live session (`keep_frames`
 null in `post_track_start`), so `roi_frames/` holds only the live photos. The Video tab's
 *Live AI | AI afterwards* switch shows either set of boxes on the same clips; the two sets
-number their visits independently.
+number their track IDs independently.
 
 Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
 Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
 clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`
-and `visits.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
+and `track_ids.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
 `power` records describe the phone during the recording. *Copy videos* (Video tab) copies
 the clips into the phone's Gallery under `Movies/FaunaPulse/<session>` (Android 10+);
 the copies are not recorded in the session log.
@@ -389,7 +413,7 @@ sessions recorded with the short-lived round-148 build made them opt-in
 (config `diagnosticsEnabled: false` in the start record's `config` block ⇒
 none present); round 149 reverted to always-on. Their absence there is that
 setting, not a logging failure — the detection-derived records (and therefore
-the visit timeline) are unaffected either way.
+the track ID timeline) are unaffected either way.
 
 - `thermal`: `battery_temp_c`, `thermal_status`, `battery_current_ua`,
   `battery_voltage_mv`, `charge_counter_uah`, `is_charging`, `is_plugged`
@@ -500,16 +524,16 @@ rename, so several can accumulate).
 
 ## 4. Computing visitation rate
 
-A **visit** = a run of `detection` records sharing one `track_id`. Its start and
+A **track ID** = a run of `detection` records sharing one `track_id`. Its start and
 end are the first and last `time_ms` for that id; its duration is the
-difference. The tracker already enforces the minimum-visit-length and
-occlusion-tolerance settings, so each `track_id` is one confirmed visit — you
+difference. The tracker already enforces the minimum-track-length and
+occlusion-tolerance settings, so each `track_id` is one confirmed track ID — you
 don't re-filter noise.
 
 Two common metrics:
 
 - **Visitation rate** = number of distinct `track_id`s ÷ observation time.
-- **Mean visit duration** = mean of (last − first `time_ms`) per `track_id`.
+- **Mean track ID duration** = mean of (last − first `time_ms`) per `track_id`.
 
 Observation time is the span from `start_of_session` to `end_of_session`
 (`time_ms`), minus any `motion_gate` idle periods if you want *active* watch
@@ -536,16 +560,16 @@ det_old <- if ("track_id" %in% names(rows))
   rows[rows$type == "detection", c("time_ms", "track_id")] else NULL
 det <- rbind(det_new, det_old)
 
-visits <- aggregate(time_ms ~ track_id, det,
+track IDs <- aggregate(time_ms ~ track_id, det,
                     FUN = function(t) c(start = min(t), end = max(t)))
-visits <- do.call(data.frame, visits)
-visits$duration_s <- (visits$time_ms.end - visits$time_ms.start) / 1000
+track IDs <- do.call(data.frame, track IDs)
+track IDs$duration_s <- (track IDs$time_ms.end - track IDs$time_ms.start) / 1000
 
-n_visits             <- nrow(visits)
+n_visits             <- nrow(track IDs)
 visitation_rate_hr   <- n_visits / obs_hours
-mean_visit_duration  <- mean(visits$duration_s)
+mean_visit_duration  <- mean(track IDs$duration_s)
 
-cat(sprintf("visits=%d  rate=%.1f/hr  mean duration=%.1fs\n",
+cat(sprintf("track IDs=%d  rate=%.1f/hr  mean duration=%.1fs\n",
             n_visits, visitation_rate_hr, mean_visit_duration))
 ```
 
@@ -571,14 +595,14 @@ old_cols = [c for c in ("time_ms", "track_id") if c in rows.columns]
 old = rows.loc[rows.type == "detection", old_cols]
 det = pd.concat([new, old], ignore_index=True)
 
-visits = det.groupby("track_id")["time_ms"].agg(["min", "max"])
-visits["duration_s"] = (visits["max"] - visits["min"]) / 1000
+track IDs = det.groupby("track_id")["time_ms"].agg(["min", "max"])
+track IDs["duration_s"] = (track IDs["max"] - track IDs["min"]) / 1000
 
-n_visits = len(visits)
+n_visits = len(track IDs)
 visitation_rate_hr = n_visits / obs_hours
-mean_visit_duration = visits["duration_s"].mean()
+mean_visit_duration = track IDs["duration_s"].mean()
 
-print(f"visits={n_visits}  rate={visitation_rate_hr:.1f}/hr  "
+print(f"track IDs={n_visits}  rate={visitation_rate_hr:.1f}/hr  "
       f"mean duration={mean_visit_duration:.1f}s")
 ```
 
@@ -666,7 +690,7 @@ only the trigger-frame join applies.
 **For pixel-accurate boxes on high-res photos, re-run the detector offline**
 on the saved ≤ 1024 px crops (GPU workstation): the files are clean
 re-encoded JPEGs, and the filename + JSONL carry every timestamp needed to
-tie results back to visits. That looks at the actual pixels instead of
+tie results back to track IDs. That looks at the actual pixels instead of
 estimating from clocks — the time-match above is the honest *approximation*
 for browsing and quick joins. Re-running the detector **on the phone** for
 each still *during the session* was considered and rejected: heat is the
@@ -750,50 +774,50 @@ publication-grade boxes re-run offline (§5b). The tiling is FaunaPulse's own pu
 background and per-setting docs are in
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#photo-analysis-analysis-screen).
 
-### Visits found in the photos (round 237+)
+### Track IDs found in the photos (round 237+)
 
-For a motion or time-lapse session whose photo step is at most 0.5 s, *Find visits* on
+For a motion or time-lapse session whose photo step is at most 0.5 s, *Find track IDs* on
 the same screen follows each insect from photo to photo with the tracker a live session
-uses (with the screen's own occlusion tolerance and minimum visit length). At a photo a
+uses (with the screen's own occlusion tolerance and minimum track length). At a photo a
 second an insect can move too far between two photos to be matched, so sparser sessions
-get an explanation instead. It writes the same files as *Find visits* on videos (§9),
+get an explanation instead. It writes the same files as *Find track IDs* on videos (§9),
 replaced on every run:
 
 * `post_tracks.jsonl`: `post_track_start` with `source: "photos"`, `photos` (moments
   used), `photo_step_s`, `detections_run_ms` (`time_ms` of the newest `post_start`: a
-  later analysis makes these visits outdated), `detection_settings` (that run's model and
+  later analysis makes these track IDs outdated), `detection_settings` (that run's model and
   thresholds), `occlusion_seconds`, `min_hits_seconds`, `tracker`, `clips: []` and, for
   time-lapse sessions, `observed_ms` = the time the bursts cover (photos closer than five
   photo steps, at least 1 s, form one burst, which covers from its first photo to one step
   after its last; a motion session watched the whole time, so its span counts). Then
-  `detections` records (one per photo with a visit; each track entry names the photo in
+  `detections` records (one per photo with a track ID; each track entry names the photo in
   `jpeg` unless the tracker only predicted it, `coasted: true`; `box_in_roi` is the box in
   the photo), `track_event` records and `post_track_end`.
-* `visits.csv`: as for videos, with an empty `clip` and `start_s`/`end_s` counted from the
+* `track_ids.csv`: as for videos, with an empty `clip` and `start_s`/`end_s` counted from the
   session's start.
 
 The newest result per photo is used; a photo whose analysis failed is left out (the
 tracker bridges it). A high-res photo and its `_live` companion are one moment: the
 photo's own boxes are used, the companion's only when the photo has none. The summary,
-dashboard and identification then read these visits as they read the live ones: each
-visit's photos are the ones whose `jpeg` it names, and identification answers per visit.
-The photo viewer draws a photo's boxes with their visit numbers and keeps the green
-analysis boxes for photos without a visit.
+dashboard and identification then read these track IDs as they read the live ones: each
+track ID's photos are the ones whose `jpeg` it names, and identification answers per track ID.
+The photo viewer draws a photo's boxes with their track ID numbers and keeps the green
+analysis boxes for photos without a track ID.
 
 ## 7. Derived cache files (safe to ignore)
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
 home screen's cross-session Dashboard: the session's start/end, whether the
-AI detector ran, and each track id's first/last timestamp — all re-derivable
+AI detector ran, and each track ID's first/last timestamp — all re-derivable
 from `session.jsonl`. It is keyed to the log's size and mtime, so deleting it
-is always safe (the app just recomputes it on the next Dashboard visit). It
+is always safe (the app just recomputes it on the next Dashboard track ID). It
 is NOT part of the scientific record; analysis workflows should read
 `session.jsonl` (and `post_detections.jsonl`) only.
 
 ## 8. Identification output (`identification/`, round 208+)
 
 "Identify organisms" (session gear menu, or the summary's Photos tab) runs the BioCLIP
-image tower over the crops of every tracked visit and writes its files into
+image tower over the crops of every track ID and writes its files into
 `<session>/identification/`. All `.jsonl` files are strict one-object-per-line;
 `docs/IDENTIFICATION.md` explains the method, `README_identification.txt` inside the
 folder repeats the column dictionary for whoever gets the folder later.
@@ -804,7 +828,7 @@ Append-only (resumable). Records:
 
 | `type` | Fields |
 |---|---|
-| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`; round 242: `gpu_note` (why the GPU was not used, when asked for) and `gpu_agreement` (cosine of the GPU and CPU embeddings of the first-use test picture, see IDENTIFICATION.md)), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `visits_run_id` (round 234, visits found in videos only: the *Find visits* run the crops' track ids come from; a run after a new *Find visits* deletes both files and starts over) |
+| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin`, `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`; round 242: `gpu_note` (why the GPU was not used, when asked for) and `gpu_agreement` (cosine of the GPU and CPU embeddings of the first-use test picture, see IDENTIFICATION.md)), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `track_ids_run_id` (round 234, track IDs found in videos only: the *Find track IDs* run the crops' track IDs come from; a run after a new *Find track IDs* deletes both files and starts over) |
 | `crop` | `key` (resume key: source|track|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
 | `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
 | `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms`, `avg_embed_ms`, `error` |
@@ -820,14 +844,14 @@ pack rows with `name`
 
 ### `tracks_<pack>.csv` and `tracks_<pack>.json`
 
-One row (CSV) / object (JSON) per visit (track id); crops without a track id (post-hoc
+One row (CSV) / object (JSON) per track ID; crops without a track ID (post-hoc
 boxes of no-AI sessions) get one row each with an empty `track_id`.
 
 | Column | Meaning |
 |---|---|
 | `device_id`, `session_id`, `track_id` | identifiers |
 | `track_imgs` | crops used |
-| `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and the track id's Conf. for it (round 219: the counted crops' embeddings averaged with each crop's top-1 probability as weight, scored once, species summed; see IDENTIFICATION.md) |
+| `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and the track ID's Conf. for it (round 219: the counted crops' embeddings averaged with each crop's top-1 probability as weight, scored once, species summed; see IDENTIFICATION.md) |
 | `pred_imgs`, `pred_prob_mean` | crops whose own top species falls under that taxon, and the plain (unweighted) mean of the crops' own Conf. under it. Same column names as insect-detect-post, different formulas (there: mean over the voting images times the vote share) |
 | `start_time`, `end_time`, `duration_s` | the track's first/last detection (ISO local time) |
 | `det_conf_mean` | mean detector confidence of the crops |
@@ -840,23 +864,23 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `best_view_photo`, `best_view_species`, `best_view_p` | the crop whose own top species has the highest probability (the photo the model is surest about on its own, round 217); that species and probability |
 | `flags` | `no_organism` (round 221, was `none`: the "none of these" entries took more than the "No organism" threshold; headline `no organism`), `unidentified` (no rank reached `tau`, not even kingdom), `path_conflict` (at some rank a taxon outside the ladder's path has more Conf. than the ladder's pick; the ladder itself stays one consistent path, see `rival_*`), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
 | `model_id`, `pack_id` | provenance |
-| `merged_track_ids` | round 210, trailing column: every track id of the visit, semicolon-separated (one id unless "Merge consecutive visits" was on; `flags` then also holds `merged`) |
-| `n_detections`, `suspect` | round 212: detector frames the track id(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
-| `rival_rank`, `rival_taxon`, `rival_p` | round 221, trailing: for a `path_conflict` track id, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5 |
+| `merged_track_ids` | round 210, trailing column: every track ID joined into this row, semicolon-separated (one id unless "Merge consecutive track IDs" was on; `flags` then also holds `merged`) |
+| `n_detections`, `suspect` | round 212: detector frames the track ID(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
+| `rival_rank`, `rival_taxon`, `rival_p` | round 221, trailing: for a `path_conflict` track ID, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5 |
 
 ### `crops_<pack>.csv` (round 215)
 
-One row per crop (photo × track), for tracing a visit's answer to single photos:
-`session_id`, `track_id`, `crop_no` (capture order within the visit), `photo`, `box_left`
+One row per crop (photo × track), for tracing a track ID's answer to single photos:
+`session_id`, `track_id`, `crop_no` (capture order within the track ID), `photo`, `box_left`
 … `box_bottom` (detector box as fractions of the photo side), `crop_px`, `sharpness`,
 `det_conf`, `pad_frac` (descriptive only since round 217), `top1_species`, `top1_p` (the
 species this crop alone predicts and its probability; also the crop's weight in the track
 id's answer), `top1_kingdom` … `top1_family` (round 220: that species' higher ranks; kingdom
-`none` for a "none of these" entry), `agrees` (1 when that species falls under the visit's reported taxon),
+`none` for a "none of these" entry), `agrees` (1 when that species falls under the track ID's reported taxon),
 `counted` (round 219: 1 when the crop entered the pooled answer, 0 when it was left out as
 far less sure than the surest crop),
-`ladder_<rank>` (the visit's ladder taxa, repeated per row) and `p_<rank>` (this crop's own
-Conf. under each of them). Identities for checking in R: over a track id's rows, the plain
+`ladder_<rank>` (the track ID's ladder taxa, repeated per row) and `p_<rank>` (this crop's own
+Conf. under each of them). Identities for checking in R: over a track ID's rows, the plain
 mean of `p_<rank>` equals `p_mean_<rank>`, the maximum equals `p_max_<rank>`, the mean over
 rows whose top species is under the taxon equals `p_agree_<rank>`, and the count of
 `agrees == 1` equals `agree_<rank>` × crops at the identified rank. The track's own
@@ -864,7 +888,7 @@ rows whose top species is under the taxon equals `p_agree_<rank>`, and the count
 recompute it with `tool/bioclip_export/reproduce_track_conf.py`.
 
 To align identifications with the recording: join on `track_id` (the same id as in the
-`detections` records of `session.jsonl`; a merged visit lists every member id in
+`detections` records of `session.jsonl`; a merged track ID lists every member id in
 `merged_track_ids`) or, per crop, on the photo file name (`src` here, `jpeg` in the log)
 plus box coordinates. Identification results deliberately stay in their own files instead
 of `session.jsonl` (raw log vs derived, re-runnable data).
@@ -881,20 +905,20 @@ the run `settings`.
 
 ### `summary_<pack>.json`
 
-Counts for the app: `tracks_total` (visits after the optional merge), `visits_merged`,
+Counts for the app: `tracks_total` (track IDs after the optional merge), `track_ids_merged`,
 `tracks_before_merge` (round 210), `suspect` (round 212), `by_identified_rank`, `no_organism` (round 221, was `none`), `unidentified`,
-`taxa_order`, `taxa_family` (visits per taxon among the visits identified at least to that
+`taxa_order`, `taxa_family` (track IDs per taxon among the track IDs identified at least to that
 rank), a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`, `p`, `n_crops`;
 plus `src` = the photo name when the entry is a no-AI per-photo crop, round 209) and the run's
 provenance. The app's session summary reads this list to label photos, never the full
 tracks file. `capture` holds the photo rule the photos were taken by (`photo_step_s`,
-`photo_duration_s`, round 216; for visits found in videos the kept-frames rule of their
-*Find visits* run) and, for visits found in videos, `visits_run_id` (round 234): the
-`run_id` of the `post_tracks.jsonl` whose track ids the results use. *Find visits*
-numbers the visits anew each time, so when the current `run_id` differs the results
+`photo_duration_s`, round 216; for track IDs found in videos the kept-frames rule of their
+*Find track IDs* run) and, for track IDs found in videos, `track_ids_run_id` (round 234): the
+`run_id` of the `post_tracks.jsonl` whose track IDs the results use. *Find track IDs*
+numbers the track IDs anew each time, so when the current `run_id` differs the results
 screen says to run identification again, the session summary shows no answers on the
 frames (a note says why), and re-scoring the stored crops refuses (round 235): their
-`track_id`s belong to the earlier visits. The next *Continue / re-run* starts over.
+`track_id`s belong to the earlier track IDs. The next *Continue / re-run* starts over.
 
 R sketch:
 
@@ -1043,15 +1067,15 @@ d = p.dropna(subset=["detect_ms"])
 (d.detect_ms * d.frames).groupby(d.run).sum() / d.frames.groupby(d.run).sum()
 ```
 
-The file holds boxes and these samples only; the next files turn the boxes into visits.
+The file holds boxes and these samples only; the next files turn the boxes into track IDs.
 
-### Visits: `post_tracks.jsonl`, `visits.csv`, `mot/` (round 228+)
+### Track IDs: `post_tracks.jsonl`, `track_ids.csv`, `mot/` (round 228+)
 
-*Find visits* (under the analysis on the "Run AI on videos" screen, and automatically
+*Find track IDs* (under the analysis on the "Run AI on videos" screen, and automatically
 after each finished analysis) runs the boxes through the same tracker a live session
 uses (ByteTrack or C-BIoU, chosen under camera Settings, with the screen's own
-**occlusion tolerance** and **minimum visit length**). It follows each insect from frame
-to frame, so one insect seen in many frames counts as one visit. It takes seconds and
+**occlusion tolerance** and **minimum track length**). It follows each insect from frame
+to frame, so one insect seen in many frames counts as one track ID. It takes seconds and
 never re-runs the detector, so it can be repeated with other settings; each run
 **replaces** these three outputs (each is written under a temporary name and renamed when
 complete, so a crash never leaves half a file in place of a good one):
@@ -1066,11 +1090,11 @@ complete, so a crash never leaves half a file in place of a good one):
   `detections` and `track_event` records as in §3 (with `time_ms` = the frame's own time,
   plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live;
   a track entry names its kept frame in `jpeg`, as live photos do), `capture` records for
-  the kept frames (below), and `post_track_end` last (`visits`, `frames`, `detections`,
+  the kept frames (below), and `post_track_end` last (`track_ids`, `frames`, `detections`,
   `clips_tracked`, `kept_frames`, `elapsed_ms`).
-* `visits.csv`: one row per visit (confirmed track id), for spreadsheets and R:
+* `track_ids.csv` (`visits.csv` before round 248): one row per confirmed track ID, for spreadsheets and R:
   `track_id, clip, start_time` (wall clock), `start_s, end_s, duration_s` (seconds from
-  the start of the clip the visit began in, the position a video player shows),
+  the start of the clip the track ID began in, the position a video player shows),
   `n_frames` (frames with a box), `mean_conf` and `class` (the class seen in most frames).
 * `mot/<clip>.txt`: every tracked box in the MOTChallenge text format
   `frame,id,x,y,w,h,conf,-1,-1,-1` (frames counted from 1 in display order, box
@@ -1080,26 +1104,26 @@ complete, so a crash never leaves half a file in place of a good one):
 
 Worth knowing when comparing with a hand count:
 
-* As in live sessions, a track shows up only once confirmed (after the minimum visit
-  length), so `mot/` and `detections` lack each visit's first frames. `start_s` is the
+* As in live sessions, a track shows up only once confirmed (after the minimum track
+  length), so `mot/` and `detections` lack each track ID's first frames. `start_s` is the
   tracker's first sighting, before confirmation; `n_frames` counts from confirmation.
 * Only clips whose analysis finished are tracked (`clips_left_out` lists the others).
 * One tracker follows an insect from one clip into the next only when the next clip's
   first analysed frame comes after the previous clip's last one, within the occlusion
-  tolerance (clips recorded back to back). The visit keeps the first clip's clock, so its
+  tolerance (clips recorded back to back). The track ID keeps the first clip's clock, so its
   `end_s` can exceed that clip's length. Otherwise the tracker starts afresh, since
-  imported files can overlap or carry wrong clocks. Track ids stay unique per session.
+  imported files can overlap or carry wrong clocks. Track IDs stay unique per session.
 * Times come from each frame's own time stamp, never from frame number ÷ fps.
 * At a low analysis rate, keep the occlusion tolerance well above the time between two
-  analysed frames, or every visit breaks into pieces.
+  analysed frames, or every track ID breaks into pieces.
 
 ### Kept frames: `roi_frames/` (round 234+)
 
-With *Keep frames of each visit* on (the default), *Find visits* also chooses pictures of
-each visit by the rule live photos follow: the visit's first frame, then one every *Keep a
+With *Keep frames of each track ID* on (the default), *Find track IDs* also chooses pictures of
+each track ID by the rule live photos follow: the track ID's first frame, then one every *Keep a
 frame every* seconds (default 1 s) for up to *For up to* seconds (default 10 s) after the
-visit was first seen. Visits in the same frame share one picture. So a session keeps about
-`visits × (1 + duration ÷ step)` frames, fewer for visits shorter than the duration.
+track ID was first seen. Track IDs in the same frame share one picture. So a session keeps about
+`track IDs × (1 + duration ÷ step)` frames, fewer for track IDs shorter than the duration.
 
 * Each frame gets a `capture` record in `post_tracks.jsonl`: `file` (a live photo name,
   `roi_<token>_<date>_<time>_<ms>.jpg` with the frame's wall-clock time), `captured_at_ms`,
@@ -1107,13 +1131,13 @@ visit was first seen. Visits in the same frame share one picture. So a session k
   clip in µs; the Video tab's player position is `pts_us ÷ 1000` ms), `roi_px` (the
   analysed area `[x, y, width, height]` in upright video pixels) and its size: `saved_px`
   for a square, `saved_w` and `saved_h` otherwise.
-* Right after *Find visits*, the app reads each clip once from front to back and saves the
+* Right after *Find track IDs*, the app reads each clip once from front to back and saves the
   analysed area of each chosen frame at full size (JPEG quality 90) into `roi_frames/`,
   where live photos go, so the gallery copy and identification treat them like photos. A
   frame whose file is there is not saved again: a stopped or interrupted saving continues
-  with *Save the remaining frames*, and finding the visits again with the same rule only
+  with *Save the remaining frames*, and finding the track IDs again with the same rule only
   saves the frames that changed.
-* A later *Find visits* deletes the kept frames it no longer keeps. It never overwrites or
+* A later *Find track IDs* deletes the kept frames it no longer keeps. It never overwrites or
   deletes a file no run kept (a name already taken moves on by 1 ms), nor a kept frame
   whose video is no longer in `videos/`, since it could not be made again.
 * The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
@@ -1123,17 +1147,17 @@ visit was first seen. Visits in the same frame share one picture. So a session k
 
 ### Freeing storage: deleting the videos (round 236+)
 
-The videos take most of a session's space. Once the visits are found, *Free storage* on
+The videos take most of a session's space. Once the track IDs are found, *Free storage* on
 the *Run AI on videos* screen offers two deletions, each after a confirmation; the videos
 are kept unless you choose one:
 
-* **Delete the clips without any visit**: clips that the current *Find visits* followed
-  and in which no visit has a box (a visit running on into the next clip keeps that clip).
+* **Delete the clips without any track ID**: clips that the current *Find track IDs* followed
+  and in which no track ID has a box (a track ID running on into the next clip keeps that clip).
 * **Delete all clips, keep the saved frames**: offered once every clip is analysed, the
-  visits include the latest analysis and every kept frame is saved.
+  track IDs include the latest analysis and every kept frame is saved.
 
-What stays: `video_detections.jsonl` (the AI's boxes), `post_tracks.jsonl`, `visits.csv`,
-`mot/` and the kept frames in `roi_frames/`. *Find visits* still runs from the boxes; a
+What stays: `video_detections.jsonl` (the AI's boxes), `post_tracks.jsonl`, `track_ids.csv`,
+`mot/` and the kept frames in `roi_frames/`. *Find track IDs* still runs from the boxes; a
 kept frame whose clip is gone is never overwritten or deleted, and a frame that a new rule
 would need from a deleted clip is counted as "can no longer be saved". What goes: playing
 the clip, analysing it again (another square or model; analysing the remaining clips
@@ -1146,28 +1170,28 @@ Each deletion appends one record to `session.jsonl`, after `end_of_session`:
 |---|---|
 | `type` | `video_cleanup` |
 | `time_ms`, `time_iso` | when |
-| `mode` | `without_visits`, `all`, or `cut_off` (round 243+: clips cut off by a killed app, above) |
+| `mode` | `without_track_ids`, `all`, or `cut_off` (round 243+: clips cut off by a killed app, above) |
 | `clips` | the file names deleted (as in `videos/`) |
 | `freed_bytes` | the space freed |
-| `visits_run_id` | the `run_id` of the *Find visits* run the choice was based on |
+| `track_ids_run_id` | the `run_id` of the *Find track IDs* run the choice was based on |
 
 The summary's Setup tab adds a *Videos deleted* row (count and space freed); on the Video
-tab a deleted clip says when it was deleted, and its boxes, visits and kept frames still
+tab a deleted clip says when it was deleted, and its boxes, track IDs and kept frames still
 show.
 
-*Share results* zips `visits.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
+*Share results* zips `track_ids.csv`, `mot/`, `post_tracks.jsonl`, `video_detections.jsonl`
 (to track again on a computer), `session.jsonl` (clip start times) and, once runs have
 measured the phone (round 232+), `phone_during_analysis.csv` (above). How to count the
 same clips by hand, score the app against that count and find the lowest frame rate that
-still counts visits correctly: [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) (round 230).
+still counts track IDs correctly: [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md) (round 230).
 
-### Where the app reads these visits (round 229+)
+### Where the app reads these track IDs (round 229+)
 
-The session summary (visit count and timeline, Setup rows), the dashboard and
-identification read a session's visits from **one** file: `post_tracks.jsonl` when it
+The session summary (track ID count and timeline, Setup rows), the dashboard and
+identification read a session's track IDs from **one** file: `post_tracks.jsonl` when it
 exists and the session did not track live (imported videos, or a motion or time-lapse
 session), `session.jsonl` otherwise. The two are never added together. The dashboard counts
-an imported session once *Find visits* has run, and its visits per hour use `observed_ms`
+an imported session once *Find track IDs* has run, and its track IDs per hour use `observed_ms`
 (the filmed time), not the span from the first clip's start to the last one's end, since
 the gaps between clips were not filmed. A problem report carries the run records of both
 files (`video_detections_runs.jsonl`, `post_tracks_runs.jsonl`), without the per-frame
@@ -1182,22 +1206,22 @@ what the AI found and whether the analysed square was well placed. The tab only 
 234, shown under the player); it writes nothing.
 
 * **Which boxes show at a moment.** The player's position counts from the clip's first
-  frame, the same clock as `start_s`/`end_s` in `visits.csv`. It shows the boxes of the
+  frame, the same clock as `start_s`/`end_s` in `track_ids.csv`. It shows the boxes of the
   last analysed frame at or before that position and keeps them for at most 1.5 times the
   step between analysed frames (150 ms at 10 frames per second). Parts of a clip that were
   never analysed (a gap, the tail of a stopped analysis) show no boxes, never old ones. At
   an analysis rate below the video's frame rate the boxes move in small steps, and at
   higher playback speeds they can trail a fast insect a little.
-* **Visits or all AI boxes.** Once *Find visits* has run, the boxes are the tracked ones
-  from `post_tracks.jsonl`, labelled `#<track id> class conf` with the same number as in
-  `visits.csv`. A faded box is a frame where the detector missed the insect and the tracker
+* **Track IDs or all AI boxes.** Once *Find track IDs* has run, the boxes are the tracked ones
+  from `post_tracks.jsonl`, labelled `#<track ID> class conf` with the same number as in
+  `track_ids.csv`. A faded box is a frame where the detector missed the insect and the tracker
   kept its place. The *All AI boxes* switch shows every `raw_detections` box instead,
-  including those *Find visits* did not count (a visit shorter than the minimum length,
+  including those *Find track IDs* did not count (a track ID shorter than the minimum length,
   the frames before a track was confirmed, see above, or an insect never seen with at
   least the tracker's *New-track confidence*, `highThresh` in `post_track_start.tracker`:
   weaker boxes only continue a track, round 247); the strip under the time bar then marks
-  the frames with at least one box. Before *Find visits*, and when
-  the videos were analysed again after it (the visits' `detections_run_ms` no longer
+  the frames with at least one box. Before *Find track IDs*, and when
+  the videos were analysed again after it (the track IDs' `detections_run_ms` no longer
   matches the analysis run), only the AI boxes are shown, with a note.
 * **Whole frame or what the AI saw.** When a square was analysed, *Whole frame* draws it
   and darkens the part left out; *What the AI saw* zooms onto the square. The square comes
@@ -1206,6 +1230,6 @@ what the AI found and whether the analysed square was well placed. The tab only 
   should move: *Change square and analyse again* opens *Run AI on videos* for the session,
   and the tab reloads on return.
 * **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
-  visit (each starts 1 s before the visit); speed 0.5×, 1×, 2× or 4×; sound is off until
-  switched on. The coloured bars under the time bar mark the visits, and tapping a visit in
+  track ID (each starts 1 s before the track ID); speed 0.5×, 1×, 2× or 4×; sound is off until
+  switched on. The coloured bars under the time bar mark the track IDs, and tapping a track ID in
   the list below the player jumps to it.

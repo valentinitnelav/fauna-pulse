@@ -338,7 +338,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText: switch (_c.captureTrigger) {
           CaptureTrigger.detector =>
             'The full pipeline: on-device detection and tracking, photos '
-                'per track id, visitation data in the log.',
+                'per track ID, visitation data in the log.',
           CaptureTrigger.motion =>
             'Photos whenever something moves in the ROI. The AI model '
                 'loads but never runs (big energy saver), so there is no '
@@ -425,7 +425,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'Seconds between saved ROI photos — of the same track id (AI '
+              'Seconds between saved ROI photos — of the same track ID (AI '
               'detector on) or within one motion/time-lapse burst (0.1–10). '
               'Default 1. Steps below ~0.5 s need the "fast" photo source: '
               'high-res photos take 0.5–1.5 s each and cannot keep up. '
@@ -440,7 +440,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         minSeconds: 1,
         maxSeconds: 86400,
         helperText:
-            'How long photos keep being saved — per track id (AI detector on), '
+            'How long photos keep being saved — per track ID (AI detector on), '
             'per motion event (motion trigger; a new event starts once the '
             'gate has slept and motion returns), or per time-lapse burst (burst duration). '
             'Should be a whole multiple of the step.',
@@ -586,7 +586,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           maxSeconds: 3600,
           helperText:
               'Time between reference photos. Default 30 s — about 120 '
-              'photos per hour; shorter catches briefer visits but uses '
+              'photos per hour; shorter catches insects that stay only briefly but uses '
               'more storage.',
           onChanged: (v) => setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
         ),
@@ -989,7 +989,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Minimum score for the model to report a detection at all '
             '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
             'reach the tracker — including the faint, partly-hidden ones the '
-            'tracker can use to hold onto a visit. Note: raising this also '
+            'tracker can use to hold onto a track ID. Note: raising this also '
             'raises the tracker\'s "New-track confidence" below, so a band of '
             'faint detections is always kept for that purpose.',
         onChanged: (v) => setState(() {
@@ -1020,12 +1020,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
       const Divider(color: Colors.white24),
       const HelpLabel(
         leading: Icon(Icons.polyline, size: 20, color: Colors.white70),
-        label: 'Visit tracking',
+        label: 'Tracking',
         labelStyle: TextStyle(color: Colors.white70, fontSize: 16),
         helperText:
             'Tracking links each insect\'s detections across frames into '
-            'one "visit" with a stable ID, the basis of the visitation '
-            'rate. The two settings below are the ones that matter day to '
+            'one track ID. In pollination ecology a track ID usually stands '
+            'for one visit (an insect\'s stay on the flower), the basis of the '
+            'visitation rate; some can be false detections, or one insect '
+            'split into two track IDs. The two settings below are the ones that matter day to '
             'day; the defaults suit insects that land and linger on a '
             'flower. The algorithm choice and its own knobs live under '
             'Advanced.',
@@ -1325,9 +1327,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           helperText:
               'How long an insect can vanish (e.g. behind a petal) before its '
               'track ID is dropped. Longer = an insect that reappears keeps its '
-              'original ID instead of being counted as a second visitor (fewer '
+              'original ID instead of being counted as a second track ID (fewer '
               'split IDs); too long risks merging two genuinely different '
-              'visitors into one. (0.2–10 s; default 3.) Converted to frames '
+              'insects into one. (0.2–10 s; default 3.) Converted to frames '
               'live from the current FPS.',
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(occlusionSeconds: v)),
@@ -1335,7 +1337,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         // Min visit length is also exposed in SECONDS and converted to frames
         // live (like occlusion tolerance), so it stays meaningful as FPS drifts.
         NumericSettingField(
-          label: 'Minimum visit length',
+          label: 'Minimum track length',
           value: _c.minHitsSeconds,
           min: 0.0,
           max: 2.0,
@@ -1343,11 +1345,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
           unitSuffix: 's',
           helperText:
               'How long an insect must stay continuously detected before it '
-              'counts as a real visit (gets a counted track id). Shorter blips '
+              'gets a counted track ID. Shorter blips '
               'are dropped as noise. Lower (e.g. 0.1) counts brief touchdowns '
               'but lets in more false blips; higher (e.g. 0.5) counts only '
               'clear, sustained landings. This directly affects the visitation '
-              'rate for short visits. Converted to frames live from the current '
+              'rate for short track IDs. Converted to frames live from the current '
               'FPS (0–2 s; default 0.2).',
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
@@ -1371,7 +1373,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'Records the ROI square as MP4 clips (a new clip every 5 minutes, in the session\'s '
               'videos folder) while the AI detects live. Afterwards the session summary plays '
               'the clips with the boxes the live AI found, so you can see what it caught and what '
-              'it missed, count the visits by hand, or run the AI again on the clips ("Run AI on '
+              'it missed, count the insects by hand, or run the AI again on the clips ("Run AI on '
               'videos"). Off by default: it costs storage (estimate below) and heat, because every '
               'frame of the clip is processed even while the motion gate lets the detector sleep.',
           value: _c.liveAiVideo,
@@ -1437,7 +1439,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           helperText:
               'How detections are linked frame to frame. ByteTrack predicts '
               'where each insect went and matches by box overlap; C-BIoU '
-              'enlarges the boxes before comparing them. Both count visits '
+              'enlarges the boxes before comparing them. Both count track IDs '
               'the same way, so results stay comparable across sessions.',
         ),
         DropdownButton<TrackerAlgorithm>(
@@ -1553,7 +1555,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'under a petal. Automatically kept above Confidence so that faint '
           'band never closes. If "All AI boxes" on a video\'s Video tab shows '
           'an insect that never gets a track ID, it was probably never this '
-          'sure: lower this and run "Find visits" again (the AI does not need '
+          'sure: lower this and run "Find track IDs" again (the AI does not need '
           'to run again). Default 0.50.',
       onChanged: (v) => updateC(cp.copyWith(highThresh: v)),
     ),
@@ -1590,7 +1592,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       helperText:
           'A second, looser overlap test used to re-link faint detections '
           '(a half-hidden or blurred insect that briefly drops in '
-          'confidence) so it keeps its track id. Normally set at or below '
+          'confidence) so it keeps its track ID. Normally set at or below '
           'Match overlap. The 0.02 floor stops a real track grabbing a '
           'random noise box; set it too high and faint insects are no '
           'longer recovered (0.02–0.80).',
@@ -1613,10 +1615,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'faint band (between Confidence and this) is exactly what '
           'holds onto a bee whose score dips while it is half-hidden under a '
           'petal, so it is not counted twice. Higher = more cautious about '
-          'starting new IDs (fewer false visitors); lower = quicker to '
-          'register a new visitor. If "All AI boxes" on a video\'s Video tab '
+          'starting new IDs (fewer false track IDs); lower = quicker to '
+          'start a new track ID. If "All AI boxes" on a video\'s Video tab '
           'shows an insect that never gets a track ID, it was probably never '
-          'this sure: lower this and run "Find visits" again (the AI does not '
+          'this sure: lower this and run "Find track IDs" again (the AI does not '
           'need to run again). It is automatically kept at least '
           '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
           'rises with it) so the faint band never closes. Default 0.50.',
@@ -1700,7 +1702,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'with every frame (see "Video frame rate"), so an insect can be '
             'followed from frame to frame. The AI runs later, at home: on the '
             'home screen, the session\'s gear menu → "Run AI on videos" finds '
-            'the insects and their visits. Video needs more storage (estimate '
+            'the insects and their track IDs. Video needs more storage (estimate '
             'below). The clip\'s side is the "Saved photo side" on the Photos '
             'tab (smaller when the ROI covers fewer camera pixels).',
       ),

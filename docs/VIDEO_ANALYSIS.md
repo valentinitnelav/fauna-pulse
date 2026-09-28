@@ -1,16 +1,20 @@
-# Video Analysis: from imported videos to checked visit counts
+# Video Analysis: from imported videos to track IDs checked against a hand count
 
-FaunaPulse can count flower visits in videos filmed elsewhere: the phone's own camera
+FaunaPulse can follow flower visitors as track IDs in videos filmed elsewhere: the phone's own camera
 app, a collaborator, or a published dataset. The AI runs afterwards ("AI later"), so the
 phone does not need to detect live in the field. This guide covers the whole path, from
-the import on the phone to a visit count that has been checked against a hand count
+the import on the phone to a track ID count that has been checked against a hand count
 (round 230). The file formats are in [DATA_GUIDE §9](DATA_GUIDE.md#9-imported-videos-videos-video_detectionsjsonl-round-225);
 the scripts are in [`tool/video_eval/`](../tool/video_eval/README.md).
 
 Terms used below:
 
-* **Track**: the tracker's record of one insect it followed from frame to frame. One
-  track id = one **visit**.
+* **Track ID**: the tracker's record of one insect it followed from frame to frame (round
+  248: called "visit" before). In pollination ecology a track ID usually stands for one
+  **visit**, an insect's stay on the flower, but only as far as detection and tracking
+  worked: some track IDs are false detections (a leaf, a shadow), one insect can be split
+  into several track IDs, and two can be merged into one. Scoring the app against a hand
+  count (below) measures exactly that.
 * **Hand count** (also "ground truth"): the visits a person noted while watching the
   video. It is the reference the app is scored against.
 * **fps**: frames per second. A phone video usually has 30. The app can look at fewer
@@ -23,41 +27,41 @@ Terms used below:
    as: Video*. Recorded clips are already the ROI square, carry the camera's own start
    time, and go straight to step 2 (their session summary opens on the Video tab with a
    *Run AI on videos* button). For imported clips: one session per site and day works
-   best. Check the start time on the import sheet: visits per hour and the dashboard use
+   best. Check the start time on the import sheet: track IDs per hour and the dashboard use
    it. Optionally, draw a square around the flower. The analysed area is scaled down to
    the model's input size, so a small insect in a whole 4K frame shrinks to a few pixels;
    a square keeps it large.
    A live AI session with *Also record the ROI as video* (round 240) can be analysed the
    same way, for comparison with what the live AI found: its Video tab then switches between
    *Live AI* and *AI afterwards* on the same clips (round 241), which shows, for example,
-   visits the live AI missed while the phone was hot or the motion gate slept.
+   track IDs the live AI missed while the phone was hot or the motion gate slept.
 2. **Run AI on videos** (home screen): model, confidence threshold and *Frames analyzed
    per second* (default 15, the live AI's rate). This is the slow step (it can be paused
    and continued). It finds boxes only.
-3. **Find visits** (same screen, starts by itself when the analysis finishes): links the
+3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
-   C-BIoU), using the screen's *Occlusion tolerance* and *Minimum visit length*. It
+   C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length*. It
    takes seconds and can be run again with other settings. A new track ID starts only
    from a box the AI is at least *New-track confidence* sure of (0.50, camera Settings →
-   AI → Visit tracking → Advanced); weaker boxes, down to the confidence threshold, only
+   AI → Tracking → Advanced); weaker boxes, down to the confidence threshold, only
    continue a track. If the Video tab's *All AI boxes* shows an insect that never gets a
-   track ID, lower it and run *Find visits* again: no new AI run is needed (round 247). With *Keep frames of each
-   visit* on (the default, round 234) it then saves pictures of every visit from the
+   track ID, lower it and run *Find track IDs* again: no new AI run is needed (round 247). With *Keep frames of each
+   track ID* on (the default, round 234) it then saves pictures of every track ID from the
    clips, by the live photo rule: the first frame, then one every *Keep a frame every*
    (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show
    under the player on the summary's Video tab (*Show in video* jumps there) and are what
    *Identify organisms* reads. Saving reads each clip once; it can be stopped and
-   continued with *Save the remaining frames*. Finding the visits again numbers them
+   continued with *Save the remaining frames*. Finding the track IDs again numbers them
    anew, so identification results made before say to run identification again.
-   *Free storage* (round 236) below it deletes the clips without any visit, or all clips
-   once the frames are saved; the boxes, visits and kept frames stay, so Find visits can
+   *Free storage* (round 236) below it deletes the clips without any track ID, or all clips
+   once the frames are saved; the boxes, track IDs and kept frames stay, so Find track IDs can
    still run again (DATA_GUIDE §9). Copy the clips to a computer first if you may want to
    analyse them again.
-4. **Share results**: one zip with `visits.csv` (one row per visit), `mot/` (every
+4. **Share results**: one zip with `track_ids.csv` (one row per track ID), `mot/` (every
    tracked box), `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`.
    Unzip it on the computer and keep the files together: the scripts below need them.
 5. **Hand count** a sample of the clips (§3).
-6. **Score** the app against the hand count with `evaluate_visits.py` (§4).
+6. **Score** the app against the hand count with `evaluate_track_ids.py` (§4).
 
 Videos in 10-bit or HDR (some newer phones film this way) are refused with a message;
 re-export them as 8-bit H.264, for example with the phone's video editor or HandBrake.
@@ -82,18 +86,18 @@ the Download folder is missing there. Tap ☰ in the file window and choose **Vi
 the phone's name and then the same folder: the clip is listed there. The app shows this
 tip when the file window is closed without a choice.
 
-## 2. What the app counts as a visit
+## 2. What the app counts as a track ID
 
 Count by hand with the same rule, or the comparison measures the rule and not the AI:
 
-* A visit starts when the insect is first detected in the analysed area and ends when it
+* A track ID starts when the insect is first detected in the analysed area and ends when it
   was last seen there. If it hides or leaves for **longer than the occlusion tolerance**
-  (3 s by default) and comes back, that is a new visit. Shorter gaps stay one visit.
-* Visits shorter than the **minimum visit length** (0.2 s by default) are not counted.
+  (3 s by default) and comes back, that is a new track ID. Shorter gaps stay one track ID.
+* Track IDs shorter than the **minimum track length** (0.2 s by default) are not counted.
 * The app sees an insect *in the picture*, not *on the flower*. Whether an insect that
   only flies through counts is your decision. For scoring the app, count every insect
   that appears in the analysed area; flower contact can be a second column.
-* A visit that runs on into the next clip (clips recorded back to back) is one visit.
+* A track ID that runs on into the next clip (clips recorded back to back) is one track ID.
   Note it once, in the clip where it began, with its end time on that clip's clock (so
   the end can exceed the clip's length). The app does the same.
 * `start_s` and `end_s` are seconds from the start of the clip, the position a video
@@ -106,7 +110,7 @@ the settings: knowing the answer changes what one sees. Pick clips across condit
 (sun and shade, wind, busy and quiet flowers) and include clips **without** visits: they
 show how often the app counts leaves, shadows or flowers as insects.
 
-### 3a. Visit counts (what the app claims): spreadsheet or BORIS
+### 3a. Visit counts (what the app's track IDs claim): spreadsheet or BORIS
 
 No need to annotate every frame. Watch at normal or double speed, pause when an insect
 arrives and note its start and end time.
@@ -134,7 +138,7 @@ arrives and note its start and end time.
 
 ### 3b. Boxes and tracks (optional)
 
-Only needed to score the tracker frame by frame (for example, how often a track id jumps
+Only needed to score the tracker frame by frame (for example, how often a track ID jumps
 to another insect). Visit counts do not need it.
 
 * Annotate **keyframes**, not every frame: in [CVAT](https://www.cvat.ai/)'s track mode,
@@ -144,8 +148,8 @@ to another insect). Visit counts do not need it.
   `python3 tool/video_eval/mot_to_cvat.py <unzipped results>` writes one zip per clip.
   In CVAT, create a task from the same video file, with the labels the script prints,
   then *Actions → Upload annotations → MOT 1.1*. Correct the boxes, add what the app
-  missed and set the taxon. Each visit's first frames are missing: a track shows up only
-  once confirmed (after the minimum visit length).
+  missed and set the taxon. Each track ID's first frames are missing: a track shows up only
+  once confirmed (after the minimum track length).
 * A script for box-level scores (HOTA, IDF1 with
   [TrackEval](https://github.com/JonathonLuiten/TrackEval)) will be added when these
   annotations exist. `mot/` is already in the format TrackEval reads.
@@ -162,38 +166,40 @@ to another insect). Visit counts do not need it.
 * **AI-generated videos** are fine to test that the pipeline runs, never to measure
   accuracy: the insects' look and movement are not real.
 
-## 4. Scoring: `evaluate_visits.py`
+## 4. Scoring: `evaluate_track_ids.py`
 
 ```bash
 cd fauna-pulse/tool/video_eval
-python3 evaluate_visits.py --truth my_count.csv --app ~/results/site1/visits.csv \
+python3 evaluate_track_ids.py --truth my_count.csv --app ~/results/site1/track_ids.csv \
     --out scores.csv --pairs pairs.csv
 ```
 
-A hand-counted visit and an app visit **match** when they overlap in time, after the hand
+A hand-counted visit and an app track ID **match** when they overlap in time, after the hand
 count is widened by `--tolerance` seconds (0.5 by default) on each side, since clicks are
-never exact. Each visit matches at most one other; the longest overlap goes first. Only
+never exact. Each visit and each track ID matches at most one; the longest overlap goes first. Only
 clips in the hand count are scored. The console shows one line per run:
 
 | Number | Meaning |
 |---|---|
-| found | hand-counted visits the app also found |
-| missed | hand-counted visits the app did not find |
-| extra | app visits nobody counted (leaves, shadows, or one insect counted twice) |
-| split | hand-counted visits overlapped by 2 or more app visits: one insect counted more than once, for example when it hid behind a petal for longer than the occlusion tolerance |
-| merged | app visits overlapping 2 or more hand-counted visits: insects that followed each other closely, counted as one |
+| found | hand-counted visits the app also has a track ID for |
+| missed | hand-counted visits without a track ID |
+| extra | track IDs nobody counted (leaves, shadows, or one insect followed twice) |
+| split | hand-counted visits overlapped by 2 or more track IDs: one insect followed more than once, for example when it hid behind a petal for longer than the occlusion tolerance |
+| merged | track IDs overlapping 2 or more hand-counted visits: insects that followed each other closely, followed as one |
 | recall | found ÷ hand-counted visits: the share of real visits the app found |
-| precision | found ÷ app visits: the share of the app's visits that are real |
-| count error | app visits − hand-counted visits |
+| precision | found ÷ track IDs: the share of the app's track IDs that are real visits |
+| count error | track IDs − hand-counted visits |
 
-Report recall and precision, not only the count error: 5 missed and 5 extra visits give a
-count error of 0.
+Report recall and precision, not only the count error: 5 missed visits and 5 extra track IDs
+give a count error of 0.
 
 `--out` writes one row per run and clip, plus an `ALL` row per run. Its columns also hold
-the total visit time (`true_visit_s`, `app_visit_s`), the mean duration error (app minus
-hand count, only for visits with a duration) and the median start error (positive = the
-app starts later). `--pairs` writes every
-visit with its status (`found`, `missed`, `extra`), to look at the misses in the video.
+the total time of the hand-counted visits and of the track IDs (`true_visit_s`,
+`app_track_s`; `app_visit_s` before round 248), the mean duration error (track ID minus
+visit, only for visits with a duration), the median start error (positive = the track ID
+starts later) and `new_track` (the new-track confidence of the run, when known). `--pairs`
+writes every hand-counted visit and track ID with its status (`found`, `missed`, `extra`),
+to look at the misses in the video.
 Both are tidy CSVs for R:
 
 ```r
@@ -215,7 +221,7 @@ cost time and heat on the phone. Two published systems show both ends:
 * Sittinger et al. (2024, *PLOS ONE*,
   [doi:10.1371/journal.pone.0295474](https://doi.org/10.1371/journal.pone.0295474))
   tracked live at about 12.5 fps (1080p) or 3.4 fps (4K) and note that too low a rate
-  makes the track ids of fast-moving insects "jump", so one insect is counted more than
+  makes the track IDs of fast-moving insects "jump", so one insect is counted more than
   once.
 
 Instead of guessing, measure it on your own videos: detect once at the full rate, then
@@ -224,7 +230,7 @@ hand count.
 
 1. **On the phone**: *Run AI on videos* with *Frames analyzed per second* at the video's
    own rate (30 for most phone videos). This takes about twice as long as 15, once.
-   Then *Find visits* with the settings you want to test, and *Share results*.
+   Then *Find track IDs* with the settings you want to test, and *Share results*.
 2. **On the computer** (needs this repository and Flutter, like the app's tests):
 
    ```bash
@@ -236,22 +242,22 @@ hand count.
 
    For each rate and both trackers, this runs the app's own tracking code on the frames a
    run at that rate would have looked at (the same frame-picking rule as the phone) and
-   writes `fps_sweep/visits_<tracker>_<fps>fps.csv`. The occlusion tolerance and
-   minimum visit length (in seconds) are those of the last *Find visits*, so every rate is
+   writes `fps_sweep/track_ids_<tracker>_<fps>fps.csv`. The occlusion tolerance and
+   minimum track length (in seconds) are those of the last *Find track IDs*, so every rate is
    compared under the same rule. `--dart-define=SWEEP_HIGH=0.5,0.4,0.3,0.25` also tries
    other *New-track confidence* values with ByteTrack (files ending in `_new<value>.csv`),
    to choose it against the hand count (round 247).
 3. **Score** all runs at once:
 
    ```bash
-   python3 tool/video_eval/evaluate_visits.py --truth my_count.csv \
-       --app "$HOME/results/site1/fps_sweep/visits_*.csv" --out sweep_scores.csv
+   python3 tool/video_eval/evaluate_track_ids.py --truth my_count.csv \
+       --app "$HOME/results/site1/fps_sweep/track_ids_*.csv" --out sweep_scores.csv
    ```
 
 Analyse at the video's full rate: thinning a 15 fps analysis to 10 fps would give
 unevenly spaced frames that no real 10 fps run would use. At low rates, keep the occlusion
 tolerance well above the time between two analysed frames (2 s at 0.5 fps), or every
-visit breaks into pieces.
+track ID breaks into pieces.
 
 ## 6. Where to get videos
 
@@ -264,13 +270,13 @@ as in §3, are the realistic source. Useful public material:
 | [HyDaT](https://github.com/malikaratnayake/HyDaT_Tracker) | 78 min of honeybee video, with tracks made by an algorithm, not by people | good footage; count the visits yourself |
 | BuzzSet, BuzzSpot | pollinator images with boxes | detection only (no video) |
 | [Zenodo 15096610](https://doi.org/10.5281/zenodo.15096610) (own) | time-lapse images: expert-labelled Hymenoptera and Diptera crops, and insect-free backgrounds (CC BY-NC-SA) | detection and identification, not tracking |
-| [SA-FARI](https://huggingface.co/datasets/facebook/SA-FARI) ([about](https://www.conservationxlabs.com/sa-fari)) | 11,609 camera-trap videos of 99 species, boxes and track ids at 6 fps (CC BY-NC; accept the terms before download) | mammals and birds, see below |
+| [SA-FARI](https://huggingface.co/datasets/facebook/SA-FARI) ([about](https://www.conservationxlabs.com/sa-fari)) | 11,609 camera-trap videos of 99 species, boxes and track IDs at 6 fps (CC BY-NC; accept the terms before download) | mammals and birds, see below |
 | [Lindenthal camera traps](https://lila.science/datasets/lindenthal-camera-traps/) | camera-trap videos in RealSense files (one 213 GB zip) | mammals, second choice |
 
 **Mammals and birds**: the app's default detector, MegaDetector V6 (MDV6), finds
 animals, people and vehicles. For names, build a BioCLIP label pack of the expected
 mammals or birds with `tool/bioclip_export/` ([IDENTIFICATION.md](IDENTIFICATION.md)).
-The occlusion tolerance and minimum visit length then need values that suit larger,
+The occlusion tolerance and minimum track length then need values that suit larger,
 slower animals.
 
 ## 7. Resolution

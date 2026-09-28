@@ -14,7 +14,7 @@ both trackers, the session logger (including the write-failure path), capture
 scheduling and crop geometry, frame processing, config round-trips/migrations,
 schedule and time-lapse plans, post-hoc analysis + SAHI, video import and
 start-time guesses, offline tracking of videos and its exports
-(`video_tracker_test.dart`), the one-visits-file rule for summary, dashboard
+(`video_tracker_test.dart`), the one-track-ID-file rule for summary, dashboard
 and identification (`track_source_test.dart`), error reporting, and
 widget regressions (e.g. the bottom-inset pattern in
 `summary_bottom_inset_test.dart`, which also documents the widget-test async
@@ -59,10 +59,10 @@ benchmarks.
 
 ## Video frame-rate sweep (round 230)
 
-Re-runs *Find visits* on an analysed video session at lower frame rates (the
+Re-runs *Find track IDs* on an analysed video session at lower frame rates (the
 frames a run at that rate would have looked at) for both trackers, and writes
-`fps_sweep/visits_<tracker>_<fps>fps.csv` for
-`tool/video_eval/evaluate_visits.py` to score against a hand count
+`fps_sweep/track_ids_<tracker>_<fps>fps.csv` for
+`tool/video_eval/evaluate_track_ids.py` to score against a hand count
 (`docs/VIDEO_ANALYSIS.md` §5). Analyse the videos at their full rate first.
 
 ```bash

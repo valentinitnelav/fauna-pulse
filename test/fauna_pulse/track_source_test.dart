@@ -52,14 +52,14 @@ void main() {
       expect(tracksFileOf(tmp).path, '${tmp.path}/session.jsonl');
     });
 
-    test('imported videos with found visits: afterwards', () {
+    test('imported videos with found track IDs: afterwards', () {
       writeLog([_start()]);
       writePost([_rec('post_track_start', {'time_ms': 1000})]);
       expect(trackSourceOf(tmp), TrackSource.afterwards);
       expect(tracksFileOf(tmp).path, '${tmp.path}/$postTracksFileName');
     });
 
-    test('a live AI session keeps its own visits even with a post file', () {
+    test('a live AI session keeps its own track IDs even with a post file', () {
       writeLog([
         _start(config: {'captureTrigger': 'detector'}),
       ]);
@@ -67,7 +67,7 @@ void main() {
       expect(trackSourceOf(tmp), TrackSource.live);
     });
 
-    test('time-lapse and motion sessions have no live visits', () {
+    test('time-lapse and motion sessions have no live track IDs', () {
       writePost([_rec('post_track_start', {'time_ms': 1000})]);
       for (final trigger in ['timelapse', 'motion']) {
         writeLog([
@@ -92,8 +92,8 @@ void main() {
     });
   });
 
-  group('SessionLogIndex with visits found afterwards', () {
-    test('visits come from post_tracks.jsonl only', () async {
+  group('SessionLogIndex with track IDs found afterwards', () {
+    test('track IDs come from post_tracks.jsonl only', () async {
       writeLog([
         _start(),
         _rec('video_clip', {'time_ms': 1000, 'file': 'videos/a.mp4'}),

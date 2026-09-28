@@ -43,7 +43,7 @@ void main() {
     expect(tasks[0].key, isNot(tasks[1].key));
   });
 
-  test('planFromPostDetections keeps the last record per photo, no track ids', () {
+  test('planFromPostDetections keeps the last record per photo, no track IDs', () {
     const jsonl = '''
 {"type":"post_start"}
 {"type":"post_detection","jpeg":"b.jpg","captured_at_ms":5,"boxes":[{"class_name":"insect","conf":0.5,"box":[0.1,0.1,0.2,0.2]}]}

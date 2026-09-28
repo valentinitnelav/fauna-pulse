@@ -673,12 +673,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
-            'the model. The crops of one track id are then combined into ONE answer: the model '
+            'the model. The crops of one track ID are then combined into ONE answer: the model '
             'describes each crop in a vector of numbers, then they are averaged (a crop the model is sure about counts '
             'more, crops it is far less sure about are left out) and the average is classified once, so '
             'photos that agree reinforce each other (not a vote per photo), giving a probability per '
-            'rank. Track ids '
-            'are not joined unless "Merge consecutive visits" is on (Advanced settings). '
+            'rank. Track IDs '
+            'are not joined unless "Merge consecutive track IDs" is on (Advanced settings). '
             'Identification runs on this phone with the chosen model and label pack; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
             'resumed at any time, and pauses when the battery gets warmer than the temperature '
@@ -688,7 +688,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       Text(
         crops == null
             ? 'Counting crops…'
-            : '$crops crops from ${_plannedTracks ?? 0} tracked visits'
+            : '$crops crops from ${_plannedTracks ?? 0} track ID${_plannedTracks == 1 ? '' : 's'}'
                   '${estimate == null ? '' : ' — about ${_fmtDuration(estimate)} on this phone'}',
         style: const TextStyle(color: Colors.white),
       ),
@@ -739,7 +739,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 8),
           child: Text(
-            'The visits were found again since the last run, so its stored results no longer match '
+            'The track IDs were found again since the last run, so its stored results no longer match '
             'them. Continue / re-run starts over.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
@@ -757,7 +757,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                   ? 'runs the model only on photos that have no stored result yet (new photos, or after '
                         'lowering "Smallest box"), then recomputes the results; with nothing new it takes '
                         'seconds.'
-                  : 'runs the model on every photo of every track id (the slow step), then computes the '
+                  : 'runs the model on every photo of every track ID (the slow step), then computes the '
                         'results.',
             ),
             _buttonNote(
@@ -806,7 +806,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'embedding' => 'Identifying crops on the $_accelerator…'
                 '${_accelNote != null ? ' (GPU not used: $_accelNote)' : ''}',
             'paused' => 'Paused: ${p!.note}',
-            'scoring' => 'Combining crops per visit and writing results…',
+            'scoring' => 'Combining crops per track ID and writing results…',
             'done' => 'Finishing…',
             _ => 'Starting…',
           };
@@ -858,7 +858,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(
-            '${s['tracks_total']} visits: '
+            '${s['tracks_total']} track IDs: '
             '${(s['by_identified_rank'] as Map).entries.map((e) => '${e.value} to ${e.key}').join(', ')}'
             '${s['unidentified'] != 0 ? ', ${s['unidentified']} unidentified' : ''}'
             '${(s['no_organism'] ?? 0) != 0 ? ', ${s['no_organism']} no organism' : ''}.',
@@ -954,7 +954,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'and is mostly blur; raise it for fewer but cleaner crops.',
         ),
         NumericSettingField(
-          label: 'Crops per visit (0 = all)',
+          label: 'Crops per track ID (0 = all)',
           value: prefs.maxCropsPerTrack.toDouble(),
           min: 0,
           max: 100,
@@ -964,10 +964,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             _plan();
           },
           helperText:
-              'Upper limit per track id: when a visit has more photos than this, only its LARGEST '
-              'boxes are kept. How many photos a visit has '
+              'Upper limit per track ID: when a track ID has more photos than this, only its LARGEST '
+              'boxes are kept. How many photos a track ID has '
               'comes from the session\'s photo schedule (e.g.: AI mode default with one photo every 1 s for '
-              '10 s, so about 10 per visit); with that default the limit of 10 rarely removes '
+              '10 s, so about 10 per track ID); with that default the limit of 10 rarely removes '
               'anything and only bounds the runtime for long bursts. Set 0 to use all photos.',
         ),
         NumericSettingField(
@@ -1006,7 +1006,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.noneThreshold = v),
           helperText:
               'The label pack also contains a few "none of these" entries (flower, leaf, shadow, empty '
-              'background). When their summed probability is above this, the visit is reported as '
+              'background). When their summed probability is above this, the track ID is reported as '
               '"no organism": the detector most likely fired on nothing.',
         ),
         NumericSettingField(
@@ -1020,22 +1020,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           helperText: 'The run pauses when the battery reaches this and resumes 3 °C lower.',
         ),
         HelpSwitchTile(
-          title: 'Merge consecutive visits',
+          title: 'Merge consecutive track IDs',
           value: prefs.mergeVisits,
           onChanged: (v) => _edit(() => prefs.mergeVisits = v),
           helperText:
-              'Off: every track id is one visit. On: when a track id ends and a new one starts within '
-              'the gap below, the two are joined into one visit (and identified again from all their '
+              'Off: every track ID stays on its own. On: when a track ID ends and a new one starts within '
+              'the gap below, the two are joined into one track ID (and identified again from all their '
               'photos) if they pass three checks: a compatible identification (same taxon on the same '
               'path, e.g. Apidae then Bombus), a similar appearance (the model\'s image embeddings, the '
               'strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
-              'insect for a moment and gave it a new id. Track ids that overlap in time are never '
-              'joined (two insects at once). Changes the visit count, so it is off by default; the CSV '
+              'insect for a moment and gave it a new id. Track IDs that overlap in time are never '
+              'joined (two insects at once). Changes the track ID count, so it is off by default; the CSV '
               'lists the joined ids.',
         ),
         if (prefs.mergeVisits) ...[
           NumericSettingField(
-            label: 'Largest gap between joined visits',
+            label: 'Largest gap between joined track IDs',
             value: prefs.mergeGapS,
             min: 0.5,
             max: 120,
@@ -1043,7 +1043,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             unitSuffix: 's',
             onChanged: (v) => _edit(() => prefs.mergeGapS = v),
             helperText:
-                'Time from the end of one track id to the start of the next. Check also what is set for the '
+                'Time from the end of one track ID to the start of the next. Check also what is set for the '
                 'live tracker\'s own continuity buffer (its occlusion setting, 3 s by default). Longer gaps '
                 'risk joining two different insects of the same species: the appearance check cannot '
                 'tell individuals apart, only the time gap can.',
@@ -1056,7 +1056,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             decimals: 2,
             onChanged: (v) => _edit(() => prefs.mergeMinCos = v),
             helperText:
-                'Cosine similarity (0 to 1) between the two visits\' combined image embeddings: 1 = the '
+                'Cosine similarity (0 to 1) between the two track IDs\' combined image embeddings: 1 = the '
                 'model sees the same thing. Same species usually scores 0.8 to 0.95, different families '
                 'well below. 0.85 is a cautious default; lower it if fragments of one insect stay apart.',
           ),
@@ -1069,21 +1069,21 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             unitSuffix: '%',
             onChanged: (v) => _edit(() => prefs.mergeSizeTol = v / 100),
             helperText:
-                'Mean box side of each visit, as a fraction of the ROI, compared as a percentage of the '
+                'Mean box side of each track ID, as a fraction of the ROI, compared as a percentage of the '
                 'larger one. A loose guard on purpose (wings, distance and ROI-edge cuts change box size); '
                 '100 % switches the check off.',
           ),
         ],
         const SizedBox(height: 8),
         const HelpLabel(
-          label: 'Suspect visits (flags only, nothing is deleted)',
+          label: 'Suspect track IDs (flags only, nothing is deleted)',
           labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           helperText:
-              'Very short track ids are often false detections (a moving petal, a shadow, a video '
-              'artefact), and a weak identification makes that more likely. A visit is flagged '
+              'Very short track IDs are often false detections (a moving petal, a shadow, a video '
+              'artefact), and a weak identification makes that more likely. A track ID is flagged '
               '"suspect" when it is SHORT (below the duration OR the detections below) AND weakly '
               'supported (detector confidence below the threshold, order-level probability below the '
-              'threshold, or "no organism"). Suspect visits are hidden from the results table by default '
+              'threshold, or "no organism"). Suspect track IDs are hidden from the results table by default '
               '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
               'thresholds on your own data in R or Python.',
         ),
@@ -1095,7 +1095,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 1,
           unitSuffix: 's',
           onChanged: (v) => _edit(() => prefs.flagMinDurationS = v),
-          helperText: 'From the first to the last detection of the track id. 0 = never short by duration.',
+          helperText: 'From the first to the last detection of the track ID. 0 = never short by duration.',
         ),
         NumericSettingField(
           label: 'Short: detections below',
@@ -1104,7 +1104,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 100,
           isInt: true,
           onChanged: (v) => _edit(() => prefs.flagMinDetections = v.round()),
-          helperText: 'Detector frames the track id appeared in. 0 = never short by count.',
+          helperText: 'Detector frames the track ID appeared in. 0 = never short by count.',
         ),
         NumericSettingField(
           label: 'Weak: detector confidence below',
@@ -1114,8 +1114,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.flagMinDetConf = v),
           helperText: 
-              'If the mean confidence of the live detector over the visit\'s crops '
-              'is below this, the visit is flagged as weak. '
+              'If the mean confidence of the live detector over the track ID\'s crops '
+              'is below this, the track ID is flagged as weak. '
         ),
         NumericSettingField(
           label: 'Weak: order probability below',
@@ -1126,7 +1126,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.flagMinOrderP = v),
           helperText:
               'If the identification\'s probability at ORDER rank (e.g. Diptera) '
-              'is below this, the visit is flagged as weak. '
+              'is below this, the track ID is flagged as weak. '
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),

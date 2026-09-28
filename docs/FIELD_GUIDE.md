@@ -16,7 +16,7 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 
 - **Charge the phone fully** and, for long sessions, bring a power bank — the
   detector and camera run continuously and heat/battery are the main limits.
-- **Free up storage.** Each visit saves JPEG photos; hours of activity can be
+- **Free up storage.** Each track ID saves JPEG photos; hours of activity can be
   hundreds of MB to several GB. Check free space is comfortably more than you
   expect to use.
 - **Pick your model and settings ahead of time** so you're not fiddling in the
@@ -170,9 +170,9 @@ tabs:
   and marked with a "Reference photo" chip; they have no detection boxes by
   design. **Copy photos to gallery** at the bottom copies the session's
   photos into the phone's own Gallery app (details in §6).
-- **Graphs** — the insect visit count (track IDs), the visit timeline (your
-  visitation-rate result), a visit-length histogram with a selectable bin
-  width, and a per-session "Visits by time of day" chart, all shown
+- **Graphs** — the track ID count, the track ID timeline (your
+  visitation-rate result), a track-length histogram with a selectable bin
+  width, and a per-session "Track IDs by time of day" chart, all shown
   automatically. Temperature, FPS and battery/power are always recorded and
   sit under a tap-to-expand "Extra graphs" section for when you need them.
   Note: the power (W) graph only renders for sessions recorded fully on
@@ -348,7 +348,7 @@ the session log's temperature and FPS records are the only honest witnesses.
    heaters; the measured difference with the cover up was about 10 °C of
    case temperature on our hot test device.
 3. **Motion gate on** for scenes that are mostly still: the detector sleeps
-   between visits instead of heating the phone around the clock.
+   while no insect is there instead of heating the phone around the clock.
 4. **Lower "Saved photo side" if you don't need large photos.** A smaller
    target lets the app pick a smaller camera stream — less load on the
    camera hardware, which is exactly the part the phone throttles first.

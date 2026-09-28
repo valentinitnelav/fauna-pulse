@@ -302,7 +302,7 @@ void main() {
       expect(events.single.atMs, 200);
     });
 
-    test('tentative tracks come and go without events (never a visit)', () {
+    test('tentative tracks come and go without events (never a track ID)', () {
       final tracker = ByteTracker(
         params: const ByteTrackParams(minHitsToConfirm: 3),
       );

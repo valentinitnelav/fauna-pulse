@@ -1601,21 +1601,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     rows.add(
       _subhead(
         _videoSession && !afterwards
-            ? 'Visit tracking'
-            : 'Visit tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
+            ? 'Tracking'
+            : 'Tracking (${isCbiou ? 'C-BIoU' : 'ByteTrack'})',
       ),
     );
     if (_videoSession) {
       addNote(
         afterwards
-            ? 'Visits found afterwards with "Find visits" on the "Run AI on '
+            ? 'Track IDs found afterwards with "Find track IDs" on the "Run AI on '
                   'videos" screen.'
-            : 'Not run yet: "Find visits" on the "Run AI on videos" screen '
+            : 'Not run yet: "Find track IDs" on the "Run AI on videos" screen '
                   'follows each insect from frame to frame.',
       );
     } else if (_visitsFromPhotos) {
       addNote(
-        'Visits found afterwards in the photos with "Find visits" on the '
+        'Track IDs found afterwards in the photos with "Find track IDs" on the '
         '"Run AI on photos" screen.',
       );
     } else if (noAi) {
@@ -1636,10 +1636,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ? _post('min_hits_seconds')
         : _setting('minHitsSeconds');
     if (minHitsSeconds != null) {
-      add('Minimum visit length', minHitsSeconds, suffix: ' s', na: trackNa);
+      add('Minimum track length', minHitsSeconds, suffix: ' s', na: trackNa);
     } else if (tp != null) {
       add(
-        'Minimum visit length',
+        'Minimum track length',
         tp['minHitsToConfirm'],
         suffix: ' frames',
         na: trackNa,
@@ -1649,7 +1649,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (afterwards && _videoSession) {
       final keep = KeepFramesSettings.fromJson(_post('keep_frames'));
       add(
-        'Kept frames per visit',
+        'Kept frames per track ID',
         keep == null
             ? 'none'
             : 'first frame, then one every ${_numStr(keep.stepSeconds)} s '
@@ -2181,7 +2181,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // tab, round 187): one track id = one recorded visit, so it belongs
     // right above the timeline it summarizes.
     _stat(
-      'Visits (track IDs)',
+      'Track IDs',
       _visitsFromPhotos
           ? '${_spans.length} (found afterwards in the photos)'
           : _motionOnlySession
@@ -2193,29 +2193,31 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 ? '${_spans.length} (found afterwards in the videos)'
                 : _graphsLoading
                 ? '…'
-                : 'none yet ("Find visits" on "Run AI on videos")')
+                : 'none yet ("Find track IDs" on "Run AI on videos")')
           : _uniqueTracks?.toString() ?? 'unknown',
     ),
     // Round 241: the same clips analysed afterwards, for comparison.
     if (_liveVideoSession && _afterVisits != null)
-      _stat('Visits found afterwards in the videos', '$_afterVisits (for comparison; Video tab)'),
+      _stat('Track IDs found afterwards in the videos', '$_afterVisits (for comparison; Video tab)'),
     const SizedBox(height: 8),
     const Text(
-      'Visit timeline (each lane is one tracked object)',
+      'Track ID timeline (each lane is one tracked object)',
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 4),
     const Text(
       'Time runs left → right across the session. A bar shows when an object was '
       'within the ROI; overlapping bars were on it at the same time. Next to each bar: '
-      'its start and end, counted from the session start like the axis below.',
+      'its start and end, counted from the session start like the axis below. In pollination '
+      'ecology a track ID usually stands for one visit; some can be false detections, or one '
+      'insect split into two track IDs.',
       style: TextStyle(color: Colors.white70, fontSize: 12),
     ),
     if (_visitsAfterwards) ...[
       const SizedBox(height: 4),
       Text(
-        'Found afterwards in the ${_visitsFromPhotos ? 'photos' : 'videos'} with "Find visits" (occlusion '
-        'tolerance ${_numStr(_post('occlusion_seconds'))} s, minimum visit '
+        'Found afterwards in the ${_visitsFromPhotos ? 'photos' : 'videos'} with "Find track IDs" (occlusion '
+        'tolerance ${_numStr(_post('occlusion_seconds'))} s, minimum track '
         'length ${_numStr(_post('min_hits_seconds'))} s). '
         '${_visitsFromPhotos ? (_timeLapseSession ? 'Time between bursts was not photographed.' : '') : 'Time between clips was not filmed.'}',
         style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -2585,13 +2587,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return [
       const SizedBox(height: 28),
       const Text(
-        'Visit length distribution',
+        'Track length distribution',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
-        'How long the visits lasted: each bar counts the visits whose length '
-        'falls in that time bin — so you can see at a glance whether visits '
+        'How long the track IDs lasted: each bar counts the track IDs whose length '
+        'falls in that time bin — so you can see at a glance whether track IDs '
         'cluster around one typical length or spread out.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
@@ -2631,7 +2633,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
-            '${durationsMs.length} visit${durationsMs.length == 1 ? '' : 's'}; '
+            '${durationsMs.length} track ID${durationsMs.length == 1 ? '' : 's'}; '
             'average ${durationStats.mean.toStringAsFixed(1)} s '
             '(median ${durationStats.median.toStringAsFixed(1)} s); '
             'shortest ${durationStats.min.toStringAsFixed(1)} s, '
@@ -2641,12 +2643,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
       const SizedBox(height: 28),
       const Text(
-        'Visits by time of day',
+        'Track IDs by time of day',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
-        'When this session\'s visitors arrived (visit starts per hour, local '
+        'When this session\'s track IDs started (first sightings per hour, local '
         'time) — the same chart the Dashboard shows across all sessions.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
@@ -2697,8 +2699,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Text('Kept frames', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text(
-          'Pictures of each visit, kept from the videos when the visits were found (set under '
-          '"Run AI on videos" → Visits). A random sample of $_randomSampleCount is shown; pick more '
+          'Pictures of each track ID, kept from the videos when the track IDs were found (set under '
+          '"Run AI on videos" → Track IDs). A random sample of $_randomSampleCount is shown; pick more '
           'below. Swipe or use the arrows to step through them in time order. "Show in video" moves '
           'the player above to that moment.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -2739,7 +2741,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ),
             TextSpan(
               text: videoFrames
-                  ? 'the visit this frame was kept for'
+                  ? 'the track ID this frame was kept for'
                   : 'tracked object whose photo schedule triggered this shot',
             ),
           ],
@@ -2779,7 +2781,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
-            'The visits were found again since identification ran, so its answers no longer match '
+            'The track IDs were found again since identification ran, so its answers no longer match '
             'these frames. Run Identify organisms again.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
@@ -2790,8 +2792,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           child: Text(
             'Identifications (pack ${id.packId}, '
             '${id.generatedIso.length >= 16 ? id.generatedIso.substring(0, 16).replaceFirst('T', ' ') : id.generatedIso}) '
-            'are shown under each photo, one per track id: the answer is per VISIT '
-            '(all photos of that track id combined), not per photo.',
+            'are shown under each photo, one per track ID: the answer is per TRACK ID '
+            '(all photos of that track ID combined), not per photo.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2839,8 +2841,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           padding: const EdgeInsets.all(16),
           child: Text(
             videoFrames
-                ? 'No kept frames yet. In "Run AI on videos", find the visits with '
-                      '"Keep frames of each visit" on.'
+                ? 'No kept frames yet. In "Run AI on videos", find the track IDs with '
+                      '"Keep frames of each track ID" on.'
                 : 'No saved photos found for this session.',
             style: const TextStyle(color: Colors.white70),
           ),
@@ -2944,7 +2946,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
       helperText:
           'Runs an identification model (BioCLIP) over the saved photos of every '
-          'tracked organism and combines the photos of each track id into one answer '
+          'tracked organism and combines the photos of each track ID into one answer '
           'with a confidence per rank (order, family, genus, species). Needs a model '
           'file and a label pack, imported once on the next screen. '
           'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
@@ -3184,22 +3186,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         key: _timelineKey,
         child: Text(
           _visitsFromPhotos
-              ? 'No visits found in the photos.'
+              ? 'No track IDs found in the photos.'
               : _motionOnlySession
               ? 'Motion-only capture session — the AI detector was off, so '
-                    'no visits or tracks were recorded. Photos were taken on '
+                    'no track IDs were recorded. Photos were taken on '
                     'ROI motion; see the Photos tab.'
               : _timeLapseSession && !_videoSession
-              ? 'Time-lapse session — the AI detector was off, so no visits '
+              ? 'Time-lapse session — the AI detector was off, so no track IDs '
                     'or tracks were recorded. Photos were taken in scheduled '
                     'bursts; see the Photos tab.'
               : _visitsAfterwards
-              ? 'No visits found in the videos.'
+              ? 'No track IDs found in the videos.'
               : _videoSession
-              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no visits yet. "Run AI on videos" '
+              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Run AI on videos" '
                     '(Video tab, or the session\'s gear menu on the home screen) finds the '
-                    'insects, then "Find visits" there follows each one from frame to frame.'
-              : 'No visits recorded.',
+                    'insects, then "Find track IDs" there follows each one from frame to frame.'
+              : 'No track IDs recorded.',
           textAlign: TextAlign.center,
         ),
       );
@@ -3213,7 +3215,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         key: _timelineKey,
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          'Visit timeline hidden — ${ids.length} object track ID'
+          'Track ID timeline hidden — ${ids.length} object track ID'
           '${ids.length == 1 ? '' : 's'}. Use the button below to show it.',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
@@ -3748,7 +3750,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
   String _detectionCountLabel(_PhotoSample p) {
     final live = _boxesFor(p).length;
     final post = _postBoxesFor(p).length;
-    if (widget.visitsFromPhotos && live > 0) return '$live in visit${live == 1 ? '' : 's'}';
+    if (widget.visitsFromPhotos && live > 0) return '$live in track ID${live == 1 ? '' : 's'}';
     if (post == 0) return '$live detection${live == 1 ? '' : 's'}';
     if (live == 0) return '$post analysis detection${post == 1 ? '' : 's'}';
     return '$live live + $post analysis detections';

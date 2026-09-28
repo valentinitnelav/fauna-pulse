@@ -129,7 +129,7 @@ void main() {
     expect(t.clips['c.mp4']!.areaFor(16 / 9), isNull);
   });
 
-  test('visits from Find visits sit on the detector\'s boxes, with their numbers', () async {
+  test('track IDs from Find track IDs sit on the detector\'s boxes, with their numbers', () async {
     // The analysed square is the middle 1080 px: tracked boxes are stored
     // relative to it and must come back in whole-frame coordinates.
     final dir = _session([
@@ -160,7 +160,7 @@ void main() {
     expect(c.rawAt(2000).single.trackId, isNull);
   });
 
-  test('visits found on an earlier analysis are not shown', () async {
+  test('track IDs found on an earlier analysis are not shown', () async {
     final lines = [
       _runStart(),
       ..._clip('a.mp4', times: _every100(0, 2000), boxAt: (t) => _box(0.4)),
@@ -186,7 +186,7 @@ void main() {
     expect(VideoBoxTimeline.readSync('${dir.path}/nothing').clips, isEmpty);
   });
 
-  test('a clip analysed only in part keeps its boxes but no visits', () async {
+  test('a clip analysed only in part keeps its boxes but no track IDs', () async {
     final dir = _session([
       _runStart(),
       ..._clip('a.mp4', times: _every100(0, 2000), boxAt: (t) => _box(0.4)),

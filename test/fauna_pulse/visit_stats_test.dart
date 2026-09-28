@@ -23,7 +23,7 @@ void main() {
       expect(h.binStartSeconds(2), 2);
     });
 
-    test('wider bins merge visits', () {
+    test('wider bins merge track IDs', () {
       final h = visitDurationHistogram(const [400, 1900, 2000, 9000], 5);
       // 0–5 s: three visits; 5–10 s: one.
       expect(h.values, [3, 1]);
@@ -46,7 +46,7 @@ void main() {
   });
 
   group('visitsByHour', () {
-    test('counts visit starts per local hour', () {
+    test('counts track ID starts per local hour', () {
       int at(int hour, int minute) =>
           DateTime(2026, 8, 5, hour, minute).millisecondsSinceEpoch;
       final byHour = visitsByHour([at(9, 15), at(9, 59), at(17, 0)]);

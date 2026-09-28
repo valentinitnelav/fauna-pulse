@@ -83,6 +83,14 @@ Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:16
 
 ## Key invariants
 
+- **"Track ID", not "visit" (owner, round 248).** Every text, file and record name says
+  track ID (`track_ids.csv`, `post_track_end.track_ids`, `track_ids_run_id`,
+  `merge_track_ids`, `track_ids_merged`, `without_track_ids`); durations say "track
+  length". "Visit" only for the ecological quantity (hand counts, visitation rate) and the
+  notes "in pollination ecology a track ID usually stands for one visit". Readers accept the
+  pre-248 names; saved-settings keys and internal Dart identifiers kept their old names on
+  purpose. PC: `tool/video_eval/evaluate_track_ids.py` (`evaluate_visits.py` forwards).
+
 - **Every native camera view gets the screen's live settings (round 244).** `YOLOView`
   is keyed on the stream size, so the automatic stream pick (r109) or a Settings change
   builds a NEW native view that knows only its creation params (model, thresholds, lens

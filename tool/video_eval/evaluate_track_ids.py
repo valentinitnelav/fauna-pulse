@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Compare FaunaPulse's visits with a hand count of the same videos (round 230).
+"""Compare FaunaPulse's track IDs with a hand count of visits in the same videos (round 230).
 
-"Find visits" on the "Run AI on videos" screen writes visits.csv: one row per
-visit (track id), with start_s / end_s in seconds from the start of the clip
-the visit began in. This script matches those visits with the visits you
-counted yourself while watching the same clips, and reports how many the app
-found, missed and added, per clip and overall.
+A track ID is one object the app's tracker followed from frame to frame. In pollination
+ecology a track ID usually stands for one visit (an insect's stay on the flower), but only as
+far as detection and tracking worked: some track IDs are false detections, one insect can be
+split into several, two can be merged. This script measures exactly that, against the visits a
+person counted while watching the same clips.
+
+"Find track IDs" on the "Run AI on videos" screen writes track_ids.csv (visits.csv before
+round 248): one row per track ID, with start_s / end_s in seconds from the start of the clip
+the track ID began in. Either file name works.
 
 Hand count, one or more files, either
   * a CSV like hand_count_template.csv: clip, start_s, end_s, taxon (optional).
@@ -16,34 +20,35 @@ Hand count, one or more files, either
     (BORIS counts time over a whole observation, not per video). The taxon is
     the Subject, or the Behavior when there is no focal subject.
 
-Matching: a hand-counted visit and an app visit match when they overlap in
-time, after widening the hand-counted one by --tolerance seconds on each side
-(clicks are never exact; a point event becomes a visit of that width). Each
-visit matches at most one: the pair that overlaps longest goes first.
+Matching: a hand-counted visit and a track ID match when they overlap in time, after
+widening the visit by --tolerance seconds on each side (clicks are never exact; a point event
+becomes a visit of that width). Each matches at most one: the pair that overlaps longest goes
+first.
 
-  found (matched)  hand-counted visits the app also found
-  missed           hand-counted visits without an app visit
-  extra            app visits without a hand-counted visit
-  split            hand-counted visits overlapped by 2+ app visits (one insect
-                   counted more than once, e.g. lost behind a petal)
-  merged           app visits overlapping 2+ hand-counted visits (visitors
-                   that followed each other closely, counted as one)
-  precision = found / app visits;  recall = found / hand-counted visits
+  found (matched)  hand-counted visits the app also has a track ID for
+  missed           hand-counted visits without a track ID
+  extra            track IDs without a hand-counted visit (often false detections)
+  split            hand-counted visits overlapped by 2+ track IDs (one insect
+                   followed more than once, e.g. lost behind a petal)
+  merged           track IDs overlapping 2+ hand-counted visits (visitors that
+                   followed each other closely, followed as one)
+  precision = found / track IDs;  recall = found / hand-counted visits
 
 Only clips in the hand count are scored. session.jsonl (clip names before the
 import, clip lengths) and post_tracks.jsonl (which clips were tracked, with
-which tracker) are read from the visits file's folder or the one above; both
+which tracker) are read from the track ID file's folder or the one above; both
 are in the "Share results" file.
 
 Usage:
-  python3 evaluate_visits.py --truth hand_count.csv --app visits.csv
-  python3 evaluate_visits.py --truth boris.tsv --app fps_sweep/visits_*.csv \\
+  python3 evaluate_track_ids.py --truth hand_count.csv --app track_ids.csv
+  python3 evaluate_track_ids.py --truth boris.tsv --app fps_sweep/track_ids_*.csv \\
       --out scores.csv --pairs pairs.csv
 
 --out writes one row per run and clip plus an "ALL" row per run, --pairs one
-row per visit (matched, missed or extra), both tidy for R. A run is one
-visits file; files named visits_<tracker>_<fps>fps.csv (the frame-rate sweep,
-test/fauna_pulse/video_fps_sweep_test.dart) fill the tracker and fps columns.
+row per hand-counted visit and track ID (found, missed or extra), both tidy for R. A run is
+one track ID file; files named track_ids_<tracker>_<fps>fps.csv (the frame-rate sweep,
+test/fauna_pulse/video_fps_sweep_test.dart; visits_… before round 248), optionally ending in
+_new<value> (the sweep's new-track confidence), fill the tracker, fps and new_track columns.
 
 Standard library only (Python 3.8+). Guide: docs/VIDEO_ANALYSIS.md.
 """
@@ -159,9 +164,9 @@ def read_truth(paths, behaviors):
     return visits, watched
 
 
-def find_near(visits_path, name):
-    """name in the visits file's folder or the one above, or None."""
-    folder = Path(visits_path).resolve().parent
+def find_near(app_path, name):
+    """name in the track ID file's folder or the one above, or None."""
+    folder = Path(app_path).resolve().parent
     for f in (folder / name, folder.parent / name):
         if f.is_file():
             return f
@@ -185,22 +190,23 @@ def read_jsonl(path, types):
 
 
 class Run:
-    """One visits file with what is known about its session."""
+    """One track ID file (track_ids.csv, or visits.csv before round 248) with what is known about its session."""
 
     def __init__(self, path):
         self.path = path
         self.name = Path(path).stem
-        m = re.fullmatch(r"visits_([a-z0-9]+)_([0-9.]+)fps", self.name)
+        m = re.fullmatch(r"(?:track_ids|visits)_([a-z0-9]+)_([0-9.]+)fps(?:_new([0-9.]+))?", self.name)
         self.tracker, self.fps = (m.group(1), m.group(2)) if m else ("", "")
+        self.new_track = (m.group(3) or "") if m else ""
         header, rows, _ = read_table(path)
         for need in ("track_id", "clip", "start_s", "end_s"):
             if not column(header, need):
-                raise InputError(f"{path}: not a visits.csv of the app (no '{need}' column)")
-        self.visits = [
+                raise InputError(f"{path}: not a track_ids.csv of the app (no '{need}' column)")
+        self.track_ids = [
             (r["clip"], float(r["start_s"]), float(r["end_s"]), r["track_id"], r.get("class", "")) for r in rows
         ]
         # Every name a clip is known by -> the app's clip name; clip lengths.
-        self.names = {clip_key(v[0]): v[0] for v in self.visits}
+        self.names = {clip_key(v[0]): v[0] for v in self.track_ids}
         self.length_s = {}
         self.tracked = None  # None = unknown
         self.left_out = set()
@@ -222,8 +228,10 @@ class Run:
                 self.left_out = set(s.get("clips_left_out") or [])
                 for c in self.tracked | self.left_out:
                     self.names.setdefault(clip_key(c), c)
-                if not m:  # the app's own visits.csv: label from its tracking run
+                if not m:  # the app's own track_ids.csv: label from its tracking run
                     self.tracker = str((s.get("tracker") or {}).get("algorithm", ""))
+                    high = (s.get("tracker") or {}).get("highThresh")
+                    self.new_track = "" if high is None else f"{high:g}"
                     fps = (s.get("detection_settings") or {}).get("analysis_fps")
                     self.fps = "" if fps is None else f"{fps:g}"
 
@@ -234,19 +242,19 @@ class Run:
             known = ", ".join(sorted(set(self.names.values()))) or "none"
             raise InputError(
                 f"{where}: clip '{clip}' is not one of the app's clips ({known}). Check the name. "
-                "visits.csv lists only clips with a visit, and only the names inside the app: put session.jsonl "
+                "track_ids.csv lists only clips with a track ID, and only the names inside the app: put session.jsonl "
                 "and post_tracks.jsonl (both in the Share results file) next to it to know every clip and its "
                 "name before the import."
             )
         if name in self.left_out:
-            raise InputError(f"{where}: the analysis of clip '{name}' did not finish, so it has no visits yet")
+            raise InputError(f"{where}: the analysis of clip '{name}' did not finish, so it has no track IDs yet")
         if self.tracked is not None and name not in self.tracked:
             raise InputError(f"{where}: clip '{name}' was not tracked in this run")
         return name
 
 
 def natural_key(path):
-    """Sort key that puts visits_x_2fps before visits_x_15fps."""
+    """Sort key that puts track_ids_x_2fps before track_ids_x_15fps."""
     return [float(p) if i % 2 else p for i, p in enumerate(re.split(r"(\d+(?:\.\d+)?)", path))]
 
 
@@ -255,9 +263,9 @@ def overlap(a0, a1, b0, b1):
 
 
 def match_clip(truth, app, tolerance):
-    """Greedy one-to-one matching of one clip's visits by time overlap.
+    """Greedy one-to-one matching of one clip's hand-counted visits and track IDs by time overlap.
 
-    truth: [(start, end, taxon, source)], app: [(start, end, track_id, class)].
+    truth: [(start, end, taxon, source)] (visits), app: [(start, end, track_id, class)] (track IDs).
     Returns (pairs [(ti, ai, overlap_s)], split count, merged count).
     """
     links = []
@@ -299,7 +307,7 @@ def score(counts):
         "split": counts["split"],
         "merged": counts["merged"],
         "true_visit_s": counts["true_s"],
-        "app_visit_s": counts["app_s"],
+        "app_track_s": counts["app_s"],  # "app_visit_s" before round 248
         "mean_duration_error_s": statistics.mean(counts["dur_err"]) if counts["dur_err"] else None,
         "median_start_error_s": statistics.median(counts["start_err"]) if counts["start_err"] else None,
     }
@@ -316,7 +324,7 @@ def evaluate(run, truth, watched, tolerance):
         if length is not None and start > length + 1:
             raise InputError(f"{where}: starts at {start:g} s, after the end of clip '{name}' ({length:g} s)")
         by_clip[name][0].append((start, end, taxon, where))
-    for clip, start, end, track_id, cls in run.visits:
+    for clip, start, end, track_id, cls in run.track_ids:
         if clip in by_clip:
             by_clip[clip][1].append((start, end, track_id, cls))
 
@@ -324,7 +332,7 @@ def evaluate(run, truth, watched, tolerance):
     total = {k: 0 for k in keys}
     total.update(dur_err=[], start_err=[])
     scores, pairs = [], []
-    label = {"run": run.name, "tracker": run.tracker, "fps": run.fps}
+    label = {"run": run.name, "tracker": run.tracker, "fps": run.fps, "new_track": run.new_track}
     for clip in sorted(by_clip):
         t, a = by_clip[clip]
         t.sort(key=lambda v: v[0])
@@ -394,11 +402,14 @@ def write_csv(path, rows):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--truth", nargs="+", required=True, help="hand count: CSV or BORIS aggregated events export")
-    ap.add_argument("--app", nargs="+", required=True, help="the app's visits.csv (one or more runs; wildcards work)")
+    ap.add_argument(
+        "--app", nargs="+", required=True,
+        help="the app's track_ids.csv (visits.csv before round 248; one or more runs; wildcards work)",
+    )
     ap.add_argument("--tolerance", type=float, default=0.5, help="seconds added on each side of a hand-counted visit (0.5)")
     ap.add_argument("--behavior", action="append", help="BORIS: only these behaviors count as visits (repeatable)")
     ap.add_argument("--out", help="write the scores (per run and clip) to this CSV")
-    ap.add_argument("--pairs", help="write every visit (found, missed, extra) to this CSV")
+    ap.add_argument("--pairs", help="write every hand-counted visit and track ID (found, missed, extra) to this CSV")
     args = ap.parse_args(argv)
     apps = [p for pattern in args.app for p in (sorted(glob.glob(os.path.expanduser(pattern)), key=natural_key) or [pattern])]
     try:
@@ -410,12 +421,12 @@ def main(argv=None):
             all_scores += scores
             all_pairs += pairs
             s = scores[-1]
-            unscored = {v[0] for v in run.visits} - {r["clip"] for r in scores}
+            unscored = {v[0] for v in run.track_ids} - {r["clip"] for r in scores}
             print(
-                f"{run.name}: {len(scores) - 1} clip(s), hand count {s['n_true']}, app {s['n_app']}: "
+                f"{run.name}: {len(scores) - 1} clip(s), hand-counted visits {s['n_true']}, track IDs {s['n_app']}: "
                 f"found {s['found']} (recall {fmt(s['recall'])}), missed {s['missed']}, "
                 f"extra {s['extra']} (precision {fmt(s['precision'])}), split {s['split']}, merged {s['merged']}"
-                + (f"; {len(unscored)} clip(s) with app visits not in the hand count, not scored" if unscored else "")
+                + (f"; {len(unscored)} clip(s) with track IDs not in the hand count, not scored" if unscored else "")
             )
     except (InputError, OSError) as e:
         sys.exit(f"Error: {e}")

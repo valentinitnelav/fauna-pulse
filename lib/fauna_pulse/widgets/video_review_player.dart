@@ -480,8 +480,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             const Text(
-              'Live AI: the boxes found while recording (the session\'s visits). AI afterwards: '
-              '"Run AI on videos" on these clips, with its own visit numbers. Switch at any moment '
+              'Live AI: the boxes found while recording (the session\'s track IDs). AI afterwards: '
+              '"Run AI on videos" on these clips, with its own track ID numbers. Switch at any moment '
               'to compare the same frames.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -519,13 +519,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             Text(
-              'Track IDs: the boxes "Find visits" linked from frame to frame into track IDs. A new '
+              'Track IDs: the boxes "Find track IDs" linked from frame to frame into track IDs. A new '
               'track ID starts only from a box the AI is at least '
               '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
               'confidence"); weaker boxes can only continue one. All AI boxes: what the AI detected at '
               'the confidence threshold, before any tracking. An insect with boxes here but no '
               'track ID was probably never that sure: lower "New-track confidence" (camera Settings → '
-              'AI → Visit tracking → Advanced) and run "Find visits" again. The AI does not need to '
+              'AI → Tracking → Advanced) and run "Find track IDs" again. The AI does not need to '
               'run again for that.',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -539,7 +539,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 style: TextStyle(color: Colors.white70, fontSize: 12),
                 children: [
                   TextSpan(text: '| ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  TextSpan(text: 'a white tick under the time bar: a frame kept for a visit (see Kept frames below).'),
+                  TextSpan(text: 'a white tick under the time bar: a frame kept for a track ID (see Kept frames below).'),
                 ],
               ),
             ),
@@ -551,10 +551,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               label: 'Compare with the AI afterwards',
               labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               helperText:
-                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find visits" '
-                  'there links the boxes into visits. Then "AI afterwards" above shows those boxes on '
+                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find track IDs" '
+                  'there links the boxes into track IDs. Then "AI afterwards" above shows those boxes on '
                   'the same frames, for example to see whether the live AI missed insects while the '
-                  'phone was hot or the motion gate slept. The session\'s own visits stay the live AI\'s.',
+                  'phone was hot or the motion gate slept. The session\'s own track IDs stay the live AI\'s.',
             ),
             const SizedBox(height: 4),
             Align(
@@ -577,18 +577,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
-                    'be stopped and continued; keep the phone charging. "Find visits" there then '
-                    'follows each insect from frame to frame, and the boxes and visits show on the '
+                    'be stopped and continued; keep the phone charging. "Find track IDs" there then '
+                    'follows each insect from frame to frame, and the boxes and track IDs show on the '
                     'video here.',
               )
             else if (_files.isEmpty)
               const HelpLabel(
-                label: 'Other visit settings?',
+                label: 'Other track ID settings?',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'The videos were deleted to free storage, so they cannot be analysed again. '
-                    '"Run AI on videos" can still find the visits again from the saved boxes, for '
-                    'example with another occlusion tolerance or minimum visit length.',
+                    '"Run AI on videos" can still find the track IDs again from the saved boxes, for '
+                    'example with another occlusion tolerance or minimum track length.',
               )
             else
               const HelpLabel(
@@ -596,8 +596,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'Opens "Run AI on videos" for this session. There you can move or resize the '
-                    'square, analyse the videos again and then press "Find visits". The new boxes '
-                    'and visits replace the ones shown here.',
+                    'square, analyse the videos again and then press "Find track IDs". The new boxes '
+                    'and track IDs replace the ones shown here.',
               ),
             const SizedBox(height: 4),
             Align(
@@ -640,12 +640,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     final b = _timeline.clips[name];
     if (!_files.contains(name)) {
       // Its visits stay (round 236).
-      final v = b != null && b.tracked ? '${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}, ' : '';
+      final v = b != null && b.tracked ? '${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}, ' : '';
       return ' · ${v}video deleted';
     }
     if (b == null) return ' · not analysed';
     if (!b.done) return ' · analysed in part';
-    if (b.tracked) return ' · ${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}';
+    if (b.tracked) return ' · ${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}';
     return '';
   }
 
@@ -658,7 +658,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       note = at == null
           ? 'The video file of this clip is no longer on the phone.'
           : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
-                'free storage. Its boxes, visits and kept frames stay; only the video cannot be played.';
+                'free storage. Its boxes, track IDs and kept frames stay; only the video cannot be played.';
     } else if (_timeline.live) {
       if (boxes == null || boxes.visits.isEmpty) note = 'The live AI found no insect during this clip.';
     } else if (boxes == null) {
@@ -669,16 +669,16 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       note = 'The analysis of this clip stopped${last == null ? '' : ' at ${_time(last)}'}; '
           'boxes end there. "Run AI on videos" continues it.';
     } else if (_timeline.visitsStale) {
-      note = 'The videos were analysed again after "Find visits", so the visits no longer match. '
-          'The button below opens "Run AI on videos", where "Find visits" updates them. Until '
+      note = 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
+          'The button below opens "Run AI on videos", where "Find track IDs" updates them. Until '
           'then all AI boxes are shown.';
     } else if (!boxes.tracked) {
       note = _timeline.hasVisits
-          ? '"Find visits" ran before this clip was analysed. The button below opens "Run AI on '
-                'videos", where "Find visits" adds this clip\'s visits. Until then all AI boxes '
+          ? '"Find track IDs" ran before this clip was analysed. The button below opens "Run AI on '
+                'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all AI boxes '
                 'are shown.'
-          : 'No visits yet: "Find visits" on "Run AI on videos" (button below) links the boxes '
-                'of each insect into visits. Until then all AI boxes are shown.';
+          : 'No track IDs yet: "Find track IDs" on "Run AI on videos" (button below) links the boxes '
+                'of each insect into track IDs. Until then all AI boxes are shown.';
     }
     if (note == null) return const [];
     return [
@@ -804,7 +804,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
-              tooltip: 'Previous visit',
+              tooltip: 'Previous track ID',
               onPressed: hasVisits ? () => _jumpVisit(boxes, next: false) : null,
               icon: const Icon(Icons.skip_previous),
             ),
@@ -824,7 +824,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               icon: const Icon(Icons.forward_5),
             ),
             IconButton(
-              tooltip: 'Next visit',
+              tooltip: 'Next track ID',
               onPressed: hasVisits ? () => _jumpVisit(boxes, next: true) : null,
               icon: const Icon(Icons.skip_next),
             ),
@@ -903,7 +903,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               ],
             ),
             Text(
-              '${_timeline.live ? 'Found by the live AI. ' : ''}Some track IDs can be false detections (a '
+              '${_timeline.live ? 'Found by the live AI. ' : ''}A track ID usually stands for one visit in '
+              'pollination ecology, but some can be false detections (a '
               'leaf, a shadow, a blur): how well the AI does depends on how much these videos look like '
               'what it learned from. ${boxes.visits.isEmpty ? '' : _trackListOpen ? 'Tap a track ID below to watch it from 1 s before it starts.' : 'Tap to list them with their times.'}',
               style: const TextStyle(color: Colors.white70, fontSize: 12),

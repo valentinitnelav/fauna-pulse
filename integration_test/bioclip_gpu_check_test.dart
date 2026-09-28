@@ -114,7 +114,7 @@ void main() {
         IdentificationPaths(dir).summaryJson(stemOf(pack.path.split('/').last)).readAsStringSync(),
       ) as Map;
       _log('IDENTIFY ${info.accelerator}: ${res.embedded} crops in ${res.elapsed.inMilliseconds / 1000} s, '
-          '${summary['tracks_total']} track ids');
+          '${summary['tracks_total']} track IDs');
       return (vectors, summary, res);
     }
 

@@ -86,7 +86,7 @@ Future<void> _analyse(Directory dir, List<double> roi, {bool startOver = false})
   await yolo.dispose();
   expect(run.clipsFailed, 0);
   final tracks = await VideoTracker.run(dir, const SessionConfig());
-  _log('ANALYSED ${model.split('/').last} roi=$roi frames=${run.framesAnalysed} in ${run.elapsed.inSeconds} s, visits=${tracks.visits}');
+  _log('ANALYSED ${model.split('/').last} roi=$roi frames=${run.framesAnalysed} in ${run.elapsed.inSeconds} s, track IDs=${tracks.visits}');
 }
 
 void main() {
@@ -136,7 +136,7 @@ void main() {
     var timeline = VideoBoxTimeline.readSync(dir.path);
     for (final e in timeline.clips.entries) {
       _log('TIMELINE ${e.key}: ${e.value.analysedFrames} frames, hold ${e.value.holdMs} ms, '
-          'visits ${e.value.visits.map((v) => '#${v.trackId} ${v.startMs}-${v.endMs} ${v.className}').join(', ')}');
+          'track IDs ${e.value.visits.map((v) => '#${v.trackId} ${v.startMs}-${v.endMs} ${v.className}').join(', ')}');
     }
 
     // 2. The summary's Video tab.
@@ -212,13 +212,13 @@ void main() {
       // Paused inside the first visit (or on the first frame with a box).
       final visit = boxes.visits.isEmpty ? null : boxes.visits.first;
       if (visit != null) {
-        await tapTooltip('Next visit');
+        await tapTooltip('Next track ID');
         await tapTooltip('Play');
         await tester.pump(Duration(milliseconds: 1000 + (visit.endMs - visit.startMs) ~/ 2));
         await tapTooltip('Pause');
         await tester.pump(const Duration(milliseconds: 600));
         final at = player().position.inMilliseconds;
-        _log('PAUSED $name at $at ms (visit #${visit.trackId} ${visit.startMs}-${visit.endMs}): '
+        _log('PAUSED $name at $at ms (track ID #${visit.trackId} ${visit.startMs}-${visit.endMs}): '
             'tracked ${boxes.trackedAt(at).map(_box).join('; ')} | raw ${boxes.rawAt(at).map(_box).join('; ')}');
       } else {
         _log('NO VISIT in $name');
@@ -237,7 +237,7 @@ void main() {
         await scrollTo(find.textContaining('A new track ID starts only'), 200);
         _log('SHOT ${i}_all_boxes_note');
         await tester.pump(const Duration(seconds: 4));
-        await scrollTo(find.textContaining('Some track IDs can be false detections'), 200);
+        await scrollTo(find.textContaining('can be false detections'), 200);
         _log('SHOT ${i}_track_list_folded');
         await tester.pump(const Duration(seconds: 4));
         // The switch is above the list now.
@@ -315,7 +315,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await scrollTo(find.byType(VideoPlayer), -300);
     final shown = timeline.clips[names.last]!;
-    _log('AFTER re-analysis ${names.last}: ${shown.visits.length} visits, area ${shown.areaFor(player().aspectRatio)}');
+    _log('AFTER re-analysis ${names.last}: ${shown.visits.length} track IDs, area ${shown.areaFor(player().aspectRatio)}');
     if (shown.visits.isNotEmpty) {
       // Below the player: scroll to it (the lazy list builds it only near the screen).
       await tester.scrollUntilVisible(find.text('Track IDs in this clip (${shown.visits.length})'), 200, scrollable: list);
@@ -331,7 +331,7 @@ void main() {
         home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1),
       ),
     );
-    await waitFor(find.textContaining('Visit timeline'));
+    await waitFor(find.textContaining('Track ID timeline'));
     final graphs = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
       skipOffstage: true,

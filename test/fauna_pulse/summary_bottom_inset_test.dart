@@ -101,10 +101,10 @@ Future<void> pumpSummaryGraphs(WidgetTester tester, File log) async {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump();
-    if (find.textContaining('Visit timeline').evaluate().isNotEmpty) break;
+    if (find.textContaining('Track ID timeline').evaluate().isNotEmpty) break;
   }
   expect(
-    find.textContaining('Visit timeline'),
+    find.textContaining('Track ID timeline'),
     findsWidgets,
     reason: 'graphs content never appeared — fixture/load problem',
   );

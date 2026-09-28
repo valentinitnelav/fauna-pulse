@@ -1,9 +1,10 @@
-// Round 230 (video plan 1d): which analysis rate is enough to count visits?
-// Analyse the videos once at a high rate, then re-run "Find visits" (the
-// app's own VideoTracker) on the frames a lower rate would have looked at,
-// for both trackers. Each run's visits.csv lands in the output folder, named
-// visits_<tracker>_<fps>fps.csv, for tool/video_eval/evaluate_visits.py to
-// compare with a hand count (docs/VIDEO_ANALYSIS.md, "Which frame rate?").
+// Round 230 (video plan 1d): which analysis rate is enough to count the track IDs (in
+// pollination ecology: visits)? Analyse the videos once at a high rate, then re-run "Find
+// track IDs" (the app's own VideoTracker) on the frames a lower rate would have looked at,
+// for both trackers. Each run's track_ids.csv lands in the output folder, named
+// track_ids_<tracker>_<fps>fps.csv (visits_… before round 248), for
+// tool/video_eval/evaluate_track_ids.py to compare with a hand count
+// (docs/VIDEO_ANALYSIS.md, "Which frame rate?").
 //
 //   flutter test test/fauna_pulse/video_fps_sweep_test.dart \
 //       --dart-define=SWEEP_SESSION=/absolute/path/to/session_folder \
@@ -18,7 +19,7 @@
 // The session folder is a copy of the phone's session folder or the unzipped
 // "Share results" file (it needs video_detections.jsonl and session.jsonl).
 // The output folder defaults to <session>/fps_sweep. The occlusion tolerance
-// and minimum visit length are those of the session's last "Find visits"
+// and minimum track length are those of the session's last "Find track IDs"
 // (the app defaults when it has none). Without SWEEP_SESSION this file only
 // runs its unit tests.
 
@@ -136,8 +137,8 @@ void main() {
       // ignore: avoid_print
       print(
         'Analysed at ${analysedFps ?? '?'} fps; occlusion tolerance ${config.occlusionSeconds} s, '
-        'minimum visit length ${config.minHitsSeconds} s.\n'
-        'tracker         fps  frames  visits',
+        'minimum track length ${config.minHitsSeconds} s.\n'
+        'tracker         fps  frames  track IDs',
       );
       for (final fps in rates) {
         if (analysedFps != null && fps > analysedFps) {
@@ -158,7 +159,7 @@ void main() {
               );
               final r = await VideoTracker.run(tmp, c);
               final suffix = high == null ? '' : '_new$high';
-              File('${tmp.path}/${TrackExport.visitsFileName}').copySync('${out.path}/visits_${alg.name}_${fpsLabel}fps$suffix.csv');
+              File('${tmp.path}/${TrackExport.visitsFileName}').copySync('${out.path}/track_ids_${alg.name}_${fpsLabel}fps$suffix.csv');
               final label = high == null ? alg.name : '${alg.name}@$high';
               // ignore: avoid_print
               print('${label.padRight(14)} ${fpsLabel.padLeft(4)}  ${'${r.frames}'.padLeft(6)}  ${'${r.visits}'.padLeft(6)}');
@@ -169,7 +170,7 @@ void main() {
         }
       }
       // ignore: avoid_print
-      print('visits_<tracker>_<fps>fps.csv written to ${out.path}');
+      print('track_ids_<tracker>_<fps>fps.csv written to ${out.path}');
     },
     skip: sessionPath.isEmpty ? 'no SWEEP_SESSION defined' : false,
     timeout: const Timeout(Duration(minutes: 30)),

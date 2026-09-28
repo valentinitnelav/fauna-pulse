@@ -359,7 +359,7 @@ void main() {
           ),
         ),
       );
-      await pumpUntilFound(tester, find.textContaining('Visit timeline'));
+      await pumpUntilFound(tester, find.textContaining('Track ID timeline'));
 
       final scrollable = find.descendant(
         of: find.byType(ListView).first,

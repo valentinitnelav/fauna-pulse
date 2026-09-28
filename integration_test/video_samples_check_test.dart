@@ -197,7 +197,7 @@ void main() {
     final csv = utf8.decode(zipped!.content as List<int>);
     expect(csv, samples.toCsv());
     File('${out.path}/${VideoRunSamples.csvFileName}').writeAsStringSync(csv);
-    _log('ZIP visits ${tracks.visits}, ${VideoRunSamples.csvFileName} ${csv.split('\n').length - 2} rows');
+    _log('ZIP track IDs ${tracks.visits}, ${VideoRunSamples.csvFileName} ${csv.split('\n').length - 2} rows');
     _log('CSV\n$csv');
 
     // 5. The summary's Graphs tab, extra graphs open (the phone's own

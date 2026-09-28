@@ -1,7 +1,7 @@
 # Architecture
 
 **Who this is for:** a new developer joining the project. It explains how a
-camera frame becomes a logged visit, where the native (Kotlin) and Dart sides
+camera frame becomes a logged track ID, where the native (Kotlin) and Dart sides
 meet, and which pieces must be kept in sync. For per-directory file summaries,
 see [`lib/fauna_pulse/README.md`](../lib/fauna_pulse/README.md); for current
 defaults and invariants, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md).

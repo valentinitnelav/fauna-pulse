@@ -29,7 +29,7 @@ SessionDashboardStats session({
 
 void main() {
   group('aggregateDashboard', () {
-    test('sums visits, buckets by local hour, finds the busiest hour', () {
+    test('sums track IDs, buckets by local hour, finds the busiest hour', () {
       final s1 = session(
         startMs: localMs(2026, 7, 1, 9),
         endMs: localMs(2026, 7, 1, 11),
@@ -253,7 +253,7 @@ void main() {
           ].join('\n')}\n',
         );
 
-    test('imported videos count once visits were found afterwards', () async {
+    test('imported videos count once track IDs were found afterwards', () async {
       writeLog(tmp, [importedStart(1000), end(3600000)]);
       final before = await DashboardStatsCache.forSession(tmp);
       expect(before.aiMode, isFalse);
@@ -271,7 +271,7 @@ void main() {
       expect(aggregateDashboard([after]).totalRecordedMs, 60000);
     });
 
-    test('running "Find visits" again invalidates the cache', () async {
+    test('running "Find track IDs" again invalidates the cache', () async {
       writeLog(tmp, [importedStart(1000), end(9000)]);
       writePost([detections(2000, [1])]);
       expect((await DashboardStatsCache.forSession(tmp)).visits, hasLength(1));

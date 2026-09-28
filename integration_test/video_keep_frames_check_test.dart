@@ -139,8 +139,8 @@ void main() {
         if (l.startsWith('{"type":"track_event"')) ((jsonDecode(l) as Map)['track_id'] as num).toInt(),
     };
     final withFrame = {for (final k in kept) ...k.trackIds};
-    _log('FIND VISITS ${track.visits} visits, ${track.keptFrames} frames kept '
-        '(at most ${track.visits * 11}), track ids with a frame ${withFrame.length}, in ${_ms(track.elapsed)}');
+    _log('FIND VISITS ${track.visits} track IDs, ${track.keptFrames} frames kept '
+        '(at most ${track.visits * 11}), track IDs with a frame ${withFrame.length}, in ${_ms(track.elapsed)}');
     expect(track.visits, greaterThan(0), reason: 'the clips must show an insect');
     expect(kept, hasLength(track.keptFrames));
     expect(track.keptFrames, lessThanOrEqualTo(track.visits * 11));
@@ -286,7 +286,7 @@ void main() {
       var (res, summary) = await identify();
       final runId = (await VideoTracker.readSummary(dir))!.runId;
       _log('IDENTIFY ${info.accelerator}: ${res.planned} crops planned, ${res.embedded} embedded, '
-          '${res.skipped} skipped in ${res.elapsed.inSeconds} s; ${summary['tracks_total']} track ids, '
+          '${res.skipped} skipped in ${res.elapsed.inSeconds} s; ${summary['tracks_total']} track IDs, '
           'capture ${summary['capture']}');
       for (final t in (summary['tracks'] as List).take(10)) {
         _log('  #${t['track_id']} ${t['headline']} (${t['identified_rank']}) p=${t['p']} crops=${t['n_crops']}');
@@ -315,7 +315,7 @@ void main() {
       _log('RESCORE AFTER FINDING AGAIN: $refused');
       expect(refused, isA<StateError>());
       final list = await openSummary();
-      final stale = find.textContaining('The visits were found again since identification ran');
+      final stale = find.textContaining('The track IDs were found again since identification ran');
       await tester.scrollUntilVisible(stale, 300, scrollable: list);
       await tester.ensureVisible(stale);
       await shot('keep_stale_identification');
@@ -342,7 +342,7 @@ void main() {
     await waitFor(find.text('Show in video'));
     if (identified) {
       // Identified again for these visits: the frames carry the answers.
-      expect(find.textContaining('The visits were found again since identification ran'), findsNothing);
+      expect(find.textContaining('The track IDs were found again since identification ran'), findsNothing);
       await tester.scrollUntilVisible(find.text('Identified'), 200, scrollable: list);
       _log('LABEL ${(tester.widget<Text>(find.descendant(of: find.ancestor(of: find.text('Identified'), matching: find.byType(Row)).first, matching: find.byType(Text)).last)).data}');
       await tester.scrollUntilVisible(find.text('Kept frames'), -300, scrollable: list);

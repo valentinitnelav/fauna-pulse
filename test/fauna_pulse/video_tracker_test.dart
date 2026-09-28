@@ -80,7 +80,7 @@ void main() {
   const config = SessionConfig(); // occlusion 3 s, minimum visit 0.2 s
 
   group('VideoTracker.run', () {
-    test('one insect gives one visit, and every file is written', () async {
+    test('one insect gives one track ID, and every file is written', () async {
       final lines = [
         _runStart(),
         ..._clip(
@@ -131,7 +131,7 @@ void main() {
       expect(recs.first['clips_left_out'], isEmpty);
       expect(recs.first['tracker']['algorithm'], config.trackerAlgorithm.name);
       expect(recs.last['type'], 'post_track_end');
-      expect(recs.last['visits'], 1);
+      expect(recs.last['track_ids'], 1);
       expect(recs.last['frames'], 101);
 
       // Shaped like a live session log, stamped with the frame's own time.
@@ -164,7 +164,7 @@ void main() {
       expect(summary.algorithm, config.trackerAlgorithm.name);
     });
 
-    test('a gap longer than the occlusion tolerance makes two visits', () async {
+    test('a gap longer than the occlusion tolerance makes two track IDs', () async {
       final dir = _session([
         _runStart(),
         ..._clip(
@@ -185,7 +185,7 @@ void main() {
       expect(rows.map((r) => r[8]), ['bee', 'fly']); // names from video_clip_done
     });
 
-    test('a gap shorter than the occlusion tolerance keeps one visit (both trackers)', () async {
+    test('a gap shorter than the occlusion tolerance keeps one track ID (both trackers)', () async {
       for (final alg in TrackerAlgorithm.values) {
         final dir = _session([
           _runStart(),
@@ -326,7 +326,7 @@ void main() {
       expect(await VideoTracker.writeResultsZip(dir.path, zipPath), zipPath);
       final names = ZipDecoder().decodeBytes(File(zipPath).readAsBytesSync()).files.map((f) => f.name);
       expect(names, [
-        'visits.csv',
+        'track_ids.csv',
         'post_tracks.jsonl',
         'video_detections.jsonl',
         'session.jsonl',
@@ -335,8 +335,27 @@ void main() {
     });
   });
 
+  test('round 248: the summary reads track_ids, and a file written before with visits', () async {
+    final dir = Directory.systemTemp.createTempSync('track_ids_names_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final start = jsonEncode({
+      'type': 'post_track_start',
+      'clips': ['a.mp4'],
+      'occlusion_seconds': 3.0,
+      'min_hits_seconds': 0.2,
+      'tracker': {'algorithm': 'bytetrack', 'highThresh': 0.5},
+    });
+    final file = File('${dir.path}/${VideoTracker.outputFileName}');
+    file.writeAsStringSync('$start\n${jsonEncode({'type': 'post_track_end', 'track_ids': 4})}\n');
+    expect((await VideoTracker.readSummary(dir))!.visits, 4);
+    expect((await VideoTracker.readSummary(dir))!.newTrackConfidence, 0.5);
+    file.writeAsStringSync('$start\n${jsonEncode({'type': 'post_track_end', 'visits': 3})}\n');
+    expect((await VideoTracker.readSummary(dir))!.visits, 3);
+    expect(TrackExport.visitsFileName, 'track_ids.csv');
+  });
+
   group('TrackExport', () {
-    test('visits.csv: sorted by id, times from the clip start, quoted cells', () {
+    test('track_ids.csv: sorted by id, times from the clip start, quoted cells', () {
       final a = VideoVisit(trackId: 2, clip: 'b, 2.mp4', clipStartMs: s0, firstSeenMs: s0 + 1500)
         ..lastSeenMs = s0 + 4250
         ..addFrame(0.8, 'fly')

@@ -64,7 +64,7 @@ const _keep = KeepFramesSettings(stepSeconds: 1, durationSeconds: 10);
 void main() {
   const config = SessionConfig();
 
-  test('the clips without any visit, and all clips', () async {
+  test('the clips without any track ID, and all clips', () async {
     final dir = _session(
       [
         ..._clip('a.mp4', insectAt: (t) => t >= 2000 && t <= 5000),
@@ -87,7 +87,7 @@ void main() {
     expect(all.deleteBytes, 1000);
   });
 
-  test('a visit running on into the next clip keeps that clip', () async {
+  test('a track ID running on into the next clip keeps that clip', () async {
     // Back to back: b starts where a ends, the insect sits across the cut.
     final dir = _session(
       [
@@ -102,7 +102,7 @@ void main() {
     expect((await ClipCleanup.planWithoutVisits(dir)).deleteNames, ['c.mp4']);
   });
 
-  test('deleting writes a record; visits and kept frames stay', () async {
+  test('deleting writes a record; track IDs and kept frames stay', () async {
     final dir = _session(
       [
         ..._clip('a.mp4', insectAt: (t) => t >= 2000 && t <= 5000),
@@ -133,13 +133,13 @@ void main() {
       for (final l in File('${dir.path}/session.jsonl').readAsLinesSync())
         if (l.contains('"video_cleanup"')) (jsonDecode(l) as Map).cast<String, dynamic>(),
     ];
-    expect([for (final r in records) r['mode']], ['without_visits', 'all']);
+    expect([for (final r in records) r['mode']], ['without_track_ids', 'all']);
     expect([for (final r in records) r['clips']], [
       ['b.mp4'],
       ['a.mp4'],
     ]);
     expect([for (final r in records) r['freed_bytes']], [200, 100]);
-    expect(records.first['visits_run_id'], runId);
+    expect(records.first['track_ids_run_id'], runId);
     expect(records.first['time_iso'], isA<String>());
     final lines = File('${dir.path}/session.jsonl').readAsLinesSync();
     expect(lines[1], contains('"end_of_session"'));

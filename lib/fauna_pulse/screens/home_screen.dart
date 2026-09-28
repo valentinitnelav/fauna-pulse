@@ -1498,7 +1498,7 @@ class AboutFaunaPulseDialog extends StatelessWidget {
               'into an AI-powered wildlife camera. Place the square region '
               'of interest over a flower, feeding site or nest entrance: '
               'FaunaPulse detects, tracks and photographs visiting animals '
-              'fully on-device (no internet needed) and logs every visit '
+              'fully on-device (no internet needed) and logs every track ID '
               'with timestamps, so visitation rates can be computed '
               'afterwards in R or Python. Its first use case is '
               'flower-visiting insects, which needs a purpose-trained '
