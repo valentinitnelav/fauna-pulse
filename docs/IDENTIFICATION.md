@@ -284,9 +284,11 @@ to leave running on the charger. `identify_start` records `accelerator`, `gpu_no
 loading (and in the "Last run" card) instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
 thread pool, so it does change how the matrix maths is spread; whether more threads are
 faster on a given phone is an empirical question. **Test speed** (Run section) loads the
-model with the current settings, embeds 8 of the session's own crops after a warm-up and
-reports seconds per crop, so GPU on/off and thread counts can be compared in a minute
-each; the app does not claim a speed it has not measured.
+model with the current settings, embeds 10 of the session's own crops after a warm-up, one
+at a time with a progress line ("Crop 3 of 10, about 40 s left"; round 247, was 8 in one
+call with no feedback), and reports seconds per crop, so GPU on/off and thread counts can
+be compared in a minute each (a few minutes on an older phone's CPU); the app does not
+claim a speed it has not measured.
 
 Round 226 measured the thread count for the BioCLIP-2 image tower (fp16) on the Xiaomi
 with the engine benchmark (`integration_test/cpu_threads_check_test.dart`, 3 runs per

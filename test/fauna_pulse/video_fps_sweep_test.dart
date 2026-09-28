@@ -8,7 +8,12 @@
 //   flutter test test/fauna_pulse/video_fps_sweep_test.dart \
 //       --dart-define=SWEEP_SESSION=/absolute/path/to/session_folder \
 //       [--dart-define=SWEEP_FPS=15,10,5,2,1] \
-//       [--dart-define=SWEEP_OUT=/absolute/path/to/output_folder]
+//       [--dart-define=SWEEP_OUT=/absolute/path/to/output_folder] \
+//       [--dart-define=SWEEP_HIGH=0.5,0.4,0.3,0.25]
+//
+// SWEEP_HIGH (round 247) also varies ByteTrack's new-track confidence (`highThresh`, 0.5 by
+// default): boxes below it never start a track, so an insect the model only sees at 0.3 is
+// lost even with the confidence threshold at 0.25. Files then end in _new<value>.csv.
 //
 // The session folder is a copy of the phone's session folder or the unzipped
 // "Share results" file (it needs video_detections.jsonl and session.jsonl).
@@ -118,6 +123,11 @@ void main() {
           .split(',')
           .map((s) => double.parse(s.trim()))
           .toList();
+      final highs = const String.fromEnvironment('SWEEP_HIGH')
+          .split(',')
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) => double.parse(s.trim()))
+          .toList();
       final outPath = const String.fromEnvironment('SWEEP_OUT');
       final out = Directory(outPath.isEmpty ? '${session.path}/fps_sweep' : outPath)..createSync(recursive: true);
       final log = File('${session.path}/session.jsonl');
@@ -127,7 +137,7 @@ void main() {
       print(
         'Analysed at ${analysedFps ?? '?'} fps; occlusion tolerance ${config.occlusionSeconds} s, '
         'minimum visit length ${config.minHitsSeconds} s.\n'
-        'tracker     fps  frames  visits',
+        'tracker         fps  frames  visits',
       );
       for (final fps in rates) {
         if (analysedFps != null && fps > analysedFps) {
@@ -137,15 +147,24 @@ void main() {
         }
         final fpsLabel = fps == fps.roundToDouble() ? fps.toInt().toString() : '$fps';
         for (final alg in TrackerAlgorithm.values) {
-          final tmp = Directory.systemTemp.createTempSync('fps_sweep_');
-          try {
-            File('${tmp.path}/${VideoDetector.outputFileName}').writeAsStringSync('${thinVideoDetections(lines, fps).join('\n')}\n');
-            final r = await VideoTracker.run(tmp, config.copyWith(trackerAlgorithm: alg));
-            File('${tmp.path}/${TrackExport.visitsFileName}').copySync('${out.path}/visits_${alg.name}_${fpsLabel}fps.csv');
-            // ignore: avoid_print
-            print('${alg.name.padRight(10)} ${fpsLabel.padLeft(4)}  ${'${r.frames}'.padLeft(6)}  ${'${r.visits}'.padLeft(6)}');
-          } finally {
-            tmp.deleteSync(recursive: true);
+          final variants = alg == TrackerAlgorithm.bytetrack && highs.isNotEmpty ? highs : const <double?>[null];
+          for (final high in variants) {
+            final tmp = Directory.systemTemp.createTempSync('fps_sweep_');
+            try {
+              File('${tmp.path}/${VideoDetector.outputFileName}').writeAsStringSync('${thinVideoDetections(lines, fps).join('\n')}\n');
+              final c = config.copyWith(
+                trackerAlgorithm: alg,
+                trackerParams: high == null ? null : config.trackerParams.copyWith(highThresh: high),
+              );
+              final r = await VideoTracker.run(tmp, c);
+              final suffix = high == null ? '' : '_new$high';
+              File('${tmp.path}/${TrackExport.visitsFileName}').copySync('${out.path}/visits_${alg.name}_${fpsLabel}fps$suffix.csv');
+              final label = high == null ? alg.name : '${alg.name}@$high';
+              // ignore: avoid_print
+              print('${label.padRight(14)} ${fpsLabel.padLeft(4)}  ${'${r.frames}'.padLeft(6)}  ${'${r.visits}'.padLeft(6)}');
+            } finally {
+              tmp.deleteSync(recursive: true);
+            }
           }
         }
       }

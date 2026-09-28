@@ -35,6 +35,10 @@ import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
 
+/// Crops timed by "Test speed" (round 247; was 8, the job's batch size, which the owner found
+/// arbitrary). Any count works: the model runs one crop at a time.
+const int kSpeedTestCrops = 10;
+
 class IdentificationScreen extends StatefulWidget {
   final Directory sessionDir;
   const IdentificationScreen({super.key, required this.sessionDir});
@@ -69,6 +73,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   String? _accelNote;
   bool _testingSpeed = false;
   String? _speedResult;
+
+  /// While "Test speed" runs: the share of timed crops done (0 = not counting yet) and what it
+  /// is doing (round 247).
+  (double, String)? _speedProgress;
 
   /// The stored crops carry visit numbers of an earlier "Find visits" run.
   bool _visitsChanged = false;
@@ -392,11 +400,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     setState(() {
       _testingSpeed = true;
       _speedResult = null;
+      _speedProgress = (0, 'Loading the model (up to half a minute the first time)…');
     });
-    const n = 8;
+    // Round 247: 10 crops, one per call, so the screen can count them (the model runs one crop
+    // at a time anyway; the job's batches of 8 only group the calls).
+    const n = kSpeedTestCrops;
     try {
       final tasks = await IdentificationJob.planSession(widget.sessionDir, maxCropsPerTrack: prefs.maxCropsPerTrack);
       final info = await ImageEmbedder.load(model.path, useGpu: prefs.useGpu, cpuThreads: prefs.cpuThreads);
+      if (mounted) setState(() => _speedProgress = (0, 'Cutting the crops…'));
       final rgb = <Uint8List>[];
       for (final t in tasks) {
         if (rgb.length >= n) break;
@@ -415,9 +427,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         }
       }
       if (rgb.isEmpty) throw Exception('no crops large enough to test');
+      if (mounted) setState(() => _speedProgress = (0, 'Warm-up crop (not timed)…'));
       await ImageEmbedder.embed([rgb.first]); // warm-up (first run pays one-off costs)
       final sw = Stopwatch()..start();
-      await ImageEmbedder.embed(rgb);
+      for (var i = 0; i < rgb.length; i++) {
+        if (mounted) {
+          final left = i == 0 ? '' : ', about ${(sw.elapsedMilliseconds / i * (rgb.length - i) / 1000).ceil()} s left';
+          setState(() => _speedProgress = (i / rgb.length, 'Crop ${i + 1} of ${rgb.length}$left'));
+        }
+        await ImageEmbedder.embed([rgb[i]]);
+      }
       final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
       final auto = prefs.cpuThreads == 0, used = info.cpuThreads;
       final threads = used == null ? (auto ? 'automatic' : '${prefs.cpuThreads}') : '${auto ? 'automatic: ' : ''}$used';
@@ -438,7 +457,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         logSwallowed('identify_close', e);
       }
     }
-    if (mounted) setState(() => _testingSpeed = false);
+    if (mounted) {
+      setState(() {
+        _testingSpeed = false;
+        _speedProgress = null;
+      });
+    }
   }
 
   /// Scores the stored embeddings again with the selected pack (no model run).
@@ -736,7 +760,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                   : 'runs the model on every photo of every track id (the slow step), then computes the '
                         'results.',
             ),
-            _buttonNote('Test speed', 'times the model on 8 of this session\'s crops with the current GPU and thread settings; writes nothing.'),
+            _buttonNote(
+              'Test speed',
+              'times the model on $kSpeedTestCrops of this session\'s crops with the current GPU and thread '
+                  'settings, counting them as it goes; writes nothing. Seconds with a GPU, a few minutes '
+                  'on an older phone\'s CPU.',
+            ),
             if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
                 'Re-score with this pack',
@@ -747,6 +776,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           ],
         ),
       ),
+      if (_speedProgress case (final value, final text)?) ...[
+        const SizedBox(height: 8),
+        LinearProgressIndicator(value: value == 0 ? null : value),
+        const SizedBox(height: 4),
+        Text('Testing speed: $text', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      ],
       if (_speedResult != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -1098,22 +1133,25 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: DropdownButtonFormField<String>(
             initialValue: prefs.targetRank,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Rank for the CSV "pred" columns'),
+            decoration: const InputDecoration(labelText: 'CSV file only: rank of the "pred" columns'),
             items: [for (final r in kRankNames.skip(3)) DropdownMenuItem(value: r, child: Text(r))],
             onChanged: (v) {
               if (v != null) _edit(() => prefs.targetRank = v);
             },
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
           child: Text(
-            'The CSV\'s first columns (pred, pred_prob_weighted, pred_prob_mean) follow the '
-            'insect-detect-post format of Maximilian Sittinger and hold the answer at ONE rank; '
-            'this picks that rank; the box shows your current choice (the app\'s default is family). '
-            'All ranks are in the bioclip_<rank> and '
-            'p_<rank> columns regardless. The names follow that format; the formulas are '
-            'FaunaPulse\'s (certainty-weighted mean and plain mean of the crops\' probabilities).',
+            // Round 247 (owner: unclear what this does, and "default is family" next to genus).
+            'Changes nothing in the app: the results on screen always show every rank. It only '
+            'matters for the CSV file of the results (tracks_<pack>.csv): its columns pred, '
+            'pred_prob_weighted, pred_prob_mean and pred_imgs give the answer at ONE rank, as the '
+            'insect-detect-post tool of Maximilian Sittinger does, so the files of both can be '
+            'compared; this picks that rank. All ranks are in the bioclip_<rank> and p_<rank> columns '
+            'anyway. The names follow that tool; the formulas are FaunaPulse\'s (certainty-weighted mean '
+            'and plain mean of the crops\' probabilities). '
+            '${prefs.targetRank == 'family' ? 'Family is the app\'s default.' : 'You chose ${prefs.targetRank}; the app\'s default is family.'}',
             style: helperTextStyle,
           ),
         ),

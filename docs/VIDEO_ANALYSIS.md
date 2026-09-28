@@ -37,7 +37,11 @@ Terms used below:
 3. **Find visits** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
    C-BIoU), using the screen's *Occlusion tolerance* and *Minimum visit length*. It
-   takes seconds and can be run again with other settings. With *Keep frames of each
+   takes seconds and can be run again with other settings. A new track ID starts only
+   from a box the AI is at least *New-track confidence* sure of (0.50, camera Settings →
+   AI → Visit tracking → Advanced); weaker boxes, down to the confidence threshold, only
+   continue a track. If the Video tab's *All AI boxes* shows an insect that never gets a
+   track ID, lower it and run *Find visits* again: no new AI run is needed (round 247). With *Keep frames of each
    visit* on (the default, round 234) it then saves pictures of every visit from the
    clips, by the live photo rule: the first frame, then one every *Keep a frame every*
    (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show
@@ -234,7 +238,9 @@ hand count.
    run at that rate would have looked at (the same frame-picking rule as the phone) and
    writes `fps_sweep/visits_<tracker>_<fps>fps.csv`. The occlusion tolerance and
    minimum visit length (in seconds) are those of the last *Find visits*, so every rate is
-   compared under the same rule.
+   compared under the same rule. `--dart-define=SWEEP_HIGH=0.5,0.4,0.3,0.25` also tries
+   other *New-track confidence* values with ByteTrack (files ending in `_new<value>.csv`),
+   to choose it against the hand count (round 247).
 3. **Score** all runs at once:
 
    ```bash

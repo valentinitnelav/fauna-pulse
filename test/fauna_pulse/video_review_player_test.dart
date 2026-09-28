@@ -240,6 +240,19 @@ Directory _recordedSession() {
   return dir;
 }
 
+/// Scrolls to "Track IDs in this clip (n)" and opens the list when folded (round 247).
+Future<void> _openTrackList(WidgetTester tester, int n, Finder scrollable) async {
+  await tester.scrollUntilVisible(find.text('Track IDs in this clip ($n)'), 200, scrollable: scrollable);
+  if (find.textContaining('Tap to list them', skipOffstage: false).evaluate().isNotEmpty) {
+    // The note is part of the header's tap target and sits below the header text, so once it
+    // is on screen the tap lands. (ensureVisible would also move the tab pager.)
+    await tester.scrollUntilVisible(find.textContaining('Tap to list them'), 50, scrollable: scrollable);
+    await tester.pump();
+    await tester.tap(find.textContaining('Tap to list them'));
+    await tester.pump();
+  }
+}
+
 void main() {
   late _FakePlayer player;
   late _FakeWakelock wake;
@@ -297,9 +310,18 @@ void main() {
     await tester.tap(find.text('All AI boxes'));
     await tester.pump();
     expect(find.textContaining('every box the AI found'), findsOneWidget);
+    // Round 247: the frames with a box are marked under the time bar, and the note explains
+    // what starts a track ID.
+    expect(find.byKey(const ValueKey('raw_box_strip'), skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('A new track ID starts only from a box the AI is at least 0.50 sure of', skipOffstage: false),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    // Folded: the count and the note, no rows until tapped.
+    await tester.scrollUntilVisible(find.text('Track IDs in this clip (1)'), 200, scrollable: scrollable);
+    expect(find.textContaining('Some track IDs can be false detections', skipOffstage: false), findsOneWidget);
+    expect(find.text('#${visit.trackId}', skipOffstage: false), findsNothing);
+    await _openTrackList(tester, 1, scrollable);
     expect(find.textContaining('a white tick under the time bar'), findsNothing); // none kept
     await tester.scrollUntilVisible(find.text('#${visit.trackId}'), 200, scrollable: scrollable);
     await tester.tap(find.text('#${visit.trackId}'));
@@ -455,7 +477,7 @@ void main() {
     expect(find.textContaining('This clip was deleted on '), findsOneWidget);
     expect(player.calls.where((c) => c.startsWith('create')), isEmpty);
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
-    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Track IDs in this clip (1)'), 200, scrollable: scrollable);
     // No time bar, so no ticks explained; nothing left to analyse again.
     expect(find.textContaining('a white tick under the time bar'), findsNothing);
     expect(find.text('Square in the wrong place?'), findsNothing);
@@ -489,7 +511,7 @@ void main() {
     await tester.scrollUntilVisible(find.textContaining('every box the AI found'), 200, scrollable: scrollable);
     expect(find.text('What the AI saw'), findsNothing, reason: 'whole frame analysed');
     expect(find.text('All AI boxes'), findsNothing, reason: 'no visits to switch from');
-    expect(find.textContaining('Visits in this clip'), findsNothing);
+    expect(find.textContaining('Track IDs in this clip'), findsNothing);
 
     // The second clip was not analysed.
     await tester.scrollUntilVisible(find.text(a), -200, scrollable: scrollable);
@@ -566,6 +588,9 @@ void main() {
     await _pumpUntil(tester, find.text('1 (found afterwards in the videos)'));
     final graphs = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
     await tester.scrollUntilVisible(find.textContaining('Extra graphs'), 300, scrollable: graphs);
+    // Off the bottom edge after the scroll: drag it well into view before tapping.
+    await tester.drag(graphs, const Offset(0, -300));
+    await tester.pump();
     if (find.text('While recording').evaluate().isEmpty) {
       await tester.tap(find.textContaining('Extra graphs'));
       await tester.pumpAndSettle();
@@ -637,14 +662,15 @@ void main() {
     expect(find.text("Videos with the live AI's boxes"), findsOneWidget);
     await _pumpUntil(tester, find.text('1 clip · 10.0 s filmed · 879 KB'));
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
-    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: scrollable);
+    await _openTrackList(tester, 1, scrollable);
     await tester.scrollUntilVisible(find.text('#7'), 100, scrollable: scrollable);
     expect(find.text('0:02.0 – 0:04.0'), findsOneWidget);
     expect(find.text('All AI boxes'), findsNothing);
     expect(find.text('Not analysed yet'), findsNothing);
     expect(find.text('Square in the wrong place?'), findsNothing);
     expect(find.text('Live AI'), findsNothing, reason: 'nothing analysed afterwards yet');
-    await tester.scrollUntilVisible(find.text('Compare with the AI afterwards'), 200, scrollable: scrollable);
+    // Above the (opened) track list.
+    await tester.scrollUntilVisible(find.text('Compare with the AI afterwards'), -200, scrollable: scrollable);
     expect(find.widgetWithText(FilledButton, 'Run AI on videos'), findsOneWidget);
     // The session's own photos follow, and the clips can be copied.
     await tester.scrollUntilVisible(find.textContaining('Saved photos'), 200, scrollable: scrollable);
@@ -659,7 +685,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
     await _pumpUntil(tester, find.text('AI afterwards', skipOffstage: false));
     final list2 = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
-    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: list2);
+    await _openTrackList(tester, 1, list2);
     await tester.scrollUntilVisible(find.text('#7'), 100, scrollable: list2);
     await tester.scrollUntilVisible(find.text('AI afterwards'), -200, scrollable: list2);
     await tester.tap(find.text('AI afterwards'));
@@ -667,11 +693,13 @@ void main() {
     expect(find.text('All AI boxes'), findsOneWidget);
     final after = VideoBoxTimeline.readSync(dir.path).clips[clip]!.visits.single;
     expect(after.trackId, isNot(7));
-    await tester.scrollUntilVisible(find.text('Visits in this clip (1)'), 200, scrollable: list2);
+    await _openTrackList(tester, 1, list2);
     await tester.scrollUntilVisible(find.text('#${after.trackId}'), 100, scrollable: list2);
     expect(find.text('#7'), findsNothing, reason: 'the afterwards visit has its own number');
     expect(find.text('Compare with the AI afterwards'), findsNothing);
     await tester.scrollUntilVisible(find.text('Live AI'), -200, scrollable: list2);
+    await tester.drag(list2, const Offset(0, 150)); // clear of the tab bar
+    await tester.pump();
     await tester.tap(find.text('Live AI'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.widgetWithText(FilledButton, 'Run AI on videos again'), 200, scrollable: list2);

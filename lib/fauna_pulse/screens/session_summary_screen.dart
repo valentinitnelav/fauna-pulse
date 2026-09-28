@@ -1661,7 +1661,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (cbp != null) {
         add('Search margin — pass 1', cbp['bufferScale1'], na: trackNa);
         add('Search margin — pass 2', cbp['bufferScale2'], na: trackNa);
-        add('High-score threshold', cbp['highThresh'], na: trackNa);
+        add('New-track confidence', cbp['highThresh'], na: trackNa);
       }
     } else if (tp != null) {
       add('Match overlap (IoU)', tp['matchThresh'], na: trackNa);
@@ -1675,7 +1675,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         suffix: ' frames',
         na: trackNa,
       );
-      add('High-score threshold', tp['highThresh'], na: trackNa);
+      add('New-track confidence', tp['highThresh'], na: trackNa);
     }
     // Only worth a row when it was on (it changes what the log contains).
     if (_setting('logRawDetections') == true) {
@@ -2207,7 +2207,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     const SizedBox(height: 4),
     const Text(
       'Time runs left → right across the session. A bar shows when an object was '
-      'within the ROI; overlapping bars were on it at the same time.',
+      'within the ROI; overlapping bars were on it at the same time. Next to each bar: '
+      'its start and end, counted from the session start like the axis below.',
       style: TextStyle(color: Colors.white70, fontSize: 12),
     ),
     if (_visitsAfterwards) ...[
@@ -4955,6 +4956,15 @@ int _decimalsFor(double step) {
 
 /// Gantt timeline: one labelled lane per track id with a bar from first to last
 /// sighting, end-dots, and a time axis (seconds/minutes/hours) along the bottom.
+/// m:ss.s, or h:mm:ss from an hour on: a track ID's start or end on the timeline (round 247),
+/// the same form as the Video tab's track list.
+String ganttTime(int ms) {
+  final s = ms ~/ 1000;
+  String two(int n) => n.toString().padLeft(2, '0');
+  if (s >= 3600) return '${s ~/ 3600}:${two(s ~/ 60 % 60)}:${two(s % 60)}';
+  return '${s ~/ 60}:${two(s % 60)}.${ms % 1000 ~/ 100}';
+}
+
 class _GanttPainter extends CustomPainter {
   final List<int> ids;
   final Map<int, (int first, int last)> spans;
@@ -5026,6 +5036,21 @@ class _GanttPainter extends CustomPainter {
       if (showLabels) {
         canvas.drawCircle(Offset(x1, yCenter), 3, dotPaint);
         canvas.drawCircle(Offset(x2, yCenter), 3, dotPaint);
+        // Round 247: start and end, counted from the session start like the axis; right of the
+        // bar, or left of it when the bar runs to the edge, or left out when neither fits.
+        final label = TextPainter(
+          text: TextSpan(
+            text: '${ganttTime(span.$1 - startMs)}–${ganttTime(span.$2 - startMs)}',
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final y = yCenter - label.height / 2;
+        if (x2 + 6 + label.width <= size.width) {
+          label.paint(canvas, Offset(x2 + 6, y));
+        } else if (x1 - 6 - label.width >= plotLeft) {
+          label.paint(canvas, Offset(x1 - 6 - label.width, y));
+        }
       }
     }
   }

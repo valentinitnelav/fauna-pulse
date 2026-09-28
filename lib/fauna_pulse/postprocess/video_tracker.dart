@@ -177,6 +177,10 @@ class PostTrackSummary {
   final KeepFramesSettings? keep;
   final int keptFrames;
 
+  /// The tracker's new-track confidence of this run (ByteTrack/C-BIoU `highThresh`): boxes
+  /// below it only continue a track (round 247). Null when the run did not log it.
+  final double? newTrackConfidence;
+
   const PostTrackSummary({
     required this.visits,
     required this.clips,
@@ -187,6 +191,7 @@ class PostTrackSummary {
     this.runId,
     this.keep,
     this.keptFrames = 0,
+    this.newTrackConfidence,
   });
 }
 
@@ -634,6 +639,7 @@ class VideoTracker {
         occlusionSeconds: (first['occlusion_seconds'] as num).toDouble(),
         minHitsSeconds: (first['min_hits_seconds'] as num).toDouble(),
         algorithm: '${(first['tracker'] as Map?)?['algorithm'] ?? ''}',
+        newTrackConfidence: ((first['tracker'] as Map?)?['highThresh'] as num?)?.toDouble(),
         runId: (first['run_id'] as num?)?.toInt(),
         keep: KeepFramesSettings.fromJson(first['keep_frames']),
         keptFrames: (last['kept_frames'] as num?)?.toInt() ?? 0,

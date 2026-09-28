@@ -123,7 +123,7 @@ rate as it varies during the session.
 |---|---|---|---|
 | **Match overlap (IoU)** | ByteTrack | `0.1` | Overlap required to treat a detection as the same insect. Lower tolerates faster motion. |
 | **Low-score association** | ByteTrack | `0.1` | Looser second test that lets faint detections keep an existing ID. |
-| **High-score threshold** | both | `0.5` | Score at/above which a detection may *start* a new ID; fainter ones only keep IDs alive. Auto-kept above Confidence. |
+| **New-track confidence** | both | `0.5` | Score at/above which a detection may *start* a new track ID; fainter ones only keep IDs alive (called "High-score threshold" before round 247). Auto-kept above Confidence. An insect that has boxes under "All AI boxes" on a video's Video tab but no track ID was probably always below it: lower it and run "Find visits" again; no new AI run is needed. |
 | **Velocity smoothing** | ByteTrack | `0.5` | How much the motion prediction trusts the latest movement. Low = "assume it barely moved". |
 | **Search margin — pass 1** | C-BIoU | `0.30` | Boxes are enlarged by this fraction of their own size before the overlap test. Bigger tolerates faster movement but risks mixing close neighbours. |
 | **Search margin — pass 2** | C-BIoU | `0.50` | A wider second matching round for whatever pass 1 missed — catches big between-frame jumps. Always ≥ pass 1. |
@@ -306,7 +306,7 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Short: detections below | 3 | Detector frames the track id appeared in. |
 | Weak: detector confidence below | 0.20 | `low_det` when the mean live-detector confidence is below this (same default as the `insect-detect-post` software's track filter, Sittinger 2026, doi:10.5281/zenodo.21822140). |
 | Weak: order probability below | 0.50 | `weak_id` when the identification's ORDER-rank probability is below this. `suspect` = short AND (low_det OR weak_id OR no organism); flags only, nothing deleted. |
-| Rank for the CSV "pred" columns | family | Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` in `tracks_<pack>.csv` (the other ranks are in their own columns anyway). |
+| CSV file only: rank of the "pred" columns | family | Changes nothing in the app (the results on screen show every rank). Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` and `pred_imgs` in `tracks_<pack>.csv`, the columns named as in insect-detect-post so files of both tools can be compared (the other ranks are in their own columns anyway). Label before round 247: "Rank for the CSV "pred" columns". |
 
 Model and label pack are chosen on the same screen (Import… copies the files into the app's
 private storage). `docs/IDENTIFICATION.md` explains where the files come from and how the

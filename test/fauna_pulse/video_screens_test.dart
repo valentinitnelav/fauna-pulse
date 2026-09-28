@@ -786,7 +786,8 @@ void main() {
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
     await _pumpUntil(tester, find.text('While the AI ran on the videos', skipOffstage: false));
     await tester.scrollUntilVisible(find.text('While the AI ran on the videos'), 200, scrollable: scrollable);
-    expect(find.textContaining('Measured every 10 s'), findsOneWidget);
+    // The note sits just below the fold since the timeline text grew (round 247).
+    expect(find.textContaining('Measured every 10 s', skipOffstage: false), findsOneWidget);
     await expectSummaryRowValue(tester, scrollable, label: 'Analysis time', value: '1m 0s in 2 runs');
     await expectSummaryRowValue(tester, scrollable, label: 'Frames analyzed', value: '300');
     // 300 frames in 60 s, less 13 s cooling down.

@@ -91,6 +91,12 @@ Directory writeTimeLapseSession(
 }
 
 void main() {
+  test('timeline lane times: m:ss.s, h:mm:ss from an hour (round 247)', () {
+    expect(ganttTime(2000), '0:02.0');
+    expect(ganttTime(65400), '1:05.4');
+    expect(ganttTime(3723000), '1:02:03');
+  });
+
   testWidgets(
     'Setup Overview starts with capture mode and reports a model only for AI',
     (tester) async {

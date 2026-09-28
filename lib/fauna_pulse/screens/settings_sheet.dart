@@ -990,7 +990,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
             'reach the tracker — including the faint, partly-hidden ones the '
             'tracker can use to hold onto a visit. Note: raising this also '
-            'raises the Tracker\'s High-score threshold below, so a band of '
+            'raises the tracker\'s "New-track confidence" below, so a band of '
             'faint detections is always kept for that purpose.',
         onChanged: (v) => setState(() {
           // Keep the High-score threshold at least _highScoreBuffer above the
@@ -1539,7 +1539,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
     ),
     NumericSettingField(
-      label: 'High-score threshold',
+      label: 'New-track confidence',
       // Same Confidence-coupled floor as ByteTrack's high threshold, so the
       // "faint detection" band always exists regardless of algorithm.
       value: cp.highThresh < _minHighScore ? _minHighScore : cp.highThresh,
@@ -1547,11 +1547,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
       max: 0.95,
       decimals: 2,
       helperText:
-          'A detection at or above this score may START a new visit ID; a '
+          'A detection at or above this score may START a new track ID; a '
           'fainter one (still above the Confidence threshold) may only keep '
           'an existing insect\'s ID alive — e.g. while it is half-hidden '
           'under a petal. Automatically kept above Confidence so that faint '
-          'band never closes. Default 0.50.',
+          'band never closes. If "All AI boxes" on a video\'s Video tab shows '
+          'an insect that never gets a track ID, it was probably never this '
+          'sure: lower this and run "Find visits" again (the AI does not need '
+          'to run again). Default 0.50.',
       onChanged: (v) => updateC(cp.copyWith(highThresh: v)),
     ),
   ];
@@ -1594,7 +1597,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       onChanged: (v) => update(p.copyWith(lowMatchThresh: v)),
     ),
     NumericSettingField(
-      label: 'High-score threshold',
+      label: 'New-track confidence',
       // Floor follows the Confidence threshold so a "faint detection" band
       // always exists; the value never displays below that floor.
       value: p.highThresh < _minHighScore ? _minHighScore : p.highThresh,
@@ -1607,11 +1610,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'new track ID. A box below it — but still above the Confidence '
           'threshold — is a faint sighting that may ONLY keep an '
           'already-existing insect\'s ID alive, never start a new one. That '
-          'faint band (between Confidence and High-score) is exactly what '
+          'faint band (between Confidence and this) is exactly what '
           'holds onto a bee whose score dips while it is half-hidden under a '
           'petal, so it is not counted twice. Higher = more cautious about '
           'starting new IDs (fewer false visitors); lower = quicker to '
-          'register a new visitor. It is automatically kept at least '
+          'register a new visitor. If "All AI boxes" on a video\'s Video tab '
+          'shows an insect that never gets a track ID, it was probably never '
+          'this sure: lower this and run "Find visits" again (the AI does not '
+          'need to run again). It is automatically kept at least '
           '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
           'rises with it) so the faint band never closes. Default 0.50.',
       onChanged: (v) => update(p.copyWith(highThresh: v)),

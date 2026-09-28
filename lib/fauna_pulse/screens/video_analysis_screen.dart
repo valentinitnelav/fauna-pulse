@@ -277,6 +277,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   /// The camera's tracking algorithm, which "Find visits" uses too.
   TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
+
+  /// The tracker's new-track confidence from the camera Settings (round 247).
+  double _newTrackConf = 0.5;
   VideoProgress? _progress;
 
   /// Lengths (ms) of the clips this run walks, in its order: the progress
@@ -318,6 +321,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _models = models;
       _useGpu = appConfig.useGpu;
       _algorithm = appConfig.trackerAlgorithm;
+      _newTrackConf = appConfig.trackerAlgorithm == TrackerAlgorithm.cbiou
+          ? appConfig.cbiouParams.highThresh
+          : appConfig.trackerParams.highThresh;
       _sessions = sessions;
       _model = models.where((m) => m.id == prefs.modelId).firstOrNull ?? models.firstOrNull;
       _loading = false;
@@ -1097,6 +1103,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         (v.occlusionSeconds != _prefs.occlusionSeconds ||
             v.minHitsSeconds != _prefs.minVisitSeconds ||
             v.algorithm != _algorithm.name ||
+            // Round 247; older runs did not log it.
+            (v.newTrackConfidence != null && v.newTrackConfidence != _newTrackConf) ||
             v.keep != _keepFor(s));
     const amber = TextStyle(color: Colors.amber, fontSize: 13);
     return Column(
@@ -1155,7 +1163,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         ),
         Text(
           'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
-          'camera Settings → AI → Visit tracking → Advanced.',
+          'camera Settings → AI → Visit tracking → Advanced. A new track ID starts only from a box the AI '
+          'is at least ${_newTrackConf.toStringAsFixed(2)} sure of ("New-track confidence", same place); '
+          'weaker boxes only continue one. A changed value needs only "Find visits" again, not a new analysis.',
           style: helperTextStyle,
         ),
         const SizedBox(height: 4),

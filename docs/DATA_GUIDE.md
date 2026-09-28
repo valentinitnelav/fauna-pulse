@@ -1193,7 +1193,10 @@ what the AI found and whether the analysed square was well placed. The tab only 
   `visits.csv`. A faded box is a frame where the detector missed the insect and the tracker
   kept its place. The *All AI boxes* switch shows every `raw_detections` box instead,
   including those *Find visits* did not count (a visit shorter than the minimum length,
-  or the frames before a track was confirmed, see above). Before *Find visits*, and when
+  the frames before a track was confirmed, see above, or an insect never seen with at
+  least the tracker's *New-track confidence*, `highThresh` in `post_track_start.tracker`:
+  weaker boxes only continue a track, round 247); the strip under the time bar then marks
+  the frames with at least one box. Before *Find visits*, and when
   the videos were analysed again after it (the visits' `detections_run_ms` no longer
   matches the analysis run), only the AI boxes are shown, with a note.
 * **Whole frame or what the AI saw.** When a square was analysed, *Whole frame* draws it
