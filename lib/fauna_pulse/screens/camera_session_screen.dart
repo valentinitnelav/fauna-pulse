@@ -1017,7 +1017,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // via the YOLOView prop) which updates the native frame-skip interval with
       // no camera rebind (analysis resolution is unchanged).
       final thr = _throttle;
-      if (thr != null && inferMs > 0) {
+      // Only the AI mode's inference times (round 243): the detector also runs for a moment
+      // before a time-lapse or motion session's mode reaches the native side, and a slow
+      // phone's first frames pulled the cap down for the whole session.
+      if (thr != null && inferMs > 0 && _config.detectorEnabled) {
         final cap = thr.update(inferMs);
         if (cap != _appliedCapFps && mounted) {
           setState(() => _appliedCapFps = cap);
@@ -3042,6 +3045,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'next_burst_at_ms': _nextBurstEpochMs(plan, nowMs),
       });
       if (mounted) setState(() {}); // chip shows "camera off"
+      // Round 245: plan the next tick again now that the coordinator says parked. The tick that
+      // started this park computed its delay while the camera still counted as running, so it
+      // knew no prewake moment and waited for the burst start (or the torch-on edge): with
+      // breaks up to about a minute the camera then woke late, at the burst itself.
+      if (_recording && identical(_tlCamera, cam)) {
+        _timeLapseTimer?.cancel();
+        _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+      }
     } finally {
       _tlCameraBusy = false;
     }
@@ -3320,6 +3331,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ),
             onStreamingData: _onStreamingData,
+            // A new native view (round 244): the first one, and a new one whenever the stream
+            // size (the key above) changes, by the automatic pick or in Settings. It starts with
+            // only the model and thresholds, so the next frame map runs the start-up sequence
+            // again: ROI, motion gate, camera frame-rate cap, time-lapse mode, lens and focus.
+            // Before, a new view ran without them (no ROI crop, gate off) until the screen closed.
+            onNativeViewCreated: () => _captureProbeStarted = false,
             onModelLoad: (modelPath, task) {
               _controller.setShowOverlays(false);
               // Tell the native side to run inference only on the ROI crop.

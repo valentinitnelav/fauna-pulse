@@ -10,6 +10,12 @@
 //    session photo_visits_check_test.dart made (run that first), once on the
 //    GPU and once on the CPU, comparing every crop's embedding (cosine) and each
 //    visit's answer. That session's identification files are rewritten.
+// 3. Round 250, is the speed on the Identify screen real? Every timed crop is measured by
+//    three clocks: the app's (a Stopwatch around each call, what the screen shows), the
+//    plugin's (System.nanoTime around the model, the "ms" of each reply) and the phone's wall
+//    clock (the TIMING start/end lines; a test's print() goes to the PC, not to logcat). On
+//    the Xiaomi (round 250) they agreed to 0.01 s per crop. The identification in step 2
+//    also reports how much of its time the model took.
 // Run:  flutter test integration_test/bioclip_gpu_check_test.dart -d <serial> --no-uninstall
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 // Keep the phone on the charger; the check keeps the screen on.
@@ -31,6 +37,10 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _crops = 6;
 
+// --dart-define=BIOCLIP_GPU=false: CPU only (a phone whose GPU run would be
+// killed for lack of memory, round 243).
+const _tryGpu = bool.fromEnvironment('BIOCLIP_GPU', defaultValue: true);
+
 // ignore: avoid_print
 void _log(String s) => print(s);
 
@@ -45,7 +55,7 @@ void main() {
     final rng = Random(7);
     File? gpuModel;
     for (final m in models) {
-      for (final gpu in [true, false]) {
+      for (final gpu in [if (_tryGpu) true, false]) {
         final t0 = await DeviceThermal.read();
         final info = await ImageEmbedder.load(m.path, useGpu: gpu);
         final side = info.inputWidth * info.inputHeight * 3;
@@ -53,17 +63,27 @@ void main() {
           for (var i = 0; i < _crops; i++) Uint8List.fromList(List.generate(side, (_) => rng.nextInt(256))),
         ];
         await ImageEmbedder.embed([images.first]); // warm-up
-        final sw = Stopwatch()..start();
+        final label = '${m.path.split('/').last} ${gpu ? 'GPU' : 'CPU'}';
+        _log('TIMING $label start ${DateTime.now().toIso8601String()}');
+        var appMs = 0;
+        var nativeMs = 0.0;
         for (final img in images) {
-          await ImageEmbedder.embed([img]);
+          final sw = Stopwatch()..start();
+          final b = await ImageEmbedder.embed([img]);
+          appMs += sw.elapsedMilliseconds;
+          nativeMs += b.ms;
+          // The app's clock wraps the native one (plus the hand-over of the picture).
+          expect(b.ms, lessThanOrEqualTo(sw.elapsedMilliseconds + 1));
         }
-        final perCrop = sw.elapsedMilliseconds / _crops / 1000;
+        _log('TIMING $label end ${DateTime.now().toIso8601String()}');
+        final perCrop = appMs / _crops / 1000;
         await ImageEmbedder.close();
-        if (gpu && info.accelerator == 'GPU') gpuModel ??= m;
+        if (gpu && info.accelerator == 'GPU' || !_tryGpu) gpuModel ??= m;
         final t1 = await DeviceThermal.read();
         _log('EMBED ${m.path.split('/').last} asked ${gpu ? 'GPU' : 'CPU'}: ran on ${info.accelerator}'
             '${info.cpuThreads == null ? '' : ' (${info.cpuThreads} threads)'}, load ${(info.loadMs / 1000).toStringAsFixed(1)} s, '
-            '${perCrop.toStringAsFixed(2)} s per crop, battery ${t0.batteryTempC} -> ${t1.batteryTempC} °C'
+            '${perCrop.toStringAsFixed(2)} s per crop (native clock ${(nativeMs / _crops / 1000).toStringAsFixed(2)} s), '
+            'battery ${t0.batteryTempC} -> ${t1.batteryTempC} °C'
             '${info.gpuAgreement == null ? '' : ', GPU check agreement ${info.gpuAgreement!.toStringAsFixed(6)}'}'
             '${info.accelerationNote == null ? '' : '; GPU not used: ${info.accelerationNote}'}');
       }
@@ -110,10 +130,19 @@ void main() {
         IdentificationPaths(dir).summaryJson(stemOf(pack.path.split('/').last)).readAsStringSync(),
       ) as Map;
       _log('IDENTIFY ${info.accelerator}: ${res.embedded} crops in ${res.elapsed.inMilliseconds / 1000} s, '
-          '${summary['tracks_total']} track ids');
+          'the model ${res.modelTime.inMilliseconds / 1000} s of it '
+          '(${(res.modelTime.inMilliseconds / max(res.embedded, 1) / 1000).toStringAsFixed(2)} s per crop), '
+          '${summary['tracks_total']} track IDs');
       return (vectors, summary, res);
     }
 
+    if (!_tryGpu) {
+      final (_, cs, _) = await identify(false);
+      for (final t in cs['tracks'] as List) {
+        _log('  #${t['track_id']} CPU ${t['headline']} (${t['identified_rank']}) p=${t['p']}');
+      }
+      return;
+    }
     final (gv, gs, _) = await identify(true);
     final (cv, cs, _) = await identify(false);
     expect(gv.length, cv.length);
@@ -123,6 +152,23 @@ void main() {
     ];
     _log('CROPS ${cos.length}: GPU vs CPU cosine min ${cos.reduce(min).toStringAsFixed(5)}, '
         'mean ${(cos.reduce((a, b) => a + b) / cos.length).toStringAsFixed(5)}');
+    // Round 250: the GPU computes every crop anew (a stale or repeated result would make two
+    // crops' vectors identical), and each GPU vector is nearest to its own crop's CPU vector
+    // (reported only: two near-identical crops of the same insect may swap).
+    double dot(Float32List a, Float32List b) => [for (var k = 0; k < a.length; k++) a[k] * b[k]].reduce((x, y) => x + y);
+    var sameGpu = 0.0;
+    var ownNearest = 0;
+    for (var i = 0; i < gv.length; i++) {
+      var nearest = 0;
+      for (var j = 0; j < gv.length; j++) {
+        if (j != i) sameGpu = max(sameGpu, dot(gv[i], gv[j]));
+        if (dot(gv[i], cv[j]) > dot(gv[i], cv[nearest])) nearest = j;
+      }
+      if (nearest == i) ownNearest++;
+    }
+    _log('CROPS distinct: closest pair of GPU vectors cosine ${sameGpu.toStringAsFixed(5)}; '
+        '$ownNearest of ${gv.length} GPU vectors nearest to their own crop\'s CPU vector');
+    expect(sameGpu, lessThan(0.99999));
     final gt = {for (final t in gs['tracks'] as List) t['track_id']: t};
     for (final t in cs['tracks'] as List) {
       final g = gt[t['track_id']];

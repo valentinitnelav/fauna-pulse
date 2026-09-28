@@ -199,7 +199,7 @@ void main() {
       );
     });
 
-    test('first motion takes a photo immediately, with no track ids', () {
+    test('first motion takes a photo immediately, with no track IDs', () {
       final s = scheduler();
       final pending = s.evaluateMotion(10000);
       expect(pending, isNotNull);

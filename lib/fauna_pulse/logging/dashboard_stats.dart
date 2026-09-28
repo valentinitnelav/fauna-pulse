@@ -67,7 +67,7 @@ class SessionDashboardStats {
     'end_ms': endMs,
     'ai_mode': aiMode,
     'observed_ms': ?observedMs,
-    'visits': [
+    'track_ids': [
       for (final (s, e) in visits) [s, e],
     ],
   };
@@ -78,7 +78,7 @@ class SessionDashboardStats {
         endMs: (j['end_ms'] as num).toInt(),
         aiMode: j['ai_mode'] == true,
         visits: [
-          for (final v in (j['visits'] as List))
+          for (final v in ((j['track_ids'] ?? j['visits']) as List)) // "visits" before round 248
             (((v as List)[0] as num).toInt(), (v[1] as num).toInt()),
         ],
         observedMs: (j['observed_ms'] as num?)?.toInt(),

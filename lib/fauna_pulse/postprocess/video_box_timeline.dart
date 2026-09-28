@@ -87,6 +87,13 @@ class ClipBoxes {
 
   final List<TimelineVisit> visits;
 
+  /// Positions (ms) of the analysed frames with at least one box, for the strip under the
+  /// time bar in "All AI boxes" (round 247).
+  late final List<int> rawBoxMs = [
+    for (var i = 0; i < _pos.length; i++)
+      if (_raw[i].isNotEmpty) _pos[i],
+  ];
+
   /// How long a frame's boxes stay on screen at most.
   final int holdMs;
 

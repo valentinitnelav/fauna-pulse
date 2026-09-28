@@ -60,7 +60,7 @@ String _rec(String type, int ms, Map<String, dynamic> m) =>
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('find visits in photos on this phone', (tester) async {
+  testWidgets('find track IDs in photos on this phone', (tester) async {
     binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
     // Screen on for the whole check: once the display sleeps, no frame is
     // drawn and the screen steps below wait for ever.
@@ -151,16 +151,16 @@ void main() {
     await waitFor(find.textContaining('photo check'));
     await tester.pump(const Duration(seconds: 1));
     final list = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.text('Find visits'), 300, scrollable: list);
-    await tester.tap(find.text('Find visits'));
+    await tester.scrollUntilVisible(find.text('Find track IDs'), 300, scrollable: list);
+    await tester.tap(find.text('Find track IDs'));
     await waitFor(find.textContaining('(occlusion tolerance'));
     await tester.pump(const Duration(seconds: 5)); // the snack bar goes
-    await tester.scrollUntilVisible(find.text('Find visits again'), 300, scrollable: list);
-    await tester.ensureVisible(find.text('Visits'));
+    await tester.scrollUntilVisible(find.text('Find track IDs again'), 300, scrollable: list);
+    await tester.ensureVisible(find.text('Track IDs'));
     await shot('photo_visits_screen');
     final summary = (await VideoTracker.readSummary(dir))!;
     final start = (jsonDecode(File('${dir.path}/$postTracksFileName').readAsLinesSync().first) as Map);
-    _log('FIND VISITS ${summary.visits} visits; source ${start['source']}, photos ${start['photos']}, '
+    _log('FIND VISITS ${summary.visits} track IDs; source ${start['source']}, photos ${start['photos']}, '
         'step ${start['photo_step_s']} s, observed ${start['observed_ms']} ms');
     expect(summary.visits, greaterThan(0));
     expect(start['source'], 'photos');
@@ -193,7 +193,7 @@ void main() {
     // viewer's arrows sit below the screen until scrolled into view.
     await tester.tap(find.textContaining('All ('));
     await tester.pump(const Duration(seconds: 1));
-    final inVisit = find.textContaining(RegExp(r'in visits?$'));
+    final inVisit = find.textContaining(RegExp(r'in track IDs?$'));
     final pager = find.byIcon(Icons.chevron_right);
     if (pager.evaluate().isNotEmpty) await tester.ensureVisible(pager.first);
     for (var i = 0; i < 160 && inVisit.evaluate().isEmpty && pager.evaluate().isNotEmpty; i++) {
@@ -201,7 +201,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     }
     if (inVisit.evaluate().isNotEmpty) await tester.ensureVisible(inVisit.first);
-    _log('PHOTO ${inVisit.evaluate().isEmpty ? 'no visit photo in the sample' : 'a photo of a visit shown'}');
+    _log('PHOTO ${inVisit.evaluate().isEmpty ? 'no track ID photo in the sample' : 'a photo of a track ID shown'}');
     await shot('photo_visits_photos');
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 500));

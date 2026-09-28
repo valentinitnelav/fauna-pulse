@@ -101,6 +101,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   /// Clips deleted to free storage, with when (round 236).
   Map<String, DateTime> _deleted = const {};
+
+  /// Clips cut off by a killed app: unreadable, left out of the list (round 243).
+  int _cutOff = 0;
   int _clip = 0;
 
   VideoPlayerController? _controller;
@@ -111,6 +114,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   int _opening = 0;
 
   bool _allBoxes = false;
+
+  /// "Track IDs in this clip" is folded by default: long videos can have many (round 247).
+  bool _trackListOpen = false;
+
+  /// The new-track confidence the session's "Find visits" used, when logged (round 247).
+  double? _newTrackConf;
   bool _aiView = false;
   bool _muted = true;
   double _speed = 1;
@@ -185,8 +194,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     } catch (e) {
       logSwallowed('video_box_timeline', e);
     }
-    final files = {for (final f in VideoDetector.clipsOf(widget.sessionDir)) f.uri.pathSegments.last};
+    final all = VideoDetector.clipsOf(widget.sessionDir);
+    final files = {for (final f in all.where(VideoDetector.isReadableVideo)) f.uri.pathSegments.last};
     final deleted = await ClipCleanup.deletedClips(widget.sessionDir);
+    final newTrackConf = (await VideoTracker.readSummary(widget.sessionDir))?.newTrackConfidence;
     final keptMs = <String, List<int>>{};
     final framesDir = '${widget.sessionDir.path}/${VideoTracker.framesDirName}';
     for (final k in await VideoTracker.readKeptFrames(widget.sessionDir)) {
@@ -200,9 +211,11 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       _liveTimeline = live;
       if (after.clips.isEmpty) _showAfter = false;
       _files = files;
+      _cutOff = all.length - files.length;
       _deleted = deleted;
       _clips = clips;
       _keptMs = keptMs;
+      _newTrackConf = newTrackConf;
       _loading = false;
     });
     // Reloaded after a new analysis: the same clip keeps playing.
@@ -416,6 +429,15 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
         ...widget.header,
+        if (_cutOff > 0) ...[
+          const SizedBox(height: 6),
+          Text(
+            '$_cutOff ${_cutOff == 1 ? 'clip was' : 'clips were'} cut off: the app stopped while recording, so '
+            '${_cutOff == 1 ? 'it was' : 'they were'} never finished and cannot be played ("Run AI on videos" '
+            'can delete ${_cutOff == 1 ? 'it' : 'them'}).',
+            style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+          ),
+        ],
         const SizedBox(height: 8),
         if (_loading)
           const Padding(
@@ -437,7 +459,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 if (_clips.length > 1) _clipPicker(),
                 ..._notes(name!, boxes),
                 _playerBox(c, boxes, frameAspect: frameAspect, area: area, aiView: aiView, visits: visits),
-                if (c != null) ..._controls(c, boxes),
+                if (c != null) ..._controls(c, boxes, visitsShown: visits),
               ],
             ),
           ),
@@ -458,8 +480,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             const Text(
-              'Live AI: the boxes found while recording (the session\'s visits). AI afterwards: '
-              '"Run AI on videos" on these clips, with its own visit numbers. Switch at any moment '
+              'Live AI: the boxes found while recording (the session\'s track IDs). AI afterwards: '
+              '"Run AI on videos" on these clips, with its own track ID numbers. Switch at any moment '
               'to compare the same frames.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -488,12 +510,24 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             const SizedBox(height: 8),
             SegmentedButton<bool>(
               segments: const [
-                ButtonSegment(value: false, label: Text('Visits')),
+                ButtonSegment(value: false, label: Text('Track IDs')),
                 ButtonSegment(value: true, label: Text('All AI boxes')),
               ],
               selected: {_allBoxes},
               showSelectedIcon: false,
               onSelectionChanged: (s) => setState(() => _allBoxes = s.first),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Track IDs: the boxes "Find track IDs" linked from frame to frame into track IDs. A new '
+              'track ID starts only from a box the AI is at least '
+              '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
+              'confidence"); weaker boxes can only continue one. All AI boxes: what the AI detected at '
+              'the confidence threshold, before any tracking. An insect with boxes here but no '
+              'track ID was probably never that sure: lower "New-track confidence" (camera Settings → '
+              'AI → Tracking → Advanced) and run "Find track IDs" again. The AI does not need to '
+              'run again for that.',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
           if (boxes != null) ..._legend(visits),
@@ -505,7 +539,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 style: TextStyle(color: Colors.white70, fontSize: 12),
                 children: [
                   TextSpan(text: '| ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  TextSpan(text: 'a white tick under the time bar: a frame kept for a visit (see Kept frames below).'),
+                  TextSpan(text: 'a white tick under the time bar: a frame kept for a track ID (see Kept frames below).'),
                 ],
               ),
             ),
@@ -517,10 +551,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               label: 'Compare with the AI afterwards',
               labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               helperText:
-                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find visits" '
-                  'there links the boxes into visits. Then "AI afterwards" above shows those boxes on '
+                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find track IDs" '
+                  'there links the boxes into track IDs. Then "AI afterwards" above shows those boxes on '
                   'the same frames, for example to see whether the live AI missed insects while the '
-                  'phone was hot or the motion gate slept. The session\'s own visits stay the live AI\'s.',
+                  'phone was hot or the motion gate slept. The session\'s own track IDs stay the live AI\'s.',
             ),
             const SizedBox(height: 4),
             Align(
@@ -543,18 +577,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
-                    'be stopped and continued; keep the phone charging. "Find visits" there then '
-                    'follows each insect from frame to frame, and the boxes and visits show on the '
+                    'be stopped and continued; keep the phone charging. "Find track IDs" there then '
+                    'follows each insect from frame to frame, and the boxes and track IDs show on the '
                     'video here.',
               )
             else if (_files.isEmpty)
               const HelpLabel(
-                label: 'Other visit settings?',
+                label: 'Other track ID settings?',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'The videos were deleted to free storage, so they cannot be analysed again. '
-                    '"Run AI on videos" can still find the visits again from the saved boxes, for '
-                    'example with another occlusion tolerance or minimum visit length.',
+                    '"Run AI on videos" can still find the track IDs again from the saved boxes, for '
+                    'example with another occlusion tolerance or minimum track length.',
               )
             else
               const HelpLabel(
@@ -562,8 +596,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'Opens "Run AI on videos" for this session. There you can move or resize the '
-                    'square, analyse the videos again and then press "Find visits". The new boxes '
-                    'and visits replace the ones shown here.',
+                    'square, analyse the videos again and then press "Find track IDs". The new boxes '
+                    'and track IDs replace the ones shown here.',
               ),
             const SizedBox(height: 4),
             Align(
@@ -606,12 +640,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     final b = _timeline.clips[name];
     if (!_files.contains(name)) {
       // Its visits stay (round 236).
-      final v = b != null && b.tracked ? '${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}, ' : '';
+      final v = b != null && b.tracked ? '${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}, ' : '';
       return ' · ${v}video deleted';
     }
     if (b == null) return ' · not analysed';
     if (!b.done) return ' · analysed in part';
-    if (b.tracked) return ' · ${b.visits.length} visit${b.visits.length == 1 ? '' : 's'}';
+    if (b.tracked) return ' · ${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}';
     return '';
   }
 
@@ -624,7 +658,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       note = at == null
           ? 'The video file of this clip is no longer on the phone.'
           : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
-                'free storage. Its boxes, visits and kept frames stay; only the video cannot be played.';
+                'free storage. Its boxes, track IDs and kept frames stay; only the video cannot be played.';
     } else if (_timeline.live) {
       if (boxes == null || boxes.visits.isEmpty) note = 'The live AI found no insect during this clip.';
     } else if (boxes == null) {
@@ -635,16 +669,16 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       note = 'The analysis of this clip stopped${last == null ? '' : ' at ${_time(last)}'}; '
           'boxes end there. "Run AI on videos" continues it.';
     } else if (_timeline.visitsStale) {
-      note = 'The videos were analysed again after "Find visits", so the visits no longer match. '
-          'The button below opens "Run AI on videos", where "Find visits" updates them. Until '
+      note = 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
+          'The button below opens "Run AI on videos", where "Find track IDs" updates them. Until '
           'then all AI boxes are shown.';
     } else if (!boxes.tracked) {
       note = _timeline.hasVisits
-          ? '"Find visits" ran before this clip was analysed. The button below opens "Run AI on '
-                'videos", where "Find visits" adds this clip\'s visits. Until then all AI boxes '
+          ? '"Find track IDs" ran before this clip was analysed. The button below opens "Run AI on '
+                'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all AI boxes '
                 'are shown.'
-          : 'No visits yet: "Find visits" on "Run AI on videos" (button below) links the boxes '
-                'of each insect into visits. Until then all AI boxes are shown.';
+          : 'No track IDs yet: "Find track IDs" on "Run AI on videos" (button below) links the boxes '
+                'of each insect into track IDs. Until then all AI boxes are shown.';
     }
     if (note == null) return const [];
     return [
@@ -729,15 +763,23 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     );
   }
 
-  List<Widget> _controls(VideoPlayerController c, ClipBoxes? boxes) {
+  List<Widget> _controls(VideoPlayerController c, ClipBoxes? boxes, {required bool visitsShown}) {
     final hasVisits = boxes != null && boxes.tracked && boxes.visits.isNotEmpty;
     return [
       VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.only(top: 10, bottom: 4)),
-      if (hasVisits)
+      if (hasVisits && visitsShown)
         SizedBox(
           height: 6,
           width: double.infinity,
           child: CustomPaint(painter: _VisitStripPainter(boxes.visits, c.value.duration.inMilliseconds)),
+        )
+      // All AI boxes, or not tracked yet: the frames with at least one box (round 247).
+      else if (boxes != null && !visitsShown && boxes.rawBoxMs.isNotEmpty)
+        SizedBox(
+          key: const ValueKey('raw_box_strip'),
+          height: 6,
+          width: double.infinity,
+          child: CustomPaint(painter: _RawStripPainter(boxes.rawBoxMs, c.value.duration.inMilliseconds)),
         ),
       if (_keptMs[_clips[_clip]] case final kept? when kept.isNotEmpty)
         SizedBox(
@@ -762,7 +804,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
-              tooltip: 'Previous visit',
+              tooltip: 'Previous track ID',
               onPressed: hasVisits ? () => _jumpVisit(boxes, next: false) : null,
               icon: const Icon(Icons.skip_previous),
             ),
@@ -782,7 +824,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               icon: const Icon(Icons.forward_5),
             ),
             IconButton(
-              tooltip: 'Next visit',
+              tooltip: 'Next track ID',
               onPressed: hasVisits ? () => _jumpVisit(boxes, next: true) : null,
               icon: const Icon(Icons.skip_next),
             ),
@@ -819,7 +861,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ? [
                 const TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
-                  text: 'a visit: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in visits.csv'}), '
+                  text: 'a track ID: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in visits.csv'}), '
                       "the insect class and the AI's confidence. A faded box: the AI missed the insect "
                       'on this frame and the tracker kept its place.',
                 ),
@@ -827,37 +869,64 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             : const [
                 TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.rawColor)),
                 TextSpan(
-                  text: 'every box the AI found, with its class and confidence, also the ones "Find '
-                      'visits" did not count (for example an insect that stayed too briefly).',
+                  text: 'every box the AI found, with its class and confidence, also the ones no track ID '
+                      'was made from (for example an insect seen too briefly, or never sure enough to '
+                      'start one). The strip under the time bar marks the frames with at least one box.',
                 ),
               ],
       ),
     ),
   ];
 
+  /// "Track IDs in this clip (N)", folded by default (round 247): a long video can have
+  /// hundreds. Open, each row jumps the video to its track ID.
   List<Widget> _visitRows(ClipBoxes boxes) => [
     const SizedBox(height: 12),
-    Text(
-      'Visits in this clip (${boxes.visits.length})',
-      style: const TextStyle(fontWeight: FontWeight.bold),
-    ),
-    const Text(
-      'Tap a visit to watch it from 1 s before it starts.',
-      style: TextStyle(color: Colors.white70, fontSize: 12),
-    ),
-    for (final v in boxes.visits)
-      ListTile(
-        dense: true,
-        visualDensity: VisualDensity.compact,
-        contentPadding: EdgeInsets.zero,
-        leading: Text('#${v.trackId}', style: const TextStyle(color: VideoReviewPlayer.visitColor)),
-        title: Text(v.className, overflow: TextOverflow.ellipsis),
-        trailing: Text(
-          '${_time(v.startMs)} – ${_time(v.endMs)}',
-          style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]),
+    // Header and note are one tap target.
+    InkWell(
+      key: const ValueKey('track_list_toggle'),
+      onTap: boxes.visits.isEmpty ? null : () => setState(() => _trackListOpen = !_trackListOpen),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (boxes.visits.isNotEmpty) Icon(_trackListOpen ? Icons.expand_more : Icons.chevron_right, size: 20),
+                Expanded(
+                  child: Text(
+                    'Track IDs in this clip (${boxes.visits.length})',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              '${_timeline.live ? 'Found by the live AI. ' : ''}A track ID usually stands for one visit in '
+              'pollination ecology, but some can be false detections (a '
+              'leaf, a shadow, a blur): how well the AI does depends on how much these videos look like '
+              'what it learned from. ${boxes.visits.isEmpty ? '' : _trackListOpen ? 'Tap a track ID below to watch it from 1 s before it starts.' : 'Tap to list them with their times.'}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
         ),
-        onTap: _controller == null ? null : () => _seekTo(_visitEntry(v)),
       ),
+    ),
+    if (_trackListOpen)
+      for (final v in boxes.visits)
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.zero,
+          leading: Text('#${v.trackId}', style: const TextStyle(color: VideoReviewPlayer.visitColor)),
+          title: Text(v.className, overflow: TextOverflow.ellipsis),
+          trailing: Text(
+            '${_time(v.startMs)} – ${_time(v.endMs)}',
+            style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]),
+          ),
+          onTap: _controller == null ? null : () => _seekTo(_visitEntry(v)),
+        ),
   ];
 
   /// m:ss.s, or h:mm:ss for an hour or more.
@@ -966,6 +1035,28 @@ class _KeptTickPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _KeptTickPainter old) => old.keptMs != keptMs || old.durationMs != durationMs;
+}
+
+/// 2-px ticks in the raw box colour at the analysed frames with at least one box, under the
+/// time bar in "All AI boxes" (round 247); scaled like [_VisitStripPainter].
+class _RawStripPainter extends CustomPainter {
+  final List<int> frameMs;
+  final int durationMs;
+  _RawStripPainter(this.frameMs, this.durationMs);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white10);
+    if (durationMs <= 0) return;
+    final paint = Paint()..color = VideoReviewPlayer.rawColor;
+    for (final ms in frameMs) {
+      final x = (ms / durationMs * size.width).clamp(0.0, size.width - 2);
+      canvas.drawRect(Rect.fromLTWH(x, 0, 2, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RawStripPainter old) => old.frameMs != frameMs || old.durationMs != durationMs;
 }
 
 class _VisitStripPainter extends CustomPainter {

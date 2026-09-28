@@ -35,6 +35,10 @@ import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
 
+/// Crops timed by "Test speed" (round 247; was 8, the job's batch size, which the owner found
+/// arbitrary). Any count works: the model runs one crop at a time.
+const int kSpeedTestCrops = 10;
+
 class IdentificationScreen extends StatefulWidget {
   final Directory sessionDir;
   const IdentificationScreen({super.key, required this.sessionDir});
@@ -63,12 +67,35 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   IdentifyResult? _result;
   String? _error;
   DateTime? _runStarted;
+  // Round 250: when the first crop started (the time-left estimate leaves the model loading
+  // out) and how long the whole run took, model loading included (the "Elapsed" clock).
+  DateTime? _embedStarted;
+  Duration? _runTook;
   Timer? _ticker;
   String _accelerator = '';
   // Round 211: why the GPU was not used (null when it was, or was not asked for).
   String? _accelNote;
   bool _testingSpeed = false;
   String? _speedResult;
+
+  /// While "Test speed" runs: the share of timed crops done (0 = not counting yet) and what it
+  /// is doing (round 247).
+  (double, String)? _speedProgress;
+  // Round 251: scrolls the speed test's progress and result into view when they start below
+  // the screen's edge.
+  final _speedKey = GlobalKey();
+
+  void _showSpeed() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _speedKey.currentContext;
+      if (c == null || !c.mounted) return;
+      Scrollable.ensureVisible(
+        c,
+        duration: const Duration(milliseconds: 250),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
 
   /// The stored crops carry visit numbers of an earlier "Find visits" run.
   bool _visitsChanged = false;
@@ -273,6 +300,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _result = null;
       _progress = null;
       _runStarted = DateTime.now();
+      _embedStarted = null;
+      _runTook = null;
     });
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -339,7 +368,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         restart: restart,
         isCancelled: () => _cancel,
         onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
+          if (!mounted) return;
+          setState(() {
+            _progress = p;
+            if (p.stage == 'embedding') _embedStarted ??= DateTime.now();
+          });
         },
       );
       if (result.embedded > 0) {
@@ -360,6 +393,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       await WakelockPlus.disable();
       _ticker?.cancel();
     }
+    _runTook = DateTime.now().difference(_runStarted!);
     if (!mounted) return;
     setState(() {
       _running = false;
@@ -392,11 +426,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     setState(() {
       _testingSpeed = true;
       _speedResult = null;
+      _speedProgress = (0, 'Loading the model (up to half a minute the first time)…');
     });
-    const n = 8;
+    _showSpeed();
+    // Round 247: 10 crops, one per call, so the screen can count them (the model runs one crop
+    // at a time anyway; the job's batches of 8 only group the calls).
+    const n = kSpeedTestCrops;
     try {
       final tasks = await IdentificationJob.planSession(widget.sessionDir, maxCropsPerTrack: prefs.maxCropsPerTrack);
       final info = await ImageEmbedder.load(model.path, useGpu: prefs.useGpu, cpuThreads: prefs.cpuThreads);
+      if (mounted) setState(() => _speedProgress = (0, 'Cutting the crops…'));
       final rgb = <Uint8List>[];
       for (final t in tasks) {
         if (rgb.length >= n) break;
@@ -415,16 +454,24 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         }
       }
       if (rgb.isEmpty) throw Exception('no crops large enough to test');
+      if (mounted) setState(() => _speedProgress = (0, 'Warm-up crop (not timed)…'));
       await ImageEmbedder.embed([rgb.first]); // warm-up (first run pays one-off costs)
       final sw = Stopwatch()..start();
-      await ImageEmbedder.embed(rgb);
+      for (var i = 0; i < rgb.length; i++) {
+        if (mounted) {
+          final left = i == 0 ? '' : ', about ${(sw.elapsedMilliseconds / i * (rgb.length - i) / 1000).ceil()} s left';
+          setState(() => _speedProgress = (i / rgb.length, 'Crop ${i + 1} of ${rgb.length}$left'));
+        }
+        await ImageEmbedder.embed([rgb[i]]);
+      }
       final sPerCrop = sw.elapsedMilliseconds / rgb.length / 1000;
       final auto = prefs.cpuThreads == 0, used = info.cpuThreads;
       final threads = used == null ? (auto ? 'automatic' : '${prefs.cpuThreads}') : '${auto ? 'automatic: ' : ''}$used';
       final agree = info.gpuAgreement;
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
-          '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crops after a warm-up.'
+          '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crop${rgb.length == 1 ? '' : 's'} after a warm-up'
+          '${rgb.length < n ? ' (only ${rgb.length} of this session\'s crops reach the "Smallest box" of ${prefs.minCropPx} px)' : ''}.'
           '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
           '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
       _accelNote = info.accelerationNote;
@@ -438,7 +485,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         logSwallowed('identify_close', e);
       }
     }
-    if (mounted) setState(() => _testingSpeed = false);
+    if (mounted) {
+      setState(() {
+        _testingSpeed = false;
+        _speedProgress = null;
+      });
+      _showSpeed();
+    }
   }
 
   /// Scores the stored embeddings again with the selected pack (no model run).
@@ -450,6 +503,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _running = true;
       _error = null;
       _result = null;
+      _runTook = null;
       _progress = const IdentifyProgress(stage: 'scoring', done: 0, total: 0, avgMs: 0);
     });
     try {
@@ -649,12 +703,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Every saved photo of every tracked insect is cut to a square crop and run through '
-            'the model. The crops of one track id are then combined into ONE answer: the model '
+            'the model. The crops of one track ID are then combined into ONE answer: the model '
             'describes each crop in a vector of numbers, then they are averaged (a crop the model is sure about counts '
             'more, crops it is far less sure about are left out) and the average is classified once, so '
             'photos that agree reinforce each other (not a vote per photo), giving a probability per '
-            'rank. Track ids '
-            'are not joined unless "Merge consecutive visits" is on (Advanced settings). '
+            'rank. Track IDs '
+            'are not joined unless "Merge consecutive track IDs" is on (Advanced settings). '
             'Identification runs on this phone with the chosen model and label pack; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
             'resumed at any time, and pauses when the battery gets warmer than the temperature '
@@ -664,7 +718,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       Text(
         crops == null
             ? 'Counting crops…'
-            : '$crops crops from ${_plannedTracks ?? 0} tracked visits'
+            : '$crops crops from ${_plannedTracks ?? 0} track ID${_plannedTracks == 1 ? '' : 's'}'
                   '${estimate == null ? '' : ' — about ${_fmtDuration(estimate)} on this phone'}',
         style: const TextStyle(color: Colors.white),
       ),
@@ -711,11 +765,31 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
+      // Round 251: the speed test's progress and result right under the buttons (owner: below the
+      // button notes they were off-screen, so it looked as if nothing happened).
+      if (_speedProgress != null || _speedResult != null)
+        Column(
+          key: _speedKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_speedProgress case (final value, final text)?) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: value == 0 ? null : value),
+              const SizedBox(height: 4),
+              Text('Testing speed: $text', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ],
+            if (_speedResult != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_speedResult!, style: const TextStyle(color: Colors.white)),
+              ),
+          ],
+        ),
       if (_visitsChanged)
         const Padding(
           padding: EdgeInsets.only(top: 8),
           child: Text(
-            'The visits were found again since the last run, so its stored results no longer match '
+            'The track IDs were found again since the last run, so its stored results no longer match '
             'them. Continue / re-run starts over.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
@@ -733,10 +807,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                   ? 'runs the model only on photos that have no stored result yet (new photos, or after '
                         'lowering "Smallest box"), then recomputes the results; with nothing new it takes '
                         'seconds.'
-                  : 'runs the model on every photo of every track id (the slow step), then computes the '
+                  : 'runs the model on every photo of every track ID (the slow step), then computes the '
                         'results.',
             ),
-            _buttonNote('Test speed', 'times the model on 8 of this session\'s crops with the current GPU and thread settings; writes nothing.'),
+            _buttonNote(
+              'Test speed',
+              'times the model on $kSpeedTestCrops of this session\'s crops with the current GPU and thread '
+                  'settings, counting them as it goes; writes nothing. Seconds with a GPU, a few minutes '
+                  'on an older phone\'s CPU. It times the model alone: a full run also loads the model, '
+                  'reads the photos and combines the results ("Last run" shows both).',
+            ),
             if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
                 'Re-score with this pack',
@@ -747,11 +827,6 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           ],
         ),
       ),
-      if (_speedResult != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(_speedResult!, style: const TextStyle(color: Colors.white)),
-        ),
     ];
   }
 
@@ -761,8 +836,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final total = p?.total ?? 0;
     final done = p?.done ?? 0;
     Duration? remaining;
-    if (p != null && done > 0 && total > done && p.stage != 'scoring') {
-      remaining = Duration(milliseconds: (elapsed.inMilliseconds / done * (total - done)).round());
+    final cropping = _embedStarted == null ? null : DateTime.now().difference(_embedStarted!);
+    if (p != null && cropping != null && done > 0 && total > done && p.stage != 'scoring') {
+      remaining = Duration(milliseconds: (cropping.inMilliseconds / done * (total - done)).round());
     }
     final stageText = _loadingModel
         ? 'Loading the model (the first time can take a minute)…'
@@ -771,7 +847,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'embedding' => 'Identifying crops on the $_accelerator…'
                 '${_accelNote != null ? ' (GPU not used: $_accelNote)' : ''}',
             'paused' => 'Paused: ${p!.note}',
-            'scoring' => 'Combining crops per visit and writing results…',
+            'scoring' => 'Combining crops per track ID and writing results…',
             'done' => 'Finishing…',
             _ => 'Starting…',
           };
@@ -787,7 +863,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             style: const TextStyle(color: Colors.white)),
       Text('Elapsed ${_fmtDuration(elapsed)}'
           '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
-          '${p != null && p.avgMs > 0 ? ' — ${(p.avgMs / 1000).toStringAsFixed(1)} s per crop' : ''}',
+          '${p != null && p.avgMs > 0 ? ' — the model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop' : ''}',
           style: helperTextStyle),
       if (p?.tempC != null)
         ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? 40, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
@@ -803,6 +879,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     ];
   }
 
+  /// Round 250: where the run's time went, so the per-crop speed can be checked against the
+  /// total (the model's own time, as "Test speed" and the progress line report it).
+  String _modelShare(IdentifyResult r) {
+    if (r.embedded == 0 || r.modelTime == Duration.zero) return '';
+    final ms = r.modelTime.inMilliseconds;
+    final all = ms < 60000 ? '${(ms / 1000).toStringAsFixed(1)} s' : _fmtDuration(r.modelTime);
+    return ' The model itself took ${(ms / r.embedded / 1000).toStringAsFixed(2)} s per crop ($all in all); '
+        'loading it, reading the photos and combining the results took the rest.';
+  }
+
   List<Widget> _completionSection() {
     final r = _result;
     final s = r?.summary;
@@ -814,8 +900,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         if (r.cancelled) const Text('Cancelled — progress is kept; Continue resumes.', style: TextStyle(color: Colors.amber)),
         Text(
           '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
-          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(r.elapsed)}'
-          '${r.embedded > 0 ? ' on the $_accelerator' : ''}.',
+          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(_runTook ?? r.elapsed)}'
+          '${r.embedded > 0 ? ' on the $_accelerator' : ''}.${_modelShare(r)}',
           style: const TextStyle(color: Colors.white),
         ),
         if (r.embedded > 0 && _accelNote != null)
@@ -823,7 +909,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(
-            '${s['tracks_total']} visits: '
+            '${s['tracks_total']} track IDs: '
             '${(s['by_identified_rank'] as Map).entries.map((e) => '${e.value} to ${e.key}').join(', ')}'
             '${s['unidentified'] != 0 ? ', ${s['unidentified']} unidentified' : ''}'
             '${(s['no_organism'] ?? 0) != 0 ? ', ${s['no_organism']} no organism' : ''}.',
@@ -887,7 +973,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText:
               'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
-              'on the test phone that was 2.5 times as fast as 1. 4 was about a quarter faster '
+              'on the test phone that was almost twice as fast as 1. 4 was about a quarter faster '
               'again but keeps twice as many cores busy, so the phone warms up sooner (which '
               'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),
@@ -919,7 +1005,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'and is mostly blur; raise it for fewer but cleaner crops.',
         ),
         NumericSettingField(
-          label: 'Crops per visit (0 = all)',
+          label: 'Crops per track ID (0 = all)',
           value: prefs.maxCropsPerTrack.toDouble(),
           min: 0,
           max: 100,
@@ -929,10 +1015,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             _plan();
           },
           helperText:
-              'Upper limit per track id: when a visit has more photos than this, only its LARGEST '
-              'boxes are kept. How many photos a visit has '
+              'Upper limit per track ID: when a track ID has more photos than this, only its LARGEST '
+              'boxes are kept. How many photos a track ID has '
               'comes from the session\'s photo schedule (e.g.: AI mode default with one photo every 1 s for '
-              '10 s, so about 10 per visit); with that default the limit of 10 rarely removes '
+              '10 s, so about 10 per track ID); with that default the limit of 10 rarely removes '
               'anything and only bounds the runtime for long bursts. Set 0 to use all photos.',
         ),
         NumericSettingField(
@@ -971,7 +1057,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.noneThreshold = v),
           helperText:
               'The label pack also contains a few "none of these" entries (flower, leaf, shadow, empty '
-              'background). When their summed probability is above this, the visit is reported as '
+              'background). When their summed probability is above this, the track ID is reported as '
               '"no organism": the detector most likely fired on nothing.',
         ),
         NumericSettingField(
@@ -985,22 +1071,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           helperText: 'The run pauses when the battery reaches this and resumes 3 °C lower.',
         ),
         HelpSwitchTile(
-          title: 'Merge consecutive visits',
+          title: 'Merge consecutive track IDs',
           value: prefs.mergeVisits,
           onChanged: (v) => _edit(() => prefs.mergeVisits = v),
           helperText:
-              'Off: every track id is one visit. On: when a track id ends and a new one starts within '
-              'the gap below, the two are joined into one visit (and identified again from all their '
+              'Off: every track ID stays on its own. On: when a track ID ends and a new one starts within '
+              'the gap below, the two are joined into one track ID (and identified again from all their '
               'photos) if they pass three checks: a compatible identification (same taxon on the same '
               'path, e.g. Apidae then Bombus), a similar appearance (the model\'s image embeddings, the '
               'strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
-              'insect for a moment and gave it a new id. Track ids that overlap in time are never '
-              'joined (two insects at once). Changes the visit count, so it is off by default; the CSV '
+              'insect for a moment and gave it a new id. Track IDs that overlap in time are never '
+              'joined (two insects at once). Changes the track ID count, so it is off by default; the CSV '
               'lists the joined ids.',
         ),
         if (prefs.mergeVisits) ...[
           NumericSettingField(
-            label: 'Largest gap between joined visits',
+            label: 'Largest gap between joined track IDs',
             value: prefs.mergeGapS,
             min: 0.5,
             max: 120,
@@ -1008,7 +1094,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             unitSuffix: 's',
             onChanged: (v) => _edit(() => prefs.mergeGapS = v),
             helperText:
-                'Time from the end of one track id to the start of the next. Check also what is set for the '
+                'Time from the end of one track ID to the start of the next. Check also what is set for the '
                 'live tracker\'s own continuity buffer (its occlusion setting, 3 s by default). Longer gaps '
                 'risk joining two different insects of the same species: the appearance check cannot '
                 'tell individuals apart, only the time gap can.',
@@ -1021,7 +1107,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             decimals: 2,
             onChanged: (v) => _edit(() => prefs.mergeMinCos = v),
             helperText:
-                'Cosine similarity (0 to 1) between the two visits\' combined image embeddings: 1 = the '
+                'Cosine similarity (0 to 1) between the two track IDs\' combined image embeddings: 1 = the '
                 'model sees the same thing. Same species usually scores 0.8 to 0.95, different families '
                 'well below. 0.85 is a cautious default; lower it if fragments of one insect stay apart.',
           ),
@@ -1034,21 +1120,21 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             unitSuffix: '%',
             onChanged: (v) => _edit(() => prefs.mergeSizeTol = v / 100),
             helperText:
-                'Mean box side of each visit, as a fraction of the ROI, compared as a percentage of the '
+                'Mean box side of each track ID, as a fraction of the ROI, compared as a percentage of the '
                 'larger one. A loose guard on purpose (wings, distance and ROI-edge cuts change box size); '
                 '100 % switches the check off.',
           ),
         ],
         const SizedBox(height: 8),
         const HelpLabel(
-          label: 'Suspect visits (flags only, nothing is deleted)',
+          label: 'Suspect track IDs (flags only, nothing is deleted)',
           labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           helperText:
-              'Very short track ids are often false detections (a moving petal, a shadow, a video '
-              'artefact), and a weak identification makes that more likely. A visit is flagged '
+              'Very short track IDs are often false detections (a moving petal, a shadow, a video '
+              'artefact), and a weak identification makes that more likely. A track ID is flagged '
               '"suspect" when it is SHORT (below the duration OR the detections below) AND weakly '
               'supported (detector confidence below the threshold, order-level probability below the '
-              'threshold, or "no organism"). Suspect visits are hidden from the results table by default '
+              'threshold, or "no organism"). Suspect track IDs are hidden from the results table by default '
               '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
               'thresholds on your own data in R or Python.',
         ),
@@ -1060,7 +1146,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 1,
           unitSuffix: 's',
           onChanged: (v) => _edit(() => prefs.flagMinDurationS = v),
-          helperText: 'From the first to the last detection of the track id. 0 = never short by duration.',
+          helperText: 'From the first to the last detection of the track ID. 0 = never short by duration.',
         ),
         NumericSettingField(
           label: 'Short: detections below',
@@ -1069,7 +1155,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 100,
           isInt: true,
           onChanged: (v) => _edit(() => prefs.flagMinDetections = v.round()),
-          helperText: 'Detector frames the track id appeared in. 0 = never short by count.',
+          helperText: 'Detector frames the track ID appeared in. 0 = never short by count.',
         ),
         NumericSettingField(
           label: 'Weak: detector confidence below',
@@ -1079,8 +1165,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.flagMinDetConf = v),
           helperText: 
-              'If the mean confidence of the live detector over the visit\'s crops '
-              'is below this, the visit is flagged as weak. '
+              'If the mean confidence of the live detector over the track ID\'s crops '
+              'is below this, the track ID is flagged as weak. '
         ),
         NumericSettingField(
           label: 'Weak: order probability below',
@@ -1091,29 +1177,32 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.flagMinOrderP = v),
           helperText:
               'If the identification\'s probability at ORDER rank (e.g. Diptera) '
-              'is below this, the visit is flagged as weak. '
+              'is below this, the track ID is flagged as weak. '
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: DropdownButtonFormField<String>(
             initialValue: prefs.targetRank,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Rank for the CSV "pred" columns'),
+            decoration: const InputDecoration(labelText: 'CSV file only: rank of the "pred" columns'),
             items: [for (final r in kRankNames.skip(3)) DropdownMenuItem(value: r, child: Text(r))],
             onChanged: (v) {
               if (v != null) _edit(() => prefs.targetRank = v);
             },
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
           child: Text(
-            'The CSV\'s first columns (pred, pred_prob_weighted, pred_prob_mean) follow the '
-            'insect-detect-post format of Maximilian Sittinger and hold the answer at ONE rank; '
-            'this picks that rank; the box shows your current choice (the app\'s default is family). '
-            'All ranks are in the bioclip_<rank> and '
-            'p_<rank> columns regardless. The names follow that format; the formulas are '
-            'FaunaPulse\'s (certainty-weighted mean and plain mean of the crops\' probabilities).',
+            // Round 247 (owner: unclear what this does, and "default is family" next to genus).
+            'Changes nothing in the app: the results on screen always show every rank. It only '
+            'matters for the CSV file of the results (tracks_<pack>.csv): its columns pred, '
+            'pred_prob_weighted, pred_prob_mean and pred_imgs give the answer at ONE rank, as the '
+            'insect-detect-post tool of Maximilian Sittinger does, so the files of both can be '
+            'compared; this picks that rank. All ranks are in the bioclip_<rank> and p_<rank> columns '
+            'anyway. The names follow that tool; the formulas are FaunaPulse\'s (certainty-weighted mean '
+            'and plain mean of the crops\' probabilities). '
+            '${prefs.targetRank == 'family' ? 'Family is the app\'s default.' : 'You chose ${prefs.targetRank}; the app\'s default is family.'}',
             style: helperTextStyle,
           ),
         ),

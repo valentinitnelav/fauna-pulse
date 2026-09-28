@@ -14,7 +14,7 @@ both trackers, the session logger (including the write-failure path), capture
 scheduling and crop geometry, frame processing, config round-trips/migrations,
 schedule and time-lapse plans, post-hoc analysis + SAHI, video import and
 start-time guesses, offline tracking of videos and its exports
-(`video_tracker_test.dart`), the one-visits-file rule for summary, dashboard
+(`video_tracker_test.dart`), the one-track-ID-file rule for summary, dashboard
 and identification (`track_source_test.dart`), error reporting, and
 widget regressions (e.g. the bottom-inset pattern in
 `summary_bottom_inset_test.dart`, which also documents the widget-test async
@@ -59,10 +59,10 @@ benchmarks.
 
 ## Video frame-rate sweep (round 230)
 
-Re-runs *Find visits* on an analysed video session at lower frame rates (the
+Re-runs *Find track IDs* on an analysed video session at lower frame rates (the
 frames a run at that rate would have looked at) for both trackers, and writes
-`fps_sweep/visits_<tracker>_<fps>fps.csv` for
-`tool/video_eval/evaluate_visits.py` to score against a hand count
+`fps_sweep/track_ids_<tracker>_<fps>fps.csv` for
+`tool/video_eval/evaluate_track_ids.py` to score against a hand count
 (`docs/VIDEO_ANALYSIS.md` §5). Analyse the videos at their full rate first.
 
 ```bash
@@ -91,9 +91,20 @@ flutter test integration_test/video_import_check_test.dart -d <device> --no-unin
 flutter test integration_test/video_review_check_test.dart -d <device> --no-uninstall # Video tab: boxes, 4x frame times, soak, re-analysis (r231; header: model, screenshots)
 flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Run AI on videos: stop, forced cooling pause, continue, graphs, CSV (r232)
 flutter test integration_test/video_convert_check_test.dart -d <device> --no-uninstall # frame conversion: same boxes as a saved reference, ms per step (r233; run once before a converter change to save the reference)
+flutter test integration_test/camera_modes_check_test.dart -d <device> --no-uninstall  # recording modes through the camera screen: time-lapse photos/video with camera sleep + torch, continuous video, motion-only, live AI photos, a scheduled run (r245; MODES=ACF picks sessions; E_SUBJECT=true when the phone looks at a video of pollinators/animals, so live AI photos are really tested)
+flutter test integration_test/live_video_check_test.dart -d <device> --no-uninstall   # live AI + ROI video and the motion gate (r240; LIVE_CHECK_ONLY=BD, LIVE_SECONDS=330 for the 5-minute clip rollover)
+flutter test integration_test/view_recreate_check_test.dart -d <device> --no-uninstall # live settings (ROI, gate, time-lapse, lens) reach a rebuilt camera view (r244; START_LENS=0.5)
 ```
 
-On a phone that has the Play build installed (the Samsung), never run the
+Camera-screen checks need the phone awake and unlocked when they start: behind a lock screen
+the camera delivers no frames and the check waits for ever. A swipe lock can be passed with
+`adb shell input keyevent KEYCODE_WAKEUP` and `adb shell input swipe 360 1300 360 400`; a PIN
+lock needs a person. The checks keep the screen on once running and restore the phone's saved
+settings afterwards; their sessions stay on the phone (delete them there). A scheduled run asks
+for the notification permission, so grant it first:
+`adb shell pm grant com.faunapulse.app android.permission.POST_NOTIFICATIONS`.
+
+On a phone that has the Play build installed, never run the
 commands above: they would replace or uninstall it. Build a side-by-side debug
 copy instead and read the results from logcat:
 

@@ -42,6 +42,7 @@ import android.view.Gravity
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicIntegerArray
 import android.content.res.Configuration
 
 /**
@@ -74,6 +75,12 @@ class YOLOView @JvmOverloads constructor(
         private var previewUseCase: Preview? = null
 
         private const val TAG = "YOLOView"
+
+        // What extended the motion gate's wake window (round 244, FRAMEPERF "wakes=").
+        private const val GATE_WAKE_MOTION = 0
+        private const val GATE_WAKE_BOX = 1
+        private const val GATE_WAKE_ROI = 2
+        private const val GATE_WAKE_SETTINGS = 3
 
         // Line thickness and corner radius
         private const val BOX_LINE_WIDTH = 8f
@@ -414,6 +421,7 @@ class YOLOView @JvmOverloads constructor(
         if (motionGateEnabled) {
             motionGate.reset()
             gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+            gateWakes.incrementAndGet(GATE_WAKE_ROI)
         }
     }
 
@@ -429,6 +437,13 @@ class YOLOView @JvmOverloads constructor(
     @Volatile private var gateAwakeUntilNs = 0L
     private val motionGate = MotionGate()
     private var lastGateHeartbeatNs = 0L // analyzer thread only
+    // Round 244: what kept the gate awake, counted per FRAMEPERF second (indices GATE_WAKE_*):
+    // motion, a detection box, an ROI change, new gate settings. Written from the analyzer and
+    // the main thread. The highest box confidence of the second tells a detection wake apart.
+    private val gateWakes = AtomicIntegerArray(4)
+    @Volatile private var gateWakeBoxConf = 0f
+    private var gateAwakeFrames = 0 // analyzer thread only
+    private var gateIdleFrames = 0 // analyzer thread only
     // Round 63 (cooler idle): while the gate keeps the detector asleep, only
     // one frame per this interval is converted + motion-checked; the rest are
     // dropped untouched. Converting EVERY frame to a bitmap just to look for
@@ -559,6 +574,7 @@ class YOLOView @JvmOverloads constructor(
         gateIdleSampleNs = 1_000_000_000L / idleFps.coerceIn(1, 30)
         motionGate.reset()
         gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+        gateWakes.incrementAndGet(GATE_WAKE_SETTINGS)
         motionOnlyMode = motionOnly
         // Motion-only capture cannot work without the gate (it IS the trigger),
         // so it forces the gate on regardless of the caller's enabled flag.
@@ -615,6 +631,8 @@ class YOLOView @JvmOverloads constructor(
     private var showUIControls = false
 
     init {
+        // Round 244: a new instance starts with the motion gate off until Dart sends its settings.
+        Log.i(TAG, "YOLOView created ${System.identityHashCode(this)}")
         // Clear any existing children
         removeAllViews()
 
@@ -715,6 +733,7 @@ class YOLOView @JvmOverloads constructor(
 
     fun setConfidenceThreshold(conf: Double) {
         confidenceThreshold = conf
+        Log.i(TAG, "confidence threshold $conf")
         predictor?.setConfidenceThreshold(conf)
         // Update the confidence label if UI controls are shown
         if (showUIControls) {
@@ -1625,6 +1644,8 @@ class YOLOView @JvmOverloads constructor(
         val lenses = if (cachedLenses.isEmpty()) enumerateLenses() else cachedLenses
         if (lenses.isEmpty()) return
         val target = lenses.minByOrNull { abs(it.zoomFactor - zoomFactor) } ?: return
+        // Round 245: shows which lens a (new) view really runs on, e.g. after a view rebuild.
+        Log.i(TAG, "setLens $zoomFactor -> ${target.label} (${target.zoomFactor}x)")
         if (target.cameraInfo == null) {
             selectLogicalBackLens(target)
             return
@@ -2590,8 +2611,17 @@ class YOLOView @JvmOverloads constructor(
                 "FRAMEPERF deliveredFps=${"%.1f".format(lastDeliveredFps)} " +
                     "convertedFps=${"%.1f".format(perfConverted / secs)} " +
                     "inferredFps=${"%.1f".format(perfInferred / secs)} " +
-                    "toBitmapMs=${"%.1f".format(avgToBitmap)} format=${imageProxy.format} ${w}x$h"
+                    "toBitmapMs=${"%.1f".format(avgToBitmap)} format=${imageProxy.format} ${w}x$h" +
+                    (if (!motionGateEnabled) " gate=off" else
+                        " gate=on awake=${nowNs <= gateAwakeUntilNs} frames=$gateAwakeFrames/$gateIdleFrames " +
+                        "wakes=${gateWakes.getAndSet(GATE_WAKE_MOTION, 0)}/${gateWakes.getAndSet(GATE_WAKE_BOX, 0)}/" +
+                        "${gateWakes.getAndSet(GATE_WAKE_ROI, 0)}/${gateWakes.getAndSet(GATE_WAKE_SETTINGS, 0)} " +
+                        "boxConf=${"%.2f".format(gateWakeBoxConf)} score=${"%.4f".format(motionGate.lastScore)} " +
+                        "delta=${motionGate.pixelDelta} area=${motionGate.areaFraction}")
             )
+            gateAwakeFrames = 0
+            gateIdleFrames = 0
+            gateWakeBoxConf = 0f
             perfWindowStartNs = nowNs
             perfFramesIn = 0
             perfConverted = 0
@@ -2609,7 +2639,11 @@ class YOLOView @JvmOverloads constructor(
         // shouldRunInference() is stateful (advances the cap clock), so
         // remember its verdict instead of asking twice per frame.
         var inferenceApproved = false
-        if (!motionGateEnabled) {
+        // Round 243: not in time-lapse mode, where no inference runs and the frames are chosen by
+        // the time-lapse sampler or the video clip's clock above. A cap learned from the few
+        // detector frames before the mode switch (3 per second on a slow phone) otherwise
+        // throttled every time-lapse photo and video frame for the whole session.
+        if (!motionGateEnabled && !timeLapseMode) {
             if (shouldRunInference()) {
                 inferenceApproved = true
             } else if (videoDue) {
@@ -2705,7 +2739,10 @@ class YOLOView @JvmOverloads constructor(
             // Always the direct thumbnail draw: no model raster ever exists here
             // (motionDetectedFromModelInput needs the predictor to have run).
             val motion = gateMotionFromFrame(bitmap, rotationDegrees, frameIsLandscape)
-            if (motion) gateAwakeUntilNs = nowGate + motionGateWakeNs
+            if (motion) {
+                gateAwakeUntilNs = nowGate + motionGateWakeNs
+                gateWakes.incrementAndGet(GATE_WAKE_MOTION)
+            }
             if (motion || wasAwake) {
                 // Awake: emit at most every 100 ms — plenty for a >= 1 s photo
                 // step — except a wake TRANSITION, which emits immediately so the
@@ -2773,7 +2810,9 @@ class YOLOView @JvmOverloads constructor(
                         // extending the wake window between inferred frames.
                         if (gateMotionFromFrame(bitmap, imageProxy.imageInfo.rotationDegrees, frameIsLandscape)) {
                             gateAwakeUntilNs = nowGate + motionGateWakeNs
+                            gateWakes.incrementAndGet(GATE_WAKE_MOTION)
                         }
+                        gateAwakeFrames++
                         imageProxy.close()
                         return
                     }
@@ -2781,8 +2820,10 @@ class YOLOView @JvmOverloads constructor(
                     // Was idle, motion just woke the gate; the FPS-cap check
                     // below decides whether this frame also runs inference.
                     gateAwakeUntilNs = nowGate + motionGateWakeNs
+                    gateWakes.incrementAndGet(GATE_WAKE_MOTION)
                 } else {
                     // Still idle: heartbeat instead of results (see helper doc).
+                    gateIdleFrames++
                     maybeEmitGateIdleHeartbeat(nowGate)
                     imageProxy.close()
                     return
@@ -2842,7 +2883,11 @@ class YOLOView @JvmOverloads constructor(
                     } else {
                         gateMotionFromFrame(bitmap, rotationDegrees, frameIsLandscape)
                     }
-                    if (motion) gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+                    if (motion) {
+                        gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+                        gateWakes.incrementAndGet(GATE_WAKE_MOTION)
+                    }
+                    gateAwakeFrames++
                 }
 
                 // Apply originalImage if streaming config requires it
@@ -2857,6 +2902,8 @@ class YOLOView @JvmOverloads constructor(
             // never dropped just because it stopped producing motion.
             if (motionGateEnabled && result.boxes.isNotEmpty()) {
                 gateAwakeUntilNs = System.nanoTime() + motionGateWakeNs
+                gateWakes.incrementAndGet(GATE_WAKE_BOX)
+                gateWakeBoxConf = maxOf(gateWakeBoxConf, result.boxes.maxOf { it.conf })
             }
 
             inferenceResult = resultWithOriginalImage

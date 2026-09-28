@@ -282,7 +282,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         label: 'Filming started: ${_dateTime(first.startMs)}',
         labelStyle: const TextStyle(color: Colors.white),
         helperText:
-            'Visits are placed on the clock from this time, so graphs and exports show when '
+            'Track IDs are placed on the clock from this time, so graphs and exports show when '
             'insects came. The app reads it from the file name or from the time stored in the '
             'video; files sent through messengers often lose it.',
       ),

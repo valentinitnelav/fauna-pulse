@@ -71,8 +71,8 @@ species on 38 frames. On the Xiaomi test phone one crop took 0.27 s on the GPU i
 2.6 s on the CPU. `--attention torch` makes the old kind of file (for comparison only).
 The manifest records which kind a file is (`"attention": "4d"`).
 
-Options: `--precision int8` (dynamic-range int8, about 0.3 GB, for phones without a
-usable GPU), `--precision fp32` (nothing cast, 1.2 GB; also runs on the phone),
+Options: `--precision fp32` (nothing cast, 1.2 GB; also runs on the phone),
+`--precision int8` or `int8-weights` (about 0.3 GB; see section 2b before using them),
 `--keep-fp32` (keep the float32 intermediate, useful for `verify_parity.py`),
 `--model bioclip-2.5` (ViT-H/14, 3.9 GB download, about 1.3 GB fp16, needs more RAM),
 `--onnx` (additionally write an ONNX file).
@@ -83,11 +83,40 @@ Check the file before copying it anywhere:
 python inspect_tflite.py out/bioclip-2_image_fp16.tflite
 ```
 
-Expected (4d export): `FULLY_CONNECTED: {'fp16/int8 weights (dequantized)': 145}` (the
-attention's in-projection is split into three), input
+Expected (4d export): `FULLY_CONNECTED: {'fp16 weights': 145}` (every large layer is
+fp16; the attention's in-projection is split into three), input
 `serving_default_args_0 [1, 3, 224, 224]`, output `serving_default_output_0_output [1, 768]`.
 If it says `weights computed at runtime (unfolded)`, the conversion ran in the
 memory-saving mode (see Troubleshooting).
+
+## 2b. Quantisation: what it is and when it makes a model faster
+
+The float32 file stores each of BioCLIP 2's ~300 million weights in 4 bytes.
+*Quantising* stores them with fewer bits: the file gets smaller, and some chips compute
+faster, at the price of a little rounding. `quantise_tflite.py` does this step (the
+export calls it) and works on any float32 `.tflite`, so collaborators can use it for
+their own classifiers or embedders. For YOLO detectors, use Ultralytics' own export
+instead (`docs/MODEL_CONVERSION.md`). Its comments explain each kind in more detail.
+
+| Kind | Size (BioCLIP 2) | Top family as PyTorch (30 frames) | Faster where |
+|---|---|---|---|
+| fp32 | 1216 MB | (reference) | nowhere (the baseline) |
+| **fp16** (default) | 609 MB | 30 of 30, cosine 1.0000 | phone GPU (its native 16-bit maths); on a CPU the weights are widened back to 32 bits, so same speed |
+| int8-weights | 309 MB | 29 of 30, cosine 0.9995 | nowhere: weights widened to floats on loading; only the file is smaller |
+| int8 (dynamic range) | 309 MB | 24 of 30, cosine 0.9969 | CPU (8-bit maths); the gain depends on the chip |
+
+Measured in round 250 with `verify_parity.py` on 30 frames of a bee filmed off a laptop
+screen. Every int8 miss was a frame where PyTorch itself was unsure (top family below
+50 %). On a laptop CPU (Intel i5-8350U, 4 threads) all four took 1.0 to 2.0 s per crop:
+int8 was at most about 20 % faster, which is less than the laptop's own run-to-run
+spread. On the Xiaomi test phone (Snapdragon 888) fp16 took 0.27 s per crop on the GPU
+and 2.6 s on the CPU. int8 on a phone CPU has not been measured yet.
+
+**Does quantisation need a GPU?** Making the file does not: it runs on any computer's
+CPU in seconds. Whether the smaller file then *runs* faster depends on the chip that
+runs it. fp16 helps a GPU. On a CPU only int8 with 8-bit maths can help, and for
+BioCLIP it cost accuracy on unsure crops. That is why the app ships fp16 and uses the
+GPU where it can.
 
 ## 3. Build a label pack (about 5 minutes plus the download)
 
@@ -162,8 +191,11 @@ python verify_parity.py --tflite out/bioclip-2_image_fp16.tflite --images /path/
 Compares the phone model with the original PyTorch model on your images: cosine
 similarity of the embeddings and top-1 agreement at family and species level with the
 pack. Expected `PARITY OK` with mean cosine >= 0.99 (measured: 1.0000 for fp16 and
-fp32) and family agreement >= 95 % (measured: 100 %). Any folder of insect photos or
-crops works (jpg/png, searched recursively).
+fp32) and family agreement >= 95 % (measured: 100 %). The family is taken the way the
+app reports it (a family's species probabilities added up); the line also says how
+many of the images PyTorch itself is sure about agree, which tells a quantised file's
+near-ties apart from real errors (section 2b). Any folder of insect photos or crops
+works (jpg/png, searched recursively).
 
 ## 5. Copy the files to the phone and import them
 
@@ -229,9 +261,9 @@ References:
 - `ModuleNotFoundError: No module named 'tensorflow'`: an old copy of the script;
   the current one does not use TensorFlow (litert-torch 0.9+ plus ai-edge-quantizer).
 - `TypeError: can only concatenate str (not "bytes") to str` inside ai-edge-quantizer:
-  a text/bytes mismatch between ai-edge-quantizer 0.9.0 and flatbuffers 25.12. The
-  script works around it (tensor names are normalised before the cast). If it still
-  appears with newer versions, use `--precision fp32`.
+  a text/bytes mismatch between ai-edge-quantizer 0.9.0 and flatbuffers 25.12.
+  `quantise_tflite.py` works around it (tensor names are normalised before the cast).
+  If it still appears with newer versions, use `--precision fp32`.
 - The fp16 file is larger than the float32 one, or `inspect_tflite.py` reports
   "weights computed at runtime": the conversion ran with `--lightweight`, which leaves
   the LayerNorm-scale products of 48 weight matrices unfolded. Delete the float32 file
@@ -250,11 +282,12 @@ References:
 | File | Purpose |
 |---|---|
 | `export_image_tower.py` | checkpoint -> `.tflite` (+ manifest) |
+| `quantise_tflite.py` | float32 `.tflite` -> fp16 / int8 / int8-weights, with a quick check (any model) |
 | `build_label_pack.py` | TreeOfLife embeddings + filters + sink rows -> `.fpack` |
 | `fpack.py` | the pack container format (also writes the app's test fixture) |
 | `build_region_species_list.py` | GBIF occurrence facets + TreeOfLife-to-GBIF mapping -> regional species CSV |
 | `verify_parity.py` | PyTorch vs `.tflite` comparison on real images |
-| `inspect_tflite.py` | ops, constant sizes and weight layout of a `.tflite` |
+| `inspect_tflite.py` | ops, constant sizes and how each layer's weights are stored (fp16, int8, float32) |
 | `requirements.txt`, `requirements-lock.txt` | packages (ranges / exact verified versions) |
 | `catalog.example.json` | example of the download catalogue the app will read (model + pack entries with URL, size, sha256) |
 | `out/`, `.venv/` | outputs and the environment (git-ignored) |
@@ -278,7 +311,7 @@ https://doi.org/10.5281/zenodo.21822140), re-implemented in our own code:**
 - the API-based way of building the regional list (GBIF occurrence facets, minimum 3
   records) and his TreeOfLife-to-GBIF key mapping (`tol_gbif_taxon_keys_Arthropoda.csv`,
   downloaded from his release, not redistributed);
-- the per-visit CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
+- the per-track-ID CSV column names (`pred`, `pred_prob_weighted`, `pred_prob_mean`,
   `track_imgs`, `pred_imgs`, `bioclip_<rank>`) of his `_classified_final.csv`, so both
   tools' outputs can be analysed with the same scripts; the app's pooling rule itself
   differs (round 219: certainty-weighted average of the crops' embeddings scored once, the

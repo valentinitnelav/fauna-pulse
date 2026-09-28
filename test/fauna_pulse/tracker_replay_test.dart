@@ -85,7 +85,7 @@ void main() {
   });
 
   group('replayTracker', () {
-    test('counts two separate visits with sane durations', () {
+    test('counts two separate track IDs with sane durations', () {
       // Visit 1: 0–2 s. Long empty gap (> occlusion). Visit 2: 30–31 s.
       final lines = [
         ...visitLines(0, 2000, 100, 0.40),
@@ -104,7 +104,7 @@ void main() {
       expect(report.visitDurationsS[0], closeTo(2.0, 0.11));
       expect(report.visitDurationsS[1], closeTo(1.0, 0.11));
       expect(report.maxConcurrent, 1);
-      expect(report.summary(), contains('2 visit(s)'));
+      expect(report.summary(), contains('2 track ID(s)'));
     });
 
     test('both trackers run the same frames through one interface', () {
@@ -295,7 +295,7 @@ void main() {
         isNotEmpty,
         reason:
             'No raw_detections records in $sessionPath — was the session '
-            'recorded with Settings → AI → Visit tracking → Advanced → '
+            'recorded with Settings → AI → Tracking → Advanced → '
             '"Log raw detections" enabled?',
       );
       // Read the seconds the session actually used from its start record, so
@@ -320,7 +320,7 @@ void main() {
       // ignore: avoid_print
       print(
         'Replaying ${frames.length} frames from $sessionPath '
-        '(occlusion $occlusionS s, min visit $minHitsS s):',
+        '(occlusion $occlusionS s, min track ID $minHitsS s):',
       );
       // The round-107 variant matrix. Factories, not instances: each run
       // needs a fresh tracker, and the degraded pass must not share state

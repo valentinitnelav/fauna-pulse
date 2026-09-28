@@ -955,12 +955,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final step = t.stepSeconds;
     return [
       const HelpLabel(
-        label: 'Visits',
+        label: 'Track IDs',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
             'Follows each insect from photo to photo, as the live camera does with the AI on, so one '
-            'insect seen in many photos counts as one visit. The summary then shows the visits and '
-            'which photos belong to each, and "Identify organisms" answers per visit. Takes seconds '
+            'insect seen in many photos counts as one track ID. The summary then shows the track IDs and '
+            'which photos belong to each, and "Identify organisms" answers per track ID. Takes seconds '
             'and can be repeated with other settings.',
       ),
       const SizedBox(height: 6),
@@ -968,7 +968,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         Text(
           '${step == null ? 'This session\'s photo step is not known, so its photos' : 'Photos ${_numStr(step)} s apart'} '
           'are too far apart to follow an insect: it can move too far between two photos to be '
-          'recognised as the same one. Finding visits needs a photo every '
+          'recognised as the same one. Finding track IDs needs a photo every '
           '${_numStr(PhotoTracker.maxStepSeconds)} s or more often (Settings → "Photo step", with the '
           'fast photo source). The photos with an insect still show in the summary.',
           style: const TextStyle(color: Colors.white70, fontSize: 13),
@@ -984,21 +984,21 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           helperText:
               'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
               'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
-              'step, or every visit breaks into pieces.',
+              'step, or every track ID breaks into pieces.',
           onChanged: (x) async {
             setState(() => _occlusionSeconds = x);
             (await SharedPreferences.getInstance()).setDouble(_prefOcclusion, x);
           },
         ),
         NumericSettingField(
-          label: 'Minimum visit length',
+          label: 'Minimum track length',
           value: _minVisitSeconds,
           min: 0,
           max: 2,
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect must be seen before it counts as a visit; shorter sightings are '
+              'How long an insect must be seen before it counts as a track ID; shorter sightings are '
               'dropped as noise. Default 0.2 s, as the live camera.',
           onChanged: (x) async {
             setState(() => _minVisitSeconds = x);
@@ -1009,20 +1009,20 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         FilledButton.tonalIcon(
           onPressed: busy ? null : _findVisits,
           icon: const Icon(Icons.timeline),
-          label: Text(_tracking ? 'Finding visits…' : v == null ? 'Find visits' : 'Find visits again'),
+          label: Text(_tracking ? 'Finding track IDs…' : v == null ? 'Find track IDs' : 'Find track IDs again'),
         ),
         if (v != null) ...[
           const SizedBox(height: 6),
           Text(
-            '${v.visits} ${v.visits == 1 ? 'visit' : 'visits'} (occlusion tolerance '
-            '${v.occlusionSeconds.toStringAsFixed(1)} s, minimum visit ${v.minHitsSeconds.toStringAsFixed(1)} s).',
+            '${v.visits} ${v.visits == 1 ? 'track ID' : 'track IDs'} (occlusion tolerance '
+            '${v.occlusionSeconds.toStringAsFixed(1)} s, minimum track ${v.minHitsSeconds.toStringAsFixed(1)} s).',
           ),
           if (t.lastRunMs != null && v.detectionsRunMs != t.lastRunMs)
-            const Text('The photos were analyzed again since: find visits again to include that.', style: amber)
+            const Text('The photos were analyzed again since: find track IDs again to include that.', style: amber)
           else if (v.occlusionSeconds != _occlusionSeconds || v.minHitsSeconds != _minVisitSeconds)
-            const Text('Settings changed: find visits again to use them.', style: amber),
+            const Text('Settings changed: find track IDs again to use them.', style: amber),
           const Text(
-            'Saved in the session folder: visits.csv (one row per visit) and post_tracks.jsonl.',
+            'Saved in the session folder: track_ids.csv (one row per track ID) and post_tracks.jsonl.',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
@@ -1049,10 +1049,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         minHitsSeconds: _minVisitSeconds,
       );
       final r = await _trackInBackground(session.dir.path, config);
-      message = 'Found ${r.visits} ${r.visits == 1 ? 'visit' : 'visits'} in ${r.frames} photos.';
+      message = 'Found ${r.visits} ${r.visits == 1 ? 'track ID' : 'track IDs'} in ${r.frames} photos.';
     } catch (e) {
-      logSwallowed('analysis_find_visits', e);
-      message = 'Finding visits failed: $e';
+      logSwallowed('analysis_find_track_ids', e);
+      message = 'Finding track IDs failed: $e';
     }
     if (!mounted) return;
     setState(() => _tracking = false);

@@ -125,7 +125,7 @@ class IdentifyRunSettings {
     'none_threshold': noneThreshold,
     'thermal_limit_c': thermalLimitC,
     'target_rank': targetRank,
-    'merge_visits': mergeVisits,
+    'merge_track_ids': mergeVisits, // "merge_visits" before round 248
     'merge_gap_s': mergeGapS,
     'merge_size_tol': mergeSizeTol,
     'merge_min_cos': mergeMinCos,
@@ -146,6 +146,10 @@ class IdentifyResult {
   final int resumedDone;
   final int thermalPauses;
   final Duration elapsed;
+
+  /// Round 250: time spent inside the model calls alone (what "s per crop"
+  /// reports); [elapsed] also covers reading the photos and scoring.
+  final Duration modelTime;
   final bool cancelled;
   final Map<String, dynamic>? summary;
   final String? error;
@@ -158,6 +162,7 @@ class IdentifyResult {
     required this.resumedDone,
     required this.thermalPauses,
     required this.elapsed,
+    this.modelTime = Duration.zero,
     required this.cancelled,
     this.summary,
     this.error,
@@ -247,7 +252,7 @@ class IdentificationJob {
         logSwallowed(
           'identify_resume_reset',
           StateError(
-            renumbered ? 'visits were found again since; starting over' : 'inconsistent embeddings files; starting over',
+            renumbered ? 'track IDs were found again since; starting over' : 'inconsistent embeddings files; starting over',
           ),
         );
         if (jsonlFile.existsSync()) jsonlFile.deleteSync();
@@ -279,7 +284,7 @@ class IdentificationJob {
       'crops_planned': tasks.length,
       'crops_pending': pending.length,
       'crops_done_before': done.length,
-      'visits_run_id': ?visitsRunId,
+      'track_ids_run_id': ?visitsRunId, // "visits_run_id" before round 248
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
@@ -471,6 +476,7 @@ class IdentificationJob {
       resumedDone: done.length,
       thermalPauses: pauses,
       elapsed: DateTime.now().difference(started),
+      modelTime: Duration(microseconds: (embedMs * 1000).round()),
       cancelled: cancelled,
       summary: summary,
       error: error,
@@ -621,7 +627,7 @@ class IdentificationJob {
     // old numbers; scoring them against the new visits would mismatch both.
     if (visitsRunId != index.visitsRunId) {
       throw StateError(
-        'The visits were found again since these crops were made. Run identification again '
+        'The track IDs were found again since these crops were made. Run identification again '
         '("Continue / re-run"); it starts over by itself.',
       );
     }
@@ -661,7 +667,7 @@ class IdentificationJob {
         ),
       );
     }
-    if (settings['merge_visits'] == true) {
+    if ((settings['merge_track_ids'] ?? settings['merge_visits']) == true) {
       final gapS = (settings['merge_gap_s'] as num?)?.toDouble() ?? 3;
       final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
       scored = mergeConsecutiveVisits(
@@ -702,7 +708,7 @@ class IdentificationJob {
       capture: {
         'photo_step_s': keep?.stepSeconds ?? photoStepS,
         'photo_duration_s': keep?.durationSeconds ?? photoDurationS,
-        'visits_run_id': ?visitsRunId,
+        'track_ids_run_id': ?visitsRunId, // "visits_run_id" before round 248
       },
     );
   }

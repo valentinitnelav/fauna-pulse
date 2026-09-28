@@ -136,6 +136,14 @@ can and do run on the GPU too, and fp16 is perfectly fine there. So when in doub
 export w8a32 plus a full-INT8 variant. The FaunaPulse app has a built-in benchmark
 (Settings → AI → "Benchmark engines") that times them on the phone.
 
+### Models other than YOLO (classifiers, embedders)
+
+A model that is not an Ultralytics YOLO (for example a classifier converted to a float32
+`.tflite` with litert-torch) can be quantised with `tool/bioclip_export/quantise_tflite.py`
+(fp16, int8 or int8 weights only, plus a quick check). Its comments and
+`tool/bioclip_export/README.md` §2b explain which kind is faster on a GPU or a CPU, with
+the numbers measured on BioCLIP 2.
+
 ## Converting: `.onnx` → `.tflite` (when the `.pt` is truly unavailable)
 
 Possible with [onnx2tf](https://github.com/PINTO0309/onnx2tf), the same tool

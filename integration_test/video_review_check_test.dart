@@ -86,7 +86,7 @@ Future<void> _analyse(Directory dir, List<double> roi, {bool startOver = false})
   await yolo.dispose();
   expect(run.clipsFailed, 0);
   final tracks = await VideoTracker.run(dir, const SessionConfig());
-  _log('ANALYSED ${model.split('/').last} roi=$roi frames=${run.framesAnalysed} in ${run.elapsed.inSeconds} s, visits=${tracks.visits}');
+  _log('ANALYSED ${model.split('/').last} roi=$roi frames=${run.framesAnalysed} in ${run.elapsed.inSeconds} s, track IDs=${tracks.visits}');
 }
 
 void main() {
@@ -136,7 +136,7 @@ void main() {
     var timeline = VideoBoxTimeline.readSync(dir.path);
     for (final e in timeline.clips.entries) {
       _log('TIMELINE ${e.key}: ${e.value.analysedFrames} frames, hold ${e.value.holdMs} ms, '
-          'visits ${e.value.visits.map((v) => '#${v.trackId} ${v.startMs}-${v.endMs} ${v.className}').join(', ')}');
+          'track IDs ${e.value.visits.map((v) => '#${v.trackId} ${v.startMs}-${v.endMs} ${v.className}').join(', ')}');
     }
 
     // 2. The summary's Video tab.
@@ -172,6 +172,9 @@ void main() {
     }
 
     Future<void> tapTooltip(String t) async {
+      // A tall (portrait) clip on a small screen pushes the buttons below the fold (Samsung),
+      // where they are built but cannot be tapped: always bring them on screen.
+      await scrollTo(find.byTooltip(t), 200);
       await tester.tap(find.byTooltip(t));
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -195,7 +198,7 @@ void main() {
       final name = names[i];
       final boxes = timeline.clips[name]!;
       if (i > 0) {
-        await tester.scrollUntilVisible(find.byType(DropdownButton<int>), -300, scrollable: list);
+        await scrollTo(find.byType(DropdownButton<int>), -300); // on screen, not just built
         await tester.tap(find.byType(DropdownButton<int>));
         await tester.pump(const Duration(milliseconds: 500));
         await tester.tap(find.textContaining(name).last);
@@ -209,13 +212,13 @@ void main() {
       // Paused inside the first visit (or on the first frame with a box).
       final visit = boxes.visits.isEmpty ? null : boxes.visits.first;
       if (visit != null) {
-        await tapTooltip('Next visit');
+        await tapTooltip('Next track ID');
         await tapTooltip('Play');
         await tester.pump(Duration(milliseconds: 1000 + (visit.endMs - visit.startMs) ~/ 2));
         await tapTooltip('Pause');
         await tester.pump(const Duration(milliseconds: 600));
         final at = player().position.inMilliseconds;
-        _log('PAUSED $name at $at ms (visit #${visit.trackId} ${visit.startMs}-${visit.endMs}): '
+        _log('PAUSED $name at $at ms (track ID #${visit.trackId} ${visit.startMs}-${visit.endMs}): '
             'tracked ${boxes.trackedAt(at).map(_box).join('; ')} | raw ${boxes.rawAt(at).map(_box).join('; ')}');
       } else {
         _log('NO VISIT in $name');
@@ -225,6 +228,24 @@ void main() {
         await view('What the AI saw');
         await shot('${i}_ai');
         await view('Whole frame');
+      }
+      if (i == 0 && boxes.tracked) {
+        // Round 247: "All AI boxes" with the strip of frames that have a box, the note on what
+        // starts a track ID, and the folded track list.
+        await view('All AI boxes');
+        await shot('${i}_all_boxes');
+        await scrollTo(find.textContaining('A new track ID starts only'), 200);
+        _log('SHOT ${i}_all_boxes_note');
+        await tester.pump(const Duration(seconds: 4));
+        await scrollTo(find.textContaining('can be false detections'), 200);
+        _log('SHOT ${i}_track_list_folded');
+        await tester.pump(const Duration(seconds: 4));
+        // The switch is above the list now.
+        await scrollTo(find.text('Track IDs'), -300);
+        await tester.tap(find.text('Track IDs'));
+        await tester.pump(const Duration(milliseconds: 300));
+        // Back up to the player: the speed buttons below are above this point.
+        await scrollTo(find.byType(VideoPlayer), -300);
       }
 
       // 4× playback: Flutter frame times while the boxes move.
@@ -289,15 +310,36 @@ void main() {
     await _analyse(dir, const [0.45, 0.4, 0.5], startOver: true);
     timeline = VideoBoxTimeline.readSync(dir.path);
     Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop();
-    // The list is still scrolled down to the button: the picture may not be built.
-    await waitFor(find.byType(VideoPlayer, skipOffstage: false));
-    await tester.pump(const Duration(seconds: 1));
+    // The list is still scrolled down to the button: the picture may not be built (a lazy
+    // list builds only what is near the screen), so scroll up to it.
+    await tester.pump(const Duration(seconds: 2));
     await scrollTo(find.byType(VideoPlayer), -300);
     final shown = timeline.clips[names.last]!;
-    _log('AFTER re-analysis ${names.last}: ${shown.visits.length} visits, area ${shown.areaFor(player().aspectRatio)}');
+    _log('AFTER re-analysis ${names.last}: ${shown.visits.length} track IDs, area ${shown.areaFor(player().aspectRatio)}');
     if (shown.visits.isNotEmpty) {
-      expect(find.text('Visits in this clip (${shown.visits.length})', skipOffstage: false), findsOneWidget);
+      // Below the player: scroll to it (the lazy list builds it only near the screen).
+      await tester.scrollUntilVisible(find.text('Track IDs in this clip (${shown.visits.length})'), 200, scrollable: list);
     }
     await shot('after_reanalysis');
+
+    // 5. Round 247: the Graphs timeline with each track ID's start and end next to its bar.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1),
+      ),
+    );
+    await waitFor(find.textContaining('Track ID timeline'));
+    final graphs = find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+      skipOffstage: true,
+    ).first;
+    await tester.scrollUntilVisible(find.textContaining('Next to each bar'), 100, scrollable: graphs);
+    await tester.drag(graphs, const Offset(0, -150));
+    await tester.pump(const Duration(milliseconds: 500));
+    _log('SHOT graphs_lanes');
+    await tester.pump(const Duration(seconds: 4));
   }, timeout: const Timeout(Duration(minutes: 30)));
 }

@@ -220,7 +220,7 @@ class PhotoTracker {
       detections = report.detections;
       write('post_track_end', DateTime.now().millisecondsSinceEpoch, {
         'run_id': runId,
-        'visits': visits.length,
+        'track_ids': visits.length, // round 248; "visits" before
         'frames': frames.length,
         'detections': detections,
         'clips_tracked': 0,

@@ -49,6 +49,12 @@ class YOLOView extends StatefulWidget {
   /// Carries the loaded `modelPath`/`task` so the host can record exactly which model is running rather than reading
   /// its (possibly already-changed) optimistic selection.
   final void Function(String modelPath, YOLOTask? task)? onModelLoad;
+
+  /// Called each time the native view is created: the first time, and again when the widget is
+  /// rebuilt with a new key. A new native view starts from this widget's parameters only, so
+  /// settings sent through the controller since (FaunaPulse: ROI, motion gate, camera
+  /// frame-rate cap, time-lapse mode, lens) must be sent again (round 244).
+  final VoidCallback? onNativeViewCreated;
   final YOLOStreamingConfig? streamingConfig;
   final double confidenceThreshold;
   final double iouThreshold;
@@ -73,6 +79,7 @@ class YOLOView extends StatefulWidget {
     this.onZoomChanged,
     this.onModelError,
     this.onModelLoad,
+    this.onNativeViewCreated,
     this.streamingConfig,
     this.confidenceThreshold = 0.25,
     this.iouThreshold = 0.7,
@@ -523,6 +530,12 @@ class _YOLOViewState extends State<YOLOView> {
 
   void _onPlatformViewCreated(int id) {
     _platformViewId = id;
+    // The native view already runs with this widget's thresholds (creation params); keep the
+    // controller's copies in step instead of letting init() overwrite them (FaunaPulse r244).
+    _effectiveController.adoptViewThresholds(
+      confidence: widget.confidenceThreshold,
+      iou: widget.iouThreshold,
+    );
     _effectiveController.init(_methodChannel, id);
     _methodChannel.setMethodCallHandler(_handleMethodCall);
 
@@ -531,6 +544,7 @@ class _YOLOViewState extends State<YOLOView> {
     }
 
     _subscribeToResults();
+    widget.onNativeViewCreated?.call();
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {

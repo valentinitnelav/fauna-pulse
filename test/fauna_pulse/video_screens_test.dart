@@ -27,6 +27,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart' show SavedFramesChunk, S
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 import 'summary_tabs_test.dart' show expectSummaryRowValue;
+import 'video_cut_off_test.dart' show box;
 
 Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   for (var i = 0; i < 250; i++) {
@@ -194,13 +195,13 @@ void main() {
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
     // Clip a is done, so the Visits section follows; its button is the last row.
-    final findVisits = find.text('Find visits');
+    final findVisits = find.text('Find track IDs');
     await tester.scrollUntilVisible(findVisits, 200, scrollable: list);
     await tester.pump();
     expectAboveBottomInset(tester, findVisits);
   });
 
-  testWidgets('Find visits tracks the finished clips and offers the results (r228)', (tester) async {
+  testWidgets('Find track IDs tracks the finished clips and offers the results (r228)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_visits_screen');
@@ -254,42 +255,42 @@ void main() {
     );
     await _pumpUntil(tester, find.textContaining('1 analyzed)'));
     final list = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
+    await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
     await tester.pump();
     // Round 234: frames kept of each visit (on by default) are saved right
     // after, here by a fake decoder.
-    expect(find.text('Keep frames of each visit'), findsOneWidget);
+    expect(find.text('Keep frames of each track ID'), findsOneWidget);
     expect(find.text('Keep a frame every'), findsOneWidget);
     expect(find.text('For up to'), findsOneWidget);
-    await tester.tap(find.text('Find visits'));
+    await tester.tap(find.text('Find track IDs'));
     await _pumpUntil(tester, find.text('Share results'));
     await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
     expect(tester.takeException(), isNull);
     // A 3-s visit, one frame a second from its first sighting.
-    expect(find.textContaining(RegExp(r'^Found 1 visit in 1 clip\. Saved 3 frames in ')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Found 1 track ID in 1 clip\. Saved 3 frames in ')), findsOneWidget);
     expect(find.text('Kept frames saved: 3 of 3 (12 B).'), findsOneWidget); // 4-byte fake files
     expect(decoder.saved, hasLength(3));
     expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
-    expect(find.text('1 visit in 1 of 2 clips (occlusion tolerance 3.0 s, minimum visit 0.2 s).'), findsOneWidget);
-    expect(find.text('Find visits again'), findsOneWidget);
-    expect(File('${session.path}/visits.csv').existsSync(), isTrue);
+    expect(find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 0.2 s).'), findsOneWidget);
+    expect(find.text('Find track IDs again'), findsOneWidget);
+    expect(File('${session.path}/track_ids.csv').existsSync(), isTrue);
     expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
 
     // Off: the step rows go, and a note says what finding again would do.
-    final keep = find.text('Keep frames of each visit');
+    final keep = find.text('Keep frames of each track ID');
     await tester.scrollUntilVisible(keep, -200, scrollable: list);
     await tester.pump();
     await tester.tap(keep);
     await tester.pump();
     expect(find.text('Keep a frame every'), findsNothing);
-    expect(find.textContaining('Finding visits again with this off removes the 3 frames saved before'), findsOneWidget);
-    expect(find.textContaining('Kept frames per visit'), findsNothing);
+    expect(find.textContaining('Finding track IDs again with this off removes the 3 frames saved before'), findsOneWidget);
+    expect(find.textContaining('Kept frames per track ID'), findsNothing);
     expect(tester.takeException(), isNull);
 
     // Round 236: b is not analyzed yet, so only a can be judged, and
     // deleting all clips waits for b.
     await tester.scrollUntilVisible(find.text('Analyze every clip first (1 left).'), 200, scrollable: list);
-    expect(find.text('Every analyzed clip has at least one visit.'), findsOneWidget);
+    expect(find.text('Every analyzed clip has at least one track ID.'), findsOneWidget);
 
     final share = find.text('Share results');
     await tester.scrollUntilVisible(share, -200, scrollable: list);
@@ -297,7 +298,7 @@ void main() {
     expectAboveBottomInset(tester, share);
   });
 
-  testWidgets('Free storage deletes the clips without visits, then all clips (r236)', (tester) async {
+  testWidgets('Free storage deletes the clips without track IDs, then all clips (r236)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_free_storage');
@@ -353,13 +354,13 @@ void main() {
     );
     await _pumpUntil(tester, find.textContaining('2 analyzed)'));
     final list = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
+    await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
     await tester.pump();
-    await tester.tap(find.text('Find visits'));
+    await tester.tap(find.text('Find track IDs'));
     await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
 
     // One clip without a visit.
-    final withoutVisits = find.textContaining('Delete 1 clip without any visit (2 KB)');
+    final withoutVisits = find.textContaining('Delete 1 clip without any track ID (2 KB)');
     await tester.scrollUntilVisible(withoutVisits, 200, scrollable: list);
     await tester.pump();
     expect(find.text('Videos: 2 clips, 5 KB.'), findsOneWidget);
@@ -371,11 +372,11 @@ void main() {
     await _pumpUntil(tester, find.textContaining('(1 deleted before)'));
     expect(File('${session.path}/videos/b.mp4').existsSync(), isFalse);
     expect(File('${session.path}/videos/a.mp4').existsSync(), isTrue);
-    await _pumpUntil(tester, find.text('Every analyzed clip has at least one visit.'));
+    await _pumpUntil(tester, find.text('Every analyzed clip has at least one track ID.'));
     expect(find.text('Videos: 1 clip, 3 KB (1 deleted before).'), findsOneWidget);
 
     // Then all: the session stays, the visits too.
-    final all = find.textContaining('Delete all 1 clips, keep the saved frames');
+    final all = find.textContaining('Delete the only clip, keep the saved frames');
     // The "Deleted 1 video" snack bar covers the end of the list for 4 s.
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
@@ -387,15 +388,15 @@ void main() {
     await tester.tap(find.text('Delete 1'));
     await _pumpUntil(tester, find.text('All 2 videos were deleted.'));
     expect(VideoDetector.clipsOf(session), isEmpty);
-    await tester.scrollUntilVisible(find.textContaining('1 visit in 2 of 2 clips'), -200, scrollable: list);
-    await tester.scrollUntilVisible(find.text('Find visits again'), -200, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('1 track ID in 2 of 2 clips'), -200, scrollable: list);
+    await tester.scrollUntilVisible(find.text('Find track IDs again'), -200, scrollable: list);
     await tester.scrollUntilVisible(find.text('The videos were deleted'), -200, scrollable: list); // the start button
-    expect(find.textContaining('they cannot be analyzed again; "Find visits" below still works'), findsOneWidget);
+    expect(find.textContaining('they cannot be analyzed again; "Find track IDs" below still works'), findsOneWidget);
     final records = [
       for (final l in File('${session.path}/session.jsonl').readAsLinesSync())
         if (l.contains('"video_cleanup"')) (jsonDecode(l) as Map)['mode'],
     ];
-    expect(records, ['without_visits', 'all']);
+    expect(records, ['without_track_ids', 'all']);
     await tester.drag(list, const Offset(0, -3000));
     await tester.pump();
     await tester.drag(list, const Offset(0, -3000));
@@ -433,7 +434,73 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('live AI session: visits for comparison, no kept frames (r241)', (tester) async {
+  testWidgets('a clip cut off by a killed app: said, left out, deletable at 360 px (r243)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_analysis_cut_off');
+    final session = Directory('${tmp.path}/Balcony');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/roi_tok1_a.mp4').writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 100), ...box('moov', 20)]);
+    final cut = File('${session.path}/videos/roi_tok1_b.mp4')
+      ..writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 2000, sizeField: 0)]);
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      [
+        '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"timelapse","timeLapseSaveAs":"video"}}',
+        '{"type":"video_clip","time_ms":11000,"file":"videos/roi_tok1_a.mp4","duration_ms":10000,"burst":0}',
+      ].join('\n'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.textContaining('1 clip was cut off: the app stopped while recording it'), 200, scrollable: list);
+    final delete = find.textContaining('Delete the cut-off clip (2 KB)');
+    await tester.scrollUntilVisible(delete, 200, scrollable: list);
+    await tester.pump();
+    expect(find.text('Analyze 1 clip'), findsOneWidget, reason: 'only the readable clip is pending');
+    expect(tester.takeException(), isNull);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete the cut-off clip?'), findsOneWidget);
+    expect(find.textContaining('roi_tok1_b.mp4. It was never finished'), findsOneWidget);
+    await tester.tap(find.text('Delete 1'));
+    await _pumpUntil(tester, find.textContaining('freed.'));
+    expect(cut.existsSync(), isFalse);
+    // The screen reads the session again after the snack bar.
+    for (var i = 0; i < 100 && find.textContaining('cut off').evaluate().isNotEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.textContaining('cut off'), findsNothing);
+    expect(find.text('Analyze 1 clip'), findsOneWidget);
+    expect(File('${session.path}/session.jsonl').readAsStringSync(), contains('"mode":"cut_off"'));
+
+    // Every clip cut off (killed in the first burst): no "videos were deleted".
+    File('${session.path}/videos/roi_tok1_a.mp4').writeAsBytesSync([...box('ftyp', 16), ...box('mdat', 100, sizeField: 0)]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('Balcony'));
+    await tester.scrollUntilVisible(find.text('No clip can be read'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.textContaining('1 clip was cut off'), 200, scrollable: find.byType(Scrollable).first);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('live AI session: track IDs for comparison, no kept frames (r241)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_analysis_live');
@@ -471,9 +538,9 @@ void main() {
     );
     await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
     final list = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.textContaining('The visits found here are for comparison'), 200, scrollable: list);
-    await tester.scrollUntilVisible(find.textContaining('No frames are kept for these visits'), 200, scrollable: list);
-    expect(find.text('Keep frames of each visit'), findsNothing);
+    await tester.scrollUntilVisible(find.textContaining('The track IDs found here are for comparison'), 200, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('No frames are kept for these track IDs'), 200, scrollable: list);
+    expect(find.text('Keep frames of each track ID'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -575,7 +642,7 @@ void main() {
 
   // Round 229: once "Find visits" has run, the summary reads the visits from
   // post_tracks.jsonl and the Setup tab shows what the video screen used.
-  testWidgets('summary of an imported session shows visits found afterwards', (tester) async {
+  testWidgets('summary of an imported session shows track IDs found afterwards', (tester) async {
     simulateBottomSystemBar(tester); // 360 px wide
     SharedPreferences.setMockInitialValues({});
     final tmp = _tempDir('video_visits_summary');
@@ -637,7 +704,7 @@ void main() {
       MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
     );
     await _pumpUntil(tester, find.text('2 (found afterwards in the videos)'));
-    expect(find.textContaining('occlusion tolerance 3 s, minimum visit length 0.2 s'), findsOneWidget);
+    expect(find.textContaining('occlusion tolerance 3 s, minimum track length 0.2 s'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('Setup'));
@@ -652,7 +719,7 @@ void main() {
     await expectSummaryRowValue(tester, scrollable, label: 'Pause above battery temperature', value: '40 °C');
     await expectSummaryRowValue(tester, scrollable, label: 'Measure the phone every', value: '10 s');
     await expectSummaryRowValue(tester, scrollable, label: 'Clips', value: '1');
-    await tester.scrollUntilVisible(find.textContaining('Visits found afterwards with "Find visits"'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.textContaining('Track IDs found afterwards with "Find track IDs"'), 200, scrollable: scrollable);
     await expectSummaryRowValue(tester, scrollable, label: 'Occlusion tolerance', value: '3 s');
     expect(tester.takeException(), isNull);
 
@@ -719,7 +786,8 @@ void main() {
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
     await _pumpUntil(tester, find.text('While the AI ran on the videos', skipOffstage: false));
     await tester.scrollUntilVisible(find.text('While the AI ran on the videos'), 200, scrollable: scrollable);
-    expect(find.textContaining('Measured every 10 s'), findsOneWidget);
+    // The note sits just below the fold since the timeline text grew (round 247).
+    expect(find.textContaining('Measured every 10 s', skipOffstage: false), findsOneWidget);
     await expectSummaryRowValue(tester, scrollable, label: 'Analysis time', value: '1m 0s in 2 runs');
     await expectSummaryRowValue(tester, scrollable, label: 'Frames analyzed', value: '300');
     // 300 frames in 60 s, less 13 s cooling down.

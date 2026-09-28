@@ -64,7 +64,9 @@ class VideoVisit {
 }
 
 class TrackExport {
-  static const visitsFileName = 'visits.csv';
+  /// One row per track ID (round 248; `visits.csv` before). In pollination ecology a track ID
+  /// is what is usually counted as a visit, when detection and tracking worked.
+  static const visitsFileName = 'track_ids.csv';
   static const motDirName = 'mot';
 
   static String visitsCsv(Iterable<VideoVisit> visits) {

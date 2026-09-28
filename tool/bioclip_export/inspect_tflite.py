@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Print what a .tflite export contains: ops, constant tensor sizes by type, and
-whether every FULLY_CONNECTED weight is a constant (what the phone's fp16/int8
-path needs). Used to check that an export is sane before copying it to the phone.
+"""Print what a .tflite export contains: ops, constant tensor sizes by type, and how
+the weights of every FULLY_CONNECTED (matrix multiply) layer are stored. Used to check
+that an export is sane before copying it to the phone, and that quantisation reached
+every large layer (quantise_tflite.py explains the kinds):
+
+    fp16 weights                              fp16 file (--precision fp16)
+    int8 weights, float maths                 --precision int8-weights
+    int8 weights, 8-bit maths                 --precision int8 (dynamic range)
+    float32 weights (not quantised)           fp32 file, or a layer the quantiser missed
+    weights computed at runtime (unfolded)    converted in the memory-saving mode (see README)
 
 Usage: python inspect_tflite.py out/bioclip-2_image_fp16.tflite [more files]
 """
@@ -59,10 +66,12 @@ def inspect(path: Path) -> None:
     for oi, op in enumerate(sg.operators):
         if op_name(oi) == "FULLY_CONNECTED":
             w = op.inputs[1]
-            if size(w) > 0:
-                fc_const["float constant weights"] += 1
-            elif w in producer and op_name(producer[w]) == "DEQUANTIZE":
-                fc_const["fp16/int8 weights (dequantized)"] += 1
+            if size(w) > 0:  # the weights are a constant the layer reads directly
+                kind = TYPE_NAMES.get(sg.tensors[w].type)
+                fc_const["int8 weights, 8-bit maths" if kind == "int8" else f"{kind} weights (not quantised)"] += 1
+            elif w in producer and op_name(producer[w]) == "DEQUANTIZE":  # stored small, widened for the layer
+                kind = TYPE_NAMES.get(sg.tensors[sg.operators[producer[w]].inputs[0]].type)
+                fc_const["fp16 weights" if kind == "float16" else f"{kind} weights, float maths"] += 1
             else:
                 fc_const["weights computed at runtime (unfolded; use the full conversion)"] += 1
 

@@ -537,7 +537,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   static const _cols = [
     _Col('taxon', 'Taxon', flex: true),
     _Col('rank', 'Rank'),
-    _Col('visits', 'Track ids', numeric: true, wrap: true),
+    _Col('visits', 'Track IDs', numeric: true, wrap: true),
     _Col('time', 'Time', numeric: true),
     _Col('conf', 'Med. Conf.', numeric: true, wrap: true),
   ];
@@ -576,7 +576,8 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       final summary = jsonDecode(await widget.summaryJson.readAsString()) as Map<String, dynamic>;
       final full = jsonDecode(await widget.tracksJson.readAsString()) as Map<String, dynamic>;
       final tracks = (full['tracks'] as List).cast<Map<String, dynamic>>();
-      final usedRunId = ((summary['capture'] as Map?)?['visits_run_id'] as num?)?.toInt();
+      final capture = summary['capture'] as Map?;
+      final usedRunId = ((capture?['track_ids_run_id'] ?? capture?['visits_run_id']) as num?)?.toInt();
       final renumbered =
           usedRunId != null && (await VideoTracker.readSummary(widget.sessionDir))?.runId != usedRunId;
       if (!mounted) return;
@@ -682,13 +683,13 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   List<Widget> _header(Map<String, dynamic> s) {
     final iso = s['generated_iso'].toString();
     final when = iso.length >= 16 ? iso.substring(0, 16).replaceFirst('T', ' ') : iso;
-    final merged = (s['visits_merged'] as num? ?? 0).toInt();
+    final merged = ((s['track_ids_merged'] ?? s['visits_merged']) as num? ?? 0).toInt();
     return [
       _kv('Model', '${s['model_id']}'),
       _kv('Label pack', '${s['pack_id']} (${s['pack_rows']} names)'),
       _kv('Date run', when),
       _kv(
-        'Track ids',
+        'Track IDs',
         '${s['tracks_total']}'
         '${merged > 0 ? ' ($merged joined from consecutive track ids, ${s['tracks_before_merge']} before joining)' : ''}',
       ),
@@ -696,9 +697,9 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: _flagNote(
-            'The visits were found again since; run identification again.',
-            '"Find visits" numbers the visits anew each time it runs, and keeps new frames for them. '
-                'These results still use the old numbers and frames, so they no longer match the visits '
+            'The track IDs were found again since; run identification again.',
+            '"Find track IDs" numbers the track IDs anew each time it runs, and keeps new frames for them. '
+                'These results still use the old numbers and frames, so they no longer match the track IDs '
                 'on the session screen. Run identification again to match them.',
           ),
         ),
@@ -722,31 +723,31 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     ], context);
     return [
       const HelpLabel(
-        label: 'Track ids per taxon / rank',
+        label: 'Track IDs per taxon / rank',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperChild: _ColumnsHelp(
           intro:
-              'One row per taxon. A track id is one tracked organism (what a pollination ecologist '
-              'calls a visit). It has one or more crops (photos) that the model classified together '
+              'One row per taxon. A track ID is one tracked organism (in pollination ecology usually '
+              'counted as a visit). It has one or more crops (photos) that the model classified together '
               'into one answer. "As identified" gives one row per answer at the rank the model was '
-              'sure about (a track id identified only to genus "Bombus" and one identified to "Bombus '
-              'terrestris" are two separate rows). Pick a rank to count every track id under its order, family, '
-              'genus or species instead. Track ids the model did not resolve that deep are displayed in a '
+              'sure about (a track ID identified only to genus "Bombus" and one identified to "Bombus '
+              'terrestris" are two separate rows). Pick a rank to count every track ID under its order, family, '
+              'genus or species instead. Track IDs the model did not resolve that deep are displayed in a '
               '"not resolved to ..." row.',
           cols: [
             ('Taxon', 'the taxon of the row.'),
             ('Rank', 'its taxonomic rank; the Rank filter above keeps only rows of one rank.'),
-            ('Track ids', 'how many track ids the row holds.'),
-            ('Time', 'the durations of those track ids added up (first to last detector frame of each).'),
+            ('Track IDs', 'how many track IDs the row holds.'),
+            ('Time', 'the durations of those track IDs added up (first to last detector frame of each).'),
             (
               'Med. Conf.',
-              'the median of the model\'s confidence for this taxon across the row\'s track ids, rounded '
+              'the median of the model\'s confidence for this taxon across the row\'s track IDs, rounded '
                   'to whole percent. It is the Conf. column of the list that opens when you tap the row, '
                   'where confidence is explained. '
             ),
           ],
-          outro: 'Tap a column header to sort it, tap a row to list its track ids, '
-                 'and, in the next screen, tap a track id to list its detailed results.'
+          outro: 'Tap a column header to sort it, tap a row to list its track IDs, '
+                 'and, in the next screen, tap a track ID to list its detailed results.'
         ),
       ),
       const SizedBox(height: 6),
@@ -821,14 +822,14 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           onPressed: () => setState(() => _allRows = true),
           child: Text('Show all ${filtered.length} rows'),
         ),
-      if (filtered.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No track ids.', style: helperTextStyle)),
+      if (filtered.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No track IDs.', style: helperTextStyle)),
       const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
-          onPressed: _visible.isEmpty ? null : () => _showVisits('All track ids', _visible, rank: null, showTaxon: true),
+          onPressed: _visible.isEmpty ? null : () => _showVisits('All track IDs', _visible, rank: null, showTaxon: true),
           icon: const Icon(Icons.list),
-          label: Text('All ${_visible.length} track ids'),
+          label: Text('All ${_visible.length} track IDs'),
         ),
       ),
     ];
@@ -929,7 +930,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
   // left-packed instead of spreading one column over the free width.
   late final List<_Col> _cols = [
     const _Col('no', 'No.'),
-    const _Col('id', 'Track id'),
+    const _Col('id', 'Track ID'),
     if (widget.showTaxon) ...const [_Col('taxon', 'Taxon', flex: true), _Col('rank', 'Rank')],
     const _Col('crops', 'Crops', numeric: true),
     const _Col('time', 'Time', numeric: true),
@@ -1043,13 +1044,13 @@ class _VisitsSheetState extends State<_VisitsSheet> {
           final intro = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${widget.title} · ${_plural(widget.tracks.length, 'track id')}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              Text('${widget.title} · ${_plural(widget.tracks.length, 'track ID')}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
               _ColumnsHelp(
-                intro: 'One row per track id (one tracked organism, what a pollination ecologist calls a visit).',
+                intro: 'One row per track ID (one tracked organism, in pollination ecology usually counted as a visit).',
                 cols: [
                   ('No.', 'row number in this list.'),
                   (
-                    'Track id',
+                    'Track ID',
                     'the id the detector and tracker gave the organism (ids can jump). An amber "suspect" '
                         'under it: short-lived and weakly supported, likely a false detection.',
                   ),
@@ -1059,7 +1060,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                   ('Time', 'first to last detector frame.'),
                   (
                     'Conf.',
-                    'the model\'s confidence that this track id belongs to $taxonWord: its crops\' own values '
+                    'the model\'s confidence that this track ID belongs to $taxonWord: its crops\' own values '
                         'averaged, a crop that is sure of its answer counting more (explained on the next screen).',
                   ),
                   (
@@ -1071,7 +1072,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                 ],
                 outro: widget.rank == null || median == null
                     ? 'Tap a row for the full ladder, photo and crops. Drag the table sideways if it is wider than the screen.'
-                    : 'Median Conf. across these ${_plural(widget.tracks.length, 'track id')}: ${_pct(median)} '
+                    : 'Median Conf. across these ${_plural(widget.tracks.length, 'track ID')}: ${_pct(median)} '
                           '(the Med. Conf. shown in the table before). Tap a row for the full ladder, photo and crops. '
                           'Drag the table sideways if it is wider than the screen.',
               ),
@@ -1245,7 +1246,7 @@ class _TrackSheetState extends State<_TrackSheet> {
     help.write('Every ladder row where this happens carries ⚠; tap one to see its rival here. ');
     help.write(
       _rank == null
-          ? 'Nothing is identified for this track id, so every row is a suggestion.'
+          ? 'Nothing is identified for this track ID, so every row is a suggestion.'
           : 'It can only happen below the highlighted row, among the suggestions: the highlighted row and '
                 'those above it hold at least the threshold${widget.tau == null ? '' : ' (${_pct(widget.tau)})'}, '
                 'never less than 50 %, so no other taxon of their rank can score more. The reported '
@@ -1335,7 +1336,7 @@ class _TrackSheetState extends State<_TrackSheet> {
     final ids = (t['track_ids'] as List?)?.cast<num>() ?? const [];
     final title = t['track_id'] == null
         ? 'Crop'
-        : 'Track id #${t['track_id']}${ids.length > 1 ? ' (joined ${ids.skip(1).map((i) => '#${i.toInt()}').join(', ')})' : ''}';
+        : 'Track ID #${t['track_id']}${ids.length > 1 ? ' (joined ${ids.skip(1).map((i) => '#${i.toInt()}').join(', ')})' : ''}';
     final n = _crops.length;
     final ladderWidths = _fitWidths(_ladderCols, (c) => [
       for (final s in _ladder)
@@ -1349,8 +1350,8 @@ class _TrackSheetState extends State<_TrackSheet> {
     final step = widget.photoStepS, dur = widget.photoDurationS;
     final schedule = step != null && dur != null
         ? 'this session: one every ${step.toStringAsFixed(step == step.roundToDouble() ? 0 : 1)} s during the first '
-              '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)} s of a track id'
-        : 'e.g. one every second during the first 10 s of a track id';
+              '${dur.toStringAsFixed(dur == dur.roundToDouble() ? 0 : 1)} s of a track ID'
+        : 'e.g. one every second during the first 10 s of a track ID';
     final best = widget.track['best_view'] as Map<String, dynamic>?;
     final bestSpecies = best == null ? '' : '${best['species']}';
     final bestAgree = bestSpecies.isEmpty ? 0 : _crops.where((c) => '${c['top1']}' == bestSpecies).length;
@@ -1383,7 +1384,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         ),
         ..._visitNotes(ids.length, durS, det, detConf, shortDur, shortDet),
         Text(
-          'Time = first to last detector frame of the track id. Detector frames = every frame the live '
+          'Time = first to last detector frame of the track ID. Detector frames = every frame the live '
           'detector saw it in (several per second). Photos = the frames saved on the photo schedule '
           '($schedule) plus frames another organism triggered while this one was in view; each saved '
           'photo gives one crop. Mean detector conf. = the live detector\'s mean confidence over the photos '
@@ -1406,7 +1407,7 @@ class _TrackSheetState extends State<_TrackSheet> {
             cols: [
               (
                 'Conf.',
-                'the model\'s confidence that this track id belongs to the taxon. How it is made: the model '
+                'the model\'s confidence that this track ID belongs to the taxon. How it is made: the model '
                     'turns each crop into a description (a list of numbers); the descriptions are averaged, '
                     'a crop the model is sure about counting more (its Species conf.) and crops it is far '
                     'less sure about left out; the average is classified once and the species under the '
@@ -1482,12 +1483,12 @@ class _TrackSheetState extends State<_TrackSheet> {
             labelStyle: helperTextStyle,
             helperChild: _ColumnsHelp(
               intro:
-                  'The flags column of tracks_<pack>.csv for this track id, for filtering in R. Each flag is '
+                  'The flags column of tracks_<pack>.csv for this track ID, for filtering in R. Each flag is '
                   'also shown above, where it applies: an amber ⚠ line (tap it for the reason), amber numbers, '
                   'or ⚠ on a ladder row.',
               heading: 'What each flag means:',
               cols: const [
-                ('merged', 'joined from several track ids of the same visit.'),
+                ('merged', 'joined from several track IDs of one organism.'),
                 ('short', 'time or detector frames below the limit.'),
                 ('low_det', 'mean detector confidence below the limit.'),
                 ('weak_id', 'order Conf. below the limit.'),
@@ -1516,7 +1517,7 @@ class _TrackSheetState extends State<_TrackSheet> {
   List<Widget> _visitNotes(int nIds, num? dur, num? det, num? detConf, bool shortDur, bool shortDet) {
     final minDur = _setting('flag_min_duration_s'), minDet = _setting('flag_min_detections');
     final minConf = _setting('flag_min_det_conf');
-    const where = 'under "Suspect visits" in the Identify screen\'s settings';
+    const where = 'under "Suspect track IDs" in the Identify screen\'s settings';
     final shortParts = [
       if (shortDur) '${_secs(dur)}${minDur == null ? '' : ' (under ${_secs(minDur)})'}',
       if (shortDet) '$det detector frames${minDet == null ? '' : ' (under ${minDet.round()})'}',
@@ -1529,18 +1530,18 @@ class _TrackSheetState extends State<_TrackSheet> {
     return [
       if (_has('merged'))
         _flagNote(
-          'Joined from $nIds track ids (merged)',
-          'The tracker lost this organism and picked it up again under a new track id. The pieces were close '
-              'in time and looked alike, so they count as one visit (settings "Largest gap between joined '
-              'visits" and "Appearance similarity needed"). Check the photos if the pieces could be different '
+          'Joined from $nIds track IDs (merged)',
+          'The tracker lost this organism and picked it up again under a new track ID. The pieces were close '
+              'in time and looked alike, so they count as one track ID (settings "Largest gap between joined '
+              'track IDs" and "Appearance similarity needed"). Check the photos if the pieces could be different '
               'individuals.',
         ),
       if (_has('short'))
         _flagNote(
-          'Short visit: ${shortParts.isEmpty ? 'below the time or detector-frame limit' : shortParts.join(', ')} (short)',
-          'A brief visit gives the detector and the identification little to work with. On its own this is '
+          'Short track ID: ${shortParts.isEmpty ? 'below the time or detector-frame limit' : shortParts.join(', ')} (short)',
+          'A brief track ID gives the detector and the identification little to work with. On its own this is '
               'only a hint; together with low detector confidence, a weak identification or "no organism" the '
-              'track id is also marked suspect. Limits: "Short: duration below" and "Short: detections below" '
+              'track ID is also marked suspect. Limits: "Short: duration below" and "Short: detections below" '
               '$where.',
         ),
       if (_has('low_det'))
@@ -1552,9 +1553,9 @@ class _TrackSheetState extends State<_TrackSheet> {
         ),
       if (_has('suspect'))
         _flagNote(
-          'Suspect: short visit with ${weak.join(' and ')}; possibly a false detection (suspect)',
+          'Suspect: short track ID with ${weak.join(' and ')}; possibly a false detection (suspect)',
           'Suspect = short AND at least one weak signal (low detector confidence, weak identification or '
-              '"no organism"). Such track ids are often false detections, but nothing is deleted: check the '
+              '"no organism"). Such track IDs are often false detections, but nothing is deleted: check the '
               'photos here and filter them in R with the suspect column of tracks_<pack>.csv.',
         ),
     ];
@@ -1573,9 +1574,9 @@ class _TrackSheetState extends State<_TrackSheet> {
       if (_has('weak_id'))
         _flagNote(
           'Weak identification: order Conf. ${_pct(order?['p'] as num?)}${minOrder == null ? '' : ', below ${_pct(minOrder)}'} (weak_id)',
-          'Even the order, a broad rank, is uncertain for this track id. Common causes: blurry or small crops, '
-              'an unusual view, or an animal the label pack does not contain. Together with a short visit this '
-              'makes the track id suspect. Limit: "Weak: order probability below" under "Suspect visits" in '
+          'Even the order, a broad rank, is uncertain for this track ID. Common causes: blurry or small crops, '
+              'an unusual view, or an animal the label pack does not contain. Together with a short track ID this '
+              'makes the track ID suspect. Limit: "Weak: order probability below" under "Suspect track IDs" in '
               'the Identify screen\'s settings.',
         ),
       if (_has('unidentified'))
@@ -1590,7 +1591,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         _flagNote(
           '"None of these" (flower, leaf, shadow …): ${_pct(t['none_p'] as num?)}, above $noneThr (no_organism)',
           'The label pack\'s "none of these" entries (flower, leaf, shadow …) together got more than $noneThr '
-              '(the "No organism" threshold), so this track id is reported as "no organism": the detector most '
+              '(the "No organism" threshold), so this track ID is reported as "no organism": the detector most '
               'likely fired on something that is not an organism.',
         ),
     ];
@@ -1688,7 +1689,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         label: 'Crops',
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperChild: _ColumnsHelp(
-          intro: 'One row per crop = one photo of this track id, in capture order.',
+          intro: 'One row per crop = one photo of this track ID, in capture order.',
           cols: [
             ('No.', 'capture order; the camera icon marks the crop shown in the photo above.'),
             (
@@ -1696,7 +1697,7 @@ class _TrackSheetState extends State<_TrackSheet> {
               'this crop\'s own confidence for $sel, the ladder row selected above'
                   '${_selRank == 'species' ? ': at species level there is nothing to add up, so it is simply the crop\'s probability for this species (equal to Species conf. when this is the crop\'s top species)' : ': the crop\'s probabilities for all species under it added up'}. '
                   'Tap another ladder row to change the taxon. This column is evidence, not the arithmetic '
-                  'behind the ladder: the track id\'s Conf. comes from the averaged descriptions, so it can '
+                  'behind the ladder: the track ID\'s Conf. comes from the averaged descriptions, so it can '
                   'be higher than every value here when the crops agree, or lower when they disagree.',
             ),
             ('Agree', '✓ when the crop\'s top species is inside $sel.'),
@@ -1732,7 +1733,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         _flagNote(
           'Only one crop: no agreement between photos to measure (single_crop)',
           'Agree and the averaging need several photos; with one photo the answer rests on a single view. '
-              'Longer visits give more photos (photo schedule).',
+              'Longer track IDs give more photos (photo schedule).',
         ),
       if (missing)
         const Padding(

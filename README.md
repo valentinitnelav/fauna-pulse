@@ -59,8 +59,7 @@ With suitable object-detection and classification models, it can be configured f
 
 FaunaPulse is intended as a passive, non-invasive imaging tool. Detection, tracking, classification and any image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so an internet connection is not required in the field and your data stays under your control and privacy needs. A draggable square **region of interest (ROI)** can be placed over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves (locally, on device) ROI-cropped JPEG images together with metadata. At the end of the recording session, it outputs a dashboard screen with info and graphs about the visitation rates and the captured images with the tracked objects for preview an check. Saved images and session metadata can later be exported on a PC for analysis in research workflows.
 
-An experimental **Identify organisms** step can run a [BioCLIP][bioclip] vision foundation model on the phone itself over the saved crops of every tracked visit (model and label pack prepared on PC, see [IDENTIFICATION.md](docs/IDENTIFICATION.md)).
-BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC with our without a GPU - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). Note that the FaunaPulse detection results would have to be adapted to the specific data structure that software package ingests.
+An experimental **Identify organisms** step can run the [BioCLIP 2][bioclip] image classifier on the phone itself over the saved crops of every track ID (model and label pack prepared on PC, see `docs/IDENTIFICATION.md`). BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC with our without a GPU - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). Note that the FaunaPulse detection results would have to be adapted to the specific data structure that software package ingests.
 
 For interested end-users, saved images can also be reviewed and cropped within the FaunaPulse app. Organism crops can then be shared with or imported into identification apps such as: [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. Therefore, you can choose the identification service best suited to your needs. Note that at the time of releasing this repository, the apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. While this sharing feature is possible, FaunaPulse is designed with offline usage in mind and bulk processing (e.g. mass classification with BioCLIP models on device) for scaling monitoring.
 
@@ -94,6 +93,10 @@ Modes 1-3 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 
 FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
+- Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
+- AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own AI models.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (0.3 to 1.3 GB) and a label pack prepared on a PC, runs at roughly one to several seconds per crop and classification results will vary significantly with image quality.
+- Track ID counts may include missed, duplicated, split or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions.
 - Each scientific application should be validated under its intended field conditions before data collection at scale.
 - Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own AI models (one for detection and another one for classification).
@@ -141,7 +144,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | Field researcher | Run a session, read the live screen and troubleshoot. |
 | [DATA_GUIDE.md](docs/DATA_GUIDE.md) | Researcher / analyst | Read the `session.jsonl` data dictionary and compute visitation rates in R or Python. |
-| [VIDEO_ANALYSIS.md](docs/VIDEO_ANALYSIS.md) | Researcher / analyst | Count visits in imported videos, check them against a hand count (BORIS or spreadsheet) and find the frame rate that is enough. |
+| [VIDEO_ANALYSIS.md](docs/VIDEO_ANALYSIS.md) | Researcher / analyst | Count track IDs in imported videos, check them against a hand count (BORIS or spreadsheet) and find the frame rate that is enough. |
 | [SETTINGS_REFERENCE.md](docs/SETTINGS_REFERENCE.md) | Field researcher | Understand every user setting. |
 | [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | Developer | Understand why a small ROI can still yield sharp photographs. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
@@ -249,7 +252,7 @@ FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv]
 [stefan-2025-b]: https://doi.org/10.1038/s41598-025-16140-z
 [stark-2025]: https://doi.org/10.1371/journal.pone.0323984
 
-Future work includes maturing the on-device taxonomic identification (calibrated confidences, country-specific label packs, merging fragmented visits with identification evidence) and further analytical reporting derived from visitation and classification data.
+Future work includes maturing the on-device taxonomic identification (calibrated confidences, country-specific label packs, merging fragmented track IDs with identification evidence) and further analytical reporting derived from visitation and classification data.
 
 ## Citation
 

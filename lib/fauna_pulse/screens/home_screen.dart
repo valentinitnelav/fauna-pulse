@@ -1496,15 +1496,13 @@ class AboutFaunaPulseDialog extends StatelessWidget {
             const Text(
               'A passive, non-invasive field tool that turns a smartphone '
               'into an AI-powered wildlife camera. Place the square region '
-              'of interest over a flower, feeding site or nest entrance: '
-              'FaunaPulse detects, tracks and photographs visiting animals '
-              'fully on-device (no internet needed) and logs every visit '
-              'with timestamps, so visitation rates can be computed '
-              'afterwards in R or Python. Its first use case is '
-              'flower-visiting insects, which needs a purpose-trained '
-              'detection model. AI-free motion-triggered and time-lapse '
-              'capture, scheduled multi-day runs and post-capture AI '
-              'analysis of saved photos are built in.',
+              'of interest over a flower, feeding site or nest entrance. '
+              'On AI-capture mode, FaunaPulse detects, tracks and photographs visiting animals '
+              'fully on-device (no internet needed) and logs every track ID '
+              'with timestamps, so visitation rates can be computed afterwards'
+              'Other features include: motion-triggered photos, time-lapse capture' 
+              '(photo or video bursts), scheduled multi-hour or multi-day day runs and post-capture AI'
+              'analysis of saved photos or videos.',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 14),

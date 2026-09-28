@@ -47,9 +47,9 @@ come back as soon as a mode that uses them is selected.
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Target plant / folder name** | `session` | Names the output folder (usually the target flower species). |
-| **Time-lapse step** | `1.0 s` | Seconds between saved photos while a visit is ongoing. The first photo is taken the moment an insect is detected, then every step. Larger = fewer photos. |
+| **Time-lapse step** | `1.0 s` | Seconds between saved photos while a track ID is ongoing. The first photo is taken the moment an insect is detected, then every step. Larger = fewer photos. |
 | **Capture duration** | `10.0 s` | Total seconds to keep photographing one insect (track), from first detection. **Must be a whole multiple of the step** (e.g. step 1 s, duration 10 s → up to 10 photos). The app warns if it isn't. |
-| **Also record the ROI as video (AI tab → Check the live AI, AI mode only)** | `off` | Round 240 (video plan 3b). Records the ROI square as MP4 clips while the live AI runs, a new clip every 5 minutes, in the session's `videos/` folder. The session summary then opens on a Video tab that plays the clips with the live AI's own boxes and visit list (the session's photos follow below the player), so what the live AI caught and missed can be checked, counted by hand, or analysed again with *Run AI on videos*. Costs storage (estimate under the switch: the whole session is filmed) and heat: every frame of the clip is converted even while the motion gate lets the detector sleep. Records: `live_video_start`, `video_clip`, `video_skipped` with `segment` (DATA_GUIDE §3). |
+| **Also record the ROI as video (AI tab → Check the live AI, AI mode only)** | `off` | Round 240 (video plan 3b). Records the ROI square as MP4 clips while the live AI runs, a new clip every 5 minutes, in the session's `videos/` folder. The session summary then opens on a Video tab that plays the clips with the live AI's own boxes and track ID list (the session's photos follow below the player), so what the live AI caught and missed can be checked, counted by hand, or analysed again with *Run AI on videos*. Costs storage (estimate under the switch: the whole session is filmed) and heat: every frame of the clip is converted even while the motion gate lets the detector sleep. Records: `live_video_start`, `video_clip`, `video_skipped` with `segment` (DATA_GUIDE §3). |
 | **Video frame rate (live AI video)** | `15 FPS` | Round 240. Frames per second of those clips, 1 to 30; a positive *Camera frame rate cap* below it limits the clips to the cap (amber note). |
 | **Save bursts as (time-lapse only)** | `Photos` | Round 238. *Photos* saves one square ROI photo every *Photo step*. *Video (MP4)* saves each burst as one clip of the ROI with every frame (see *Video frame rate*), so an insect can be followed from frame to frame; the AI runs later on *Run AI on videos* (session gear menu), as for imported videos. The clip's side is the *Saved photo side* (Photos tab; smaller when the ROI covers fewer camera pixels). In video mode *Photo step*, *ROI photo source* and the companion photo are greyed (not used), *Photo duration* reads *Burst duration (clip length)*, and a storage estimate shows under the setting (up to about 2.0 GB per recorded hour at 1024 px and 15 fps: the bit rate plus 20 %, the overshoot measured on the Xiaomi; the session estimate scales it by burst ÷ (burst + break)). Records: `timelapse_video_start`, `video_clip`, `video_skipped` (DATA_GUIDE §3). |
 | **Video frame rate (time-lapse video only)** | `15 FPS` | Round 238. Frames per second in each clip, 1 to 30. 15 matches the camera frame rate cap the app ships with, so the camera delivers every frame the clip needs; enough to follow a bee from frame to frame. A positive *Camera frame rate cap* below this rate limits the clips to the cap, and an amber note says so (raise the cap, or lower this). Higher rates cost storage roughly in proportion. |
@@ -61,8 +61,8 @@ come back as soon as a mode that uses them is selected.
 | **Photo source (capture mode)** | `fast` (round 117; was `auto`) | Where each saved photo comes from. **fast** (the default) = crop the small live video frame: no camera stall, and the photo shows the exact trigger moment. **high-res** = take a full-resolution photo and cut the ROI out. That sounds desirable, but each high-res photo pauses the AI detection pipeline for 0.13–1.5 s (longer on older phones), lands a fraction of a second after the trigger, and often shows motion blur — and a blurred high-res photo carries *less* usable detail than a smaller crisp crop, so the extra pixels can hurt rather than help downstream classification. It also costs heat and storage. **auto** = per photo, use the fast crop when it already meets your target size, and pay for a high-res photo only when the ROI is too small. Pick auto or high-res deliberately: tiny flower in frame, mostly stationary insects. *Renamed in round 112: this path was called "still" before, and `still` remains its value in `session.jsonl` and saved configs (frozen wire format).* |
 | **Sync companion photo (high-res)** | `on` | Round 108. Only applies when a photo takes the **high-res path** (in fast mode it does nothing — a fast photo *is* the live crop). The companion is always the fast live-frame crop, never a second high-res photo: a high-res photo physically lands up to ~1 s after the detection that triggered it (measured ~0.76 s median on the test Xiaomi), so a fast insect can be gone from it. With this on, the trigger-moment live crop is saved next to the high-res photo as `…_live.jpg` — lower resolution, but the insect is in it. ~50–200 KB extra per photo. |
 | **Target saved size** | `1024 px` | The pixel size (one side) you want saved ROI photos to have. In auto mode this is the threshold that decides fast-vs-high-res, and it also caps size (bigger crops are downscaled to it). Photos are **never upscaled** to reach it — if even a high-res photo can't reach it, the photo saves smaller and the on-screen readout shows ⚠. Snapped to a multiple of 32 for the model. |
-| **Reference photos** | `on` (round 152; was the round-107 "Ground-truth frames" toggle, off, under AI → Visit tracking → Advanced) | Saves an ROI photo at a fixed interval, whether or not anything is detected — an unbiased record of what the camera really saw. Use them to spot pollinators the AI missed (send those photos in to improve the model) or to hand-count true visits. They land in `gt_frames/` with `ref_…` filenames (folder/record names kept from round 107 so old data stays readable), always via the fast live-frame crop (a high-res capture would stall detection), size follows Target saved size. Greyed out in time-lapse mode — that whole session is already clock-driven photos. |
-| **Reference photo interval** | `30 s` | Time between reference photos (1 s–1 h; enter in seconds or minutes). 30 s ≈ 120 photos/hour (~0.15–0.3 GB per 8 h day); shorter catches briefer visits but uses more storage. |
+| **Reference photos** | `on` (round 152; was the round-107 "Ground-truth frames" toggle, off, under AI → Tracking → Advanced) | Saves an ROI photo at a fixed interval, whether or not anything is detected — an unbiased record of what the camera really saw. Use them to spot pollinators the AI missed (send those photos in to improve the model) or to hand-count true track IDs. They land in `gt_frames/` with `ref_…` filenames (folder/record names kept from round 107 so old data stays readable), always via the fast live-frame crop (a high-res capture would stall detection), size follows Target saved size. Greyed out in time-lapse mode — that whole session is already clock-driven photos. |
+| **Reference photo interval** | `30 s` | Time between reference photos (1 s–1 h; enter in seconds or minutes). 30 s ≈ 120 photos/hour (~0.15–0.3 GB per 8 h day); shorter catches briefer track IDs but uses more storage. |
 
 ## Session length
 
@@ -102,17 +102,17 @@ by itself; in AI mode it starts collapsed.
 | **Grid size** | `48` (range 16–160) | How many cells per side the ROI is shrunk to for the motion check. Raise it (e.g. 96–128) when insects are small relative to the ROI box; costs slightly more CPU. |
 | **Idle check FPS** | `5` (range 1–30) | How many frames per second are inspected *while the gate is asleep*. Higher = faster wake-up but a warmer idle phone. An arriving insect is noticed within ~1/this seconds. (This is why the FPS readout legitimately shows this low number during empty periods.) |
 
-## Visit tracking (AI tab)
+## Tracking (AI tab)
 
-Tracking links each insect's detections across frames into one visit with a
-stable ID. Two algorithms are available (round 105); both count visits the
+Tracking links each insect's detections across frames into one track ID with a
+stable ID. Two algorithms are available (round 105); both count track IDs the
 same way, so results stay comparable across sessions.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Tracker algorithm** | `ByteTrack` | *(inside the Advanced fold since round 159 — comparing trackers is a research task)* How detections are linked frame to frame. **ByteTrack** predicts where each insect went and matches by box overlap; **C-BIoU** enlarges the boxes before comparing them. Compare them on your own recordings with the replay harness (see "Log raw detections" below) rather than trusting labels. |
-| **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low fragments one visit into several IDs; too high can merge separate visits. 3 s was tuned for bees. |
-| **Minimum visit length** | `0.2 s` | How long an insect must be continuously detected before it counts as a confirmed visit (anything briefer is treated as noise). Directly affects visitation rate for brief touchdowns: lower counts more brief visits (and more false blips); higher counts only clear landings. |
+| **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low fragments one track ID into several IDs; too high can merge separate track IDs. 3 s was tuned for bees. |
+| **Minimum track length** | `0.2 s` | How long an insect must be continuously detected before it counts as a confirmed track ID (anything briefer is treated as noise). Directly affects visitation rate for brief touchdowns: lower counts more brief track IDs (and more false blips); higher counts only clear landings. |
 
 The seconds-based settings are converted to frames against the live frame
 rate as it varies during the session.
@@ -123,7 +123,7 @@ rate as it varies during the session.
 |---|---|---|---|
 | **Match overlap (IoU)** | ByteTrack | `0.1` | Overlap required to treat a detection as the same insect. Lower tolerates faster motion. |
 | **Low-score association** | ByteTrack | `0.1` | Looser second test that lets faint detections keep an existing ID. |
-| **High-score threshold** | both | `0.5` | Score at/above which a detection may *start* a new ID; fainter ones only keep IDs alive. Auto-kept above Confidence. |
+| **New-track confidence** | both | `0.5` | Score at/above which a detection may *start* a new track ID; fainter ones only keep IDs alive (called "High-score threshold" before round 247). Auto-kept above Confidence. An insect that has boxes under "All AI boxes" on a video's Video tab but no track ID was probably always below it: lower it and run "Find track IDs" again; no new AI run is needed. |
 | **Velocity smoothing** | ByteTrack | `0.5` | How much the motion prediction trusts the latest movement. Low = "assume it barely moved". |
 | **Search margin — pass 1** | C-BIoU | `0.30` | Boxes are enlarged by this fraction of their own size before the overlap test. Bigger tolerates faster movement but risks mixing close neighbours. |
 | **Search margin — pass 2** | C-BIoU | `0.50` | A wider second matching round for whatever pass 1 missed — catches big between-frame jumps. Always ≥ pass 1. |
@@ -170,7 +170,7 @@ Two related toggles live elsewhere:
 Frame rate, phone temperature and battery power are always logged while
 recording (the readings are taken for the live preview anyway, so logging them
 is free — roughly 2–3 MB per 8-hour session). In the session summary they
-appear under a collapsed **"Extra graphs"** section, so the visit timeline —
+appear under a collapsed **"Extra graphs"** section, so the track ID timeline —
 the main result — stays front and centre.
 
 | Setting | Default | What it does / when to change |
@@ -233,19 +233,19 @@ you can try a different model or different tiling settings on a finished
 session. The newest result per photo wins downstream (see
 [DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
-### Visits (round 237)
+### Track IDs (round 237)
 
 Shown once photos of a motion or time-lapse session are analysed. *Find
-visits* follows each insect from photo to photo, as the live camera does with
-the AI on, and writes `post_tracks.jsonl` and `visits.csv`; the summary,
-dashboard and identification then use those visits. Only offered when the
+track IDs* follows each insect from photo to photo, as the live camera does with
+the AI on, and writes `post_tracks.jsonl` and `track_ids.csv`; the summary,
+dashboard and identification then use those track IDs. Only offered when the
 session's photo step is at most 0.5 s; for sparser photos the section says
 that an insect can move too far between two photos to be followed.
 
 | Setting | Default (range) | What it does |
 |---|---|---|
 | **Occlusion tolerance** | `3 s` (0.2–10) | How long an insect can be missing (hidden, or missed in a photo) and keep its number. Same default as the live camera; keep it well above the photo step. Saved as `analysis_occlusion_s`, logged as `occlusion_seconds` in `post_track_start` and shown on the summary's Setup tab. |
-| **Minimum visit length** | `0.2 s` (0–2) | How long an insect must be seen before it counts as a visit. Same default as the live camera. Saved as `analysis_min_visit_s`, logged as `min_hits_seconds` in `post_track_start` and shown on the Setup tab. The tracking method (ByteTrack or C-BIoU) is the camera's: Settings → AI → Visit tracking → Advanced. |
+| **Minimum track length** | `0.2 s` (0–2) | How long an insect must be seen before it counts as a track ID. Same default as the live camera. Saved as `analysis_min_visit_s`, logged as `min_hits_seconds` in `post_track_start` and shown on the Setup tab. The tracking method (ByteTrack or C-BIoU) is the camera's: Settings → AI → Tracking → Advanced. |
 
 ## Video analysis (Run AI on videos screen)
 
@@ -257,7 +257,7 @@ are stored on the phone (`video_analysis_*`) and echoed into the `settings` of e
 `video_run_start` record. A session's results always come from one set of settings: after
 a change the screen offers "Analyze again with these settings", which replaces the earlier
 results after asking. Since round 229 the session summary's Setup tab lists them (Model &
-detection, Visit tracking), read back from the last run's records; the pause temperature is
+detection, Tracking), read back from the last run's records; the pause temperature is
 logged as `thermal_limit_c`.
 
 | Setting | Default | What it does / when to change |
@@ -269,11 +269,11 @@ logged as `thermal_limit_c`.
 | **IoU threshold** (Advanced) | `0.7` | Overlap level at which two boxes merge into one; the live camera's default. |
 | **Pause above battery temperature** (Advanced) | `40 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. |
 | **Measure the phone every** (Advanced, r232) | `10 s` (5–60) | How often the battery temperature, power use and analysis speed are written down during a run, also while it pauses to cool down. They make the summary's video graphs and `phone_during_analysis.csv` (DATA_GUIDE §9). 10 s is the live camera's temperature and power interval; shorter shows quick changes but gives a longer file. Saved as `video_analysis_sample_s`, logged as `sample_s` in `video_run_start` (not part of `settings`, so a change never makes the run start over) and shown on the Setup tab. |
-| **Occlusion tolerance** (Visits, r228) | `3 s` (0.2–10) | How long an insect can vanish (e.g. behind a petal) and keep its number when *Find visits* follows it from frame to frame. Longer: fewer visits split in two; too long: two visitors can merge into one. Keep it well above the time between two analyzed frames. Same default as the live camera; saved as `video_analysis_occlusion_s` and logged in `post_track_start`. |
-| **Minimum visit length** (Visits, r228) | `0.2 s` (0–2) | How long an insect must be seen before it counts as a visit; shorter sightings are dropped as noise. Same default as the live camera; saved as `video_analysis_min_visit_s` and logged in `post_track_start`. The tracking method itself (ByteTrack or C-BIoU and its fine-tuning) is shared with the camera: Settings → AI → Visit tracking → Advanced. |
-| **Keep frames of each visit** (Visits, r234) | on | After *Find visits*, saves pictures of every visit from the clips into `roi_frames/`, like the photos the live camera takes, for looking at the visitors and for *Identify organisms*. One picture is about as big as a live photo (the analysed area at full size). Off: *Find visits* keeps none and removes the ones kept before (a note says how many), unless their video is gone. Saved as `video_analysis_keep_frames`; logged as `keep_frames` in `post_track_start` (null when off). Shown on the Setup tab as *Kept frames per visit*. |
-| **Keep a frame every** (Visits, r234) | `1 s` (0.1–10) | The first frame of a visit is always kept, then one after each such step, as the live camera's photo step. Shorter catches more poses but fills more storage. Saved as `video_analysis_keep_step_s`; logged as `keep_frames.step_seconds`. |
-| **For up to** (Visits, r234) | `10 s` (1–300) | How long into a visit frames keep being saved, as the live camera's photo duration; a long visit gives no more after this. A visit gives up to about 1 + this ÷ the step frames. Saved as `video_analysis_keep_duration_s`; logged as `keep_frames.duration_seconds`. |
+| **Occlusion tolerance** (Track IDs, r228) | `3 s` (0.2–10) | How long an insect can vanish (e.g. behind a petal) and keep its number when *Find track IDs* follows it from frame to frame. Longer: fewer track IDs split in two; too long: two visitors can merge into one. Keep it well above the time between two analyzed frames. Same default as the live camera; saved as `video_analysis_occlusion_s` and logged in `post_track_start`. |
+| **Minimum track length** (Track IDs, r228) | `0.2 s` (0–2) | How long an insect must be seen before it counts as a track ID; shorter sightings are dropped as noise. Same default as the live camera; saved as `video_analysis_min_visit_s` and logged in `post_track_start`. The tracking method itself (ByteTrack or C-BIoU and its fine-tuning) is shared with the camera: Settings → AI → Tracking → Advanced. |
+| **Keep frames of each track ID** (Track IDs, r234) | on | After *Find track IDs*, saves pictures of every track ID from the clips into `roi_frames/`, like the photos the live camera takes, for looking at the visitors and for *Identify organisms*. One picture is about as big as a live photo (the analysed area at full size). Off: *Find track IDs* keeps none and removes the ones kept before (a note says how many), unless their video is gone. Saved as `video_analysis_keep_frames`; logged as `keep_frames` in `post_track_start` (null when off). Shown on the Setup tab as *Kept frames per track ID*. |
+| **Keep a frame every** (Track IDs, r234) | `1 s` (0.1–10) | The first frame of a track ID is always kept, then one after each such step, as the live camera's photo step. Shorter catches more poses but fills more storage. Saved as `video_analysis_keep_step_s`; logged as `keep_frames.step_seconds`. |
+| **For up to** (Track IDs, r234) | `10 s` (1–300) | How long into a track ID frames keep being saved, as the live camera's photo duration; a long track ID gives no more after this. A track ID gives up to about 1 + this ÷ the step frames. Saved as `video_analysis_keep_duration_s`; logged as `keep_frames.duration_seconds`. |
 
 ---
 
@@ -290,23 +290,23 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Setting | Default | Meaning |
 |---|---|---|
 | Use the GPU when it can run the model | on | Tries a GPU compile, automatic CPU fallback with the reason shown on screen (r211). Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
-| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi: 23.4 s per crop on 1 thread, 9.4 s on 2, 7.1 s on 4, 7.7 s on 8; 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
+| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi (round 250, phone cool): 4.6 to 5.4 s per crop on 1 thread, 2.6 to 3.0 s on 2, 1.9 to 2.0 s on 4, 2.0 s on 8 (0.26 s on the GPU); 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
-| Crops per visit | 10 (0 = all) | Keeps the largest boxes of a track id when a visit has more photos than this. |
+| Crops per track ID | 10 (0 = all) | Keeps the largest boxes of a track ID when a track ID has more photos than this. |
 | Ignore crops far less sure than the best (factor) | 10 | r219: a crop whose top-1 probability is below the surest crop's divided by this factor is left out of the pooled answer (still listed, marked "left out"); 1 = every crop counts. FaunaPulse rule of thumb, not tested on pollinator data. |
 | Confidence needed to call a rank identified | 0.60 (0.80 until round 216) | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. Conf. = the pooled answer of round 219 (crops' embeddings averaged with certainty weights, scored once); 0.7 to 0.8 are common thresholds in the camera-trap literature, none tested for pollinators. |
-| "No organism" threshold | 0.50 | Summed probability of the "none of these" entries above which a visit is reported as no organism. |
+| "No organism" threshold | 0.50 | Summed probability of the "none of these" entries above which a track ID is reported as no organism. |
 | Pause above battery temperature | 40 °C | The run pauses at this battery temperature and resumes 3 °C lower. |
-| Merge consecutive visits | off | r210/212: join a track id to the previous one when the gap, a compatible identification, the appearance similarity and the box-size guard all pass; the union is identified again. |
-| Largest gap between joined visits | 3 s | End of one track id to the start of the next (same as the tracker's occlusion buffer). |
-| Appearance similarity needed | 0.85 | Cosine similarity of the two visits' combined image embeddings (1 = identical). |
+| Merge consecutive track IDs | off | r210/212: join a track ID to the previous one when the gap, a compatible identification, the appearance similarity and the box-size guard all pass; the union is identified again. |
+| Largest gap between joined track IDs | 3 s | End of one track ID to the start of the next (same as the tracker's occlusion buffer). |
+| Appearance similarity needed | 0.85 | Cosine similarity of the two track IDs' combined image embeddings (1 = identical). |
 | Box size may differ by up to | 50 % | Mean box side relative to the ROI, as a percentage of the larger one; 100 % disables the guard. |
 | Short: duration below | 2 s | r212 suspect flags. `short` when duration is below this OR detections below the next row. |
-| Short: detections below | 3 | Detector frames the track id appeared in. |
+| Short: detections below | 3 | Detector frames the track ID appeared in. |
 | Weak: detector confidence below | 0.20 | `low_det` when the mean live-detector confidence is below this (same default as the `insect-detect-post` software's track filter, Sittinger 2026, doi:10.5281/zenodo.21822140). |
 | Weak: order probability below | 0.50 | `weak_id` when the identification's ORDER-rank probability is below this. `suspect` = short AND (low_det OR weak_id OR no organism); flags only, nothing deleted. |
-| Rank for the CSV "pred" columns | family | Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` in `tracks_<pack>.csv` (the other ranks are in their own columns anyway). |
+| CSV file only: rank of the "pred" columns | family | Changes nothing in the app (the results on screen show every rank). Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` and `pred_imgs` in `tracks_<pack>.csv`, the columns named as in insect-detect-post so files of both tools can be compared (the other ranks are in their own columns anyway). Label before round 247: "Rank for the CSV "pred" columns". |
 
 Model and label pack are chosen on the same screen (Import… copies the files into the app's
 private storage). `docs/IDENTIFICATION.md` explains where the files come from and how the

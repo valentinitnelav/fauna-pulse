@@ -262,7 +262,7 @@ class IdentifyPrefs {
     'none_threshold': noneThreshold,
     'thermal_limit_c': thermalLimitC,
     'target_rank': targetRank,
-    'merge_visits': mergeVisits,
+    'merge_track_ids': mergeVisits, // "merge_visits" before round 248
     'merge_gap_s': mergeGapS,
     'merge_size_tol': mergeSizeTol,
     'merge_min_cos': mergeMinCos,

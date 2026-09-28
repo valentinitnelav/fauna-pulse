@@ -10,6 +10,13 @@ Usage:
     python verify_parity.py --tflite out/bioclip2_image_fp16.tflite --images ./crops [--pack out/x.fpack] [--limit 200]
 
 Acceptance (plan section 7, Phase 0): mean cosine >= 0.99 and >= 95 % family agreement.
+
+Reading the numbers for a quantised file (quantise_tflite.py): the family is taken the
+way the app reports it (the probabilities of a family's species added up), and the
+agreement is also shown for the images where PyTorch itself is sure (top family at 50 %
+or more). Disagreements only on unsure images are near-ties that small rounding flips;
+disagreements on sure images mean the file is not fit for use. Round 250, BioCLIP 2 on
+30 frames: fp16 30/30, int8-weights 29/30, int8 24/30 (every miss on an unsure frame).
 """
 
 from __future__ import annotations
@@ -106,13 +113,22 @@ def main() -> int:
     if args.pack is not None:
         hdr, mat = read_fpack(args.pack)
         scale = float(hdr.get("logit_scale", 100.0))
-        labels = hdr["labels"]
-        def top(v):
-            return int(np.argmax(mat @ v))
-        fam = sum(labels[top(a)][4] == labels[top(b)][4] for a, b in zip(ref, got)) / len(ref)
-        spe = sum(top(a) == top(b) for a, b in zip(ref, got)) / len(ref)
-        print(f"top-1 agreement vs PyTorch: family {fam:.1%}  species {spe:.1%}  (pack {hdr['pack_id']}, scale {scale:.1f})")
-        ok = ok and fam >= 0.95
+        family_of = np.unique([label[4] for label in hdr["labels"]], return_inverse=True)[1]
+
+        def family_probs(v):
+            # Softmax over the pack's names with the model's scale, then summed per family.
+            z = scale * (mat @ v)
+            p = np.exp(z - z.max())
+            return np.bincount(family_of, weights=p / p.sum())
+
+        ref_fam = [family_probs(v) for v in ref]
+        same = np.array([a.argmax() == family_probs(b).argmax() for a, b in zip(ref_fam, got)])
+        sure = np.array([p.max() >= 0.5 for p in ref_fam])
+        spe = np.mean([np.argmax(mat @ a) == np.argmax(mat @ b) for a, b in zip(ref, got)])
+        print(f"top family agrees with PyTorch on {same.sum()} of {len(ref)} images ({same.mean():.1%}); "
+              f"where PyTorch is sure: {same[sure].sum()} of {sure.sum()}; top species {spe:.1%}  "
+              f"(pack {hdr['pack_id']}, scale {scale:.1f})")
+        ok = ok and same.mean() >= 0.95
     print("PARITY OK" if ok else "PARITY FAILED (see thresholds in the docstring)")
     return 0 if ok else 1
 

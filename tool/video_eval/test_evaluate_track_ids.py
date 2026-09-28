@@ -1,4 +1,4 @@
-"""Tests for evaluate_visits.py. Run: python3 -m unittest (in tool/video_eval)."""
+"""Tests for evaluate_track_ids.py (evaluate_visits.py before round 248). Run: python3 -m unittest (in tool/video_eval)."""
 import csv
 import json
 import tempfile
@@ -7,12 +7,12 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-import evaluate_visits as ev
+import evaluate_track_ids as ev
 
-VISITS_HEADER = "track_id,clip,start_time,start_s,end_s,duration_s,n_frames,mean_conf,class\n"
+APP_HEADER = "track_id,clip,start_time,start_s,end_s,duration_s,n_frames,mean_conf,class\n"
 
 
-def session_folder(tmp, visits_rows, name="visits.csv"):
+def session_folder(tmp, visits_rows, name="track_ids.csv"):
     """A 'Share results' folder: two clips, one imported as 'VID 1.mp4'."""
     d = Path(tmp)
     (d / "session.jsonl").write_text(
@@ -39,7 +39,7 @@ def session_folder(tmp, visits_rows, name="visits.csv"):
         + "\n"
     )
     path = d / name
-    path.write_text(VISITS_HEADER + "".join(f"{r}\n" for r in visits_rows))
+    path.write_text(APP_HEADER + "".join(f"{r}\n" for r in visits_rows))
     return path
 
 
@@ -119,12 +119,13 @@ class Evaluate(unittest.TestCase):
         rows = {r["clip"]: r for r in csv.DictReader(scores_csv.open())}
         self.assertEqual(set(rows), {"VID_1.mp4", "VID_2.mp4", "ALL"})
         a = rows["ALL"]
-        self.assertEqual((a["run"], a["tracker"], a["fps"]), ("visits", "bytetrack", "15"))
+        self.assertEqual((a["run"], a["tracker"], a["fps"]), ("track_ids", "bytetrack", "15"))
+        self.assertIn("app_track_s", a)
         self.assertEqual((a["n_true"], a["n_app"], a["found"], a["count_error"]), ("2", "3", "1", "1"))
         self.assertEqual(a["clip_s"], "90.000")
         self.assertEqual(a["mean_duration_error_s"], "-1.500")  # 4 s found vs 5.5 s counted
         self.assertEqual(a["median_start_error_s"], "0.500")
-        # The watched clip without visits is scored: its app visit is extra.
+        # The watched clip without visits is scored: its track ID is extra.
         self.assertEqual((rows["VID_2.mp4"]["n_true"], rows["VID_2.mp4"]["extra"]), ("0", "1"))
         self.assertEqual(rows["VID_2.mp4"]["recall"], "NA")
 
@@ -135,11 +136,28 @@ class Evaluate(unittest.TestCase):
         sweep = Path(self.tmp) / "fps_sweep"
         sweep.mkdir()
         session_folder(self.tmp, [])
-        app = sweep / "visits_cbiou_2.5fps.csv"
-        app.write_text(VISITS_HEADER + "1,VID_1.mp4,,2,6,4,10,0.8,bee\n")
-        run = ev.Run(app)
-        self.assertEqual((run.tracker, run.fps), ("cbiou", "2.5"))
-        self.assertEqual(run.length_s["VID_1.mp4"], 60)  # session.jsonl one folder up
+        # Round 248 names, the round-247 new-track suffix, and the names from before round 248.
+        for name, want in [
+            ("track_ids_cbiou_2.5fps.csv", ("cbiou", "2.5", "")),
+            ("track_ids_bytetrack_15fps_new0.25.csv", ("bytetrack", "15", "0.25")),
+            ("visits_cbiou_2.5fps.csv", ("cbiou", "2.5", "")),
+        ]:
+            app = sweep / name
+            app.write_text(APP_HEADER + "1,VID_1.mp4,,2,6,4,10,0.8,bee\n")
+            run = ev.Run(app)
+            self.assertEqual((run.tracker, run.fps, run.new_track), want, name)
+            self.assertEqual(run.length_s["VID_1.mp4"], 60)  # session.jsonl one folder up
+
+    def test_a_visits_csv_from_before_round_248_still_reads(self):
+        app = session_folder(self.tmp, ["1,VID_1.mp4,,10,14,4,60,0.8,bee"], name="visits.csv")
+        truth = write(self.tmp, "truth.csv", "clip,start_s,end_s,taxon\nVID_1.mp4,10,15,Bombus\n")
+        scores, _ = ev.evaluate(ev.Run(app), *ev.read_truth([truth], set()), 0.5)
+        self.assertEqual(scores[-1]["found"], 1)
+
+    def test_the_old_script_name_runs_the_new_one(self):
+        import evaluate_visits
+
+        self.assertIs(evaluate_visits.main, ev.main)
 
     def test_boris_export(self):
         app = session_folder(self.tmp, ["1,VID_1.mp4,,10,14,4,60,0.8,bee"])

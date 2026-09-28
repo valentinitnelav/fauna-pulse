@@ -113,8 +113,8 @@ void main() {
     final bytesBefore = {for (final k in kept) k.file: File('$framesDir/${k.file}').readAsBytesSync()};
     final none = await ClipCleanup.planWithoutVisits(dir);
     final all = await ClipCleanup.planAll(dir);
-    _log('READY ${before.visits} visits in ${before.clipsTracked} clips, ${saved.saved} frames saved; '
-        'without visits: ${none.deleteNames} (${none.deleteBytes} B); all: ${all.deleteNames.length} clips, '
+    _log('READY ${before.visits} track IDs in ${before.clipsTracked} clips, ${saved.saved} frames saved; '
+        'without track IDs: ${none.deleteNames} (${none.deleteBytes} B); all: ${all.deleteNames.length} clips, '
         '${all.deleteBytes} B');
 
     Future<void> waitFor(Finder f, {int seconds = 20}) async {
@@ -141,7 +141,7 @@ void main() {
     // The session picker at the top (the rest of the list builds as it scrolls).
     await waitFor(find.textContaining('${all.deleteNames.length} analyzed)'));
     final list = find.byType(Scrollable).first;
-    final deleteAll = find.textContaining('Delete all ${all.deleteNames.length} clips, keep the saved frames');
+    final deleteAll = find.textContaining(', keep the saved frames');
     await tester.scrollUntilVisible(deleteAll, 300, scrollable: list);
     await tester.drag(list, const Offset(0, -600));
     await tester.pump(const Duration(milliseconds: 300));
@@ -165,7 +165,7 @@ void main() {
     // 3. Find visits again from the saved boxes.
     final after = await VideoTracker.run(dir, const SessionConfig(), keep: keep);
     final status = await VideoFrameKeeper.status(dir);
-    _log('FIND VISITS AGAIN ${after.visits} visits, kept ${after.keptFrames}; frames saved ${status.saved} of '
+    _log('FIND VISITS AGAIN ${after.visits} track IDs, kept ${after.keptFrames}; frames saved ${status.saved} of '
         '${status.total}, no video ${status.noVideo}');
     expect(after.visits, before.visits);
     for (final e in bytesBefore.entries) {

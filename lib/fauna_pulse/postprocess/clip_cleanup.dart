@@ -28,7 +28,7 @@ import 'video_tracker.dart';
 
 /// What a cleanup would delete.
 class ClipCleanupPlan {
-  /// `without_visits` or `all` (the record's `mode`).
+  /// `without_visits`, `all` or `cut_off` (the record's `mode`).
   final String mode;
   final List<String> deleteNames;
   final int deleteBytes;
@@ -40,8 +40,11 @@ class ClipCleanupPlan {
 
 class ClipCleanup {
   static const recordType = 'video_cleanup';
-  static const modeWithoutVisits = 'without_visits';
+  static const modeWithoutVisits = 'without_track_ids'; // "without_visits" before round 248
   static const modeAll = 'all';
+
+  /// Round 243: clips cut off by a killed app (see VideoDetector.isReadableVideo).
+  static const modeCutOff = 'cut_off';
 
   /// Clips followed by the current "Find visits" (its `clips`) in which no
   /// visit has a box, and whose file is still there.
@@ -75,6 +78,12 @@ class ClipCleanup {
 
   /// Every clip file of the session.
   static Future<ClipCleanupPlan> planAll(Directory sessionDir) async => _plan(sessionDir, modeAll, (_) => true);
+
+  /// The clips that cannot be read because the app stopped while recording them.
+  static Future<ClipCleanupPlan> planCutOff(Directory sessionDir) async {
+    final cut = {for (final f in VideoDetector.cutOffClipsOf(sessionDir)) f.uri.pathSegments.last};
+    return _plan(sessionDir, modeCutOff, cut.contains);
+  }
 
   static ClipCleanupPlan _plan(Directory sessionDir, String mode, bool Function(String name) delete) {
     final names = <String>[];
@@ -115,7 +124,7 @@ class ClipCleanup {
           'mode': plan.mode,
           'clips': deleted,
           'freed_bytes': freed,
-          'visits_run_id': ?(await VideoTracker.readSummary(sessionDir))?.runId,
+          'track_ids_run_id': ?(await VideoTracker.readSummary(sessionDir))?.runId,
         })}\n',
         mode: FileMode.append,
       );

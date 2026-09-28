@@ -219,7 +219,7 @@ class EmbeddingIndex {
           modelId ??= rec['model'] as String?;
           margin ??= (rec['margin'] as num?)?.toDouble();
           minCropPx ??= (rec['min_crop_px'] as num?)?.toInt();
-          visitsRunId ??= (rec['visits_run_id'] as num?)?.toInt();
+          visitsRunId ??= ((rec['track_ids_run_id'] ?? rec['visits_run_id']) as num?)?.toInt(); // r248 name, old one
       }
     }
     return EmbeddingIndex(
@@ -631,7 +631,7 @@ Map<String, dynamic> writeOutputs({
     // Round 216: photo schedule of the recording (null when unknown).
     'capture': capture ?? const {},
     'tracks_total': tracks.length,
-    'visits_merged': visitsMerged,
+    'track_ids_merged': visitsMerged, // "visits_merged" before round 248
     'tracks_before_merge': tracksBeforeMerge,
     'suspect': suspectCount,
     'by_identified_rank': byRank,
@@ -695,12 +695,12 @@ Files
   predictions_<pack>.jsonl         per crop: the most probable pack rows with probabilities
   tracks_<pack>.json               per track: the full "ladder" (kingdom..species with mass and support),
                                    crops with their own values, best single view, flags
-  tracks_<pack>.csv                one row per track (visit); columns below
+  tracks_<pack>.csv                one row per track ID (in pollination ecology usually a visit); columns below
   crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
 
 Two kinds of probability appear everywhere (round 219 rule):
-  Conf. (p_<rank>)     the model's confidence that a track id belongs to a TAXON. The crops'
+  Conf. (p_<rank>)     the model's confidence that a track ID belongs to a TAXON. The crops'
                        embedding vectors are averaged, each crop weighted by its top-1
                        probability, crops below the surest crop's top-1 probability divided
                        by the drop factor (default 10) left out; the average is scored once
@@ -713,7 +713,7 @@ Two kinds of probability appear everywhere (round 219 rule):
   Species conf. (top1_p)  probability of ONE species for ONE crop, nothing added up; it is
                        also the crop's weight in the average (0 when counted = 0).
   Med. Conf.           on the results screen's taxon table: the median of Conf. across the
-                       row's track ids.
+                       row's track IDs.
 
 tracks_<pack>.csv columns
   device_id, session_id, track_id      identifiers (track_id empty for no-AI sessions: one row per crop)
@@ -745,7 +745,7 @@ tracks_<pack>.csv columns
                                       and its Conf. (round 221)
 
 crops_<pack>.csv columns
-  session_id, track_id, crop_no       the visit and the crop's number within it (capture order)
+  session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
   photo, box_*                        photo file and the detector box (fractions of the photo side)
   crop_px, sharpness, det_conf, pad_frac
                                       square crop side (px), Laplacian sharpness, detector confidence,
@@ -753,12 +753,12 @@ crops_<pack>.csv columns
   top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
   top1_kingdom .. top1_family         that species' higher ranks (round 220; kingdom "none" for a
                                       "none of these" entry)
-  agrees                              1 when top1_species falls under the visit's reported taxon
+  agrees                              1 when top1_species falls under the track ID's reported taxon
   counted                             1 when the crop entered the combined answer (round 219)
-  ladder_<rank>, p_<rank>             the visit's ladder taxa and THIS crop's own Conf. under each
+  ladder_<rank>, p_<rank>             the track ID's ladder taxa and THIS crop's own Conf. under each
 
 How it is computed (round 219): each crop is embedded with the BioCLIP image tower and
-scored against the pack on its own (for the per-crop columns); the track id's answer comes
+scored against the pack on its own (for the per-crop columns); the track ID's answer comes
 from the certainty-weighted average of the counted crops' embeddings, scored once, with
 species masses summed up the taxonomy. Percentages are model confidence, not accuracy.
 ''';
@@ -840,7 +840,8 @@ class LatestIdentification {
       summaryFile: summaries.first,
       byTrack: byTrack,
       byPhoto: byPhoto,
-      visitsRunId: ((s['capture'] as Map?)?['visits_run_id'] as num?)?.toInt(),
+      visitsRunId: (((s['capture'] as Map?)?['track_ids_run_id'] ?? (s['capture'] as Map?)?['visits_run_id']) as num?)
+          ?.toInt(), // r248 name, old one
     );
   }
 }

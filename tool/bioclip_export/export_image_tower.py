@@ -9,12 +9,13 @@ BioCLIP 2.5), wraps the image tower so the phone can feed plain RGB pixels in 0.
 (the CLIP colour normalisation and the final L2 normalisation are baked into the
 graph), and converts it with litert-torch (formerly ai-edge-torch) to a .tflite file.
 
-Precisions:
-    fp32  plain conversion, ~1.2 GB for BioCLIP 2 (nothing quantised; slowest download)
-    fp16  weights stored as 16-bit floats (ai-edge-quantizer "float casting"), ~0.6 GB,
-          no measurable accuracy change, the GPU path's native format (DEFAULT)
-    int8  dynamic-range quantisation (8-bit weights, float compute), ~0.3 GB, for the
-          CPU path; a small accuracy cost that verify_parity.py measures
+Precisions (what quantisation is and what each costs: see quantise_tflite.py):
+    fp32          plain conversion, ~1.2 GB for BioCLIP 2 (nothing quantised)
+    fp16          weights stored as 16-bit floats, ~0.6 GB, same answers as PyTorch,
+                  the phone GPU's native format (DEFAULT)
+    int8          8-bit weights, and 8-bit maths on the CPU ("dynamic range"), ~0.3 GB;
+                  on 30 test frames it changed the family on 6 unsure ones
+    int8-weights  8-bit weights expanded to floats on loading, ~0.3 GB, float maths
 
 Converter: litert-torch >= 0.9 (formerly ai-edge-torch). It no longer needs TensorFlow;
 the float32 graph comes out of litert-torch and the weight casting is done afterwards
@@ -29,7 +30,7 @@ maths and the weights are the same (verify_parity.py compares the two exports).
 
 Usage (see README.md for the environment):
     python export_image_tower.py --model bioclip-2 --precision fp16 --out ./out
-    python export_image_tower.py --model bioclip-2.5 --precision int8 --out ./out
+    python export_image_tower.py --model bioclip-2.5 --precision fp16 --out ./out
     python export_image_tower.py --model bioclip-2 --onnx --out ./out   # extra .onnx
 
 Output: <out>/<model>_image_<precision>.tflite and <same>.json (the manifest the app
@@ -140,13 +141,11 @@ def build_tower(model_key: str, attention: str = "4d"):
 
 
 def export_tflite(tower, image_size: int, precision: str, out_path: Path, lightweight: bool = False) -> None:
-    """Convert with litert-torch (0.9+, no TensorFlow needed), then cast/quantise weights.
+    """Convert with litert-torch (0.9+, no TensorFlow needed), then quantise the weights.
 
     litert-torch converts the PyTorch graph straight to a float32 .tflite. The fp16 and
-    int8 variants are produced from that file with the bundled ai-edge-quantizer:
-    fp16 = "float casting" of the weight tensors (FULLY_CONNECTED + CONV_2D, the only
-    large tensors in a ViT), int8 = dynamic-range quantisation (int8 weights, float
-    activations). The float32 intermediate is deleted afterwards unless it IS the target.
+    int8 variants are made from that file by quantise_tflite.quantise (ai-edge-quantizer).
+    The float32 intermediate is deleted afterwards unless it IS the target.
     """
     import torch
 
@@ -157,7 +156,7 @@ def export_tflite(tower, image_size: int, precision: str, out_path: Path, lightw
 
     sample = (torch.zeros(1, 3, image_size, image_size),)
     fp32_path = out_path if precision == "fp32" else out_path.with_name(
-        out_path.name.replace(f"_{precision}.tflite", "_fp32.tflite"))
+        out_path.name.replace(f"_{precision.replace('-', '_')}.tflite", "_fp32.tflite"))
     t0 = time.time()
     if not fp32_path.exists():
         # Full constant folding (lightweight=False) matters: the memory-saving mode
@@ -179,77 +178,11 @@ def export_tflite(tower, image_size: int, precision: str, out_path: Path, lightw
     if precision == "fp32":
         return
 
-    from ai_edge_quantizer import quantizer, recipe, recipe_manager, qtyping
-    from ai_edge_quantizer.algorithm_manager import AlgorithmName
-    from ai_edge_quantizer.utils import tfl_flatbuffer_utils
+    # The quantisation step itself (and why fp16 is the default) is explained in
+    # quantise_tflite.py, which also works on other models' float32 .tflite files.
+    from quantise_tflite import quantise
 
-    # Workaround (ai-edge-quantizer 0.9.0 + flatbuffers 25.12): the flatbuffer object
-    # API now yields tensor names as str, but the quantizer's transformations append
-    # bytes suffixes (`tensor.name + b'_dequant'`). Normalise every name to bytes right
-    # after the model is read; get_tensor_name() decodes bytes, so nothing else changes.
-    _orig_read_model = tfl_flatbuffer_utils.read_model
-
-    def _read_model_with_byte_names(model_src):
-        model = _orig_read_model(model_src)
-        for sg in model.subgraphs or []:
-            if isinstance(sg.name, str):
-                sg.name = sg.name.encode("utf-8")
-            for t in sg.tensors or []:
-                if isinstance(t.name, str):
-                    t.name = t.name.encode("utf-8")
-        return model
-
-    tfl_flatbuffer_utils.read_model = _read_model_with_byte_names
-
-    # Same bug from the other side: transformations that CREATE tensors (e.g.
-    # duplicate_tensor's f"{name}_duplicated") pass str names, and a later
-    # dequant insertion on such a tensor fails. Encode names in the two creators.
-    from ai_edge_quantizer.transformations import transformation_utils as _tu
-
-    def _bytes_name(fn):
-        def wrapped(*args, **kwargs):
-            if isinstance(kwargs.get("tensor_name"), str):
-                kwargs["tensor_name"] = kwargs["tensor_name"].encode("utf-8")
-            elif args and isinstance(args[0], str):
-                args = (args[0].encode("utf-8"),) + tuple(args[1:])
-            return fn(*args, **kwargs)
-        return wrapped
-
-    _tu.add_new_activation_tensor = _bytes_name(_tu.add_new_activation_tensor)
-
-    # duplicate_tensor builds its names with str f-strings and appends to them
-    # afterwards, so it must run untouched; normalise the subgraph's names to
-    # bytes once it is done.
-    from ai_edge_quantizer.transformations import duplicate_tensor as _dup
-
-    _orig_duplicate = _dup.duplicate_tensor
-
-    def _duplicate_with_byte_names(transformation_input):
-        info = _orig_duplicate(transformation_input)
-        for t in transformation_input.subgraph.tensors:
-            if isinstance(t.name, str):
-                t.name = t.name.encode("utf-8")
-        return info
-
-    _dup.duplicate_tensor = _duplicate_with_byte_names
-
-    if precision == "fp16":
-        rp = recipe_manager.RecipeManager()
-        for op in (qtyping.TFLOperationName.FULLY_CONNECTED, qtyping.TFLOperationName.CONV_2D):
-            rp.add_weight_only_config(
-                regex=".*", operation_name=op, num_bits=16,
-                algorithm_key=AlgorithmName.FLOAT_CASTING,
-            )
-        quant_recipe = rp.get_quantization_recipe()
-    else:  # int8 dynamic range
-        quant_recipe = recipe.dynamic_wi8_afp32()
-    t1 = time.time()
-    print(f"Applying {precision} to the weights with ai-edge-quantizer...")
-    q = quantizer.Quantizer(fp32_path, quant_recipe)
-    result = q.quantize()
-    result.export_model(out_path, overwrite=True)
-    print(f"{precision} TFLite written: {out_path} ({out_path.stat().st_size / 1e6:.0f} MB, "
-          f"{time.time() - t1:.0f} s)")
+    quantise(fp32_path, out_path, precision)
     if fp32_path != out_path and not KEEP_FP32:
         fp32_path.unlink()
         print(f"Removed the float32 intermediate {fp32_path.name} (use --keep-fp32 to keep it)")
@@ -268,7 +201,7 @@ def export_onnx(tower, image_size: int, out_path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), default="bioclip-2")
-    ap.add_argument("--precision", choices=["fp32", "fp16", "int8"], default="fp16")
+    ap.add_argument("--precision", choices=["fp32", "fp16", "int8", "int8-weights"], default="fp16")
     ap.add_argument("--attention", choices=["4d", "torch"], default="4d",
                     help="4d (default): attention as steps of at most 4 dimensions, so phone GPUs can run "
                          "it; torch: PyTorch's own layers (exports before round 242)")
@@ -288,7 +221,7 @@ def main() -> int:
     tower, image_size, dim, logit_scale = build_tower(args.model, args.attention)
     print(f"image tower ready: input {image_size}x{image_size}, embedding dim {dim}, logit_scale {logit_scale:.2f}")
 
-    stem = f"{args.model.replace('.', '')}_image_{args.precision}"
+    stem = f"{args.model.replace('.', '')}_image_{args.precision.replace('-', '_')}"
     tflite_path = args.out / f"{stem}.tflite"
     manifest = {
         "kind": "embedder",

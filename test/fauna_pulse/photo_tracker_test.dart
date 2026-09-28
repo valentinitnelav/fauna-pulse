@@ -128,7 +128,7 @@ void main() {
     expect([live.trackedLive, live.possible], [true, false]);
   });
 
-  test('one resting insect is one visit; photos, times and burst time are written', () async {
+  test('one resting insect is one track ID; photos, times and burst time are written', () async {
     // In the first burst from 2 s to 5 s; one photo in between failed.
     final dir = _session(insect: (t) => t >= 2000 && t <= 5000, failed: {3000});
     final r = await PhotoTracker.run(dir, config);
@@ -155,7 +155,7 @@ void main() {
     expect(named, isNotEmpty);
     expect(named.toSet(), hasLength(named.length));
     expect(named, everyElement(startsWith('roi_tok_')));
-    expect(_records(dir, 'post_track_end').single['visits'], 1);
+    expect(_records(dir, 'post_track_end').single['track_ids'], 1);
 
     final row = File('${dir.path}/${TrackExport.visitsFileName}').readAsLinesSync()[1].split(',');
     expect(row[1], ''); // no clip
@@ -177,7 +177,7 @@ void main() {
     expect(_records(dir, 'post_track_start').single.containsKey('observed_ms'), isFalse);
   });
 
-  test('the summary index keeps the photos\' own records and adds the visits', () async {
+  test('the summary index keeps the photos\' own records and adds the track IDs', () async {
     final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
     await PhotoTracker.run(dir, config);
     final index = await SessionLogIndex.build(File('${dir.path}/session.jsonl'));
@@ -190,7 +190,7 @@ void main() {
     expect(index.photos, hasLength(100));
   });
 
-  test('identification plans crops per visit from the photos', () async {
+  test('identification plans crops per track ID from the photos', () async {
     final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
     Directory('${dir.path}/roi_frames').createSync();
     for (final t in [for (var t = 0; t < 10000; t += 200) t]) {
@@ -252,23 +252,23 @@ void main() {
         await tester.pump(const Duration(milliseconds: 20));
       }
       final list = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('Visits'), 200, scrollable: list);
+      await tester.scrollUntilVisible(find.text('Track IDs'), 200, scrollable: list);
       return list;
     }
 
-    testWidgets('"Run AI on photos" finds the visits of close photos (360 px)', (tester) async {
+    testWidgets('"Run AI on photos" finds the track IDs of close photos (360 px)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);
       final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
       _photoFiles(dir);
       final list = await openAnalysis(tester, dir);
-      await tester.scrollUntilVisible(find.text('Find visits'), 200, scrollable: list);
+      await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
       expect(find.text('Occlusion tolerance'), findsOneWidget);
-      expect(find.text('Minimum visit length'), findsOneWidget);
-      await tester.tap(find.text('Find visits'));
-      await _pumpUntil(tester, find.textContaining('1 visit (occlusion tolerance 3.0 s, minimum visit 0.2 s).'));
-      expect(find.text('Find visits again'), findsOneWidget);
-      expect(find.textContaining('Found 1 visit in 100 photos.'), findsOneWidget);
+      expect(find.text('Minimum track length'), findsOneWidget);
+      await tester.tap(find.text('Find track IDs'));
+      await _pumpUntil(tester, find.textContaining('1 track ID (occlusion tolerance 3.0 s, minimum track 0.2 s).'));
+      expect(find.text('Find track IDs again'), findsOneWidget);
+      expect(find.textContaining('Found 1 track ID in 100 photos.'), findsOneWidget);
       expect(File('${dir.path}/$postTracksFileName').existsSync(), isTrue);
       expect(tester.takeException(), isNull);
       final last = find.textContaining('A stopped run resumes where it left off.');
@@ -282,7 +282,7 @@ void main() {
         MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1)),
       );
       await _pumpUntil(tester, find.text('1 (found afterwards in the photos)'));
-      expect(find.textContaining('Found afterwards in the photos with "Find visits"'), findsOneWidget);
+      expect(find.textContaining('Found afterwards in the photos with "Find track IDs"'), findsOneWidget);
       expect(find.textContaining('Time between bursts was not photographed.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -294,7 +294,7 @@ void main() {
       _photoFiles(dir);
       final list = await openAnalysis(tester, dir);
       await tester.scrollUntilVisible(find.textContaining('Photos 1 s apart are too far apart'), 200, scrollable: list);
-      expect(find.text('Find visits'), findsNothing);
+      expect(find.text('Find track IDs'), findsNothing);
       expect(find.text('Occlusion tolerance'), findsNothing);
       expect(tester.takeException(), isNull);
     });

@@ -3,9 +3,9 @@
 *Experimental since commit round 208*
 
 FaunaPulse detects and tracks insects live. **Identification** is a separate, later step:
-the saved photos of every tracked visit are cut to crops, each crop is turned into an
+the saved photos of every track ID are cut to crops, each crop is turned into an
 "embedding" (a list of numbers describing its content) by the [BioCLIP 2][bioclip] image tower, and
-the crops of one track id are combined into one answer with a confidence per taxonomic
+the crops of one track ID are combined into one answer with a confidence per taxonomic
 rank (order, family, genus, species). Everything runs on the phone; nothing is uploaded.
 It is meant for bulk processing after a day of recording, with the phone plugged in.
 
@@ -32,27 +32,27 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
 
 1. Open a session's gear menu (home screen) or its summary → Photos tab → **Identify organisms**.
 2. Pick the model and the label pack. The screen shows how many crops will be processed
-   (one per photo per tracked insect, capped per visit) and, after the first run on this
+   (one per photo per tracked insect, capped per track ID) and, after the first run on this
    phone, a time estimate.
 3. Plug the phone in and tap **Start**. Progress shows crops done, elapsed time, the
    estimated remainder and the battery temperature. The run pauses by itself above the
    temperature limit (default 40 °C) and resumes 3 °C lower. **Cancel** keeps everything
    done so far; **Continue** resumes where it stopped (the files are append-only).
-4. When finished, **View results** shows a table with one row per taxon (visits, total
-   time, median confidence); tap a row for its visits and a visit for its full ladder.
-   **Share results (CSV file)** hands the per-visit table to another app (the same file
+4. When finished, **View results** shows a table with one row per taxon (track IDs, total
+   time, median confidence); tap a row for its track IDs and a track ID for its full ladder.
+   **Share results (CSV file)** hands the per-track-ID table to another app (the same file
    stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
-   Photos tab then shows each visit's identification under its photos.
+   Photos tab then shows each track ID's identification under its photos.
 
 **Re-score with this pack** repeats only the last step (seconds): the stored embeddings are
 compared against a different label pack, e.g. a country-restricted one, without running
-the model again. For visits found in videos, *Find visits* numbers the visits anew each
+the model again. For track IDs found in videos, *Find track IDs* numbers the track IDs anew each
 time: after it ran again, the stored crops belong to the old numbers, so the button is
 hidden, a note says the next *Continue / re-run* starts over, and the session summary
 shows no answers on the frames until then (round 235).
 
 **What a re-run recomputes (round 213).** The model output for every crop is stored in
-`embeddings_<model>.jsonl/.bin`, keyed by photo, track id and box. "Continue / re-run" runs
+`embeddings_<model>.jsonl/.bin`, keyed by photo, track ID and box. "Continue / re-run" runs
 the model only on crops without a stored vector (new photos, or crops that a lower
 "smallest box" setting now admits) and then re-scores everything, which is why a re-run
 on an unchanged session takes seconds. Confidence and "no organism" thresholds, the CSV
@@ -60,35 +60,35 @@ rank, the merge settings and the suspect flags are all applied at scoring, so ch
 never re-runs the model. The **crop margin** is the exception: it changes what the model
 saw, but the stored vectors do not know it; when the margin differs from the one the stored
 crops were cut with, Start asks whether to keep the stored crops (fast) or recompute all of
-them (a full run). "Smallest box" and "crops per visit" only add or remove crops.
+them (a full run). "Smallest box" and "crops per track ID" only add or remove crops.
 
 **Aligning with the detection data in R or Python.** Both sides share the same keys: the
-session id (folder name) and the track id (`track_id` in `tracks_<pack>.csv`, `track_id`
+session id (folder name) and the track ID (`track_id` in `tracks_<pack>.csv`, `track_id`
 inside the `detections` records of `session.jsonl`), and, per crop, the photo file name
 (`src` in `tracks_<pack>.json` and `predictions_<pack>.jsonl`, `jpeg` in the log's
-detection records) together with the box coordinates. A merged visit lists all its ids in
+detection records) together with the box coordinates. A merged track ID lists all its ids in
 `merged_track_ids`. So a join on `track_id` (or on file name for per-crop work) lines up
 detections, photos and identifications without any extra bookkeeping.
 
-No-AI sessions (motion / time-lapse) have no track ids. Run "Run AI on photos" first; the
-post-hoc boxes are then identified one by one (no per-visit combination).
+No-AI sessions (motion / time-lapse) have no track IDs. Run "Run AI on photos" first; the
+post-hoc boxes are then identified one by one (no per-track-ID combination).
 
 ## Reading the results
 
 The results screen aggregates per taxon. **As identified** (default) makes one row per
-answer at the rank the model was sure about: visits identified only to the genus *Bombus*
-are one row, visits identified to *Bombus terrestris* another. Choosing **Order**,
-**Family**, **Genus** or **Species** counts every visit under its taxon at that rank; visits
+answer at the rank the model was sure about: track IDs identified only to the genus *Bombus*
+are one row, track IDs identified to *Bombus terrestris* another. Choosing **Order**,
+**Family**, **Genus** or **Species** counts every track ID under its taxon at that rank; track IDs
 the model did not resolve that deep land in a "not resolved to ..." row. *Time* adds up the
-visits' durations, *Conf.* is the median confidence of the row's visits. The same numbers
+track IDs' durations, *Conf.* is the median confidence of the row's track IDs. The same numbers
 can be reproduced from `tracks_<pack>.csv` (`bioclip_<rank>` / `p_<rank>` columns).
 
 The table (round 214) is sortable by tapping a column header, has the rank in its own
-column and a rank filter (e.g. only rows that reached species), and a row opens its visits
-as a numbered list (No. is the row number; Track id is the tracker's id, which can jump;
-in "All track ids" the taxon's rank has its own column since round 222). A table wider than
+column and a rank filter (e.g. only rows that reached species), and a row opens its track IDs
+as a numbered list (No. is the row number; Track ID is the tracker's id, which can jump;
+in "All track IDs" the taxon's rank has its own column since round 222). A table wider than
 the screen scrolls sideways under a slider; in that list only the table moves, the text
-above it stays. A visit's detail sheet shows the ladder as an aligned table with the
+above it stays. A track ID's detail sheet shows the ladder as an aligned table with the
 reported rank highlighted and the taxa below it (suggestions) in grey, the photo of the
 best single view with its full file name on its own line, the
 detector box (yellow, labelled with the live detector's confidence for that photo since
@@ -105,18 +105,20 @@ path_conflict line names the rival taxon and why the ladder skips it), `single_c
 the crops table. A small grey "Flags in tracks CSV" line at the bottom lists the flags as
 written to the CSV, with a dictionary.
 
-One identification belongs to one **visit** (track id), combining all of that visit's
-photos; the Photos tab of the session summary shows it under every photo of that track id.
+One identification belongs to one **track ID** (in pollination ecology usually one visit), combining all of that track ID's
+photos; the Photos tab of the session summary shows it under every photo of that track ID.
 It is not a per-photo answer (the per-crop guesses are in `predictions_<pack>.jsonl`).
 
-**Vocabulary (rounds 215–216).** A **track id** is one tracked organism, what a pollination
-ecologist calls a visit; the app says "track id" because it also serves birds, mammals or
-other organisms. **Conf.** is the model's confidence that a track id belongs to a *taxon*:
+**Vocabulary (rounds 215–216, 248).** A **track ID** is one tracked organism, what a pollination
+ecologist calls a visit when detection and tracking worked (some track IDs are false
+detections, and one insect can be split into several); the app says "track ID" everywhere,
+file and field names included since round 248, because it is the neutral term and the app
+also serves birds, mammals or other organisms. **Conf.** is the model's confidence that a track ID belongs to a *taxon*:
 the probabilities of all species under that taxon added up (a genus = the sum of its
 species, a family = the sum of its genera, and so on; BioCLIP itself only scores species
 names, FaunaPulse does the adding). **Species conf.** is the probability of *one* species
 for *one* crop, with no summing. **Med. Conf.** (the taxon table on the results screen) is the
-median of Conf. across the row's track ids, rounded to whole percent; the list that opens
+median of Conf. across the row's track IDs, rounded to whole percent; the list that opens
 from the row states the same median above its table so it can be checked. All Conf. values
 at one rank, plus the "none of these" entries, add up to 100 %.
 
@@ -124,15 +126,15 @@ The crops table names the taxon in its confidence column ("Conf. Hymenoptera"), 
 crop's confidence for the reported taxon sits in the same row as that crop's top species and
 was read as the species' probability (owner, track #19 of session_2: Hymenoptera 90 % with
 per-crop values of 95 %, 90 %, 97 % … next to species names). Tapping a ladder row changes
-the taxon the column shows; the track id's Conf. for that taxon is that column averaged with
+the taxon the column shows; the track ID's Conf. for that taxon is that column averaged with
 the Species conf. column as weights, spelled out as a worked example in the info texts.
 
-**How a track id's Conf. is computed (round 219).** Each crop is classified on its own for
+**How a track ID's Conf. is computed (round 219).** Each crop is classified on its own for
 the tables: the model turns the crop into a vector, compares it with every species name it
 was given (cosine similarity times the pack's logit scale, divided by the calibration
 temperature), turns the similarities into probabilities with a softmax, and the
 probabilities of the species under a taxon are added up (the crop's own Conf. for that
-taxon, the "Conf. <taxon>" column of the crops table). The track id's answer is NOT an
+taxon, the "Conf. <taxon>" column of the crops table). The track ID's answer is NOT an
 average of those per-crop values. Instead the crops' vectors themselves are averaged, each
 crop weighted by its own top-1 probability (its Species conf.), crops whose top-1
 probability is below the surest crop's divided by a factor (default 10) left out, and the
@@ -140,7 +142,7 @@ average, deliberately not re-normalised, is classified once in the same way. Ave
 before the softmax is the "Average Logit" rule that Dussert et al. (2025) found best
 calibrated for camera-trap image sequences (their "Average Score", the average of per-image
 probabilities, was systematically underconfident, which is what FaunaPulse did in rounds
-217 and 218). Consequences: photos that agree reinforce each other, so a track id's Conf.
+217 and 218). Consequences: photos that agree reinforce each other, so a track ID's Conf.
 can exceed every single photo's value; photos that disagree pull the average apart and lower
 every Conf.; a photo the model is far less sure about than its best photo carries no usable
 information and is left out (marked "left out" in the crops table). Every number can be
@@ -156,7 +158,7 @@ owner's choice (0.7 to 0.8 are common in ecological studies, Whytock et al. 2021
 al. 2025); the calibration temperature 1.0 = no calibration (Dussert: fit one temperature on
 a labelled test set and keep it; the pack format carries the field). The planned check is
 the owner's expert-labelled smartphone crops (Zenodo 10.5281/zenodo.15096610): accuracy per
-rank, a fitted temperature, and a comparison of pooling rules on track ids with three or
+rank, a fitted temperature, and a comparison of pooling rules on track IDs with three or
 more crops. Until then, treat Conf. as a model score with a known direction of bias
 (sharper than the per-crop average) rather than a calibrated probability.
 
@@ -168,7 +170,7 @@ agreeing crops (`p_agree_<rank>`, so that insect-detect-post's weighted probabil
 `agree_<rank>` × `p_agree_<rank>`) for every rank, so other pooling rules can be compared in
 R without re-scoring.
 
-Each track id gets a **ladder**: the taxon chosen at every rank on a consistent path from
+Each track ID gets a **ladder**: the taxon chosen at every rank on a consistent path from
 kingdom to species, with its Conf. and Agree. The **identified rank** is the deepest rung
 whose Conf. reaches the confidence threshold (default 0.6 since round 217); the headline is
 that rung's taxon, or "unidentified" (no taxonomic rank reached the threshold, not even
@@ -176,7 +178,7 @@ kingdom; in a pack of animals only this means the "none of these" entries took a
 but not more than the "No organism" threshold) or "no organism" (the "none of these" entries
 took more than that threshold). Species names below the threshold are still shown, as
 suggestions to verify. The **best single photo** is the crop whose own top species has the
-highest Species conf., i.e. the photo the model is surest about on its own; the track id's
+highest Species conf., i.e. the photo the model is surest about on its own; the track ID's
 sheet names it, its species and confidence, the crop number and how many photos name the
 same species, and opens the photo view on it.
 
@@ -193,10 +195,10 @@ Bombus species (cingulatus 13 %, hypnorum, vestalis, ...), and the crops' own pr
 species (vestalis 30 %, cingulatus 17 %, dahlbomii 12 %, ...) are each that crop's single
 best name.
 
-**Why a short visit can have several photos and a long one only seven.** Time is the span
-from the first to the last detector frame of the track id (the detector runs several frames
-per second, so a 35-s visit had 152 frames). Photos are saved on the photo schedule, by
-default one per second during the first 10 s of a visit, and every photo that another insect
+**Why a short track ID can have several photos and a long one only seven.** Time is the span
+from the first to the last detector frame of the track ID (the detector runs several frames
+per second, so a 35-s track ID had 152 frames). Photos are saved on the photo schedule, by
+default one per second during the first 10 s of a track ID, and every photo that another insect
 triggered while this one was in view also yields a crop for it. So a 1.7-s track in a
 crowded scene got four crops from other insects' photos, and a 35-s bumblebee got seven
 photos in its first ten seconds and none afterwards. Both are as designed.
@@ -211,8 +213,8 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 |---|---|
 | `embeddings_<model>.jsonl` + `.bin` | one record + one float32 vector per crop (`row` = vector index); `identify_start` / `identify_end` records with the run's settings and timing |
 | `predictions_<pack>.jsonl` | per crop: the most probable names with probabilities |
-| `tracks_<pack>.json` | per visit: ladder, crops with weights, best single view, flags |
-| `tracks_<pack>.csv` | one row per visit; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of Max Sittinger's `insect-detect-post` |
+| `tracks_<pack>.json` | per track ID: ladder, crops with weights, best single view, flags |
+| `tracks_<pack>.csv` | one row per track ID; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of Max Sittinger's `insect-detect-post` |
 | `summary_<pack>.json` | counts for the results screen and the home badge |
 
 `DATA_GUIDE.md` §7 documents the records and columns.
@@ -230,7 +232,7 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
    probability, crops below the surest crop's top-1 divided by the drop factor left out
    (round 219; no image-quality weights); the average is scored once and species masses
    summed up the taxonomy; the ladder is walked top-down on those pooled masses, and Agree
-   is counted from the per-crop best guesses. A track id is `path_conflict` when at some rank the
+   is counted from the per-crop best guesses. A track ID is `path_conflict` when at some rank the
    taxon with the most mass overall is not a child of the ladder's taxon one rank up: the
    chosen branch's mass is spread over several sub-taxa while another branch's smaller mass
    sits mostly in one (round 221: that rival is kept per ladder row and exported as
@@ -256,7 +258,7 @@ model"; the screen now adds that a newer export is needed). Files exported since
 (`tool/bioclip_export`, `--attention 4d`, the default) run entirely on the GPU with the
 same weights and maths. Measured on the Xiaomi test phone (plugged in): 0.27 s per crop on
 the GPU instead of 2.6 s on the CPU; identifying a session of 11 crops took 9.9 s instead
-of 35 s, with the same answer for each visit.
+of 35 s, with the same answer for each track ID.
 
 GPUs differ between phones and Android versions, so the app checks each one. The first
 time a model runs on a phone's GPU, it embeds a fixed test picture on the GPU and on the
@@ -266,55 +268,89 @@ file and Android build (`embedder_gpu_checks.txt` in the app's private files), s
 update, which usually brings new GPU drivers, checks again; the first load therefore takes
 longer once (about 20 s on the test phone). The GPU computes with 16-bit numbers: on the
 test phone its embeddings matched the CPU to 0.9995 on the test picture and 0.994 to 0.997
-on real crops, which moved a visit's confidence by up to 0.03 without changing any answer.
+on real crops, which moved a track ID's confidence by up to 0.03 without changing any answer.
 32-bit GPU maths would match more closely but needs about 1.2 GB of GPU memory for
 BioCLIP 2; Android closed the app for lack of memory on the 7.4 GB test phone, so it is not
-offered. `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
+offered.
+
+Setting a model up on the GPU also needs several times its file size in ordinary memory
+for a moment. On the second test phone (Samsung Galaxy M12: 3.9 GB, Exynos 850 with a
+Mali-G52 GPU) the app reached 2.7 GB while BioCLIP 2 was being set up there and Android
+closed it. Since round 243 the app first compares the need, about 4.5 × the file size, with
+the phone's memory, and tries the GPU only when that stays under 60 % of it; otherwise it
+runs on the CPU with a note such as "this phone has 3.9 GB of memory; setting this model up
+on the GPU needs about 2.7 GB, so it runs on the CPU". On that phone the CPU takes about
+15.5 s per crop (2 threads; 10 crops in about 3 minutes), so identification there is a job
+to leave running on the charger. `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
 `gpu_agreement` (DATA_GUIDE §8). Since round 211 the reason is shown on the screen after
 loading (and in the "Last run" card) instead of only in logcat. The thread count is passed to the CPU engine's (XNNPACK)
 thread pool, so it does change how the matrix maths is spread; whether more threads are
 faster on a given phone is an empirical question. **Test speed** (Run section) loads the
-model with the current settings, embeds 8 of the session's own crops after a warm-up and
-reports seconds per crop, so GPU on/off and thread counts can be compared in a minute
-each; the app does not claim a speed it has not measured.
+model with the current settings, embeds 10 of the session's own crops after a warm-up, one
+at a time with a progress line ("Crop 3 of 10, about 40 s left"; round 247, was 8 in one
+call with no feedback), and reports seconds per crop, so GPU on/off and thread counts can
+be compared in a minute each (a few minutes on an older phone's CPU); the app does not
+claim a speed it has not measured.
 
-Round 226 measured the thread count for the BioCLIP-2 image tower (fp16) on the Xiaomi
-with the engine benchmark (`integration_test/cpu_threads_check_test.dart`, 3 runs per
-value): 23.4 s per crop on 1 thread (LiteRT's own default, which "0" meant until then),
-9.4 s on 2, 7.1 s on 4 and 7.7 s on 8. "0 = automatic" now means 2 threads, the same as
-for the detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a
-long run the extra heat can cost more in thermal pauses than it saves, so it is left as
-an owner experiment with "Test speed" rather than the default.
+**What the times on the screen measure (round 250).** *Test speed* and the progress line
+("the model takes 0.27 s per crop") time the model alone: a stopwatch around each call,
+which returns only once the GPU or CPU has finished that crop. A run does more: it loads
+the model, reads each photo and cuts its crops, and after the last crop combines the crops
+per track ID and scores them against every name of the pack. *Last run* therefore gives
+the whole time, model loading included (the same clock as *Elapsed*), and the model's
+share of it; the time-left estimate starts with the first crop (before round 250 it
+counted the model loading as crop time and started too high). Example, a 20-crop session
+on the Xiaomi test phone (GPU, 35,260-name pack): about 18 s in all, of which the model
+5.4 s (0.27 s per crop), reading 19 photos and cutting the crops about 3 s, combining and
+scoring 4 s, and loading the model the rest. `bioclip_gpu_check_test.dart` checks these
+numbers with three clocks (the app's stopwatch, the plugin's own clock around the model,
+and the phone's wall clock), which agreed to 0.01 s per crop, and checks that the GPU
+computes every crop anew. The speed fits the chip: one crop is about 157 billion
+arithmetic operations (the converter's count for BioCLIP 2's image tower), so 0.27 s is
+about 0.6 trillion per second on the GPU and 2.6 s about 0.06 trillion on two CPU cores.
+
+Round 226 chose the thread count with the engine benchmark
+(`integration_test/cpu_threads_check_test.dart`). Measured again in round 250 on the
+Xiaomi (BioCLIP-2 4d export, plugged in, battery 32 to 34 °C, 3 runs per value, forward
+and reverse order): 4.6 to 5.4 s per crop on 1 thread (LiteRT's own default, which "0"
+meant until round 226), 2.6 to 3.0 s on 2, 1.9 to 2.0 s on 4, 2.0 s on 8, and 0.26 s on
+the GPU. Round 226 had measured about 3.5 times longer at every thread count (23.4, 9.4,
+7.1 and 7.7 s), with the same ratios; the cause is not known (probably a phone slowed
+by heat, as the Snapdragon 888 throttles hard under long loads), so those absolute
+numbers should not be used. "0 = automatic" means 2 threads, the same as for the
+detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a long run
+the extra heat can cost more in thermal pauses than it saves, so it is left as an owner
+experiment with "Test speed" rather than the default.
 
 Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per
-visit 10** keeps a visit's ten LARGEST boxes when it has more photos (the photo count per
-visit comes from the session's photo schedule: AI-mode default one photo per second for
+track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos (the photo count per
+track ID comes from the session's photo schedule: AI-mode default one photo per second for
 10 s, so the cap rarely removes anything and only bounds the runtime of long bursts).
 
-**Merge consecutive visits** (off by default, round 210): the tracker sometimes loses an
-insect for a moment and gives it a new track id. When on, a track id that starts within
+**Merge consecutive track IDs** (off by default, round 210): the tracker sometimes loses an
+insect for a moment and gives it a new track ID. When on, a track ID that starts within
 the set gap (default 3 s, the same as the live tracker's occlusion buffer; longer gaps risk
 joining two individuals of one species, which the appearance check cannot tell apart) after the previous one ended is joined to it when three checks pass (round 212):
 a compatible identification (same taxon at the shallower of the two identified ranks, e.g.
-Apidae then Bombus); a similar appearance, i.e. the cosine similarity of the two visits'
+Apidae then Bombus); a similar appearance, i.e. the cosine similarity of the two track IDs'
 combined image embeddings is at least the threshold (default 0.85; this is the strong
 signal, "the model sees the same animal"); and a similar mean box side relative to the
 ROI (default within 50 % of the larger one; a loose guard, 100 % disables it). Position
 continuity is deliberately not used: within its buffer the tracker handles it, and after
 a real loss the insect may re-enter the ROI anywhere. The union of the crops is then
-identified again. Track ids that overlap in time are never joined (two insects at once
-are two visits). The outputs carry `track_ids` (JSON) / `merged_track_ids` (CSV,
-semicolon list), the `merged` flag, and the summary counts `visits_merged` and
+identified again. Track IDs that overlap in time are never joined (two insects at once
+are two track IDs). The outputs carry `track_ids` (JSON) / `merged_track_ids` (CSV,
+semicolon list), the `merged` flag, and the summary counts `track_ids_merged` and
 `tracks_before_merge`.
 
-**Suspect visits** (round 212, flags only): very short track ids are often false
-detections, and a weak identification makes that more likely. A tracked visit is flagged
+**Suspect track IDs** (round 212, flags only): very short track IDs are often false
+detections, and a weak identification makes that more likely. A track ID is flagged
 `short` when its duration is below 2 s OR it has fewer than 3 detector frames, `low_det`
 when the mean detector confidence is below 0.2, `weak_id` when the probability at ORDER
 rank is below 0.5, and `suspect` when it is short AND (low_det OR weak_id OR "no
 organism"). All four thresholds are settings. Nothing is deleted: the results table hides
-suspect visits behind a switch, the Photos tab marks them, and the CSV keeps every row
+suspect track IDs behind a switch, the Photos tab marks them, and the CSV keeps every row
 with `n_detections` and a 0/1 `suspect` column so the thresholds can be checked on your
 own data in R. The duration and detector-confidence criteria follow the optional track
 filter of the `insect-detect-post` software (Sittinger (2026), Software for post-processing of data captured with the Insect Detect camera trap, v1.0.0, Zenodo, doi:10.5281/zenodo.21822140; `metadata.filter_tracks`, defaults
@@ -338,11 +374,11 @@ Taxon List Predictions" in the pybioclip docs). Cite Stevens et al. (2024) and G
 From Max Sittinger's `insect-detect-post` (AGPL-3.0; Sittinger, M. 2026, Zenodo
 https://doi.org/10.5281/zenodo.21822140), re-implemented in FaunaPulse's own code with
 no lines copied: the API-based construction of the regional list (GBIF occurrence
-facets) and his TreeOfLife-to-GBIF key mapping, the per-visit CSV column names of his
+facets) and his TreeOfLife-to-GBIF key mapping, the per-track-ID CSV column names of his
 `_classified_final.csv`, and the square-crop rule of his `make_bbox_square()`. The
 "none of these" rows follow common practice, with the `none_*` classes of his
 classification dataset (Zenodo https://doi.org/10.5281/zenodo.8325384) as the precedent
-for insect crops. The pooling of crops per track id follows the "Average Logit" rule of
+for insect crops. The pooling of crops per track ID follows the "Average Logit" rule of
 Dussert et al. (2025, Remote Sensing in Ecology and Conservation 11:88-99) with FaunaPulse's
 certainty weights, drop rule, ladder and agreement columns; Kittler et al. (1998, IEEE TPAMI
 20:226-239) is the theoretical reason for averaging rather than multiplying evidence from
@@ -359,10 +395,13 @@ keeps the column names so the same scripts read both outputs, with its own formu
   is slower but gives the same answers. The int8 export is the CPU-friendly variant.
 - *"GPU not used: the GPU's results differed from the CPU's"*: this phone's GPU failed the
   first-use check; the app uses the CPU for that model until the next Android update.
+- *"GPU not used: this phone has N GB of memory …"*: the model is too large to set up on
+  this phone's GPU without Android closing the app (round 243); the CPU gives the same
+  answers, only slower.
 - *The model load fails outright:* the phone has too little free RAM for the file (fp16
   needs ~1 GB free, BioCLIP 2.5 ~2 GB) or the export is broken; run `verify_parity.py`
   on the PC.
-- *Every visit comes out "no organism":* the pack has no rows for the animals in the
+- *Every track ID comes out "no organism":* the pack has no rows for the animals in the
   photos (e.g. an orders-only test pack); build a wider pack.
 - *Everything is "unidentified":* the confidence threshold is high for this pack size;
   lower it in Advanced, or check the crops (very small boxes give weak embeddings).

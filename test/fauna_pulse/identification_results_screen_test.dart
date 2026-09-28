@@ -115,7 +115,7 @@ void main() {
     // here: both rows are orders), so the visits sheet is checked instead.
     await tester.tap(find.text('Hymenoptera'));
     await tester.pumpAndSettle();
-    expect(find.text('Track id'), findsOneWidget);
+    expect(find.text('Track ID'), findsOneWidget);
     expect(find.text('No. ▲'), findsOneWidget); // default sort column
     // The sheet's explanation block can push the first (lazily built) row
     // below the fold under the test font: scroll the sheet's own list.
@@ -132,7 +132,7 @@ void main() {
     await tester.tap(find.text('#1'));
     await tester.pumpAndSettle();
     final sheet = find.byType(ListView).last;
-    expect(find.textContaining('Short visit: '), findsOneWidget);
+    expect(find.textContaining('Short track ID: '), findsOneWidget);
     // Round 222: the reported genus row keeps white, the species below the
     // threshold is grey.
     expect(tester.widget<Text>(find.text('Bombus')).style?.color, Colors.white);
@@ -175,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
     nav.pop();
     await tester.pumpAndSettle();
-    expect(find.text('Track id'), findsNothing);
+    expect(find.text('Track ID'), findsNothing);
 
     // .first: the taxon table may add its own horizontal Scrollable (it
     // does under the test font, whose glyphs are all 13 px wide).
@@ -184,15 +184,15 @@ void main() {
     );
     scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
     await tester.pump();
-    expectAboveBottomInset(tester, find.textContaining('All 41 track ids'), label: 'last results row');
+    expectAboveBottomInset(tester, find.textContaining('All 41 track IDs'), label: 'last results row');
 
     // Round 222: "All track ids": rank in its own column; the table scrolls
     // sideways under a title that stays in place.
-    await tester.tap(find.textContaining('All 41 track ids'));
+    await tester.tap(find.textContaining('All 41 track IDs'));
     await tester.pumpAndSettle();
     expect(find.text('Rank'), findsNWidgets(2)); // S2's and this sheet's
     expect(find.text('Crops agree'), findsOneWidget);
-    final title = find.text('All track ids · 41 track ids');
+    final title = find.text('All track IDs · 41 track IDs');
     final titleX = tester.getTopLeft(title).dx, headerX = tester.getTopLeft(find.text('Crops agree')).dx;
     final sideways = tester
         .stateList<ScrollableState>(find.ancestor(of: find.text('Crops agree'), matching: find.byType(Scrollable)))
@@ -209,7 +209,7 @@ void main() {
   // Round 234: results of visits found in videos remember the "Find visits"
   // run; after a new one the header says to run identification again.
   for (final (shownRunId, warned) in [(7, false), (8, true)]) {
-    testWidgets('visits found again since: warned = $warned', (tester) async {
+    testWidgets('track IDs found again since: warned = $warned', (tester) async {
       simulateBottomSystemBar(tester);
       final tmp = Directory.systemTemp.createTempSync('identify_results_runid');
       addTearDown(() => tmp.deleteSync(recursive: true));
@@ -256,7 +256,7 @@ void main() {
       }
       expect(find.text('Bombus'), findsOneWidget);
       expect(
-        find.text('The visits were found again since; run identification again.'),
+        find.text('The track IDs were found again since; run identification again.'),
         warned ? findsOneWidget : findsNothing,
       );
       await tester.pumpWidget(const SizedBox());

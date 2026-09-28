@@ -110,7 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Reading session $_done of $_total… (only the first visit '
+                'Reading session $_done of $_total… (only the first track ID '
                 'scans the logs; afterwards this opens instantly)',
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
@@ -125,8 +125,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _highlights(agg),
               const SizedBox(height: 8),
               _chartCard(
-                title: 'Visits by time of day',
-                subtitle: 'When your visitors were active (visit starts)',
+                title: 'Track IDs by time of day',
+                subtitle: 'When track IDs started (their first sighting)',
                 child: MiniBarChart(
                   values: agg.visitsByHour,
                   xLabelFor: (i) => switch (i) {
@@ -139,8 +139,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (agg.activity.isNotEmpty)
                 _chartCard(
                   title: agg.weeklyBuckets
-                      ? 'Visits by week'
-                      : 'Visits by day',
+                      ? 'Track IDs by week'
+                      : 'Track IDs by day',
                   subtitle: agg.weeklyBuckets
                       ? 'Long period — each bar is one week'
                       : null,
@@ -162,8 +162,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   '${agg.otherSessions} '
                   'session${agg.otherSessions == 1 ? '' : 's'} in this '
                   'period ${agg.otherSessions == 1 ? 'is' : 'are'} not '
-                  'counted: motion or time-lapse mode has no track ids to '
-                  'sum, and imported videos count once "Find visits" has '
+                  'counted: motion or time-lapse mode has no track IDs to '
+                  'sum, and imported videos count once "Find track IDs" has '
                   'run on the "Run AI on videos" screen.',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
@@ -183,14 +183,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         Text(
           agg.otherSessions > 0
-              ? 'No sessions with visits in this period. The dashboard '
-                    'counts visits via track ids, which exist when the AI '
-                    'detector records a session, or after "Find visits" on '
+              ? 'No sessions with track IDs in this period. The dashboard '
+                    'counts track IDs, which exist when the AI '
+                    'detector records a session, or after "Find track IDs" on '
                     'imported videos. The ${agg.otherSessions} '
                     'session${agg.otherSessions == 1 ? '' : 's'} here '
                     'ha${agg.otherSessions == 1 ? 's' : 've'} none.'
               : 'No sessions in this period yet. Record a session with the '
-                    'AI detector and its visits will show up here.',
+                    'AI detector and its track IDs will show up here.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white54, fontSize: 13),
         ),
@@ -228,15 +228,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     final tiles = <Widget>[
-      tile('insect visits (track ids)', '${agg.totalVisits}', hero: true),
+      tile('track IDs', '${agg.totalVisits}', hero: true),
       tile('watch time', _hoursLabel(agg.totalRecordedMs)),
       tile(
-        'visits per hour watched',
+        'track IDs per hour watched',
         agg.totalRecordedMs > 0 ? agg.visitsPerHour.toStringAsFixed(1) : '—',
       ),
       tile('AI sessions', '${agg.aiSessions}'),
-      tile('average visit', _secondsLabel(agg.meanVisitMs.round())),
-      tile('longest visit', _secondsLabel(agg.longestVisitMs)),
+      tile('average track length', _secondsLabel(agg.meanVisitMs.round())),
+      tile('longest track', _secondsLabel(agg.longestVisitMs)),
     ];
     return GridView.count(
       crossAxisCount: 2,
@@ -256,7 +256,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         '🏆 Busiest hour: ${_two(h)}:00–${_two((h + 1) % 24)}:00',
       if (agg.recordDay case final d?)
         '📅 Record day: ${_dateShort(d)} (${agg.recordDayCount} '
-            'visit${agg.recordDayCount == 1 ? '' : 's'})',
+            'track ID${agg.recordDayCount == 1 ? '' : 's'})',
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),

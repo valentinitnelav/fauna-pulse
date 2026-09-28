@@ -39,7 +39,7 @@ void main() {
     track(6, path: _syrphid, identifiedRank: null, headline: 'no organism'),
   ];
 
-  test('as identified: one row per answer, buckets last, sorted by visits', () {
+  test('as identified: one row per answer, buckets last, sorted by track IDs', () {
     final rows = aggregateTracks(tracks);
     expect(rows.map((r) => r.taxon).toList(), [
       'Bombus',

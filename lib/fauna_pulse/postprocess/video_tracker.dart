@@ -177,6 +177,10 @@ class PostTrackSummary {
   final KeepFramesSettings? keep;
   final int keptFrames;
 
+  /// The tracker's new-track confidence of this run (ByteTrack/C-BIoU `highThresh`): boxes
+  /// below it only continue a track (round 247). Null when the run did not log it.
+  final double? newTrackConfidence;
+
   const PostTrackSummary({
     required this.visits,
     required this.clips,
@@ -187,6 +191,7 @@ class PostTrackSummary {
     this.runId,
     this.keep,
     this.keptFrames = 0,
+    this.newTrackConfidence,
   });
 }
 
@@ -498,7 +503,7 @@ class VideoTracker {
       }
       write('post_track_end', DateTime.now().millisecondsSinceEpoch, {
         'run_id': runId,
-        'visits': visits.length,
+        'track_ids': visits.length, // round 248; "visits" before
         'frames': frames,
         'detections': detections,
         'clips_tracked': tracked.length,
@@ -628,12 +633,13 @@ class VideoTracker {
       final last = (jsonDecode(tail.trimRight().split('\n').last) as Map).cast<String, dynamic>();
       if (first['type'] != 'post_track_start' || last['type'] != 'post_track_end') return null;
       return PostTrackSummary(
-        visits: (last['visits'] as num).toInt(),
+        visits: ((last['track_ids'] ?? last['visits']) as num).toInt(), // "visits" before round 248
         clips: [for (final c in first['clips'] as List) '$c'],
         detectionsRunMs: (first['detections_run_ms'] as num?)?.toInt(),
         occlusionSeconds: (first['occlusion_seconds'] as num).toDouble(),
         minHitsSeconds: (first['min_hits_seconds'] as num).toDouble(),
         algorithm: '${(first['tracker'] as Map?)?['algorithm'] ?? ''}',
+        newTrackConfidence: ((first['tracker'] as Map?)?['highThresh'] as num?)?.toDouble(),
         runId: (first['run_id'] as num?)?.toInt(),
         keep: KeepFramesSettings.fromJson(first['keep_frames']),
         keptFrames: (last['kept_frames'] as num?)?.toInt() ?? 0,

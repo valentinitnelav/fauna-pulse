@@ -120,8 +120,8 @@ class _FakeBackend implements FrameSaveBackend {
 void main() {
   const config = SessionConfig();
 
-  group('Find visits keeps frames', () {
-    test('the first frame of each visit, then one a second for 10 s', () async {
+  group('Find track IDs keeps frames', () {
+    test('the first frame of each track ID, then one a second for 10 s', () async {
       final dir = _session(_clip('a.mp4', boxesAt: _twoInsects));
       final result = await VideoTracker.run(dir, config, keep: _keep);
       expect(result.visits, 2);
@@ -294,7 +294,7 @@ void main() {
   });
 
   group('readers', () {
-    test('the log index shows kept frames as photos of the visits, with clip and moment', () async {
+    test('the log index shows kept frames as photos of the track IDs, with clip and moment', () async {
       final dir = _session(_clip('a.mp4', boxesAt: _twoInsects, roiPx: [0, 0, 1920, 1080]));
       await VideoTracker.run(dir, config, keep: _keep);
       final index = await SessionLogIndex.build(File('${dir.path}/session.jsonl'));
@@ -307,7 +307,7 @@ void main() {
       expect(photo.ptsUs, kept.first.ptsUs);
     });
 
-    test('identification remembers the visits run and starts over after a new one', () async {
+    test('identification remembers the track IDs run and starts over after a new one', () async {
       final dir = _session(_clip('a.mp4', boxesAt: _twoInsects));
       Future<void> findVisits() async {
         await Future<void>.delayed(const Duration(milliseconds: 5)); // a new run_id
@@ -344,7 +344,7 @@ void main() {
         final summary = jsonDecode(File('${dir.path}/identification/summary_tiny_pack.json').readAsStringSync()) as Map;
         final capture = summary['capture'] as Map;
         expect([capture['photo_step_s'], capture['photo_duration_s']], [1.0, 10.0]);
-        return (r, (capture['visits_run_id'] as num?)?.toInt());
+        return (r, (capture['track_ids_run_id'] as num?)?.toInt());
       }
 
       await findVisits();
