@@ -67,6 +67,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   IdentifyResult? _result;
   String? _error;
   DateTime? _runStarted;
+  // Round 250: when the first crop started (the time-left estimate leaves the model loading
+  // out) and how long the whole run took, model loading included (the "Elapsed" clock).
+  DateTime? _embedStarted;
+  Duration? _runTook;
   Timer? _ticker;
   String _accelerator = '';
   // Round 211: why the GPU was not used (null when it was, or was not asked for).
@@ -281,6 +285,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _result = null;
       _progress = null;
       _runStarted = DateTime.now();
+      _embedStarted = null;
+      _runTook = null;
     });
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -347,7 +353,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         restart: restart,
         isCancelled: () => _cancel,
         onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
+          if (!mounted) return;
+          setState(() {
+            _progress = p;
+            if (p.stage == 'embedding') _embedStarted ??= DateTime.now();
+          });
         },
       );
       if (result.embedded > 0) {
@@ -368,6 +378,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       await WakelockPlus.disable();
       _ticker?.cancel();
     }
+    _runTook = DateTime.now().difference(_runStarted!);
     if (!mounted) return;
     setState(() {
       _running = false;
@@ -475,6 +486,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _running = true;
       _error = null;
       _result = null;
+      _runTook = null;
       _progress = const IdentifyProgress(stage: 'scoring', done: 0, total: 0, avgMs: 0);
     });
     try {
@@ -765,7 +777,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'Test speed',
               'times the model on $kSpeedTestCrops of this session\'s crops with the current GPU and thread '
                   'settings, counting them as it goes; writes nothing. Seconds with a GPU, a few minutes '
-                  'on an older phone\'s CPU.',
+                  'on an older phone\'s CPU. It times the model alone: a full run also loads the model, '
+                  'reads the photos and combines the results ("Last run" shows both).',
             ),
             if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
@@ -797,8 +810,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final total = p?.total ?? 0;
     final done = p?.done ?? 0;
     Duration? remaining;
-    if (p != null && done > 0 && total > done && p.stage != 'scoring') {
-      remaining = Duration(milliseconds: (elapsed.inMilliseconds / done * (total - done)).round());
+    final cropping = _embedStarted == null ? null : DateTime.now().difference(_embedStarted!);
+    if (p != null && cropping != null && done > 0 && total > done && p.stage != 'scoring') {
+      remaining = Duration(milliseconds: (cropping.inMilliseconds / done * (total - done)).round());
     }
     final stageText = _loadingModel
         ? 'Loading the model (the first time can take a minute)…'
@@ -823,7 +837,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             style: const TextStyle(color: Colors.white)),
       Text('Elapsed ${_fmtDuration(elapsed)}'
           '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
-          '${p != null && p.avgMs > 0 ? ' — ${(p.avgMs / 1000).toStringAsFixed(1)} s per crop' : ''}',
+          '${p != null && p.avgMs > 0 ? ' — the model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop' : ''}',
           style: helperTextStyle),
       if (p?.tempC != null)
         ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? 40, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
@@ -839,6 +853,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     ];
   }
 
+  /// Round 250: where the run's time went, so the per-crop speed can be checked against the
+  /// total (the model's own time, as "Test speed" and the progress line report it).
+  String _modelShare(IdentifyResult r) {
+    if (r.embedded == 0 || r.modelTime == Duration.zero) return '';
+    final ms = r.modelTime.inMilliseconds;
+    final all = ms < 60000 ? '${(ms / 1000).toStringAsFixed(1)} s' : _fmtDuration(r.modelTime);
+    return ' The model itself took ${(ms / r.embedded / 1000).toStringAsFixed(2)} s per crop ($all in all); '
+        'loading it, reading the photos and combining the results took the rest.';
+  }
+
   List<Widget> _completionSection() {
     final r = _result;
     final s = r?.summary;
@@ -850,8 +874,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         if (r.cancelled) const Text('Cancelled — progress is kept; Continue resumes.', style: TextStyle(color: Colors.amber)),
         Text(
           '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
-          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(r.elapsed)}'
-          '${r.embedded > 0 ? ' on the $_accelerator' : ''}.',
+          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(_runTook ?? r.elapsed)}'
+          '${r.embedded > 0 ? ' on the $_accelerator' : ''}.${_modelShare(r)}',
           style: const TextStyle(color: Colors.white),
         ),
         if (r.embedded > 0 && _accelNote != null)
@@ -923,7 +947,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText:
               'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
-              'on the test phone that was 2.5 times as fast as 1. 4 was about a quarter faster '
+              'on the test phone that was almost twice as fast as 1. 4 was about a quarter faster '
               'again but keeps twice as many cores busy, so the phone warms up sooner (which '
               'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),

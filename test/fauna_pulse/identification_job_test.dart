@@ -71,6 +71,24 @@ void main() {
     minCropPx: 16,
   );
 
+  test('reports the model\'s own time apart from the whole run (round 250)', () async {
+    final session = makeSession('timed');
+    final job = IdentificationJob(
+      embed: (rgb) async {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        return fakeEmbed(rgb);
+      },
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r.embedded, 3);
+    // One call per photo here (each photo has one crop): at least 3 × 40 ms in the model...
+    expect(r.modelTime, greaterThanOrEqualTo(const Duration(milliseconds: 120)));
+    // ...and never more than the run it is part of.
+    expect(r.modelTime, lessThanOrEqualTo(r.elapsed));
+  });
+
   test('plans, embeds, scores and writes outputs; a second run resumes', () async {
     final session = makeSession('s1');
     final job = IdentificationJob(

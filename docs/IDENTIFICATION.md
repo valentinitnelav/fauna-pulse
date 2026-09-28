@@ -292,13 +292,35 @@ call with no feedback), and reports seconds per crop, so GPU on/off and thread c
 be compared in a minute each (a few minutes on an older phone's CPU); the app does not
 claim a speed it has not measured.
 
-Round 226 measured the thread count for the BioCLIP-2 image tower (fp16) on the Xiaomi
-with the engine benchmark (`integration_test/cpu_threads_check_test.dart`, 3 runs per
-value): 23.4 s per crop on 1 thread (LiteRT's own default, which "0" meant until then),
-9.4 s on 2, 7.1 s on 4 and 7.7 s on 8. "0 = automatic" now means 2 threads, the same as
-for the detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a
-long run the extra heat can cost more in thermal pauses than it saves, so it is left as
-an owner experiment with "Test speed" rather than the default.
+**What the times on the screen measure (round 250).** *Test speed* and the progress line
+("the model takes 0.27 s per crop") time the model alone: a stopwatch around each call,
+which returns only once the GPU or CPU has finished that crop. A run does more: it loads
+the model, reads each photo and cuts its crops, and after the last crop combines the crops
+per track ID and scores them against every name of the pack. *Last run* therefore gives
+the whole time, model loading included (the same clock as *Elapsed*), and the model's
+share of it; the time-left estimate starts with the first crop (before round 250 it
+counted the model loading as crop time and started too high). Example, a 20-crop session
+on the Xiaomi test phone (GPU, 35,260-name pack): about 18 s in all, of which the model
+5.4 s (0.27 s per crop), reading 19 photos and cutting the crops about 3 s, combining and
+scoring 4 s, and loading the model the rest. `bioclip_gpu_check_test.dart` checks these
+numbers with three clocks (the app's stopwatch, the plugin's own clock around the model,
+and the phone's wall clock), which agreed to 0.01 s per crop, and checks that the GPU
+computes every crop anew. The speed fits the chip: one crop is about 157 billion
+arithmetic operations (the converter's count for BioCLIP 2's image tower), so 0.27 s is
+about 0.6 trillion per second on the GPU and 2.6 s about 0.06 trillion on two CPU cores.
+
+Round 226 chose the thread count with the engine benchmark
+(`integration_test/cpu_threads_check_test.dart`). Measured again in round 250 on the
+Xiaomi (BioCLIP-2 4d export, plugged in, battery 32 to 34 °C, 3 runs per value, forward
+and reverse order): 4.6 to 5.4 s per crop on 1 thread (LiteRT's own default, which "0"
+meant until round 226), 2.6 to 3.0 s on 2, 1.9 to 2.0 s on 4, 2.0 s on 8, and 0.26 s on
+the GPU. Round 226 had measured about 3.5 times longer at every thread count (23.4, 9.4,
+7.1 and 7.7 s), with the same ratios; the cause is not known (probably a phone slowed
+by heat, as the Snapdragon 888 throttles hard under long loads), so those absolute
+numbers should not be used. "0 = automatic" means 2 threads, the same as for the
+detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a long run
+the extra heat can cost more in thermal pauses than it saves, so it is left as an owner
+experiment with "Test speed" rather than the default.
 
 Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per

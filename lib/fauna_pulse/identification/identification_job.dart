@@ -146,6 +146,10 @@ class IdentifyResult {
   final int resumedDone;
   final int thermalPauses;
   final Duration elapsed;
+
+  /// Round 250: time spent inside the model calls alone (what "s per crop"
+  /// reports); [elapsed] also covers reading the photos and scoring.
+  final Duration modelTime;
   final bool cancelled;
   final Map<String, dynamic>? summary;
   final String? error;
@@ -158,6 +162,7 @@ class IdentifyResult {
     required this.resumedDone,
     required this.thermalPauses,
     required this.elapsed,
+    this.modelTime = Duration.zero,
     required this.cancelled,
     this.summary,
     this.error,
@@ -471,6 +476,7 @@ class IdentificationJob {
       resumedDone: done.length,
       thermalPauses: pauses,
       elapsed: DateTime.now().difference(started),
+      modelTime: Duration(microseconds: (embedMs * 1000).round()),
       cancelled: cancelled,
       summary: summary,
       error: error,

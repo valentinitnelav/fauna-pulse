@@ -290,7 +290,7 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Setting | Default | Meaning |
 |---|---|---|
 | Use the GPU when it can run the model | on | Tries a GPU compile, automatic CPU fallback with the reason shown on screen (r211). Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
-| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi: 23.4 s per crop on 1 thread, 9.4 s on 2, 7.1 s on 4, 7.7 s on 8; 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
+| CPU threads | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the Xiaomi (round 250, phone cool): 4.6 to 5.4 s per crop on 1 thread, 2.6 to 3.0 s on 2, 1.9 to 2.0 s on 4, 2.0 s on 8 (0.26 s on the GPU); 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
 | Crop margin | 0.15 | Extra border around the detector box before the square crop (15 % per side), so legs, wings and antennae stay in the crop. |
 | Smallest box to identify | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | Crops per track ID | 10 (0 = all) | Keeps the largest boxes of a track ID when a track ID has more photos than this. |
