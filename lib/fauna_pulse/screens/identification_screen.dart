@@ -81,6 +81,21 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// While "Test speed" runs: the share of timed crops done (0 = not counting yet) and what it
   /// is doing (round 247).
   (double, String)? _speedProgress;
+  // Round 251: scrolls the speed test's progress and result into view when they start below
+  // the screen's edge.
+  final _speedKey = GlobalKey();
+
+  void _showSpeed() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _speedKey.currentContext;
+      if (c == null || !c.mounted) return;
+      Scrollable.ensureVisible(
+        c,
+        duration: const Duration(milliseconds: 250),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
 
   /// The stored crops carry visit numbers of an earlier "Find visits" run.
   bool _visitsChanged = false;
@@ -413,6 +428,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _speedResult = null;
       _speedProgress = (0, 'Loading the model (up to half a minute the first time)…');
     });
+    _showSpeed();
     // Round 247: 10 crops, one per call, so the screen can count them (the model runs one crop
     // at a time anyway; the job's batches of 8 only group the calls).
     const n = kSpeedTestCrops;
@@ -474,6 +490,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         _testingSpeed = false;
         _speedProgress = null;
       });
+      _showSpeed();
     }
   }
 
@@ -748,6 +765,26 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
         ],
       ),
+      // Round 251: the speed test's progress and result right under the buttons (owner: below the
+      // button notes they were off-screen, so it looked as if nothing happened).
+      if (_speedProgress != null || _speedResult != null)
+        Column(
+          key: _speedKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_speedProgress case (final value, final text)?) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: value == 0 ? null : value),
+              const SizedBox(height: 4),
+              Text('Testing speed: $text', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ],
+            if (_speedResult != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_speedResult!, style: const TextStyle(color: Colors.white)),
+              ),
+          ],
+        ),
       if (_visitsChanged)
         const Padding(
           padding: EdgeInsets.only(top: 8),
@@ -790,17 +827,6 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           ],
         ),
       ),
-      if (_speedProgress case (final value, final text)?) ...[
-        const SizedBox(height: 8),
-        LinearProgressIndicator(value: value == 0 ? null : value),
-        const SizedBox(height: 4),
-        Text('Testing speed: $text', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-      ],
-      if (_speedResult != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(_speedResult!, style: const TextStyle(color: Colors.white)),
-        ),
     ];
   }
 

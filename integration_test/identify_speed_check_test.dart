@@ -5,6 +5,8 @@
 // Run:  flutter test integration_test/identify_speed_check_test.dart -d <serial> --no-uninstall
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 // Screenshots: "SHOT <name>" lines, as in video_review_check_test.dart.
+// Round 251: the button is pressed while it sits at the screen's bottom edge; the progress and
+// the result must then be on screen without scrolling (they were below the button notes).
 
 import 'dart:io';
 
@@ -14,6 +16,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+
+// --dart-define=TEXT_SCALE=1.6: larger text, as with a large system font; the page then grows
+// enough for the button to reach the bottom edge (round 251).
+const _textScale = String.fromEnvironment('TEXT_SCALE', defaultValue: '1');
 
 // ignore: avoid_print
 void _log(String s) => print(s);
@@ -37,24 +43,48 @@ void main() {
     }
 
     await tester.pumpWidget(
-      MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: IdentificationScreen(sessionDir: dir)),
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(double.parse(_textScale))),
+          child: child!,
+        ),
+        home: IdentificationScreen(sessionDir: dir),
+      ),
     );
     await waitFor(find.text('Test speed'));
     final list = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
       skipOffstage: true,
     ).first;
-    await tester.scrollUntilVisible(find.textContaining('times the model on 10'), 200, scrollable: list);
+    final button = find.widgetWithText(OutlinedButton, 'Test speed');
+    // Small steps, so the button stops just inside the bottom edge (the hardest case).
+    await tester.scrollUntilVisible(button, 50, scrollable: list);
     await tester.pump(const Duration(milliseconds: 300));
+    final screen = tester.getRect(list);
+    // Then down, as far as the page allows, until the button touches the bottom edge.
+    await tester.drag(list, Offset(0, screen.bottom - tester.getRect(button).bottom - 4));
+    await tester.pump(const Duration(seconds: 1));
+    _log('BUTTON bottom ${tester.getRect(button).bottom.round()} of ${screen.bottom.round()}');
+    void expectOnScreen(Finder f, String what) {
+      final r = tester.getRect(f);
+      _log('ONSCREEN $what ${r.top.round()}..${r.bottom.round()} of ${screen.top.round()}..${screen.bottom.round()}');
+      expect(r.top >= screen.top - 1 && r.bottom <= screen.bottom + 1, isTrue, reason: '$what is off-screen');
+    }
+
     final started = DateTime.now();
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Test speed'));
+    await tester.tap(button);
     await waitFor(find.textContaining('Testing speed: '));
+    await tester.pump(const Duration(milliseconds: 500)); // the 250-ms scroll into view
     _log('PROGRESS ${(tester.widget<Text>(find.textContaining('Testing speed: ')).data)}');
+    expectOnScreen(find.textContaining('Testing speed: '), 'progress');
+    _log('SHOT identify_speed_started');
+    await tester.pump(const Duration(seconds: 2));
     // A crop line, or already the result: on a GPU (about 0.3 s per crop) the ten crops can
     // pass between two looks (Xiaomi, round 248).
     await waitFor(find.textContaining(RegExp(r'Testing speed: Crop [2-9]|s per crop on the')), seconds: 300);
     if (find.textContaining('Testing speed: Crop').evaluate().isNotEmpty) {
-      await tester.scrollUntilVisible(find.textContaining('Testing speed: '), 100, scrollable: list);
+      expectOnScreen(find.textContaining('Testing speed: '), 'progress');
       _log('SHOT identify_speed_progress');
       _log('PROGRESS ${(tester.widget<Text>(find.textContaining('Testing speed: ')).data)}');
       await tester.pump(const Duration(seconds: 3));
@@ -66,7 +96,8 @@ void main() {
     // then says so; the owner's Xiaomi uses 96 px, round 248).
     expect(result, anyOf(contains('10 crops after a warm-up'), contains('reach the "Smallest box"')));
     expect(find.textContaining('Testing speed: '), findsNothing);
-    await tester.scrollUntilVisible(find.textContaining('s per crop on the'), 100, scrollable: list);
+    await tester.pump(const Duration(milliseconds: 500));
+    expectOnScreen(find.textContaining('s per crop on the'), 'result');
     _log('SHOT identify_speed_result');
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpWidget(const SizedBox());
