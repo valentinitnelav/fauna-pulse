@@ -67,11 +67,12 @@ FaunaPulse supports several **modes of operation**:
 
 1. **Real-time AI-based object detection and tracking** using a compatible AI detector;
 2. **Motion-triggered** image capture;
-3. **Time-lapse** image capture, including nocturnal mode using the phone's torch / flashlight;
-4. **Post-capture AI detection** processing of the motion or time-lapse images using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. This is slow but it can help reduce the amount of "empty" images (without pollinators / target object) that are usually captured via the motion-triggered or time-lapse modes;
+3. **Scheduled time-lapse** image capture (including nocturnal mode using the phone's torch / flashlight). **Scheduled video recordings** also possible;
+4. **Post-capture AI detection** processing of the motion or time-lapse images using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. This is slow but it can help reduce the amount of "empty" images (without pollinators / target object) that are usually captured via the motion-triggered or time-lapse modes.
+**AI detection can also be run on the captured or uploaded video recordings**;
 5. **Post-capture AI classification**, for example using an adapted [BioCLIP 2][bioclip2] image classifier.
 
-Modes 1-3 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-17:00, daily), or with over night time if the smartphone(s) are deployed over multiple days or for recording in time-lapse mode for nocturnal activity.
+Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-17:00, daily), or with over night time if the smartphone(s) are deployed over multiple days or for recording in time-lapse mode for nocturnal activity.
 
 ## Broad examples of usage
 
