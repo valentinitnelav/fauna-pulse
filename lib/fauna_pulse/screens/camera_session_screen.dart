@@ -3045,6 +3045,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'next_burst_at_ms': _nextBurstEpochMs(plan, nowMs),
       });
       if (mounted) setState(() {}); // chip shows "camera off"
+      // Round 245: plan the next tick again now that the coordinator says parked. The tick that
+      // started this park computed its delay while the camera still counted as running, so it
+      // knew no prewake moment and waited for the burst start (or the torch-on edge): with
+      // breaks up to about a minute the camera then woke late, at the burst itself.
+      if (_recording && identical(_tlCamera, cam)) {
+        _timeLapseTimer?.cancel();
+        _timeLapseTimer = Timer(Duration.zero, _timeLapseTick);
+      }
     } finally {
       _tlCameraBusy = false;
     }

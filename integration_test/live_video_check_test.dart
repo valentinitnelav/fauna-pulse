@@ -12,6 +12,9 @@
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 // Screenshots: "SHOT <name>" lines, as in video_review_check_test.dart.
 // Unlock the phone first; the check keeps the screen on while it runs.
+// Options: LIVE_CHECK_ONLY (e.g. BD), LIVE_D_VIDEO=false, LIVE_SECONDS=330 (past one 5-minute
+// clip, so the recording rolls over to a second; round 245). The clips' 12-fps floor applies
+// only when the detector runs at 8 fps or more: live AI + video is meant for capable phones.
 //
 // Logged per session: detector and camera frames per second (the `fps`
 // records after a 10 s warm-up), battery temperature, and for B and C the
@@ -21,6 +24,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/capture/roi_video.dart' show kLiveVideoSegmentMs;
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/camera_session_screen.dart';
@@ -33,11 +37,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _folder = 'live_video_check';
 
-// --dart-define=LIVE_CHECK_ONLY=D runs only session D (round 243, Samsung).
+// --dart-define=LIVE_CHECK_ONLY=D runs only those sessions, e.g. D or BD (round 243, Samsung).
 const _only = String.fromEnvironment('LIVE_CHECK_ONLY');
 // --dart-define=LIVE_D_VIDEO=false: session D without video (does the gate sleep at all?).
 const _dVideo = bool.fromEnvironment('LIVE_D_VIDEO', defaultValue: true);
-const _seconds = 45;
+// --dart-define=LIVE_SECONDS=330: sessions longer than a 5-minute clip, so the recording
+// rolls over to a second clip (round 245).
+const _seconds = int.fromEnvironment('LIVE_SECONDS', defaultValue: 45);
+bool _runs(String label) => _only.isEmpty || _only.contains(label);
 
 // ignore: avoid_print
 void _log(String s) => print(s);
@@ -129,10 +136,12 @@ void main() {
       folderName: _folder,
     );
     final runs = <Directory>[];
-    if (_only.isEmpty) {
+    if (_runs('A')) {
       final a = await record('A', base.copyWith(liveAiVideo: false));
       expect(Directory('${a.path}/videos').existsSync(), isFalse);
-      runs.add(await record('B', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15)));
+    }
+    if (_runs('B')) runs.add(await record('B', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15)));
+    if (_runs('C')) {
       runs.add(await record('C', base.copyWith(liveAiVideo: true, liveAiVideoFps: 15, motionGateEnabled: true)));
     }
     // D: nothing can wake the gate: no pixel change counts (> 255) and no box counts as a
@@ -140,33 +149,58 @@ void main() {
     // ignores, e.g. MegaDetector's person/vehicle on a dark scene: Samsung, round 243). The
     // arthropod model, when imported, finds nothing in a dark scene.
     final arthropod = File('${(await getApplicationSupportDirectory()).path}/models/arthropod_yolov11_float16.tflite');
-    final d = await record(
-      'D',
-      base.copyWith(
-        liveAiVideo: _dVideo,
-        liveAiVideoFps: 15,
-        motionGateEnabled: true,
-        motionGatePixelDelta: 255,
-        confidenceThreshold: 0.99,
-        modelPath: arthropod.existsSync() ? arthropod.path : null,
-      ),
-    );
-    if (_dVideo) runs.add(d);
-    final idle = File('${d.path}/session.jsonl').readAsLinesSync().where((l) => l.contains('"gate_idle":true')).length;
-    _log('GATE D: $idle fps records with the detector asleep');
-    expect(idle, greaterThan(0), reason: 'the gate should have slept');
+    if (_runs('D')) {
+      final d = await record(
+        'D',
+        base.copyWith(
+          liveAiVideo: _dVideo,
+          liveAiVideoFps: 15,
+          motionGateEnabled: true,
+          motionGatePixelDelta: 255,
+          confidenceThreshold: 0.99,
+          modelPath: arthropod.existsSync() ? arthropod.path : null,
+        ),
+      );
+      if (_dVideo) runs.add(d);
+      final idle = File('${d.path}/session.jsonl').readAsLinesSync().where((l) => l.contains('"gate_idle":true')).length;
+      _log('GATE D: $idle fps records with the detector asleep');
+      expect(idle, greaterThan(0), reason: 'the gate should have slept');
+    }
     for (final dir in runs) {
       final recs = [for (final l in File('${dir.path}/session.jsonl').readAsLinesSync()) jsonDecode(l) as Map<String, dynamic>];
-      expect(recs.where((r) => r['type'] == 'live_video_start'), hasLength(1));
-      final clip = recs.singleWhere((r) => r['type'] == 'video_clip');
-      expect(clip['segment'], 0);
-      expect(clip['end_reason'], 'session_end');
-      final info = await VideoFrameSource.info('${dir.path}/${clip['file']}');
-      _log('FILE ${dir.path.split('/').last}: ${info.width}x${info.height}, ${info.frameCount} frames, '
-          '${info.durationMs} ms, ${info.meanFps} fps');
-      expect(info.frameCount, clip['frame_count']);
-      // About 15 per second over the whole session, the gate asleep or not.
-      expect(clip['fps_mean'] as num, greaterThan(12));
+      // One clip per 5-minute piece, in order; the last ended by the stop.
+      final clips = recs.where((r) => r['type'] == 'video_clip').toList();
+      expect(recs.where((r) => r['type'] == 'live_video_start'), hasLength(clips.length));
+      expect(clips.map((c) => c['segment']), [for (var i = 0; i < clips.length; i++) i]);
+      expect(clips.length, (_seconds * 1000 ~/ kLiveVideoSegmentMs) + 1);
+      expect(clips.last['end_reason'], 'session_end');
+      for (final c in clips.take(clips.length - 1)) {
+        expect(c['end_reason'], 'segment_end');
+      }
+      final detector = [
+        for (final r in recs)
+          if (r['type'] == 'fps' && r['detector_fps'] is num && r['gate_idle'] != true) (r['detector_fps'] as num).toDouble(),
+      ];
+      final detectorFps = detector.isEmpty ? 0.0 : detector.reduce((a, b) => a + b) / detector.length;
+      for (final c in clips) {
+        final info = await VideoFrameSource.info('${dir.path}/${c['file']}');
+        _log('FILE ${dir.path.split('/').last} segment ${c['segment']} (${c['end_reason']}): ${info.width}x${info.height}, '
+            '${info.frameCount} frames, ${info.durationMs} ms, ${info.meanFps} fps; logged ${c['fps_mean']} fps, '
+            'start ${DateTime.fromMillisecondsSinceEpoch(c['start_epoch_ms'] as int).toIso8601String()}');
+        expect(info.frameCount, c['frame_count']);
+        // About 15 per second, the gate asleep or not, on a phone fast enough for live AI + video
+        // (an advanced feature, owner 2026-09-28). A slower phone's analyzer thread drops camera
+        // frames while it infers (the Samsung: ~11 fps at 3 detector fps), which is expected there.
+        if (detectorFps >= 8) {
+          expect(c['fps_mean'] as num, greaterThan(12));
+        } else {
+          _log('SLOW PHONE detector ${detectorFps.toStringAsFixed(1)} fps: clip ${c['fps_mean']} fps not checked');
+        }
+      }
+      for (var i = 1; i < clips.length; i++) {
+        final prevEnd = (clips[i - 1]['start_epoch_ms'] as int) + (clips[i - 1]['duration_ms'] as int);
+        _log('GAP segments ${i - 1} and $i: ${(clips[i]['start_epoch_ms'] as int) - prevEnd} ms');
+      }
     }
-  }, timeout: const Timeout(Duration(minutes: 15)));
+  }, timeout: Timeout(Duration(minutes: 15 + _seconds * 4 ~/ 60)));
 }

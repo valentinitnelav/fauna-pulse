@@ -29,6 +29,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _folder = 'view_recreate_check';
 const _startStream = String.fromEnvironment('START_STREAM', defaultValue: '640x480');
+// --dart-define=START_LENS=0.6: a saved non-main lens; logcat "setLens" must show it applied on
+// both views of a session (round 245).
+const _startLens = String.fromEnvironment('START_LENS');
 const _seconds = 30;
 
 // ignore: avoid_print
@@ -95,6 +98,7 @@ void main() {
       streamWidth: wh[0],
       streamHeight: wh[1],
       streamResolutionExplicit: false,
+      selectedLensZoom: _startLens.isEmpty ? null : double.parse(_startLens),
       scheduleEnabled: false,
       sessionMinutes: 60,
       folderName: _folder,

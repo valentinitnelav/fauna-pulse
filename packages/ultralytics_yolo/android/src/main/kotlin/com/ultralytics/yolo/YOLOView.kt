@@ -1644,6 +1644,8 @@ class YOLOView @JvmOverloads constructor(
         val lenses = if (cachedLenses.isEmpty()) enumerateLenses() else cachedLenses
         if (lenses.isEmpty()) return
         val target = lenses.minByOrNull { abs(it.zoomFactor - zoomFactor) } ?: return
+        // Round 245: shows which lens a (new) view really runs on, e.g. after a view rebuild.
+        Log.i(TAG, "setLens $zoomFactor -> ${target.label} (${target.zoomFactor}x)")
         if (target.cameraInfo == null) {
             selectLogicalBackLens(target)
             return
