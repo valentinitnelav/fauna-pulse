@@ -152,6 +152,19 @@ void main() {
       expect(ids, {1});
       expect(created, [1]);
     });
+
+    test('adaptFps: false keeps the frame budgets the tracker was built with (r256)', () {
+      // 10 frames per second, a tracker built with 5-frames/s budgets.
+      final frames = parseRawDetectionLines(visitLines(0, 3000, 100, 0.40));
+      ByteTracker built() => ByteTracker(params: const ByteTrackParams(trackBuffer: 15, minHitsToConfirm: 3));
+      final fixed = built();
+      replayTracker(tracker: fixed, frames: frames, minHitsSeconds: 0.5, initialFps: 10, adaptFps: false);
+      expect((fixed.trackBuffer, fixed.minHitsToConfirm), (15, 3));
+      // The default re-derives them from the frames: 3 s and 0.5 s at 10 frames/s.
+      final adaptive = built();
+      replayTracker(tracker: adaptive, frames: frames, minHitsSeconds: 0.5, initialFps: 10);
+      expect((adaptive.trackBuffer, adaptive.minHitsToConfirm), (30, 5));
+    });
   });
 
   group('frame-stream degraders (round 107)', () {

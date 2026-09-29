@@ -48,10 +48,11 @@ class SquareCropPlan {
   bool get needsPadding => padFrac > 0;
 }
 
-/// Default crop margin (round 255: 0.05, was 0.15): a thin border so legs and
-/// antennae clipped by a tight detector box stay in, without feeding the
-/// classifier much flower or background around the insect.
-const kDefaultCropMargin = 0.05;
+/// Default crop margin (round 256: 0, was 0.05 in round 255 and 0.15 before):
+/// the detector box itself, squared on its longer side like
+/// `make_bbox_square()`, so the classifier sees as little flower or
+/// background around the insect as possible.
+const kDefaultCropMargin = 0.0;
 
 /// Plans the square for a normalised box (edges 0..1) on a [imgW]×[imgH]
 /// photo with [margin] extra per side (0.05 = 5 % of the side each way).

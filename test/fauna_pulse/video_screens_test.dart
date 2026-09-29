@@ -7,6 +7,7 @@
 // Follows summary_bottom_inset_test.dart's async recipe (sync fixture IO,
 // runAsync/pump interleave; see that file's header for why).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -95,7 +96,105 @@ class _FakeFrameSaver implements FrameSaveBackend {
   Future<void> close() async {}
 }
 
+/// Holds every save until [gate] completes, so a test can act mid-save.
+class _GatedFrameSaver extends _FakeFrameSaver {
+  final gate = Completer<void>();
+
+  @override
+  Future<SavedFramesChunk> save(List<int> ptsUs, List<String> paths) async {
+    await gate.future;
+    return super.save(ptsUs, paths);
+  }
+}
+
 void main() {
+  testWidgets('leaving while the kept frames are saved asks first (r256)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    // Tall, so the whole list is built without scrolling.
+    tester.view.physicalSize = const Size(360, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final tmp = _tempDir('video_leave_guard');
+    final session = Directory('${tmp.path}/leave');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/a.mp4').writeAsStringSync('video');
+    File('${session.path}/session.jsonl').writeAsStringSync('{"type":"start_of_session","time_ms":1000,"source":"imported_video"}\n');
+    final settings = const VideoRunConfig(
+      modelPath: 'test_model',
+      modelName: 'test_model.tflite',
+      confidence: 0.25,
+      iou: 0.7,
+      analysisFps: 10, // the frames below are 100 ms apart
+      useGpu: true,
+    ).identity;
+    File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      [
+        jsonEncode({'type': 'video_run_start', 'time_ms': 111, 'settings': settings}),
+        '{"type":"video_clip_start","clip":"a.mp4","start_epoch_ms":1000000,"width":1920,"height":1080}',
+        for (var t = 0; t <= 3000; t += 100)
+          jsonEncode({
+            'type': 'raw_detections',
+            'frame_ms': 1000000 + t,
+            'clip': 'a.mp4',
+            'pts_us': t * 1000,
+            'frame': t * 30 ~/ 1000,
+            'boxes': [
+              [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+            ],
+          }),
+        '{"type":"video_clip_done","clip":"a.mp4","frame_width":1920,"frame_height":1080,'
+            '"roi_px":[0,0,1920,1080],"class_names":["bee"]}',
+      ].join('\n'),
+    );
+    final saver = _GatedFrameSaver();
+    addTearDown(() {
+      if (!saver.gate.isCompleted) saver.gate.complete();
+    });
+    var popped = false;
+    await tester.pumpWidget(
+      _host(
+        VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+          frameSaveBackend: saver,
+        ),
+        (_) => popped = true,
+      ),
+    );
+    await _open(tester);
+    await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+    await tester.tap(find.text('Find track IDs'));
+    await _pumpUntil(tester, find.textContaining('Saving the kept frames'));
+
+    Future<void> back() async {
+      await tester.pageBack();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    await back();
+    expect(find.text('Frames are still being saved'), findsOneWidget);
+    await tester.tap(find.text('Stay'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Frames are still being saved'), findsNothing);
+    expect(find.textContaining('Saving the kept frames'), findsOneWidget); // still running
+    expect(popped, isFalse);
+
+    await back();
+    await tester.tap(find.text('Stop and leave'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400)); // the dialog closes
+    await tester.pump(const Duration(milliseconds: 400)); // the screen's route transition
+    expect(popped, isTrue);
+    expect(find.byType(VideoAnalysisScreen), findsNothing);
+    saver.gate.complete();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('import screen fits 360 px, leaves out unusable files and imports the rest', (tester) async {
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_import_screen');
@@ -220,6 +319,7 @@ void main() {
       modelName: 'test_model.tflite',
       confidence: 0.25,
       iou: 0.7,
+      analysisFps: 10, // the frames below are 100 ms apart
       useGpu: true,
     ).identity;
     // Clip a analysed at 10 fps with one insect resting for 3 s; b not yet.
@@ -265,14 +365,17 @@ void main() {
     expect(find.text('For up to'), findsOneWidget);
     await tester.tap(find.text('Find track IDs'));
     await _pumpUntil(tester, find.text('Share results'));
-    await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
+    // Round 256: the track IDs show while the frames are saved, then the count.
+    await _pumpUntil(tester, find.text('Kept frames saved: 3 of 3 (12 B).'));
     expect(tester.takeException(), isNull);
     // A 3-s visit, one frame a second from its first sighting.
     expect(find.textContaining(RegExp(r'^Found 1 track ID in 1 clip\. Saved 3 frames in ')), findsOneWidget);
     expect(find.text('Kept frames saved: 3 of 3 (12 B).'), findsOneWidget); // 4-byte fake files
     expect(decoder.saved, hasLength(3));
     expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
-    expect(find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 0.2 s).'), findsOneWidget);
+    expect(find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
+    // Round 256: the minimum track length as detections in a row, at the analysed rate.
+    expect(find.text('= 10 detections in a row at 10 frames per second.'), findsOneWidget);
     expect(find.text('Find track IDs again'), findsOneWidget);
     expect(File('${session.path}/track_ids.csv').existsSync(), isTrue);
     expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
@@ -358,7 +461,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
     await tester.pump();
     await tester.tap(find.text('Find track IDs'));
-    await _pumpUntil(tester, find.textContaining('Kept frames saved: '));
+    await _pumpUntil(tester, find.textContaining('Kept frames saved: 3 of 3'));
 
     // One clip without a visit.
     final withoutVisits = find.textContaining('Delete 1 clip without any track ID (2 KB)');
@@ -600,6 +703,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final defaults = await VideoAnalysisPrefs.load();
     expect(defaults.sampleSeconds, 10);
+    expect(defaults.minVisitSeconds, 1.0); // round 256 (was 0.2)
     expect(defaults.keep, const KeepFramesSettings(stepSeconds: 1, durationSeconds: 10));
 
     await (p..modelId = null).save();

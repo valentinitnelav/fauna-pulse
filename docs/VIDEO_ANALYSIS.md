@@ -51,7 +51,10 @@ Terms used below:
    (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show
    under the player on the summary's Video tab (*Show in video* jumps there) and are what
    *Identify organisms* reads. Saving reads each clip once; it can be stopped and
-   continued with *Save the remaining frames*. Finding the track IDs again numbers them
+   continued with *Save the remaining frames*. Leaving the screen while it saves stops it,
+   so the app asks first (round 256): only saved frames can be identified, and *Identify
+   organisms* says how many track IDs still have no saved frame, with a button back to
+   this screen. Finding the track IDs again numbers them
    anew, so identification results made before say to run identification again.
    *Free storage* (round 236) below it deletes the clips without any track ID, or all clips
    once the frames are saved; the boxes, track IDs and kept frames stay, so Find track IDs can
@@ -93,7 +96,11 @@ Count by hand with the same rule, or the comparison measures the rule and not th
 * A track ID starts when the insect is first detected in the analysed area and ends when it
   was last seen there. If it hides or leaves for **longer than the occlusion tolerance**
   (3 s by default) and comes back, that is a new track ID. Shorter gaps stay one track ID.
-* Track IDs shorter than the **minimum track length** (0.2 s by default) are not counted.
+* Track IDs shorter than the **minimum track length** (1 s by default since round 256, was
+  0.2 s) are not counted. The AI must find the insect in that many analysed frames in a
+  row (shown under the setting: 1 s = 5 detections at 5 frames per second), so a high value
+  also drops an insect it sees only on and off. The seconds become frames at the rate the
+  video was analysed at, fixed for the whole run.
 * The app sees an insect *in the picture*, not *on the flower*. Whether an insect that
   only flies through counts is your decision. For scoring the app, count every insect
   that appears in the analysed area; flower contact can be a second column.

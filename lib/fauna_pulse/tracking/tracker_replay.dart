@@ -246,12 +246,18 @@ class TrackerReplayReport {
 /// frame's confirmed tracks and the lifecycle events drained after it
 /// (round 228: offline tracking of videos writes them out); the [Track]
 /// objects are the tracker's own and change on the next frame.
+///
+/// [adaptFps] false (round 256, videos) keeps the frame budgets the
+/// [tracker] was built with: a video's analysis rate is fixed, and
+/// re-deriving it from the frame gaps made "0.5 s" at ~5 frames/s flip
+/// between 2 and 3 detections within one run.
 TrackerReplayReport replayTracker({
   required InsectTracker tracker,
   required List<ReplayFrame> frames,
   double occlusionSeconds = 3.0,
   double minHitsSeconds = 0.2,
   double? initialFps,
+  bool adaptFps = true,
   void Function(ReplayFrame frame, List<Track> tracks, List<TrackEvent> events)? onFrame,
 }) {
   tracker.reset();
@@ -298,7 +304,7 @@ TrackerReplayReport replayTracker({
     }
     lastTs = frame.timestampMs;
 
-    if (frame.timestampMs - lastBudgetTs >= 1000) {
+    if (adaptFps && frame.timestampMs - lastBudgetTs >= 1000) {
       lastBudgetTs = frame.timestampMs;
       final buffer = framesFor(occlusionSeconds, fpsEma);
       final hits = framesFor(minHitsSeconds, fpsEma);

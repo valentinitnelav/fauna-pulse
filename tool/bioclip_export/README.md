@@ -317,8 +317,9 @@ https://doi.org/10.5281/zenodo.21822140), re-implemented in our own code:**
   differs (round 219: certainty-weighted average of the crops' embeddings scored once, the
   "Average Logit" of Dussert et al. 2025; `reproduce_track_conf.py` in this folder recomputes
   a session's track-id results off the phone from the stored embeddings and a pack);
-- the square-on-the-longer-side crop rule (`make_bbox_square()`); FaunaPulse adds a
-  margin and pads at photo edges instead of shifting the square.
+- the square-on-the-longer-side crop rule (`make_bbox_square()`); FaunaPulse pads at
+  photo edges instead of shifting the square, and has an optional margin (0 by default
+  since round 256).
 
 **Precedent, not origin:** the "none of these" rows follow the common practice of
 explicit background classes, as in the `none_*` classes of the Insect Detect

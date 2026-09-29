@@ -354,6 +354,55 @@ void main() {
     expect(TrackExport.visitsFileName, 'track_ids.csv');
   });
 
+  group('one frame rate per video (round 256)', () {
+    /// A clip whose analysed frames sit at [frameMs] (ms from the start),
+    /// with a box where [boxAt] gives one.
+    List<String> clipAt(List<int> frameMs, List<num>? Function(int k) boxAt) => [
+      _rec('video_clip_start', {'clip': 'a.mp4', 'start_epoch_ms': s0, 'width': 1920, 'height': 1080}),
+      for (var k = 0; k < frameMs.length; k++)
+        _rec('raw_detections', {
+          'frame_ms': s0 + frameMs[k],
+          'clip': 'a.mp4',
+          'pts_us': frameMs[k] * 1000,
+          'frame': k,
+          'boxes': [?boxAt(k)],
+        }),
+      _rec('video_clip_done', {
+        'clip': 'a.mp4',
+        'frame_width': 1920,
+        'frame_height': 1080,
+        'roi_px': [0, 0, 1920, 1080],
+        'class_names': ['bee'],
+      }),
+    ];
+
+    test('0.5 s at 5 frames/s of a 59.94 fps video is always 3 detections in a row', () async {
+      // Every 12th frame of 59.94 fps: 200.2 ms apart. Re-estimating the rate
+      // from these gaps gave ~4.995 fps, and 0.5 s × 4.995 rounded to 2.
+      final frames = [for (var k = 0; k < 100; k++) (k * 200.2).round()];
+      final d = _session([
+        _runStart(fps: 5),
+        ...clipAt(frames, (k) => k == 40 || k == 41 ? _box(0.2) : (k >= 70 && k <= 72 ? _box(0.6) : null)),
+      ]);
+      final r = await VideoTracker.run(d, config.copyWith(minHitsSeconds: 0.5));
+      expect(r.visits, 1); // the two-frame blip at k = 40 is not a track ID
+      expect(_visits(d).single[3], '14.014'); // start_s: the insect's first frame (k = 70)
+      expect((_records(d).first['tracker'] as Map)['minHitsToConfirm'], 3);
+    });
+
+    test('a 25 fps video analysed at 10 frames/s counts at 10 frames/s', () async {
+      // Gaps alternate 120 and 80 ms (mean 100): the median alone said 12.5 or 8.3.
+      final frames = [for (var k = 0; k < 100; k++) k * 100 + (k.isOdd ? 20 : 0)];
+      final d = _session([
+        _runStart(fps: 10),
+        ...clipAt(frames, (k) => k >= 20 && k <= 23 ? _box(0.2) : (k >= 60 && k <= 64 ? _box(0.6) : null)),
+      ]);
+      final r = await VideoTracker.run(d, config.copyWith(minHitsSeconds: 0.5));
+      expect(r.visits, 1); // 4 in a row is too short, 5 in a row counts
+      expect((_records(d).first['tracker'] as Map)['minHitsToConfirm'], 5);
+    });
+  });
+
   group('TrackExport', () {
     test('track_ids.csv: sorted by id, times from the clip start, quoted cells', () {
       final a = VideoVisit(trackId: 2, clip: 'b, 2.mp4', clipStartMs: s0, firstSeenMs: s0 + 1500)

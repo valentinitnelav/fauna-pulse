@@ -76,7 +76,9 @@ class VideoAnalysisPrefs {
 
   /// Visit tracking (round 228): the live camera's two seconds-based
   /// settings, kept apart so trying other values on videos never changes
-  /// the camera. Algorithm and fine-tuning are the camera's.
+  /// the camera. Algorithm and fine-tuning are the camera's. Minimum track
+  /// length 1 s since round 256 (was the camera's 0.2 s, which at 5 frames
+  /// per second is a single detection).
   double occlusionSeconds;
   double minVisitSeconds;
 
@@ -99,7 +101,7 @@ class VideoAnalysisPrefs {
     this.analysisFps = kDefaultVideoAnalysisFps,
     this.thermalLimitC = kDefaultPauseTempC,
     this.occlusionSeconds = 3.0,
-    this.minVisitSeconds = 0.2,
+    this.minVisitSeconds = 1.0,
     this.sampleSeconds = 10,
     this.keepFrames = true,
     this.keepStepSeconds = 1.0,
@@ -131,7 +133,7 @@ class VideoAnalysisPrefs {
       analysisFps: p.getDouble(_kFps) ?? kDefaultVideoAnalysisFps,
       thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
       occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
-      minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
+      minVisitSeconds: p.getDouble(_kMinVisit) ?? 1.0,
       sampleSeconds: p.getDouble(_kSample) ?? 10,
       keepFrames: p.getBool(_kKeep) ?? true,
       keepStepSeconds: p.getDouble(_kKeepStep) ?? 1.0,
@@ -659,6 +661,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       logSwallowed('video_find_track_ids', e);
       message = 'Finding track IDs failed: ${e is StateError ? e.message : e}';
     }
+    // Round 256: show the new track IDs, and under them the saving progress
+    // with its Stop button, before the frames are saved; a first run showed
+    // neither until every frame was saved, so the screen looked idle.
+    if (keptFrames > 0 && mounted) await _refresh(session);
     if (!mounted) return message;
     setState(() => _tracking = false);
     if (keptFrames > 0) message = '$message ${await _saveKeptFrames(session)}';
@@ -783,6 +789,43 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Round 256: leaving stops a run (dispose), and kept frames not saved
+    // are silently missing from Identify organisms, so ask first.
+    return PopScope(
+      canPop: !(_running || _keeping),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leaveIfConfirmed();
+      },
+      child: _screen(),
+    );
+  }
+
+  /// Asked when leaving during a run; "Stop and leave" pops the screen,
+  /// whose dispose stops the run.
+  Future<void> _leaveIfConfirmed() async {
+    final keeping = _keeping;
+    final p = _keepProgress;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(keeping ? 'Frames are still being saved' : 'The AI is still running'),
+        content: Text(
+          keeping
+              ? 'Leaving stops saving the kept frames${p == null ? '' : ' (${p.done} of ${p.total} done)'}. '
+                    'Identify organisms can only use saved frames; "Save the remaining frames" '
+                    'continues later.'
+              : 'Leaving stops the analysis. A stopped run continues where it left off.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stop and leave')),
+        ],
+      ),
+    );
+    if (leave == true && mounted) Navigator.of(context).pop();
+  }
+
+  Widget _screen() {
     return Scaffold(
       appBar: AppBar(title: const Text('Run AI on videos')),
       // SafeArea: without it the list's last lines sit under the system
@@ -1095,6 +1138,17 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   /// "Visits": tracking settings, Find visits, the last result and Share.
   /// Shown once at least one clip is analyzed.
+  /// The rate this session's frames were analysed at (the last run's, else
+  /// the current setting): what "Find track IDs" turns seconds into frames
+  /// with (round 256; a video with fewer frames per second needs fewer).
+  double _trackFps(_VideoSession s) =>
+      (s.lastSettings?['analysis_fps'] as num?)?.toDouble() ?? _prefs.analysisFps;
+
+  int _minTrackDetections(_VideoSession s) =>
+      SessionConfig(minHitsSeconds: _prefs.minVisitSeconds).minHitsFramesFor(_trackFps(s));
+
+  static String _fmtFps(double fps) => fps == fps.roundToDouble() ? '${fps.round()}' : fps.toStringAsFixed(1);
+
   Widget _visitsSection() {
     final s = _session;
     if (s == null || s.doneClips.isEmpty) return const SizedBox.shrink();
@@ -1161,11 +1215,20 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           unitSuffix: 's',
           helperText:
               'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-              'dropped as noise. Default 0.2 s, as on the live camera.',
+              'dropped as noise. The AI must find it in this many analyzed frames in a row (shown '
+              'below), so an insect it sees only on and off is dropped too when the value is high. '
+              'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
+              '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
+              'other values with "Find track IDs" again.',
           onChanged: (x) {
             setState(() => _prefs.minVisitSeconds = x);
             _prefs.save();
           },
+        ),
+        Text(
+          '= ${_minTrackDetections(s)} ${_minTrackDetections(s) == 1 ? 'detection' : 'detections'} in a row '
+          'at ${_fmtFps(_trackFps(s))} frames per second.',
+          style: helperTextStyle,
         ),
         Text(
           'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '

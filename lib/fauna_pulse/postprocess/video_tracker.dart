@@ -37,6 +37,9 @@
 //
 // Times come from each frame's own time stamp in the video, never from
 // frame number / frame rate: phone videos often have a variable frame rate.
+// The seconds-based settings become frames at ONE rate per stretch (round
+// 256): the analysis rate the frames were picked at (see [_stretchFps]),
+// not re-estimated during the run as the live camera does.
 
 import 'dart:convert';
 import 'dart:io';
@@ -326,7 +329,10 @@ class VideoTracker {
     }
 
     final runId = started.millisecondsSinceEpoch;
-    final fps0 = (detectionSettings?['analysis_fps'] as num?)?.toDouble() ?? 15;
+    final analysisFps = (detectionSettings?['analysis_fps'] as num?)?.toDouble();
+    final firstFps = stretches.isEmpty
+        ? analysisFps
+        : _stretchFps([for (final c in stretches.first) ...c.frames], analysisFps);
 
     // Kept frames: names as live photos have them (the session's token plus
     // the frame's time), one per frame. A name already taken moves on by
@@ -369,7 +375,8 @@ class VideoTracker {
       'detection_settings': detectionSettings,
       'occlusion_seconds': config.occlusionSeconds,
       'min_hits_seconds': config.minHitsSeconds,
-      'tracker': config.buildTracker(fps0).effectiveParamsJson(),
+      // Round 256: the budgets the (first) stretch really runs with.
+      'tracker': config.buildTracker(firstFps ?? 15).effectiveParamsJson(),
       'clips': [for (final c in tracked) c.name],
       'observed_ms': _observedMs(tracked),
       'clips_continuing_previous': continued,
@@ -387,7 +394,7 @@ class VideoTracker {
     try {
       for (final stretch in stretches) {
         final all = [for (final c in stretch) ...c.frames];
-        final fps = _fpsOf(all) ?? fps0;
+        final fps = _stretchFps(all, analysisFps) ?? 15;
         var maxId = 0;
         final rule = keep == null
             ? null
@@ -404,6 +411,7 @@ class VideoTracker {
           occlusionSeconds: config.occlusionSeconds,
           minHitsSeconds: config.minHitsSeconds,
           initialFps: fps,
+          adaptFps: false,
           onFrame: (frame, tracks, events) {
             final clip = clips[frame.clip]!;
             final pts = frame.ptsUs;
@@ -608,14 +616,24 @@ class VideoTracker {
     return total;
   }
 
-  /// Frame rate from the typical (median) gap between frames, or null for
-  /// fewer than two frames.
-  static double? _fpsOf(List<ReplayFrame> frames) {
+  /// The frame rate a stretch was analysed at (round 256): the chosen
+  /// [analysisFps] when the frames' own rate is within 10 % of it; otherwise
+  /// the measured rate (e.g. clips with fewer frames per second than that,
+  /// where every frame was analysed). Measured = the mean
+  /// of the normal gaps (up to twice the median, so pauses and clip joins do
+  /// not count); a mean, because a 25 fps video analysed at 10 alternates
+  /// 80 and 120 ms gaps. Null for fewer than two frames and no [analysisFps].
+  static double? _stretchFps(List<ReplayFrame> frames, double? analysisFps) {
     final gaps = <int>[
       for (var i = 1; i < frames.length; i++)
         if (frames[i].timestampMs > frames[i - 1].timestampMs) frames[i].timestampMs - frames[i - 1].timestampMs,
     ]..sort();
-    return gaps.isEmpty ? null : 1000 / gaps[gaps.length ~/ 2];
+    final known = analysisFps != null && analysisFps > 0 ? analysisFps : null;
+    if (gaps.isEmpty) return known;
+    final normal = gaps.where((g) => g <= 2 * gaps[gaps.length ~/ 2]).toList();
+    final measured = 1000 * normal.length / normal.fold<int>(0, (a, g) => a + g);
+    if (known == null) return measured;
+    return (measured - known).abs() <= 0.1 * known ? known : measured;
   }
 
   /// Reads the first and last record of the session's post_tracks.jsonl, or

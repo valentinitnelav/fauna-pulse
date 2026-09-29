@@ -30,10 +30,13 @@ import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
+import '../postprocess/video_frame_keeper.dart';
+import '../postprocess/video_tracker.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
+import 'video_analysis_screen.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Crops timed by "Test speed" (round 247; was 8, the job's batch size, which the owner found
@@ -57,6 +60,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   Map<String, dynamic>? _packHeader;
   int? _plannedCrops;
   int? _plannedTracks;
+  // Round 256: kept video frames not saved yet have no crops (the planner
+  // skips missing photos), so the pre-flight says so.
+  KeptFramesStatus _kept = KeptFramesStatus.none;
+  int? _trackIdsFound;
   double? _msPerCrop;
   List<File> _summaries = const [];
   ThermalReading? _thermal;
@@ -173,15 +180,30 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         maxCropsPerTrack: prefs.maxCropsPerTrack,
       );
       final tracks = <int>{for (final t in tasks) if (t.trackId != null) t.trackId!};
+      final kept = await VideoFrameKeeper.status(widget.sessionDir);
+      final found = kept.total > 0 ? (await VideoTracker.readSummary(widget.sessionDir))?.visits : null;
       if (!mounted) return;
       setState(() {
         _plannedCrops = tasks.length;
         _plannedTracks = tracks.length;
+        _kept = kept;
+        _trackIdsFound = found;
       });
     } catch (e) {
       logSwallowed('identify_plan', e);
       if (mounted) setState(() => _plannedCrops = 0);
     }
+  }
+
+  /// Opens this session on the Video screen (to save the remaining kept
+  /// frames), then counts the crops again.
+  Future<void> _openVideoScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VideoAnalysisScreen(initialSessionPath: widget.sessionDir.path)),
+    );
+    if (!mounted) return;
+    await _plan();
+    await _checkVisits();
   }
 
   Future<void> _loadSpeed() async {
@@ -691,6 +713,46 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     ];
   }
 
+  /// Round 256: kept video frames that are not saved yet (the Video screen
+  /// was left while saving) have no photo, so their track IDs are missing.
+  List<Widget> _unsavedFramesNote() {
+    final k = _kept;
+    if (k.remaining <= 0 && k.noVideo <= 0) return const [];
+    final found = _trackIdsFound;
+    final without = found == null ? 0 : found - (_plannedTracks ?? 0);
+    const amber = TextStyle(color: Colors.amber, fontSize: 12);
+    return [
+      if (k.remaining > 0) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'Only ${k.saved} of ${k.total} kept frames of the videos are saved'
+            '${without > 0 ? ', so $without of $found track IDs have no photo to identify yet' : ''}. '
+            'Save the remaining frames on the Video screen first.',
+            style: amber,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _running ? null : _openVideoScreen,
+            icon: const Icon(Icons.movie_outlined),
+            label: const Text('Open the Video screen'),
+          ),
+        ),
+      ],
+      if (k.noVideo > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            '${k.noVideo} kept ${k.noVideo == 1 ? 'frame' : 'frames'} can no longer be saved: '
+            'the video is gone from the session folder.',
+            style: helperTextStyle,
+          ),
+        ),
+    ];
+  }
+
   List<Widget> _preflightSection(IdentifyPrefs prefs) {
     final crops = _plannedCrops;
     final estimate = (crops != null && _msPerCrop != null)
@@ -723,7 +785,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                   '${estimate == null ? '' : ' — about ${_fmtDuration(estimate)} on this phone'}',
         style: const TextStyle(color: Colors.white),
       ),
-      if (crops == 0)
+      if (crops == 0 && _kept.remaining == 0)
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
@@ -732,6 +794,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             style: helperTextStyle,
           ),
         ),
+      ..._unsavedFramesNote(),
       if (!plugged)
         const Padding(
           padding: EdgeInsets.only(top: 4),
@@ -987,10 +1050,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.margin = v),
           helperText:
               'Extra border around the detector box before the square crop (0.05 = 5 % per side). '
-              'Default 0.05 (0.15 until round 255): enough to keep legs and antennae that stick out '
-              'of a tight box, while the model sees mostly the insect and little of the flower or '
-              'background around it. After a change, the next run asks whether to recompute the '
-              'crops already stored for this session.',
+              'Default 0 (0.05 in round 255, 0.15 before): the box itself, made square on its '
+              'longer side, as in the Insect Detect pipeline (Sittinger), so the model sees as '
+              'little flower or background as possible; the square already adds some along the '
+              'shorter side. Raise it if legs or antennae look cut off in the crops. After a '
+              'change, the next run asks whether to recompute the crops already stored for this '
+              'session.',
         ),
         NumericSettingField(
           label: 'Smallest box to identify',
