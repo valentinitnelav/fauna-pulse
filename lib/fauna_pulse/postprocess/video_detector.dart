@@ -104,7 +104,7 @@ class VideoRunConfig {
     required this.confidence,
     required this.iou,
     required this.useGpu,
-    this.analysisFps = 15,
+    this.analysisFps = kDefaultVideoAnalysisFps,
     this.roi,
     this.maxSidePx = 1280,
   });
@@ -221,6 +221,14 @@ class VideoResume {
     return VideoResume(settings, done, last);
   }
 }
+
+/// Frames of each video second the AI looks at by default. Round 254 (owner):
+/// 5, was 15. Re-tracking one session's 15-fps boxes at lower rates gave 53,
+/// 52, 48, 39 and 32 track IDs at 15, 10, 5, 3 and 2 fps, and every track ID
+/// seen at 15 fps was still covered at 5; a run takes ~2.3 times less on a
+/// 60-fps video (every frame is still decoded). Not yet checked against a
+/// hand count.
+const kDefaultVideoAnalysisFps = 5.0;
 
 class VideoDetector {
   static const outputFileName = 'video_detections.jsonl';

@@ -224,12 +224,19 @@ cost time and heat on the phone. Two published systems show both ends:
   makes the track IDs of fast-moving insects "jump", so one insect is counted more than
   once.
 
+The app's default is 5 fps (round 254; 15 before). On the first 333 s of a 60-fps YouTube
+compilation of bees on flowers, analysed once at 15 fps, re-running the tracker on the
+frames of lower rates gave 53, 52, 48, 39 and 32 track IDs at 15, 10, 5, 3 and 2 fps, and
+every track ID of the 15-fps run still had one at the same time at 5 fps. That clip has
+scene cuts and no hand count, so it is a hint, not a validation.
+
 Instead of guessing, measure it on your own videos: detect once at the full rate, then
 re-run only the tracker on every 2nd, 3rd, 6th… frame, and compare each result with the
 hand count.
 
 1. **On the phone**: *Run AI on videos* with *Frames analyzed per second* at the video's
-   own rate (30 for most phone videos). This takes about twice as long as 15, once.
+   own rate (30 for most phone videos). This takes several times longer than the default
+   5, once.
    Then *Find track IDs* with the settings you want to test, and *Share results*.
 2. **On the computer** (needs this repository and Flutter, like the app's tests):
 

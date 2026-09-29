@@ -96,7 +96,7 @@ class VideoAnalysisPrefs {
     this.modelId,
     this.confidence = 0.25,
     this.iou = 0.7,
-    this.analysisFps = 15,
+    this.analysisFps = kDefaultVideoAnalysisFps,
     this.thermalLimitC = kDefaultPauseTempC,
     this.occlusionSeconds = 3.0,
     this.minVisitSeconds = 0.2,
@@ -128,7 +128,7 @@ class VideoAnalysisPrefs {
       modelId: p.getString(_kModel),
       confidence: p.getDouble(_kConf) ?? 0.25,
       iou: p.getDouble(_kIou) ?? 0.7,
-      analysisFps: p.getDouble(_kFps) ?? 15,
+      analysisFps: p.getDouble(_kFps) ?? kDefaultVideoAnalysisFps,
       thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
       occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
       minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
@@ -817,10 +817,15 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   _slider(
                     label: 'Frames analyzed per second: ${_prefs.analysisFps.round()}',
                     help:
-                        'How many pictures of each video second the AI looks at. 15 is what the live camera '
-                        'analyzes, so results compare with live sessions. Fewer is faster, but an insect can '
-                        'move far between two looks and be missed or counted twice. Most phone videos have '
-                        '30 per second; asking for more than the video has changes nothing.',
+                        'How many pictures of each second of the video the AI looks at; the pictures in '
+                        'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
+                        'stay on a flower for a second or more, and a run takes less than half the time 15 '
+                        'would (not a third: the phone still has to unpack every picture). More pictures '
+                        'follow fast flying insects better (fewer missed or counted twice) but take longer; '
+                        '15 is what the live camera analyzes. This counts seconds of the video, not of the '
+                        'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
+                        'phone videos have 30 pictures per second; asking for more than the video has '
+                        'changes nothing.',
                     value: _prefs.analysisFps,
                     min: 1,
                     max: 30,

@@ -188,7 +188,8 @@ void main() {
         ),
       ),
     );
-    await _pumpUntil(tester, find.text('About 900 frames for this session.'));
+    // 60 s of video at the default 5 frames per second (round 254; was 15).
+    await _pumpUntil(tester, find.text('About 300 frames for this session.'));
     expect(tester.takeException(), isNull);
     expect(find.textContaining('1 analyzed)'), findsOneWidget);
 
