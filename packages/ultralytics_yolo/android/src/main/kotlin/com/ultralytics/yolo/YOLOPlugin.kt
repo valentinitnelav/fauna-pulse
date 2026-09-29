@@ -898,8 +898,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       // detector instance on each sampled frame. Only boxes cross the channel, never pictures
       // (videoThumbnail, r227: one small JPEG of the first frame for drawing the square on).
       // videoOpenFrames / videoSaveFrames (r234) save chosen frames as JPEG files instead.
+      // videoRemux (r252) rewrites a fragmented MP4 as a plain one at import.
       "videoInfo", "videoThumbnail", "videoOpen", "videoNext", "videoOpenFrames", "videoSaveFrames",
-      "videoClose" -> handleVideo(call, result)
+      "videoRemux", "videoClose" -> handleVideo(call, result)
 
       else -> result.notImplemented()
     }
@@ -914,6 +915,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         when (call.method) {
           "videoInfo" -> VideoFrameSource.info(args["path"] as String)
           "videoThumbnail" -> VideoFrameSource.thumbnail(args["path"] as String, num("maxSide")?.toInt() ?: 720)
+          "videoRemux" -> VideoFrameSource.remux(args["src"] as String, args["dst"] as String)
           "videoOpen" -> {
             runCatching { videoSource?.close() }
             videoSource = null

@@ -17,7 +17,11 @@
 // scrolls the clip picker, player and controls to the top of the tab, and
 // white ticks under the time bar mark the saved kept frames. Round 236: a
 // clip deleted to free storage says when; its boxes and visits still list.
+// Round 252: after a jump the player reports the new position at once but
+// shows the old picture until it has decoded the new one (up to 2.7 s on the
+// Samsung, measured); the boxes wait for the picture.
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -135,6 +139,14 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// which reports ten times a second.
   final _playing = ValueNotifier<bool>(false);
 
+  /// No boxes while the player fetches a jump's picture (round 252): its
+  /// buffering flag, or a jump asked for whose flag has not arrived yet
+  /// ([_jumpSent], about 85 ms; [_jumpGuard] gives up after 0.5 s for a jump
+  /// that needs no fetching).
+  final _waiting = ValueNotifier<bool>(false);
+  bool _jumpSent = false;
+  Timer? _jumpGuard;
+
   /// Last position the player reported, and the ticker time it arrived.
   int _reportedMs = 0;
   Duration _reportedAt = Duration.zero;
@@ -178,10 +190,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     _tabs?.removeListener(_pause);
     _keepAwake(false);
     _ticker.dispose();
+    _jumpGuard?.cancel();
     _controller?.removeListener(_onValue);
     _controller?.dispose();
     _posMs.dispose();
     _playing.dispose();
+    _waiting.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -281,6 +295,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     }
     _keepAwake(v.isPlaying);
     _playing.value = v.isPlaying;
+    if (v.isBuffering) _jumpSent = false;
+    _waiting.value = v.isBuffering || _jumpSent;
     // A report a moment behind the ticker's estimate would pull the boxes
     // back; a real jump (a seek) is taken as is.
     final lateReport = v.isPlaying && _reportedMs < shown && shown - _reportedMs < 250;
@@ -329,6 +345,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     if (c == null) return;
     final target = ms.clamp(0, c.value.duration.inMilliseconds);
     _posMs.value = target;
+    _jumpSent = true;
+    _waiting.value = true;
+    _jumpGuard?.cancel();
+    _jumpGuard = Timer(const Duration(milliseconds: 500), () {
+      _jumpSent = false;
+      if (mounted) _waiting.value = _controller?.value.isBuffering ?? false;
+    });
     c.seekTo(Duration(milliseconds: target));
   }
 
@@ -359,6 +382,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     }
     if (target != null) _seekTo(target);
   }
+
+  /// Whether the boxes wait for the player's picture after a jump (round 252).
+  @visibleForTesting
+  bool get waitingForPicture => _waiting.value;
 
   /// Shows the frame at [ms] of [clip], paused, and scrolls the player into
   /// view (a kept frame's "Show in video", round 234).
@@ -737,6 +764,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                     child: CustomPaint(
                       painter: _OverlayPainter(
                         position: _posMs,
+                        waiting: _waiting,
                         boxesAt: (ms) => boxes == null
                             ? const []
                             : visits
@@ -943,6 +971,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 /// lines and labels keep their size in the zoomed view.
 class _OverlayPainter extends CustomPainter {
   final ValueListenable<int> position;
+
+  /// The player still shows the picture before a jump: no boxes.
+  final ValueListenable<bool> waiting;
   final List<TimelineBox> Function(int ms) boxesAt;
   final Rect view;
   final Rect? area;
@@ -950,11 +981,12 @@ class _OverlayPainter extends CustomPainter {
 
   _OverlayPainter({
     required this.position,
+    required this.waiting,
     required this.boxesAt,
     required this.view,
     required this.area,
     required this.visits,
-  }) : super(repaint: position);
+  }) : super(repaint: Listenable.merge([position, waiting]));
 
   Rect _toScreen(Rect r, Size size) => Rect.fromLTRB(
     (r.left - view.left) / view.width * size.width,
@@ -982,7 +1014,7 @@ class _OverlayPainter extends CustomPainter {
           ..color = Colors.white54,
       );
     }
-    for (final b in boxesAt(position.value)) {
+    for (final b in waiting.value ? const <TimelineBox>[] : boxesAt(position.value)) {
       final color = (visits ? VideoReviewPlayer.visitColor : VideoReviewPlayer.rawColor).withValues(
         alpha: b.coasted ? 0.45 : 1,
       );

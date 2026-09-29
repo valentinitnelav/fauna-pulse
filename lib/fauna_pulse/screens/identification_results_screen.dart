@@ -1291,6 +1291,9 @@ class _TrackSheetState extends State<_TrackSheet> {
 
   static const _treeCols = [('family', 'Family'), ('order', 'Order'), ('class', 'Class')];
 
+  /// The photo icon beside the shown crop's number in the crops table.
+  static const _shownIconSize = 12.0, _shownIconGap = 3.0;
+
   int _bestIndex() {
     final best = widget.track['best_view'] as Map<String, dynamic>?;
     if (best == null) return 0;
@@ -1680,6 +1683,9 @@ class _TrackSheetState extends State<_TrackSheet> {
           _ => _treeAt(cr, kRankNames.indexOf(c.key)),
         },
     ], context);
+    // The shown crop's number carries a photo icon: room for it in every row
+    // (two-digit numbers overflowed the measured column, owner's Xiaomi).
+    widths['no'] = widths['no']! + _shownIconGap + _shownIconSize;
     final missing =
         _crops.any((c) => c['agrees'] == null || _mass(c) == null || c['top1_tree'] == null || c['det_conf'] == null) ||
         _ladder.any((s) => s['p_max'] == null);
@@ -1767,7 +1773,11 @@ class _TrackSheetState extends State<_TrackSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _txt('$no', style: _dimCellStyle),
-                    if (_crops.indexOf(c) == _shown) const Padding(padding: EdgeInsets.only(left: 3), child: Icon(Icons.photo, size: 12, color: Colors.white70)),
+                    if (_crops.indexOf(c) == _shown)
+                      const Padding(
+                        padding: EdgeInsets.only(left: _shownIconGap),
+                        child: Icon(Icons.photo, size: _shownIconSize, color: Colors.white70),
+                      ),
                   ],
                 ),
                 _txt(_mass(c) == null ? '?' : _pct(_mass(c)), right: true),

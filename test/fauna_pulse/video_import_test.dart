@@ -92,6 +92,61 @@ void main() {
     expect(clips.first['start_time_shift_ms'], -3 * 3600 * 1000);
   });
 
+  // Round 252: MP4 boxes are a 4-byte big-endian size, then a 4-letter type.
+  List<int> box(String type, int payload) => [
+    ...[24, 16, 8, 0].map((b) => ((payload + 8) >> b) & 0xff),
+    ...type.codeUnits,
+    ...List.filled(payload, 0),
+  ];
+
+  test('fragmented MP4s are found by their moof boxes', () {
+    File write(String name, List<int> bytes) => File('${tmp.path}/$name')..writeAsBytesSync(bytes);
+    expect(isFragmentedMp4(write('frag.mp4', [...box('ftyp', 8), ...box('moov', 16), ...box('moof', 8), ...box('mdat', 32)])), isTrue);
+    expect(isFragmentedMp4(write('plain.mp4', [...box('ftyp', 8), ...box('mdat', 32), ...box('moov', 16)])), isFalse);
+    expect(isFragmentedMp4(write('other.mkv', [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])), isFalse);
+  });
+
+  test('a fragmented clip is rewritten into videos/ and logged as such', () async {
+    final c = clip('Pollinators (1080p, h264).mp4');
+    final frag = ImportClip(path: c.path, name: c.name, sizeBytes: c.sizeBytes, info: c.info, guess: c.guess, fragmented: true);
+    final calls = <(String, String)>[];
+    final dir = await importVideos(
+      sessionsDir: sessions,
+      sessionName: 'yt',
+      clips: [frag, clip('VID_20260924_155954.mp4')],
+      remux: (src, dst) async {
+        calls.add((src, dst));
+        File(dst).writeAsStringSync('rewritten, a little longer');
+        return {'bytes': File(dst).lengthSync(), 'elapsedMs': 7, 'droppedTracks': <String>[]};
+      },
+    );
+    expect(calls, hasLength(1)); // only the fragmented clip
+    expect(calls.single.$2, endsWith('/videos/Pollinators__1080p__h264_.mp4.part'));
+    expect(File('${dir.path}/videos/Pollinators__1080p__h264_.mp4').readAsStringSync(), 'rewritten, a little longer');
+    expect(Directory('${dir.path}/videos').listSync().where((f) => f.path.endsWith('.part')), isEmpty);
+    expect(cache.listSync(), isEmpty); // the picker's copy is gone
+    final recs = records(dir);
+    final yt = recs.firstWhere((r) => r['original_name'] == 'Pollinators (1080p, h264).mp4');
+    expect(yt['rewritten_from'], 'fragmented_mp4');
+    expect(yt['size_bytes'], 26);
+    expect(yt['original_size_bytes'], c.sizeBytes);
+    expect(yt['rewrite_ms'], 7);
+    expect(yt.containsKey('rewrite_dropped_tracks'), isFalse);
+    final plain = recs.firstWhere((r) => r['original_name'] == 'VID_20260924_155954.mp4');
+    expect(plain.containsKey('rewritten_from'), isFalse);
+  });
+
+  test('a failed rewrite fails the import and leaves no clip file', () async {
+    final c = clip('frag.mp4');
+    final frag = ImportClip(path: c.path, name: c.name, sizeBytes: c.sizeBytes, info: c.info, guess: c.guess, fragmented: true);
+    await expectLater(
+      importVideos(sessionsDir: sessions, sessionName: 'bad', clips: [frag], remux: (_, _) async => throw StateError('frame times moved')),
+      throwsA(isA<ImportRewriteFailed>().having((e) => '$e', 'message', contains('frame times moved'))),
+    );
+    expect(Directory('${sessions.path}/bad').existsSync(), isFalse); // no half session
+    expect(File(c.path).existsSync(), isTrue); // the picked copy stays until the picker cache is cleared
+  });
+
   test('files the analysis cannot read are flagged', () {
     expect(clip('a.avi').problem, contains('Not a supported'));
     expect(clip('a.mp4').problem, isNull);

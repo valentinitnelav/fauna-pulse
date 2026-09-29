@@ -206,6 +206,64 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // The shown crop's row carries a photo icon beside its number: with
+  // two-digit numbers it overflowed the measured No. column (owner, Xiaomi:
+  // "right overflow by 6.6 pixels").
+  testWidgets('crops table: two-digit shown crop fits its No. column', (tester) async {
+    simulateBottomSystemBar(tester);
+    final tmp = Directory.systemTemp.createTempSync('identify_results_crops');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final idDir = Directory('${tmp.path}/identification')..createSync();
+    final path = ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'];
+    final track = _track(1, path, 'genus', 0.9);
+    final crop = (track['crops'] as List).first as Map<String, dynamic>;
+    track['crops'] = [for (var i = 1; i <= 12; i++) {...crop, 'src': 'c$i.jpg'}];
+    track['best_view'] = {'src': 'c12.jpg', 'species': path.last, 'p': 0.9};
+    final tracksJson = File('${idDir.path}/tracks_p.json')
+      ..writeAsStringSync(jsonEncode({'session_id': 's', 'tracks': [track]}));
+    final summaryJson = File('${idDir.path}/summary_p.json')
+      ..writeAsStringSync(
+        jsonEncode({
+          'generated_iso': '2026-09-29T10:00:00.000',
+          'model_id': 'bioclip',
+          'pack_id': 'pack',
+          'pack_rows': 10,
+          'tracks_total': 1,
+          'tracks': [],
+        }),
+      );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: IdentificationResultsScreen(
+          sessionDir: tmp,
+          tracksJson: tracksJson,
+          summaryJson: summaryJson,
+          tracksCsv: File('${idDir.path}/tracks_p.csv'),
+        ),
+      ),
+    );
+    for (var i = 0; i < 100; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+      if (find.text('Bombus').evaluate().isNotEmpty) break;
+    }
+    await tester.tap(find.text('Bombus'));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(find.text('#1'), find.byType(ListView).last, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('#1'));
+    await tester.pumpAndSettle();
+    final sheet = find.byType(ListView).last;
+    await tester.dragUntilVisible(find.textContaining('Showing crop No.'), sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.text('Showing crop No. 12 (best view):'), findsOneWidget);
+    // Building the rows is the check: an overflow fails the test.
+    await tester.dragUntilVisible(find.byIcon(Icons.photo), sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.photo), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   // Round 234: results of visits found in videos remember the "Find visits"
   // run; after a new one the header says to run identification again.
   for (final (shownRunId, warned) in [(7, false), (8, true)]) {

@@ -65,6 +65,9 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
 
   bool _importing = false;
   int _done = 0;
+
+  /// Share of the fragmented clip being rewritten (round 252), else null.
+  double? _rewrite;
   String? _error;
   Directory? _result;
 
@@ -120,6 +123,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
           durationMs: info.durationMs,
           fileModifiedMs: modified,
         ),
+        fragmented: isFragmentedMp4(File(f.path)),
       );
       final problem = clip.problem;
       if (problem != null) {
@@ -211,7 +215,15 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         shiftMs: _shiftMs,
         startExtras: extras,
         onProgress: (done, total, name) {
-          if (mounted) setState(() => _done = done);
+          if (mounted) {
+            setState(() {
+              _done = done;
+              _rewrite = null;
+            });
+          }
+        },
+        onRewrite: (f) {
+          if (mounted) setState(() => _rewrite = f);
         },
       );
       await _clearPickerCache();
@@ -333,9 +345,15 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
           child: Text('Import failed: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
         ),
       if (_importing) ...[
-        LinearProgressIndicator(value: _done / plan.length, minHeight: 6),
+        LinearProgressIndicator(value: (_done + (_rewrite ?? 0)) / plan.length, minHeight: 6),
         const SizedBox(height: 8),
-        Text('Moving clip ${min(_done + 1, plan.length)} of ${plan.length}…', textAlign: TextAlign.center),
+        Text(
+          _rewrite == null
+              ? 'Moving clip ${min(_done + 1, plan.length)} of ${plan.length}…'
+              : 'Rewriting clip ${min(_done + 1, plan.length)} of ${plan.length} as a plain MP4… '
+                    '${(_rewrite! * 100).round()} %',
+          textAlign: TextAlign.center,
+        ),
       ] else
         FilledButton.icon(
           onPressed: _enoughSpace ? _import : null,
@@ -366,6 +384,13 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
                   '${_timeOnly(c.startMs)} · ${_length(c.durationMs)}$unsure',
                   style: TextStyle(fontSize: 12, color: unsure.isEmpty ? Colors.white54 : Colors.amber),
                 ),
+                if (_clips[c.index].fragmented)
+                  const Text(
+                    'Fragmented MP4 (e.g. saved from YouTube): the video player cannot jump in it, so the '
+                    'app writes it once more as a plain MP4 while importing. Same pictures and sound, '
+                    'nothing re-compressed.',
+                    style: TextStyle(fontSize: 12, color: Colors.white54),
+                  ),
               ],
             ),
           ),

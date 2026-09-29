@@ -13,11 +13,17 @@
 // and how that time was found); detection results go to separate files.
 // Paths in the log are relative to the session folder, so renaming the
 // session keeps working.
+//
+// Round 252: a fragmented MP4 (as YouTube downloaders save them) is written
+// once more as a plain MP4 on the way in (every frame copied unchanged): the
+// phone's player cannot jump in a fragmented one and showed boxes on the
+// wrong picture after every jump.
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
+import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, VideoInfo;
 
 import '../logging/session_logger.dart';
 import '../logging/session_rename.dart' show sanitizeSessionName;
@@ -31,7 +37,17 @@ class ImportClip {
   final int sizeBytes;
   final VideoInfo info;
   final VideoStartGuess guess;
-  const ImportClip({required this.path, required this.name, required this.sizeBytes, required this.info, required this.guess});
+
+  /// A fragmented MP4 ([isFragmentedMp4]): rewritten as a plain one on import.
+  final bool fragmented;
+  const ImportClip({
+    required this.path,
+    required this.name,
+    required this.sizeBytes,
+    required this.info,
+    required this.guess,
+    this.fragmented = false,
+  });
 
   int get durationMs => info.durationMs ?? 0;
 
@@ -58,6 +74,53 @@ List<ClipStart> planImport(List<ImportClip> clips, {int shiftMs = 0}) {
   ];
 }
 
+/// Whether [f] is a fragmented MP4: its pictures sit in `moof` boxes after
+/// an index without frames (YouTube downloaders, some recorders). Reads only
+/// the top-level box headers.
+bool isFragmentedMp4(File f) {
+  RandomAccessFile? raf;
+  try {
+    final len = f.lengthSync();
+    raf = f.openSync();
+    var pos = 0;
+    while (pos + 8 <= len) {
+      raf.setPositionSync(pos);
+      final h = raf.readSync(16);
+      if (h.length < 8) return false;
+      final type = String.fromCharCodes(h.sublist(4, 8));
+      if (pos == 0 && type != 'ftyp') return false; // not an MP4 family file
+      if (type == 'moof') return true;
+      var size = (h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3];
+      if (size == 1 && h.length == 16) {
+        size = 0;
+        for (var i = 8; i < 16; i++) {
+          size = (size << 8) | h[i];
+        }
+      }
+      if (size < 8) return false;
+      pos += size;
+    }
+    return false;
+  } catch (_) {
+    return false;
+  } finally {
+    raf?.closeSync();
+  }
+}
+
+/// A fragmented clip could not be rewritten; [toString] is the message the
+/// import screen shows.
+class ImportRewriteFailed implements Exception {
+  final String clip;
+  final String reason;
+  const ImportRewriteFailed(this.clip, this.reason);
+
+  @override
+  String toString() =>
+      '$clip could not be rewritten as a plain MP4 ($reason). Convert it on a computer without '
+      're-compressing (e.g. "ffmpeg -i in.mp4 -c copy out.mp4") and import the result.';
+}
+
 /// A file-system-safe clip name: letters, digits, `_`, `-`, `.` only.
 String safeClipName(String name) {
   final s = name.trim().replaceAll(RegExp(r'[^A-Za-z0-9_.\-]'), '_');
@@ -74,7 +137,9 @@ String defaultImportName(int firstStartMs) {
 /// Creates the session under [sessionsDir] (a numeric suffix is added when
 /// the name is taken, as for recordings), moves or copies every clip into
 /// `videos/` and writes session.jsonl. [startExtras] (device, app version)
-/// go into the start record. Returns the new session folder.
+/// go into the start record. A fragmented clip is rewritten by [remux]
+/// instead (default: the native one), reporting its share done through
+/// [onRewrite]. Returns the new session folder.
 Future<Directory> importVideos({
   required Directory sessionsDir,
   required String sessionName,
@@ -82,6 +147,8 @@ Future<Directory> importVideos({
   int shiftMs = 0,
   Map<String, dynamic> startExtras = const {},
   void Function(int done, int total, String name)? onProgress,
+  void Function(double fraction)? onRewrite,
+  Future<Map<String, dynamic>> Function(String src, String dst) remux = VideoFrameSource.remux,
 }) async {
   final plan = planImport(clips, shiftMs: shiftMs);
 
@@ -94,6 +161,8 @@ Future<Directory> importVideos({
 
   // Move or copy in start order; two picks with one name get a suffix.
   final fileNames = <int, String>{};
+  final rewritten = <int, Map<String, dynamic>>{};
+  int sizeOf(int index) => (rewritten[index]?['bytes'] as num?)?.toInt() ?? clips[index].sizeBytes;
   for (var i = 0; i < plan.length; i++) {
     final clip = clips[plan[i].index];
     onProgress?.call(i, plan.length, clip.name);
@@ -104,7 +173,36 @@ Future<Directory> importVideos({
       target = dot > 0 ? '${base.substring(0, dot)}_$k${base.substring(dot)}' : '${base}_$k';
     }
     fileNames[plan[i].index] = target;
-    await _moveOrCopy(File(clip.path), File('${videos.path}/$target'));
+    final to = File('${videos.path}/$target');
+    if (!clip.fragmented) {
+      await _moveOrCopy(File(clip.path), to);
+      continue;
+    }
+    // Written under another name first, so a killed import leaves no
+    // half file that looks like a clip.
+    final part = File('${to.path}.part');
+    final progress = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      if (part.existsSync() && clip.sizeBytes > 0) onRewrite?.call(min(1.0, part.lengthSync() / clip.sizeBytes));
+    });
+    try {
+      rewritten[plan[i].index] = await remux(clip.path, part.path);
+    } catch (e) {
+      // Nothing is logged yet: no half session is left behind.
+      try {
+        dir.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Best effort; the error below is what the user needs.
+      }
+      throw ImportRewriteFailed(clip.name, '$e');
+    } finally {
+      progress.cancel();
+    }
+    await part.rename(to.path);
+    try {
+      await File(clip.path).delete();
+    } on FileSystemException {
+      // The picker's cache is cleared after the import anyway.
+    }
   }
   onProgress?.call(plan.length, plan.length, '');
 
@@ -123,13 +221,14 @@ Future<Directory> importVideos({
     'video': {
       'clips': plan.length,
       'total_duration_ms': plan.fold<int>(0, (s, c) => s + c.durationMs),
-      'total_bytes': clips.fold<int>(0, (s, c) => s + c.sizeBytes),
+      'total_bytes': [for (var i = 0; i < clips.length; i++) sizeOf(i)].fold<int>(0, (s, b) => s + b),
       if (shiftMs != 0) 'start_shift_ms': shiftMs,
     },
   }, at: DateTime.fromMillisecondsSinceEpoch(first));
   for (final c in plan) {
     final clip = clips[c.index];
     final info = clip.info;
+    final rw = rewritten[c.index];
     logger.logVideoClip({
       'file': 'videos/${fileNames[c.index]}',
       'original_name': clip.name,
@@ -138,7 +237,13 @@ Future<Directory> importVideos({
       if (c.source != c.guess.source) 'start_time_guess_source': c.guess.source,
       if (shiftMs != 0) 'start_time_shift_ms': shiftMs,
       'duration_ms': info.durationMs,
-      'size_bytes': clip.sizeBytes,
+      'size_bytes': sizeOf(c.index),
+      if (rw != null) ...{
+        'rewritten_from': 'fragmented_mp4',
+        'original_size_bytes': clip.sizeBytes,
+        'rewrite_ms': rw['elapsedMs'],
+        if ((rw['droppedTracks'] as List?)?.isNotEmpty ?? false) 'rewrite_dropped_tracks': rw['droppedTracks'],
+      },
       'width': info.width,
       'height': info.height,
       'rotation': info.rotation,

@@ -949,7 +949,8 @@ logged). `session.jsonl` then only records where the clips came from: the start 
 | `start_time_source` | Where that start came from (table below). |
 | `start_time_guess_source` | Only when the clip's own guess was replaced (`after_previous` or `user`): what that guess was. |
 | `start_time_shift_ms` | Only when the user corrected the start; every clip moves by the same amount. |
-| `duration_ms`, `size_bytes` | Length and file size. |
+| `duration_ms`, `size_bytes` | Length and file size. Since round 252 the length comes from the frames' time stamps when the file's header holds none (fragmented MP4s; before that such clips logged `0`). |
+| `rewritten_from`, `original_size_bytes`, `rewrite_ms`, `rewrite_dropped_tracks` | Round 252, only for a clip that was a **fragmented MP4** (as YouTube downloaders save them): `fragmented_mp4`, the picked file's size, how long the rewrite took, and any sound track the MP4 writer could not take. The app copied every frame and sound sample unchanged into a plain MP4 (no re-compression, same frame times), because the phone's video player cannot jump inside a fragmented one. `size_bytes` is the rewritten file's size. |
 | `width`, `height`, `rotation` | Picture size as seen upright, and the turn (degrees) stored in the file. |
 | `codec`, `frame_count`, `fps_mean`, `fps_nominal` | Video format; the mean frames per second from the frames' own time stamps, and the rate the file header claims. Phone videos often have a variable frame rate, so the app computes times from each frame's time stamp, never from frame number ÷ fps. |
 | `stored_time_ms` | The time stored in the file, when there is one (see `metadata` below). |

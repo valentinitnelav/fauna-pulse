@@ -19,6 +19,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +78,9 @@ class _FakePlayer extends VideoPlayerPlatform {
 
   @override
   Future<void> setVolume(int playerId, double volume) async => calls.add('volume $volume');
+
+  /// Sends [e] as the newest player's event (round 252: buffering).
+  void emit(VideoEvent e) => _events.values.last.add(e);
 
   @override
   Future<void> seekTo(int playerId, Duration to) async {
@@ -434,6 +438,41 @@ void main() {
     // top of the tab, so the controls are on screen with a tall clip too.
     expect(find.text("Videos with the AI's boxes").hitTestable(), findsNothing);
     expect(tester.state<ScrollableState>(scrollable).position.pixels, greaterThan(0));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  });
+
+  // Round 252: after a jump the player shows the old picture until it has
+  // decoded the new one (its buffering flag, up to 2.7 s on the Samsung);
+  // boxes of the new moment would sit on the old picture meanwhile.
+  testWidgets('after a jump the boxes wait for the new picture (r252)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final (dir, _) = await keptSession(tester, identifiedRunOffset: 0);
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    final state = tester.state<VideoReviewPlayerState>(find.byType(VideoReviewPlayer));
+    expect(state.waitingForPicture, isFalse);
+    await tester.ensureVisible(find.byTooltip('Forward 5 s'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Forward 5 s'));
+    await tester.pump();
+    expect(player.calls.last, 'seek 5000');
+    expect(state.waitingForPicture, isTrue); // asked; the player has not answered yet
+    player.emit(VideoEvent(eventType: VideoEventType.bufferingStart));
+    await tester.pump(const Duration(milliseconds: 600)); // past the guard: the flag holds it
+    expect(state.waitingForPicture, isTrue);
+    player.emit(VideoEvent(eventType: VideoEventType.bufferingEnd));
+    await tester.pump();
+    expect(state.waitingForPicture, isFalse);
+    // A jump the player answers without fetching: the guard lets the boxes back.
+    await tester.tap(find.byTooltip('Back 5 s'));
+    await tester.pump();
+    expect(state.waitingForPicture, isTrue);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(state.waitingForPicture, isFalse);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());

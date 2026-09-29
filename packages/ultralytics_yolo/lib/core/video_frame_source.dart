@@ -202,6 +202,17 @@ class VideoFrameSource {
     return VideoInfo.fromMap(r);
   }
 
+  /// Round 252: writes [src] again as a plain MP4 at [dst], every frame and
+  /// sound sample copied unchanged (no re-encoding). For fragmented MP4s,
+  /// which the player cannot jump in. Returns what was copied (`samples`,
+  /// `videoFrames`, `ptsShiftUs`, `droppedTracks`, `bytes`, `elapsedMs`);
+  /// throws, leaving no [dst], when the copy's frame times differ.
+  static Future<Map<String, dynamic>> remux(String src, String dst) async {
+    final r = await _channel.invokeMethod<Map>('videoRemux', {'src': src, 'dst': dst});
+    if (r == null) throw StateError('videoRemux returned nothing');
+    return r.cast<String, dynamic>();
+  }
+
   /// The first frame as an upright JPEG, at most [maxSide] px on its long
   /// side (for drawing the analysis square on).
   static Future<Uint8List> thumbnail(String path, {int maxSide = 720}) async {

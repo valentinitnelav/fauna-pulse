@@ -29,6 +29,8 @@ import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
 import java.util.Calendar
@@ -104,6 +106,10 @@ class VideoFrameSource private constructor(
           "mime" to fmt.getString(MediaFormat.KEY_MIME),
           "width" to if (sideways) h else w, // upright size, as the user sees the video
           "height" to if (sideways) w else h,
+          // Round 252: fragmented MP4s (YouTube downloaders) hold no length in their header, and
+          // some phones then report 0 (Xiaomi) or nothing: the frame times give it (last frame
+          // included).
+          "durationMs" to ((meta["durationMs"] as Long?)?.takeIf { it > 0 } ?: ptsDurationMs(pts)),
           "frameCount" to pts.size,
           "firstPtsUs" to pts.firstOrNull(),
           "lastPtsUs" to pts.lastOrNull(),
@@ -223,6 +229,107 @@ class VideoFrameSource private constructor(
 
     private fun videoTrack(ex: MediaExtractor): Int? =
       (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+
+    /** Clip length from sorted frame times, the last frame's own duration included; null below two frames. */
+    private fun ptsDurationMs(pts: LongArray): Long? =
+      if (pts.size > 1 && pts.last() > pts.first()) ((pts.last() - pts.first()) * pts.size / (pts.size - 1) + 500) / 1000 else null
+
+    /**
+     * Round 252: writes [src] again as a plain MP4 at [dst]; every sample is copied unchanged
+     * (no re-encoding: same pictures, same sound). For fragmented MP4s (YouTube downloaders,
+     * some recorders), whose header holds no length and no seek table: the phone's player cannot
+     * jump in them (it stays on the first frame while reporting the asked position, so boxes
+     * drawn for that position land on the wrong picture) and Android may report a length of 0.
+     * The copy has both. Audio tracks the MP4 writer cannot take are left out and listed.
+     * Checked afterwards: the copy's video frames must have the source's times (one constant
+     * shift allowed); otherwise the copy is deleted and an error thrown.
+     */
+    fun remux(src: String, dst: String): Map<String, Any?> {
+      val t0 = System.nanoTime()
+      val ex = MediaExtractor()
+      var muxer: MediaMuxer? = null
+      var done = false
+      try {
+        ex.setDataSource(src)
+        val mmr = MediaMetadataRetriever()
+        val rotation = try {
+          mmr.setDataSource(src)
+          mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        } finally {
+          runCatching { mmr.release() }
+        }
+        val m = MediaMuxer(dst, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxer = it }
+        val outTrack = IntArray(ex.trackCount) { -1 }
+        val dropped = mutableListOf<String>()
+        var maxSample = 0
+        for (i in 0 until ex.trackCount) {
+          val fmt = ex.getTrackFormat(i)
+          val mime = fmt.getString(MediaFormat.KEY_MIME) ?: ""
+          val t = if (mime.startsWith("video/") || mime.startsWith("audio/")) runCatching { m.addTrack(fmt) }.getOrNull() else null
+          if (t == null) {
+            if (mime.startsWith("video/")) throw IllegalArgumentException("This video format ($mime) cannot be rewritten.")
+            dropped += mime
+            continue
+          }
+          outTrack[i] = t
+          ex.selectTrack(i)
+          maxSample = max(maxSample, fmt.intOr(MediaFormat.KEY_MAX_INPUT_SIZE, 0))
+        }
+        val video = videoTrack(ex) ?: throw IllegalArgumentException("No video track in this file.")
+        if (rotation in setOf(90, 180, 270)) m.setOrientationHint(rotation)
+        m.start()
+        // Big enough for one 4K key frame; a larger declared sample size wins.
+        val buf = ByteBuffer.allocateDirect(max(maxSample, 16 shl 20))
+        val info = MediaCodec.BufferInfo()
+        val srcPts = ArrayList<Long>()
+        var samples = 0
+        while (true) {
+          val track = ex.sampleTrackIndex
+          if (track < 0) break
+          val size = ex.readSampleData(buf, 0)
+          if (size < 0) break
+          val key = ex.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+          info.set(0, size, ex.sampleTime, if (key) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
+          m.writeSampleData(outTrack[track], buf, info)
+          if (track == video) srcPts += ex.sampleTime
+          samples++
+          ex.advance()
+        }
+        m.stop()
+        m.release()
+        muxer = null
+
+        // The copy's frame times against the source's.
+        val check = MediaExtractor()
+        val outPts = try {
+          check.setDataSource(dst)
+          check.selectTrack(videoTrack(check) ?: throw IllegalStateException("The rewritten file has no video track."))
+          ptsTable(check)
+        } finally {
+          runCatching { check.release() }
+        }
+        val a = srcPts.toLongArray().also { it.sort() }
+        if (outPts.size != a.size) throw IllegalStateException("Rewriting changed the frame count (${a.size} → ${outPts.size}).")
+        val shift = if (a.isEmpty()) 0L else outPts[0] - a[0]
+        // One tick of the writer's 90 kHz clock is 11 µs.
+        val worst = a.indices.maxOfOrNull { kotlin.math.abs(outPts[it] - a[it] - shift) } ?: 0L
+        if (worst > 100) throw IllegalStateException("Rewriting moved frame times by up to $worst µs.")
+        done = true
+        return mapOf(
+          "samples" to samples,
+          "videoFrames" to a.size,
+          "ptsShiftUs" to shift,
+          "maxPtsErrorUs" to worst,
+          "droppedTracks" to dropped,
+          "bytes" to File(dst).length(),
+          "elapsedMs" to (System.nanoTime() - t0) / 1_000_000,
+        )
+      } finally {
+        runCatching { muxer?.release() }
+        runCatching { ex.release() }
+        if (!done) runCatching { File(dst).delete() }
+      }
+    }
 
     /** Every sample time of the selected track, sorted = display order (reads no picture data). */
     private fun ptsTable(ex: MediaExtractor): LongArray {
