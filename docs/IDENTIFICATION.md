@@ -36,7 +36,7 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
    phone, a time estimate.
 3. Plug the phone in and tap **Start**. Progress shows crops done, elapsed time, the
    estimated remainder and the battery temperature. The run pauses by itself above the
-   temperature limit (default 40 °C) and resumes 3 °C lower. **Cancel** keeps everything
+   temperature limit (default 43 °C, the same as for Run AI on videos) and resumes 3 °C lower. **Cancel** keeps everything
    done so far; **Continue** resumes where it stopped (the files are append-only).
 4. When finished, **View results** shows a table with one row per taxon (track IDs, total
    time, median confidence); tap a row for its track IDs and a track ID for its full ladder.

@@ -339,7 +339,7 @@ class VideoDetector {
     required VideoRunConfig config,
     void Function(VideoProgress p)? onProgress,
     bool Function()? isCancelled,
-    double thermalLimitC = 40,
+    double thermalLimitC = kDefaultPauseTempC,
     Duration sampleEvery = const Duration(seconds: 10),
     String appVersion = '',
     bool startOver = false,

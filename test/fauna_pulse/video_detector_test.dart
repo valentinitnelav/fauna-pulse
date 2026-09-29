@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
-import 'package:fauna_pulse/fauna_pulse/logging/thermal_pause.dart' show ThermalFn;
+import 'package:fauna_pulse/fauna_pulse/logging/thermal_pause.dart' show ThermalFn, kDefaultPauseTempC, thermalResumeGapC;
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoChunk, VideoFrameBoxes, VideoInfo;
@@ -245,8 +245,9 @@ void main() {
       final pause = ofType('video_thermal_pause').single;
       expect(sec(pause), 1);
       expect(pause['temp_c'], 45);
-      expect(pause['limit_c'], 40);
-      expect(pause['resume_below_c'], 37);
+      // The default limit (round 252: 43 °C, was 40), resumed 3 °C lower.
+      expect(pause['limit_c'], kDefaultPauseTempC);
+      expect(pause['resume_below_c'], kDefaultPauseTempC - thermalResumeGapC);
       final resume = ofType('video_thermal_resume').single;
       expect(sec(resume), 11);
       expect(resume['paused_ms'], 10000);

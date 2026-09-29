@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart';
 import 'label_pack.dart';
+import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Cap for one identification file (image tower or label pack). BioCLIP 2.5
 /// fp16 is 1.26 GB; a worldwide arthropod pack ~0.6 GB. TFLite itself stops
@@ -152,7 +153,7 @@ class IdentifyPrefs {
     this.maxCropsPerTrack = 10,
     this.tau = 0.6,
     this.noneThreshold = 0.5,
-    this.thermalLimitC = 40,
+    this.thermalLimitC = kDefaultPauseTempC,
     this.targetRank = 'family',
     this.mergeVisits = false,
     this.mergeGapS = 3,
@@ -203,7 +204,7 @@ class IdentifyPrefs {
       maxCropsPerTrack: p.getInt(_kMaxCrops) ?? 10,
       tau: p.getDouble(_kTau) ?? 0.6,
       noneThreshold: p.getDouble(_kNone) ?? 0.5,
-      thermalLimitC: p.getDouble(_kThermal) ?? 40,
+      thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
       targetRank: p.getString(_kRank) ?? 'family',
       mergeVisits: p.getBool(_kMerge) ?? false,
       mergeGapS: p.getDouble(_kMergeGap) ?? 3,

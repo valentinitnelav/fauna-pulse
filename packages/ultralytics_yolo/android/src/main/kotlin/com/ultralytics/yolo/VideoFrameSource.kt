@@ -242,7 +242,9 @@ class VideoFrameSource private constructor(
      * drawn for that position land on the wrong picture) and Android may report a length of 0.
      * The copy has both. Audio tracks the MP4 writer cannot take are left out and listed.
      * Checked afterwards: the copy's video frames must have the source's times (one constant
-     * shift allowed); otherwise the copy is deleted and an error thrown.
+     * shift allowed, and rounding up to a quarter of the shortest frame gap, at most 2 ms: the
+     * Xiaomi's writer rounds by up to 0.44 ms, the Samsung's by 11 µs); otherwise the copy is
+     * deleted and an error thrown. What matters is that no frame moved or went missing.
      */
     fun remux(src: String, dst: String): Map<String, Any?> {
       val t0 = System.nanoTime()
@@ -311,9 +313,12 @@ class VideoFrameSource private constructor(
         val a = srcPts.toLongArray().also { it.sort() }
         if (outPts.size != a.size) throw IllegalStateException("Rewriting changed the frame count (${a.size} → ${outPts.size}).")
         val shift = if (a.isEmpty()) 0L else outPts[0] - a[0]
-        // One tick of the writer's 90 kHz clock is 11 µs.
         val worst = a.indices.maxOfOrNull { kotlin.math.abs(outPts[it] - a[it] - shift) } ?: 0L
-        if (worst > 100) throw IllegalStateException("Rewriting moved frame times by up to $worst µs.")
+        val minGap = (1 until a.size).minOfOrNull { a[it] - a[it - 1] }?.takeIf { it > 0 } ?: 8_000L
+        val allowed = min(2_000L, minGap / 4)
+        if (worst > allowed) {
+          throw IllegalStateException("rewriting moved frame times by up to $worst µs, more than the $allowed µs allowed")
+        }
         done = true
         return mapOf(
           "samples" to samples,

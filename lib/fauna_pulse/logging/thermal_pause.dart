@@ -15,6 +15,10 @@ typedef ThermalFn = Future<ThermalReading> Function();
 /// Degrees below the limit at which a paused job resumes.
 const thermalResumeGapC = 3.0;
 
+/// Default pause limit (battery °C) of both long jobs, video analysis and
+/// identification (round 252, owner: one value for both; was 40).
+const kDefaultPauseTempC = 43.0;
+
 /// What one [waitWhileWarm] call saw.
 class ThermalWait {
   /// Last battery temperature read (null when the phone doesn't report it).

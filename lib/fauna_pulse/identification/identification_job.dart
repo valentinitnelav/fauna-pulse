@@ -96,7 +96,7 @@ class IdentifyRunSettings {
     this.maxCropsPerTrack = 10,
     this.tau = 0.7,
     this.noneThreshold = 0.5,
-    this.thermalLimitC = 40,
+    this.thermalLimitC = kDefaultPauseTempC,
     this.targetRank = 'family',
     this.mergeVisits = false,
     this.mergeGapS = 3,

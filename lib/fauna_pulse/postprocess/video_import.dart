@@ -23,6 +23,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, VideoInfo;
 
 import '../logging/session_logger.dart';
@@ -115,10 +116,20 @@ class ImportRewriteFailed implements Exception {
   final String reason;
   const ImportRewriteFailed(this.clip, this.reason);
 
+  /// Name for the computer-made copy: the clip's name plus " plain".
+  String get copyName {
+    final dot = clip.lastIndexOf('.');
+    return dot > 0 ? '${clip.substring(0, dot)} plain.mp4' : '$clip plain.mp4';
+  }
+
   @override
   String toString() =>
-      '$clip could not be rewritten as a plain MP4 ($reason). Convert it on a computer without '
-      're-compressing (e.g. "ffmpeg -i in.mp4 -c copy out.mp4") and import the result.';
+      '"$clip" could not be rewritten as a plain MP4 ($reason).\n'
+      'Make the copy on a computer instead, with the free program ffmpeg (Windows, macOS or Linux). '
+      'In a terminal opened in the folder that holds the video, run:\n'
+      'ffmpeg -i "$clip" -c copy "$copyName"\n'
+      'The first name is the video as it is on the computer, the second the name of the new copy '
+      '("-c copy" copies the pictures without re-compressing them). Then import the copy.';
 }
 
 /// A file-system-safe clip name: letters, digits, `_`, `-`, `.` only.
@@ -193,7 +204,7 @@ Future<Directory> importVideos({
       } on FileSystemException {
         // Best effort; the error below is what the user needs.
       }
-      throw ImportRewriteFailed(clip.name, '$e');
+      throw ImportRewriteFailed(clip.name, e is PlatformException ? (e.message ?? e.code) : '$e');
     } finally {
       progress.cancel();
     }
@@ -242,6 +253,7 @@ Future<Directory> importVideos({
         'rewritten_from': 'fragmented_mp4',
         'original_size_bytes': clip.sizeBytes,
         'rewrite_ms': rw['elapsedMs'],
+        'rewrite_max_time_error_us': ?rw['maxPtsErrorUs'],
         if ((rw['droppedTracks'] as List?)?.isNotEmpty ?? false) 'rewrite_dropped_tracks': rw['droppedTracks'],
       },
       'width': info.width,

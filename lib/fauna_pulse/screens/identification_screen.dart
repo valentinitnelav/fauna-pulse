@@ -34,6 +34,7 @@ import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
+import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Crops timed by "Test speed" (round 247; was 8, the job's batch size, which the owner found
 /// arbitrary). Any count works: the model runs one crop at a time.
@@ -866,7 +867,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           '${p != null && p.avgMs > 0 ? ' — the model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop' : ''}',
           style: helperTextStyle),
       if (p?.tempC != null)
-        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? 40, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
+        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerLeft,

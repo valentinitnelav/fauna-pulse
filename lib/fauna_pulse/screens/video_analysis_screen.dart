@@ -61,6 +61,7 @@ import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
+import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Persisted settings of the video analysis (shared_preferences
 /// `video_analysis_*`, like `analysis_*` for photos; not SessionConfig,
@@ -96,7 +97,7 @@ class VideoAnalysisPrefs {
     this.confidence = 0.25,
     this.iou = 0.7,
     this.analysisFps = 15,
-    this.thermalLimitC = 40,
+    this.thermalLimitC = kDefaultPauseTempC,
     this.occlusionSeconds = 3.0,
     this.minVisitSeconds = 0.2,
     this.sampleSeconds = 10,
@@ -128,7 +129,7 @@ class VideoAnalysisPrefs {
       confidence: p.getDouble(_kConf) ?? 0.25,
       iou: p.getDouble(_kIou) ?? 0.7,
       analysisFps: p.getDouble(_kFps) ?? 15,
-      thermalLimitC: p.getDouble(_kThermal) ?? 40,
+      thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
       occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
       minVisitSeconds: p.getDouble(_kMinVisit) ?? 0.2,
       sampleSeconds: p.getDouble(_kSample) ?? 10,

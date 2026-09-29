@@ -117,7 +117,7 @@ void main() {
       remux: (src, dst) async {
         calls.add((src, dst));
         File(dst).writeAsStringSync('rewritten, a little longer');
-        return {'bytes': File(dst).lengthSync(), 'elapsedMs': 7, 'droppedTracks': <String>[]};
+        return {'bytes': File(dst).lengthSync(), 'elapsedMs': 7, 'maxPtsErrorUs': 439, 'droppedTracks': <String>[]};
       },
     );
     expect(calls, hasLength(1)); // only the fragmented clip
@@ -131,6 +131,7 @@ void main() {
     expect(yt['size_bytes'], 26);
     expect(yt['original_size_bytes'], c.sizeBytes);
     expect(yt['rewrite_ms'], 7);
+    expect(yt['rewrite_max_time_error_us'], 439);
     expect(yt.containsKey('rewrite_dropped_tracks'), isFalse);
     final plain = recs.firstWhere((r) => r['original_name'] == 'VID_20260924_155954.mp4');
     expect(plain.containsKey('rewritten_from'), isFalse);
@@ -141,7 +142,13 @@ void main() {
     final frag = ImportClip(path: c.path, name: c.name, sizeBytes: c.sizeBytes, info: c.info, guess: c.guess, fragmented: true);
     await expectLater(
       importVideos(sessionsDir: sessions, sessionName: 'bad', clips: [frag], remux: (_, _) async => throw StateError('frame times moved')),
-      throwsA(isA<ImportRewriteFailed>().having((e) => '$e', 'message', contains('frame times moved'))),
+      throwsA(
+        isA<ImportRewriteFailed>().having(
+          (e) => '$e',
+          'message',
+          allOf(contains('"frag.mp4" could not'), contains('frame times moved'), contains('ffmpeg -i "frag.mp4" -c copy "frag plain.mp4"')),
+        ),
+      ),
     );
     expect(Directory('${sessions.path}/bad').existsSync(), isFalse); // no half session
     expect(File(c.path).existsSync(), isTrue); // the picked copy stays until the picker cache is cleared

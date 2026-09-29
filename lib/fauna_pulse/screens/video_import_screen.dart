@@ -342,7 +342,8 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Text('Import failed: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+          // Selectable: the message can carry a command to copy (round 252).
+          child: SelectableText('Import failed: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
         ),
       if (_importing) ...[
         LinearProgressIndicator(value: (_done + (_rewrite ?? 0)) / plan.length, minHeight: 6),
