@@ -46,7 +46,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../identification/crop_worker.dart' show planSquareCrop;
+import '../identification/crop_worker.dart' show kDefaultCropMargin, planSquareCrop;
 import '../identification/label_pack.dart' show kRankNames, kSinkKingdom;
 import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
@@ -557,7 +557,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       _showSuspect ? _tracks : _tracks.where((t) => t['suspect'] != true).toList();
   int get _suspectCount => _tracks.where((t) => t['suspect'] == true).length;
   Map<String, dynamic> get _settings => ((_summary?['settings'] as Map?) ?? const {}).cast<String, dynamic>();
-  double get _margin => (_settings['margin'] as num?)?.toDouble() ?? 0.15;
+  double get _margin => (_settings['margin'] as num?)?.toDouble() ?? kDefaultCropMargin;
   double? get _tau => (_settings['tau'] as num?)?.toDouble();
   double? get _noneThreshold => (_settings['none_threshold'] as num?)?.toDouble();
   Map<String, dynamic> get _capture => ((_summary?['capture'] as Map?) ?? const {}).cast<String, dynamic>();

@@ -308,7 +308,7 @@ void main() {
     final r1 = await job.run(session, settings: settings(), packFile: packFile);
     expect(r1.embedded, 3);
     final stored = await IdentificationJob.storedIndex(session, 'fake_model.tflite');
-    expect(stored!.margin, closeTo(0.15, 1e-9));
+    expect(stored!.margin, closeTo(kDefaultCropMargin, 1e-9));
     // A plain re-run reuses everything.
     final r2 = await job.run(session, settings: settings(), packFile: packFile);
     expect(r2.embedded, 0);

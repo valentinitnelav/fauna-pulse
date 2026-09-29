@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart';
+import 'crop_worker.dart' show kDefaultCropMargin;
 import 'label_pack.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
@@ -148,7 +149,7 @@ class IdentifyPrefs {
     this.packName,
     this.useGpu = true,
     this.cpuThreads = 0,
-    this.margin = 0.15,
+    this.margin = kDefaultCropMargin,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
     this.tau = 0.6,
@@ -199,7 +200,7 @@ class IdentifyPrefs {
       packName: p.getString(_kPack),
       useGpu: p.getBool(_kGpu) ?? true,
       cpuThreads: p.getInt(_kThreads) ?? 0,
-      margin: p.getDouble(_kMargin) ?? 0.15,
+      margin: p.getDouble(_kMargin) ?? kDefaultCropMargin,
       minCropPx: p.getInt(_kMinPx) ?? 48,
       maxCropsPerTrack: p.getInt(_kMaxCrops) ?? 10,
       tau: p.getDouble(_kTau) ?? 0.6,

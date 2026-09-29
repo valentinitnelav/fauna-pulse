@@ -91,7 +91,7 @@ class IdentifyRunSettings {
     required this.inputSize,
     required this.dim,
     required this.accelerator,
-    this.margin = 0.15,
+    this.margin = kDefaultCropMargin,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
     this.tau = 0.7,

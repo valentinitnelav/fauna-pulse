@@ -986,8 +986,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.margin = v),
           helperText:
-              'Extra border around the detector box before the square crop (0.15 = 15 % per side), '
-              'so legs, wings and antennae are not cut off.',
+              'Extra border around the detector box before the square crop (0.05 = 5 % per side). '
+              'Default 0.05 (0.15 until round 255): enough to keep legs and antennae that stick out '
+              'of a tight box, while the model sees mostly the insect and little of the flower or '
+              'background around it. After a change, the next run asks whether to recompute the '
+              'crops already stored for this session.',
         ),
         NumericSettingField(
           label: 'Smallest box to identify',
@@ -1003,7 +1006,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           helperText:
               'Boxes smaller than this (longer side, in photo pixels) are skipped. Default 48: the '
               'model looks at every crop at 224 px, so a smaller box is enlarged more than 4 times '
-              'and is mostly blur; raise it for fewer but cleaner crops.',
+              'and is mostly blur. On the default 1024 px photos, 48 px is an insect about 5 % of '
+              'the photo side; 96 px would skip every insect under a tenth of it. Each track ID '
+              'uses its largest boxes first (see "Crops per track ID"), so this mainly decides '
+              'whether insects that stay small in every photo get an answer at all.',
         ),
         NumericSettingField(
           label: 'Crops per track ID (0 = all)',

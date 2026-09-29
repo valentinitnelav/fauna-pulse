@@ -221,7 +221,7 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 
 ## How the answer is computed (plain language)
 
-1. **Crop:** a square on the box's longer side plus a 15 % margin per side, padded with a
+1. **Crop:** a square on the box's longer side plus a 5 % margin per side (15 % until round 255), padded with a
    neutral colour where it leaves the photo, resized to the model input (224 px). Boxes
    under 48 px are skipped as too small. For high-res photos the in-sync `_live.jpg`
    companion is used (the logged boxes were observed on that frame).
@@ -322,8 +322,13 @@ detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a 
 the extra heat can cost more in thermal pauses than it saves, so it is left as an owner
 experiment with "Test speed" rather than the default.
 
-Two defaults worth knowing: **smallest box 48 px** because the model looks at every crop
-at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur; **crops per
+Three defaults worth knowing: **crop margin 0.05** (0.15 until round 255) keeps legs and
+antennae that stick out of a tight detector box while giving the model little flower or
+background around the insect (Sittinger's `make_bbox_square()` uses no margin; not yet
+compared on pollinator photos, so an owner experiment: re-run a session with "recompute" at
+another margin); **smallest box 48 px** because the model looks at every crop
+at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur (on the default
+1024 px photos that is an insect about 5 % of the photo side); **crops per
 track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos (the photo count per
 track ID comes from the session's photo schedule: AI-mode default one photo per second for
 10 s, so the cap rarely removes anything and only bounds the runtime of long bursts).
