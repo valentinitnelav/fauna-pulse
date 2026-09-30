@@ -2,14 +2,18 @@
 // (Round 217: the crop quality features measured here, sharpness and
 // padding, are descriptive columns only; they no longer weight any answer.)
 //
-// Per plan section 11.2: a square on the box's longer side (the same rule as
-// `make_bbox_square()` in insect-detect-post, Sittinger 2026, re-implemented)
-// plus a margin, centred on the box; parts outside the photo are padded with the CLIP mean
-// colour (neutral after the model's normalisation) instead of shifting the
-// square; a direct antialiased resize to the model input (no centre crop,
-// matching pybioclip); and per-crop quality features (pixel size, padding
-// fraction, sharpness as the variance of the Laplacian). The geometry is a
-// pure function (tested); the pixel work runs in a worker isolate.
+// Per plan section 11.2, extended in round 262: the detector box plus a
+// border of `margin` x the box's longer side on every side, centred on the
+// box; with `square` (default) the shorter side is then widened to the longer
+// one (the same rule as `make_bbox_square()` in insect-detect-post, Sittinger
+// 2026, re-implemented), without it the box shape is kept and the resize
+// stretches it (pybioclip also resizes any picture straight to 224 x 224).
+// Parts outside the photo are padded with the CLIP mean colour (neutral after
+// the model's normalisation) instead of shifting the crop; a direct
+// antialiased resize to the model input (no centre crop, matching pybioclip);
+// and per-crop quality features (pixel size, padding fraction, sharpness as
+// the variance of the Laplacian). The geometry is a pure function (tested);
+// the pixel work runs in a worker isolate.
 
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -19,24 +23,25 @@ import 'package:image/image.dart' as img;
 /// CLIP mean colour in 8-bit RGB (0.4815, 0.4578, 0.4082 × 255).
 const int kPadR = 123, kPadG = 117, kPadB = 104;
 
-/// Where the square crop lands, in photo pixels.
-class SquareCropPlan {
-  /// Square (may extend beyond the photo).
-  final int sx, sy, side;
+/// Where the crop lands, in photo pixels.
+class CropPlan {
+  /// The crop rectangle (may extend beyond the photo); w == h for a square.
+  final int sx, sy, w, h;
 
-  /// Intersection of the square with the photo (what is actually copied).
+  /// Intersection of the crop with the photo (what is actually copied).
   final int ix, iy, iw, ih;
 
   /// Longer side of the raw box in photo pixels (before the margin).
   final int cropPx;
 
-  /// Padded share of the square's area (0 = fully inside the photo).
+  /// Padded share of the crop's area (0 = fully inside the photo).
   final double padFrac;
 
-  const SquareCropPlan({
+  const CropPlan({
     required this.sx,
     required this.sy,
-    required this.side,
+    required this.w,
+    required this.h,
     required this.ix,
     required this.iy,
     required this.iw,
@@ -49,14 +54,18 @@ class SquareCropPlan {
 }
 
 /// Default crop margin (round 256: 0, was 0.05 in round 255 and 0.15 before):
-/// the detector box itself, squared on its longer side like
-/// `make_bbox_square()`, so the classifier sees as little flower or
-/// background around the insect as possible.
+/// the detector box itself (squared on its longer side unless square crops
+/// are off), so the classifier sees as little flower or background around
+/// the insect as possible.
 const kDefaultCropMargin = 0.0;
 
-/// Plans the square for a normalised box (edges 0..1) on a [imgW]×[imgH]
-/// photo with [margin] extra per side (0.05 = 5 % of the side each way).
-SquareCropPlan planSquareCrop({
+/// Plans the crop for a normalised box (edges 0..1) on a [imgW]×[imgH]
+/// photo. Round 262: the border on every side is [margin] × the box's longer
+/// side (0.05 = 5 % of it), in both shapes: legs, antennae and wings stick
+/// out by an amount tied to the insect's size, not to the box's shorter
+/// side. [square] then widens the shorter side to the longer one, giving the
+/// same square as before round 262 (longer side × (1 + 2 × margin)).
+CropPlan planCrop({
   required int imgW,
   required int imgH,
   required double left,
@@ -64,31 +73,35 @@ SquareCropPlan planSquareCrop({
   required double right,
   required double bottom,
   required double margin,
+  required bool square,
 }) {
   final l = left.clamp(0.0, 1.0) * imgW;
   final r = right.clamp(0.0, 1.0) * imgW;
   final t = top.clamp(0.0, 1.0) * imgH;
   final b = bottom.clamp(0.0, 1.0) * imgH;
-  final w = r - l, h = b - t;
-  final longer = w > h ? w : h;
+  final bw = r - l, bh = b - t;
+  final longer = bw > bh ? bw : bh;
   final cropPx = longer.round();
-  var side = (longer * (1 + 2 * margin)).round();
-  if (side < 1) side = 1;
+  final border = longer * margin;
+  var w = (square ? longer + 2 * border : bw + 2 * border).round();
+  var h = (square ? longer + 2 * border : bh + 2 * border).round();
+  if (w < 1) w = 1;
+  if (h < 1) h = 1;
   final cx = (l + r) / 2, cy = (t + b) / 2;
-  final sx = (cx - side / 2).round();
-  final sy = (cy - side / 2).round();
+  final sx = (cx - w / 2).round();
+  final sy = (cy - h / 2).round();
   final ix = sx < 0 ? 0 : sx;
   final iy = sy < 0 ? 0 : sy;
-  final ex = (sx + side) > imgW ? imgW : sx + side;
-  final ey = (sy + side) > imgH ? imgH : sy + side;
+  final ex = (sx + w) > imgW ? imgW : sx + w;
+  final ey = (sy + h) > imgH ? imgH : sy + h;
   final iw = ex - ix > 0 ? ex - ix : 0;
   final ih = ey - iy > 0 ? ey - iy : 0;
-  final inside = iw * ih;
-  final padFrac = side > 0 ? 1 - inside / (side * side) : 1.0;
-  return SquareCropPlan(
+  final padFrac = 1 - (iw * ih) / (w * h);
+  return CropPlan(
     sx: sx,
     sy: sy,
-    side: side,
+    w: w,
+    h: h,
     ix: ix,
     iy: iy,
     iw: iw,
@@ -159,12 +172,16 @@ class CropBatchArgs {
   final Uint8List jpegBytes;
   final List<CropRequest> requests;
   final double margin;
+
+  /// Round 262: false = keep the box shape (stretched by the resize).
+  final bool square;
   final int minCropPx;
   final int outSize;
   const CropBatchArgs({
     required this.jpegBytes,
     required this.requests,
     required this.margin,
+    this.square = true,
     required this.minCropPx,
     required this.outSize,
   });
@@ -185,7 +202,7 @@ List<CropResult> cropBatchSync(CropBatchArgs a) {
       : decoded.convert(numChannels: 3);
   final out = <CropResult>[];
   for (final r in a.requests) {
-    final plan = planSquareCrop(
+    final plan = planCrop(
       imgW: photo.width,
       imgH: photo.height,
       left: r.left,
@@ -193,6 +210,7 @@ List<CropResult> cropBatchSync(CropBatchArgs a) {
       right: r.right,
       bottom: r.bottom,
       margin: a.margin,
+      square: a.square,
     );
     if (plan.cropPx < a.minCropPx || plan.iw <= 0 || plan.ih <= 0) {
       out.add(
@@ -207,7 +225,7 @@ List<CropResult> cropBatchSync(CropBatchArgs a) {
       );
       continue;
     }
-    var square = img.copyCrop(
+    var cut = img.copyCrop(
       photo,
       x: plan.ix,
       y: plan.iy,
@@ -215,16 +233,18 @@ List<CropResult> cropBatchSync(CropBatchArgs a) {
       height: plan.ih,
     );
     if (plan.needsPadding) {
-      final canvas = img.Image(width: plan.side, height: plan.side, numChannels: 3);
+      final canvas = img.Image(width: plan.w, height: plan.h, numChannels: 3);
       img.fill(canvas, color: img.ColorRgb8(kPadR, kPadG, kPadB));
-      img.compositeImage(canvas, square, dstX: plan.ix - plan.sx, dstY: plan.iy - plan.sy);
-      square = canvas;
+      img.compositeImage(canvas, cut, dstX: plan.ix - plan.sx, dstY: plan.iy - plan.sy);
+      cut = canvas;
     }
+    // The package's `average` filter picks single pixels along an axis that
+    // is enlarged, so it is only used when both axes shrink.
     final resized = img.copyResize(
-      square,
+      cut,
       width: a.outSize,
       height: a.outSize,
-      interpolation: square.width > a.outSize
+      interpolation: (cut.width < cut.height ? cut.width : cut.height) > a.outSize
           ? img.Interpolation.average
           : img.Interpolation.linear,
     );

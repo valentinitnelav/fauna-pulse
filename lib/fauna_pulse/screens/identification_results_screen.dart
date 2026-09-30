@@ -12,7 +12,7 @@
 // grey; tap a row to select its taxon), a "Best single
 // photo" line, each flag as an amber ⚠ line where it applies (round 221;
 // path_conflict names the rival taxon), the photo with the detector box
-// (labelled with its detector confidence, round 223) and the square crop
+// (labelled with its detector confidence, round 223) and the crop
 // drawn (toggle, zoom), and the crops table (each crop's own confidence for
 // the selected ladder taxon, its top species and that species' confidence,
 // which is also the crop's weight, the detector's confidence for its box
@@ -46,7 +46,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../identification/crop_worker.dart' show kDefaultCropMargin, planSquareCrop;
+import '../identification/crop_worker.dart' show kDefaultCropMargin, planCrop;
 import '../identification/label_pack.dart' show kRankNames, kSinkKingdom;
 import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
@@ -558,6 +558,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
   int get _suspectCount => _tracks.where((t) => t['suspect'] == true).length;
   Map<String, dynamic> get _settings => ((_summary?['settings'] as Map?) ?? const {}).cast<String, dynamic>();
   double get _margin => (_settings['margin'] as num?)?.toDouble() ?? kDefaultCropMargin;
+  bool get _squareCrops => _settings['square_crops'] as bool? ?? true;
   double? get _tau => (_settings['tau'] as num?)?.toDouble();
   double? get _noneThreshold => (_settings['none_threshold'] as num?)?.toDouble();
   Map<String, dynamic> get _capture => ((_summary?['capture'] as Map?) ?? const {}).cast<String, dynamic>();
@@ -884,6 +885,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           sessionDir: widget.sessionDir,
           track: t,
           margin: _margin,
+          squareCrops: _squareCrops,
           tau: _tau,
           noneThreshold: _noneThreshold,
           settings: _settings,
@@ -1135,6 +1137,7 @@ class _TrackSheet extends StatefulWidget {
   final Directory sessionDir;
   final Map<String, dynamic> track;
   final double margin;
+  final bool squareCrops;
   final double? tau;
   final double? noneThreshold;
 
@@ -1147,6 +1150,7 @@ class _TrackSheet extends StatefulWidget {
     required this.sessionDir,
     required this.track,
     required this.margin,
+    required this.squareCrops,
     required this.tau,
     required this.noneThreshold,
     required this.settings,
@@ -1614,8 +1618,8 @@ class _TrackSheetState extends State<_TrackSheet> {
             'the single photo the model is surest about on its own (it need not agree with the track '
             'id\'s answer). Tap a row of the Crops table below to show another crop.\n'
             'Yellow box: the detector\'s box for this organism; its label is the detector\'s confidence '
-            'for this photo (Detector conf. in the Crops table). Cyan box: the square (box + margin) that '
-            'was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
+            'for this photo (Detector conf. in the Crops table). Cyan box: the part (box + margin, widened '
+            'to a square when "Square crops" was on) that was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
             'double-tap zooms, the reset button returns to full view.',
       ),
       const SizedBox(height: 4),
@@ -1656,7 +1660,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                     Image.file(file, fit: BoxFit.contain, cacheWidth: 1200),
                     if (_showBoxes && c != null)
                       CustomPaint(
-                        painter: _BoxesPainter(box: (c['box'] as List).cast<num>(), margin: widget.margin, detConf: c['det_conf'] as num?),
+                        painter: _BoxesPainter(box: (c['box'] as List).cast<num>(), margin: widget.margin, square: widget.squareCrops, detConf: c['det_conf'] as num?),
                       ),
                   ],
                 ),
@@ -1723,7 +1727,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                   'only part of the animal in view. The header\'s detector conf. is the mean of this column. '
                   'It plays no part in the identification.',
             ),
-            ('Side px', 'side of the square crop in photo pixels (box + margin); small crops are blurry after enlargement to the model\'s 224 px.'),
+            ('Side px', 'longer side of the detector box in photo pixels (before the margin); small crops are blurry after enlargement to the model\'s 224 px.'),
             (
               'Family, Order, Class',
               'the family, order and class of the Top species (its genus is the first word of the species '
@@ -1803,23 +1807,24 @@ class _TrackSheetState extends State<_TrackSheet> {
   }
 }
 
-/// Draws the detector box and the square crop (box + margin) over a square
+/// Draws the detector box and the crop (box + margin, square or box-shaped) over a square
 /// ROI photo; coordinates are fractions of the photo side. Round 223: the
 /// detector box carries its confidence as a label, above the box when there
 /// is room, else just inside its top edge.
 class _BoxesPainter extends CustomPainter {
   final List<num> box;
   final double margin;
+  final bool square;
   final num? detConf;
-  const _BoxesPainter({required this.box, required this.margin, this.detConf});
+  const _BoxesPainter({required this.box, required this.margin, required this.square, this.detConf});
 
   @override
   void paint(Canvas canvas, Size size) {
     final l = box[0].toDouble(), t = box[1].toDouble(), r = box[2].toDouble(), b = box[3].toDouble();
     final det = Rect.fromLTRB(l * size.width, t * size.height, r * size.width, b * size.height);
     // Same geometry as the crop worker, on a 1000-px virtual square.
-    final plan = planSquareCrop(imgW: 1000, imgH: 1000, left: l, top: t, right: r, bottom: b, margin: margin);
-    final sq = Rect.fromLTWH(plan.sx / 1000 * size.width, plan.sy / 1000 * size.height, plan.side / 1000 * size.width, plan.side / 1000 * size.height);
+    final plan = planCrop(imgW: 1000, imgH: 1000, left: l, top: t, right: r, bottom: b, margin: margin, square: square);
+    final sq = Rect.fromLTWH(plan.sx / 1000 * size.width, plan.sy / 1000 * size.height, plan.w / 1000 * size.width, plan.h / 1000 * size.height);
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
@@ -1841,5 +1846,5 @@ class _BoxesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BoxesPainter old) => old.box != box || old.margin != margin || old.detConf != detConf;
+  bool shouldRepaint(_BoxesPainter old) => old.box != box || old.margin != margin || old.square != square || old.detConf != detConf;
 }

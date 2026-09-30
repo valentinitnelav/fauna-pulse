@@ -63,6 +63,9 @@ class IdentifyRunSettings {
   final int dim;
   final String accelerator;
   final double margin;
+
+  /// Round 262: false = crops keep the box shape (stretched to the input).
+  final bool squareCrops;
   final int minCropPx;
   final int maxCropsPerTrack;
   final double tau;
@@ -92,6 +95,7 @@ class IdentifyRunSettings {
     required this.dim,
     required this.accelerator,
     this.margin = kDefaultCropMargin,
+    this.squareCrops = true,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
     this.tau = 0.7,
@@ -119,6 +123,7 @@ class IdentifyRunSettings {
     'dim': dim,
     'accelerator': accelerator,
     'margin': margin,
+    'square_crops': squareCrops,
     'min_crop_px': minCropPx,
     'max_crops_per_track': maxCropsPerTrack,
     'tau': tau,
@@ -226,7 +231,7 @@ class IdentificationJob {
     final jsonlFile = paths.embeddingsJsonl(modelStem);
     final binFile = paths.embeddingsBin(modelStem);
     // Round 213: the caller chose to recompute every crop (e.g. after a
-    // margin change, which the resume key does not see).
+    // margin or crop shape change, which the resume key does not see).
     if (restart) {
       if (jsonlFile.existsSync()) jsonlFile.deleteSync();
       if (binFile.existsSync()) binFile.deleteSync();
@@ -354,6 +359,7 @@ class IdentificationJob {
               jpegBytes: bytes,
               requests: [for (final t in group) CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
               margin: settings.margin,
+              square: settings.squareCrops,
               minCropPx: settings.minCropPx,
               outSize: settings.inputSize,
             ),

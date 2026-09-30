@@ -279,24 +279,27 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   }
 
   /// Round 213: the resume key (photo, track, box) does not see the crop
-  /// margin, so stored vectors cut with another margin would silently be
-  /// reused. Asks the user to keep them or recompute everything. Returns
-  /// null when cancelled, true = start over.
+  /// margin (nor, round 262, the crop shape), so stored vectors cut another
+  /// way would silently be reused. Asks the user to keep them or recompute
+  /// everything. Returns null when cancelled, true = start over.
   Future<bool?> _confirmCropSettings(IdentifyPrefs prefs, String modelName) async {
     // Crops of visits found again since are redone anyway (round 235).
     if (await IdentificationJob.cropsOutdated(widget.sessionDir, modelName)) return true;
     final stored = await IdentificationJob.storedIndex(widget.sessionDir, modelName);
     if (stored == null || stored.records.isEmpty || stored.margin == null) return false;
-    if ((stored.margin! - prefs.margin).abs() < 1e-6) return false;
+    if ((stored.margin! - prefs.margin).abs() < 1e-6 && stored.squareCrops == prefs.squareCrops) return false;
     if (!mounted) return null;
+    String how(bool square, double margin) =>
+        '${square ? 'square' : 'box-shaped'} with a margin of ${margin.toStringAsFixed(2)}';
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Crop margin changed'),
+        title: const Text('Crop settings changed'),
         content: Text(
-          'The ${stored.records.length} stored crops of this session were cut with a margin of '
-          '${stored.margin!.toStringAsFixed(2)}; the setting is now ${prefs.margin.toStringAsFixed(2)}. '
-          'Keep the stored crops (fast; only new photos use the new margin) or recompute all of '
+          'The ${stored.records.length} stored crops of this session were cut '
+          '${how(stored.squareCrops, stored.margin!)}; the settings are now '
+          '${how(prefs.squareCrops, prefs.margin)}. '
+          'Keep the stored crops (fast; only new photos use the new settings) or recompute all of '
           'them with the model (slow, like a first run)?',
           style: const TextStyle(fontSize: 13),
         ),
@@ -362,6 +365,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           dim: info.dim,
           accelerator: info.accelerator,
           margin: prefs.margin,
+          squareCrops: prefs.squareCrops,
           minCropPx: prefs.minCropPx,
           maxCropsPerTrack: prefs.maxCropsPerTrack,
           tau: prefs.tau,
@@ -468,6 +472,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             jpegBytes: bytes,
             requests: [CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
             margin: prefs.margin,
+            square: prefs.squareCrops,
             minCropPx: prefs.minCropPx,
             outSize: info.inputWidth,
           ),
@@ -765,7 +770,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Run',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Every saved photo of every tracked insect is cut to a square crop and run through '
+            'Every saved photo of every tracked insect is cut out around its detector box (a square '
+            'unless switched off under Advanced settings) and run through '
             'the model. The crops of one track ID are then combined into ONE answer: the model '
             'describes each crop in a vector of numbers, then they are averaged (a crop the model is sure about counts '
             'more, crops it is far less sure about are left out) and the average is classified once, so '
@@ -1041,6 +1047,20 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               'again but keeps twice as many cores busy, so the phone warms up sooner (which '
               'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),
+        HelpSwitchTile(
+          title: 'Square crops',
+          value: prefs.squareCrops,
+          onChanged: (v) => _edit(() => prefs.squareCrops = v),
+          helperText:
+              'The model always looks at a square picture. On: the detector box is widened to a '
+              'square on its longer side, so the insect keeps its shape and the extra room shows '
+              'the flower around it. Off: only the box (plus the margin below) is cut out and '
+              'stretched to the square, so the insect fills the picture but looks squeezed when '
+              'the box is long and thin (BioCLIP learned from photos squeezed by up to about 4:3, '
+              'so Off suits roughly square boxes). On by default: it keeps the shape and suits '
+              'models trained on square crops; which works better on pollinator photos is not yet '
+              'tested. After a change, the next run asks whether to recompute the stored crops.',
+        ),
         NumericSettingField(
           label: 'Crop margin',
           value: prefs.margin,
@@ -1049,13 +1069,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.margin = v),
           helperText:
-              'Extra border around the detector box before the square crop (0.05 = 5 % per side). '
-              'Default 0 (0.05 in round 255, 0.15 before): the box itself, made square on its '
-              'longer side, as in the Insect Detect pipeline (Sittinger), so the model sees as '
-              'little flower or background as possible; the square already adds some along the '
-              'shorter side. Raise it if legs or antennae look cut off in the crops. After a '
-              'change, the next run asks whether to recompute the crops already stored for this '
-              'session.',
+              'Extra border added on every side of the detector box, as a share of the box\'s '
+              'longer side (0.05 = 5 % of it), because legs, antennae and wings stick out by an '
+              'amount that depends on the insect\'s size. Default 0: the model sees the box itself, '
+              'with as little flower or background as possible (with "Square crops" on, the square '
+              'already adds some along the shorter side). Raise it if legs, antennae or wings look '
+              'cut off (the cyan box on a track ID\'s photo in the results shows what was cut out). '
+              'After a change, the next run asks whether to recompute the crops already stored for '
+              'this session.',
         ),
         NumericSettingField(
           label: 'Smallest box to identify',

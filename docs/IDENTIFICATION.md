@@ -57,10 +57,10 @@ the model only on crops without a stored vector (new photos, or crops that a low
 "smallest box" setting now admits) and then re-scores everything, which is why a re-run
 on an unchanged session takes seconds. Confidence and "no organism" thresholds, the CSV
 rank, the merge settings and the suspect flags are all applied at scoring, so changing them
-never re-runs the model. The **crop margin** is the exception: it changes what the model
-saw, but the stored vectors do not know it; when the margin differs from the one the stored
-crops were cut with, Start asks whether to keep the stored crops (fast) or recompute all of
-them (a full run). "Smallest box" and "crops per track ID" only add or remove crops.
+never re-runs the model. The **crop margin** and **Square crops** are the exception: they
+change what the model saw, but the stored vectors do not know it; when either differs from
+what the stored crops were cut with, Start asks whether to keep the stored crops (fast) or
+recompute all of them (a full run). "Smallest box" and "crops per track ID" only add or remove crops.
 
 **Aligning with the detection data in R or Python.** Both sides share the same keys: the
 session id (folder name) and the track ID (`track_id` in `tracks_<pack>.csv`, `track_id`
@@ -92,7 +92,7 @@ above it stays. A track ID's detail sheet shows the ladder as an aligned table w
 reported rank highlighted and the taxa below it (suggestions) in grey, the photo of the
 best single view with its full file name on its own line, the
 detector box (yellow, labelled with the live detector's confidence for that photo since
-round 223) and the square crop given to the model (cyan; toggle, zoom), and the
+round 223) and the crop given to the model (cyan; toggle, zoom), and the
 crops table (side in pixels, weight, own best guess, the detector's confidence for the
 crop's box (Detector conf., round 223) and, since round 222, the best guess's
 family, order and class in one column each; round 220 had them as one "Taxonomic tree"
@@ -221,8 +221,11 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 
 ## How the answer is computed (plain language)
 
-1. **Crop:** a square on the box's longer side with no margin by default (round 256; 5 % per side in round 255, 15 % before), padded with a
-   neutral colour where it leaves the photo, resized to the model input (224 px). Boxes
+1. **Crop:** the detector box plus a border of *margin* × its longer side on every side
+   (margin 0 by default), widened to a square on its longer side when **Square crops** is
+   on (default) or kept in the box's shape and stretched to the square input when it is
+   off (round 262), padded with a neutral colour where it leaves the photo, resized to the
+   model input (224 px). Boxes
    under 48 px are skipped as too small. For high-res photos the in-sync `_live.jpg`
    companion is used (the logged boxes were observed on that frame).
 2. **Embed:** the model turns each crop into a unit vector. Stored, so re-scoring is free.
@@ -322,11 +325,19 @@ detectors. 4 is about a quarter faster but keeps twice as many cores busy; on a 
 the extra heat can cost more in thermal pauses than it saves, so it is left as an owner
 experiment with "Test speed" rather than the default.
 
-Three defaults worth knowing: **crop margin 0** (round 256; 0.05 in round 255, 0.15
-before): the detector box itself, squared on its longer side as in Sittinger's
-`make_bbox_square()`, so the model sees as little flower or background as possible (not
-yet compared on pollinator photos, so an owner experiment: re-run a session with
-"recompute" at another margin); **smallest box 48 px** because the model looks at every crop
+Three defaults worth knowing: **crop margin 0** with **Square crops on**: the detector box
+itself, squared on its longer side as in `make_bbox_square()` of insect-detect-post, so the
+model sees as little flower or background as possible without distorting the insect. The
+model always takes a 224 × 224 square, so switching Square crops off means stretching the
+box: pybioclip does the same with any non-square picture, and BioCLIP's training
+(open_clip's default `RandomResizedCrop`) squashes photos to a square by up to about 4:3,
+so that much stretch is familiar to it; long, thin boxes (a fly from the side, an open
+butterfly) are distorted beyond that. Squaring instead costs pixels (on a 1.5:1 box a third
+of the square is background). The margin is a share of the box's longer side in both shapes
+(round 262), because legs, antennae and wings stick out by an amount tied to the insect's
+size, not to the box's shorter side. Neither shape nor margin is yet compared on pollinator
+photos (owner experiment: re-run a session with "recompute" and another setting);
+**smallest box 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur (on the default
 1024 px photos that is an insect about 5 % of the photo side); **crops per
 track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos (the photo count per

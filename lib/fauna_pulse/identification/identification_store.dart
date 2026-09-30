@@ -150,6 +150,9 @@ class EmbeddingIndex {
   final double? margin;
   final int? minCropPx;
 
+  /// Round 262: crop shape of that run (runs before it were always square).
+  final bool squareCrops;
+
   /// Crops skipped as too small, with the box size that was measured: they
   /// are retried when the "smallest box" setting is lowered below it.
   final Map<String, int> tooSmallPx;
@@ -165,6 +168,7 @@ class EmbeddingIndex {
     required this.modelId,
     this.margin,
     this.minCropPx,
+    this.squareCrops = true,
     this.tooSmallPx = const {},
     this.visitsRunId,
   });
@@ -194,6 +198,7 @@ class EmbeddingIndex {
     String? modelId;
     double? margin;
     int? minCropPx;
+    bool? squareCrops;
     int? visitsRunId;
     for (final line in const LineSplitter().convert(jsonl)) {
       if (line.trim().isEmpty) continue;
@@ -219,6 +224,7 @@ class EmbeddingIndex {
           modelId ??= rec['model'] as String?;
           margin ??= (rec['margin'] as num?)?.toDouble();
           minCropPx ??= (rec['min_crop_px'] as num?)?.toInt();
+          squareCrops ??= rec['square_crops'] as bool? ?? true;
           visitsRunId ??= ((rec['track_ids_run_id'] ?? rec['visits_run_id']) as num?)?.toInt(); // r248 name, old one
       }
     }
@@ -229,6 +235,7 @@ class EmbeddingIndex {
       modelId: modelId,
       margin: margin,
       minCropPx: minCropPx,
+      squareCrops: squareCrops ?? true,
       tooSmallPx: tooSmall,
       visitsRunId: visitsRunId,
     );
@@ -748,7 +755,8 @@ crops_<pack>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
   photo, box_*                        photo file and the detector box (fractions of the photo side)
   crop_px, sharpness, det_conf, pad_frac
-                                      square crop side (px), Laplacian sharpness, detector confidence,
+                                      longer side of the detector box (px, before the margin),
+                                      Laplacian sharpness, detector confidence,
                                       padding outside the photo (descriptive only)
   top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
   top1_kingdom .. top1_family         that species' higher ranks (round 220; kingdom "none" for a

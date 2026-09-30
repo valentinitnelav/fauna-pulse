@@ -125,6 +125,8 @@ class IdentifyPrefs {
   bool useGpu;
   int cpuThreads;
   double margin;
+  // Round 262: false = crop the box shape (stretched to the model's square).
+  bool squareCrops;
   int minCropPx;
   int maxCropsPerTrack;
   double tau;
@@ -150,6 +152,7 @@ class IdentifyPrefs {
     this.useGpu = true,
     this.cpuThreads = 0,
     this.margin = kDefaultCropMargin,
+    this.squareCrops = true,
     this.minCropPx = 48,
     this.maxCropsPerTrack = 10,
     this.tau = 0.6,
@@ -172,6 +175,7 @@ class IdentifyPrefs {
   static const _kGpu = 'identify_use_gpu';
   static const _kThreads = 'identify_cpu_threads';
   static const _kMargin = 'identify_margin';
+  static const _kSquare = 'identify_square_crops';
   static const _kMinPx = 'identify_min_crop_px';
   static const _kMaxCrops = 'identify_max_crops_per_track';
   static const _kTau = 'identify_tau';
@@ -201,6 +205,7 @@ class IdentifyPrefs {
       useGpu: p.getBool(_kGpu) ?? true,
       cpuThreads: p.getInt(_kThreads) ?? 0,
       margin: p.getDouble(_kMargin) ?? kDefaultCropMargin,
+      squareCrops: p.getBool(_kSquare) ?? true,
       minCropPx: p.getInt(_kMinPx) ?? 48,
       maxCropsPerTrack: p.getInt(_kMaxCrops) ?? 10,
       tau: p.getDouble(_kTau) ?? 0.6,
@@ -234,6 +239,7 @@ class IdentifyPrefs {
     await p.setBool(_kGpu, useGpu);
     await p.setInt(_kThreads, cpuThreads);
     await p.setDouble(_kMargin, margin);
+    await p.setBool(_kSquare, squareCrops);
     await p.setInt(_kMinPx, minCropPx);
     await p.setInt(_kMaxCrops, maxCropsPerTrack);
     await p.setDouble(_kTau, tau);
@@ -258,6 +264,7 @@ class IdentifyPrefs {
     'use_gpu': useGpu,
     'cpu_threads': cpuThreads,
     'margin': margin,
+    'square_crops': squareCrops,
     'min_crop_px': minCropPx,
     'max_crops_per_track': maxCropsPerTrack,
     'tau': tau,

@@ -320,6 +320,39 @@ void main() {
     expect(EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
   });
 
+  test('box-shaped crops reach the cropper and the index remembers the shape (round 262)', () async {
+    final session = makeSession('s5b');
+    final shapes = <bool>{};
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async {
+        shapes.add(a.square);
+        return cropBatchSync(a);
+      },
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    await job.run(session, settings: settings(), packFile: packFile);
+    expect(shapes, {true});
+    expect((await IdentificationJob.storedIndex(session, 'fake_model.tflite'))!.squareCrops, isTrue);
+    shapes.clear();
+    const boxShaped = IdentifyRunSettings(
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packName: 'tiny_pack.fpack',
+      inputSize: 32,
+      dim: 4,
+      accelerator: 'CPU',
+      minCropPx: 16,
+      squareCrops: false,
+    );
+    final r = await job.run(session, settings: boxShaped, packFile: packFile, restart: true);
+    expect(r.embedded, 3);
+    expect(shapes, {false});
+    expect((await IdentificationJob.storedIndex(session, 'fake_model.tflite'))!.squareCrops, isFalse);
+    // Runs before round 262 did not log the shape: they were square.
+    expect(EmbeddingIndex.parse('{"type":"identify_start","margin":0.0}').squareCrops, isTrue);
+  });
+
   // Round 210: opt-in joining of consecutive track ids. Tracks 1 and 3 are
   // both red (Eristalis) with a 1 s gap and same-size boxes; track 2 (blue,
   // Apis) sits between them in id but AFTER them in time.
