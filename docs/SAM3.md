@@ -1,8 +1,12 @@
-# SAM 3 as a slow "AI later" detector (sam3 branch, rounds 257 to 260)
+# SAM 3 as a slow "AI later" detector (rounds 257 to 261, parked)
 
-Status: **experimental, not for release.** SAM 3 runs on the PC. On the test Xiaomi its GPU
-computes the picture model wrongly (NaN), but its main processor (CPU) gives the PC's results,
-at 3.2 to 3.5 minutes per picture (round 259, details below).
+Status: **parked 2026-09-30 (round 261), not for release.** The code (`Sam3Detector.kt`,
+`ClipTokenizer.kt`, `models/sam3_model.dart`, the "What to find" field, `tool/sam3/`,
+`integration_test/sam3_check_test.dart`) is on branch `sam3` (tag `archive/sam3`); `develop` has
+only this file and the changelog rounds. SAM 3 runs on the PC. On the test Xiaomi its GPU computes
+the picture model wrongly (NaN), but its main processor (CPU) gives the PC's results, at 3.2 to
+3.5 minutes per picture (round 259, details below). Why it is parked and when to reopen: see
+"Verdict" at the end.
 
 ## What SAM 3 is
 
@@ -56,7 +60,11 @@ adb shell rm -rf /data/local/tmp/sam3
 ```
 
 Device check: `integration_test/sam3_check_test.dart` (compares the phone with the PC on one
-frame).
+frame). Its pictures go to `files/sam3_check/` the same way: `bumblebees_6s.jpg` (Bumblebees clip
+at 6 s), `bumblebees_6s_1008.png` (the same, 1008 x 1008) and `onflower_3s.jpg`. They are frames of
+the YouTube test clips, so they are not in git (the owner keeps a copy); the PC numbers written in
+the test belong to them. With other pictures, replace those numbers with a PC run of the same
+files (ai-edge-litert on the CPU).
 
 ## Measured on the Xiaomi (Mi 11 Lite 5G, Adreno GPU, 7.4 GB), 2026-09-30
 
@@ -172,7 +180,38 @@ convert them for the phone. RV-M (RepViT picture model, same text model) was not
 picture models tried fail in the same way, so it is not worth a third 480 MB download.
 `detect_video.py --efficientsam3 CKPT` runs any of the three.
 
-## Next steps
+## Verdict (round 261) and when to reopen
+
+Parked, not abandoned: SAM 3 finds bees that the fast models miss (results above), but on today's
+phones it is far too slow to analyse videos.
+
+- Phone speed, best case: if the GPU problem were solved, about 10 to 17 s per picture (picture
+  model 9.6 s on the GPU, head 7.2 s on the CPU), with 1.7 GB of files and about 4.2 GB of
+  memory. A 1-minute clip at 1 picture per second would take about 17 minutes. On the CPU (works
+  today) about 3.3 minutes per picture, or about 2 with the speed-up below: 2 to 3 hours for the
+  same minute. So at best it could re-check a few saved pictures; it cannot scan videos.
+- The fast variant, EfficientSAM3 (EV-M, TV-M), is blind to the bees (above).
+- Mammals were not tried. Larger animals are probably easier than small insects, but camera-trap
+  detectors already find animals at YOLO speed, so for mammals a model swap is the likelier route.
+
+Reopen when one of these happens:
+
+- a newer phone: more memory, or a GPU on which the conversion gives correct numbers (its model
+  card verified a Pixel 8a, Mali GPU, and an iPhone);
+- a LiteRT or conversion update that fixes the Adreno NaN;
+- a smaller SAM-like model that finds insects;
+- a PC with a proper GPU, to use SAM 3 there as a reference or to box insects for training the
+  fast models (`tool/sam3/detect_video.py` already writes the app's detection file).
+
+Cheapest first check on a new phone (about 10 minutes): a debug build of branch `sam3`, the files
+copied as above, then `sam3_check_test.dart`, first as it is (GPU), then with
+`--dart-define=SAM3_CPU=true`. It compares the phone with the PC on one picture and logs load
+times, run times and memory.
+
+To resume in git: `git switch sam3 && git merge develop` (brings the newer app code); on
+conflicts under `docs/`, keep `develop`'s version.
+
+## If reopened
 
 1. Find the operation the Adreno GPU gets wrong: run vision part 1 in smaller pieces on the phone
    and compare each with the PC (its first steps are the "safe layer norm": scaling, sums over

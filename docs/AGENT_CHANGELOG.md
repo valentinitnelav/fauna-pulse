@@ -8570,3 +8570,17 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
   the 1-per-s frames skip it, so it is bee-free only from 12.5 s, not the last 2 s.
 - Next steps left: Adreno GPU NaN hunt; faster CPU route (parts over several pictures, or XNNPACK weight cache); import screen.
 
+## Round 261 (2026-09-30): SAM 3 parked; notes carried to develop, code stays on branch sam3 (tag archive/sam3)
+
+- Verdict: SAM 3 finds bees the fast models miss, but even with the Adreno NaN solved a phone would need about
+  10-17 s per picture (1.7 GB of files, ~4.2 GB of memory); the CPU route takes ~3.3 min. Useful at best for re-checking
+  a few saved pictures, not for scanning videos. EfficientSAM3 (EV-M, TV-M) is blind to the bees. Mammals not tried
+  (camera-trap detectors already exist at YOLO speed).
+- Parking, the usual way: the knowledge goes to `develop` (`docs/SAM3.md` and changelog rounds 257-261 copied word for
+  word), the code stays on branch `sam3`, marked by tag `archive/sam3`. Dormant code is not merged, because it would
+  have to keep compiling through every later change while nobody runs it.
+- `docs/SAM3.md`: parked status, "Verdict and when to reopen" (newer phone, LiteRT/conversion fix for Adreno, a smaller
+  SAM-like model that finds insects, a GPU PC for labelling), cheapest first check on a new phone, how to resume in git
+  (`git switch sam3 && git merge develop`, keep `develop`'s docs on conflicts), what the device-check pictures are.
+  "Next steps" became "If reopened".
+
