@@ -146,6 +146,18 @@ void main() {
     expect(recs.where((r) => r['type'] == 'raw_detections'), hasLength(4));
   });
 
+  test('SAM 3 runs keep their prompt with the settings; YOLO runs have none (round 257)', () async {
+    expect(config.identity.containsKey('prompt'), isFalse);
+    const sam3 = VideoRunConfig(modelPath: 'sam3', modelName: 'S', confidence: 0.25, iou: 0.5, useGpu: false, prompt: 'insect');
+    expect(sam3.identity['prompt'], 'insect');
+    await detector(FakeBackend({'a.mp4': 1})).run(dir, config: sam3);
+    const otherPrompt = VideoRunConfig(modelPath: 'sam3', modelName: 'S', confidence: 0.25, iou: 0.5, useGpu: false, prompt: 'bee');
+    expect(
+      () => detector(FakeBackend({'a.mp4': 1})).run(dir, config: otherPrompt),
+      throwsA(isA<VideoSettingsChanged>()),
+    );
+  });
+
   test('an unreadable clip is logged and retried next run; the others finish', () async {
     final result = await detector(FakeBackend({'a.mp4': 2, 'b.MOV': 2}, unsupported: {'a.mp4'})).run(dir, config: config);
     expect(result.clipsFailed, 1);

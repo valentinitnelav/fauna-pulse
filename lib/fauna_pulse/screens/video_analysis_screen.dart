@@ -49,6 +49,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
+import '../models/sam3_model.dart';
 import '../models/session_config.dart';
 import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_detector.dart';
@@ -94,6 +95,10 @@ class VideoAnalysisPrefs {
   double keepStepSeconds;
   double keepDurationSeconds;
 
+  /// What SAM 3 looks for (round 257, sam3 branch); used only when the model
+  /// is SAM 3.
+  String sam3Prompt;
+
   VideoAnalysisPrefs({
     this.modelId,
     this.confidence = 0.25,
@@ -106,6 +111,7 @@ class VideoAnalysisPrefs {
     this.keepFrames = true,
     this.keepStepSeconds = 1.0,
     this.keepDurationSeconds = 10.0,
+    this.sam3Prompt = 'insect',
   });
 
   /// The rule "Find visits" keeps frames by, or null when off.
@@ -123,6 +129,7 @@ class VideoAnalysisPrefs {
   static const _kKeep = 'video_analysis_keep_frames';
   static const _kKeepStep = 'video_analysis_keep_step_s';
   static const _kKeepDuration = 'video_analysis_keep_duration_s';
+  static const _kSam3Prompt = 'video_analysis_sam3_prompt';
 
   static Future<VideoAnalysisPrefs> load() async {
     final p = await SharedPreferences.getInstance();
@@ -138,6 +145,7 @@ class VideoAnalysisPrefs {
       keepFrames: p.getBool(_kKeep) ?? true,
       keepStepSeconds: p.getDouble(_kKeepStep) ?? 1.0,
       keepDurationSeconds: p.getDouble(_kKeepDuration) ?? 10.0,
+      sam3Prompt: p.getString(_kSam3Prompt) ?? 'insect',
     );
   }
 
@@ -158,6 +166,7 @@ class VideoAnalysisPrefs {
     await p.setBool(_kKeep, keepFrames);
     await p.setDouble(_kKeepStep, keepStepSeconds);
     await p.setDouble(_kKeepDuration, keepDurationSeconds);
+    await p.setString(_kSam3Prompt, sam3Prompt);
   }
 }
 
@@ -251,6 +260,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   List<ModelEntry> _models = const [];
   _VideoSession? _session;
   ModelEntry? _model;
+  final _promptController = TextEditingController();
   VideoAnalysisPrefs _prefs = VideoAnalysisPrefs();
   bool _useGpu = true;
 
@@ -297,6 +307,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   @override
   void dispose() {
+    _promptController.dispose();
     // A popped screen can't show progress; stop the run too.
     _cancelRequested = true;
     if (_running || _keeping) _keepAwake(false);
@@ -315,7 +326,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   Future<void> _load() async {
     final prefs = await VideoAnalysisPrefs.load();
-    final models = widget.models ?? await ModelCatalog.build();
+    final models =
+        widget.models ??
+        [
+          ...await ModelCatalog.build(),
+          if (await sam3Dir() != null)
+            const ModelEntry(id: kSam3ModelId, name: 'SAM 3 (finds what you name; slow)', source: ModelSource.imported),
+        ];
     final appConfig = await SessionConfig.load();
     final sessions = await _scanSessions();
     if (!mounted) return;
@@ -329,6 +346,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           : appConfig.trackerParams.highThresh;
       _sessions = sessions;
       _model = models.where((m) => m.id == prefs.modelId).firstOrNull ?? models.firstOrNull;
+      _promptController.text = prefs.sam3Prompt;
       _loading = false;
     });
     final initial = sessions.where((s) => s.dir.path == widget.initialSessionPath).firstOrNull;
@@ -485,13 +503,18 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (roi != null && mounted) setState(() => _roi = roi);
   }
 
+  bool get _sam3 => _model?.id == kSam3ModelId;
+
   VideoRunConfig? get _config {
     final model = _model;
     if (model == null) return null;
+    final prompt = _sam3 ? _prefs.sam3Prompt.trim() : null;
+    if (prompt != null && prompt.isEmpty) return null;
     final roi = _roi;
     return VideoRunConfig(
       modelPath: model.id,
-      modelName: model.name,
+      modelName: prompt != null ? sam3ModelName(prompt) : model.name,
+      prompt: prompt,
       confidence: _prefs.confidence,
       iou: _prefs.iou,
       useGpu: _useGpu,
@@ -511,6 +534,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       'analysis_fps': 'frames per second',
       'roi': 'area',
       'max_side_px': 'picture size',
+      'prompt': 'SAM 3 prompt',
     };
     return [
       for (final e in config.identity.entries)
@@ -566,9 +590,18 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     VideoRunResult? result;
     String? failure;
     var askStartOver = false;
-    final yolo = YOLO(modelPath: config.modelPath, task: YOLOTask.detect, useGpu: config.useGpu, useMultiInstance: true);
+    final sam3 = config.prompt != null;
+    final yolo = sam3
+        ? null
+        : YOLO(modelPath: config.modelPath, task: YOLOTask.detect, useGpu: config.useGpu, useMultiInstance: true);
     try {
-      await yolo.loadModel();
+      if (yolo != null) {
+        await yolo.loadModel();
+      } else {
+        final dir = await sam3Dir();
+        if (dir == null) throw StateError('The SAM 3 files are missing.');
+        await Sam3Detector.load(dir.path, config.prompt!, useGpu: config.useGpu);
+      }
       var appVersion = '';
       try {
         final info = await PackageInfo.fromPlatform();
@@ -576,7 +609,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       } catch (e) {
         logSwallowed('video_analysis_app_info', e);
       }
-      result = await VideoDetector(backend: NativeVideoBackend(yolo.instanceId)).run(
+      result = await VideoDetector(backend: NativeVideoBackend(yolo?.instanceId ?? '')).run(
         session.dir,
         config: config,
         onProgress: (p) {
@@ -596,7 +629,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       failure = '$e';
     } finally {
       try {
-        await yolo.dispose();
+        await (yolo?.dispose() ?? Sam3Detector.close());
       } catch (e) {
         logSwallowed('video_analysis_yolo_dispose', e);
       }
@@ -847,6 +880,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   _sessionPicker(),
                   const SizedBox(height: 12),
                   _modelPicker(),
+                  if (_sam3) ...[const SizedBox(height: 12), _promptField()],
                   const SizedBox(height: 12),
                   _slider(
                     label: 'Confidence threshold: ${_prefs.confidence.toStringAsFixed(2)}',
@@ -987,6 +1021,24 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         for (final m in _models) DropdownMenuItem(value: m, child: Text(m.label, overflow: TextOverflow.ellipsis)),
       ],
       onChanged: _running ? null : (m) => setState(() => _model = m),
+    );
+  }
+
+  /// Round 257 (sam3 branch): what SAM 3 looks for.
+  Widget _promptField() {
+    return TextField(
+      controller: _promptController,
+      enabled: !_busy,
+      decoration: const InputDecoration(
+        labelText: 'What to find (in English)',
+        border: OutlineInputBorder(),
+        helperText:
+            'SAM 3 marks everything that matches these words, without training: e.g. insect, bee, '
+            'butterfly, bird. One or two plain words work best ("flower-visiting insect" found the flower). '
+            'Slow: about 10 s or more per picture, so use few frames per second.',
+        helperMaxLines: 4,
+      ),
+      onChanged: (v) => setState(() => _prefs.sam3Prompt = v),
     );
   }
 

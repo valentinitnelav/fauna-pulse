@@ -33,6 +33,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart'
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../logging/thermal_pause.dart';
+import '../models/sam3_model.dart';
 import 'video_start_time.dart';
 
 /// The native decode + detect path (see VideoFrameSource.kt).
@@ -44,7 +45,8 @@ abstract class VideoBackend {
 }
 
 /// [VideoBackend] over the plugin, using the detector loaded as [instanceId]
-/// (`YOLO.instanceId` after `loadModel`).
+/// (`YOLO.instanceId` after `loadModel`), or the loaded SAM 3 for SAM 3 runs
+/// (round 257; `Sam3Detector.load` first).
 class NativeVideoBackend implements VideoBackend {
   final String instanceId;
   const NativeVideoBackend(this.instanceId);
@@ -62,6 +64,7 @@ class NativeVideoBackend implements VideoBackend {
     startPtsUs: startPtsUs,
     minIntervalUs: config.minIntervalUs,
     maxSidePx: config.maxSidePx,
+    detector: config.modelPath == kSam3ModelId ? 'sam3' : null,
   );
 
   @override
@@ -98,6 +101,9 @@ class VideoRunConfig {
   /// laptop screen and cannot tell.
   final int maxSidePx;
 
+  /// SAM 3's text prompt (round 257, sam3 branch); null for YOLO models.
+  final String? prompt;
+
   const VideoRunConfig({
     required this.modelPath,
     required this.modelName,
@@ -107,6 +113,7 @@ class VideoRunConfig {
     this.analysisFps = kDefaultVideoAnalysisFps,
     this.roi,
     this.maxSidePx = 1280,
+    this.prompt,
   });
 
   int get minIntervalUs => analysisFps <= 0 ? 0 : (1e6 / analysisFps).round();
@@ -120,6 +127,7 @@ class VideoRunConfig {
     'analysis_fps': analysisFps,
     'roi': roi,
     'max_side_px': maxSidePx,
+    'prompt': ?prompt,
   };
 }
 

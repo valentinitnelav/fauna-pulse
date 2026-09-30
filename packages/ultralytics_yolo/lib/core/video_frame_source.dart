@@ -228,6 +228,8 @@ class VideoFrameSource {
   /// sessions, or null for the whole frame. Analysis starts at [startPtsUs]
   /// and takes one frame per [minIntervalUs] (0 = every frame). [maxSidePx]
   /// caps the analysed picture; larger areas are averaged down.
+  /// Round 257 (sam3 branch): [detector] `sam3` uses the loaded
+  /// [Sam3Detector] instead of the YOLO instance.
   static Future<void> open(
     String path, {
     required String instanceId,
@@ -237,9 +239,11 @@ class VideoFrameSource {
     int startPtsUs = 0,
     int minIntervalUs = 0,
     int maxSidePx = 1280,
+    String? detector,
   }) => _channel.invokeMethod<void>('videoOpen', {
     'path': path,
     'instanceId': instanceId,
+    'detector': detector,
     'confidence': confidence,
     'iou': iou,
     'roi': roi,

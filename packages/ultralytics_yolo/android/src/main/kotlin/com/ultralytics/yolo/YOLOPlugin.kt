@@ -52,6 +52,11 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
   // thread, same pattern as the embedder.
   private var videoSource: VideoFrameSource? = null
   private var videoPredict: ((Bitmap) -> Pair<List<FloatArray>, List<String>>)? = null
+
+  // FaunaPulse (round 257, sam3 branch): the loaded SAM 3 detector (see Sam3Detector.kt), used by
+  // videoOpen with detector "sam3" instead of a YOLO instance. Loaded, run and closed on the video
+  // thread only, so it never overlaps a clip's decoding.
+  private var sam3: Sam3Detector? = null
   private val videoExecutor: java.util.concurrent.ExecutorService =
     java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "yolo-video") }
 
@@ -116,7 +121,12 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     YOLOInstanceManager.shared.disposeAll()
     embedderExecutor.execute { runCatching { embedder?.close() }; embedder = null }
     embedderExecutor.shutdown()
-    videoExecutor.execute { runCatching { videoSource?.close() }; videoSource = null }
+    videoExecutor.execute {
+      runCatching { videoSource?.close() }
+      videoSource = null
+      runCatching { sam3?.close() }
+      sam3 = null
+    }
     videoExecutor.shutdown()
   }
   
@@ -900,7 +910,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       // videoOpenFrames / videoSaveFrames (r234) save chosen frames as JPEG files instead.
       // videoRemux (r252) rewrites a fragmented MP4 as a plain one at import.
       "videoInfo", "videoThumbnail", "videoOpen", "videoNext", "videoOpenFrames", "videoSaveFrames",
-      "videoRemux", "videoClose" -> handleVideo(call, result)
+      "videoRemux", "videoClose", "sam3Load", "sam3DetectFile", "sam3Close" -> handleVideo(call, result)
 
       else -> result.notImplemented()
     }
@@ -922,10 +932,15 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             val instanceId = args["instanceId"] as? String ?: "default"
             val conf = num("confidence")?.toFloat()
             val iou = num("iou")?.toFloat()
+            val s3 = if (args["detector"] == "sam3") sam3 ?: throw IllegalStateException("SAM 3 is not loaded; call sam3Load first") else null
             videoPredict = { bmp ->
-              val r = YOLOInstanceManager.shared.predict(instanceId, bmp, conf, iou, generateAnnotatedImage = false)
-                ?: throw IllegalStateException("Detection failed (model not loaded, or an inference error; see logcat).")
-              Pair(r.boxes.map { b -> floatArrayOf(b.xywh.left, b.xywh.top, b.xywh.right, b.xywh.bottom, b.conf, b.index.toFloat()) }, r.names)
+              if (s3 != null) {
+                Pair(s3.detect(bmp, conf ?: 0.5f, iou ?: 0.7f), listOf(s3.prompt))
+              } else {
+                val r = YOLOInstanceManager.shared.predict(instanceId, bmp, conf, iou, generateAnnotatedImage = false)
+                  ?: throw IllegalStateException("Detection failed (model not loaded, or an inference error; see logcat).")
+                Pair(r.boxes.map { b -> floatArrayOf(b.xywh.left, b.xywh.top, b.xywh.right, b.xywh.bottom, b.conf, b.index.toFloat()) }, r.names)
+              }
             }
             videoSource = VideoFrameSource.open(
               path = args["path"] as String,
@@ -939,6 +954,49 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           "videoNext" -> {
             val src = videoSource ?: throw IllegalStateException("No video open; call videoOpen first")
             src.next(num("maxFrames")?.toInt() ?: 8, num("budgetMs")?.toLong() ?: 1000L, videoPredict!!)
+          }
+          "sam3Load" -> {
+            runCatching { sam3?.close() }
+            sam3 = null
+            val s = Sam3Detector(
+              applicationContext,
+              java.io.File(args["dir"] as String),
+              args["prompt"] as String,
+              useGpu = args["useGpu"] as? Boolean ?: true,
+              headOnGpu = args["headOnGpu"] as? Boolean ?: false,
+            )
+            sam3 = s
+            mapOf(
+              "tokenIds" to s.tokenIds.toList(),
+              "visionAccelerator" to s.visionAccelerator,
+              "visionNote" to s.visionNote,
+              "headAccelerator" to s.headAccelerator,
+              "loadMs" to s.loadMs,
+            )
+          }
+          "sam3DetectFile" -> {
+            val s = sam3 ?: throw IllegalStateException("SAM 3 is not loaded; call sam3Load first")
+            val path = args["path"] as String
+            val bmp = android.graphics.BitmapFactory.decodeFile(path)
+              ?: throw IllegalArgumentException("Cannot read the picture $path")
+            try {
+              val boxes = s.detect(bmp, num("confidence")?.toFloat() ?: 0.5f, num("iou")?.toFloat() ?: 0.7f)
+              mapOf(
+                "boxes" to boxes.map { b -> b.map { it.toDouble() } },
+                "width" to bmp.width,
+                "height" to bmp.height,
+                "presence" to s.lastPresence.toDouble(),
+                "visionMs" to s.lastVisionMs,
+                "headMs" to s.lastHeadMs,
+              )
+            } finally {
+              bmp.recycle()
+            }
+          }
+          "sam3Close" -> {
+            runCatching { sam3?.close() }
+            sam3 = null
+            null
           }
           "videoOpenFrames" -> {
             runCatching { videoSource?.close() }

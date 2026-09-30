@@ -8485,3 +8485,33 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
 - Replay of video-long with the app's tracker (`video_fps_sweep_test.dart`, ByteTrack, occlusion 3 s, new-track conf. 0.5): 0.2 s 94 track IDs, 0.5 s 87 before / 64 now, 1 s 50, 2 s 27; ffmpeg finds 43 scenes (42 hard cuts), 42 of them keep at least one track ID up to 1 s, 33 at 2 s. 16 track IDs ran across cuts (centred shots overlap), 53 were born while another track was matched (second boxes; 590 frames have 2 to 4 boxes), 40 % of frames have no box. A compilation: counts are no calibration; a hand count + `tool/video_eval/evaluate_track_ids.py` is.
 - Identify crop margin default 0 (`kDefaultCropMargin`; 0.05 in round 255, 0.15 before): the box squared on its longer side as in `make_bbox_square()` (owner, after talking with Sittinger). Helper, SETTINGS_REFERENCE, IDENTIFICATION.md, tool/bioclip_export/README.md updated.
 - Tests: fixed-rate tracker (59.94 to 5 fps and 25 to 10 fps cases; the first fails on the old code), `replayTracker` budgets, Video screen leave dialog, Identify unsaved-frames note (new `identify_unsaved_frames_test.dart`); two Video-screen fixtures now state their 10 frames/s. 731 tests pass.
+
+## Round 257 (2026-09-30): SAM 3 tried as a text-prompted detector (branch sam3, experimental)
+
+- Owner's request: test the LiteRT conversion of SAM 3 fp16 as a slow
+  detector on the test videos and count track IDs. Files outside git and the APK; copied to the app's private `files/sam3/` with
+  adb (`docs/SAM3.md`).
+- App: Run AI on videos lists "SAM 3 (finds what you name; slow)" when the files are present, with a "What to find" prompt
+  (`video_analysis_sam3_prompt`, default `insect`); the prompt joins the run's `settings` (`prompt`, only for SAM 3, so earlier YOLO
+  results keep matching) and `model_name` "SAM 3, prompt "…"". `models/sam3_model.dart`; `VideoRunConfig.prompt`;
+  `NativeVideoBackend` passes `detector: 'sam3'`.
+- Plugin: `Sam3Detector.kt` (picture stretched to 1008 x 1008, (x/255-0.5)/0.5, vision parts in a chain, head on the CPU, probability
+  = sigmoid(score) x sigmoid(presence), overlaps removed at the IoU setting, a NaN picture stops the run with a plain message),
+  `ClipTokenizer.kt` (CLIP byte-level BPE, token numbers match the PC's), prompt memory `files/sam3/prompts/<token ids>.f32`,
+  channel `sam3Load` / `sam3DetectFile` / `sam3Close`, `videoOpen` `detector: "sam3"`; Dart `Sam3Detector` in the plugin.
+  `android:largeHeap` (111 MB of features per picture pass through Java arrays).
+- PC tools `tool/sam3/`: `split_tflite.py` (cuts a graph where only one tensor passes on; SAM 3 vision in 4 parts, identical
+  output), `make_prompts.py` (prompt memory files), `detect_video.py` (SAM 3 on the PC over the frames of an earlier run, writes the
+  app's `video_detections.jsonl`; `-ignore_editlist` so ffmpeg numbers frames like Android). `video_fps_sweep_test.dart` gained
+  `SWEEP_OCCLUSION` / `SWEEP_MIN_S`.
+- Xiaomi (measured): whole vision model on the GPU: Android killed the app during GPU setup (~5 GB), with LiteRT 2.1.5 and 2.2.0.
+  4 parts load in 42 s (app at 4.2 GB; each part keeps its own ~0.9 GB attention buffer), 9.6 s per picture on the GPU, head
+  7.2 s on the CPU, but the GPU output is NaN from part 1 on (also with LiteRT 2.2.0, FP16_WITH_FP32_ACCUM, infinite-float
+  capping). LiteRT stays 2.1.5 (2.2.0 would need `android.uniquePackageNames=false`: litert and litert-api share a namespace).
+  Text model on the CPU peaks at ~2 GB and keeps ~0.8 GB afterwards. Device check `integration_test/sam3_check_test.dart`.
+- Results (PC, same frames and tracker settings as the phone's ArthroNat runs; YouTube test clips, so model comparison only, no
+  accuracy): bumblebee on a flower, 30 frames: ArthroNat 2 track IDs, SAM 3 1 (also 1 with the phone's own "Find track IDs" on
+  the copied session `video_20260929_2_sam3_pc`). Pollinators 14 min at 1 fps (836 frames): ArthroNat 52 (50 at 5 fps); SAM 3
+  running overnight on the laptop (~45 s per frame), output in `~/SAM3/runs/`.
+- Next: find the operation the Adreno GPU computes wrongly (part 1 in pieces vs the PC); lighter models (EfficientSAM3).
+

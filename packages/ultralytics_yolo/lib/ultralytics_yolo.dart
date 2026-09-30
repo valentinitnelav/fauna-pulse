@@ -2,6 +2,7 @@
 
 export 'core/yolo_model_manager.dart' show DownloadProgress;
 export 'core/image_embedder.dart';
+export 'core/sam3_detector.dart';
 export 'core/video_frame_source.dart';
 export 'models/yolo_exceptions.dart';
 export 'models/yolo_result.dart';

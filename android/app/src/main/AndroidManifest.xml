@@ -37,6 +37,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- largeHeap (round 257, sam3 branch): SAM 3 moves 111 MB of picture features per
+         frame through Java arrays (Sam3Detector.kt); the default app memory limit
+         (256 MB on the test phones, 512 MB with largeHeap) is too small for that. -->
     <application
         android:label="FaunaPulse"
         android:name="${applicationName}"
@@ -44,6 +47,7 @@
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:largeHeap="true"
         android:usesCleartextTraffic="false">
         <activity
             android:name="com.ultralytics.yolo.MainActivity"
