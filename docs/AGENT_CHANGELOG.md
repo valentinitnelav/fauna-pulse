@@ -8556,3 +8556,17 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
 - Next: find the op the Adreno GPU gets wrong (GPU ≈ 20x faster than the CPU route); speed up the CPU route by running each
   part over several pictures (or an XNNPACK weight cache); TV-M as the last EfficientSAM3 try (owner to decide on 490 MB).
 
+## Round 260 (2026-09-30): EfficientSAM3 TV-M tried on the PC (misses the bees too); EfficientSAM3 dropped (branch sam3, experimental)
+
+- TV-M (TinyViT-11M picture model + MobileCLIP-S0 text model, 95 M parameters; HF `Simon7108528/EfficientSAM3`,
+  `efficientsam3_ft/efficientsam3_tinyvit.pt`, 493 MB, outside git in `~/SAM3/efficientsam3/weights/`) through
+  `detect_video.py --efficientsam3`, same 67 Bumblebees frames (5 per s) as EV-M in round 258, prompt `insect`: 5-6 s per
+  frame on the laptop (4 threads); 0 boxes at 0.5, 24 weak ones (0.10-0.26) in 17 of ~60 bee frames, presence 0.01-0.41.
+  Most weak boxes sit on the bee (IoU 0.56-0.94 with SAM 3's box). `bee` / `bumblebee` no better.
+- Presence is what fails, and dropping it does not help: TV-M's best raw box score is 0.52-0.65 (on the bee) on 4 bee frames
+  but 0.65-0.67 on the 5 bee-free frames at the end (EV-M 0.47-0.54), so without presence both models box something
+  in every frame. RV-M not tried (same failure in both picture models, another 480 MB). EfficientSAM3 dropped.
+- Clip description corrected in `docs/SAM3.md`: Bumblebees has a fourth scene (12.05 s) whose bee flies off at 12.5 s;
+  the 1-per-s frames skip it, so it is bee-free only from 12.5 s, not the last 2 s.
+- Next steps left: Adreno GPU NaN hunt; faster CPU route (parts over several pictures, or XNNPACK weight cache); import screen.
+

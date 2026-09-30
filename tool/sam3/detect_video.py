@@ -22,7 +22,7 @@ about 40 s per frame on a 4-core laptop.
 --efficientsam3 (round 258) runs a distilled, smaller SAM 3 instead: one of the three full
 models (EV-M, RV-M, TV-M) from Hugging Face Simon7108528/EfficientSAM3, folder efficientsam3_ft/.
 It needs PyTorch and the EfficientSAM3 code (github.com/SimonZeng7108/efficientsam3, its sam3/
-folder importable, e.g. through a .pth file). EV-M: about 4 s per frame on the same laptop.
+folder importable, e.g. through a .pth file). EV-M: about 4 s per frame on the same laptop, TV-M 5 to 6 s.
 """
 
 from __future__ import annotations

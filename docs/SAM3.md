@@ -1,4 +1,4 @@
-# SAM 3 as a slow "AI later" detector (sam3 branch, rounds 257 to 259)
+# SAM 3 as a slow "AI later" detector (sam3 branch, rounds 257 to 260)
 
 Status: **experimental, not for release.** SAM 3 runs on the PC. On the test Xiaomi its GPU
 computes the picture model wrongly (NaN), but its main processor (CPU) gives the PC's results,
@@ -128,14 +128,14 @@ ArthroNat run (ByteTrack, occlusion tolerance 3 s). Prompt `insect`.
 |---|---|---|
 | bumblebee on a flower, 6 s, 30 frames (5 per s), confidence 0.25, min. track 0.5 s | 2 track IDs (one bee split in two); 1 to 4 boxes per frame; a box on the empty flower at the end | **1 track ID** (0 to 5.1 s); exactly 1 box per frame while the bee is there, none after it left (presence 0.02) |
 | Pollinators, 14 min, 836 frames (1 per s), confidence 0.5, min. track 1 s | 52 track IDs (50 at 5 per s, as on the phone) | stopped after 358 frames (4 h, laptop too hot) |
-| Bumblebees, 13 s, 3 scenes with one bee each, then 2 s without; 14 frames (1 per s), confidence 0.5, min. track 1 s | 1 track ID (9.9 to 11.9 s; also 1 at 5 per s on the phone); bee boxed in 3 of 13 frames, 4 more boxes elsewhere (flowers) | **3 track IDs**, one per scene; bee boxed in all 13 frames that show it, nothing in the last frame |
+| Bumblebees, 13 s, 3 scenes with one bee each, then a fourth whose bee flies off at 12.5 s (between two of the 1-per-s frames, so it is never seen here); 14 frames (1 per s), confidence 0.5, min. track 1 s | 1 track ID (9.9 to 11.9 s; also 1 at 5 per s on the phone); bee boxed in 3 of 13 frames, 4 more boxes elsewhere (flowers) | **3 track IDs**, one per scene; bee boxed in all 13 frames that show it, nothing in the last frame |
 
 The phone's own "Find track IDs" on a copy of the first session with SAM 3's boxes
 (`video_20260929_2_sam3_pc`) also gave 1 track ID. Results and run output: `~/SAM3/runs/`
 (outside git; the Bumblebees session is `bumblebee-2`, with `compare_1fps.jpg` showing every
 model's boxes on the same frames).
 
-## EfficientSAM3 (tried on the PC, round 258): does not find the bees
+## EfficientSAM3 (tried on the PC, rounds 258 and 260): does not find the bees
 
 EfficientSAM3 (University of Bristol, Apache-2.0) is SAM 3 "distilled" into small models: a
 small picture model and a small text model were trained to copy SAM 3's answers, and SAM 3's
@@ -143,21 +143,33 @@ box-finding part was kept. The three full models are on Hugging Face
 (`Simon7108528/EfficientSAM3`, folder `efficientsam3_ft/`, about 470 MB each as 32-bit numbers,
 no login needed); the code is on GitHub (`SimonZeng7108/efficientsam3`). Tried: **EV-M**
 (EfficientViT-B1 picture model, MobileCLIP-S0 text model, 89 million numbers, 10 times fewer
-than SAM 3). SAM 3's own `sam3.pt` is not needed.
+than SAM 3) and **TV-M** (TinyViT-11M picture model, same text model, 95 million numbers).
+SAM 3's own `sam3.pt` is not needed.
 
-- Speed: **about 4 s per picture** on the laptop (4 threads), against about 40 s for SAM 3.
-- Bumblebees clip, the 67 frames the phone analysed (5 per s), prompt `insect`: **0 boxes at
-  0.5**, 2 weak ones (0.1 to 0.2) in all 67 frames; "prompt is in the picture" (presence)
-  0.01 to 0.19 throughout, although the bee is in view (often filling much of the picture) until
-  about 12 s.
+- Speed: **about 4 s (EV-M) and 5 to 6 s (TV-M) per picture** on the laptop (4 threads), against
+  about 40 s for SAM 3.
+- **EV-M**, Bumblebees clip, the 67 frames the phone analysed (5 per s), prompt `insect`: **0
+  boxes at 0.5**, 2 weak ones (0.1 to 0.2) in all 67 frames; "prompt is in the picture"
+  (presence) 0.01 to 0.19 throughout, although a bee is in view (often filling much of the
+  picture) until 12.5 s.
+- Same frames with **TV-M** (round 260): **0 boxes at 0.5**, 24 weak ones (0.10 to 0.26) in 17
+  of the about 60 frames with a bee; presence 0.01 to 0.41. Most weak boxes sit on the bee
+  (overlap with SAM 3's bee box 56 to 94 %), so it finds the place but is never sure. Prompts
+  `bee` and `bumblebee` do no better.
+- **The presence score is what fails, and leaving it out does not help** (round 260). Each box
+  has its own score, which is multiplied by presence. On 4 bee frames TV-M's best box scores 0.52 to
+  0.65 and sits on the bee; but on the 5 frames after the bee flew off (12.6 to 13.4 s), its best
+  box scores 0.65 to 0.67 (EV-M: 0.47 to 0.54), just as high. Without presence, both models would
+  box something in every frame, bee or not.
 - Checks that the setup is not at fault: on the same two frames SAM 3 says 0.9 for `insect`,
-  `bee` and `bumblebee`; EfficientSAM3 finds "leaf" at the same place as SAM 3 (so pictures and
+  `bee` and `bumblebee`; EV-M finds "leaf" at the same place as SAM 3 (so pictures and
   box coordinates are right) but not the bee with `bee` or `bumblebee` either; giving it SAM 3's
   own encoding of "insect" barely helps (0.09 to 0.15), so its picture model is the weak part.
   Shrinking the picture inside the 1008 px input lets it find the sunflower, not the bee.
 
-So EV-M is fast enough for a phone but blind to bumblebees on this clip; no reason to convert
-it for the phone. RV-M and TV-M (other picture models, same text model) were not tried.
+So EV-M and TV-M are fast enough for a phone but blind to bumblebees on this clip; no reason to
+convert them for the phone. RV-M (RepViT picture model, same text model) was not tried: both
+picture models tried fail in the same way, so it is not worth a third 480 MB download.
 `detect_video.py --efficientsam3 CKPT` runs any of the three.
 
 ## Next steps
@@ -169,6 +181,4 @@ it for the phone. RV-M and TV-M (other picture models, same text model) were not
 2. Speed up the CPU route: run each part over several pictures before loading the next (saves
    most of the 80 s of reloading), or let the CPU library keep its rearranged weights in a file
    (XNNPACK weight cache; needs a guard against a half-written file).
-3. A lighter model with the same prompts: EfficientSAM3 EV-M misses the bees (above); TV-M
-   (TinyViT picture model) is the last cheap try before dropping EfficientSAM3.
-4. A proper import screen for the files instead of adb, if SAM 3 ever runs on a phone.
+3. A proper import screen for the files instead of adb, if SAM 3 ever runs on a phone.
