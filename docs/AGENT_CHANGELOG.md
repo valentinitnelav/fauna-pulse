@@ -8485,3 +8485,105 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
 - Replay of video-long with the app's tracker (`video_fps_sweep_test.dart`, ByteTrack, occlusion 3 s, new-track conf. 0.5): 0.2 s 94 track IDs, 0.5 s 87 before / 64 now, 1 s 50, 2 s 27; ffmpeg finds 43 scenes (42 hard cuts), 42 of them keep at least one track ID up to 1 s, 33 at 2 s. 16 track IDs ran across cuts (centred shots overlap), 53 were born while another track was matched (second boxes; 590 frames have 2 to 4 boxes), 40 % of frames have no box. A compilation: counts are no calibration; a hand count + `tool/video_eval/evaluate_track_ids.py` is.
 - Identify crop margin default 0 (`kDefaultCropMargin`; 0.05 in round 255, 0.15 before): the box squared on its longer side as in `make_bbox_square()` (owner, after talking with Sittinger). Helper, SETTINGS_REFERENCE, IDENTIFICATION.md, tool/bioclip_export/README.md updated.
 - Tests: fixed-rate tracker (59.94 to 5 fps and 25 to 10 fps cases; the first fails on the old code), `replayTracker` budgets, Video screen leave dialog, Identify unsaved-frames note (new `identify_unsaved_frames_test.dart`); two Video-screen fixtures now state their 10 frames/s. 731 tests pass.
+
+## Round 257 (2026-09-30): SAM 3 tried as a text-prompted detector (branch sam3, experimental)
+
+- Owner's request: test the LiteRT conversion of SAM 3 fp16 as a slow
+  detector on the test videos and count track IDs. Files outside git and the APK; copied to the app's private `files/sam3/` with
+  adb (`docs/SAM3.md`).
+- App: Run AI on videos lists "SAM 3 (finds what you name; slow)" when the files are present, with a "What to find" prompt
+  (`video_analysis_sam3_prompt`, default `insect`); the prompt joins the run's `settings` (`prompt`, only for SAM 3, so earlier YOLO
+  results keep matching) and `model_name` "SAM 3, prompt "…"". `models/sam3_model.dart`; `VideoRunConfig.prompt`;
+  `NativeVideoBackend` passes `detector: 'sam3'`.
+- Plugin: `Sam3Detector.kt` (picture stretched to 1008 x 1008, (x/255-0.5)/0.5, vision parts in a chain, head on the CPU, probability
+  = sigmoid(score) x sigmoid(presence), overlaps removed at the IoU setting, a NaN picture stops the run with a plain message),
+  `ClipTokenizer.kt` (CLIP byte-level BPE, token numbers match the PC's), prompt memory `files/sam3/prompts/<token ids>.f32`,
+  channel `sam3Load` / `sam3DetectFile` / `sam3Close`, `videoOpen` `detector: "sam3"`; Dart `Sam3Detector` in the plugin.
+  `android:largeHeap` (111 MB of features per picture pass through Java arrays).
+- PC tools `tool/sam3/`: `split_tflite.py` (cuts a graph where only one tensor passes on; SAM 3 vision in 4 parts, identical
+  output), `make_prompts.py` (prompt memory files), `detect_video.py` (SAM 3 on the PC over the frames of an earlier run, writes the
+  app's `video_detections.jsonl`; `-ignore_editlist` so ffmpeg numbers frames like Android). `video_fps_sweep_test.dart` gained
+  `SWEEP_OCCLUSION` / `SWEEP_MIN_S`.
+- Xiaomi (measured): whole vision model on the GPU: Android killed the app during GPU setup (~5 GB), with LiteRT 2.1.5 and 2.2.0.
+  4 parts load in 42 s (app at 4.2 GB; each part keeps its own ~0.9 GB attention buffer), 9.6 s per picture on the GPU, head
+  7.2 s on the CPU, but the GPU output is NaN from part 1 on (also with LiteRT 2.2.0, FP16_WITH_FP32_ACCUM, infinite-float
+  capping). LiteRT stays 2.1.5 (2.2.0 would need `android.uniquePackageNames=false`: litert and litert-api share a namespace).
+  Text model on the CPU peaks at ~2 GB and keeps ~0.8 GB afterwards. Device check `integration_test/sam3_check_test.dart`.
+- Results (PC, same frames and tracker settings as the phone's ArthroNat runs; YouTube test clips, so model comparison only, no
+  accuracy): bumblebee on a flower, 30 frames: ArthroNat 2 track IDs, SAM 3 1 (also 1 with the phone's own "Find track IDs" on
+  the copied session `video_20260929_2_sam3_pc`). Pollinators 14 min at 1 fps (836 frames): ArthroNat 52 (50 at 5 fps); SAM 3
+  running overnight on the laptop (~45 s per frame), output in `~/SAM3/runs/`.
+- Next: find the operation the Adreno GPU computes wrongly (part 1 in pieces vs the PC); lighter models (EfficientSAM3).
+
+## Round 258 (2026-09-30): EfficientSAM3 tried on the PC; SAM 3 reference on the Bumblebees clip (branch sam3, experimental)
+
+- Owner's request: try EfficientSAM3 on the PC on a few frames of "Bumblebees (720p, h264).mp4" (13 s), with SAM 3 as the
+  reference; the phone's session `bumblebee-2` (ArthroNat, 5 fps, confidence 0.5) gave the frames and the analysed square.
+- `tool/sam3/detect_video.py`: `--efficientsam3 CKPT` runs one of the three full EfficientSAM3 models (Hugging Face
+  `Simon7108528/EfficientSAM3`, `efficientsam3_ft/`; EV-M = EfficientViT-B1, RV-M = RepViT-M1.1, TV-M = TinyViT-11M, all with
+  MobileCLIP-S0 text, 16 tokens) through PyTorch; same frames, thresholds, overlap removal and output as SAM 3 (output folder
+  named after the checkpoint). `--threads` (default 4, was a fixed 8) to keep the laptop cooler. Model code now sits behind
+  `sam3_detector` / `efficientsam3_detector`, which both return probability, box and presence for the 200 candidates.
+- EfficientSAM3 setup (outside git, `~/SAM3/efficientsam3/`): shallow clone of the code, EV-M checkpoint only (468 MB), own venv
+  borrowing the BioCLIP venv's torch via a .pth file; needs iopath, einops, pycocotools, psutil, omegaconf; its training-only
+  video reader (decord) is replaced by a stand-in. SAM 3's `sam3.pt` is not needed.
+- Results (laptop, 4 threads; YouTube clip, model comparison only): EV-M about 4 s per frame (SAM 3 about 40 s). EV-M found no
+  box at 0.5 in the 67 frames (presence 0.01 to 0.19) although the bee is in view until ~12 s; SAM 3 on 14 frames (1 per s) boxed
+  the bee in all 13 frames that show it (presence 0.85 to 0.97) and nothing in the bee-free last frame (0.02). Track IDs, app
+  tracker (ByteTrack, occlusion 3 s, min. 1 s, 1 fps, confidence 0.5): SAM 3 3 (one per scene of the compilation), ArthroNat 1
+  (bee matched in 3 of 13 frames), EV-M 0. Checks: EV-M's "leaf" box matches SAM 3's (setup correct); SAM 3's text encoding fed
+  into EV-M barely raises presence, so EV-M's picture model is the weak part; shrinking the picture helps flowers, not the bee.
+- Next: TV-M as the last cheap EfficientSAM3 try (owner to decide on the 490 MB download); otherwise back to the Adreno NaN hunt.
+
+## Round 259 (2026-09-30): SAM 3 runs on the Xiaomi's CPU (one part at a time); PC check via the InsectAI Model Zoo (branch sam3, experimental)
+
+- PC check with Meta's original `sam3.pt` (owner's copy, same SHA-256 as the zoo pins) through Hugo Markoff's InsectAI Model
+  Zoo (COST Action CA22129 InsectAI, github.com/HugoMarkoff/Insect_model_zoo), which runs SAM 3 through Ultralytics'
+  `SAM3SemanticPredictor` (1008 px, confidence 0.5, IoU 0.5, fp16 on CUDA). Run unchanged on the laptop CPU (own venv in the
+  zoo folder borrowing the BioCLIP venv's torch; ultralytics 8.4.90, CLIP, opencv-headless, matplotlib and small deps added):
+  ~41 s per picture, peak 7.1 GB (≈3.5 GB of open programs swapped out). Bee boxes match the LiteRT file within 1-4 px,
+  probabilities a little higher (0.80-0.88 vs 0.73-0.84). The zoo covers desktops only; it has no licence file, so it is only
+  run and cited, no code copied.
+- Phone, CPU route (`Sam3Detector.kt`): with `useGpu = false` and a split picture model, each part is loaded, run and closed in
+  turn, and the head is loaded after the parts and closed after each picture. Measured on the PC (ai-edge-litert CPU): all 4
+  parts at once 5.0 GB, whole model 3.9 GB, one part ~1 GB, head ~1.4 GB. On the Xiaomi the head alone took the app to 3.5 GB
+  (CompiledModel); a first try that kept it loaded was killed by lmkd at part 4 (2.1 GB RSS + 4.6 GB swap). Second try: all
+  numbers finite, probabilities equal to the PC's to 3 decimals (0.911 / 0.529 / 0.268, IoU 0.96-0.995), 3.2-3.5 min per
+  picture (parts: load 17-26 s + run 17-32 s each; head 18-20 s), peak VmHWM 4.4 GB; lmkd closed background apps ~130 and ~220
+  times in the two tries. The first picture logs load/run time and app memory per part and for the head. NaN message now
+  points to "Use GPU when faster" (the video run takes `useGpu` from it). `sam3_check_test.dart`: `--dart-define=SAM3_CPU=true`
+  (steps 1-3 on the CPU).
+- Next: find the op the Adreno GPU gets wrong (GPU ≈ 20x faster than the CPU route); speed up the CPU route by running each
+  part over several pictures (or an XNNPACK weight cache); TV-M as the last EfficientSAM3 try (owner to decide on 490 MB).
+
+## Round 260 (2026-09-30): EfficientSAM3 TV-M tried on the PC (misses the bees too); EfficientSAM3 dropped (branch sam3, experimental)
+
+- TV-M (TinyViT-11M picture model + MobileCLIP-S0 text model, 95 M parameters; HF `Simon7108528/EfficientSAM3`,
+  `efficientsam3_ft/efficientsam3_tinyvit.pt`, 493 MB, outside git in `~/SAM3/efficientsam3/weights/`) through
+  `detect_video.py --efficientsam3`, same 67 Bumblebees frames (5 per s) as EV-M in round 258, prompt `insect`: 5-6 s per
+  frame on the laptop (4 threads); 0 boxes at 0.5, 24 weak ones (0.10-0.26) in 17 of ~60 bee frames, presence 0.01-0.41.
+  Most weak boxes sit on the bee (IoU 0.56-0.94 with SAM 3's box). `bee` / `bumblebee` no better.
+- Presence is what fails, and dropping it does not help: TV-M's best raw box score is 0.52-0.65 (on the bee) on 4 bee frames
+  but 0.65-0.67 on the 5 bee-free frames at the end (EV-M 0.47-0.54), so without presence both models box something
+  in every frame. RV-M not tried (same failure in both picture models, another 480 MB). EfficientSAM3 dropped.
+- Clip description corrected in `docs/SAM3.md`: Bumblebees has a fourth scene (12.05 s) whose bee flies off at 12.5 s;
+  the 1-per-s frames skip it, so it is bee-free only from 12.5 s, not the last 2 s.
+- Next steps left: Adreno GPU NaN hunt; faster CPU route (parts over several pictures, or XNNPACK weight cache); import screen.
+
+## Round 261 (2026-09-30): SAM 3 parked; notes carried to develop, code stays on branch sam3 (tag archive/sam3)
+
+- Verdict: SAM 3 finds bees the fast models miss, but even with the Adreno NaN solved a phone would need about
+  10-17 s per picture (1.7 GB of files, ~4.2 GB of memory); the CPU route takes ~3.3 min. Useful at best for re-checking
+  a few saved pictures, not for scanning videos. EfficientSAM3 (EV-M, TV-M) is blind to the bees. Mammals not tried
+  (camera-trap detectors already exist at YOLO speed).
+- Parking, the usual way: the knowledge goes to `develop` (`docs/SAM3.md` and changelog rounds 257-261 copied word for
+  word), the code stays on branch `sam3`, marked by tag `archive/sam3`. Dormant code is not merged, because it would
+  have to keep compiling through every later change while nobody runs it.
+- `docs/SAM3.md`: parked status, "Verdict and when to reopen" (newer phone, LiteRT/conversion fix for Adreno, a smaller
+  SAM-like model that finds insects, a GPU PC for labelling), cheapest first check on a new phone, how to resume in git
+  (`git switch sam3 && git merge develop`, keep `develop`'s docs on conflicts), what the device-check pictures are.
+  "Next steps" became "If reopened".
+- On develop (second Round 261 commit): `docs/SAM3.md` and changelog rounds 257-261 copied from `sam3`, a develop-only
+  overview row pointing to the branch and tag, and `video_fps_sweep_test.dart`'s `SWEEP_OCCLUSION` / `SWEEP_MIN_S`
+  options (the only non-SAM change on the branch; checked line by line). Everything else in rounds 257-261 is SAM 3 code.
+

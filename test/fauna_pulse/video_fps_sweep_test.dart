@@ -11,6 +11,7 @@
 //       [--dart-define=SWEEP_FPS=15,10,5,2,1] \
 //       [--dart-define=SWEEP_OUT=/absolute/path/to/output_folder] \
 //       [--dart-define=SWEEP_HIGH=0.5,0.4,0.3,0.25]
+//       [--dart-define=SWEEP_OCCLUSION=3] [--dart-define=SWEEP_MIN_S=1]
 //
 // SWEEP_HIGH (round 247) also varies ByteTrack's new-track confidence (`highThresh`, 0.5 by
 // default): boxes below it never start a track, so an insect the model only sees at 0.3 is
@@ -20,8 +21,9 @@
 // "Share results" file (it needs video_detections.jsonl and session.jsonl).
 // The output folder defaults to <session>/fps_sweep. The occlusion tolerance
 // and minimum track length are those of the session's last "Find track IDs"
-// (the app defaults when it has none). Without SWEEP_SESSION this file only
-// runs its unit tests.
+// (the app defaults when it has none), unless SWEEP_OCCLUSION / SWEEP_MIN_S
+// (seconds, round 257) set them. Without SWEEP_SESSION this file only runs
+// its unit tests.
 
 import 'dart:convert';
 import 'dart:io';
@@ -120,6 +122,10 @@ void main() {
           minHitsSeconds: previous.minHitsSeconds,
         );
       }
+      const occlusion = String.fromEnvironment('SWEEP_OCCLUSION');
+      const minS = String.fromEnvironment('SWEEP_MIN_S');
+      if (occlusion.isNotEmpty) config = config.copyWith(occlusionSeconds: double.parse(occlusion));
+      if (minS.isNotEmpty) config = config.copyWith(minHitsSeconds: double.parse(minS));
       final rates = const String.fromEnvironment('SWEEP_FPS', defaultValue: '15,10,5,2,1')
           .split(',')
           .map((s) => double.parse(s.trim()))
