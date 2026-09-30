@@ -8535,3 +8535,24 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
   into EV-M barely raises presence, so EV-M's picture model is the weak part; shrinking the picture helps flowers, not the bee.
 - Next: TV-M as the last cheap EfficientSAM3 try (owner to decide on the 490 MB download); otherwise back to the Adreno NaN hunt.
 
+## Round 259 (2026-09-30): SAM 3 runs on the Xiaomi's CPU (one part at a time); PC check via the InsectAI Model Zoo (branch sam3, experimental)
+
+- PC check with Meta's original `sam3.pt` (owner's copy, same SHA-256 as the zoo pins) through Hugo Markoff's InsectAI Model
+  Zoo (COST Action CA22129 InsectAI, github.com/HugoMarkoff/Insect_model_zoo), which runs SAM 3 through Ultralytics'
+  `SAM3SemanticPredictor` (1008 px, confidence 0.5, IoU 0.5, fp16 on CUDA). Run unchanged on the laptop CPU (own venv in the
+  zoo folder borrowing the BioCLIP venv's torch; ultralytics 8.4.90, CLIP, opencv-headless, matplotlib and small deps added):
+  ~41 s per picture, peak 7.1 GB (≈3.5 GB of open programs swapped out). Bee boxes match the LiteRT file within 1-4 px,
+  probabilities a little higher (0.80-0.88 vs 0.73-0.84). The zoo covers desktops only; it has no licence file, so it is only
+  run and cited, no code copied.
+- Phone, CPU route (`Sam3Detector.kt`): with `useGpu = false` and a split picture model, each part is loaded, run and closed in
+  turn, and the head is loaded after the parts and closed after each picture. Measured on the PC (ai-edge-litert CPU): all 4
+  parts at once 5.0 GB, whole model 3.9 GB, one part ~1 GB, head ~1.4 GB. On the Xiaomi the head alone took the app to 3.5 GB
+  (CompiledModel); a first try that kept it loaded was killed by lmkd at part 4 (2.1 GB RSS + 4.6 GB swap). Second try: all
+  numbers finite, probabilities equal to the PC's to 3 decimals (0.911 / 0.529 / 0.268, IoU 0.96-0.995), 3.2-3.5 min per
+  picture (parts: load 17-26 s + run 17-32 s each; head 18-20 s), peak VmHWM 4.4 GB; lmkd closed background apps ~130 and ~220
+  times in the two tries. The first picture logs load/run time and app memory per part and for the head. NaN message now
+  points to "Use GPU when faster" (the video run takes `useGpu` from it). `sam3_check_test.dart`: `--dart-define=SAM3_CPU=true`
+  (steps 1-3 on the CPU).
+- Next: find the op the Adreno GPU gets wrong (GPU ≈ 20x faster than the CPU route); speed up the CPU route by running each
+  part over several pictures (or an XNNPACK weight cache); TV-M as the last EfficientSAM3 try (owner to decide on 490 MB).
+

@@ -16,6 +16,8 @@
 //    and compares with the PC run. That prompt is encoded on the phone (text
 //    model) unless an earlier run remembered it in prompts/.
 // Run:  flutter test integration_test/sam3_check_test.dart -d <serial> --no-uninstall
+//       [--dart-define=SAM3_CPU=true]  (round 259: picture model on the CPU, one part at a
+//       time; steps 1 to 3 only. The Xiaomi's GPU gives NaN, see docs/SAM3.md)
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 
 import 'dart:io';
@@ -30,6 +32,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 // ignore: avoid_print
 void _log(String s) => print(s);
+
+const _cpu = bool.fromEnvironment('SAM3_CPU');
 
 /// PC reference (ai-edge-litert 2.2.0, CPU) on bumblebees_6s_1008.png:
 /// probability and box (left, top, right, bottom) in pixels.
@@ -89,7 +93,7 @@ void main() {
     // 1 + 2: prompt "insect", head on the CPU. (Round 257, Xiaomi: the GPU's
     // picture model gives only NaN, so the detection below throws.)
     _log('memory before: ${_memory()}  battery ${(await DeviceThermal.read()).batteryTempC} °C');
-    var info = await Sam3Detector.load(dir, 'insect');
+    var info = await Sam3Detector.load(dir, 'insect', useGpu: !_cpu);
     _log(
       'LOAD insect: ${(info.loadMs / 1000).toStringAsFixed(1)} s, vision ${info.visionAccelerator}'
       '${info.visionNote == null ? '' : ' (${info.visionNote})'}, head ${info.headAccelerator}, '
@@ -115,6 +119,7 @@ void main() {
     }
     _log('memory after detecting: ${_memory()}  battery ${(await DeviceThermal.read()).batteryTempC} °C');
     await Sam3Detector.close();
+    if (_cpu) return;
 
     // 4: head on the GPU, two-word prompt with a hyphen.
     info = await Sam3Detector.load(dir, 'flower-visiting insect', headOnGpu: true);

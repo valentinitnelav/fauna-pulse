@@ -29,11 +29,17 @@
 // but returns only NaN ("not a number") from its first part on, with LiteRT 2.1.5 and 2.2.0,
 // and also with 32-bit adding up or overflow clamping. The model card verified a Pixel 8a
 // (Mali GPU) and an iPhone. A picture that gives NaN therefore stops the run with a message
-// instead of passing meaningless boxes on to the tracker.
+// instead of passing meaningless boxes on to the tracker. Round 259: on the same phone's CPU
+// the results match the PC (probabilities equal to 3 decimals), at 3.2 to 3.5 min per picture.
 //
 // Memory: setting the whole 930 MB picture model up on the GPU took the 7.4 GB Xiaomi's app to
 // about 5 GB, and Android closed it (round 257); the text model on the CPU peaks at about 2 GB
 // and leaves about 0.8 GB behind after closing. Hence the parts and the prompt memory above.
+// On the CPU (useGpu = false, round 259) a split picture model is loaded one part at a time for
+// every picture (load, run, close): on the PC all 4 parts at once need 5.0 GB, the whole model
+// 3.9 GB, one part about 1 GB. The head, about 3 GB on the Xiaomi's CPU, is then also loaded
+// only after the parts and closed after each picture: head and part together got the app
+// closed by Android. Reloading costs seconds; the CPU needs a minute or more anyway.
 // Each picture also moves the 111 MB of features from the vision model to the head through
 // Java arrays (LiteRT's Kotlin API only reads and writes whole arrays), so the app needs
 // android:largeHeap (512 MB instead of 256 MB on the test phones).
@@ -55,7 +61,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 class Sam3Detector(
-    context: Context,
+    private val context: Context,
     dir: File,
     val prompt: String,
     useGpu: Boolean,
@@ -104,7 +110,11 @@ class Sam3Detector(
         private set
 
     private val vision = ArrayList<InferenceModel>()
-    private val head: InferenceModel
+    // CPU with a split picture model: the parts, loaded one at a time in detect(); else empty.
+    private val partFiles: List<File>
+    private val headFile: File
+    // Null in the one-part-at-a-time mode: loaded for each picture in detect().
+    private var head: InferenceModel? = null
     // Head input: features | text memory | pad flags. Allocated after the models are set up, whose
     // setup is the app's memory peak.
     private val headInput: FloatArray
@@ -124,28 +134,32 @@ class Sam3Detector(
 
         // 2. Vision (GPU when it fits, see Embedder.gpuMemoryNote) and head.
         var memoryNote: String? = null
-        head = try {
-            for (f in visionFiles) {
-                val note = if (useGpu) Embedder.gpuMemoryNote(context, f.path) else null
-                memoryNote = memoryNote ?: note
-                vision.add(LiteRtModel(context, f.path, useGpu && note == null, TAG))
+        partFiles = if (!useGpu && visionFiles.size > 1) visionFiles else emptyList()
+        headFile = File(dir, "sam3_head.tflite")
+        try {
+            if (partFiles.isEmpty()) {
+                for (f in visionFiles) {
+                    val note = if (useGpu) Embedder.gpuMemoryNote(context, f.path) else null
+                    memoryNote = memoryNote ?: note
+                    vision.add(LiteRtModel(context, f.path, useGpu && note == null, TAG))
+                }
+                head = LiteRtModel(context, headFile.path, useGpu && headOnGpu, TAG, CPU_THREADS)
             }
-            LiteRtModel(context, File(dir, "sam3_head.tflite").path, useGpu && headOnGpu, TAG, CPU_THREADS)
         } catch (e: Throwable) {
             vision.forEach { runCatching { it.close() } }
             throw e
         }
-        visionAccelerator = vision.map { it.accelerator }.distinct().joinToString("+")
+        visionAccelerator = if (partFiles.isEmpty()) vision.map { it.accelerator }.distinct().joinToString("+") else "CPU"
         visionNote = memoryNote ?: vision.firstNotNullOfOrNull { it.accelerationNote }
-        headAccelerator = head.accelerator
-        require(vision.last().outputElementCounts.firstOrNull() == FEATURES) { "Unexpected SAM 3 vision output ${vision.last().outputElementCounts.toList()}" }
-        require(head.outputElementCounts.firstOrNull()?.let { it > 1000 + QUERIES } == true) { "Unexpected SAM 3 head output" }
+        headAccelerator = head?.accelerator ?: "CPU"
+        if (vision.isNotEmpty()) require(vision.last().outputElementCounts.firstOrNull() == FEATURES) { "Unexpected SAM 3 vision output ${vision.last().outputElementCounts.toList()}" }
+        head?.let { h -> require(h.outputElementCounts.firstOrNull()?.let { it > 1000 + QUERIES } == true) { "Unexpected SAM 3 head output" } }
         headInput = FloatArray(FEATURES + TEXT + TOKENS)
         System.arraycopy(memory, 0, headInput, FEATURES, TEXT)
         for (i in 0 until TOKENS) headInput[FEATURES + TEXT + i] = if (tokenIds[i] == 0) 1f else 0f
         loadMs = (System.nanoTime() - t0) / 1e6
         Log.i(TAG, "Loaded in ${loadMs.toInt()} ms: prompt '$prompt' ids=${tokenIds.takeWhile { it != 0 }} " +
-            "vision=$visionAccelerator (${vision.size} part(s))${visionNote?.let { " ($it)" } ?: ""} head=$headAccelerator")
+            "vision=$visionAccelerator (${visionFiles.size} part(s)${if (partFiles.isEmpty()) "" else ", one at a time"})${visionNote?.let { " ($it)" } ?: ""} head=$headAccelerator")
     }
 
     /** prompts/<token numbers>.f32: the text memory depends on the token numbers only. */
@@ -225,22 +239,37 @@ class Sam3Detector(
         }
         var t = System.nanoTime()
         var features = chw
-        for ((k, part) in vision.withIndex()) {
-            features = part.run(features)[0]
-            if (!checked) Log.i(TAG, "picture model part ${k + 1}/${vision.size} (${part.accelerator}): ${stats(features)}")
+        val parts = if (partFiles.isEmpty()) vision.size else partFiles.size
+        for (k in 0 until parts) {
+            val t0 = System.nanoTime()
+            val part = if (partFiles.isEmpty()) vision[k] else LiteRtModel(context, partFiles[k].path, false, TAG, CPU_THREADS)
+            val loaded = System.nanoTime()
+            try {
+                features = part.run(features)[0]
+                if (!checked) Log.i(TAG, "picture model part ${k + 1}/$parts (${part.accelerator}, load %.1f s, run %.1f s, app ${rssMb()} MB): ${stats(features)}"
+                    .format((loaded - t0) / 1e9, (System.nanoTime() - loaded) / 1e9))
+            } finally {
+                if (partFiles.isNotEmpty()) part.close()
+            }
         }
-        checked = true
         System.arraycopy(features, 0, headInput, 0, FEATURES)
         lastVisionMs = (System.nanoTime() - t) / 1e6
         t = System.nanoTime()
-        val y = head.run(headInput)[0]
+        val headModel = head ?: LiteRtModel(context, headFile.path, false, TAG, CPU_THREADS)
+        val y = try {
+            headModel.run(headInput)[0].also { if (!checked) Log.i(TAG, "head (${headModel.accelerator}): app ${rssMb()} MB") }
+        } finally {
+            if (head == null) headModel.close()
+        }
+        checked = true
         lastHeadMs = (System.nanoTime() - t) / 1e6
 
         val presence = sigmoid(y[1000])
         lastPresence = presence
         check(!presence.isNaN()) {
             "SAM 3 gave no usable numbers on this phone: its GPU computes the picture model wrongly (NaN). " +
-                "SAM 3 cannot run on this phone yet; it runs on a PC (docs/SAM3.md)."
+                "Switch off \"Use GPU when faster\" in Settings to run SAM 3 on the main processor (CPU) " +
+                "instead: correct, but slow (about 3 minutes per picture on the test phone)."
         }
         val w = bitmap.width.toFloat()
         val h = bitmap.height.toFloat()
@@ -282,6 +311,10 @@ class Sam3Detector(
         return "max %.1f, mean %.3f, NaN %d, infinite %d".format(maxAbs, sum / max(1, a.size - nan - inf), nan, inf)
     }
 
+    /** The app's memory in RAM (VmRSS), for the log. */
+    private fun rssMb(): Long = File("/proc/self/status").readLines()
+        .firstOrNull { it.startsWith("VmRSS:") }?.split(Regex("\\s+"))?.getOrNull(1)?.toLongOrNull()?.div(1024) ?: -1
+
     private fun overlap(a: FloatArray, b: FloatArray): Float {
         val iw = max(0f, min(a[2], b[2]) - max(a[0], b[0]))
         val ih = max(0f, min(a[3], b[3]) - max(a[1], b[1]))
@@ -292,7 +325,7 @@ class Sam3Detector(
 
     fun close() {
         vision.forEach { runCatching { it.close() } }
-        runCatching { head.close() }
+        runCatching { head?.close() }
         scaled.recycle()
     }
 }
