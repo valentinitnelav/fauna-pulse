@@ -288,6 +288,7 @@ class IdentifyPrefs {
 /// usual cause being a BioCLIP file exported before round 242 (its attention
 /// layers use tensors the phone's GPU cannot run).
 String gpuNoteText(String note) => note.contains('Failed to compile')
-    ? '$note. BioCLIP files exported before round 242 cannot run on a GPU; export the model '
-          'again (tool/bioclip_export) or get the newer file (see IDENTIFICATION.md)'
+    ? '$note. The usual cause is a BioCLIP file whose attention layers use 5-dimensional '
+          'tensors, which phone GPUs cannot run; export the model again with tool/bioclip_export '
+          '(4-dimensional attention, see IDENTIFICATION.md)'
     : note;

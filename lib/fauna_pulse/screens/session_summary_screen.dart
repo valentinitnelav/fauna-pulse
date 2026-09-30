@@ -1360,7 +1360,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       na: tlNa,
     );
     add(
-      'Burst repeat interval (start-to-start, pre-r174)',
+      'Burst repeat interval (start to start)',
       _setting('timeLapseIntervalSeconds'),
       suffix: ' s',
       na: tlNa,
@@ -2247,9 +2247,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Padding(
         padding: EdgeInsets.only(top: 4),
         child: Text(
-          'No temperature, FPS or power data in this session: it was recorded '
-          'with an app version where diagnostics were opt-in (and off). '
-          'Current versions always record them.',
+          'No temperature, FPS or power data in this session: the app version '
+          'that recorded it did not save them.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       )
@@ -2293,8 +2292,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ] else ...[
       const SizedBox(height: 12),
       const Text(
-        'Thermal headroom: not reported by this phone (common on many devices — '
-        'e.g. the Xiaomi here). This is not a bug. Use the Temperature and '
+        'Thermal headroom: not reported by this phone (common on many devices). '
+        'This is not a bug. Use the Temperature and '
         'Inference-time graphs as the throttle indicators on this device.',
         style: TextStyle(color: Colors.white54, fontSize: 12),
       ),
@@ -2414,9 +2413,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           _graphsLoading
               ? '…'
               : 'No measurements yet. The phone\'s temperature, power and '
-                    'speed are written down while "Run AI on videos" runs; '
-                    'runs made with app versions before this one did not '
-                    'do that.',
+                    'speed are written down while "Run AI on videos" runs.',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ];
@@ -2821,7 +2818,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'second later (its "Lag" row), so a fast objects can have moved '
             'or left. On the high-res view the boxes are re-matched by time '
             'to the photo\'s real content moment when the log carries the '
-            'needed timestamps (recorded from this app version on). Taking '
+            'needed timestamps. Taking '
             'a high-res photo briefly pauses the detector, so there is '
             'often no frame at the photo\'s exact moment — the app then '
             'estimates each object\'s position by interpolating between '

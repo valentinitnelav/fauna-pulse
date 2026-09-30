@@ -8595,3 +8595,11 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
 - Results: the cyan crop outline follows `square_crops`; "Side px" help and the crops CSV note corrected (it is the detector box's longer side before the margin, as `crop_px` always was).
 - Tests: crop_worker_test (box-shaped planning, longer-side margin, edge padding, stretched thin box vs padded square), identification_job_test (shape reaches the cropper, index reads it back, old runs = square), new identify_prefs_test (save/load round trip). Docs: IDENTIFICATION.md (crop step, defaults paragraph, keep/recompute rule), DATA_GUIDE `identify_start`, overview.
 
+## Round 263 (2026-09-30): user-visible texts without development history
+
+- Owner rule: ⓘ helpers and other on-screen texts never mention development rounds ("round N", "rN"), the owner, or past defaults/app behaviour; the app is not released yet, so the texts describe only what the app does now. Every Dart string literal in `lib/` was scanned (comments excluded); the native Kotlin side had none.
+- Helpers: "Use the GPU" (dropped the "exported before round 242" sentence; "the test phone" named as a Xiaomi Mi 11 Lite 5G), Identify and camera "CPU threads" ("the phones it was tested on"), "Ignore tiny tile boxes" (no "Since round 179"), tracker "Search margin — pass 2" ("matching pass", not "round").
+- Other texts: the GPU compile-failure note (`gpuNoteText`) now names the cause (5-D attention tensors) and the fix (re-export with `tool/bioclip_export`); results "?" note (no round list); S3 median note ("previous screen", not "table before"); session summary: "Burst repeat interval (start to start)" label, no-diagnostics note, video-run graph placeholder, high-res pair text, thermal-headroom note (no "the Xiaomi here").
+- The identification README.txt written next to the results lost its "(round 2xx)" tags.
+- Test: `bioclip_gpu_test` matches the new note wording.
+

@@ -1113,7 +1113,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'How many processor cores the model may use when it runs on the '
             'CPU (GPU runs ignore this). 0 = automatic, which uses 2: on the '
-            'test phones that was about twice as fast as 1, while 4 was at '
+            'two phones it was tested on, that was about twice as fast as 1, while 4 was at '
             'most slightly faster and keeps twice as many cores busy (more '
             'heat). Run the benchmark below before changing it.',
         onChanged: (v) =>
@@ -1533,7 +1533,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       max: 2.0,
       decimals: 2,
       helperText:
-          'A second, wider matching round for whatever pass 1 could not '
+          'A second, wider matching pass for whatever pass 1 could not '
           'pair — this is what catches the big between-frame jumps. Always '
           'at least as large as pass 1. (up to 2.0; default 0.50.)',
       onChanged: (v) => updateC(

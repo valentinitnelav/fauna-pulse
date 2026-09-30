@@ -852,9 +852,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               '0 = off. Ignores detections whose box is narrower than this '
               'percentage of the photo side in either direction — catches '
               'background specks and the thin sliver boxes tiling produces '
-              'at tile borders. Since round 179 this also applies LIVE to '
+              'at tile borders. It also applies to '
               'existing results: after a run, move it and watch the cleanup '
-              'numbers below re-derive instantly (no re-analysis). Tip: '
+              'numbers below update instantly (no re-analysis). Tip: '
               'analyze with 0% so every box stays recorded and tunable.',
           onChanged: (v) async {
             setState(() => _sahiMinBoxPct = v);

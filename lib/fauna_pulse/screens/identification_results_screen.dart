@@ -1075,7 +1075,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                 outro: widget.rank == null || median == null
                     ? 'Tap a row for the full ladder, photo and crops. Drag the table sideways if it is wider than the screen.'
                     : 'Median Conf. across these ${_plural(widget.tracks.length, 'track ID')}: ${_pct(median)} '
-                          '(the Med. Conf. shown in the table before). Tap a row for the full ladder, photo and crops. '
+                          '(the Med. Conf. of this row on the previous screen). Tap a row for the full ladder, photo and crops. '
                           'Drag the table sideways if it is wider than the screen.',
               ),
               const SizedBox(height: 6),
@@ -1749,10 +1749,8 @@ class _TrackSheetState extends State<_TrackSheet> {
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
-            '"?" = a value an older app version did not store (some per-crop values before round 217, '
-            'Family, Order and Class before round 220, Detector conf. before round 223). "Re-score with '
-            'this pack" on the Identify screen '
-            'recomputes everything with the current rule in seconds.',
+            '"?" = a value missing from these results because an older app version made them. '
+            '"Re-score with this pack" on the Identify screen fills them in within seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),

@@ -706,7 +706,7 @@ Files
   crops_<pack>.csv                 one row per crop (photo x track); columns below
   summary_<pack>.json              counts used by the app's results screen
 
-Two kinds of probability appear everywhere (round 219 rule):
+Two kinds of probability appear everywhere:
   Conf. (p_<rank>)     the model's confidence that a track ID belongs to a TAXON. The crops'
                        embedding vectors are averaged, each crop weighted by its top-1
                        probability, crops below the surest crop's top-1 probability divided
@@ -734,7 +734,7 @@ tracks_<pack>.csv columns
   bioclip_<rank>                      the taxon chosen at each rank on a consistent top-down path
   p_<rank>                            Conf. of that taxon (see above; calibrated only if the pack
                                       carries a fitted temperature)
-  p_mean_<rank>, p_max_<rank>         plain mean and best single crop (round 217)
+  p_mean_<rank>, p_max_<rank>         plain mean and best single crop
   p_agree_<rank>                      mean of the crops' own values over the crops whose top-1 is
                                       under the taxon (agree_<rank> x p_agree_<rank> = insect-
                                       detect-post's weighted probability)
@@ -749,7 +749,7 @@ tracks_<pack>.csv columns
   merged_track_ids, n_detections, suspect   joined ids; detector frames; suspect verdict (0/1)
   rival_rank, rival_taxon, rival_p    path_conflict only: the highest rank where a taxon outside the
                                       ladder's path had more Conf. than the ladder's pick; that taxon
-                                      and its Conf. (round 221)
+                                      and its Conf.
 
 crops_<pack>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
@@ -759,13 +759,13 @@ crops_<pack>.csv columns
                                       Laplacian sharpness, detector confidence,
                                       padding outside the photo (descriptive only)
   top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
-  top1_kingdom .. top1_family         that species' higher ranks (round 220; kingdom "none" for a
+  top1_kingdom .. top1_family         that species' higher ranks (kingdom "none" for a
                                       "none of these" entry)
   agrees                              1 when top1_species falls under the track ID's reported taxon
-  counted                             1 when the crop entered the combined answer (round 219)
+  counted                             1 when the crop entered the combined answer
   ladder_<rank>, p_<rank>             the track ID's ladder taxa and THIS crop's own Conf. under each
 
-How it is computed (round 219): each crop is embedded with the BioCLIP image tower and
+How it is computed: each crop is embedded with the BioCLIP image tower and
 scored against the pack on its own (for the per-crop columns); the track ID's answer comes
 from the certainty-weighted average of the counted crops' embeddings, scored once, with
 species masses summed up the taxonomy. Percentages are model confidence, not accuracy.

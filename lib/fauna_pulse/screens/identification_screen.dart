@@ -1024,14 +1024,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           value: prefs.useGpu,
           onChanged: (v) => _edit(() => prefs.useGpu = v),
           helperText:
-              'Runs the model on the phone\'s graphics processor (GPU) when it can. On the test phone '
-              'that took 0.27 s per crop instead of 2.6 s on the CPU, so a large session is '
+              'Runs the model on the phone\'s graphics processor (GPU) when it can. On a Xiaomi Mi 11 '
+              'Lite 5G (a 2021 mid-range phone) that took 0.27 s per crop instead of 2.6 s on the CPU, so a large session is '
               'identified about ten times faster. GPUs differ between phones and Android versions: '
               'the first time a model runs on this phone\'s GPU, the app compares its result on a '
               'test picture with the CPU\'s and keeps the GPU only when they agree. When the GPU '
               'cannot compile the model, does not match the CPU or runs out of memory, the app uses '
-              'the CPU and says why after loading. BioCLIP files exported before round 242 cannot '
-              'run on any GPU (see IDENTIFICATION.md). "Test speed" shows what this phone does. '
+              'the CPU and says why after loading. "Test speed" shows what this phone does. '
               'Off = CPU only.',
         ),
         NumericSettingField(
@@ -1043,7 +1042,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           onChanged: (v) => _edit(() => prefs.cpuThreads = v.round()),
           helperText:
               'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
-              'on the test phone that was almost twice as fast as 1. 4 was about a quarter faster '
+              'on the phones it was tested on, that was almost twice as fast as 1. 4 was about a quarter faster '
               'again but keeps twice as many cores busy, so the phone warms up sooner (which '
               'triggers the pause). "Test speed" shows the real effect of a value on this phone.',
         ),

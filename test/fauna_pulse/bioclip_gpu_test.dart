@@ -33,9 +33,9 @@ void main() {
   });
 
   test('a failed GPU compile points to the newer export; other reasons stay as they are', () {
-    expect(gpuNoteText('Failed to compile model'), contains('exported before round 242'));
+    expect(gpuNoteText('Failed to compile model'), contains('export the model again'));
     const other = "the GPU's results differed from the CPU's on this phone (agreement 0.900, needs 0.995)";
     expect(gpuNoteText(other), other);
-    expect(gpuNoteText('on the GPU blocklist after repeated failed GPU compiles'), isNot(contains('round 242')));
+    expect(gpuNoteText('on the GPU blocklist after repeated failed GPU compiles'), isNot(contains('export the model again')));
   });
 }
