@@ -8,15 +8,21 @@ exactly the frames (and the same analysed square) of an earlier run lets the app
 ("Find visits") compare SAM 3's track IDs with that model's, frame for frame.
 
 Usage:
-    python detect_video.py SESSION_COPY --sam3-dir DIR --prompt insect [--confidence 0.5]
-        [--iou 0.7] [--fps 1] [--out FILE]
+    python detect_video.py SESSION_COPY (--sam3-dir DIR | --efficientsam3 CKPT) --prompt insect
+        [--confidence 0.5] [--iou 0.7] [--fps 1] [--threads 4] [--out FILE]
 
 SESSION_COPY holds videos/<clip> (the phone's copy of the video) and the earlier run's
 video_detections.jsonl. --fps keeps the frames an analysis at that rate would have looked at,
 by the phone's rule (PtsSampler in VideoFrameSource.kt, thinVideoDetections in
 test/fauna_pulse/video_fps_sweep_test.dart), so both models see the same frames. The output
-(default SESSION_COPY/sam3/video_detections.jsonl) is appended frame by frame, so a stopped run
-continues where it stopped. Needs ffmpeg. About 40 s per frame on a 4-core laptop.
+(default SESSION_COPY/sam3/video_detections.jsonl, or SESSION_COPY/<checkpoint name>/...) is
+appended frame by frame, so a stopped run continues where it stopped. Needs ffmpeg. SAM 3 takes
+about 40 s per frame on a 4-core laptop.
+
+--efficientsam3 (round 258) runs a distilled, smaller SAM 3 instead: one of the three full
+models (EV-M, RV-M, TV-M) from Hugging Face Simon7108528/EfficientSAM3, folder efficientsam3_ft/.
+It needs PyTorch and the EfficientSAM3 code (github.com/SimonZeng7108/efficientsam3, its sam3/
+folder importable, e.g. through a .pth file). EV-M: about 4 s per frame on the same laptop.
 """
 
 from __future__ import annotations
@@ -59,6 +65,64 @@ def text_memory(sam3_dir: Path, ids: list[int]) -> np.ndarray:
     return run(load(sam3_dir / "sam3_text.tflite", 4), table[padded].astype(np.float32)[None])
 
 
+def sam3_detector(sam3_dir: Path, prompt: str, threads: int):
+    """SAM 3 from the LiteRT files. The returned function takes the prepared picture and gives,
+    for SAM 3's 200 candidates, probability (score x presence) and box (centre x, centre y,
+    width, height; 0..1), plus the presence score ("prompt is in the picture")."""
+    tok = CLIPTokenizer(str(sam3_dir / "vocab.json"), str(sam3_dir / "merges.txt"))
+    ids = tok(prompt)["input_ids"][:32]
+    tail = np.concatenate([text_memory(sam3_dir, ids),
+                           (np.array(ids + [0] * (32 - len(ids))) == 0).astype(np.float32)])
+    vision = load(sam3_dir / "sam3_vision.tflite", threads)
+    head = load(sam3_dir / "sam3_head.tflite", threads)
+
+    def detect(x):
+        y = run(head, np.concatenate([run(vision, x), tail]))
+        presence = 1 / (1 + np.exp(-y[1000]))
+        return presence / (1 + np.exp(-y[:200])), y[200:1000].reshape(200, 4), presence
+
+    return detect
+
+
+# Picture model of each released full EfficientSAM3 (EV-M, RV-M, TV-M); all use the MobileCLIP-S0
+# text model with 16 tokens (read from the EV-M checkpoint and the project's README).
+EFFICIENTSAM3 = {"efficientvit": "b1", "repvit": "m1.1", "tinyvit": "11m"}
+
+
+def efficientsam3_detector(ckpt: Path, prompt: str, threads: int):
+    """EfficientSAM3 (PyTorch), same inputs and outputs as sam3_detector."""
+    import sys
+    import types
+
+    import torch
+
+    # The code imports a video reader that only its training uses; a stand-in avoids installing one.
+    sys.modules.setdefault("decord", types.SimpleNamespace(cpu=None, VideoReader=None))
+    from sam3.model_builder import build_efficientsam3_image_model
+    from sam3.model.sam3_image_processor import Sam3Processor
+
+    torch.set_num_threads(threads)
+    backbone = next(b for b in EFFICIENTSAM3 if b in ckpt.name)
+    model = build_efficientsam3_image_model(
+        checkpoint_path=str(ckpt), backbone_type=backbone, model_name=EFFICIENTSAM3[backbone],
+        text_encoder_type="MobileCLIP-S0", text_encoder_context_length=16, device="cpu",
+        enable_segmentation=False)  # boxes only: skips the mask head
+    find = Sam3Processor(model, device="cpu").find_stage
+    with torch.inference_mode():
+        text = model.backbone.forward_text([prompt], device="cpu")
+
+    @torch.inference_mode()
+    def detect(x):
+        features = model.backbone.forward_image(torch.from_numpy(x))
+        features.update(text)
+        out = model.forward_grounding(backbone_out=features, find_input=find,
+                                      geometric_prompt=model._get_dummy_prompt(), find_target=None)
+        presence = out["presence_logit_dec"].sigmoid().item()
+        return presence * out["pred_logits"][0, :, 0].sigmoid().numpy(), out["pred_boxes"][0].numpy(), presence
+
+    return detect
+
+
 def frames(video: Path, numbers: list[int], roi_px: list[int]):
     """Yields the upright, cropped RGB frames with display numbers `numbers` (ascending)."""
     x, y, w, h = roi_px
@@ -82,14 +146,21 @@ def frames(video: Path, numbers: list[int], roi_px: list[int]):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("session", type=Path)
-    ap.add_argument("--sam3-dir", type=Path, required=True)
+    model_arg = ap.add_mutually_exclusive_group(required=True)
+    model_arg.add_argument("--sam3-dir", type=Path)
+    model_arg.add_argument("--efficientsam3", type=Path, metavar="CKPT")
     ap.add_argument("--prompt", default="insect")
     ap.add_argument("--confidence", type=float, default=0.5)
     ap.add_argument("--iou", type=float, default=0.7)
     ap.add_argument("--fps", type=float, help="default: the earlier run's rate")
+    ap.add_argument("--threads", type=int, default=4, help="more is faster but heats the laptop")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args()
-    out = a.out or a.session / "sam3" / "video_detections.jsonl"
+    if a.efficientsam3:
+        model_id, model_name = a.efficientsam3.stem, f"EfficientSAM3 {a.efficientsam3.stem}"
+    else:
+        model_id, model_name = "sam3", "SAM 3"
+    out = a.out or a.session / model_id / "video_detections.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     ref = [json.loads(line) for line in open(a.session / "video_detections.jsonl")]
@@ -116,20 +187,19 @@ def main():
 
     now = lambda: int(time.time() * 1000)
     if not done:
-        settings = dict(start["settings"], model="sam3", confidence=a.confidence, iou=a.iou,
+        settings = dict(start["settings"], model=model_id, confidence=a.confidence, iou=a.iou,
                         analysis_fps=fps, prompt=a.prompt)
+        runtime = "PyTorch" if a.efficientsam3 else "ai-edge-litert"
         write({"type": "video_run_start", "time_ms": now(), "settings": settings,
-               "model_name": f'SAM 3, prompt "{a.prompt}"', "use_gpu": False,
+               "model_name": f'{model_name}, prompt "{a.prompt}"', "use_gpu": False,
                "clips_total": 1, "clips_pending": 1,
-               "app_version": "PC: tool/sam3/detect_video.py (ai-edge-litert, CPU)"})
+               "app_version": f"PC: tool/sam3/detect_video.py ({runtime}, CPU)"})
         write(dict(clip_start, time_ms=now()))
 
-    tok = CLIPTokenizer(str(a.sam3_dir / "vocab.json"), str(a.sam3_dir / "merges.txt"))
-    ids = tok(a.prompt)["input_ids"][:32]
-    tail = np.concatenate([text_memory(a.sam3_dir, ids),
-                           (np.array(ids + [0] * (32 - len(ids))) == 0).astype(np.float32)])
-    vision = load(a.sam3_dir / "sam3_vision.tflite")
-    head = load(a.sam3_dir / "sam3_head.tflite")
+    if a.efficientsam3:
+        detect = efficientsam3_detector(a.efficientsam3, a.prompt, a.threads)
+    else:
+        detect = sam3_detector(a.sam3_dir, a.prompt, a.threads)
     todo = [r for r in dets if r["frame"] not in done]
     t_run = time.time()
     for k, (n, rgb) in enumerate(frames(a.session / "videos" / clip_start["clip"], [r["frame"] for r in todo], roi_px)):
@@ -137,14 +207,12 @@ def main():
         assert rec["frame"] == n
         img = Image.fromarray(rgb).resize((SIDE, SIDE), Image.BILINEAR)
         x = ((np.asarray(img, np.float32) / 255 - 0.5) / 0.5).transpose(2, 0, 1)[None]
-        y = run(head, np.concatenate([run(vision, x), tail]))
-        presence = 1 / (1 + np.exp(-y[1000]))
-        prob = presence / (1 + np.exp(-y[:200]))
+        prob, cxcywh, presence = detect(x)
         boxes = []
         for q in np.argsort(-prob):
             if prob[q] < a.confidence:
                 break
-            cx, cy, bw, bh = map(float, y[200 + 4 * q: 204 + 4 * q])
+            cx, cy, bw, bh = map(float, cxcywh[q])
             l, t, r, b = [min(max(v, 0.0), 1.0) for v in (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)]
             box = [l * roi_px[2], t * roi_px[3], r * roi_px[2], b * roi_px[3]]
             if any(_iou(box, kept) > a.iou for kept in boxes):

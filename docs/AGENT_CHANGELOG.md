@@ -8515,3 +8515,23 @@ Owner: 15 fps is a lot for long videos; insects can be tracked at 5 fps; the hel
   running overnight on the laptop (~45 s per frame), output in `~/SAM3/runs/`.
 - Next: find the operation the Adreno GPU computes wrongly (part 1 in pieces vs the PC); lighter models (EfficientSAM3).
 
+## Round 258 (2026-09-30): EfficientSAM3 tried on the PC; SAM 3 reference on the Bumblebees clip (branch sam3, experimental)
+
+- Owner's request: try EfficientSAM3 on the PC on a few frames of "Bumblebees (720p, h264).mp4" (13 s), with SAM 3 as the
+  reference; the phone's session `bumblebee-2` (ArthroNat, 5 fps, confidence 0.5) gave the frames and the analysed square.
+- `tool/sam3/detect_video.py`: `--efficientsam3 CKPT` runs one of the three full EfficientSAM3 models (Hugging Face
+  `Simon7108528/EfficientSAM3`, `efficientsam3_ft/`; EV-M = EfficientViT-B1, RV-M = RepViT-M1.1, TV-M = TinyViT-11M, all with
+  MobileCLIP-S0 text, 16 tokens) through PyTorch; same frames, thresholds, overlap removal and output as SAM 3 (output folder
+  named after the checkpoint). `--threads` (default 4, was a fixed 8) to keep the laptop cooler. Model code now sits behind
+  `sam3_detector` / `efficientsam3_detector`, which both return probability, box and presence for the 200 candidates.
+- EfficientSAM3 setup (outside git, `~/SAM3/efficientsam3/`): shallow clone of the code, EV-M checkpoint only (468 MB), own venv
+  borrowing the BioCLIP venv's torch via a .pth file; needs iopath, einops, pycocotools, psutil, omegaconf; its training-only
+  video reader (decord) is replaced by a stand-in. SAM 3's `sam3.pt` is not needed.
+- Results (laptop, 4 threads; YouTube clip, model comparison only): EV-M about 4 s per frame (SAM 3 about 40 s). EV-M found no
+  box at 0.5 in the 67 frames (presence 0.01 to 0.19) although the bee is in view until ~12 s; SAM 3 on 14 frames (1 per s) boxed
+  the bee in all 13 frames that show it (presence 0.85 to 0.97) and nothing in the bee-free last frame (0.02). Track IDs, app
+  tracker (ByteTrack, occlusion 3 s, min. 1 s, 1 fps, confidence 0.5): SAM 3 3 (one per scene of the compilation), ArthroNat 1
+  (bee matched in 3 of 13 frames), EV-M 0. Checks: EV-M's "leaf" box matches SAM 3's (setup correct); SAM 3's text encoding fed
+  into EV-M barely raises presence, so EV-M's picture model is the weak part; shrinking the picture helps flowers, not the bee.
+- Next: TV-M as the last cheap EfficientSAM3 try (owner to decide on the 490 MB download); otherwise back to the Adreno NaN hunt.
+
