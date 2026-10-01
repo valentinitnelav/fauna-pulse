@@ -37,7 +37,7 @@ void _log(String s) => print(s);
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('live AI vs AI afterwards on this phone', (tester) async {
+  testWidgets('live detection vs Detection afterwards on this phone', (tester) async {
     binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
     await WakelockPlus.enable();
     addTearDown(WakelockPlus.disable);
@@ -83,12 +83,12 @@ void main() {
       MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))),
     );
     await waitFor(find.byTooltip('Play'));
-    expect(find.text("Videos with the live AI's boxes"), findsOneWidget);
-    await scrollTo(find.text('Compare with the AI afterwards'), 200);
+    expect(find.text("Videos with live detection's boxes"), findsOneWidget);
+    await scrollTo(find.text('Compare with detection afterwards'), 200);
     await shot('live_compare_prompt');
 
     // 2. Run AI on videos from there.
-    await tester.tap(find.widgetWithText(FilledButton, 'Run AI on videos'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Find animals in videos'));
     await waitFor(find.byType(VideoAnalysisScreen));
     await waitFor(find.textContaining('recorded by the app as the camera'));
     final start = find.text('Analyze 1 clip');
@@ -108,12 +108,12 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     // 3. Both views on the Video tab.
-    await waitFor(find.text('AI afterwards', skipOffstage: false));
-    await scrollTo(find.text('AI afterwards'), -300);
+    await waitFor(find.text('Detection afterwards', skipOffstage: false));
+    await scrollTo(find.text('Detection afterwards'), -300);
     await shot('live_switch_live');
-    await tester.tap(find.text('AI afterwards'));
+    await tester.tap(find.text('Detection afterwards'));
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('All AI boxes', skipOffstage: false), findsOneWidget);
+    expect(find.text('All boxes', skipOffstage: false), findsOneWidget);
     await shot('live_switch_after');
 
     // 4. Graphs.
@@ -125,9 +125,9 @@ void main() {
       await tester.tap(find.textContaining('Extra graphs'));
       await tester.pump(const Duration(seconds: 1));
     }
-    await scrollTo(find.text('While the AI ran'), 200);
-    await tester.tap(find.text('While the AI ran'));
-    await waitFor(find.text('While the AI ran on the videos'));
+    await scrollTo(find.text('While the detector ran'), 200);
+    await tester.tap(find.text('While the detector ran'));
+    await waitFor(find.text('While the detector ran on the videos'));
 
     final photosAfter = photos();
     _log('PHOTOS ${photosBefore.length} before, ${photosAfter.length} after');

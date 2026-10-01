@@ -372,7 +372,7 @@ void main() {
     expect(find.byTooltip('Play').hitTestable(), findsOneWidget, reason: 'scrolled back to the player');
     // Round 235: the clip picker and player at the top of the tab, the
     // header text scrolled off, so the controls are on screen.
-    expect(find.text("Videos with the AI's boxes").hitTestable(), findsNothing);
+    expect(find.text("Videos with the detector's boxes").hitTestable(), findsNothing);
     await shot('keep_show_in_video');
 
     await tester.pumpWidget(const SizedBox());

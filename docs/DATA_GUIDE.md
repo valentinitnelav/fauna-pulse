@@ -198,7 +198,7 @@ How to use them:
 
 ### `raw_detections` — pre-tracking boxes (round 105, only when the evaluation toggle is on)
 
-Written only when Settings → AI → Tracking → Advanced → **Log raw
+Written only when Settings → Detection → Tracking → Advanced → **Log raw
 detections** is enabled: one line per processed frame (empty frames included —
 the tracker ages its tracks by frames) with the detector's boxes **before**
 tracking. This is the input the offline tracker replay harness uses to compare
@@ -323,9 +323,9 @@ afterwards like imported videos (§9).
 While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
 `camera_paused` and a new clip starts for the same `burst` once the camera is back.
 
-**Live AI + ROI video (round 240).** An AI-detector session with *Also record the ROI as
+**Live detection + ROI video (round 240).** A live detection session with *Also record the ROI as
 video* (start record `config.liveAiVideo: true`, `config.liveAiVideoFps`) records the same
-kind of clips while the live AI runs, as 5-minute pieces (a new clip every 5 minutes, so
+kind of clips while live detection runs, as 5-minute pieces (a new clip every 5 minutes, so
 a killed app loses at most the open one): `live_video_start` instead of
 `timelapse_video_start`, and `segment` (0, 1, 2 …, counted from the recording start)
 instead of `burst` in it, in `video_clip` and in `video_skipped`; `end_reason` is
@@ -335,16 +335,16 @@ motion gate lets the detector sleep. Each clip is the live ROI square, so a live
 `frame_sensor_ms` − the clip's `start_epoch_ms` (the same camera clock); the summary's
 Video tab draws the live boxes that way.
 
-Round 241: such clips can be analysed again with *Run AI on videos* for comparison. The
+Round 241: such clips can be analysed again with *Find animals in videos* for comparison. The
 files it writes (`video_detections.jsonl`, `post_tracks.jsonl`, `track_ids.csv`, `mot/`) sit
 next to the live `session.jsonl`, but the session's track IDs, graphs, dashboard and
-identification stay the live AI's (a live AI session's track source is always the live
+identification stay live detection's (a live detection session's track source is always the live
 log, §9 `trackSourceOf`). *Find track IDs* keeps no frames for a live session (`keep_frames`
 null in `post_track_start`), so `roi_frames/` holds only the live photos. The Video tab's
-*Live AI | AI afterwards* switch shows either set of boxes on the same clips; the two sets
+*Live detection | Detection afterwards* switch shows either set of boxes on the same clips; the two sets
 number their track IDs independently.
 
-Round 239: such a session is analysed like imported videos (§9): *Run AI on videos* (the
+Round 239: such a session is analysed like imported videos (§9): *Find animals in videos* (the
 Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
 clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`
 and `track_ids.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
@@ -808,7 +808,7 @@ analysis boxes for photos without a track ID.
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
 home screen's cross-session Dashboard: the session's start/end, whether the
-AI detector ran, and each track ID's first/last timestamp — all re-derivable
+live detection ran, and each track ID's first/last timestamp — all re-derivable
 from `session.jsonl`. It is keyed to the log's size and mtime, so deleting it
 is always safe (the app just recomputes it on the next Dashboard track ID). It
 is NOT part of the scientific record; analysis workflows should read
@@ -980,9 +980,9 @@ When the file name's time and the stored time differ by more than 2 minutes, the
 but the import screen marks the time as uncertain. Messengers such as WhatsApp remove the
 stored time; video editors reset it to the export time.
 
-### `video_detections.jsonl` — "Run AI on videos" (round 225+)
+### `video_detections.jsonl` — "Find animals in videos" (round 225+)
 
-"Run AI on videos" (home screen) runs a detector over every clip and appends to
+"Find animals in videos" (home screen) runs a detector over every clip and appends to
 `<session>/video_detections.jsonl`, following the same append-only JSONL rules as
 `session.jsonl` (records carry `time_ms` = when written, no `time_iso`):
 
@@ -1014,8 +1014,8 @@ the recording is closed. A clip that was still open when the app was killed (bat
 system, a forced stop) has its picture data but no index, so no player or decoder can read
 it. The app checks the file's top-level boxes: an empty file, or one without `moov` whose
 last box has size 0 or runs past the end of the file, is *cut off*. Such clips are not
-analysed and not counted in `clips_total`; `clips_cut_off` says how many there were. *Run
-AI on videos* names them and offers to delete them (cleanup mode `cut_off`, below); the
+analysed and not counted in `clips_total`; `clips_cut_off` says how many there were. *Find
+animals in videos* names them and offers to delete them (cleanup mode `cut_off`, below); the
 Video tab leaves them out with a note. A file that does not start with an MP4 `ftyp` box
 (another container) is left to the decoder as before.
 
@@ -1047,7 +1047,7 @@ The summary's Graphs tab (under *Extra graphs*) plots these instead of the live 
 on the analysis time: runs placed back to back with a gap between them (5 sample
 intervals, at least a minute), cooling pauses shaded. *Share results* adds them as
 `phone_during_analysis.csv`, one row per sample on the same clock:
-`run` (1, 2, … per start of *Run AI on videos*), `time_s` (the graphs' time axis),
+`run` (1, 2, … per start of *Find animals in videos*), `time_s` (the graphs' time axis),
 `epoch_ms` (the records' `time_ms`), `clip`, `temp_c`, `headroom`, `thermal_status`,
 `power_w`, `battery_current_ua`, `battery_voltage_mv` (raw, as logged; the two sensor
 columns are there to apply the §3 corrections), `charging`, `plugged`, `frames_per_s`,
@@ -1079,7 +1079,7 @@ The file holds boxes and these samples only; the next files turn the boxes into 
 
 ### Track IDs: `post_tracks.jsonl`, `track_ids.csv`, `mot/` (round 228+)
 
-*Find track IDs* (under the analysis on the "Run AI on videos" screen, and automatically
+*Find track IDs* (under the analysis on the "Find animals in videos" screen, and automatically
 after each finished analysis) runs the boxes through the same tracker a live session
 uses (ByteTrack or C-BIoU, chosen under camera Settings, with the screen's own
 **occlusion tolerance** and **minimum track length**). It follows each insect from frame
@@ -1151,12 +1151,12 @@ track ID was first seen. Track IDs in the same frame share one picture. So a ses
 * The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
   moves the player to the frame's moment and scrolls it, with its controls, to the top of
   the tab. White ticks under the player's time bar mark the saved kept frames (round 235).
-  The *Run AI on videos* screen shows how many are saved and the storage they take.
+  The *Find animals in videos* screen shows how many are saved and the storage they take.
 
 ### Freeing storage: deleting the videos (round 236+)
 
 The videos take most of a session's space. Once the track IDs are found, *Free storage* on
-the *Run AI on videos* screen offers two deletions, each after a confirmation; the videos
+the *Find animals in videos* screen offers two deletions, each after a confirmation; the videos
 are kept unless you choose one:
 
 * **Delete the clips without any track ID**: clips that the current *Find track IDs* followed
@@ -1164,7 +1164,7 @@ are kept unless you choose one:
 * **Delete all clips, keep the saved frames**: offered once every clip is analysed, the
   track IDs include the latest analysis and every kept frame is saved.
 
-What stays: `video_detections.jsonl` (the AI's boxes), `post_tracks.jsonl`, `track_ids.csv`,
+What stays: `video_detections.jsonl` (the detector's boxes), `post_tracks.jsonl`, `track_ids.csv`,
 `mot/` and the kept frames in `roi_frames/`. *Find track IDs* still runs from the boxes; a
 kept frame whose clip is gone is never overwritten or deleted, and a frame that a new rule
 would need from a deleted clip is counted as "can no longer be saved". What goes: playing
@@ -1208,8 +1208,8 @@ boxes.
 ### The Video tab: watching the boxes (round 231+)
 
 For an imported video session the summary's first tab is **Video** (live sessions keep
-*Photos*). It plays the session's clips with the AI's boxes drawn on them, so you can see
-what the AI found and whether the analysed square was well placed. The tab only reads
+*Photos*). It plays the session's clips with the detector's boxes drawn on them, so you can see
+what the detector found and whether the analysed square was well placed. The tab only reads
 `video_detections.jsonl`, `post_tracks.jsonl` and the kept frames in `roi_frames/` (round
 234, shown under the player); it writes nothing.
 
@@ -1223,19 +1223,19 @@ what the AI found and whether the analysed square was well placed. The tab only 
 * **Track IDs or all AI boxes.** Once *Find track IDs* has run, the boxes are the tracked ones
   from `post_tracks.jsonl`, labelled `#<track ID> class conf` with the same number as in
   `track_ids.csv`. A faded box is a frame where the detector missed the insect and the tracker
-  kept its place. The *All AI boxes* switch shows every `raw_detections` box instead,
+  kept its place. The *All boxes* switch shows every `raw_detections` box instead,
   including those *Find track IDs* did not count (a track ID shorter than the minimum length,
   the frames before a track was confirmed, see above, or an insect never seen with at
   least the tracker's *New-track confidence*, `highThresh` in `post_track_start.tracker`:
   weaker boxes only continue a track, round 247); the strip under the time bar then marks
   the frames with at least one box. Before *Find track IDs*, and when
   the videos were analysed again after it (the track IDs' `detections_run_ms` no longer
-  matches the analysis run), only the AI boxes are shown, with a note.
-* **Whole frame or what the AI saw.** When a square was analysed, *Whole frame* draws it
-  and darkens the part left out; *What the AI saw* zooms onto the square. The square comes
+  matches the analysis run), only the detector boxes are shown, with a note.
+* **Whole frame or what the detector saw.** When a square was analysed, *Whole frame* draws it
+  and darkens the part left out; *What the detector saw* zooms onto the square. The square comes
   from `roi_px` in `video_clip_done`, or from the run's `settings.roi` for a clip whose
   analysis has not finished. Insects outside the square or cut by its edge mean the square
-  should move: *Change square and analyse again* opens *Run AI on videos* for the session,
+  should move: *Change square and analyse again* opens *Find animals in videos* for the session,
   and the tab reloads on return.
 * **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
   track ID (each starts 1 s before the track ID); speed 0.5×, 1×, 2× or 4×; sound is off until

@@ -74,7 +74,7 @@ void main() {
     );
     await open(tester, config);
     await tester.scrollUntilVisible(find.text('Save bursts as'), 200, scrollable: list);
-    expect(find.text('Video (MP4), AI later on "Run AI on videos"'), findsOneWidget);
+    expect(find.text('Video (MP4), find animals later'), findsOneWidget);
     await tester.scrollUntilVisible(find.textContaining('per hour of video'), 200, scrollable: list);
     expect(find.text('Video frame rate'), findsOneWidget);
     expect(find.textContaining('The camera is capped at 10 frames per second'), findsOneWidget);
@@ -107,7 +107,7 @@ void main() {
     expect(find.text('Not used for video bursts: a clip keeps every frame.'), findsNothing);
     await tester.tap(find.byType(DropdownButton<TimeLapseSaveAs>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Video (MP4), AI later on "Run AI on videos"').last);
+    await tester.tap(find.text('Video (MP4), find animals later').last);
     await tester.pumpAndSettle();
     expect(find.text('Video frame rate'), findsOneWidget);
     expect(find.textContaining('The camera is capped'), findsNothing, reason: 'default cap 15 = default video rate');
@@ -122,9 +122,9 @@ void main() {
 
   testWidgets('AI mode: the heat notice under the trigger; the live video fold (round 240)', (tester) async {
     await open(tester, const SessionConfig(sessionMinutes: 60, cameraFpsCap: 10).copyWith(liveAiVideo: true));
-    await tester.scrollUntilVisible(find.textContaining('Live AI warms the phone'), 200, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('Live detection warms the phone'), 200, scrollable: list);
     expect(find.textContaining('"Save bursts as: Video"'), findsOneWidget);
-    await tester.tap(find.text('AI'));
+    await tester.tap(find.text('Detection'));
     // The model list may still show its spinner, so no pumpAndSettle.
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 200));
@@ -139,6 +139,6 @@ void main() {
   testWidgets('time-lapse mode shows no heat notice', (tester) async {
     await open(tester, const SessionConfig().copyWith(captureTrigger: CaptureTrigger.timelapse));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Live AI warms the phone'), findsNothing);
+    expect(find.textContaining('Live detection warms the phone'), findsNothing);
   });
 }

@@ -225,14 +225,14 @@ void main() {
       }
       await shot('${i}_whole');
       if (boxes.areaFor(player().aspectRatio) != null) {
-        await view('What the AI saw');
+        await view('What the detector saw');
         await shot('${i}_ai');
         await view('Whole frame');
       }
       if (i == 0 && boxes.tracked) {
         // Round 247: "All AI boxes" with the strip of frames that have a box, the note on what
         // starts a track ID, and the folded track list.
-        await view('All AI boxes');
+        await view('All boxes');
         await shot('${i}_all_boxes');
         await scrollTo(find.textContaining('A new track ID starts only'), 200);
         _log('SHOT ${i}_all_boxes_note');

@@ -27,6 +27,7 @@ import '../logging/error_reporter.dart';
 import '../logging/roi_update_debouncer.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
+import '../models/model_downloads.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
@@ -232,12 +233,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // only logged (each failure has already reverted the config anyway).
   bool _modelErrorDialogOpen = false;
 
-  /// Detection models on the phone (round 268), null until scanned. Models
-  /// inside the app are not listed, so AI mode needs one downloaded or
-  /// imported first; motion and time-lapse capture do not.
-  List<ModelEntry>? _detectors;
-  late final Future<void> _detectorScan;
-
   /// The model the camera loads (round 270): the chosen one when its file is
   /// on this phone, else '' and the camera runs without a model (motion and
   /// time-lapse capture need none). A path inside the app or a retired id
@@ -255,9 +250,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   String? _cameraModelFor;
   bool _cameraModelOnPhone = false;
 
-  /// AI mode cannot run: no detection model on the phone, or the chosen one
-  /// is missing or failed to load.
-  bool get _noModelForAi => _noDetector || (_detectors != null && _cameraModelPath.isEmpty);
+  /// Checks the chosen model's file again (after Settings or the Download &
+  /// import models screen, where it may have been deleted).
+  void _recheckModelFile() {
+    _cameraModelFor = null;
+    if (mounted) setState(() {});
+  }
 
   // The model's square input resolution in pixels (e.g. 640 → "640×640 px"),
   // read once from the model metadata via ModelCatalog.inputSizeOf. Tri-state so
@@ -630,78 +628,116 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Show the one-time setup reminder (fix the flower, centre the ROI, lock
     // focus before recording) once the first frame is laid out, unless the user
     // has previously ticked "Don't show again".
-    _detectorScan = _checkDetectors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _maybeShowSessionInfo();
-      await _detectorScan;
-      if (mounted && _config.detectorEnabled && _noModelForAi) {
-        await _showNoDetectorDialog();
+      if (mounted && _config.detectorEnabled && _cameraModelPath.isEmpty) {
+        await _askForDetector();
       }
     });
   }
 
-  bool get _noDetector => _detectors?.isEmpty ?? false;
-
-  /// Reads which detection models are on the phone (round 268). When the
-  /// config points at a model that is not listed (deleted, or one inside the
-  /// app) and another one is, that one is chosen, saved and named.
-  Future<void> _checkDetectors() async {
+  /// Live detection without a usable model (round 271, owner): none chosen
+  /// yet, or the chosen file is gone. The user chooses; nothing is picked
+  /// silently, and the phone's models are listed only here, not on every
+  /// start. "Download & import models" opens that screen and asks again when
+  /// a model was added.
+  Future<void> _askForDetector() async {
     final listed = await ModelCatalog.build();
+    final catalogue = await ModelDownloads.load();
     if (!mounted) return;
-    _detectors = listed;
-    if (listed.isEmpty || _recording || listed.any((m) => m.id == _config.modelPath)) {
-      setState(() {});
+    final chosen = _config.modelPath;
+    final missing = chosen.isNotEmpty ? chosen.split('/').last : null;
+    final String title;
+    final String text;
+    if (missing != null) {
+      title = 'Detection model missing';
+      text = listed.isEmpty
+          ? '$missing is no longer on this phone. Live detection cannot run; time-lapse and '
+                'motion capture still work.'
+          : '$missing is no longer on this phone. Choose another one:';
+    } else if (listed.isEmpty) {
+      title = 'No detection model';
+      text = 'Live detection needs a detection model, and none is on this phone. Time-lapse and '
+          'motion capture need none.';
+    } else {
+      title = 'Choose a detection model';
+      text = 'Live detection needs one. Choose the model that finds the animals you watch:';
+    }
+    final answer = await showDialog<Object>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(text),
+              for (final m in listed)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.center_focus_strong_outlined),
+                  title: Text(catalogue.modelFor(m.name)?.title ?? m.name),
+                  // What it finds helps to choose among the user's own files.
+                  subtitle: _detectorSubtitle(m, catalogue),
+                  onTap: () => Navigator.of(ctx).pop(m),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Not now')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('get'),
+            child: const Text('Download & import models'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (answer is ModelEntry) {
+      _useDetector(answer);
       return;
     }
-    final first = listed.first;
+    if (answer != 'get') return;
+    await _controller.pause();
+    _paused = true;
+    if (!mounted) return;
+    await openModelsScreen(context);
+    if (!mounted) return;
+    if (_paused) {
+      _paused = false;
+      await _controller.resume();
+    }
+    _recheckModelFile();
+    // Ask again only when a model can now be chosen (no endless loop).
+    if (_cameraModelPath.isEmpty && (await ModelCatalog.build()).isNotEmpty && mounted) {
+      await _askForDetector();
+    }
+  }
+
+  static Widget? _detectorSubtitle(ModelEntry m, ModelDownloads catalogue) {
+    final lines = [
+      if (catalogue.modelFor(m.name) != null) m.name,
+      if (m.labels.isNotEmpty)
+        'Finds: ${m.labels.take(3).join(', ')}${m.labels.length > 3 ? ', …' : ''}',
+    ];
+    return lines.isEmpty ? null : Text(lines.join('\n'));
+  }
+
+  /// Makes [m] the camera's detection model and saves it.
+  void _useDetector(ModelEntry m) {
     final updated = _config.copyWith(
-      modelPath: first.id,
-      task: YOLOTaskParsing.tryParse(first.task) ?? _config.task,
+      modelPath: m.id,
+      task: YOLOTaskParsing.tryParse(m.task) ?? _config.task,
     );
     setState(() {
       _config = updated;
       _modelInputSize = null;
       _modelInputProbed = false;
     });
-    updated.save().catchError((Object e) => logSwallowed('detector_check_save', e));
+    updated.save().catchError((Object e) => logSwallowed('detector_choice_save', e));
     _refreshModelInputSize();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Detection model: ${first.name} (the one chosen before is not on this phone).')),
-    );
-  }
-
-  /// AI mode without a detection model (round 268): offers the AI models
-  /// screen; the camera pauses meanwhile, like under the settings sheet.
-  Future<void> _showNoDetectorDialog() async {
-    final get = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('No detection model'),
-        content: Text(
-          _noDetector
-              ? 'AI mode needs a detection model, and none is on this phone yet. Download one '
-                    'that finds the animals you watch, or choose motion-triggered or time-lapse '
-                    'capture in Settings: they need no model.'
-              : 'AI mode needs a detection model, and the chosen one could not be loaded. '
-                    'Choose another one in Settings (AI tab), or choose motion-triggered or '
-                    'time-lapse capture: they need no model.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Not now')),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Get a detection model')),
-        ],
-      ),
-    );
-    if (get != true || !mounted) return;
-    await _controller.pause();
-    _paused = true;
-    if (!mounted) return;
-    await openModelsScreen(context);
-    if (mounted && _paused) {
-      _paused = false;
-      await _controller.resume();
-    }
-    await _checkDetectors();
   }
 
   /// Shows the setup reminder dialog unless the user has dismissed it for good.
@@ -1091,7 +1127,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         setState(() {
           _inferenceError =
               'The detector is not producing any results (0 FPS) although the '
-              'camera is running. The selected AI model may be incompatible.';
+              'camera is running. The chosen detection model may be incompatible.';
           _errorBannerDismissed = false;
         });
       }
@@ -1435,8 +1471,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       return;
     }
     // Round 268: AI mode cannot record without a detection model.
-    if (!_recording && _config.detectorEnabled && _noModelForAi) {
-      await _showNoDetectorDialog();
+    if (!_recording && _config.detectorEnabled && _cameraModelPath.isEmpty) {
+      await _askForDetector();
       return;
     }
     // Round 126: remember the location this recording uses (fire-and-forget)
@@ -2545,7 +2581,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final hint = modelLoadHint(failedPath, reason);
     final after = recovery.revertToPath.isEmpty
         ? 'The camera runs without a detection model now. Choose another one in '
-              'Settings (AI tab).'
+              'Settings (Detection tab).'
         : 'Switched back to ${recovery.revertToPath.split('/').last}.';
     try {
       await showDialog<void>(
@@ -2699,9 +2735,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _paused = false;
       await _controller.resume();
     }
-    // Models may have been added or deleted from the sheet (Manage models…).
+    // The chosen model may have been deleted from the sheet (Download &
+    // import models…): check its file again, nothing more.
     if (updated == null) {
-      await _checkDetectors();
+      _recheckModelFile();
       return;
     }
     await updated.save();
@@ -2726,7 +2763,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     });
     if (modelChanged) _refreshModelInputSize();
-    unawaited(_checkDetectors());
+    _recheckModelFile();
+    if (updated.detectorEnabled && _cameraModelPath.isEmpty) unawaited(_askForDetector());
     // Apply a sampling-interval change immediately.
     _rebuildSamplingTimers();
     await _controller.setThresholds(

@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  On-device AI · Real-time tracking · Custom AI models · Works offline
+  On-device AI · Real-time tracking · Custom models · Works offline
 </p>
 
 <p align="center">
@@ -95,12 +95,12 @@ Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own AI models.
+- AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own models.
 - Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (0.3 to 1.3 GB) and a label pack prepared on a PC, runs at roughly one to several seconds per crop and classification results will vary significantly with image quality.
 - Track ID counts may include missed, duplicated, split or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions.
 - Each scientific application should be validated under its intended field conditions before data collection at scale.
 - Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own AI models (one for detection and another one for classification).
+- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification).
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
 - The quality of results depend on many factors, including AI model, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
 - Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large file!) and a label pack prepared on a PC, runs at roughly one to several seconds per crop and classification results will vary significantly with image quality.
@@ -123,7 +123,7 @@ NOTE:
   - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
   - 1.3. For advanced users: build from source - see "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** No model comes inside the app: download one on the **AI models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import…** (a file) or a link. Motion-triggered and time-lapse capture need no AI model at all. See [Models](#models).
+3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import…** (a file) or a link. In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -183,13 +183,13 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ### Detectors
 
-No detector comes inside the app. The **AI models** screen (home screen ⋮ menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
+No detector comes inside the app. The **Download & import models** screen (home screen ⋮ menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
 
 See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 
 Custom AI detectors can be added:
 
-- **Download…** on the AI models screen (home screen ⋮ menu), pasting a link to a `.tflite` file (for example a GitHub release asset), or
+- **Download…** on the Download & import models screen (home screen ⋮ menu), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import…**, selecting a `.tflite` file stored on the phone, or
 - train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md).
 

@@ -888,9 +888,9 @@ class _HomeScreenState extends State<HomeScreen> {
           value: _HomeMenuAction.models,
           child: Row(
             children: [
-              Icon(Icons.memory, size: 20, color: Colors.white70),
+              Icon(Icons.download, size: 20, color: Colors.white70),
               SizedBox(width: 10),
-              Text('AI models'),
+              Text('Download & import models'),
             ],
           ),
         ),
@@ -1019,7 +1019,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Icons.auto_awesome_outlined,
                             size: 18,
                           ),
-                          label: const Text('Run AI on photos'),
+                          label: const Text('Find animals in photos'),
                         ),
                         // Round 227: the same for imported videos, shown
                         // once a session has videos (import: ⋮ menu).
@@ -1031,7 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Icons.movie_filter_outlined,
                               size: 18,
                             ),
-                            label: const Text('Run AI on videos'),
+                            label: const Text('Find animals in videos'),
                           ),
                         ],
                         // "Report a problem" moved into the ⋮ menu
@@ -1153,7 +1153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.auto_awesome_outlined),
                     title: Text(
-                      s.hasVideos ? 'Run AI on videos' : 'Run AI on photos',
+                      s.hasVideos ? 'Find animals in videos' : 'Find animals in photos',
                     ),
                   ),
                 ),
@@ -1512,12 +1512,12 @@ class AboutFaunaPulseDialog extends StatelessWidget {
               'A passive, non-invasive field tool that turns a smartphone '
               'into an AI-powered wildlife camera. Place the square region '
               'of interest over a flower, feeding site or nest entrance. '
-              'On AI-capture mode, FaunaPulse detects, tracks and photographs visiting animals '
+              'In live detection mode, FaunaPulse detects, tracks and photographs visiting animals '
               'fully on-device (no internet needed) and logs every track ID '
               'with timestamps, so visitation rates can be computed afterwards. '
               'Other features include: motion-triggered photos, time-lapse capture '
-              '(photo or video bursts), scheduled multi-hour or multi-day runs and post-capture AI '
-              'analysis of saved photos or videos.',
+              '(photo or video bursts), scheduled multi-hour or multi-day runs, finding animals afterwards '
+              'in saved photos or videos, and naming them (identification).',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 14),

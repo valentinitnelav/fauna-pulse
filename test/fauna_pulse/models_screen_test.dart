@@ -1,7 +1,9 @@
-// Tests for the AI models screen (rounds 267-268): what it lists for each
-// kind of model, catalogue titles for files on the phone, what is offered
-// for download (a name list brings its model along only when it is
-// missing), the class list deleted with its classifier, and the 360-px
+// Tests for the Download & import models screen (rounds 267-271): what it
+// lists for each kind of model, catalogue titles for files on the phone, what
+// is offered for download (a name list brings its model along only when it
+// is missing), name lists grouped under their model with a warning when a
+// model has none (round 271), the class list deleted with its classifier,
+// what deleting the last detector or name list warns about, and the 360-px
 // layout with a bottom system bar.
 
 import 'dart:io';
@@ -98,14 +100,14 @@ Future<void> _show(WidgetTester tester, Finder f) async {
 void main() {
   testWidgets('files on the phone show the catalogue title; own files their name and classes', (tester) async {
     await _pump(tester);
-    expect(find.text('AI models'), findsOneWidget);
+    expect(find.text('Download & import models'), findsOneWidget);
     expect(find.text('Storage free: 12.4 GB'), findsOneWidget);
     expect(find.text('MegaDetector V6'), findsOneWidget);
     expect(find.textContaining('Common animals.\nMDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
     expect(find.text('my_bees_640.tflite'), findsOneWidget);
     expect(find.textContaining('Finds: bee, hoverfly\nOn this phone, 6.0 MB'), findsOneWidget);
     await _show(tester, find.text('insectDCT classifier'));
-    expect(find.textContaining('With its class list, 42.0 MB'), findsOneWidget);
+    expect(find.textContaining('On this phone, 42.0 MB'), findsOneWidget);
     await _show(tester, find.text('insectDCT classifier: Its 104 classes'));
     expect(find.textContaining('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
   });
@@ -143,7 +145,7 @@ void main() {
           nameLists: [...base.nameLists, europe],
           headers: {
             ...base.headers,
-            europe.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 10},
+            europe.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 6},
           },
           downloads: _downloads,
         );
@@ -151,7 +153,7 @@ void main() {
     );
     // The pack's own count leaves out its "none of these" entries, as the title does.
     await _show(tester, find.text('BioCLIP 2: Europe'));
-    expect(find.textContaining('Label pack for bioclip-2: 35,260 names'), findsOneWidget);
+    expect(find.textContaining('Label pack for bioclip-2: 35,264 names'), findsOneWidget);
     await _show(tester, find.text('32 families'));
     expect(find.textContaining("Model on this phone; name lists below"), findsOneWidget);
     await tester.tap(find.descendant(of: _tile('32 families'), matching: find.text('Download')));
@@ -173,8 +175,73 @@ void main() {
 
   testWidgets('an empty phone says what needs a model', (tester) async {
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
-    expect(find.textContaining('None yet: the camera\'s AI mode'), findsOneWidget);
+    expect(find.textContaining('None yet: live detection'), findsOneWidget);
     await _show(tester, find.text('None yet: "Identify organisms" needs one.'));
+  });
+
+  testWidgets('a model without a name list is flagged; a list without its model is set apart (r271)', (tester) async {
+    final b2 = File('$_dir/models/bioclip-2_image_fp16_4d.tflite');
+    final b25List = File('$_dir/packs/bioclip25_pollinator_orders_europe_v1.fpack');
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        idModels: [b2],
+        nameLists: [b25List],
+        headers: {
+          b25List.path: {'model_id': 'bioclip-2.5', 'rows': 34710, 'sink_rows': 6},
+        },
+        downloads: _downloads,
+      ),
+    );
+    await _show(tester, find.text('BioCLIP 2'));
+    expect(find.text('⚠ No name list: this model cannot identify. Download or import one.'), findsOneWidget);
+    await _show(tester, find.text('Name lists without their model'));
+    expect(find.text('Their model is not on this phone, so they cannot be used yet.'), findsOneWidget);
+  });
+
+  testWidgets('deleting the only detection model, or a model\'s last name list, says what stops working (r271)', (tester) async {
+    final europe = File('$_dir/packs/bioclip2_pollinator_orders_europe_v1.fpack');
+    final b2 = File('$_dir/models/bioclip-2_image_fp16_4d.tflite');
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        detectors: [_inventory().detectors.first],
+        idModels: [b2],
+        nameLists: [europe],
+        headers: {
+          europe.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 6},
+        },
+        downloads: _downloads,
+      ),
+    );
+    await tester.tap(find.descendant(of: _tile('MegaDetector V6'), matching: find.byTooltip('Delete')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('It is the only detection model here.'), findsOneWidget);
+    expect(find.textContaining('Time-lapse and motion capture still work.'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await _show(tester, find.text('BioCLIP 2: Europe'));
+    await tester.tap(find.descendant(of: _tile('BioCLIP 2: Europe'), matching: find.byTooltip('Delete')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('It is the only name list of bioclip-2_image_fp16_4d.tflite, which then cannot identify'),
+      findsOneWidget,
+    );
+  });
+
+  test('a name list belongs to its model: same file name, or model_id at the start of the name (r271)', () {
+    bool belongs(String list, Map<String, dynamic>? header, String model) =>
+        IdentificationAssets.listBelongsTo(File('/p/$list'), header, File('/m/$model'));
+    expect(belongs('bioclip2_x_v1.fpack', {'model_id': 'bioclip-2'}, 'bioclip-2_image_fp16_4d.tflite'), isTrue);
+    expect(belongs('bioclip2_x_v1.fpack', {'model_id': 'bioclip-2'}, 'bioclip-2_image_fp16.tflite'), isTrue);
+    expect(belongs('bioclip25_x_v1.fpack', {'model_id': 'bioclip-2.5'}, 'bioclip-25_image_fp16.tflite'), isTrue);
+    expect(belongs('bioclip25_x_v1.fpack', {'model_id': 'bioclip-2.5'}, 'bioclip-2_image_fp16_4d.tflite'), isFalse);
+    expect(belongs('bioclip2_x_v1.fpack', {'model_id': 'bioclip-2'}, 'bioclip-25_image_fp16.tflite'), isFalse);
+    // A class list goes with the model of the same file name only.
+    final cls = {'kind': 'classes', 'model_id': 'insectdct-cls-v7_eff2s_fp16'};
+    expect(belongs('insectdct-cls-v7_eff2s_fp16.fpack', cls, 'insectdct-cls-v7_eff2s_fp16.tflite'), isTrue);
+    expect(belongs('insectdct-cls-v7_eff2s_fp16.fpack', cls, 'insectdct-cls-v7_res_fp16.tflite'), isFalse);
+    expect(belongs('unreadable.fpack', null, 'bioclip-2_image_fp16.tflite'), isFalse);
   });
 
   testWidgets('fits a 360-px screen and the last row stays above the system bar', (tester) async {

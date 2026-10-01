@@ -142,6 +142,21 @@ class IdentificationAssets {
     return [for (final p in packs) if (stemOf(p.path) == stem) p];
   }
 
+  /// Round 271: whether the name list [list] (its [header], null when
+  /// unreadable) belongs to the model file [model], so the two are shown
+  /// together and Identify offers only matching lists. A class list has the
+  /// model's file name; a label pack names its model in `model_id`, which is
+  /// the start of the model's file name, dots left out ("bioclip-2" ↔
+  /// bioclip-2_image_fp16_4d.tflite, "bioclip-2.5" ↔ bioclip-25_image_fp16.tflite).
+  static bool listBelongsTo(File list, Map<String, dynamic>? header, File model) {
+    final stem = stemOf(model.path);
+    if (stemOf(list.path) == stem) return true;
+    final id = header?['model_id'];
+    if (id is! String || header?['kind'] == 'classes') return false;
+    String norm(String s) => s.toLowerCase().replaceAll('.', '');
+    return norm(id) == norm(stem.split('_').first);
+  }
+
   /// Deletes [files] (an identification model and its class lists, or one
   /// name list) and returns the names it removed (round 267).
   static Future<List<String>> deleteFiles(List<File> files) async {

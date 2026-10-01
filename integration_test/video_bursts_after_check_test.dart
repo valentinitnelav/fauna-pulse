@@ -99,7 +99,7 @@ void main() {
     await shot('bursts_not_analysed');
 
     // 2. "Run AI on videos" from the tab.
-    await tester.tap(find.text('Run AI on videos'));
+    await tester.tap(find.text('Find animals in videos'));
     await waitFor(find.byType(VideoAnalysisScreen));
     await waitFor(find.textContaining('recorded by the app as the camera'));
     await shot('bursts_analysis_screen');
@@ -135,11 +135,11 @@ void main() {
       await tester.tap(find.textContaining('Extra graphs'));
       await tester.pump(const Duration(seconds: 1));
     }
-    await scrollTo(find.text('While the AI ran'), 200);
+    await scrollTo(find.text('While the detector ran'), 200);
     await shot('bursts_graphs_recording');
-    await tester.tap(find.text('While the AI ran'));
-    await waitFor(find.text('While the AI ran on the videos'));
-    await scrollTo(find.text('While the AI ran on the videos'), 200);
+    await tester.tap(find.text('While the detector ran'));
+    await waitFor(find.text('While the detector ran on the videos'));
+    await scrollTo(find.text('While the detector ran on the videos'), 200);
     await shot('bursts_graphs_analysis');
 
     // 4. Copy the videos to the Gallery.

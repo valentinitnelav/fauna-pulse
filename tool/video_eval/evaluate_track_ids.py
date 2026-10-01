@@ -7,7 +7,7 @@ far as detection and tracking worked: some track IDs are false detections, one i
 split into several, two can be merged. This script measures exactly that, against the visits a
 person counted while watching the same clips.
 
-"Find track IDs" on the "Run AI on videos" screen writes track_ids.csv (visits.csv before
+"Find track IDs" on the "Find animals in videos" screen writes track_ids.csv (visits.csv before
 round 248): one row per track ID, with start_s / end_s in seconds from the start of the clip
 the track ID began in. Either file name works.
 

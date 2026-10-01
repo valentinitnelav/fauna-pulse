@@ -217,16 +217,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                 tabs: [
                   const Tab(icon: Icon(Icons.tune, size: 20), text: 'Setup'),
-                  // The AI tab dims in the no-AI capture modes (r147): its
-                  // settings have no effect there. It stays tappable — the
-                  // tab body shows a notice saying why it is inactive.
+                  // The Detection tab ("AI" until round 271) dims in the
+                  // no-detection capture modes (r147): its settings have no
+                  // effect there. It stays tappable — the tab body shows a
+                  // notice saying why it is inactive.
                   if (_c.detectorEnabled)
-                    const Tab(icon: Icon(Icons.memory, size: 20), text: 'AI')
+                    const Tab(icon: Icon(Icons.center_focus_strong_outlined, size: 20), text: 'Detection')
                   else
                     const Tab(
-                      icon: Icon(Icons.memory, size: 20, color: Colors.white24),
+                      icon: Icon(Icons.center_focus_strong_outlined, size: 20, color: Colors.white24),
                       child: Text(
-                        'AI',
+                        'Detection',
                         style: TextStyle(color: Colors.white24),
                       ),
                     ),
@@ -302,14 +303,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'The full pipeline: on-device detection and tracking, photos '
                 'per track ID, visitation data in the log.',
           CaptureTrigger.motion =>
-            'Photos whenever something moves in the ROI. The AI model '
-                'loads but never runs (big energy saver), so there is no '
+            'Photos whenever something moves in the ROI. No detection model '
+                'runs (big energy saver), so there is no '
                 'species or track data. The motion gate on the Power tab is '
                 'the trigger (forced on) and its sensitivity settings decide '
                 'what counts as movement. A false alarm (wind, moving '
                 'shadows) costs only a junk photo, not computation.',
           CaptureTrigger.timelapse =>
-            'Photos on a pure clock, no AI and no motion check: the '
+            'Photos on a pure clock, no detection and no motion check: the '
                 'cheapest mode. Each burst takes a photo every "Photo step" '
                 'for "Photo duration", then pauses for "Time between '
                 'bursts" below before the next burst. Set the pause to 0 '
@@ -329,8 +330,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             enabled: _hasDetector,
             child: Text(
               _hasDetector
-                  ? 'AI detector - detect & track in real time'
-                  : 'AI detector (needs a detection model)',
+                  ? 'Live detection - detect & track in real time'
+                  : 'Live detection (needs a detection model)',
               style: TextStyle(
                 color: _hasDetector ? Colors.white : Colors.white38,
                 fontSize: 13,
@@ -374,10 +375,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
-            'Live AI warms the phone: the detector works on the camera picture all session '
+            'Live detection warms the phone: the detector works on the camera picture all session '
             'long, and older or hot phones can drop to a few frames per second, missing fast '
             'insects. For long or hot sessions, choose "Time-lapse" with "Save bursts as: '
-            'Video" and run the AI later at home ("Run AI on videos").',
+            'Video" and run the detector later at home ("Find animals in videos").',
             style: TextStyle(color: Colors.white60, fontSize: 12),
           ),
         ),
@@ -400,8 +401,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'Seconds between saved ROI photos — of the same track ID (AI '
-              'detector on) or within one motion/time-lapse burst (0.1–10). '
+              'Seconds between saved ROI photos — of the same track ID (live '
+              'detection) or within one motion/time-lapse burst (0.1–10). '
               'Default 1. Steps below ~0.5 s need the "fast" photo source: '
               'high-res photos take 0.5–1.5 s each and cannot keep up. '
               'Fast photos are capped at the live-stream short side, so raise '
@@ -415,7 +416,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         minSeconds: 1,
         maxSeconds: 86400,
         helperText:
-            'How long photos keep being saved — per track ID (AI detector on), '
+            'How long photos keep being saved — per track ID (live detection on), '
             'per motion event (motion trigger; a new event starts once the '
             'gate has slept and motion returns), or per time-lapse burst (burst duration). '
             'Should be a whole multiple of the step.',
@@ -541,7 +542,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'Saves an ROI photo at a fixed interval, whether or not '
             'anything is detected. Lets you check afterwards what the '
-            'camera really saw, including pollinators the AI may have '
+            'camera really saw, including pollinators the detector may have '
             'missed (send those photos in to improve the model). Same size '
             'as normal photos (Photos tab → "Saved photo side").',
         statusText: _c.timeLapseCapture
@@ -644,7 +645,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 'detected insect on the live preview.',
             statusText: _c.detectorEnabled
                 ? null
-                : 'AI detector mode only; there are no detections to draw '
+                : 'Live detection mode only; there are no detections to draw '
                       'in this mode.',
             value: _c.detectorEnabled && _c.showBoxes,
             onChanged: _c.detectorEnabled
@@ -824,9 +825,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // width instead of the narrow column left of the two buttons.
       HelpRow(
         helperText:
-            'The AI network that finds animals in the camera image and '
-            'draws a box around each one. Add or delete models with Manage '
-            'models… (the same as AI models in the home screen\'s ⋮ menu). '
+            'The detection model that finds animals in the camera image and '
+            'draws a box around each one. Add or delete models with Download & '
+            'import models… (also in the home screen\'s ⋮ menu). '
             'The input resolution shown under the list is the square size '
             'every camera frame is shrunk to for the model: smaller runs '
             'faster, larger sees tiny insects better.',
@@ -1022,7 +1023,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Text(
-            'These settings apply only to the AI detector mode. Switch '
+            'These settings apply only to live detection mode. Switch '
             '"Capture trigger" on the Setup tab to edit them.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
@@ -1336,17 +1337,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
   Widget _liveVideoSection() {
     final cap = _c.cameraFpsCap;
     return FoldSection(
-      title: 'Check the live AI (advanced)',
-      subtitle: 'Also record the ROI as video while the AI runs.',
+      title: 'Check live detection (advanced)',
+      subtitle: 'Also record the ROI as video while the detector runs.',
       initiallyExpanded: _c.liveAiVideo,
       children: [
         HelpSwitchTile(
           title: 'Also record the ROI as video',
           helperText:
               'Records the ROI square as MP4 clips (a new clip every 5 minutes, in the session\'s '
-              'videos folder) while the AI detects live. Afterwards the session summary plays '
-              'the clips with the boxes the live AI found, so you can see what it caught and what '
-              'it missed, count the insects by hand, or run the AI again on the clips ("Run AI on '
+              'videos folder) while the detector detects live. Afterwards the session summary plays '
+              'the clips with the boxes live detection found, so you can see what it caught and what '
+              'it missed, count the insects by hand, or run the detector again on the clips ("Find animals in '
               'videos"). Off by default: it costs storage (estimate below) and heat, because every '
               'frame of the clip is processed even while the motion gate lets the detector sleep.',
           value: _c.liveAiVideo,
@@ -1526,9 +1527,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'fainter one (still above the Confidence threshold) may only keep '
           'an existing insect\'s ID alive — e.g. while it is half-hidden '
           'under a petal. Automatically kept above Confidence so that faint '
-          'band never closes. If "All AI boxes" on a video\'s Video tab shows '
+          'band never closes. If "All boxes" on a video\'s Video tab shows '
           'an insect that never gets a track ID, it was probably never this '
-          'sure: lower this and run "Find track IDs" again (the AI does not need '
+          'sure: lower this and run "Find track IDs" again (the detector does not need '
           'to run again). Default 0.50.',
       onChanged: (v) => updateC(cp.copyWith(highThresh: v)),
     ),
@@ -1589,9 +1590,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'holds onto a bee whose score dips while it is half-hidden under a '
           'petal, so it is not counted twice. Higher = more cautious about '
           'starting new IDs (fewer false track IDs); lower = quicker to '
-          'start a new track ID. If "All AI boxes" on a video\'s Video tab '
+          'start a new track ID. If "All boxes" on a video\'s Video tab '
           'shows an insect that never gets a track ID, it was probably never '
-          'this sure: lower this and run "Find track IDs" again (the AI does not '
+          'this sure: lower this and run "Find track IDs" again (the detector does not '
           'need to run again). It is automatically kept at least '
           '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
           'rises with it) so the faint band never closes. Default 0.50.',
@@ -1673,8 +1674,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Photos (the default) save one square photo of the ROI every '
             '"Photo step". Video saves each burst as one MP4 clip of the ROI '
             'with every frame (see "Video frame rate"), so an insect can be '
-            'followed from frame to frame. The AI runs later, at home: on the '
-            'home screen, the session\'s gear menu → "Run AI on videos" finds '
+            'followed from frame to frame. The detector runs later, at home: on the '
+            'home screen, the session\'s gear menu → "Find animals in videos" finds '
             'the insects and their track IDs. Video needs more storage (estimate '
             'below). The clip\'s side is the "Saved photo side" on the Photos '
             'tab (smaller when the ROI covers fewer camera pixels).',
@@ -1694,7 +1695,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           DropdownMenuItem(
             value: TimeLapseSaveAs.video,
             child: Text(
-              'Video (MP4), AI later on "Run AI on videos"',
+              'Video (MP4), find animals later',
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
@@ -1807,7 +1808,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   'moment. High-res photos'
                   '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
                   ' put more pixels on a small flower, but each one pauses the '
-                  'AI pipeline for up to ~1.5 s (more on older phones), lands a '
+                  'detection pipeline for up to ~1.5 s (more on older phones), lands a '
                   'fraction of a second after the detection, and often shows '
                   'motion blur. A blurred high-res photo carries LESS usable '
                   'detail than a smaller crisp crop, so more pixels are not '
@@ -1884,7 +1885,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // coupling is unchanged, only the placement flipped).
       FoldSection(
         title: 'Advanced (camera stream)',
-        subtitle: 'The live video stream the AI reads.',
+        subtitle: 'The live video stream the detector reads.',
         helperText:
             '"Auto" follows the saved photo size above; pick a smaller '
             'size manually on a phone that runs hot.',
@@ -1928,7 +1929,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'rate instead. Leave it on for long field sessions.',
         statusText: _c.detectorEnabled
             ? null
-            : 'AI detector mode only; there is no inference to throttle '
+            : 'Live detection mode only; there is no inference to throttle '
                   'in this mode.',
         value: _c.detectorEnabled && _c.autoThrottle,
         onChanged: _c.detectorEnabled
@@ -1948,7 +1949,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           // The "ceiling, not a guarantee" paragraph used to sit as its own
           // text block under this section; merged into the ⓘ (round 181).
           helperText:
-              'Maximum number of camera frames per second the AI detector '
+              'Maximum number of camera frames per second the detector '
               'may analyze. This is inference FPS, not the camera preview '
               'frame rate. ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
               '${_c.cameraFpsCap > 0 ? 'It cannot be set above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS). ' : 'The camera cap below is removed, so this field may be set up to ${SessionConfig.maximumInferenceFps} FPS. '}'
@@ -2647,7 +2648,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final (ceilArea, ceilLo, ceilHi) = _ceiling;
     final hwLevel = (widget.analysisCeiling['hardwareLevel'] as String?) ?? '';
     final parts = <String>[
-      'This is the live preview/analysis stream the AI reads. It does not '
+      'This is the live preview/analysis stream the detector reads. It does not '
           'change detection accuracy: every frame is shrunk to the model\'s '
           'own input size anyway. It only caps the sharpness of fast '
           '(live-frame) ROI photos; the "ROI photo source" setting controls '
@@ -2703,7 +2704,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             padding: EdgeInsets.only(top: 4),
             child: Text(
               'The camera advertises larger sizes for photo capture, but when the live '
-              'preview, the AI stream and photo capture run together it can only '
+              'preview, the detector stream and photo capture run together it can only '
               'feed the detector up to about this size — so larger stream choices '
               'are scaled down. This does not affect detection accuracy.',
               style: TextStyle(color: Colors.white54, fontSize: 12),

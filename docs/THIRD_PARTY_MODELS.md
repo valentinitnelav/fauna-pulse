@@ -78,7 +78,7 @@ published per-class test results (insectDCT repository, `metrics/`, version 6).
 
 ## Downloads offered in the app (round 268)
 
-No model ships inside FaunaPulse. The AI models screen offers the converted files listed in
+No model ships inside FaunaPulse. The Download & import models screen offers the converted files listed in
 `assets/model_downloads.json` (MegaDetector V6, flat-bug n, insectDCT v8-s, the insectDCT
 classifier, BioCLIP 2 and 2.5 with their name lists), hosted as release assets of the
 FaunaPulse repository. Each entry names its licence and source; the conversions are unofficial,

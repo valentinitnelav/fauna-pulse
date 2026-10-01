@@ -256,7 +256,7 @@ void main() {
       return list;
     }
 
-    testWidgets('"Run AI on photos" finds the track IDs of close photos (360 px)', (tester) async {
+    testWidgets('"Find animals in photos" finds the track IDs of close photos (360 px)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);
       final dir = _session(insect: (t) => t >= 2000 && t <= 5000);

@@ -1,6 +1,6 @@
 # Video evaluation tools: score the app's track IDs against a hand count (PC side)
 
-FaunaPulse finds track IDs in imported videos (*Run AI on videos* → *Find track IDs* →
+FaunaPulse finds track IDs in imported videos (*Find animals in videos* → *Find track IDs* →
 *Share results*). A track ID is one insect the app followed from frame to frame; in
 pollination ecology it usually stands for one visit, as far as detection and tracking
 worked. These scripts check the track IDs against the visits a person counted while

@@ -783,7 +783,7 @@ compile log line now prints `layout=NCHW|NHWC` for field diagnosis.
 MODEL_CONVERSION.md leads with the one-command `format=litert quantize=w8a32`
 export; full INT8 stays documented for low-end CPUs. Verified: `flutter analyze`
 clean, 356 tests pass, debug APK builds. On-device verification (owner): Settings
-→ AI → Model → Download… with
+→ Detection → Model → Download… with
 `https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.6.6/yolo26n_w8a32.tflite`,
 confirm boxes appear, logcat shows `layout=NCHW`, and run the engine benchmark.
 
@@ -834,7 +834,7 @@ pre-r156 run of the same session and settings.
   
   FaunaPulse settings: "Analyze saved photos":
 
-    - Session: session_29 [AI live] - 228 photos
+    - Session: session_29 [live detection] - 228 photos
     - Detection model: arthropod_yolov11_int8.tflite
     - Confidence threshold: 0.25
     - IoU threshold: 0.70
@@ -1577,7 +1577,7 @@ Four were slower than two on the small MDV6 int8 model on both phones and at
 most ~15% faster on the 640-px detectors (~25% on BioCLIP), for twice the
 busy cores; heat is the binding constraint in the field (see the thermal
 pause, the FPS-throttle diagnosis), so the extra cores are not free. Eight
-were slower than two everywhere. The user can still set any count (AI tab
+were slower than two everywhere. The user can still set any count (Detection tab
 and identification screen); both helper texts give the reason.
 
 Reach: the value applies wherever a CPU engine is created with 0 threads:

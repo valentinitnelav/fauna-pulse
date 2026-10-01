@@ -77,7 +77,7 @@ class _AnalyzableSession {
   String get modeTag => switch (live?.captureTrigger) {
     'motion' => 'motion',
     'timelapse' => 'time-lapse',
-    'detector' => 'AI live',
+    'detector' => 'live detection',
     _ => '?',
   };
 }
@@ -532,7 +532,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Run AI on photos')),
+      appBar: AppBar(title: const Text('Find animals in photos')),
       // SafeArea: without it the list's last lines sit under the system
       // navigation/gesture bar and can never be scrolled into view.
       body: SafeArea(
@@ -547,7 +547,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                       'saved (no camera involved).',
                   labelStyle: TextStyle(color: Colors.white70, fontSize: 13),
                   helperText:
-                      'Made for motion and time-lapse sessions, where no AI '
+                      'Made for motion and time-lapse sessions, where no detection '
                       'ran during capture. A bigger model than the live one '
                       'can be used: there is no real-time limit, only '
                       'processing time.',
@@ -672,9 +672,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        'This session already ran AI live (model: '
+        'This session already ran live detection (model: '
         '${(live.modelPath ?? 'unknown').split('/').last}). Analyzing saved '
-        'photos mainly helps motion / time-lapse sessions, where no AI ran '
+        'photos mainly helps motion / time-lapse sessions, where no detection ran '
         'during capture.'
         '${sameModel ? '\n\nRe-analysis with the SAME model is disabled — it would only repeat the live result. Pick a different model, or copy the photos to a computer for heavier processing.' : ''}',
         style: const TextStyle(fontSize: 12.5, color: Colors.white70),
@@ -979,7 +979,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         label: 'Track IDs',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Follows each insect from photo to photo, as the live camera does with the AI on, so one '
+            'Follows each insect from photo to photo, as the live camera does with the detector on, so one '
             'insect seen in many photos counts as one track ID. The summary then shows the track IDs and '
             'which photos belong to each, and "Identify organisms" answers per track ID. Takes seconds '
             'and can be repeated with other settings.',

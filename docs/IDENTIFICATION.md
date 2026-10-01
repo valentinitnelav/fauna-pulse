@@ -20,14 +20,22 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
 | `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
-The simplest way (round 268): home screen ⋮ → **AI models** → *Available to download*; a name
+The simplest way (round 268): home screen ⋮ → **Download & import models** → *Available to download*; a name
 list brings its model along when the model is not on the phone yet (BioCLIP 2 and 2.5 with
 two name lists each, the insectDCT classifier with its class list; the list is
 `assets/model_downloads.json`, see `tool/model_downloads/README.md`).
+
+**A model needs a name list made for it (round 271).** The Download & import models screen
+lists each identification model with its name lists under it, and flags a model that has none:
+it cannot identify. The Identify screen offers only the lists made for the chosen model and does
+not start without one. A class list belongs to the model with the same file name; a label pack
+names its model in its header (`model_id`), which must match the start of the model's file name,
+dots left out (`bioclip-2` for `bioclip-2_image_fp16_4d.tflite`, `bioclip-2.5` for
+`bioclip-25_image_fp16.tflite`). Keep that start when you rename a model file.
 Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
-In the app: home screen ⋮ → **AI models** → *Import identification model…* / *Import name list…*
-(also reached with *Manage models…* on the Identify screen).
+In the app: home screen ⋮ → **Download & import models** → *Import identification model…* / *Import name list…*
+(also reached with *Download & import models…* on the Identify screen).
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 
@@ -47,7 +55,7 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
    phone, a time estimate.
 3. Plug the phone in and tap **Start**. Progress shows crops done, elapsed time, the
    estimated remainder and the battery temperature. The run pauses by itself above the
-   temperature limit (default 43 °C, the same as for Run AI on videos) and resumes 3 °C lower. **Cancel** keeps everything
+   temperature limit (default 43 °C, the same as for Find animals in videos) and resumes 3 °C lower. **Cancel** keeps everything
    done so far; **Continue** resumes where it stopped (the files are append-only).
 4. When finished, **View results** shows a table with one row per taxon (track IDs, total
    time, median confidence); tap a row for its track IDs and a track ID for its full ladder.
@@ -81,7 +89,7 @@ detection records) together with the box coordinates. A merged track ID lists al
 `merged_track_ids`. So a join on `track_id` (or on file name for per-crop work) lines up
 detections, photos and identifications without any extra bookkeeping.
 
-No-AI sessions (motion / time-lapse) have no track IDs. Run "Run AI on photos" first; the
+Sessions without live detection (motion / time-lapse) have no track IDs. Run "Find animals in photos" first; the
 post-hoc boxes are then identified one by one (no per-track-ID combination).
 
 ## Reading the results
@@ -337,7 +345,7 @@ session here is a YouTube clip, fit for timing only).
 pack's names. It comes as two files with the same name: the model
 (`insectdct-cls-v7_eff2s_fp16.tflite`, 42 MB) and its **class list**
 (`insectdct-cls-v7_eff2s_fp16.fpack`, 14 kB: every class with its kingdom ... species).
-Import both (AI models screen: *Import model…*, *Import name list…*); choosing the model then
+Import both (Download & import models screen: *Import model…*, *Import name list…*); choosing the model then
 chooses its class list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
 threshold, tables and files. Differences:
 
@@ -371,7 +379,7 @@ per track ID and scores them against every name of the pack. *Last run* therefor
 the whole time, model loading included (the same clock as *Elapsed*), and the model's
 share of it; the time-left estimate starts with the first crop (before round 250 it
 counted the model loading as crop time and started too high). Example, a 20-crop session
-on the Xiaomi test phone (GPU, 35,260-name pack): about 18 s in all, of which the model
+on the Xiaomi test phone (GPU, 35,264-name pack): about 18 s in all, of which the model
 5.4 s (0.27 s per crop), reading 19 photos and cutting the crops about 3 s, combining and
 scoring 4 s, and loading the model the rest. `bioclip_gpu_check_test.dart` checks these
 numbers with three clocks (the app's stopwatch, the plugin's own clock around the model,
@@ -409,7 +417,7 @@ photos (owner experiment: re-run a session with "recompute" and another setting)
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur (on the default
 1024 px photos that is an insect about 5 % of the photo side); **crops per
 track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos (the photo count per
-track ID comes from the session's photo schedule: AI-mode default one photo per second for
+track ID comes from the session's photo schedule: live detection default one photo per second for
 10 s, so the cap rarely removes anything and only bounds the runtime of long bursts).
 
 **Merge consecutive track IDs** (off by default, round 210): the tracker sometimes loses an

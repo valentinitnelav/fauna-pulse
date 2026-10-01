@@ -53,7 +53,7 @@ void main() {
       expect(agg.meanVisitMs, closeTo(4 * 60000 / 3, 1e-9));
     });
 
-    test('non-AI sessions are excluded from numbers but counted separately',
+    test('sessions without live detection are excluded from numbers but counted separately',
         () {
       final ai = session(
         startMs: localMs(2026, 7, 1, 9),
@@ -282,7 +282,7 @@ void main() {
       expect((await DashboardStatsCache.forSession(tmp)).visits, hasLength(2));
     });
 
-    test('a live AI session ignores a post_tracks.jsonl', () async {
+    test('a live detection session ignores a post_tracks.jsonl', () async {
       writeLog(tmp, [start(1000), detections(2000, [1]), end(9000)]);
       writePost([
         detections(3000, [5]),

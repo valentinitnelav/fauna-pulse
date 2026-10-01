@@ -1,6 +1,6 @@
 # Model downloads: the catalogue the app offers (round 268)
 
-No model ships inside FaunaPulse. The **AI models** screen (home screen ⋮ menu) offers the
+No model ships inside FaunaPulse. The **Download & import models** screen (home screen ⋮ menu) offers the
 models listed in [`assets/model_downloads.json`](../../assets/model_downloads.json): a title,
 one plain line on what each model is for, the size and the licence. One tap downloads a
 detection model, or an identification model together with the name list chosen (a label pack

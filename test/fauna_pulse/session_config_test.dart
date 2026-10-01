@@ -465,7 +465,7 @@ void main() {
   group(
     'capture trigger (r97 enum, replaces the r95 motionOnlyCapture bool)',
     () {
-      test('defaults to the AI detector', () {
+      test('defaults to live detection', () {
         const c = SessionConfig();
         expect(c.captureTrigger, CaptureTrigger.detector);
         expect(c.detectorEnabled, true);
@@ -792,7 +792,7 @@ void main() {
     });
   });
 
-  test('live AI + ROI video (round 240): off at 15 fps, JSON round trip, old configs', () {
+  test('live detection + ROI video (round 240): off at 15 fps, JSON round trip, old configs', () {
     const c = SessionConfig();
     expect((c.liveAiVideo, c.liveAiVideoFps), (false, 15));
     final j = c.copyWith(liveAiVideo: true, liveAiVideoFps: 10).toJson();

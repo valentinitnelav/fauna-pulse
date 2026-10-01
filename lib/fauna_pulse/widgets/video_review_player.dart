@@ -439,18 +439,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       physics: widget.scrollLocked ? const NeverScrollableScrollPhysics() : null,
       children: [
         Text(
-          widget.live ? "Videos with the live AI's boxes" : "Videos with the AI's boxes",
+          widget.live ? "Videos with live detection's boxes" : "Videos with the detector's boxes",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         Text(
           widget.live
-              ? 'Plays the ROI videos recorded during this session with the boxes the live AI '
+              ? 'Plays the ROI videos recorded during this session with the boxes live detection '
                     'found at that moment, so you can see what it caught and what it missed. Tap '
-                    'the video to pause or play. Boxes show only on the frames the live AI logged '
+                    'the video to pause or play. Boxes show only on the frames live detection logged '
                     'with an insect. Sound is off unless you switch it on.'
-              : 'Plays the videos of this session with the boxes the AI found. Tap the video to '
-                    'pause or play. Boxes are shown only on the frames the AI analysed, so at '
+              : 'Plays the videos of this session with the boxes the detector found. Tap the video to '
+                    'pause or play. Boxes are shown only on the frames the detector analysed, so at '
                     'higher speeds they can trail a fast insect a little. Sound is off unless you '
                     'switch it on.',
           style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -460,7 +460,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           const SizedBox(height: 6),
           Text(
             '$_cutOff ${_cutOff == 1 ? 'clip was' : 'clips were'} cut off: the app stopped while recording, so '
-            '${_cutOff == 1 ? 'it was' : 'they were'} never finished and cannot be played ("Run AI on videos" '
+            '${_cutOff == 1 ? 'it was' : 'they were'} never finished and cannot be played ("Find animals in videos" '
             'can delete ${_cutOff == 1 ? 'it' : 'them'}).',
             style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
           ),
@@ -495,8 +495,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             const SizedBox(height: 8),
             SegmentedButton<bool>(
               segments: const [
-                ButtonSegment(value: false, label: Text('Live AI')),
-                ButtonSegment(value: true, label: Text('AI afterwards')),
+                ButtonSegment(value: false, label: Text('Live detection')),
+                ButtonSegment(value: true, label: Text('Detection afterwards')),
               ],
               selected: {_showAfter},
               showSelectedIcon: false,
@@ -507,8 +507,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             const Text(
-              'Live AI: the boxes found while recording (the session\'s track IDs). AI afterwards: '
-              '"Run AI on videos" on these clips, with its own track ID numbers. Switch at any moment '
+              'Live detection: the boxes found while recording (the session\'s track IDs). Detection afterwards: '
+              '"Find animals in videos" on these clips, with its own track ID numbers. Switch at any moment '
               'to compare the same frames.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -518,7 +518,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             SegmentedButton<bool>(
               segments: const [
                 ButtonSegment(value: false, label: Text('Whole frame')),
-                ButtonSegment(value: true, label: Text('What the AI saw')),
+                ButtonSegment(value: true, label: Text('What the detector saw')),
               ],
               selected: {_aiView},
               showSelectedIcon: false,
@@ -526,8 +526,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             const Text(
-              'Whole frame: the square is the area the AI analysed; the darker part was left out. '
-              'What the AI saw: zoomed onto that square. If insects sit outside the square or on its '
+              'Whole frame: the square is the area the detector analysed; the darker part was left out. '
+              'What the detector saw: zoomed onto that square. If insects sit outside the square or on its '
               'edge, change it and analyse again (button below).',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -538,7 +538,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             SegmentedButton<bool>(
               segments: const [
                 ButtonSegment(value: false, label: Text('Track IDs')),
-                ButtonSegment(value: true, label: Text('All AI boxes')),
+                ButtonSegment(value: true, label: Text('All boxes')),
               ],
               selected: {_allBoxes},
               showSelectedIcon: false,
@@ -547,12 +547,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             const SizedBox(height: 4),
             Text(
               'Track IDs: the boxes "Find track IDs" linked from frame to frame into track IDs. A new '
-              'track ID starts only from a box the AI is at least '
+              'track ID starts only from a box the detector is at least '
               '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
-              'confidence"); weaker boxes can only continue one. All AI boxes: what the AI detected at '
+              'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
               'the confidence threshold, before any tracking. An insect with boxes here but no '
               'track ID was probably never that sure: lower "New-track confidence" (camera Settings → '
-              'AI → Tracking → Advanced) and run "Find track IDs" again. The AI does not need to '
+              'Detection → Tracking → Advanced) and run "Find track IDs" again. The detector does not need to '
               'run again for that.',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -575,13 +575,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           if (_timeline.live) ...[
             const SizedBox(height: 12),
             const HelpLabel(
-              label: 'Compare with the AI afterwards',
+              label: 'Compare with detection afterwards',
               labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               helperText:
-                  '"Run AI on videos" analyses these clips again, frame by frame, and "Find track IDs" '
-                  'there links the boxes into track IDs. Then "AI afterwards" above shows those boxes on '
-                  'the same frames, for example to see whether the live AI missed insects while the '
-                  'phone was hot or the motion gate slept. The session\'s own track IDs stay the live AI\'s.',
+                  '"Find animals in videos" analyses these clips again, frame by frame, and "Find track IDs" '
+                  'there links the boxes into track IDs. Then "Detection afterwards" above shows those boxes on '
+                  'the same frames, for example to see whether live detection missed insects while the '
+                  'phone was hot or the motion gate slept. The session\'s own track IDs stay live detection\'s.',
             ),
             const SizedBox(height: 4),
             Align(
@@ -589,7 +589,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               child: FilledButton.tonalIcon(
                 onPressed: _files.isEmpty ? null : _openAnalysis,
                 icon: const Icon(Icons.compare),
-                label: Text(_afterTimeline.clips.isEmpty ? 'Run AI on videos' : 'Run AI on videos again'),
+                label: Text(_afterTimeline.clips.isEmpty ? 'Find animals in videos' : 'Find animals in videos again'),
               ),
             ),
           ] else ...[
@@ -603,7 +603,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 label: 'Not analysed yet',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
-                    '"Run AI on videos" finds the insects in these videos. It is the slow step and can '
+                    '"Find animals in videos" finds the insects in these videos. It is the slow step and can '
                     'be stopped and continued; keep the phone charging. "Find track IDs" there then '
                     'follows each insect from frame to frame, and the boxes and track IDs show on the '
                     'video here.',
@@ -614,7 +614,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'The videos were deleted to free storage, so they cannot be analysed again. '
-                    '"Run AI on videos" can still find the track IDs again from the saved boxes, for '
+                    '"Find animals in videos" can still find the track IDs again from the saved boxes, for '
                     'example with another occlusion tolerance or minimum track length.',
               )
             else
@@ -622,7 +622,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 label: 'Square in the wrong place?',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
-                    'Opens "Run AI on videos" for this session. There you can move or resize the '
+                    'Opens "Find animals in videos" for this session. There you can move or resize the '
                     'square, analyse the videos again and then press "Find track IDs". The new boxes '
                     'and track IDs replace the ones shown here.',
               ),
@@ -633,7 +633,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 onPressed: _openAnalysis,
                 icon: Icon(_files.isEmpty ? Icons.timeline : Icons.crop_free),
                 label: Text(
-                  _timeline.clips.isEmpty || _files.isEmpty ? 'Run AI on videos' : 'Change square and analyse again',
+                  _timeline.clips.isEmpty || _files.isEmpty ? 'Find animals in videos' : 'Change square and analyse again',
                 ),
               ),
             ),
@@ -687,25 +687,25 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
                 'free storage. Its boxes, track IDs and kept frames stay; only the video cannot be played.';
     } else if (_timeline.live) {
-      if (boxes == null || boxes.visits.isEmpty) note = 'The live AI found no insect during this clip.';
+      if (boxes == null || boxes.visits.isEmpty) note = 'Live detection found no insect during this clip.';
     } else if (boxes == null) {
-      note = 'This clip was not analysed yet, so there are no boxes. "Run AI on videos" '
+      note = 'This clip was not analysed yet, so there are no boxes. "Find animals in videos" '
           '(button below) finds the insects in it.';
     } else if (!boxes.done) {
       final last = boxes.lastAnalysedMs;
       note = 'The analysis of this clip stopped${last == null ? '' : ' at ${_time(last)}'}; '
-          'boxes end there. "Run AI on videos" continues it.';
+          'boxes end there. "Find animals in videos" continues it.';
     } else if (_timeline.visitsStale) {
       note = 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
-          'The button below opens "Run AI on videos", where "Find track IDs" updates them. Until '
-          'then all AI boxes are shown.';
+          'The button below opens "Find animals in videos", where "Find track IDs" updates them. Until '
+          'then all boxes are shown.';
     } else if (!boxes.tracked) {
       note = _timeline.hasVisits
-          ? '"Find track IDs" ran before this clip was analysed. The button below opens "Run AI on '
-                'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all AI boxes '
+          ? '"Find track IDs" ran before this clip was analysed. The button below opens "Find animals in '
+                'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all boxes '
                 'are shown.'
-          : 'No track IDs yet: "Find track IDs" on "Run AI on videos" (button below) links the boxes '
-                'of each insect into track IDs. Until then all AI boxes are shown.';
+          : 'No track IDs yet: "Find track IDs" on "Find animals in videos" (button below) links the boxes '
+                'of each insect into track IDs. Until then all boxes are shown.';
     }
     if (note == null) return const [];
     return [
@@ -890,14 +890,14 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 const TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
                   text: 'a track ID: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in visits.csv'}), '
-                      "the insect class and the AI's confidence. A faded box: the AI missed the insect "
+                      "the insect class and the detector's confidence. A faded box: the detector missed the insect "
                       'on this frame and the tracker kept its place.',
                 ),
               ]
             : const [
                 TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.rawColor)),
                 TextSpan(
-                  text: 'every box the AI found, with its class and confidence, also the ones no track ID '
+                  text: 'every box the detector found, with its class and confidence, also the ones no track ID '
                       'was made from (for example an insect seen too briefly, or never sure enough to '
                       'start one). The strip under the time bar marks the frames with at least one box.',
                 ),
@@ -931,9 +931,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               ],
             ),
             Text(
-              '${_timeline.live ? 'Found by the live AI. ' : ''}A track ID usually stands for one visit in '
+              '${_timeline.live ? 'Found by live detection. ' : ''}A track ID usually stands for one visit in '
               'pollination ecology, but some can be false detections (a '
-              'leaf, a shadow, a blur): how well the AI does depends on how much these videos look like '
+              'leaf, a shadow, a blur): how well the detector does depends on how much these videos look like '
               'what it learned from. ${boxes.visits.isEmpty ? '' : _trackListOpen ? 'Tap a track ID below to watch it from 1 s before it starts.' : 'Tap to list them with their times.'}',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),

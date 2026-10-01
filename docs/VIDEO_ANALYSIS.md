@@ -1,7 +1,7 @@
 # Video Analysis: from imported videos to track IDs checked against a hand count
 
 FaunaPulse can follow flower visitors as track IDs in videos filmed elsewhere: the phone's own camera
-app, a collaborator, or a published dataset. The AI runs afterwards ("AI later"), so the
+app, a collaborator, or a published dataset. Detection runs afterwards ("AI later" in the plan), so the
 phone does not need to detect live in the field. This guide covers the whole path, from
 the import on the phone to a track ID count that has been checked against a hand count
 (round 230). The file formats are in [DATA_GUIDE §9](DATA_GUIDE.md#9-imported-videos-videos-video_detectionsjsonl-round-225);
@@ -26,25 +26,25 @@ Terms used below:
    record them with the app itself (round 238): capture trigger *Time-lapse*, *Save bursts
    as: Video*. Recorded clips are already the ROI square, carry the camera's own start
    time, and go straight to step 2 (their session summary opens on the Video tab with a
-   *Run AI on videos* button). For imported clips: one session per site and day works
+   *Find animals in videos* button). For imported clips: one session per site and day works
    best. Check the start time on the import sheet: track IDs per hour and the dashboard use
    it. Optionally, draw a square around the flower. The analysed area is scaled down to
    the model's input size, so a small insect in a whole 4K frame shrinks to a few pixels;
    a square keeps it large.
-   A live AI session with *Also record the ROI as video* (round 240) can be analysed the
-   same way, for comparison with what the live AI found: its Video tab then switches between
-   *Live AI* and *AI afterwards* on the same clips (round 241), which shows, for example,
-   track IDs the live AI missed while the phone was hot or the motion gate slept.
-2. **Run AI on videos** (home screen): model, confidence threshold and *Frames analyzed
-   per second* (default 15, the live AI's rate). This is the slow step (it can be paused
+   A live detection session with *Also record the ROI as video* (round 240) can be analysed the
+   same way, for comparison with what live detection found: its Video tab then switches between
+   *Live detection* and *Detection afterwards* on the same clips (round 241), which shows, for example,
+   track IDs live detection missed while the phone was hot or the motion gate slept.
+2. **Find animals in videos** (home screen): model, confidence threshold and *Frames analyzed
+   per second* (default 15, live detection's rate). This is the slow step (it can be paused
    and continued). It finds boxes only.
 3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
    C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length*. It
    takes seconds and can be run again with other settings. A new track ID starts only
-   from a box the AI is at least *New-track confidence* sure of (0.50, camera Settings →
+   from a box the detector is at least *New-track confidence* sure of (0.50, camera Settings →
    AI → Tracking → Advanced); weaker boxes, down to the confidence threshold, only
-   continue a track. If the Video tab's *All AI boxes* shows an insect that never gets a
+   continue a track. If the Video tab's *All boxes* shows an insect that never gets a
    track ID, lower it and run *Find track IDs* again: no new AI run is needed (round 247). With *Keep frames of each
    track ID* on (the default, round 234) it then saves pictures of every track ID from the
    clips, by the live photo rule: the first frame, then one every *Keep a frame every*
@@ -71,15 +71,15 @@ re-export them as 8-bit H.264, for example with the phone's video editor or Hand
 
 A clip that was still recording when the app stopped (flat battery, Android closing the
 app, a forced stop) is **cut off**: the phone writes a video's index only when the
-recording ends, so the file cannot be read. *Run AI on videos* says so, analyses the other
+recording ends, so the file cannot be read. *Find animals in videos* says so, analyses the other
 clips and offers *Delete the cut-off clip…* right under the note (round 243); the Video tab
-leaves such clips out. Live AI + video records 5-minute pieces and video bursts one clip
+leaves such clips out. Live detection + video records 5-minute pieces and video bursts one clip
 per burst, so a stop loses at most the piece or burst that was recording.
 
-**Older phones.** A phone too slow for live AI can still record and analyse later. On the
-second test phone (Samsung Galaxy M12, 2021, Exynos 850; round 243) live AI ran at 3 to 5
+**Older phones.** A phone too slow for live detection can still record and analyse later. On the
+second test phone (Samsung Galaxy M12, 2021, Exynos 850; round 243) live detection ran at 3 to 5
 frames per second, too slow for a fast insect, while video bursts recorded at the full 15
-frames per second. *Run AI on videos* then took a few times the clip's length there (23 s
+frames per second. *Find animals in videos* then took a few times the clip's length there (23 s
 of bursts in 93 s; a 30-s clip at 30 frames per second in about 170 s), better done on the
 charger.
 
@@ -91,13 +91,13 @@ tip when the file window is closed without a choice.
 
 ## 2. What the app counts as a track ID
 
-Count by hand with the same rule, or the comparison measures the rule and not the AI:
+Count by hand with the same rule, or the comparison measures the rule and not the detector:
 
 * A track ID starts when the insect is first detected in the analysed area and ends when it
   was last seen there. If it hides or leaves for **longer than the occlusion tolerance**
   (3 s by default) and comes back, that is a new track ID. Shorter gaps stay one track ID.
 * Track IDs shorter than the **minimum track length** (1 s by default since round 256, was
-  0.2 s) are not counted. The AI must find the insect in that many analysed frames in a
+  0.2 s) are not counted. The detector must find the insect in that many analysed frames in a
   row (shown under the setting: 1 s = 5 detections at 5 frames per second), so a high value
   also drops an insect it sees only on and off. The seconds become frames at the rate the
   video was analysed at, fixed for the whole run.
@@ -241,7 +241,7 @@ Instead of guessing, measure it on your own videos: detect once at the full rate
 re-run only the tracker on every 2nd, 3rd, 6th… frame, and compare each result with the
 hand count.
 
-1. **On the phone**: *Run AI on videos* with *Frames analyzed per second* at the video's
+1. **On the phone**: *Find animals in videos* with *Frames analyzed per second* at the video's
    own rate (30 for most phone videos). This takes several times longer than the default
    5, once.
    Then *Find track IDs* with the settings you want to test, and *Share results*.

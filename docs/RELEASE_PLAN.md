@@ -20,7 +20,7 @@ yet, no release keystore, docs written for researchers.
   paired with checking GitHub's "Set as a pre-release" box when publishing. Every
   `v0.7.0` reference below now means `v0.7.0-alpha.1`; future alphas bump to
   `-alpha.2`, etc., and the suffix drops once the app is no longer alpha.
-- **Heat/performance controls move to a renamed "Power" tab**, not the AI tab: the AI tab
+- **Heat/performance controls move to a renamed "Power" tab**, not the Detection tab: the Detection tab
   is fully greyed out in the no-AI capture modes (round 147 mechanism), but the motion
   gate must stay editable in motion mode, where its sensitivity fields ARE the capture
   sensitivity.
@@ -401,7 +401,7 @@ changes. Remaining: the owner's on-device pass across the 3 capture modes
       subtitle L1760, sheet header comment).
 - [x] **Round B (Setup + AI + Photos polish):** Setup gains a collapsed "On-screen
       display" fold (show boxes, info panel, ROI flash, plus "Show FPS" arriving from the
-      AI tab L898); session length moves up next to the trigger. AI tab: new fold
+      Detection tab L898); session length moves up next to the trigger. Detection tab: new fold
       "Advanced (engine & thresholds)" (IoU, GPU switch, CPU threads, benchmark button);
       the tracker-algorithm dropdown moves into the existing advanced tracker fold
       (owner sign-off: keep it visible one release longer if still A/B-comparing trackers
@@ -419,7 +419,7 @@ changes. Remaining: the owner's on-device pass across the 3 capture modes
       unchanged). Extend the home menu test.
 
 Every round: update `docs/SETTINGS_REFERENCE.md` in the same round (its headings already
-say "(AI tab)" for throttle/gate, stale vs the code; Round A fixes that), append an
+say "(Detection tab)" for throttle/gate, stale vs the code; Round A fixes that), append an
 AGENT_CHANGELOG round entry, run `flutter analyze` + `flutter test test/fauna_pulse`, and
 do an on-device pass across all 3 capture modes (settings round-trip, greying, folds).
 

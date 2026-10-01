@@ -19,7 +19,7 @@
       "id": "bioclip2_pollinator_orders_europe_v1",
       "kind": "pack",
       "name": "Pollinator orders, Europe",
-      "description": "Flies, bees and wasps, beetles, butterflies and moths with GBIF records in Europe (35,260 species).",
+      "description": "Flies, bees and wasps, beetles, butterflies and moths with GBIF records in Europe (35,264 species).",
       "model_id": "bioclip-2",
       "region": "EUROPE",
       "taxa": ["Diptera", "Hymenoptera", "Coleoptera", "Lepidoptera"],

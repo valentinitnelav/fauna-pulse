@@ -196,7 +196,7 @@ taxon list is the same one-liner.
 | Pack id | Selection | Names | Size | Runs in the app today |
 |---|---|---|---|---|
 | `bioclip2_flower_visitors_32fam_v1` | 32 flower-visitor families, worldwide | 38,570 | 60 MB | yes |
-| `bioclip2_pollinator_orders_europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,260 | 57 MB | yes |
+| `bioclip2_pollinator_orders_europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,264 | 57 MB | yes |
 | `bioclip2_mammalia_world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
 | `bioclip2_pollinator_orders_world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
 | `bioclip25_pollinator_orders_europe_v1` | as the Europe pack above, for BioCLIP 2.5 (round 264) | 34,704 | 74 MB | yes (with the BioCLIP 2.5 model) |
@@ -243,7 +243,7 @@ adb push out/bioclip2_flower_visitors_32fam_v1.fpack /sdcard/Download/
 ```
 
 (or copy them over USB / a file manager into the phone's Downloads folder). Then in
-FaunaPulse: home screen ⋮ menu, **AI models**, *Import model…* and *Import name list…*
+FaunaPulse: home screen ⋮ menu, **Download & import models**, *Import model…* and *Import name list…*
 (the label pack). The app copies both files into its private storage; the
 Downloads copies can be deleted afterwards. `docs/IDENTIFICATION.md` explains the run and
 the results.

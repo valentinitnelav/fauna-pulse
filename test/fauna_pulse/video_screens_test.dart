@@ -244,12 +244,12 @@ void main() {
     expectAboveBottomInset(tester, button);
 
     await tester.tap(button);
-    await _pumpUntil(tester, find.text('Run AI on these videos'));
+    await _pumpUntil(tester, find.text('Find animals in these videos'));
     expect(tester.takeException(), isNull);
     final dir = sessions.listSync().whereType<Directory>().single;
     expect(VideoDetector.clipsOf(dir), hasLength(3));
 
-    await tester.tap(find.text('Run AI on these videos'));
+    await tester.tap(find.text('Find animals in these videos'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(popped, dir.path); // home opens the analysis screen on it
@@ -613,7 +613,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('live AI session: track IDs for comparison, no kept frames (r241)', (tester) async {
+  testWidgets('live detection session: track IDs for comparison, no kept frames (r241)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_analysis_live');
@@ -747,7 +747,7 @@ void main() {
         home: SessionSummaryScreen(logFile: File('${dir!.path}/session.jsonl'), initialTabIndex: 2),
       ),
     );
-    await _pumpUntil(tester, find.text('Imported videos (AI runs afterwards)'));
+    await _pumpUntil(tester, find.text('Imported videos (detection afterwards)'));
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
@@ -827,7 +827,7 @@ void main() {
     await tester.scrollUntilVisible(find.textContaining('All session settings'), 200, scrollable: scrollable);
     await tester.tap(find.textContaining('All session settings'));
     await tester.pump();
-    await tester.scrollUntilVisible(find.text('Chosen on the "Run AI on videos" screen.'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Chosen on the "Find animals in videos" screen.'), 200, scrollable: scrollable);
     await expectSummaryRowValue(tester, scrollable, label: 'Confidence threshold', value: '0.25');
     await expectSummaryRowValue(tester, scrollable, label: 'Area to analyze', value: 'a square, 50 % of the picture width');
     await expectSummaryRowValue(tester, scrollable, label: 'Pause above battery temperature', value: '40 °C');
@@ -898,8 +898,8 @@ void main() {
       MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1)),
     );
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
-    await _pumpUntil(tester, find.text('While the AI ran on the videos', skipOffstage: false));
-    await tester.scrollUntilVisible(find.text('While the AI ran on the videos'), 200, scrollable: scrollable);
+    await _pumpUntil(tester, find.text('While the detector ran on the videos', skipOffstage: false));
+    await tester.scrollUntilVisible(find.text('While the detector ran on the videos'), 200, scrollable: scrollable);
     // The note sits just below the fold since the timeline text grew (round 247).
     expect(find.textContaining('Measured every 10 s', skipOffstage: false), findsOneWidget);
     await expectSummaryRowValue(tester, scrollable, label: 'Analysis time', value: '1m 0s in 2 runs');

@@ -89,7 +89,7 @@ flutter test integration_test/video_decode_check_test.dart -d <device> --no-unin
 flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-uninstall   # CPU thread timing (r226)
 flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)
 flutter test integration_test/video_review_check_test.dart -d <device> --no-uninstall # Video tab: boxes, 4x frame times, soak, re-analysis (r231; header: model, screenshots)
-flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Run AI on videos: stop, forced cooling pause, continue, graphs, CSV (r232)
+flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Find animals in videos: stop, forced cooling pause, continue, graphs, CSV (r232)
 flutter test integration_test/video_convert_check_test.dart -d <device> --no-uninstall # frame conversion: same boxes as a saved reference, ms per step (r233; run once before a converter change to save the reference)
 flutter test integration_test/camera_modes_check_test.dart -d <device> --no-uninstall  # recording modes through the camera screen: time-lapse photos/video with camera sleep + torch, continuous video, motion-only, live AI photos, a scheduled run (r245; MODES=ACF picks sessions; E_SUBJECT=true when the phone looks at a video of pollinators/animals, so live AI photos are really tested)
 flutter test integration_test/live_video_check_test.dart -d <device> --no-uninstall   # live AI + ROI video and the motion gate (r240; LIVE_CHECK_ONLY=BD, LIVE_SECONDS=330 for the 5-minute clip rollover)

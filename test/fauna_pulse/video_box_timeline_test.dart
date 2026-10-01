@@ -199,7 +199,7 @@ void main() {
     expect(t.clips['b.mp4']!.rawAt(500).single.box, const Rect.fromLTRB(0.2, 0.4, 0.25, 0.48));
   });
 
-  test('live AI boxes on the clips recorded during the session (round 240)', () {
+  test('live detection boxes on the clips recorded during the session (round 240)', () {
     final tmp = Directory.systemTemp.createTempSync('live_timeline');
     addTearDown(() => tmp.deleteSync(recursive: true));
     const t0 = 1790000000000;

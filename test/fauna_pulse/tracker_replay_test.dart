@@ -308,7 +308,7 @@ void main() {
         isNotEmpty,
         reason:
             'No raw_detections records in $sessionPath — was the session '
-            'recorded with Settings → AI → Tracking → Advanced → '
+            'recorded with Settings → Detection → Tracking → Advanced → '
             '"Log raw detections" enabled?',
       );
       // Read the seconds the session actually used from its start record, so

@@ -164,7 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'period ${agg.otherSessions == 1 ? 'is' : 'are'} not '
                   'counted: motion or time-lapse mode has no track IDs to '
                   'sum, and imported videos count once "Find track IDs" has '
-                  'run on the "Run AI on videos" screen.',
+                  'run on the "Find animals in videos" screen.',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ],
@@ -184,13 +184,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           agg.otherSessions > 0
               ? 'No sessions with track IDs in this period. The dashboard '
-                    'counts track IDs, which exist when the AI '
-                    'detector records a session, or after "Find track IDs" on '
+                    'counts track IDs, which exist when live '
+                    'detection records a session, or after "Find track IDs" on '
                     'imported videos. The ${agg.otherSessions} '
                     'session${agg.otherSessions == 1 ? '' : 's'} here '
                     'ha${agg.otherSessions == 1 ? 's' : 've'} none.'
               : 'No sessions in this period yet. Record a session with the '
-                    'AI detector and its track IDs will show up here.',
+                    'live detection and its track IDs will show up here.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white54, fontSize: 13),
         ),
@@ -234,7 +234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'track IDs per hour watched',
         agg.totalRecordedMs > 0 ? agg.visitsPerHour.toStringAsFixed(1) : '—',
       ),
-      tile('AI sessions', '${agg.aiSessions}'),
+      tile('Live detection sessions', '${agg.aiSessions}'),
       tile('average track length', _secondsLabel(agg.meanVisitMs.round())),
       tile('longest track', _secondsLabel(agg.longestVisitMs)),
     ];

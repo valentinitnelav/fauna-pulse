@@ -106,7 +106,7 @@ void main() {
     expect((await VideoClipTotals.read(Directory('${tmp.path}/none'))).count, 0);
   });
 
-  test('live AI estimate: the whole session is filmed (round 240)', () {
+  test('live detection estimate: the whole session is filmed (round 240)', () {
     final c = const SessionConfig(sessionMinutes: 60).copyWith(liveAiVideo: true, liveAiVideoFps: 15);
     expect(liveAiVideoStorageEstimate(c), contains('A 60 min session records about 60 min of video: about 2.0 GB.'));
   });
@@ -291,7 +291,7 @@ void main() {
       expect(r[1]['file'], r[0]['file']);
     });
 
-    test('live AI segments (round 240): live_video_start, segment instead of burst', () async {
+    test('live detection segments (round 240): live_video_start, segment instead of burst', () async {
       final c = TimeLapseVideoClips(
         videosDir: Directory('${tmp.path}/videos'),
         fileToken: 'tok1',

@@ -52,7 +52,7 @@ void _log(String s) => print(s);
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('live AI with and without ROI video on this phone', (tester) async {
+  testWidgets('live detection with and without ROI video on this phone', (tester) async {
     binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
     await WakelockPlus.enable();
     addTearDown(WakelockPlus.disable);

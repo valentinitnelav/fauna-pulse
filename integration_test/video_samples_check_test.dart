@@ -68,7 +68,7 @@ List<Map<String, dynamic>> _records(Directory dir) => [
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('phone samples while the AI runs on a video', (tester) async {
+  testWidgets('phone samples while the detector runs on a video', (tester) async {
     binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
 
     // 1. Import a copy of the clip.
@@ -211,13 +211,13 @@ void main() {
         home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1),
       ),
     );
-    final title = find.text('While the AI ran on the videos', skipOffstage: false);
+    final title = find.text('While the detector ran on the videos', skipOffstage: false);
     for (var i = 0; i < 200 && title.evaluate().isEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(title, findsOneWidget);
     final list = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
-    await tester.scrollUntilVisible(find.text('While the AI ran on the videos'), 300, scrollable: list);
+    await tester.scrollUntilVisible(find.text('While the detector ran on the videos'), 300, scrollable: list);
     final position = tester.state<ScrollableState>(list).position;
     var n = 0;
     Future<void> shot() async {

@@ -271,7 +271,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
     final totalBytes = _clips.fold<int>(0, (s, c) => s + c.sizeBytes);
     return [
       const HelpLabel(
-        label: 'Adds the videos as a new session. The AI runs on them afterwards, from "Run AI on videos".',
+        label: 'Adds the videos as a new session. The detector runs on them afterwards, from "Find animals in videos".',
         labelStyle: TextStyle(color: Colors.white70, fontSize: 13),
         helperText:
             'The files are moved into the app\'s own folder for this session (the originals on '
@@ -425,7 +425,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       FilledButton.icon(
         onPressed: () => Navigator.of(context).pop(_result!.path),
         icon: const Icon(Icons.auto_awesome_outlined),
-        label: const Text('Run AI on these videos'),
+        label: const Text('Find animals in these videos'),
       ),
       const SizedBox(height: 8),
       OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),

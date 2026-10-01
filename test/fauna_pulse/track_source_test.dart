@@ -59,7 +59,7 @@ void main() {
       expect(tracksFileOf(tmp).path, '${tmp.path}/$postTracksFileName');
     });
 
-    test('a live AI session keeps its own track IDs even with a post file', () {
+    test('a live detection session keeps its own track IDs even with a post file', () {
       writeLog([
         _start(config: {'captureTrigger': 'detector'}),
       ]);
@@ -122,7 +122,7 @@ void main() {
       expect(index.postTrackStart?['tracker'], {'algorithm': 'bytetrack'});
     });
 
-    test('a live AI session reads session.jsonl and ignores the post file', () async {
+    test('a live detection session reads session.jsonl and ignores the post file', () async {
       writeLog([
         _start(config: {'captureTrigger': 'detector'}),
         _detections(1500, [9]),

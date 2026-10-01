@@ -999,14 +999,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// than the capture-trigger setting were AI-detector sessions unless they
   /// carry the legacy motion-only flag handled above.
   String get _captureModeLabel => _importedVideoSession
-      ? 'Imported videos (AI runs afterwards)'
+      ? 'Imported videos (detection afterwards)'
       : _recordedVideoSession
-      ? 'Time-lapse video bursts (AI runs afterwards)'
+      ? 'Time-lapse video bursts (detection afterwards)'
       : _timeLapseSession
-      ? 'Time-lapse photo bursts (no AI)'
+      ? 'Time-lapse photo bursts (no detection)'
       : _motionOnlySession
-      ? 'Motion-triggered photos (no AI)'
-      : 'AI detector';
+      ? 'Motion-triggered photos (no detection)'
+      : 'Live detection';
 
   bool get _noAiSession =>
       _motionOnlySession || _timeLapseSession || _importedVideoSession;
@@ -1143,7 +1143,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ? 'time-lapse'
         : _motionOnlySession
         ? 'motion-trigger'
-        : 'AI-detector';
+        : 'Live detection';
     void addNote(String text) {
       rows.add(
         Padding(
@@ -1165,11 +1165,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final vs = run?['settings'];
       if (run == null || vs is! Map) {
         addNote(
-          'Not analyzed yet: "Run AI on videos" on the home screen finds '
+          'Not analyzed yet: "Find animals in videos" on the home screen finds '
           'the insects in these videos.',
         );
       } else {
-        addNote('Chosen on the "Run AI on videos" screen.');
+        addNote('Chosen on the "Find animals in videos" screen.');
         add('Model', run['model_name'] ?? vs['model']);
         add('GPU requested', run['use_gpu']);
         add('Confidence threshold', vs['confidence']);
@@ -1608,15 +1608,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_videoSession) {
       addNote(
         afterwards
-            ? 'Track IDs found afterwards with "Find track IDs" on the "Run AI on '
+            ? 'Track IDs found afterwards with "Find track IDs" on the "Find animals in '
                   'videos" screen.'
-            : 'Not run yet: "Find track IDs" on the "Run AI on videos" screen '
+            : 'Not run yet: "Find track IDs" on the "Find animals in videos" screen '
                   'follows each insect from frame to frame.',
       );
     } else if (_visitsFromPhotos) {
       addNote(
         'Track IDs found afterwards in the photos with "Find track IDs" on the '
-        '"Run AI on photos" screen.',
+        '"Find animals in photos" screen.',
       );
     } else if (noAi) {
       addNote(
@@ -1683,7 +1683,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
     // Round 240: live AI + ROI video. Older sessions carry no key.
     add('Record the ROI as video', _setting('liveAiVideo'), na: noAi);
-    add('Video frame rate (live AI)', _setting('liveAiVideoFps'), suffix: ' fps', na: noAi || _setting('liveAiVideo') != true);
+    add('Video frame rate (live detection)', _setting('liveAiVideoFps'), suffix: ' fps', na: noAi || _setting('liveAiVideo') != true);
     return [
       const Text(
         'Everything chosen at the start of this session, so the run can be '
@@ -1810,7 +1810,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _videoSession
             ? '${_videoRun?['model_name'] ?? 'Not analyzed yet'}'
             : _noAiSession
-            ? 'Not applicable (no AI detector used)'
+            ? 'Not applicable (no detector used)'
             : _model ?? 'unknown',
       ),
       if (!_noAiSession && _accelerator != null && _accelerator!.isNotEmpty)
@@ -2193,7 +2193,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 ? '${_spans.length} (found afterwards in the videos)'
                 : _graphsLoading
                 ? '…'
-                : 'none yet ("Find track IDs" on "Run AI on videos")')
+                : 'none yet ("Find track IDs" on "Find animals in videos")')
           : _uniqueTracks?.toString() ?? 'unknown',
     ),
     // Round 241: the same clips analysed afterwards, for comparison.
@@ -2388,7 +2388,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     child: SegmentedButton<bool>(
       segments: const [
         ButtonSegment(value: false, label: Text('While recording')),
-        ButtonSegment(value: true, label: Text('While the AI ran')),
+        ButtonSegment(value: true, label: Text('While the detector ran')),
       ],
       selected: {_graphsOfAnalysis},
       showSelectedIcon: false,
@@ -2413,7 +2413,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           _graphsLoading
               ? '…'
               : 'No measurements yet. The phone\'s temperature, power and '
-                    'speed are written down while "Run AI on videos" runs.',
+                    'speed are written down while "Find animals in videos" runs.',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ];
@@ -2426,10 +2426,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final every = s.sampleSeconds.isEmpty ? '…' : s.sampleSeconds.join(' or ');
     return [
       const SizedBox(height: 12),
-      const Text('While the AI ran on the videos', style: bold),
+      const Text('While the detector ran on the videos', style: bold),
       const SizedBox(height: 4),
       Text(
-        'Measured every $every s while "Run AI on videos" ran. '
+        'Measured every $every s while "Find animals in videos" ran. '
         'Time runs over the analysis only: a run that was stopped and '
         'continued later shows as a gap. Grey bands: paused for the phone '
         'to cool down.',
@@ -2489,7 +2489,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Text('Frames analyzed per second', style: bold),
       const SizedBox(height: 4),
       const Text(
-        'Video frames the AI finished per second of clock time, averaged '
+        'Video frames the detector finished per second of clock time, averaged '
         'since the previous measurement; 0 while paused to cool down. It '
         'drops when the phone slows itself down to cool off.',
         style: note,
@@ -2697,21 +2697,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const SizedBox(height: 4),
         const Text(
           'Pictures of each track ID, kept from the videos when the track IDs were found (set under '
-          '"Run AI on videos" → Track IDs). A random sample of $_randomSampleCount is shown; pick more '
+          '"Find animals in videos" → Track IDs). A random sample of $_randomSampleCount is shown; pick more '
           'below. Swipe or use the arrows to step through them in time order. "Show in video" moves '
           'the player above to that moment.',
           style: TextStyle(color: Colors.white70, fontSize: 12),
         ),
       ] else ...[
       const Text(
-        'Saved photos (with detection boxes if AI was used)',
+        'Saved photos (with detection boxes if a detector was used)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
         'A random sample of $_randomSampleCount photos across the session is '
         'shown by default; pick a bigger sample or all photos below. '
-        'If AI was applied, predicted boxes are displayed too. '
+        'If a detector ran, predicted boxes are displayed too. '
         'Swipe left/right, or use the navigation arrows to '
         'step through them (always in capture order). Reference photos '
         '(taken on a fixed clock regardless of detections) are mixed in and '
@@ -2724,7 +2724,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // the frame that scheduled it, not only the one(s) whose time-lapse
       // step was due.
       const Text(
-        'Bounding box colors (if AI was used):',
+        'Bounding box colors (if a detector was used):',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 2),
@@ -2838,7 +2838,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           padding: const EdgeInsets.all(16),
           child: Text(
             videoFrames
-                ? 'No kept frames yet. In "Run AI on videos", find the track IDs with '
+                ? 'No kept frames yet. In "Find animals in videos", find the track IDs with '
                       '"Keep frames of each track ID" on.'
                 : 'No saved photos found for this session.',
             style: const TextStyle(color: Colors.white70),
@@ -2874,7 +2874,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               'Copies the video clips of this session into the phone\'s own Gallery app, as one '
               'album under Movies/FaunaPulse, to watch them or share them with other apps. The '
               'copies take extra storage (the originals stay in the session folder). They are '
-              'plain videos: the AI\'s boxes are not drawn into them.',
+              'plain videos: the detector\'s boxes are not drawn into them.',
         ),
         const SizedBox(height: 8),
         ..._galleryProgress(videos: true),
@@ -3185,17 +3185,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           _visitsFromPhotos
               ? 'No track IDs found in the photos.'
               : _motionOnlySession
-              ? 'Motion-only capture session — the AI detector was off, so '
+              ? 'Motion-only capture session — the detector was off, so '
                     'no track IDs were recorded. Photos were taken on '
                     'ROI motion; see the Photos tab.'
               : _timeLapseSession && !_videoSession
-              ? 'Time-lapse session — the AI detector was off, so no track IDs '
+              ? 'Time-lapse session — the detector was off, so no track IDs '
                     'or tracks were recorded. Photos were taken in scheduled '
                     'bursts; see the Photos tab.'
               : _visitsAfterwards
               ? 'No track IDs found in the videos.'
               : _videoSession
-              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Run AI on videos" '
+              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Find animals in videos" '
                     '(Video tab, or the session\'s gear menu on the home screen) finds the '
                     'insects, then "Find track IDs" there follows each one from frame to frame.'
               : 'No track IDs recorded.',

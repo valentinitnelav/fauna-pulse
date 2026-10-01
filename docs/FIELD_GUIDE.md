@@ -108,7 +108,8 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 - **Mode chip** — always shown at the top left, so you can tell at a glance
   which capture mode is running: **green = photos happening/possible right
   now, grey = waiting.**
-  - AI detector: "DETECTOR ON"; with the motion gate enabled, grey
+  - Live detection: "DETECTOR ON" (grey "NO DETECTION MODEL" when no
+    detection model is chosen or on the phone); with the motion gate enabled, grey
     "DETECTOR SLEEPING" means nothing is moving in the ROI so the detector is
     resting to save heat and battery. **Sleeping is normal and correct** on an
     empty flower — it is not a fault. The ROI border also turns grey while
@@ -132,7 +133,7 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   the camera (first analysis frame, photo resolution, stream ceiling); the
   probe results are cached, so later launches clear it faster. Wait for it to
   clear before relying on the readouts. (The GPU-vs-CPU engine benchmark is
-  never automatic; run it yourself from Settings → AI if you want it.)
+  never automatic; run it yourself from Settings → Detection if you want it.)
 
 ## 4. Power-saving (blackout) during long sessions
 
@@ -223,7 +224,7 @@ folder above is invisible to gallery apps by design (Android never indexes
 app-private storage). To browse photos on the phone itself, open the session's
 summary → Photos tab → **Copy photos** (or the ⚙ gear menu on
 the session's row in the home screen's Previous sessions list, which also
-offers **Rename session**, **Run AI on photos** and **Delete session**). This
+offers **Rename session**, **Find animals in photos** and **Delete session**). This
 copies every saved
 photo (including the reference photos from `gt_frames/`) into the shared album
 `Pictures/FaunaPulse/<session-name>`, which
@@ -309,7 +310,7 @@ and what helps (shade first).
 Phones protect themselves from overheating by silently slowing down —
 **"thermal throttling"**. There is no warning: the operating system just
 reduces what the hardware is allowed to do, and on the phones we tested it
-slows the **camera** first, not the AI model. What you see on screen is the
+slows the **camera** first, not the detection model. What you see on screen is the
 detector FPS dipping (sometimes sharply), then the app's auto-adjust finding
 a lower rate that the warm phone can sustain. **A hot session degrades — it
 does not die.** Every temperature and FPS sample is in the session log, so
@@ -355,7 +356,7 @@ the session log's temperature and FPS records are the only honest witnesses.
 5. **Expect charging to cost headroom.** A power bank keeps a long session
    alive but adds charging heat; the throttle point arrives sooner. That
    trade is usually worth it — just plan for it.
-6. **On slow phones, pick the faster model** (Settings → AI, and the
+6. **On slow phones, pick the faster model** (Settings → Detection, and the
    benchmark button tells you which engine is faster on your device).
 
 ### Active cooling gadgets (untested by us — read before buying)

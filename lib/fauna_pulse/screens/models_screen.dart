@@ -1,9 +1,10 @@
-// FaunaPulse (round 267): the AI models screen, one place for every model
-// file (home ⋮ → AI models, and "Manage models…" next to every model list).
+// FaunaPulse (round 267): one screen for every model file, "Download & import
+// models" since round 271 (owner: "AI models" was too vague): home ⋮ menu,
+// and a "Download & import models…" link next to every model list.
 //
 // Two kinds of model, named for what they do (owner decision, round 267):
 //   • Detection models find animals in a picture and draw boxes: live in a
-//     session, or afterwards ("Run AI on photos / videos"). ModelCatalog.
+//     session, or afterwards ("Find animals in photos / videos"). ModelCatalog.
 //   • Identification models name what is inside a box ("Identify
 //     organisms"), choosing from a name list (.fpack): a label pack for
 //     BioCLIP, or the class list of a fixed-class classifier such as
@@ -18,6 +19,11 @@
 // brings its model along when the model is not on the phone yet. Files on
 // the phone whose name is in the catalogue show its title and line too.
 // Importing a file and downloading from a link stay for the user's own models.
+//
+// Round 271 (owner): each identification model is listed with its name lists
+// under it (IdentificationAssets.listBelongsTo), a model without one is
+// flagged (it cannot identify; Identify will not start), and deleting the
+// only detection model, or a model's last name list, says what stops working.
 
 import 'dart:io';
 
@@ -35,19 +41,20 @@ import '../widgets/download_files_dialog.dart';
 import '../widgets/download_model_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 
-/// Opens the AI models screen; the caller re-reads its own model list after.
+/// Opens the Download & import models screen; the caller re-reads its own
+/// model list after.
 Future<void> openModelsScreen(BuildContext context) => Navigator.of(context)
     .push(MaterialPageRoute<void>(builder: (_) => const ModelsScreen()));
 
-/// The "Manage models…" link placed next to every model list.
+/// The link to this screen placed next to every model list.
 Widget manageModelsButton({required VoidCallback? onPressed}) => TextButton.icon(
   onPressed: onPressed,
-  icon: const Icon(Icons.memory, size: 18),
-  label: const Text('Manage models…'),
+  icon: const Icon(Icons.download, size: 18),
+  label: const Text('Download & import models…'),
 );
 
-/// Shown where a model is needed but none is on the phone (round 268): AI
-/// mode, Run AI on photos / videos, Identify organisms.
+/// Shown where a model is needed but none is on the phone (round 268): live
+/// detection, Find animals in photos / videos, Identify organisms.
 class NoModelNotice extends StatelessWidget {
   final bool identification;
   final VoidCallback? onGet;
@@ -61,10 +68,8 @@ class NoModelNotice extends StatelessWidget {
       children: [
         Text(
           identification
-              ? 'No identification model on this phone yet. Download one that names the organisms '
-                    'you watch; it then names what the detection model found.'
-              : 'No detection model on this phone yet. Download one that finds the animals you '
-                    'watch (common animals, insects, insects on flowers).',
+              ? 'No identification model on this phone yet. It names what the detection model found.'
+              : 'No detection model on this phone yet. Get one that finds the animals you watch.',
           style: const TextStyle(color: Colors.amber, fontSize: 13),
         ),
         const SizedBox(height: 6),
@@ -127,6 +132,18 @@ class ModelsInventory {
     this.downloads = const ModelDownloads(),
   });
 
+  /// The name lists on the phone made for the identification model [model].
+  List<File> listsOf(File model) => [
+    for (final l in nameLists)
+      if (IdentificationAssets.listBelongsTo(l, headers[l.path], model)) l,
+  ];
+
+  /// Name lists whose model is not on the phone.
+  List<File> get orphanLists => [
+    for (final l in nameLists)
+      if (!idModels.any((m) => IdentificationAssets.listBelongsTo(l, headers[l.path], m))) l,
+  ];
+
   /// File names on the phone (a catalogue file counts as present by name).
   Set<String> get onPhone => {
     for (final m in detectors) m.name,
@@ -182,18 +199,14 @@ class ModelsScreen extends StatefulWidget {
 
 class _ModelsScreenState extends State<ModelsScreen> {
   static const _intro =
-      'FaunaPulse uses two kinds of AI models, both running on this phone without internet. '
-      'A detection model finds animals in each picture and draws a box around each one: live '
-      'during a session, or afterwards with "Run AI on photos" and "Run AI on videos". An '
-      'identification model then names what is inside each box ("Identify organisms"). '
-      'Download the ones that fit what you watch; you choose which one to use on the screen '
-      'that runs it.';
+      'Two kinds of models run on this phone, without internet. A detection model finds animals '
+      'and draws a box around each one: live in a session, or afterwards with "Find animals in '
+      'photos / videos". An identification model then names what is inside each box ("Identify '
+      'organisms"). You choose which one to use on the screen that runs it.';
 
   static const _namesHelp =
-      'An identification model chooses its answer from a name list. A BioCLIP model works with '
-      'any label pack made for it (names with their taxonomy). A classifier such as insectDCT '
-      'knows a fixed set of classes: its class list has the same file name as the model and is '
-      'chosen with it.';
+      'Each identification model needs a name list made for it: a label pack for BioCLIP, the '
+      'class list of a classifier such as insectDCT. They are shown together below.';
 
   static const _ownHelp =
       'Import a file already on the phone (for example in Download), or '
@@ -318,10 +331,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   Future<void> _deleteDetector(ModelEntry m) async {
+    final last = (_inv?.detectors.length ?? 0) <= 1;
     if (!await _confirmDelete(
       m.name,
-      'The file is removed from this phone. Sessions that used it keep their results; screens '
-      'that had it chosen switch to another model.',
+      'The file is removed from this phone. Sessions that used it keep their results.'
+      '${last ? '\n\nIt is the only detection model here. Without one, live detection and "Find '
+                'animals in photos / videos" cannot run, and identification has no boxes to name. '
+                'Time-lapse and motion capture still work.' : ''}',
     )) {
       return;
     }
@@ -338,10 +354,22 @@ class _ModelsScreenState extends State<ModelsScreen> {
     final also = lists.isEmpty
         ? ''
         : ' Its class list ${lists.map(_nameOf).join(', ')} is deleted with it.';
+    // A model left without any name list cannot identify (round 271).
+    final inv = _inv;
+    final orphaned = isModel || inv == null
+        ? const <File>[]
+        : [
+            for (final m in inv.idModels)
+              if (inv.listsOf(m).length == 1 && inv.listsOf(m).single.path == f.path) m,
+          ];
+    final warn = orphaned.isEmpty
+        ? ''
+        : '\n\nIt is the only name list of ${orphaned.map(_nameOf).join(', ')}, which then '
+              'cannot identify until another one is added.';
     if (!await _confirmDelete(
       _nameOf(f),
       'The file is removed from this phone. Identification results already made keep their '
-      'answers.$also',
+      'answers.$also$warn',
     )) {
       return;
     }
@@ -453,14 +481,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   Widget _idModelTile(File f, ModelsInventory inv) {
     final offer = inv.downloads.modelFor(_nameOf(f));
-    final lists = IdentificationAssets.classListsOf(f, inv.nameLists);
-    final pairing = lists.isEmpty
-        ? 'Uses a label pack made for this model'
-        : 'With its class list';
     final details = [
       ?offer?.purpose,
       if (offer != null) _nameOf(f),
-      _sized(pairing, inv.sizes[f.path]),
+      _sized('On this phone', inv.sizes[f.path]),
     ].join('\n');
     return _tile(
       _identificationIcon,
@@ -470,7 +494,29 @@ class _ModelsScreenState extends State<ModelsScreen> {
     );
   }
 
-  Widget _nameListTile(File f, ModelsInventory inv) {
+  Widget _nameListTile(File f, ModelsInventory inv) => Padding(
+    padding: const EdgeInsets.only(left: 32),
+    child: _nameListRow(f, inv),
+  );
+
+  /// A model and its name lists, or a warning that it has none (round 271).
+  List<Widget> _idModelGroup(File f, ModelsInventory inv) {
+    final lists = inv.listsOf(f);
+    return [
+      _idModelTile(f, inv),
+      for (final l in lists) _nameListTile(l, inv),
+      if (lists.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(left: 32, bottom: 8),
+          child: Text(
+            '⚠ No name list: this model cannot identify. Download or import one.',
+            style: TextStyle(color: Colors.amber, fontSize: 13),
+          ),
+        ),
+    ];
+  }
+
+  Widget _nameListRow(File f, ModelsInventory inv) {
     final h = inv.headers[f.path];
     final offer = inv.downloads.listFor(_nameOf(f));
     final what = h == null
@@ -566,7 +612,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Widget build(BuildContext context) {
     final inv = _inv;
     return Scaffold(
-      appBar: AppBar(title: const Text('AI models')),
+      appBar: AppBar(title: const Text('Download & import models')),
       body: SafeArea(
         child: inv == null
             ? const Center(child: CircularProgressIndicator())
@@ -604,7 +650,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                   _subheading('On this phone'),
                   if (inv.detectors.isEmpty)
                     const Text(
-                      'None yet: the camera\'s AI mode and "Run AI on photos / videos" need one.',
+                      'None yet: live detection and "Find animals in photos / videos" need one.',
                       style: helperTextStyle,
                     ),
                   for (final m in inv.detectors) _detectorTile(m, inv),
@@ -619,11 +665,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
                       'None yet: "Identify organisms" needs one.',
                       style: helperTextStyle,
                     ),
-                  for (final f in inv.idModels) _idModelTile(f, inv),
-                  if (inv.nameLists.isNotEmpty) ...[
-                    _subheading('Name lists (.fpack)'),
-                    const Text(_namesHelp, style: helperTextStyle),
-                    for (final f in inv.nameLists) _nameListTile(f, inv),
+                  if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
+                  for (final f in inv.idModels) ..._idModelGroup(f, inv),
+                  if (inv.orphanLists.isNotEmpty) ...[
+                    _subheading('Name lists without their model'),
+                    const Text(
+                      'Their model is not on this phone, so they cannot be used yet.',
+                      style: TextStyle(color: Colors.amber, fontSize: 13),
+                    ),
+                    for (final f in inv.orphanLists) _nameListRow(f, inv),
                   ],
                   ..._identificationOffers(inv),
                   _section('Your own models', _ownHelp),

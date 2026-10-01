@@ -59,6 +59,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   File? _model;
   File? _pack;
   Map<String, dynamic>? _packHeader;
+
+  /// Header of every name list by path (round 271), to offer only the lists
+  /// made for the chosen model.
+  Map<String, Map<String, dynamic>> _headers = const {};
   int? _plannedCrops;
   int? _plannedTracks;
   // Round 256: kept video frames not saved yet have no crops (the planner
@@ -135,15 +139,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       return files.first;
     }
     final model = pick(models, prefs.modelName);
-    final pack = _classListFor(model, packs) ?? pick(packs, prefs.packName);
-    Map<String, dynamic>? header;
-    if (pack != null) {
-      try {
-        header = await LabelPack.readHeader(pack);
-      } catch (e) {
-        logSwallowed('identify_pack_header', e);
-      }
-    }
+    final headers = await _readHeaders(packs);
+    final pack = _classListFor(model, packs) ?? pick(_listsFor(model, packs, headers), prefs.packName);
+    final header = pack == null ? null : headers[pack.path];
     ThermalReading? thermal;
     try {
       thermal = await DeviceThermal.read();
@@ -155,6 +153,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _prefs = prefs;
       _models = models;
       _packs = packs;
+      _headers = headers;
       _model = model;
       _pack = pack;
       _packHeader = header;
@@ -236,6 +235,39 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   bool get _isClassList => _packHeader?['kind'] == 'classes';
 
+  /// 35264 → "35,264".
+  static String _thousands(num n) => '$n'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+
+  static Future<Map<String, Map<String, dynamic>>> _readHeaders(List<File> packs) async {
+    final headers = <String, Map<String, dynamic>>{};
+    for (final p in packs) {
+      try {
+        headers[p.path] = await LabelPack.readHeader(p);
+      } catch (e) {
+        logSwallowed('identify_pack_header', e);
+      }
+    }
+    return headers;
+  }
+
+  /// The name lists made for [model] (round 271): only these are offered, and
+  /// without one the model cannot identify.
+  static List<File> _listsFor(File? model, List<File> packs, Map<String, Map<String, dynamic>> headers) =>
+      model == null
+      ? const []
+      : [for (final p in packs) if (IdentificationAssets.listBelongsTo(p, headers[p.path], model)) p];
+
+  List<File> get _modelPacks => _listsFor(_model, _packs, _headers);
+
+  /// After the model changed: its class list, else the chosen list when it
+  /// fits the model, else its first list, else none.
+  Future<void> _selectPackForModel() async {
+    final lists = _modelPacks;
+    await _selectPack(
+      _classListFor(_model, lists) ?? lists.where((f) => f.path == _pack?.path).firstOrNull ?? lists.firstOrNull,
+    );
+  }
+
   /// Why [model] and the chosen pack cannot run together, before anything is
   /// loaded (round 266); null when they may. The embedding size is checked
   /// again once the model is loaded.
@@ -274,15 +306,17 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     await openModelsScreen(context);
     final models = await IdentificationAssets.listModels();
     final packs = await IdentificationAssets.listPacks();
+    final headers = await _readHeaders(packs);
     if (!mounted) return;
     File? keep(List<File> files, File? current) =>
         files.where((f) => f.path == current?.path).firstOrNull ?? files.firstOrNull;
     setState(() {
       _models = models;
       _packs = packs;
+      _headers = headers;
       _model = keep(models, _model);
     });
-    await _selectPack(_classListFor(_model, packs) ?? keep(packs, _pack));
+    await _selectPackForModel();
     await _checkVisits();
     await _loadSpeed();
   }
@@ -693,24 +727,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     // Round 268: no model ships with the app.
     if (_models.isEmpty) {
       return [
-        const Text('Model and label pack', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        const Text('Model and name list', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         const SizedBox(height: 8),
         NoModelNotice(identification: true, onGet: _testingSpeed ? null : _manageModels),
       ];
     }
     return [
       const HelpLabel(
-        label: 'Model and label pack',
+        label: 'Model and name list',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'The MODEL turns a crop into numbers. A BioCLIP model compares them with the names of a '
-            'LABEL PACK (any list of names, with their taxonomy), so one model works with many packs, but '
-            'each pack is built for one model and gives nonsense with another. A classifier such as '
-            'insectDCT knows a fixed list of classes instead: its pack is that CLASS LIST (each class with '
-            'its taxonomy) and has the same file name as the model, so choosing the model chooses it. '
-            'A model file can be very large (hundreds of MB). '
-            'Download the files on your phone, then add them with Manage models… below (the same as AI models '
-            "in the home screen's ⋮ menu)."
+            'The model names a crop by choosing from a NAME LIST made for it; without one it cannot '
+            'identify, so only the lists made for the chosen model are offered. A BioCLIP model works '
+            'with many LABEL PACKS (lists of names with their taxonomy). A classifier such as insectDCT '
+            'knows a fixed set of classes: its CLASS LIST has the same file name as the model and is '
+            'chosen with it. Add files with Download & import models… below (also in the home '
+            "screen's ⋮ menu)."
       ),
       const SizedBox(height: 8),
       // isExpanded (round 209): without it the field takes the width of its
@@ -722,8 +754,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         items: [for (final f in _models) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
         onChanged: (p) {
           setState(() => _model = _models.firstWhere((f) => f.path == p));
-          final classList = _classListFor(_model, _packs);
-          if (classList != null) _selectPack(classList);
+          _selectPackForModel();
           _loadSpeed();
           _checkVisits();
         },
@@ -732,8 +763,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       DropdownButtonFormField<String>(
         initialValue: _pack?.path,
         isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Label pack (.fpack)'),
-        items: [for (final f in _packs) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
+        decoration: const InputDecoration(labelText: 'Name list (.fpack)'),
+        items: [
+          for (final f in _modelPacks)
+            DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis)),
+        ],
         onChanged: (p) => _selectPack(_packs.firstWhere((f) => f.path == p)),
       ),
       if (_packHeader != null)
@@ -745,16 +779,20 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                       '${(_packHeader!['heads'] as List?)?.length ?? 1} levels, ${_packHeader!['sink_rows']} '
                       '"none" class (e.g. vegetation)'
                 : 'Pack ${_packHeader!['pack_id']} for ${_packHeader!['model_id']}: '
-                      '${_packHeader!['rows']} names, ${_packHeader!['sink_rows']} "none" entries, '
+                      // Names without the "none" rows, as on the Download & import models
+                      // screen and in the catalogue (round 271).
+                      '${_thousands((_packHeader!['rows'] as num? ?? 0) - (_packHeader!['sink_rows'] as num? ?? 0))} '
+                      'names, ${_packHeader!['sink_rows']} "none" entries, '
                       'scale ${(_packHeader!['logit_scale'] as num?)?.toStringAsFixed(1)}',
             style: helperTextStyle,
           ),
         ),
-      if (_packs.isEmpty)
+      if (_modelPacks.isEmpty)
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
-            'No name list on this phone yet: download one with Manage models… below.',
+            '⚠ No name list for this model, so it cannot identify. Get one with Download & import '
+            'models… below.',
             style: TextStyle(color: Colors.amber, fontSize: 13),
           ),
         ),
@@ -844,7 +882,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           padding: EdgeInsets.only(top: 4),
           child: Text(
             'No crops to identify: this session has no photos with tracked insects '
-            '(no-AI sessions need "Run AI on photos" first).',
+            '(sessions without detection need "Find animals in photos" first).',
             style: helperTextStyle,
           ),
         ),
@@ -1157,7 +1195,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           helperText:
               'Upper limit per track ID: when a track ID has more photos than this, only its LARGEST '
               'boxes are kept. How many photos a track ID has '
-              'comes from the session\'s photo schedule (e.g.: AI mode default with one photo every 1 s for '
+              'comes from the session\'s photo schedule (e.g.: the live detection default, one photo every 1 s for '
               '10 s, so about 10 per track ID); with that default the limit of 10 rarely removes '
               'anything and only bounds the runtime for long bursts. Set 0 to use all photos.',
         ),

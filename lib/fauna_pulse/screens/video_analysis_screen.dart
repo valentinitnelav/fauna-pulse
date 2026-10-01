@@ -809,7 +809,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(keeping ? 'Frames are still being saved' : 'The AI is still running'),
+        title: Text(keeping ? 'Frames are still being saved' : 'The detector is still running'),
         content: Text(
           keeping
               ? 'Leaving stops saving the kept frames${p == null ? '' : ' (${p.done} of ${p.total} done)'}. '
@@ -828,7 +828,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   Widget _screen() {
     return Scaffold(
-      appBar: AppBar(title: const Text('Run AI on videos')),
+      appBar: AppBar(title: const Text('Find animals in videos')),
       // SafeArea: without it the list's last lines sit under the system
       // navigation bar and can never be scrolled into view.
       body: SafeArea(
@@ -861,7 +861,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   _slider(
                     label: 'Frames analyzed per second: ${_prefs.analysisFps.round()}',
                     help:
-                        'How many pictures of each second of the video the AI looks at; the pictures in '
+                        'How many pictures of each second of the video the detector looks at; the pictures in '
                         'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
                         'stay on a flower for a second or more, and a run takes less than half the time 15 '
                         'would (not a third: the phone still has to unpack every picture). More pictures '
@@ -1201,9 +1201,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-              'These clips were recorded while the live AI ran. The track IDs found here are for '
-              'comparison: the session\'s Video tab shows them next to the live AI\'s ("Live AI | AI '
-              'afterwards"), while the session\'s track IDs, graphs and dashboard stay the live AI\'s.',
+              'These clips were recorded while live detection ran. The track IDs found here are for '
+              'comparison: the session\'s Video tab shows them next to live detection\'s ("Live detection | '
+              'Detection afterwards"), while the session\'s track IDs, graphs and dashboard stay live detection\'s.',
               style: helperTextStyle,
             ),
           ),
@@ -1233,7 +1233,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           unitSuffix: 's',
           helperText:
               'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-              'dropped as noise. The AI must find it in this many analyzed frames in a row (shown '
+              'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
               'below), so an insect it sees only on and off is dropped too when the value is high. '
               'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
               '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
@@ -1250,7 +1250,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         ),
         Text(
           'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
-          'camera Settings → AI → Tracking → Advanced. A new track ID starts only from a box the AI '
+          'camera Settings → Detection → Tracking → Advanced. A new track ID starts only from a box the detector '
           'is at least ${_newTrackConf.toStringAsFixed(2)} sure of ("New-track confidence", same place); '
           'weaker boxes only continue one. A changed value needs only "Find track IDs" again, not a new analysis.',
           style: helperTextStyle,
@@ -1258,7 +1258,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         const SizedBox(height: 4),
         if (s.liveAi)
           const Text(
-            'No frames are kept for these track IDs: the live AI\'s own photos stay the session\'s pictures.',
+            'No frames are kept for these track IDs: live detection\'s own photos stay the session\'s pictures.',
             style: helperTextStyle,
           )
         else ...[
@@ -1375,7 +1375,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         helperText:
             'The videos take most of the space. Once the track IDs are found and the frames you want '
-            'are saved, the videos can go: the boxes the AI found, the track IDs and the kept frames '
+            'are saved, the videos can go: the boxes the detector found, the track IDs and the kept frames '
             'stay, so "Find track IDs" can run again with other settings. What is lost: playing a '
             'deleted clip, analyzing it again (for example with another square or model) and '
             'keeping other frames from it. Keep the videos if you may want any of that; copies on '
@@ -1438,7 +1438,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           child: Text(
             'This permanently deletes $n ${n == 1 ? 'video' : 'videos'} '
             '(${formatBytes(plan.deleteBytes)})${all ? '' : ': ${plan.deleteNames.join(', ')}'}. '
-            '${cut ? '${n == 1 ? 'It was' : 'They were'} never finished, so nothing in ${n == 1 ? 'it' : 'them'} can be read; the rest of the session stays. ' : 'The boxes the AI found, the visits and the kept frames stay, and "Find visits" can run '
+            '${cut ? '${n == 1 ? 'It was' : 'They were'} never finished, so nothing in ${n == 1 ? 'it' : 'them'} can be read; the rest of the session stays. ' : 'The boxes the detector found, the visits and the kept frames stay, and "Find visits" can run '
                       'again. The deleted clips can no longer be played, analyzed again or give other frames. '}'
             'This cannot be undone.',
             style: const TextStyle(fontSize: 13),

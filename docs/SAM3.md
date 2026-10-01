@@ -31,7 +31,7 @@ box is the prompt.
 
 ## In the app
 
-- **Run AI on videos** lists "SAM 3 (finds what you name; slow)" when the files are in the app's
+- **Find animals in videos** lists "SAM 3 (finds what you name; slow)" when the files are in the app's
   private folder `files/sam3/`, with a "What to find" field (default `insect`, stored as
   `video_analysis_sam3_prompt`). The prompt is saved with the run (`settings.prompt`,
   `model_name` "SAM 3, prompt "insect""); a changed prompt asks before replacing results.
@@ -113,7 +113,7 @@ file, so nothing of it is copied into FaunaPulse (it is only run and cited). SAM
 Carion et al. (2025), arXiv:2511.16719, SAM License.
 
 `tool/sam3/detect_video.py` runs the same files on the PC's CPU (about 40 s per picture on a
-4-core laptop) over exactly the frames of an earlier "Run AI on videos", and writes the app's
+4-core laptop) over exactly the frames of an earlier "Find animals in videos", and writes the app's
 `video_detections.jsonl`. The app's own tracker then counts track IDs, either in the app ("Find
 track IDs" after copying the session folder back) or on the PC:
 

@@ -737,7 +737,7 @@ Two kinds of probability appear everywhere:
                        row's track IDs.
 
 tracks_<pack>.csv columns
-  device_id, session_id, track_id      identifiers (track_id empty for no-AI sessions: one row per crop)
+  device_id, session_id, track_id      identifiers (track_id empty for sessions without detection: one row per crop)
   track_imgs                          crops used for this track
   pred, pred_prob_weighted            the taxon at the chosen target rank and its Conf. (see above)
   pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the

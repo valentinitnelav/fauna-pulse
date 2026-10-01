@@ -102,15 +102,15 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final cases = <({String trigger, String label, bool usesAi})>[
-        (trigger: 'detector', label: 'AI detector', usesAi: true),
+        (trigger: 'detector', label: 'Live detection', usesAi: true),
         (
           trigger: 'motion',
-          label: 'Motion-triggered photos (no AI)',
+          label: 'Motion-triggered photos (no detection)',
           usesAi: false,
         ),
         (
           trigger: 'timelapse',
-          label: 'Time-lapse photo bursts (no AI)',
+          label: 'Time-lapse photo bursts (no detection)',
           usesAi: false,
         ),
       ];
@@ -149,7 +149,7 @@ void main() {
         expect(find.text(c.label), findsOneWidget);
         expect(
           find.text(
-            c.usesAi ? modelPath : 'Not applicable (no AI detector used)',
+            c.usesAi ? modelPath : 'Not applicable (no detector used)',
           ),
           findsOneWidget,
         );
@@ -190,7 +190,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Bounding box colors (if AI was used):'),
+        find.text('Bounding box colors (if a detector was used):'),
         findsOneWidget,
       );
       final triggerLegend = find.textContaining(
