@@ -1390,6 +1390,10 @@ class _TrackSheetState extends State<_TrackSheet> {
           style: const TextStyle(color: Colors.white70),
         ),
         ..._visitNotes(ids.length, durS, det, detConf, shortDur, shortDet),
+        // Round 266: a fixed-class classifier's own class (e.g. insectDCT's "Apoidea small"),
+        // which can say more than the ladder where its groups have no rank (bees vs wasps).
+        if (t['model_class'] case {'name': final String name, 'p': final num p})
+          Text("Model's own class: $name (${_pct(p)})", style: const TextStyle(color: Colors.white70)),
         Text(
           'Time = first to last detector frame of the track ID. Detector frames = every frame the live '
           'detector saw it in (several per second). Photos = the frames saved on the photo schedule '

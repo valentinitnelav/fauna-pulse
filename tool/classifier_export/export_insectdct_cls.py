@@ -48,7 +48,8 @@ from types import SimpleNamespace
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "bioclip_export"))  # export_tflite + quantise_tflite
+sys.path.insert(0, str(HERE.parent / "bioclip_export"))  # export_tflite, quantise_tflite, fpack
+from fpack import class_probabilities, sink_label, write_class_list  # noqa: E402
 
 # backbone key -> (file tag in the V7 download, insectDCT's model name)
 BACKBONES = {"cnb": ("CNB", "ConvNextBase"), "eff2s": ("EFF2S", "EfficientNetV2S"), "res": ("RES", "ResNet50")}
@@ -287,27 +288,42 @@ def read_taxa(path: Path, leaves: list[str]) -> list[list[str]]:
 
 # ---------------------------------------------------------------------------- candidate app rules
 
-def log_softmax(v: np.ndarray) -> np.ndarray:
-    m = v.max()
-    return v - m - np.log(np.exp(v - m).sum())
-
-
 def leaf_probabilities(scores: np.ndarray, sizes: list[int], ancestors: list[tuple[int, int, int]],
                        rule: str) -> np.ndarray:
-    """One probability per level-3 class from the three heads' raw scores.
+    """One probability per level-3 class from the three heads' raw scores (fpack.py's
+    class_probabilities, the formula the app uses).
 
-    rule "mean": a class's score is the mean of its own, its level-2 parent's and its level-1
-    parent's log-probability (each head's softmax), so a class only scores high when all three
-    levels agree, and three heads do not count as three independent votes.
-    rule "level3": the level-3 head alone (its softmax).
+    rule "mean": a class's score is the mean of its own, its level-2 group's and its level-1
+    group's log-probability, so a class only scores high when all three levels agree, and three
+    heads do not count as three independent votes.
+    rule "level3": the level-3 head alone.
     """
-    heads = np.split(scores.astype(np.float64), np.cumsum(sizes)[:-1])
-    logp = [log_softmax(h) for h in heads]
-    if rule == "mean":
-        s = np.array([(logp[0][a1] + logp[1][a2] + logp[2][a3]) / 3 for a1, a2, a3 in ancestors])
-    else:
-        s = logp[2]
-    return np.exp(log_softmax(s))
+    return class_probabilities(scores, sizes, ancestors, heads=None if rule == "mean" else [2])
+
+
+def class_list_header(stem: str, levels, ancestors, lineages, manifest: dict) -> dict:
+    """The app's class list for one phone file (fpack.write_class_list): the 104 level-3 classes
+    with kingdom ... species from the taxonomy table, their place in each head, Vegetation as
+    the "none of these" row. Named like the phone file, so the app pairs the two by name."""
+    labels = []
+    for name, lin in zip(levels[2], lineages):
+        if lin[0] == APP_SINK:
+            labels.append(sink_label(name, ""))  # the key of a "none" row sits in the species slot
+        else:
+            labels.append(list(lin) + [""])
+    return {
+        "pack_id": stem, "model_id": stem, "logit_scale": 1.0, "temperature": 1.0, "ranks": RANKS,
+        "sink_rows": sum(1 for lin in lineages if lin[0] == APP_SINK),
+        "labels": labels,
+        "classes": list(levels[2]),
+        "heads": [{"name": f"level {i + 1}", "size": len(level), "classes": list(level)}
+                  for i, level in enumerate(levels)],
+        "head_index": [list(a) for a in ancestors],
+        "combine": "mean of the heads' log-probabilities",
+        "model": manifest["model"], "backbone": manifest["backbone"],
+        "source_sha256": manifest["source_sha256"], "taxonomy": "taxa/insectdct-cls-v7.csv",
+        "built": date.today().isoformat(), "license": manifest["license"],
+    }
 
 
 def app_answer(p: np.ndarray, lineages: list[list[str]], tau: float = TAU) -> str:
@@ -452,20 +468,24 @@ def main() -> int:
         "license": "GPL-3.0 (insectDCT, Bjerge et al. 2026); check before sharing",
     }
 
+    index1 = {c: i for i, c in enumerate(levels[0])}
+    index2 = {c: i for i, c in enumerate(levels[1])}
+    parent2 = {c: p for p, children in h2.items() for c in children}
+    parent1 = {c: p for p, children in h1.items() for c in children}
+    ancestors = [(index1[parent1[parent2[c]]], index2[parent2[c]], i) for i, c in enumerate(levels[2])]
+    lineages = read_taxa(args.taxa, levels[2])
+    class_list = args.out / f"{stem}.fpack"
+    write_class_list(class_list, class_list_header(stem, levels, ancestors, lineages, manifest))
+    manifest["class_list"] = class_list.name
+
     if args.check_images:
         images = sorted(p for p in args.check_images.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
-        index2 = {c: i for i, c in enumerate(levels[1])}
-        index1 = {c: i for i, c in enumerate(levels[0])}
-        parent2 = {c: p for p, children in h2.items() for c in children}
-        parent1 = {c: p for p, children in h1.items() for c in children}
-        ancestors = [(index1[parent1[parent2[c]]], index2[parent2[c]], i) for i, c in enumerate(levels[2])]
-        lineages = read_taxa(args.taxa, levels[2])
         print(f"\nChecking {min(len(images), args.check_limit)} pictures from {args.check_images}:")
         manifest["check"] = check(clf, PhoneFile(tflite, sizes), images, lineages, ancestors, sizes,
                                   args.check_limit)
         print(json.dumps(manifest["check"], indent=1))
     (args.out / f"{stem}.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
-    print(f"\n{tflite} ({tflite.stat().st_size / 2**20:.1f} MiB) + {stem}.json")
+    print(f"\n{tflite} ({tflite.stat().st_size / 2**20:.1f} MiB) + {stem}.json + {class_list.name} (class list)")
     return 0
 
 

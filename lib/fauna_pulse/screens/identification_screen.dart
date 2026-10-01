@@ -134,7 +134,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       return files.first;
     }
     final model = pick(models, prefs.modelName);
-    final pack = pick(packs, prefs.packName);
+    final pack = _classListFor(model, packs) ?? pick(packs, prefs.packName);
     Map<String, dynamic>? header;
     if (pack != null) {
       try {
@@ -221,6 +221,34 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     });
   }
 
+  /// Round 266: a fixed-class classifier (e.g. insectDCT) comes with its class
+  /// list under the same file name (`x.tflite` + `x.fpack`); choosing the
+  /// model chooses it.
+  static File? _classListFor(File? model, List<File> packs) {
+    if (model == null) return null;
+    final stem = stemOf(model.path.split('/').last);
+    for (final p in packs) {
+      if (stemOf(p.path.split('/').last) == stem) return p;
+    }
+    return null;
+  }
+
+  bool get _isClassList => _packHeader?['kind'] == 'classes';
+
+  /// Why [model] and the chosen pack cannot run together, before anything is
+  /// loaded (round 266); null when they may. The embedding size is checked
+  /// again once the model is loaded.
+  String? _pairingProblem(String modelName) {
+    final h = _packHeader;
+    if (h == null) return null;
+    final owner = '${h['model_id']}';
+    if (_isClassList && owner != stemOf(modelName)) {
+      return 'The class list ${h['pack_id']} belongs to the model $owner.tflite. Choose that model, '
+          'or a label pack for $modelName.';
+    }
+    return null;
+  }
+
   Future<void> _selectPack(File? f) async {
     Map<String, dynamic>? header;
     if (f != null) {
@@ -262,7 +290,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         _model = models.firstWhere((f) => f.path.endsWith('/${outcome.imported.last}'), orElse: () => _model ?? models.first);
       }
     });
-    if (packs) await _selectPack(_pack);
+    final classList = packs ? null : _classListFor(_model, _packs);
+    if (packs || classList != null) await _selectPack(classList ?? _pack);
     if (!packs) await _checkVisits();
   }
 
@@ -315,6 +344,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   Future<void> _start() async {
     final model = _model, pack = _pack, prefs = _prefs;
     if (model == null || pack == null || prefs == null) return;
+    final problem = _pairingProblem(model.path.split('/').last);
+    if (problem != null) {
+      setState(() => _error = problem);
+      return;
+    }
     await _savePrefs();
     final restart = await _confirmCropSettings(prefs, model.path.split('/').last);
     if (restart == null || !mounted) return;
@@ -341,7 +375,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         model.path,
         useGpu: prefs.useGpu,
         cpuThreads: prefs.cpuThreads,
+        normalize: !_isClassList, // a classifier's raw class scores (round 266)
       );
+      final packDim = (_packHeader?['dim'] as num?)?.toInt();
+      if (packDim != null && packDim != info.dim) {
+        throw Exception(
+          'The label pack ${pack.path.split('/').last} was built for a model that gives $packDim numbers '
+          'per crop; ${model.path.split('/').last} gives ${info.dim}. Choose the pack made for this model.',
+        );
+      }
       if (!mounted) return;
       setState(() {
         _loadingModel = false;
@@ -661,10 +703,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Model and label pack',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'The MODEL (BioCLIP image tower) turns a crop into numbers; the '
-            'LABEL PACK holds the names it may choose from, with their taxonomy. '
-            'The model and pack must match: a model trained on one pack will give nonsense with another. '
-            'A model file can be very large (hundreds of MB) '
+            'The MODEL turns a crop into numbers. A BioCLIP model compares them with the names of a '
+            'LABEL PACK (any list of names, with their taxonomy), so one model works with many packs, but '
+            'each pack is built for one model and gives nonsense with another. A classifier such as '
+            'insectDCT knows a fixed list of classes instead: its pack is that CLASS LIST (each class with '
+            'its taxonomy) and has the same file name as the model, so choosing the model chooses it. '
+            'A model file can be very large (hundreds of MB). '
             'Download the files on your phone and then use the Import buttons below to make them available to the app. '
       ),
       const SizedBox(height: 8),
@@ -677,6 +721,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         items: [for (final f in _models) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
         onChanged: (p) {
           setState(() => _model = _models.firstWhere((f) => f.path == p));
+          final classList = _classListFor(_model, _packs);
+          if (classList != null) _selectPack(classList);
           _loadSpeed();
           _checkVisits();
         },
@@ -693,9 +739,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(
-            'Pack ${_packHeader!['pack_id']} for ${_packHeader!['model_id']}: '
-            '${_packHeader!['rows']} names, ${_packHeader!['sink_rows']} "none" entries, '
-            'scale ${(_packHeader!['logit_scale'] as num?)?.toStringAsFixed(1)}',
+            _isClassList
+                ? 'Class list of ${_packHeader!['model_id']}: ${_packHeader!['rows']} classes on '
+                      '${(_packHeader!['heads'] as List?)?.length ?? 1} levels, ${_packHeader!['sink_rows']} '
+                      '"none" class (e.g. vegetation)'
+                : 'Pack ${_packHeader!['pack_id']} for ${_packHeader!['model_id']}: '
+                      '${_packHeader!['rows']} names, ${_packHeader!['sink_rows']} "none" entries, '
+                      'scale ${(_packHeader!['logit_scale'] as num?)?.toStringAsFixed(1)}',
             style: helperTextStyle,
           ),
         ),

@@ -818,6 +818,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         val modelPath = args?.get("modelPath") as? String
         val useGpu = args?.get("useGpu") as? Boolean ?: true
         val cpuThreads = (args?.get("cpuThreads") as? Number)?.toInt() ?: 0
+        // Round 266: false for fixed-class classifiers (raw scores, see Embedder).
+        val normalize = args?.get("normalize") as? Boolean ?: true
         if (modelPath == null) {
           result.error("bad_args", "embedderLoad needs modelPath", null)
           return
@@ -828,7 +830,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           val outcome = runCatching {
             runCatching { embedder?.close() }
             embedder = null
-            val e = Embedder(applicationContext, resolveModelPath(modelPath), useGpu, cpuThreads)
+            val e = Embedder(applicationContext, resolveModelPath(modelPath), useGpu, cpuThreads, normalize)
             embedder = e
             mapOf(
               "accelerator" to e.accelerator,

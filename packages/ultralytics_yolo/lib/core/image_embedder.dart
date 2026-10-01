@@ -48,8 +48,9 @@ class ImageEmbedderInfo {
   });
 }
 
-/// A batch result: [count] unit-length vectors of [dim] floats, flattened
-/// row-major in [vectors], plus the native inference time for the batch.
+/// A batch result: [count] vectors of [dim] floats (unit length, or raw class
+/// scores for a classifier), flattened row-major in [vectors], plus the native
+/// inference time for the batch.
 class ImageEmbedderBatch {
   final int dim;
   final int count;
@@ -72,16 +73,20 @@ class ImageEmbedder {
 
   /// Loads [modelPath] (absolute file path) natively, replacing any embedder
   /// loaded before. Throws a [PlatformException] with the native message when
-  /// the model cannot be compiled on either accelerator.
+  /// the model cannot be compiled on either accelerator. [normalize] false
+  /// (round 266, fixed-class classifiers such as insectDCT): the vectors are
+  /// the model's raw class scores instead of unit-length embeddings.
   static Future<ImageEmbedderInfo> load(
     String modelPath, {
     bool useGpu = true,
     int cpuThreads = 0,
+    bool normalize = true,
   }) async {
     final r = await _channel.invokeMethod<Map>('embedderLoad', {
       'modelPath': modelPath,
       'useGpu': useGpu,
       'cpuThreads': cpuThreads,
+      'normalize': normalize,
     });
     if (r == null) throw StateError('embedderLoad returned nothing');
     return ImageEmbedderInfo(

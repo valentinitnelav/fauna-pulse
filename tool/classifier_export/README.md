@@ -1,8 +1,10 @@
 # Classifier export: insectDCT's hierarchical classifier on the phone (PC side)
 
-**Status (round 265): feasibility only.** The phone files are made, checked against the
-original and timed on the Xiaomi test phone. The app cannot use them yet: the Identify screen
-takes BioCLIP-type models with a label pack. Section 5 is the plan for that step.
+**Status:** round 265 made and checked the phone files and timed them on the Xiaomi test
+phone; since round 266 the Identify screen runs them (section 5). Recommended file:
+`insectdct-cls-v7_eff2s_fp16.tflite` with its class list `insectdct-cls-v7_eff2s_fp16.fpack`
+(section 3, *Which network*). Import both on the Identify screen; choosing the model chooses
+its class list.
 
 insectDCT's classifier V7 (Bjerge et al. 2026; `insectdct-cls-v7` in the
 [InsectAI Model Zoo](https://github.com/InsectAI-COST-Action/insect-model-zoo)) names an insect
@@ -50,7 +52,14 @@ python export_insectdct_cls.py --zoo-dir /path/to/weights/insectdct-cls-v7 --bac
    in 0..1 (insectDCT uses no further colour normalisation), output the 164 raw scores of the
    three heads one after the other (19 + 41 + 104). Converted with litert-torch; fp16 weights
    by `../bioclip_export/quantise_tflite.py`. A `.json` manifest lists the classes of every
-   head, the source file and its sha256.
+   head, the source file and its sha256. Next to it the **class list**
+   `insectdct-cls-v7_<backbone>_fp16.fpack` (round 266, 14 kB): the app's label pack for this
+   model, without name vectors (the model scores its own classes). One row per level-3 class
+   with kingdom ... species from the taxonomy table (section 4), its own name and its place
+   in each head; `Vegetation` is the "none of these" row. Written by `fpack.write_class_list`
+   (`tool/bioclip_export/fpack.py`); its size field is the model's output length (164), so the
+   app refuses a wrong pairing. A corrected taxonomy table only needs a new class list
+   (rerun the script; the phone file is reused) and *Re-score with this pack* on the phone.
    **GPU fixes.** Two of the plain conversions were refused by the Xiaomi's GPU. The script
    rewrites the two spots with the same arithmetic (the scores stay identical, difference 0.0
    in PyTorch on all 34 check crops); the same kind of rewrite made BioCLIP run on phone GPUs
@@ -120,6 +129,31 @@ GPU even on the 3.9 GB Samsung test phone (ConvNeXt needs about 0.8 GB to set up
   level-3 head alone gave higher confidences (1.00 instead of 0.95 for *Bombus*) and an order
   where the mean rule stopped at class.
 
+### Which network (round 266)
+
+All three run with the same class list format; the authors' published test results decide
+(insectDCT repository, `metrics/*V6_ClassScoresTest.csv`; version 6, the predecessor of V7
+with 128 px crops, the newest with per-network results; F1 = the balance of precision and
+recall, 1 = perfect):
+
+| Network | Level 1 F1 (class average / all crops) | Level 2 | Level 3 | Phone |
+|---|---|---|---|---|
+| ConvNeXt-Base | 0.90 / 0.95 | 0.84 / 0.94 | 0.76 / 0.92 | CPU only, 0.7 s per crop |
+| EfficientNetV2-S | 0.86 / 0.93 | 0.80 / 0.92 | 0.73 / 0.90 | GPU 0.02 s per crop |
+| ResNet50 | 0.83 / 0.91 | 0.78 / 0.91 | 0.69 / 0.88 | GPU 0.02 s per crop |
+
+EfficientNetV2-S is ahead of ResNet50 at every level and on 19 of 24 flower-visitor classes
+compared (e.g. *Apis mellifera* 0.95 vs 0.92, `Apoidea small` 0.83 vs 0.79, Diptera at level 2
+0.91 vs 0.87), and the insectDCT README calls it the "faster model, lesser accurate than
+ConvNextBase". Both run equally fast on the Xiaomi's GPU, so EfficientNetV2-S is the
+recommended file; ConvNeXt-Base remains the most accurate choice where 0.7 s per crop on the
+CPU is acceptable (overnight runs).
+
+In the app (round 266, Xiaomi, `bioclip_gpu_check_test.dart --dart-define=MODEL=insectdct-cls-v7_eff2s
+--dart-define=SESSION=bumblebee-2`): the session's one track ID (3 crops) came out as *Bombus*
+(genus) at 95 % on the GPU and on the CPU, own class `Bombus` 84 %; GPU and CPU scores agree
+to cosine 0.9999; 0.02 s per crop on the GPU, 0.15 s on the CPU.
+
 ## 4. Taxonomy table: `taxa/insectdct-cls-v7.csv`
 
 One row per level-3 class: the class, its level-2 and level-1 groups in insectDCT, then
@@ -145,7 +179,7 @@ Where insectDCT's own levels differ from the taxonomy, the table follows the tax
 files them under Pieridae). insectDCT's levels are still used for its own scoring (section 5);
 only the names shown follow the table.
 
-## 5. How it would fit the app (design, not built yet)
+## 5. How it fits the app (design round 265, built round 266)
 
 **Two kinds of identification models.** BioCLIP is an *embedding* model: it turns a crop into
 numbers that the app compares with the names of a label pack, so any list of names works.
@@ -156,21 +190,26 @@ its classes cannot change without new training.
 (plus, for BioCLIP, the best name at each rank), and converts insectDCT's class names into
 scientific names for Camtrap DP. Each model keeps its own rule, per picture. It does not put
 the three levels into one taxonomy, nor combine the crops of one track ID. FaunaPulse's
-results already hold more (a name and a probability at every rank, per track ID), so the
-plan keeps FaunaPulse's form and borrows the zoo's name conversion (section 4).
+results already hold more (a name and a probability at every rank, per track ID), so
+FaunaPulse keeps its own form and borrows the zoo's name conversion (section 4).
 
-**Plan.**
+**How it works** (files: `label_pack.dart` class lists, `track_fusion.dart` scoring,
+`identification_store.dart` outputs, `Embedder.kt` raw output, `identification_screen.dart`
+pairing; tests share the fixture `test/fauna_pulse/fixtures/tiny_classes.fpack` written by
+`fpack.py`, so the app and `fpack.class_probabilities` compute the same numbers).
 
 1. *A class list in place of a label pack.* The same `.fpack` file type, without name
    vectors: one row per level-3 class with kingdom ... species from the table, the model's
-   own class name, and its place in each head; `Vegetation` as a "none of these" row. A small
-   script builds it from the table. It is named like the model file
-   (`insectdct-cls-v7_cnb_fp16.fpack` next to the `.tflite`), so the Identify screen can pick
-   it by itself, and its size field is the model's output length (164), so the app's
-   existing check refuses a wrong pairing. The app stores each crop's raw scores, so a
-   corrected table only needs a new class list and "Re-score with this pack", not a new run.
-2. *Raw scores.* The phone code scales BioCLIP's output to length 1; a classifier's scores
-   must be used as they are (one switch in the native model code).
+   own class name, and its place in each head; `Vegetation` as a "none of these" row. The
+   export script writes it from the table. It is named like the model file
+   (`insectdct-cls-v7_eff2s_fp16.fpack` next to the `.tflite`), so choosing the model on the
+   Identify screen chooses it. Before a run the screen refuses a class list of another model,
+   and after loading the model it compares the pack's size field (the model's output length,
+   164) with the model's. The app stores each crop's raw scores, so a corrected table only
+   needs a new class list and *Re-score with this pack*, not a new run.
+2. *Raw scores.* The phone code scales BioCLIP's output to length 1; a classifier is loaded
+   with `normalize: false` and its scores are used as they are. The GPU check now compares
+   GPU and CPU with the vectors' lengths, so it works for both.
 3. *One probability per class ("mean of 3 levels").* Each head's scores become
    probabilities; a level-3 class scores the mean of the log-probabilities of itself, its
    level-2 group and its level-1 group, so it only scores high when the three levels agree,
@@ -185,10 +224,11 @@ plan keeps FaunaPulse's form and borrows the zoo's name conversion (section 4).
    earlier: `Bombus` adds to the genus *Bombus*, `Coleoptera` to the order, `Apoidea small`
    to the order Hymenoptera.
 5. *The model's own class beside the taxonomy:* per track ID its most probable own class
-   (e.g. `Apoidea small`, level 1 `Hymenoptera_bees`), because some of its distinctions have
-   no rank here (bees vs other Hymenoptera).
-6. *Optional:* insectDCT's own answer per crop (its per-class thresholds) as an extra column,
-   so results can be compared with the zoo and the paper.
+   (`model_class` in the files, *Model's own class* on the track ID's sheet; per crop
+   `top1_class`), because some of its distinctions have no rank here (`Apoidea small` = a bee,
+   not just Hymenoptera).
+6. *Not built:* insectDCT's own answer per crop (its per-class thresholds) as an extra
+   column, so results could be compared with the zoo and the paper.
 
 **Several models on one session.** The app already keeps results per model and per label
 pack (`embeddings_<model>`, `tracks_<pack>`, `summary_<pack>`), so one session can be
@@ -211,7 +251,7 @@ photo edge with black, FaunaPulse with a grey; the resize methods differ slightl
 
 | File | Purpose |
 |---|---|
-| `export_insectdct_cls.py` | `.pth` -> `.tflite` + manifest; check against insectDCT's own code; `--draft-taxa` |
+| `export_insectdct_cls.py` | `.pth` -> `.tflite` + manifest + class list (`.fpack`); check against insectDCT's own code; `--draft-taxa` |
 | `taxa/insectdct-cls-v7.csv` | level-3 class -> kingdom ... species (drafted by the script, checked by eye) |
 | `requirements.txt` | pandas on top of the `tool/bioclip_export` environment |
 | `out/` | outputs (git-ignored) |

@@ -32,6 +32,17 @@ void main() {
     expect(info.cpuThreads, 2);
   });
 
+  test('normalize reaches the native side: true by default, false for a classifier (round 266)', () async {
+    final seen = <Object?>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      seen.add((call.arguments as Map)['normalize']);
+      return {'accelerator': 'CPU', 'inputWidth': 224, 'inputHeight': 224, 'dim': 164};
+    });
+    await ImageEmbedder.load('/m.tflite');
+    await ImageEmbedder.load('/c.tflite', normalize: false);
+    expect(seen, [true, false]);
+  });
+
   test('a failed GPU compile points to the newer export; other reasons stay as they are', () {
     expect(gpuNoteText('Failed to compile model'), contains('export the model again'));
     const other = "the GPU's results differed from the CPU's on this phone (agreement 0.900, needs 0.995)";

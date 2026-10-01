@@ -7,6 +7,9 @@
 // colour normalisation into the graph, so this class feeds plain RGB in 0..1 and only
 // has to (a) lay the pixels out the way the model wants (HWC or CHW, see
 // InferenceModel.inputUsesNchw) and (b) L2-normalise the output defensively.
+// Round 266: a fixed-class classifier (e.g. insectDCT, tool/classifier_export) is loaded with
+// normalize = false: its output is one raw score per class, and scaling it to length 1 would
+// change the probabilities the Dart side computes from it.
 //
 // Reuses InferenceModel.create, so the GPU-first / CPU-fallback ladder, the GPU crash
 // blocklist and the CPU thread option of LiteRtModel apply unchanged.
@@ -39,6 +42,7 @@ class Embedder(
     modelPath: String,
     useGpu: Boolean,
     cpuThreads: Int = 0,
+    private val normalize: Boolean = true,
 ) {
     companion object {
         private const val TAG = "Embedder"
@@ -132,9 +136,17 @@ class Embedder(
             val onCpu = embed(picture)
             rt.close()
             rt = InferenceModel.create(context, modelPath, true, "Embedder", cpuThreads)
+            // Cosine with explicit lengths: a classifier's raw scores are not unit vectors.
             var dot = 0.0
-            for (i in onGpu.indices) dot += (onGpu[i] * onCpu[i]).toDouble()
-            agreement = if (dot.isNaN()) 0.0 else dot
+            var gg = 0.0
+            var cc = 0.0
+            for (i in onGpu.indices) {
+                dot += (onGpu[i] * onCpu[i]).toDouble()
+                gg += (onGpu[i] * onGpu[i]).toDouble()
+                cc += (onCpu[i] * onCpu[i]).toDouble()
+            }
+            val cos = dot / sqrt(gg * cc)
+            agreement = if (cos.isNaN()) 0.0 else cos
             runCatching { store.appendText("$key\t$agreement\n") }
             Log.i(TAG, "GPU check for ${file.name}: GPU and CPU embeddings agree to %.6f".format(agreement))
         }
@@ -166,7 +178,8 @@ class Embedder(
 
     /**
      * Embed one image given as interleaved RGB bytes (row-major, exactly inputWidth x inputHeight x 3).
-     * Returns a fresh unit-length float vector of [dim] elements.
+     * Returns a fresh float vector of [dim] elements: unit length, or the raw scores when
+     * [normalize] is false.
      */
     fun embed(rgb: ByteArray): FloatArray {
         val pixels = inputWidth * inputHeight
@@ -188,6 +201,7 @@ class Embedder(
         }
         val out = rt.run(input)[0]
         val vec = out.copyOf(dim)
+        if (!normalize) return vec
         var sum = 0.0
         for (v in vec) sum += (v * v).toDouble()
         val norm = sqrt(sum).toFloat()

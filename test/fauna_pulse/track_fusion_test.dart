@@ -3,6 +3,7 @@
 // mass, path conflicts, and the identity between the reported mass and the
 // crops' own masses.
 
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -69,6 +70,59 @@ void main() {
       expect(fam, closeTo(p[0] + p[1], 1e-6));
       expect(m[3]['Animalia|Arthropoda|Insecta|Diptera'], closeTo(fam, 1e-6));
       expect(m[0]['none'], closeTo(p[4], 1e-6));
+    });
+  });
+
+  group('class list (round 266)', () {
+    final file = File('test/fauna_pulse/fixtures/tiny_classes.fpack');
+    final pack = LabelPack.parseBytes(file.readAsBytesSync());
+
+    test('scores match Python (fpack.py class_probabilities) on the fixture', () {
+      final s = Scorer(pack);
+      final scores = (pack.header['test_scores'] as List).cast<List>();
+      final expected = (pack.header['test_probs'] as List).cast<List>();
+      for (var i = 0; i < scores.length; i++) {
+        final p = s.probs(Float32List.fromList([for (final v in scores[i]) (v as num).toDouble()]));
+        for (var r = 0; r < pack.rows; r++) {
+          expect(p[r], closeTo((expected[i][r] as num).toDouble(), 2e-6));
+        }
+      }
+    });
+
+    // Levels: [Diptera, Hymenoptera, Vegetation] + [Syrphidae, Eristalis tenax, Apis mellifera, Vegetation].
+    CropEmbedding raw(List<double> v, {String jpeg = 'a.jpg'}) =>
+        CropEmbedding(jpeg: jpeg, trackId: 1, vector: Float32List.fromList(v));
+
+    test('a sure species; a family-level class stops the ladder at its family', () {
+      final s = Scorer(pack);
+      final eristalis = s.fuse([raw([6, -3, -3, 0, 6, -3, -3])]);
+      expect(eristalis.identifiedRank, 'species');
+      expect(eristalis.headline, 'Eristalis tenax');
+      expect(pack.classNames[eristalis.pooledTop.rows.first], 'Eristalis tenax');
+      final syrphid = s.fuse([raw([6, -3, -3, 6, 0, -3, -3])]);
+      expect(syrphid.identifiedRank, 'family');
+      expect(syrphid.headline, 'Syrphidae');
+      expect(syrphid.stepAt('family')!.mass, greaterThan(0.99)); // both classes are Syrphidae
+      expect(syrphid.bestViewTaxon, 'Syrphidae');
+    });
+
+    test('levels that disagree lower the answer; vegetation is no organism', () {
+      final s = Scorer(pack);
+      // Level 2 says Eristalis, level 1 says Hymenoptera: neither species is likely.
+      final torn = s.fuse([raw([-3, 6, -3, 0, 6, -3, -3])]);
+      expect(torn.stepAt('species')?.mass ?? 0, lessThan(0.6));
+      final plant = s.fuse([raw([-3, -3, 6, -3, -3, -3, 6])]);
+      expect(plant.headline, 'no organism');
+    });
+
+    test('the crops of a track ID are pooled by averaging their raw scores', () {
+      final s = Scorer(pack);
+      final a = raw([6, -3, -3, 0, 6, -3, -3]), b = raw([6, -3, -3, 6, 0, -3, -3], jpeg: 'b.jpg');
+      final f = s.fuse([a, b], dropFactor: 1);
+      final mean = Float32List.fromList([for (var i = 0; i < 7; i++) (a.vector[i] + b.vector[i]) / 2]);
+      // Equal certainty weights, so the pooled answer is the mean vector's.
+      expect(f.stepAt('family')!.mass, closeTo(s.fuse([raw(mean)]).stepAt('family')!.mass, 1e-6));
+      expect(f.headline, 'Syrphidae');
     });
   });
 

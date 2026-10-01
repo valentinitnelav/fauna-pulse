@@ -14,6 +14,14 @@
 //               logit_scale, temperature, ranks, sink_rows, labels[rows][8], ...)
 //   then        rows x dim numbers, row-major, f16 or f32
 // The Python writer (fpack.py) and this reader are tested against one fixture.
+//
+// Round 266, class lists: a fixed-class classifier (insectDCT, tool/classifier_export)
+// scores its own classes, so its "pack" has no vectors (dtype none, header kind
+// "classes"): rows = its finest classes with their taxonomy, "classes" = the
+// model's own class names, "heads" = the model's output layers one after another
+// (sizes add up to dim, the model's output length), "head_index" = each row's
+// class in every head. Scorer (track_fusion.dart) turns the raw scores into one
+// probability per row; everything after that is the same as for BioCLIP.
 
 import 'dart:convert';
 import 'dart:io';
@@ -43,9 +51,16 @@ class LabelRow {
 
   bool get isSink => ranks.isNotEmpty && ranks[0] == kSinkKingdom;
 
-  /// "Genus epithet" for species rows; the sink key for sink rows.
-  String get speciesName =>
-      isSink ? ranks[6] : '${ranks[5]} ${ranks[6]}'.trim();
+  /// "Genus epithet" for species rows; the sink key for sink rows; for a
+  /// class-list row that stops above species (round 266: insectDCT's
+  /// "Bombus", "Apidae", "Coleoptera"), its deepest named rank.
+  String get speciesName {
+    if (isSink || ranks[6].isNotEmpty) return isSink ? ranks[6] : '${ranks[5]} ${ranks[6]}'.trim();
+    for (var k = 5; k >= 0; k--) {
+      if (ranks[k].isNotEmpty) return ranks[k];
+    }
+    return '';
+  }
 
   /// Display name at [rankIndex] (species shown as "Genus epithet").
   String nameAt(int rankIndex) => rankIndex == 6 ? speciesName : ranks[rankIndex];
@@ -99,7 +114,16 @@ class LabelPack {
   /// The raw header (for the summary / provenance rows).
   final Map<String, dynamic> header;
 
-  const LabelPack({
+  /// Round 266, class lists only (empty for BioCLIP packs): the size of each
+  /// of the model's output layers, each row's class in every one of them
+  /// (rows x heads, row-major), and the model's own name for each row.
+  final List<int> headSizes;
+  final Int32List headIndex;
+  final List<String> classNames;
+
+  bool get isClassList => headSizes.isNotEmpty;
+
+  LabelPack({
     required this.packId,
     required this.modelId,
     required this.dim,
@@ -110,7 +134,12 @@ class LabelPack {
     required this.labels,
     required this.matrix,
     required this.header,
-  });
+    this.headSizes = const [],
+    Int32List? headIndex,
+    this.classNames = const [],
+  }) : headIndex = headIndex ?? _noIndex;
+
+  static final Int32List _noIndex = Int32List(0);
 
   /// Dot product of the unit vector [e] (length [dim]) with pack row [row].
   double dot(Float32List e, int row) {
@@ -174,6 +203,9 @@ class LabelPack {
       }
       labels.add(LabelRow(l.sublist(0, 7), l[7]));
     }
+    if (header['kind'] == 'classes') {
+      return _classList(header, labels, dim, rows);
+    }
     final n = rows * dim;
     final matrix = Float32List(n);
     final bytesPer = dtype == 'f32' ? 4 : 2;
@@ -201,6 +233,43 @@ class LabelPack {
       labels: labels,
       matrix: matrix,
       header: Map<String, dynamic>.from(header)..remove('labels'),
+    );
+  }
+
+  static LabelPack _classList(Map<String, dynamic> header, List<LabelRow> labels, int dim, int rows) {
+    final heads = (header['heads'] as List).cast<Map>();
+    final sizes = [for (final h in heads) (h['size'] as num).toInt()];
+    if (sizes.fold<int>(0, (a, b) => a + b) != dim) {
+      throw FormatException('Class list heads add up to ${sizes.fold<int>(0, (a, b) => a + b)}, not $dim');
+    }
+    final rawIndex = header['head_index'] as List;
+    final names = [for (final c in header['classes'] as List) '$c'];
+    if (rawIndex.length != rows || names.length != rows) {
+      throw FormatException('Class list needs one class name and one head index per row ($rows rows)');
+    }
+    final index = Int32List(rows * sizes.length);
+    for (var r = 0; r < rows; r++) {
+      final idx = rawIndex[r] as List;
+      for (var h = 0; h < sizes.length; h++) {
+        final i = (idx[h] as num).toInt();
+        if (i < 0 || i >= sizes[h]) throw FormatException('Class list row $r: index $i outside head $h');
+        index[r * sizes.length + h] = i;
+      }
+    }
+    return LabelPack(
+      packId: (header['pack_id'] as String?) ?? 'classes',
+      modelId: (header['model_id'] as String?) ?? '',
+      dim: dim,
+      rows: rows,
+      sinkRows: (header['sink_rows'] as num?)?.toInt() ?? 0,
+      logitScale: (header['logit_scale'] as num?)?.toDouble() ?? 1.0,
+      temperature: (header['temperature'] as num?)?.toDouble() ?? 1.0,
+      labels: labels,
+      matrix: Float32List(0),
+      header: Map<String, dynamic>.from(header)..remove('labels'),
+      headSizes: sizes,
+      headIndex: index,
+      classNames: names,
     );
   }
 }

@@ -59,14 +59,60 @@ def write_fpack(path: Path, header: dict, matrix: np.ndarray, dtype: str = "f16"
         f.write(payload)
 
 
+def write_class_list(path: Path, header: dict) -> None:
+    """Write a class list (round 266): the label pack of a fixed-class classifier such as
+    insectDCT. No name vectors: the model itself scores every class. The header holds, per
+    row (finest class), its taxonomy in "labels" and the model's own name in "classes", plus
+    "heads" (the model's output layers: [{"name", "size", "classes"}], one after another in
+    the model's output) and "head_index" (per row, its class in every head). "dim" is the
+    model's output length, so the app's size check pairs model and class list.
+    """
+    hdr = dict(header)
+    rows = len(hdr["labels"])
+    sizes = [h["size"] for h in hdr["heads"]]
+    if len(hdr["classes"]) != rows or len(hdr["head_index"]) != rows:
+        raise ValueError("labels, classes and head_index need one entry per row")
+    for idx in hdr["head_index"]:
+        if len(idx) != len(sizes) or any(not 0 <= i < n for i, n in zip(idx, sizes)):
+            raise ValueError(f"head_index entry {idx} does not fit the heads {sizes}")
+    hdr.update({"format": "fpack", "version": 1, "kind": "classes", "rows": rows,
+                "dim": int(sum(sizes)), "dtype": "none"})
+    hdr_bytes = json.dumps(hdr, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    with open(path, "wb") as f:
+        f.write(MAGIC)
+        f.write(struct.pack("<I", len(hdr_bytes)))
+        f.write(hdr_bytes)
+
+
+def class_probabilities(scores, head_sizes, head_index, heads=None) -> np.ndarray:
+    """One probability per class-list row from a classifier's raw output (the rule the app
+    uses, track_fusion.dart): each head's scores become log-probabilities (log-softmax); a
+    row scores the mean of its classes' log-probabilities over the heads used (default: all),
+    so a fine class only scores high when every level agrees and K heads do not count as K
+    independent votes; then one softmax over the rows."""
+    scores = np.asarray(scores, dtype=np.float64)
+    use = range(len(head_sizes)) if heads is None else heads
+    logp, start = [], 0
+    for n in head_sizes:
+        h = scores[start:start + n]
+        m = h.max()
+        logp.append(h - m - np.log(np.exp(h - m).sum()))
+        start += n
+    s = np.array([np.mean([logp[k][idx[k]] for k in use]) for idx in head_index])
+    e = np.exp(s - s.max())
+    return e / e.sum()
+
+
 def read_fpack(path: Path) -> tuple[dict, np.ndarray]:
-    """Read a pack back: (header dict, float32 matrix rows x dim)."""
+    """Read a pack back: (header dict, float32 matrix rows x dim; rows x 0 for a class list)."""
     with open(path, "rb") as f:
         if f.read(4) != MAGIC:
             raise ValueError(f"{path} is not an fpack file (bad magic)")
         (hlen,) = struct.unpack("<I", f.read(4))
         hdr = json.loads(f.read(hlen).decode("utf-8"))
         rows, dim, dtype = hdr["rows"], hdr["dim"], hdr["dtype"]
+        if dtype == "none":
+            return hdr, np.zeros((rows, 0), np.float32)
         np_dtype = "<f2" if dtype == "f16" else "<f4"
         mat = np.frombuffer(f.read(), dtype=np_dtype, count=rows * dim).astype(np.float32)
     return hdr, mat.reshape(rows, dim)
@@ -78,10 +124,39 @@ def sink_label(name: str, prompt: str) -> list[str]:
     return ["none", "", "", "", "", "", name, prompt]
 
 
+def _write_class_fixture(path: Path) -> None:
+    """Tiny two-level class list for the Dart tests (round 266), with two raw score vectors and
+    the row probabilities class_probabilities gives for them (the app's rule, all heads)."""
+    level1 = ["Diptera", "Hymenoptera", "Vegetation"]
+    level2 = ["Syrphidae", "Eristalis tenax", "Apis mellifera", "Vegetation"]
+    head_index = [[0, 0], [0, 1], [1, 2], [2, 3]]
+    sizes = [len(level1), len(level2)]
+    scores = [[2.0, -1.0, 0.5, 1.5, 0.2, -0.3, 0.1], [-0.5, 3.0, 0.0, 0.4, 0.1, 2.5, -1.0]]
+    write_class_list(path, {
+        "pack_id": "tiny-classes", "model_id": "tiny-classes", "logit_scale": 1.0, "temperature": 1.0,
+        "ranks": RANKS, "sink_rows": 1,
+        "labels": [["Animalia", "Arthropoda", "Insecta", "Diptera", "Syrphidae", "", "", ""],
+                   ["Animalia", "Arthropoda", "Insecta", "Diptera", "Syrphidae", "Eristalis", "tenax", ""],
+                   ["Animalia", "Arthropoda", "Insecta", "Hymenoptera", "Apidae", "Apis", "mellifera", ""],
+                   sink_label("Vegetation", "")],
+        "classes": level2,
+        "heads": [{"name": "level 1", "size": sizes[0], "classes": level1},
+                  {"name": "level 2", "size": sizes[1], "classes": level2}],
+        "head_index": head_index,
+        "test_scores": scores,
+        "test_probs": [class_probabilities(s, sizes, head_index).round(6).tolist() for s in scores],
+    })
+
+
 if __name__ == "__main__":
-    # Writes the tiny cross-language fixture used by the Dart unit tests.
+    # Writes the tiny cross-language fixtures used by the Dart unit tests:
+    #   python fpack.py ../../test/fauna_pulse/fixtures/tiny_pack.fpack ../../test/fauna_pulse/fixtures/tiny_classes.fpack
     import sys
 
+    if len(sys.argv) > 2:
+        _write_class_fixture(Path(sys.argv[2]))
+        hdr, _ = read_fpack(Path(sys.argv[2]))
+        print("wrote", sys.argv[2], "rows", hdr["rows"], "dim", hdr["dim"], "probs", hdr["test_probs"])
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("tiny.fpack")
     rng = np.random.default_rng(7)
     labels = [

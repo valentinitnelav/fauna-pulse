@@ -147,7 +147,7 @@ void main() {
     expect(cropsCsv.existsSync(), isTrue);
     final cropLines = cropsCsv.readAsStringSync().trim().split('\n');
     expect(cropLines.first, startsWith('session_id,track_id,crop_no,photo,box_left'));
-    expect(cropLines.first, endsWith(',p_species'));
+    expect(cropLines.first, endsWith(',p_species,top1_class')); // round 266: empty for BioCLIP
     expect(cropLines.first, isNot(contains(',weight,')));
     expect(cropLines.first, contains(',pad_frac,top1_species,'));
     // Round 220: the top species' higher ranks, per crop.
@@ -187,6 +187,47 @@ void main() {
     expect(r2.resumedDone, 3);
     expect(r2.summary!['tracks_total'], 2);
     expect(EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
+  });
+
+  test('a fixed-class classifier: raw scores, class list, the model\'s own class in the outputs (round 266)', () async {
+    final session = makeSession('cls');
+    final classList = File('test/fauna_pulse/fixtures/tiny_classes.fpack');
+    // Red crops score as Eristalis tenax, blue as the family-level class Syrphidae.
+    final job = IdentificationJob(
+      embed: (rgb) async => [
+        for (final buf in rgb)
+          Float32List.fromList(buf[0] > buf[2] ? [6, -3, -3, 0, 6, -3, -3] : [6, -3, -3, 6, 0, -3, -3]),
+      ],
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(
+      session,
+      settings: const IdentifyRunSettings(
+        modelName: 'tiny-classes.tflite',
+        modelId: 'tiny-classes',
+        packName: 'tiny_classes.fpack',
+        inputSize: 32,
+        dim: 7,
+        accelerator: 'CPU',
+        minCropPx: 16,
+      ),
+      packFile: classList,
+    );
+    expect(r.error, isNull);
+    final paths = IdentificationPaths(session);
+    final tracks = (jsonDecode(paths.tracksJson('tiny_classes').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+    expect(tracks[0]['headline'], 'Eristalis tenax');
+    expect(tracks[0]['model_class']['name'], 'Eristalis tenax');
+    expect(tracks[0]['model_class']['p'], greaterThan(0.9));
+    expect(tracks[1]['headline'], 'Syrphidae');
+    expect(tracks[1]['identified_rank'], 'family');
+    expect((tracks[1]['crops'] as List).first['top1'], 'Syrphidae');
+    expect((tracks[1]['crops'] as List).first['top1_class'], 'Syrphidae');
+    final csv = paths.tracksCsv('tiny_classes').readAsLinesSync();
+    expect(csv.first, endsWith(',model_class,model_class_p'));
+    expect(csv[1], contains(',Eristalis tenax,0.9'));
+    expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], endsWith(',Eristalis tenax'));
   });
 
   // Round 229: visits found afterwards in imported videos. Scoring takes the
@@ -460,7 +501,7 @@ void main() {
     expect(t1['flags'], contains('short'));
     expect(t1['flags'], isNot(contains('suspect')));
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p'));
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p'));
     // The compact summary list carries the verdict for the Photos tab.
     final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
     expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);

@@ -168,7 +168,9 @@ What happens: the TreeOfLife-200M name embeddings (`txt_emb_species.npy`, 2.66 G
 a 92 MB json with the taxonomy) are downloaded once into the Hugging Face cache; the
 rows of the requested families are kept (867,455 species in total; Insecta 264,036,
 Arachnida 16,406); the six "none of these" prompts are embedded with the BioCLIP text
-tower; everything is written as one `.fpack` file (format documented in `fpack.py`).
+tower; everything is written as one `.fpack` file (format documented in `fpack.py`). Since
+round 266 the same container also holds the *class lists* of fixed-class classifiers such as
+insectDCT (no name vectors; `fpack.write_class_list`, see `tool/classifier_export/README.md`).
 
 ### 3b. Regional packs (GBIF occurrence lists)
 

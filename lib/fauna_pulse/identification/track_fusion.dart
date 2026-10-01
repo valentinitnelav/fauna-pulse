@@ -24,6 +24,15 @@
 //   * sink rows (kingdom `none`) collect the "no organism" mass
 //   * the unit-length pooled embedding is kept solely for the visit-merge
 //     similarity check (visit_merge.dart)
+//   * round 266, class lists (fixed-class classifiers such as insectDCT, see
+//     label_pack.dart): a crop's vector is the model's raw class scores. Each
+//     output layer ("head") becomes log-probabilities; a row (finest class)
+//     scores the mean of its classes' log-probabilities over the heads, so it
+//     only scores high when every level agrees and K heads are not K
+//     independent votes; one softmax over the rows (fpack.py
+//     class_probabilities, the same formula, checked by a shared fixture).
+//     The crops' raw scores are averaged like BioCLIP's vectors (per head the
+//     "Average Logit"); everything after that is unchanged.
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -133,6 +142,10 @@ class FusedTrack {
   /// Per-crop top-k rows; `perCrop[i].probs.first` is crop i's weight.
   final List<TopK> perCrop;
 
+  /// Round 266: the most probable rows of the pooled distribution (for a
+  /// class list, the model's own class of the track ID: LabelPack.classNames).
+  final TopK pooledTop;
+
   /// Round 219: false for crops left out of the pooled answer (certainty below
   /// the surest crop's divided by the drop factor). Same length as [perCrop].
   final List<bool> counted;
@@ -155,6 +168,7 @@ class FusedTrack {
     required this.perCrop,
     required this.perCropMass,
     required this.counted,
+    required this.pooledTop,
   });
 
   LadderStep? stepAt(String rank) {
@@ -226,13 +240,25 @@ class Scorer {
     return out;
   }
 
-  /// Softmax over all pack rows for unit vector [e].
+  /// Softmax over all pack rows for unit vector [e] (a class list: the
+  /// model's raw scores, see the file header).
   Float32List probs(Float32List e) {
     final n = pack.rows;
     final logits = Float64List(n);
     var maxL = -double.infinity;
+    final heads = pack.isClassList ? _headLogProbs(e) : null;
+    final k = pack.headSizes.length;
     for (var r = 0; r < n; r++) {
-      final l = scale * pack.dot(e, r);
+      double l;
+      if (heads == null) {
+        l = scale * pack.dot(e, r);
+      } else {
+        var s = 0.0;
+        for (var h = 0; h < k; h++) {
+          s += heads[h][pack.headIndex[r * k + h]];
+        }
+        l = scale * s / k;
+      }
       logits[r] = l;
       if (l > maxL) maxL = l;
     }
@@ -245,6 +271,26 @@ class Scorer {
     final out = Float32List(n);
     for (var r = 0; r < n; r++) {
       out[r] = logits[r] / sum;
+    }
+    return out;
+  }
+
+  /// Each head's slice of the raw scores [e] as log-probabilities (log-softmax).
+  List<Float64List> _headLogProbs(Float32List e) {
+    final out = <Float64List>[];
+    var start = 0;
+    for (final size in pack.headSizes) {
+      var mx = -double.infinity;
+      for (var i = 0; i < size; i++) {
+        if (e[start + i] > mx) mx = e[start + i].toDouble();
+      }
+      var sum = 0.0;
+      for (var i = 0; i < size; i++) {
+        sum += math.exp(e[start + i] - mx);
+      }
+      final lse = mx + math.log(sum);
+      out.add(Float64List.fromList([for (var i = 0; i < size; i++) e[start + i] - lse]));
+      start += size;
     }
     return out;
   }
@@ -475,6 +521,7 @@ class Scorer {
       perCrop: perCropTop,
       perCropMass: perCropMass,
       counted: counted,
+      pooledTop: this.topK(pbar, 3),
     );
   }
 

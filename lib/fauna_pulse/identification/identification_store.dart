@@ -406,6 +406,11 @@ Map<String, dynamic> writeOutputs({
     'rival_rank',
     'rival_taxon',
     'rival_p',
+    // Round 266: a fixed-class classifier's own class for the track ID (e.g.
+    // insectDCT's "Apoidea small"; some of its groups have no rank) and its
+    // probability; empty for BioCLIP packs.
+    'model_class',
+    'model_class_p',
   ];
   csv.writeln(header.join(','));
   var visitsMerged = 0, tracksBeforeMerge = 0, suspectCount = 0;
@@ -436,6 +441,7 @@ Map<String, dynamic> writeOutputs({
         'counted',
         for (final r in kRankNames) 'ladder_$r',
         for (final r in kRankNames) 'p_$r',
+        'top1_class', // round 266: the classifier's own class (empty for BioCLIP)
       ].join(','),
     );
 
@@ -510,6 +516,8 @@ Map<String, dynamic> writeOutputs({
     final prAgree = {for (var k = 0; k < 7; k++) 'p_agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].agreeMass.toStringAsFixed(4) : ''};
     final agr = {for (var k = 0; k < 7; k++) 'agree_${kRankNames[k]}': k < f.ladder.length ? f.ladder[k].support.toStringAsFixed(3) : ''};
     final rival = f.ladder.where((s) => s.rival != null).firstOrNull;
+    String ownClass(int row) => pack.isClassList ? pack.classNames[row] : '';
+    final modelClass = ownClass(f.pooledTop.rows.first);
     final row = <Object?>[
       deviceId,
       sessionId,
@@ -545,6 +553,8 @@ Map<String, dynamic> writeOutputs({
       rival?.rank ?? '',
       rival?.rival ?? '',
       rival == null ? '' : rival.rivalMass.toStringAsFixed(4),
+      modelClass,
+      pack.isClassList ? f.pooledTop.probs.first.toStringAsFixed(4) : '',
     ];
     csv.writeln(row.map(_csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -569,6 +579,7 @@ Map<String, dynamic> writeOutputs({
           i < f.counted.length ? (f.counted[i] ? 1 : 0) : 1,
           for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
           for (var k = 0; k < 7; k++) k < masses.length ? masses[k].toStringAsFixed(4) : '',
+          ownClass(f.perCrop[i].rows.first),
         ].map(_csvCell).join(','),
       );
     }
@@ -591,6 +602,8 @@ Map<String, dynamic> writeOutputs({
         'species': f.bestViewTaxon,
         'p': double.parse(f.bestViewProb.toStringAsFixed(4)),
       },
+      if (pack.isClassList)
+        'model_class': {'name': modelClass, 'p': double.parse(f.pooledTop.probs.first.toStringAsFixed(4))},
       'crops': [
         for (var i = 0; i < t.crops.length; i++)
           {
@@ -620,6 +633,7 @@ Map<String, dynamic> writeOutputs({
             // table's "Taxonomic tree"; kingdom `none` for a sink row).
             'top1_tree': pack.labels[f.perCrop[i].rows.first].ranks.take(5).toList(),
             'top1_p': double.parse(f.perCrop[i].probs.first.toStringAsFixed(4)),
+            if (pack.isClassList) 'top1_class': ownClass(f.perCrop[i].rows.first),
           },
       ],
     });
@@ -750,6 +764,10 @@ tracks_<pack>.csv columns
   rival_rank, rival_taxon, rival_p    path_conflict only: the highest rank where a taxon outside the
                                       ladder's path had more Conf. than the ladder's pick; that taxon
                                       and its Conf.
+  model_class, model_class_p          fixed-class classifiers only (e.g. insectDCT): the model's own
+                                      class with the highest combined probability (some of its groups,
+                                      e.g. "Apoidea small" or "Hymenoptera_bees", have no rank) and that
+                                      probability; empty for BioCLIP
 
 crops_<pack>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
@@ -764,11 +782,17 @@ crops_<pack>.csv columns
   agrees                              1 when top1_species falls under the track ID's reported taxon
   counted                             1 when the crop entered the combined answer
   ladder_<rank>, p_<rank>             the track ID's ladder taxa and THIS crop's own Conf. under each
+  top1_class                          fixed-class classifiers only: the model's own class behind top1_species
 
 How it is computed: each crop is embedded with the BioCLIP image tower and
 scored against the pack on its own (for the per-crop columns); the track ID's answer comes
 from the certainty-weighted average of the counted crops' embeddings, scored once, with
 species masses summed up the taxonomy. Percentages are model confidence, not accuracy.
+A fixed-class classifier (e.g. insectDCT) gives raw scores for its own classes instead of an
+embedding, on several levels (insectDCT: 19 groups, 41 mostly families, 104 finer classes);
+each class of the class list scores the mean of its log-probabilities over the levels, so it
+is only likely when all levels agree. The rest is the same; a class above species (e.g. the
+genus "Bombus") adds to its genus, family and order, never to a species.
 ''';
 
 /// One visit's identification as the Photos tab shows it (round 209): read

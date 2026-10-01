@@ -1,7 +1,10 @@
 // Tests for the label-pack reader (round 208): the cross-language fixture
-// written by tool/bioclip_export/fpack.py, half-float decoding, taxonomy keys.
+// written by tool/bioclip_export/fpack.py, half-float decoding, taxonomy keys;
+// round 266: class lists of fixed-class classifiers (tiny_classes.fpack).
 
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
@@ -50,6 +53,38 @@ void main() {
     expect(hdr['rows'], 6);
     expect(hdr['dtype'], 'f16');
     expect(hdr.containsKey('labels'), isFalse);
+  });
+
+  test('reads a class list (round 266): no vectors, heads, own class names, rows above species', () {
+    final pack = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_classes.fpack').readAsBytesSync());
+    expect(pack.isClassList, isTrue);
+    expect(pack.rows, 4);
+    expect(pack.dim, 7); // the model's output length: 3 + 4
+    expect(pack.headSizes, [3, 4]);
+    expect(pack.headIndex, [0, 0, 0, 1, 1, 2, 2, 3]);
+    expect(pack.classNames, ['Syrphidae', 'Eristalis tenax', 'Apis mellifera', 'Vegetation']);
+    expect(pack.matrix, isEmpty);
+    expect(pack.logitScale, 1.0);
+    expect(pack.labels[0].speciesName, 'Syrphidae'); // a family-level class shows its family
+    expect(pack.labels[1].speciesName, 'Eristalis tenax');
+    expect(pack.labels[3].isSink, isTrue);
+    expect(pack.labels[3].speciesName, 'Vegetation');
+    expect(pack.header.containsKey('labels'), isFalse);
+    // A BioCLIP pack is no class list.
+    expect(LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync()).isClassList, isFalse);
+  });
+
+  test('a class list whose heads do not add up to its size is refused', () {
+    final hdr = utf8.encode(jsonEncode({
+      'kind': 'classes', 'dim': 5, 'rows': 1, 'dtype': 'none',
+      'labels': [['Animalia', '', '', '', '', '', '', '']],
+      'classes': ['x'], 'heads': [{'size': 3}], 'head_index': [[0]],
+    }));
+    final bytes = BytesBuilder()
+      ..add(ascii.encode('FPK1'))
+      ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+      ..add(hdr);
+    expect(() => LabelPack.parseBytes(bytes.toBytes()), throwsFormatException);
   });
 
   test('rejects files without the magic', () {

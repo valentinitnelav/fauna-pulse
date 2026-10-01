@@ -834,7 +834,10 @@ Append-only (resumable). Records:
 | `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms` (the crop loop: reading the photos, cutting the crops and running the model; model loading before and the scoring after are not included), `avg_embed_ms` (the model alone, per crop: what *Test speed* and the progress line report), `error` |
 
 The `.bin` holds row-major float32 little-endian unit vectors (`dim` per row). Read in
-Python: `np.fromfile(path, dtype='<f4').reshape(-1, dim)`.
+Python: `np.fromfile(path, dtype='<f4').reshape(-1, dim)`. Round 266: for a fixed-class
+classifier (insectDCT, see IDENTIFICATION.md) each row is instead the model's raw scores for
+its classes, the levels one after another (insectDCT: 19 + 41 + 104 = 164 numbers), not unit
+length.
 
 ### `predictions_<pack>.jsonl`
 
@@ -867,6 +870,7 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `merged_track_ids` | round 210, trailing column: every track ID joined into this row, semicolon-separated (one id unless "Merge consecutive track IDs" was on; `flags` then also holds `merged`) |
 | `n_detections`, `suspect` | round 212: detector frames the track ID(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
 | `rival_rank`, `rival_taxon`, `rival_p` | round 221, trailing: for a `path_conflict` track ID, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5 |
+| `model_class`, `model_class_p` | round 266, trailing, fixed-class classifiers only (empty for BioCLIP): the model's own class with the highest combined probability (e.g. insectDCT's `Apoidea small` or `Bombus`; some of its groups have no rank) and that probability |
 
 ### `crops_<pack>.csv` (round 215)
 
@@ -880,7 +884,9 @@ id's answer), `top1_kingdom` … `top1_family` (round 220: that species' higher 
 `counted` (round 219: 1 when the crop entered the pooled answer, 0 when it was left out as
 far less sure than the surest crop),
 `ladder_<rank>` (the track ID's ladder taxa, repeated per row) and `p_<rank>` (this crop's own
-Conf. under each of them). Identities for checking in R: over a track ID's rows, the plain
+Conf. under each of them), `top1_class` (round 266, trailing: a fixed-class classifier's own
+class behind `top1_species`; empty for BioCLIP; for a class above species, e.g. the genus
+*Bombus*, `top1_species` holds its deepest named rank). Identities for checking in R: over a track ID's rows, the plain
 mean of `p_<rank>` equals `p_mean_<rank>`, the maximum equals `p_max_<rank>`, the mean over
 rows whose top species is under the taxon equals `p_agree_<rank>`, and the count of
 `agrees == 1` equals `agree_<rank>` × crops at the identified rank. The track's own
@@ -901,7 +907,8 @@ taxon; the ladder's `support` at the identified rank is the share of `agrees == 
 `top1_tree` (round 220: kingdom … family of the crop's top species; the crops table shows
 its family, order and class), `det_conf` (round 223: the live detector's confidence for the
 crop's box, as in the crops CSV; `det_conf_mean` is their mean), `best_view`, `flags`, and
-the run `settings`.
+the run `settings`; round 266, fixed-class classifiers only: `model_class` (`name`, `p`) per
+track ID and `top1_class` per crop.
 
 ### `summary_<pack>.json`
 

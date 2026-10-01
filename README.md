@@ -205,12 +205,28 @@ Classifiers will not be shipped directly with the app (e.g., via Google Play) or
 
 </details>
 
+## Contributing & Maintenance
+
+FaunaPulse is developed as an open research project.
+
+Contributions are welcome. Fork the repo, start a short-lived branch from `develop` and open
+the pull request back into `develop`. `main` is kept stable for reviewed
+changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
+branch names and the dependency-update workflow.
+
+If you want to contribute to this project, here are some main ideas where help is appreciated:
+
+- [ ] discussions about optimal workflows for **aggregation of classification outputs per track ID**. See already a discussion started here [#25]
+- [ ] **iOS** development. The ultralytics plugin supports this, but adapting will require significant amount of work. I am also not sure if expensive iOS phones will be used as research tools in field conditions. SO I have park this idea for now.
+
+[#25]: https://github.com/valentinitnelav/fauna-pulse/issues/25
+
 ## Why I built FaunaPulse
 
 <details>
 	<summary>Expand:</summary>
 
-The idea for FaunaPulse grew from my research at the Helmholtz Centre for Environmental Research [(UFZ)][ufz] and the German Centre for Integrative Biodiversity Research [(iDiv)][idiv].
+The idea for FaunaPulse grew from my research at the Helmholtz Centre for Environmental Research [(UFZ)][ufz] and the German Centre for Integrative Biodiversity Research [(iDiv)][idiv] (see below at Past Research).
 
 During my [PhD][phd-stef] research, my field-team and I used affordable smartphones in time-lapse mode to record flower-visiting insects. 
 While this was ok, it quickly highlighted some core challenges that motivated the creation of FaunaPulse:
@@ -219,6 +235,20 @@ While this was ok, it quickly highlighted some core challenges that motivated th
 - **Overcoming traditional sensor limitations**: Standard motion sensors trigger continuously on wind, moving vegetation, or changing sunlight. Heat-based sensors ([Passive infrared sensors][PIR]) are impractical on small insects whose body temperature matches their surroundings. So, on-device computer vision seems like the only reliable way to trigger recordings for flower visiting insects.
 - **Focusing AI on ecological context (Region of Interest - ROI)**: As first suggested in [Ștefan et al. 2025][stefan-2025-a], focusing the camera on a target area (for example, a single flower), it reduces background clutter and matches the square input format standard in object-detection models.
 - **Democratizing wildlife monitoring through accessible and affordable hardware**: Commercial camera traps, microcomputers or other gadgets are not available on all markets at all time, some are expensive and some can also be complex to work with. Modern smartphones are powerful, globally accessible microcomputers and almost everyone understands nowadays how to use one. By releasing FaunaPulse as free and open-source software, I want to enable citizen scientists, students, and under-funded research groups to turn everyday phones into tailored camera traps for documenting local biodiversity.
+
+### Past Research
+
+FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv][idiv] on smartphone-based pollinator monitoring, object detection and insect classification:
+
+- Stark, T., Ștefan, V., Wurm, M., Spanier, R., Taubenböck, H., & Knight, T. M. (2023). **YOLO object detection models can locate and classify broad groups of flower-visiting arthropods in images.** *Scientific Reports*, 13, 16364. [https://doi.org/10.1038/s41598-023-43482-3][stark-2023]
+- Ștefan, V., Workman, A., Cobain, J. C., Rakosy, D., & Knight, T. M. (2025). **Utilising affordable smartphones and open-source time-lapse photography for pollinator image collection and annotation.** *Journal of Pollination Ecology*, 38, 1–21. [https://doi.org/10.26786/1920-7603(2025)778][stefan-2025-a]
+- Ștefan, V., Stark, T., Wurm, M., Taubenböck, H., & Knight, T. M. (2025). **Successes and limitations of pretrained YOLO detectors applied to unseen time-lapse images for automated pollinator monitoring.** *Scientific Reports*, 15, 30671. [https://doi.org/10.1038/s41598-025-16140-z][stefan-2025-b]
+- Stark, T., Wurm, M., Ștefan, V., Wolf, F., Taubenböck, H., & Knight, T. M. (2025). **Utilizing CNNs for classification and uncertainty quantification for 15 families of European fly pollinators.** *PLOS ONE*, 20(9), e0323984. [https://doi.org/10.1371/journal.pone.0323984][stark-2025]
+
+[stark-2023]: https://doi.org/10.1038/s41598-023-43482-3
+[stefan-2025-a]: https://doi.org/10.26786/1920-7603(2025)778
+[stefan-2025-b]: https://doi.org/10.1038/s41598-025-16140-z
+[stark-2025]: https://doi.org/10.1371/journal.pone.0323984
 
 </details>
 
@@ -239,47 +269,6 @@ For transparency, the development process is automatically documented in [`AGENT
 
 </details>
 
-## Related research
-
-FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv][idiv] on smartphone-based pollinator monitoring, object detection and insect classification:
-
-- Stark, T., Ștefan, V., Wurm, M., Spanier, R., Taubenböck, H., & Knight, T. M. (2023). **YOLO object detection models can locate and classify broad groups of flower-visiting arthropods in images.** *Scientific Reports*, 13, 16364. [https://doi.org/10.1038/s41598-023-43482-3][stark-2023]
-- Ștefan, V., Workman, A., Cobain, J. C., Rakosy, D., & Knight, T. M. (2025). **Utilising affordable smartphones and open-source time-lapse photography for pollinator image collection and annotation.** *Journal of Pollination Ecology*, 38, 1–21. [https://doi.org/10.26786/1920-7603(2025)778][stefan-2025-a]
-- Ștefan, V., Stark, T., Wurm, M., Taubenböck, H., & Knight, T. M. (2025). **Successes and limitations of pretrained YOLO detectors applied to unseen time-lapse images for automated pollinator monitoring.** *Scientific Reports*, 15, 30671. [https://doi.org/10.1038/s41598-025-16140-z][stefan-2025-b]
-- Stark, T., Wurm, M., Ștefan, V., Wolf, F., Taubenböck, H., & Knight, T. M. (2025). **Utilizing CNNs for classification and uncertainty quantification for 15 families of European fly pollinators.** *PLOS ONE*, 20(9), e0323984. [https://doi.org/10.1371/journal.pone.0323984][stark-2025]
-
-[stark-2023]: https://doi.org/10.1038/s41598-023-43482-3
-[stefan-2025-a]: https://doi.org/10.26786/1920-7603(2025)778
-[stefan-2025-b]: https://doi.org/10.1038/s41598-025-16140-z
-[stark-2025]: https://doi.org/10.1371/journal.pone.0323984
-
-Future work includes maturing the on-device taxonomic identification (calibrated confidences, country-specific label packs, merging fragmented track IDs with identification evidence) and further analytical reporting derived from visitation and classification data.
-
-## Citation
-
-If you use FaunaPulse in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff). 
-GitHub renders a ready-made "Cite this repository" button from that file (top-right of the repository page).
-
-Example:
-
-> Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals. https://doi.org/10.5281/zenodo.22309221
-
-Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`.
-
-## Contributing & Maintenance
-
-<details>
-	<summary>Expand:</summary>
-
-FaunaPulse is developed as an open research project.
-
-Contributions are welcome. Fork the repo, start a short-lived branch from `develop` and open
-the pull request back into `develop`. `main` is kept stable for reviewed
-changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
-branch names and the dependency-update workflow.
-
-</details>
-
 ## Privacy
 
 <details>
@@ -297,6 +286,17 @@ and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.
 This repository is licensed under **AGPL-3.0** inherited from the modified `ultralytics_yolo` plugin (in `./packages`).
 
 See [`LICENSE`](LICENSE) for details.
+
+## Citation
+
+If you use FaunaPulse in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff). 
+GitHub renders a ready-made "Cite this repository" button from that file (top-right of the repository page).
+
+Example:
+
+> Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals. https://doi.org/10.5281/zenodo.22309221
+
+Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`.
 
 ## Notes on repository layout
 

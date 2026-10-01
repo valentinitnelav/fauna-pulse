@@ -22,6 +22,10 @@
 //    the model and the pack are written); the pack is the first one built for the model's
 //    embedding size (BioCLIP 2 packs have 768 numbers per name, BioCLIP 2.5 packs 1024) whose file
 //    name contains --dart-define=PACK=<part of a file name> (default: any).
+// 5. Round 266 (fixed-class classifiers, e.g. insectDCT): a model whose class list (the .fpack
+//    with the model's file name, kind "classes") is on the phone loads with raw scores
+//    (normalize: false), and step 2 uses that class list; cosines are computed with the
+//    vectors' lengths, since raw scores are not unit vectors.
 // Run:  flutter test integration_test/bioclip_gpu_check_test.dart -d <serial> --no-uninstall
 //       e.g. --dart-define=MODEL=bioclip-25 --dart-define=SESSION=bumblebee-2 --dart-define=BIOCLIP_GPU=false
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
@@ -69,12 +73,23 @@ void main() {
     ];
     expect(models, isNotEmpty, reason: 'import a BioCLIP model on the Identify screen first');
     final rng = Random(7);
+    final packs = await IdentificationAssets.listPacks();
+    // Round 266: the class list of a classifier carries the model file's name.
+    Future<File?> classListOf(File model) async {
+      final stem = stemOf(model.path.split('/').last);
+      for (final p in packs) {
+        if (stemOf(p.path.split('/').last) == stem && (await LabelPack.readHeader(p))['kind'] == 'classes') return p;
+      }
+      return null;
+    }
     File? gpuModel;
     int? gpuModelDim;
+    var gpuModelRaw = false;
     for (final m in models) {
+      final raw = await classListOf(m) != null;
       for (final gpu in [if (_tryGpu) true, false]) {
         final t0 = await DeviceThermal.read();
-        final info = await ImageEmbedder.load(m.path, useGpu: gpu, cpuThreads: _threads);
+        final info = await ImageEmbedder.load(m.path, useGpu: gpu, cpuThreads: _threads, normalize: !raw);
         final side = info.inputWidth * info.inputHeight * 3;
         final images = [
           for (var i = 0; i < _crops; i++) Uint8List.fromList(List.generate(side, (_) => rng.nextInt(256))),
@@ -98,6 +113,7 @@ void main() {
         if ((gpu && info.accelerator == 'GPU' || !_tryGpu) && gpuModel == null) {
           gpuModel = m;
           gpuModelDim = info.dim;
+          gpuModelRaw = raw;
         }
         final t1 = await DeviceThermal.read();
         _log('EMBED ${m.path.split('/').last} asked ${gpu ? 'GPU' : 'CPU'}: ran on ${info.accelerator}'
@@ -115,11 +131,12 @@ void main() {
     final dir = Directory(_sessionName.isEmpty
         ? '$external/photo_visits_check/sessions/photo check'
         : '$external/sessions/$_sessionName');
-    File? found;
-    for (final p in await IdentificationAssets.listPacks()) {
-      if (p.path.split('/').last.contains(_packFilter) && (await LabelPack.readHeader(p))['dim'] == gpuModelDim) {
+    File? found = m == null || !gpuModelRaw ? null : await classListOf(m);
+    for (final p in packs) {
+      if (found != null) break;
+      final h = await LabelPack.readHeader(p);
+      if (p.path.split('/').last.contains(_packFilter) && h['dim'] == gpuModelDim && h['kind'] != 'classes') {
         found = p;
-        break;
       }
     }
     if (m == null || found == null || !dir.existsSync()) {
@@ -130,7 +147,7 @@ void main() {
     _log('IDENTIFY ${dir.path} with ${m.path.split('/').last} + ${pack.path.split('/').last}');
     final name = m.path.split('/').last;
     Future<(List<Float32List>, Map, IdentifyResult)> identify(bool gpu) async {
-      final info = await ImageEmbedder.load(m.path, useGpu: gpu);
+      final info = await ImageEmbedder.load(m.path, useGpu: gpu, normalize: !gpuModelRaw);
       expect(info.accelerator, gpu ? 'GPU' : 'CPU');
       final vectors = <Float32List>[];
       final job = IdentificationJob(
@@ -171,21 +188,28 @@ void main() {
       for (final t in cs['tracks'] as List) {
         _log('  #${t['track_id']} CPU ${t['headline']} (${t['identified_rank']}) p=${t['p']}');
       }
+      _logOwnClasses(dir, pack);
       return;
     }
     final (gv, gs, _) = await identify(true);
     final (cv, cs, _) = await identify(false);
     expect(gv.length, cv.length);
-    final cos = [
-      for (var i = 0; i < gv.length; i++)
-        [for (var k = 0; k < gv[i].length; k++) gv[i][k] * cv[i][k]].reduce((a, b) => a + b),
-    ];
+    // Cosine with the vectors' lengths (round 266: a classifier's raw scores are not unit vectors).
+    double dot(Float32List a, Float32List b) {
+      var ab = 0.0, aa = 0.0, bb = 0.0;
+      for (var k = 0; k < a.length; k++) {
+        ab += a[k] * b[k];
+        aa += a[k] * a[k];
+        bb += b[k] * b[k];
+      }
+      return ab / sqrt(aa * bb);
+    }
+    final cos = [for (var i = 0; i < gv.length; i++) dot(gv[i], cv[i])];
     _log('CROPS ${cos.length}: GPU vs CPU cosine min ${cos.reduce(min).toStringAsFixed(5)}, '
         'mean ${(cos.reduce((a, b) => a + b) / cos.length).toStringAsFixed(5)}');
     // Round 250: the GPU computes every crop anew (a stale or repeated result would make two
     // crops' vectors identical), and each GPU vector is nearest to its own crop's CPU vector
     // (reported only: two near-identical crops of the same insect may swap).
-    double dot(Float32List a, Float32List b) => [for (var k = 0; k < a.length; k++) a[k] * b[k]].reduce((x, y) => x + y);
     var sameGpu = 0.0;
     var ownNearest = 0;
     for (var i = 0; i < gv.length; i++) {
@@ -207,5 +231,14 @@ void main() {
       expect(g?['headline'], t['headline']);
     }
     expect(cos.reduce(min), greaterThan(0.99));
+    _logOwnClasses(dir, pack);
   }, timeout: const Timeout(Duration(minutes: 20)));
+}
+
+/// Round 266: a classifier's own class per track ID (written by the last identification).
+void _logOwnClasses(Directory dir, File pack) {
+  final f = IdentificationPaths(dir).tracksJson(stemOf(pack.path.split('/').last));
+  for (final t in (jsonDecode(f.readAsStringSync())['tracks'] as List).cast<Map>()) {
+    if (t['model_class'] case {'name': final name, 'p': final p}) _log('  #${t['track_id']} own class $name p=$p');
+  }
 }

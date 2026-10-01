@@ -18,6 +18,7 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `bioclip2_image_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `tool/bioclip_export/export_image_tower.py` |
 | `bioclip-25_image_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
+| `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
 Both are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
@@ -325,17 +326,37 @@ was sure) and the top species on 4 of 34; not recommended. Whether BioCLIP 2.5 i
 this project's pollinators better than BioCLIP 2 has not been tested yet (the one test
 session here is a YouTube clip, fit for timing only).
 
-**Fixed-class classifiers such as insectDCT (round 265, not usable in the app yet).**
-insectDCT's hierarchical classifier V7 (Bjerge et al. 2026, from the InsectAI Model Zoo)
-knows 104 classes on three levels (e.g. `Hymenoptera_bees` > Apidae > *Bombus pascuorum*)
-instead of comparing a crop with a label pack's names. `tool/classifier_export/` converts it
-and checks it against insectDCT's own code (34 of 34 identical answers). On the Xiaomi test
-phone its EfficientNetV2-S and ResNet50 versions take 0.02 s per crop on the GPU (0.13 and
-0.17 s on the CPU); the ConvNeXt-Base version (the zoo's choice) runs on the CPU only, 0.7 s
-per crop (its GPU results are wrong on this phone; the GPU check catches that). The plan for
-the app keeps everything described above: a "class list" file in place of the label pack
-links each class to kingdom ... species, and the same per-track ID combination, ladder,
-threshold and tables apply (`tool/classifier_export/README.md`, section 5).
+**insectDCT, a fixed-class classifier (round 266).** insectDCT's hierarchical classifier V7
+(Bjerge et al. 2026, from the InsectAI Model Zoo) knows 104 classes on three levels (e.g.
+`Hymenoptera_bees` > Apidae > *Bombus pascuorum*) instead of comparing a crop with a label
+pack's names. It comes as two files with the same name: the model
+(`insectdct-cls-v7_eff2s_fp16.tflite`, 42 MB) and its **class list**
+(`insectdct-cls-v7_eff2s_fp16.fpack`, 14 kB: every class with its kingdom ... species).
+Import both (*Import model…*, *Import label pack…*); choosing the model then chooses its class
+list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
+threshold, tables and files. Differences:
+
+- Each crop gets a score per class on each level; a class's probability combines its own
+  level with its two parent groups, so it is only likely when all three levels agree.
+- Some classes stop above species: `Bombus` (genus only), `Coleoptera` (other beetles),
+  `Apoidea small` (a group of bees, which has no rank here: it counts for the order
+  Hymenoptera). The ladder then stops there. The model's own class is kept beside the
+  taxonomy (*Model's own class* on the track ID's sheet, `model_class` in the files), because
+  it can say more (a bee, not just Hymenoptera).
+- Its 104 classes are fixed: the flower visitors of insectDCT's camera-trap training data (list:
+  `tool/classifier_export/taxa/insectdct-cls-v7.csv`); anything else is forced into the nearest
+  class or "Vegetation" ("no organism").
+- Speed on the Xiaomi test phone: 0.02 s per crop on the GPU (0.15 s on its CPU), more than
+  ten times faster than BioCLIP 2 on the GPU.
+
+Why the EfficientNetV2-S version: insectDCT ships three networks. The authors' published
+test results (version 6) rank ConvNeXt-Base first, EfficientNetV2-S second, ResNet50 third
+(F1 averaged over classes at level 3: 0.76, 0.73, 0.69). ConvNeXt-Base runs only on the
+Xiaomi's CPU (0.7 s per crop; its GPU results are wrong there), so EfficientNetV2-S is the
+best one the GPU runs. The other two files and their class lists are made the same way
+(`tool/classifier_export/README.md`) and should work the same way (ResNet50 on the GPU,
+ConvNeXt-Base on the CPU; not tried in the app). Whether insectDCT or BioCLIP names this
+project's pollinators better has not been tested yet.
 
 **What the times on the screen measure (round 250).** *Test speed* and the progress line
 ("the model takes 0.27 s per crop") time the model alone: a stopwatch around each call,

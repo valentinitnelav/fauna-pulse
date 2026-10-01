@@ -69,7 +69,9 @@ provided or endorsed by the authors.
 
 **insectDCT hierarchical classifier V7** (`insectdct-cls-v7`; ConvNeXt-Base, EfficientNetV2-S
 and ResNet50 versions; 104 classes on three levels): same authors, paper and licence (GPL-3.0)
-as insectDCT above; weights as packaged by the InsectAI Model Zoo. Round 265 converted it
-for the phone as a feasibility test (`tool/classifier_export/`); the app cannot use it yet,
-and no converted file is bundled. Its class-to-taxonomy table uses the TreeOfLife names that
-come with BioCLIP 2.5 (Imageomics).
+as insectDCT above; weights as packaged by the InsectAI Model Zoo. Converted for the phone
+with `tool/classifier_export/` (round 265); the Identify screen runs it since round 266
+(EfficientNetV2-S version recommended). No converted file is bundled: users import the model
+and its class list. The class list's taxonomy uses the TreeOfLife names that come with
+BioCLIP 2.5 (Imageomics). The choice between its three networks follows the authors'
+published per-class test results (insectDCT repository, `metrics/`, version 6).
