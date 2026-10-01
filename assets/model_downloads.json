@@ -4,7 +4,6 @@
   "detectors": [
     {
       "id": "megadetector-v6",
-      "icon": "animals",
       "title": "MegaDetector V6",
       "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles.",
       "licence": "AGPL-3.0",
@@ -17,7 +16,6 @@
     },
     {
       "id": "flatbug-n",
-      "icon": "insects",
       "title": "flat-bug (small)",
       "purpose": "Insects and other arthropods: finds any land arthropod on any background.",
       "licence": "MIT",
@@ -30,7 +28,6 @@
     },
     {
       "id": "insectdct-v8-s",
-      "icon": "flowers",
       "title": "insectDCT detector",
       "purpose": "Insects on flowers: finds insects in camera-trap pictures of flowers and vegetation.",
       "licence": "GPL-3.0",
@@ -45,7 +42,6 @@
   "identification": [
     {
       "id": "insectdct-cls-v7",
-      "icon": "flowers",
       "title": "insectDCT classifier",
       "purpose": "Flower visitors: names insects in 104 fixed classes, from order down to species where it can.",
       "licence": "GPL-3.0",
@@ -68,7 +64,6 @@
     },
     {
       "id": "bioclip-2",
-      "icon": "any",
       "title": "BioCLIP 2",
       "purpose": "Any organism: names what it sees, choosing from a name list.",
       "note": "Fast on phones whose graphics chip can run it.",
@@ -100,7 +95,6 @@
     },
     {
       "id": "bioclip-2.5",
-      "icon": "any",
       "title": "BioCLIP 2.5",
       "purpose": "Any organism: newer and larger than BioCLIP 2, names what it sees from a name list.",
       "note": "Slow: on most phones it runs on the main processor only, seconds per picture.",

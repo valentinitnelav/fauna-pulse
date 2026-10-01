@@ -23,16 +23,16 @@ final _classList = File('$_dir/packs/insectdct-cls-v7_eff2s_fp16.fpack');
 final _downloads = ModelDownloads.parse('''
 {"base_url": "https://example.org/r/",
  "detectors": [
-   {"id": "md", "icon": "animals", "title": "MegaDetector V6", "purpose": "Common animals.",
+   {"id": "md", "title": "MegaDetector V6", "purpose": "Common animals.",
     "licence": "AGPL-3.0", "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
-   {"id": "fb", "icon": "insects", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
+   {"id": "fb", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
     "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266}}
  ],
  "identification": [
-   {"id": "cls", "icon": "flowers", "title": "insectDCT classifier", "purpose": "Flower visitors.",
+   {"id": "cls", "title": "insectDCT classifier", "purpose": "Flower visitors.",
     "file": {"name": "insectdct-cls-v7_eff2s_fp16.tflite", "bytes": 43853456},
     "lists": [{"title": "Its 104 classes", "file": {"name": "insectdct-cls-v7_eff2s_fp16.fpack", "bytes": 13737}}]},
-   {"id": "b2", "icon": "any", "title": "BioCLIP 2", "purpose": "Any organism.",
+   {"id": "b2", "title": "BioCLIP 2", "purpose": "Any organism.",
     "file": {"name": "bioclip-2_image_fp16_4d.tflite", "bytes": 609466720},
     "lists": [{"title": "Europe", "file": {"name": "bioclip2_pollinator_orders_europe_v1.fpack", "bytes": 57479207}},
               {"title": "32 families", "file": {"name": "bioclip2_flower_visitors_32fam_v1.fpack", "bytes": 62754369}}]}

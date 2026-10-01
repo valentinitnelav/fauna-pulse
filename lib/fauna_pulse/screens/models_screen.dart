@@ -12,8 +12,9 @@
 // model only choose one.
 //
 // Round 268: no model ships with the app, so the screen leads with what can
-// be downloaded (assets/model_downloads.json, ModelDownloads): an icon for
-// what each model is for, one plain line, the size, one tap. A name list
+// be downloaded (assets/model_downloads.json, ModelDownloads): a title, one
+// plain line on what each model is for, the size, one tap. Two icons only
+// (owner): corner-framed circle = detection, microscope = identification. A name list
 // brings its model along when the model is not on the phone yet. Files on
 // the phone whose name is in the catalogue show its title and line too.
 // Importing a file and downloading from a link stay for the user's own models.
@@ -95,12 +96,8 @@ Future<void> _downloadForReal(
   await downloadCatalogueFile(file, identification: identification, onProgress: onProgress, isCancelled: isCancelled);
 }
 
-IconData purposeIcon(ModelPurposeIcon icon) => switch (icon) {
-  ModelPurposeIcon.animals => Icons.pets,
-  ModelPurposeIcon.insects => Icons.bug_report_outlined,
-  ModelPurposeIcon.flowers => Icons.local_florist_outlined,
-  ModelPurposeIcon.any => Icons.eco_outlined,
-};
+const _detectionIcon = Icons.center_focus_strong_outlined;
+const _identificationIcon = Icons.biotech_outlined;
 
 /// Everything the screen lists, read in one go (injectable for tests).
 class ModelsInventory {
@@ -447,7 +444,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       },
     ].join('\n');
     return _tile(
-      offer == null ? Icons.center_focus_strong_outlined : purposeIcon(offer.icon),
+      _detectionIcon,
       offer?.title ?? m.name,
       details,
       m.source == ModelSource.imported ? () => _deleteDetector(m) : null,
@@ -466,7 +463,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       _sized(pairing, inv.sizes[f.path]),
     ].join('\n');
     return _tile(
-      offer == null ? Icons.biotech_outlined : purposeIcon(offer.icon),
+      _identificationIcon,
       offer?.title ?? _nameOf(f),
       details,
       () => _deleteIdentification(f, isModel: true),
@@ -504,7 +501,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (offers.isEmpty) return const [];
     return [
       _subheading('Available to download'),
-      for (final d in offers) _offerTile(purposeIcon(d.icon), d.title, _offerDetails(d), () => _get(d)),
+      for (final d in offers) _offerTile(_detectionIcon, d.title, _offerDetails(d), () => _get(d)),
     ];
   }
 
@@ -523,7 +520,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         final l = missing.single;
         rows.add(
           _offerTile(
-            purposeIcon(d.icon),
+            _identificationIcon,
             d.title,
             _offerDetails(d, bytes: (hasModel ? 0 : d.file.bytes) + l.file.bytes),
             () => _get(d, list: l),
@@ -535,7 +532,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         ListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          leading: Icon(purposeIcon(d.icon), color: Colors.lightBlueAccent),
+          leading: Icon(_identificationIcon, color: Colors.lightBlueAccent),
           minLeadingWidth: 24,
           title: Text(d.title),
           subtitle: Text(

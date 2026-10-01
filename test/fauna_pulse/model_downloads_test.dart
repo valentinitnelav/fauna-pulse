@@ -34,16 +34,15 @@ void main() {
     final (model, list) = c.listFor('insectdct-cls-v7_eff2s_fp16.fpack')!;
     expect(model.id, 'insectdct-cls-v7');
     expect(list.title, 'Its 104 classes');
-    expect(c.identification.first.icon, ModelPurposeIcon.flowers);
   });
 
   test('an entry with an unsafe name or a non-HTTPS link is skipped; a file may carry its own link', () {
     final c = ModelDownloads.parse('''
 {"base_url": "https://example.org/r/",
  "detectors": [
-   {"id": "bad", "icon": "animals", "title": "Bad", "purpose": "p", "file": {"name": "../x.tflite", "bytes": 1}},
-   {"id": "http", "icon": "animals", "title": "Http", "purpose": "p", "file": {"name": "h.tflite", "bytes": 1, "url": "http://example.org/h.tflite"}},
-   {"id": "ok", "icon": "insects", "title": "Ok", "purpose": "p", "file": {"name": "ok.tflite", "bytes": 5, "url": "https://huggingface.co/x/resolve/main/ok.tflite"}}
+   {"id": "bad", "title": "Bad", "purpose": "p", "file": {"name": "../x.tflite", "bytes": 1}},
+   {"id": "http", "title": "Http", "purpose": "p", "file": {"name": "h.tflite", "bytes": 1, "url": "http://example.org/h.tflite"}},
+   {"id": "ok", "title": "Ok", "purpose": "p", "file": {"name": "ok.tflite", "bytes": 5, "url": "https://huggingface.co/x/resolve/main/ok.tflite"}}
  ]}''');
     expect(c.detectors.map((d) => d.id), ['ok']);
     expect(c.detectors.single.file.url.host, 'huggingface.co');

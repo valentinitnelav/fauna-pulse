@@ -1,8 +1,8 @@
 # Model downloads: the catalogue the app offers (round 268)
 
 No model ships inside FaunaPulse. The **AI models** screen (home screen ⋮ menu) offers the
-models listed in [`assets/model_downloads.json`](../../assets/model_downloads.json): an icon
-for what each model is for, a title, one plain line, the size and the licence. One tap downloads a
+models listed in [`assets/model_downloads.json`](../../assets/model_downloads.json): a title,
+one plain line on what each model is for, the size and the licence. One tap downloads a
 detection model, or an identification model together with the name list chosen (a label pack
 for BioCLIP, the class list for insectDCT). A model already on the phone is not downloaded
 again: two BioCLIP name lists share one model.
@@ -19,7 +19,6 @@ models (separate files plus a list of what belongs together).
 - `base_url`: where the files are; a file's link is `base_url` + its name. A file can carry
   its own `"url"` instead (for example a Hugging Face link, or a file in another release).
 - `detectors`: one `file` each. `identification`: a model `file` plus `lists`.
-- `icon`: `animals` (paw), `insects` (bug), `flowers` (flower, for pollinators) or `any` (leaf).
 - `bytes` and `sha256`: the app shows the size and checks every download against the
   checksum. A file on the phone counts as present by its **name** only, so re-exported
   weights on the phone are not flagged.

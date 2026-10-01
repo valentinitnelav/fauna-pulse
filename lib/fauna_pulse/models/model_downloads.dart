@@ -28,9 +28,6 @@ import 'model_catalog.dart';
 
 const kModelDownloadsAsset = 'assets/model_downloads.json';
 
-/// What a model is for, shown as its icon.
-enum ModelPurposeIcon { animals, insects, flowers, any }
-
 class DownloadFile {
   final String name;
   final Uri url;
@@ -60,7 +57,6 @@ class ModelDownload {
 
   /// Optional caveat (speed, size).
   final String? note;
-  final ModelPurposeIcon icon;
   final String licence;
   final String source;
 
@@ -76,7 +72,6 @@ class ModelDownload {
     required this.title,
     required this.purpose,
     this.note,
-    required this.icon,
     required this.licence,
     required this.source,
     required this.file,
@@ -139,7 +134,6 @@ class ModelDownloads {
               title: e['title'] as String,
               purpose: e['purpose'] as String,
               note: e['note'] as String?,
-              icon: ModelPurposeIcon.values.firstWhere((i) => i.name == e['icon'], orElse: () => ModelPurposeIcon.any),
               licence: e['licence'] as String? ?? '',
               source: e['source'] as String? ?? '',
               file: model,
