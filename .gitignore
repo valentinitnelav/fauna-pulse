@@ -86,4 +86,5 @@ tool/bioclip_export/.venv/
 tool/bioclip_export/out/
 # PC-side detector conversion (round 264): outputs
 tool/detector_export/out/
+tool/classifier_export/out/
 **/__pycache__/

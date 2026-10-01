@@ -105,6 +105,13 @@ near the confidence threshold while fp16 kept all 28 with the same confidences; 
 Xiaomi's GPU both run equally fast, on its CPU w8a32 was 2.3 times faster. So w8a32 stays a
 good choice for CPU-bound phones, after checking its boxes.
 
+Classifiers (not detectors) such as insectDCT's hierarchical classifier have their own
+script, `tool/classifier_export/` (round 265, feasibility only; the app cannot use them yet).
+It also shows two GPU-friendly rewrites with the same arithmetic (a pooling the converter
+wrote with GATHER_ND, a max-pool padding with minus infinity): when a converted file runs
+on the phone's CPU only, the phone log line "Following operations are not supported by GPU
+delegate" names the step to rewrite.
+
 ### Older / alternative exports (all still work)
 
 ```bash

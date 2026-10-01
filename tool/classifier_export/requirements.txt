@@ -1,0 +1,17 @@
+# PC-side classifier conversion for FaunaPulse (round 265).
+# Tested 2026-10-01 on Ubuntu 24.04 x86_64, Python 3.12, installed into the
+# tool/bioclip_export environment (which provides torch 2.13, torchvision 0.28,
+# litert-torch 0.9.4, ai-edge-litert 2.2.0, ai-edge-quantizer 0.9.0, opencv and scipy).
+# insectDCT's own code also needs pandas (verified 3.0.6).
+#
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+#
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.5
+torchvision
+litert-torch>=0.9.4
+ai-edge-litert>=2.2.0
+ai-edge-quantizer>=0.9.0
+opencv-python
+scipy
+pandas

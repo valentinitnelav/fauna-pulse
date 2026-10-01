@@ -1,0 +1,105 @@
+model_class,model_level2,model_level1,kingdom,phylum,class,order,family,genus,species,note
+Acrididae,Acrididae,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,Acrididae,,,
+Aglais io,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Aglais,io,
+Aglais urticae,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Aglais,urticae,
+Aglais urticae_fw,Nymphalidae_fw,Lepidoptera_fw,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Aglais,urticae,separate insectDCT class (suffix _fw)
+Anthidium oblongatum,Megachilidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Megachilidae,Anthidium,oblongatum,
+Anthophora,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Anthophora,,
+Aphantopus hyperantus,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Aphantopus,hyperantus,
+Apidae,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,,,
+Apis mellifera,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Apis,mellifera,
+Apoidea,Apoidea,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,bees (superfamily Apoidea; no rank for it here)
+Apoidea red_abdomen,Apoidea,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,bees with a red abdomen
+Apoidea reddish,Apoidea,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,reddish bees
+Apoidea small,Apoidea,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,small bees
+Apoidea striped,Apoidea,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,striped bees
+Aranaea,Aranaea,Aranaea,Animalia,Arthropoda,Arachnida,Araneae,,,,
+Argynnis pandora,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Argynnis,pandora,species not in the TreeOfLife names; kingdom to genus from its genus
+Argynnis paphia,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Argynnis,paphia,
+Birds,Birds,Birds,Animalia,Chordata,Aves,,,,,
+Boloria,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Boloria,,
+Bombus,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,,
+Bombus hypnorum,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,hypnorum,
+Bombus lapidarius,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,lapidarius,
+Bombus pascuorum,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,pascuorum,
+Bombus sylvarum,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,sylvarum,
+Bombus terrestris,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Bombus,terrestris,
+Bombyliidae,Bombyliidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Bombyliidae,,,
+Brenthis,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Brenthis,,
+Chorthippus,Acrididae,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,Acrididae,Chorthippus,,
+Chrysididae,Chrysididae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Chrysididae,,,
+Chrysotoxum,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Chrysotoxum,,
+Coccinella septempunctata,Coccinellidae,Coleoptera,Animalia,Arthropoda,Insecta,Coleoptera,Coccinellidae,Coccinella,septempunctata,
+Coenonympha arcania,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Coenonympha,arcania,
+Coenonympha pamphilus,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Coenonympha,pamphilus,
+Coleoptera,Coleoptera,Coleoptera,Animalia,Arthropoda,Insecta,Coleoptera,,,,
+Colias,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Pieridae,Colias,,
+Crabronidae,Crabronidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Crabronidae,,,
+Decticus verrucivorus,Tettigoniidae,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,Tettigoniidae,Decticus,verrucivorus,
+Dermaptera,Dermaptera,Dermaptera,Animalia,Arthropoda,Insecta,Dermaptera,,,,
+Diptera,Diptera,Diptera,Animalia,Arthropoda,Insecta,Diptera,,,,
+Episyrphus balteatus,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Episyrphus,balteatus,
+Erebia,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Erebia,,
+Eristalis,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Eristalis,,
+Eupeodes,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Eupeodes,,
+Euphydryas aurinia,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Euphydryas,aurinia,
+Eurimyia,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Eurimyia,,
+Formidicidae,Formidicidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Formicidae,,,
+Fritillaries,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,,,fritillaries (several genera)
+Gonepteryx rhamni,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Pieridae,Gonepteryx,rhamni,
+Helophilus,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Helophilus,,
+Hemiptera,Hemiptera,Hemiptera,Animalia,Arthropoda,Insecta,Hemiptera,,,,
+Herpetofauna,Herpetofauna,Herpetofauna,Animalia,Chordata,,,,,,reptiles and amphibians
+Hesperidae,Hesperidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Hesperiidae,,,
+Hymenoptera_bees,Hymenoptera_bees,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,,,,bees
+Ichneumonidae,Ichneumonidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Ichneumonidae,,,
+Iphiclides podalirius,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Papilionidae,Iphiclides,podalirius,
+Isopoda,Isopoda,Isopoda,Animalia,Arthropoda,Malacostraca,Isopoda,,,,
+Issoria lathonia,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Issoria,lathonia,
+Larvae,Larvae,Larvae,Animalia,Arthropoda,Insecta,,,,,larvae
+Lasiommata megera,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Lasiommata,megera,species not in the TreeOfLife names; kingdom to genus from its genus
+Lepidoptera,Lepidoptera,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,,,,
+Lepidoptera_fw,Lepidoptera_fw,Lepidoptera_fw,Animalia,Arthropoda,Insecta,Lepidoptera,,,,separate insectDCT class (suffix _fw)
+Lycaena phlaeas,Lycaenidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Lycaenidae,Lycaena,phlaeas,
+Lycaenidae,Lycaenidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Lycaenidae,,,
+Maniola jurtina,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Maniola,jurtina,
+Maniola jurtina_fw,Nymphalidae_fw,Lepidoptera_fw,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Maniola,jurtina,separate insectDCT class (suffix _fw)
+Megachilidae,Megachilidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Megachilidae,,,
+Melanargia,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Melanargia,,
+Melanargia galathea,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Melanargia,galathea,
+Meliscaeva cinctella,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Meliscaeva,cinctella,
+Melitaea,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Melitaea,,
+Milipedes,Milipedes,Milipedes,Animalia,Arthropoda,Diplopoda,,,,,
+Moths,Moths,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,,,,moths
+Myathropa florea,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Myathropa,florea,
+Nomada,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Nomada,,
+Nymphalidae,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,,,
+Odonata,Odonata,Odonata,Animalia,Arthropoda,Insecta,Odonata,,,,
+Odynerus spinipes,Vespidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Vespidae,Odynerus,spinipes,
+Oedemeridae,Oedemeridae,Coleoptera,Animalia,Arthropoda,Insecta,Coleoptera,Oedemeridae,,,
+Omocestus viridulus,Acrididae,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,Acrididae,Omocestus,viridulus,
+Orthoptera,Orthoptera,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,,,,
+Parnassius mnemosyne,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Papilionidae,Parnassius,mnemosyne,
+Pholidoptera griseoaptera,Tettigoniidae,Orthoptera,Animalia,Arthropoda,Insecta,Orthoptera,Tettigoniidae,Pholidoptera,griseoaptera,
+Pieridae,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Pieridae,,,
+Pieris brassicae,Pieridae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Pieridae,Pieris,brassicae,
+Platycheirus,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Platycheirus,,
+Pompilidae,Pompilidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Pompilidae,,,
+Rhagonycha fulva,Cantharidae,Coleoptera,Animalia,Arthropoda,Insecta,Coleoptera,Cantharidae,Rhagonycha,fulva,
+Sarcophagidae,Sarcophagidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Sarcophagidae,,,
+Satyrinae_fw,Nymphalidae_fw,Lepidoptera_fw,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,,,subfamily Satyrinae (no rank for it here); separate insectDCT class (suffix _fw)
+Scaeva,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Scaeva,,
+Scaeva pyrastri,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Scaeva,pyrastri,
+Slugs,Slugs,Slugs,Animalia,Mollusca,Gastropoda,,,,,slugs
+Snails,Snails,Snails,Animalia,Mollusca,Gastropoda,,,,,snails
+Sphaerophoria scripta-complex,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Sphaerophoria,,Sphaerophoria scripta complex
+Syritta pipiens,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Syritta,pipiens,
+Syrphidae,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,,,
+Syrphus,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Syrphus,,
+Vanessa atalanta,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Vanessa,atalanta,
+Vanessa cardui,Nymphalidae,Lepidoptera,Animalia,Arthropoda,Insecta,Lepidoptera,Nymphalidae,Vanessa,cardui,
+Vegetation,Vegetation,Vegetation,none,,,,,,,not an organism (FaunaPulse: 'no organism')
+Vespidae,Vespidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Vespidae,,,
+Vespula vulgaris,Vespidae,Hymenoptera_nobees,Animalia,Arthropoda,Insecta,Hymenoptera,Vespidae,Vespula,vulgaris,
+Xanthogramma,Syrphidae,Diptera,Animalia,Arthropoda,Insecta,Diptera,Syrphidae,Xanthogramma,,
+Xylocopa,Apidae,Hymenoptera_bees,Animalia,Arthropoda,Insecta,Hymenoptera,Apidae,Xylocopa,,

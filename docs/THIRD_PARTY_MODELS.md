@@ -66,3 +66,10 @@ COST Action CA22129 contributors, 2026, https://github.com/InsectAI-COST-Action/
 
 Both were trained with Ultralytics (AGPL-3.0). Converted files are unofficial conversions, not
 provided or endorsed by the authors.
+
+**insectDCT hierarchical classifier V7** (`insectdct-cls-v7`; ConvNeXt-Base, EfficientNetV2-S
+and ResNet50 versions; 104 classes on three levels): same authors, paper and licence (GPL-3.0)
+as insectDCT above; weights as packaged by the InsectAI Model Zoo. Round 265 converted it
+for the phone as a feasibility test (`tool/classifier_export/`); the app cannot use it yet,
+and no converted file is bundled. Its class-to-taxonomy table uses the TreeOfLife names that
+come with BioCLIP 2.5 (Imageomics).

@@ -325,6 +325,18 @@ was sure) and the top species on 4 of 34; not recommended. Whether BioCLIP 2.5 i
 this project's pollinators better than BioCLIP 2 has not been tested yet (the one test
 session here is a YouTube clip, fit for timing only).
 
+**Fixed-class classifiers such as insectDCT (round 265, not usable in the app yet).**
+insectDCT's hierarchical classifier V7 (Bjerge et al. 2026, from the InsectAI Model Zoo)
+knows 104 classes on three levels (e.g. `Hymenoptera_bees` > Apidae > *Bombus pascuorum*)
+instead of comparing a crop with a label pack's names. `tool/classifier_export/` converts it
+and checks it against insectDCT's own code (34 of 34 identical answers). On the Xiaomi test
+phone its EfficientNetV2-S and ResNet50 versions take 0.02 s per crop on the GPU (0.13 and
+0.17 s on the CPU); the ConvNeXt-Base version (the zoo's choice) runs on the CPU only, 0.7 s
+per crop (its GPU results are wrong on this phone; the GPU check catches that). The plan for
+the app keeps everything described above: a "class list" file in place of the label pack
+links each class to kingdom ... species, and the same per-track ID combination, ladder,
+threshold and tables apply (`tool/classifier_export/README.md`, section 5).
+
 **What the times on the screen measure (round 250).** *Test speed* and the progress line
 ("the model takes 0.27 s per crop") time the model alone: a stopwatch around each call,
 which returns only once the GPU or CPU has finished that crop. A run does more: it loads
