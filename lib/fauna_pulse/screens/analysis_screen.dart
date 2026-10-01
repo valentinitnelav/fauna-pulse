@@ -683,6 +683,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Widget _modelPicker() {
+    // Round 268: no model ships with the app.
+    if (_models.isEmpty) {
+      return NoModelNotice(identification: false, onGet: _running ? null : _manageModels);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

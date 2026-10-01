@@ -37,7 +37,7 @@ come back as soon as a mode that uses them is selected.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Model** | `yolo26n` | Which AI model detects insects. Only the bundled "nano" model ships with the app; other `.tflite` models must be added to the phone first (see [INSTALL.md](INSTALL.md)). Change to use a custom-trained model. |
+| **Model** | the first detection model on the phone | Which AI model detects the animals. No model comes inside the app (round 268): download one on the AI models screen (home screen ⋮ menu, or Manage models… here), or import your own (see [INSTALL.md](INSTALL.md)). Until a detection model is on the phone, the capture trigger "AI detector" is greyed out and the camera offers the download instead of recording; motion-triggered and time-lapse capture need no model. |
 | **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
 | **IoU threshold** | `0.7` | *(AI tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
 | **CPU threads** | `0` (auto) | *(AI tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2 since round 226 (LiteRT's own default is 1; on both test phones 2 was ~1.9× faster than 1, and 4 at most ~15% faster than 2 for twice the busy cores). Run the engine benchmark in the same fold before changing it. |

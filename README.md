@@ -123,7 +123,7 @@ NOTE:
   - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
   - 1.3. For advanced users: build from source - see "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** Some general detectors can be bundled with the app, so the AI-mode can run immediately after install. A purpose-trained model can be added with **Download…** (a link) or **Import…** (a file) on the **AI models** screen (home screen ⋮ menu). Motion-triggered and time-lapse capture need no AI model at all. See [Models](#models).
+3. **Choose a detection model.** No model comes inside the app: download one on the **AI models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import…** (a file) or a link. Motion-triggered and time-lapse capture need no AI model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -183,7 +183,7 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ### Detectors
 
-At the moment, the app comes together with one general-purpose detector for popular wildlife - [MegaDetector v6][mgdetv6] with 3 classes: *animal, person, vehicle*.
+No detector comes inside the app. The **AI models** screen (home screen ⋮ menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
 
 See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 

@@ -20,10 +20,14 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
 | `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
-Both are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
+The simplest way (round 268): home screen ⋮ → **AI models** → *Available to download*; a name
+list brings its model along when the model is not on the phone yet (BioCLIP 2 and 2.5 with
+two name lists each, the insectDCT classifier with its class list; the list is
+`assets/model_downloads.json`, see `tool/model_downloads/README.md`).
+Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
-In the app: home screen ⋮ → **AI models** → *Import model…* / *Import name list…* (also reached
-with *Manage models…* on the Identify screen).
+In the app: home screen ⋮ → **AI models** → *Import identification model…* / *Import name list…*
+(also reached with *Manage models…* on the Identify screen).
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 

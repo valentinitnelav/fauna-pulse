@@ -75,3 +75,12 @@ with `tool/classifier_export/` (round 265); the Identify screen runs it since ro
 and its class list. The class list's taxonomy uses the TreeOfLife names that come with
 BioCLIP 2.5 (Imageomics). The choice between its three networks follows the authors'
 published per-class test results (insectDCT repository, `metrics/`, version 6).
+
+## Downloads offered in the app (round 268)
+
+No model ships inside FaunaPulse. The AI models screen offers the converted files listed in
+`assets/model_downloads.json` (MegaDetector V6, flat-bug n, insectDCT v8-s, the insectDCT
+classifier, BioCLIP 2 and 2.5 with their name lists), hosted as release assets of the
+FaunaPulse repository. Each entry names its licence and source; the conversions are unofficial,
+as described above. `tool/model_downloads/README.md` explains how the list is kept current.
+

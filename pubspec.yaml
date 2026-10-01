@@ -65,6 +65,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    # Round 268: the models users can download (AI models screen).
+    - assets/model_downloads.json
     - assets/models/
     # Custom insect/flower detectors placed by the user. Flutter asset folder
     # entries are NOT recursive, so this subfolder must be listed on its own.

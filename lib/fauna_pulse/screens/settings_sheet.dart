@@ -160,6 +160,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
     if (mounted) await _reloadModels();
   }
 
+  /// False once the scan found no detection model on the phone (round 268);
+  /// true while scanning, so nothing flickers.
+  bool get _hasDetector => _modelsLoading || _models.isNotEmpty;
+
   /// The currently-selected model entry (for showing its input resolution), or
   /// null if the selection isn't in the scanned list yet.
   ModelEntry? get _selectedModel {
@@ -317,22 +321,30 @@ class _SettingsSheetState extends State<SettingsSheet> {
         value: _c.captureTrigger,
         isExpanded: true,
         dropdownColor: Colors.black87,
-        items: const [
+        items: [
+          // Round 268: no model ships with the app, so AI mode is offered
+          // only once a detection model is on the phone.
           DropdownMenuItem(
             value: CaptureTrigger.detector,
+            enabled: _hasDetector,
             child: Text(
-              'AI detector - detect & track in real time',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+              _hasDetector
+                  ? 'AI detector - detect & track in real time'
+                  : 'AI detector (needs a detection model)',
+              style: TextStyle(
+                color: _hasDetector ? Colors.white : Colors.white38,
+                fontSize: 13,
+              ),
             ),
           ),
-          DropdownMenuItem(
+          const DropdownMenuItem(
             value: CaptureTrigger.motion,
             child: Text(
               'Motion-triggered photos',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
           ),
-          DropdownMenuItem(
+          const DropdownMenuItem(
             value: CaptureTrigger.timelapse,
             child: Text(
               'Time-lapse photo or video bursts',
@@ -352,8 +364,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
       ),
       if (_c.timeLapseCapture) ..._timeLapseSaveAsFields(),
+      if (_c.detectorEnabled && !_hasDetector)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: NoModelNotice(identification: false, onGet: _manageModels),
+        ),
       // Round 240 (video plan): always visible in AI mode, not behind an ⓘ.
-      if (_c.detectorEnabled)
+      if (_c.detectorEnabled && _hasDetector)
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
@@ -905,15 +922,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ),
-      // Covers an imported model whose file was deleted from the phone, or a
-      // local test model that is deliberately absent from a release build.
-      if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
+      // Round 268: no detection model on the phone at all, or the chosen one
+      // was deleted (models inside the app are no longer listed).
+      if (!_hasDetector)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: NoModelNotice(identification: false, onGet: _manageModels),
+        )
+      else if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
-            '⚠ This model isn\'t available in this build — the bundled MDV6 '
-            'INT8 model runs '
-            'instead. Use Manage models… above to add it.',
+            '⚠ The chosen model is not on this phone any more. Choose one above.',
             style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),
         ),

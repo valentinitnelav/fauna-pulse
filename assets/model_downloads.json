@@ -1,0 +1,134 @@
+{
+  "format": 1,
+  "base_url": "https://github.com/valentinitnelav/fauna-pulse/releases/download/v0.8.0-alpha.1/",
+  "detectors": [
+    {
+      "id": "megadetector-v6",
+      "icon": "animals",
+      "title": "MegaDetector V6",
+      "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles.",
+      "licence": "AGPL-3.0",
+      "source": "https://github.com/microsoft/MegaDetector",
+      "file": {
+        "name": "MDV6-yolov10-c_int8_256.tflite",
+        "bytes": 2548785,
+        "sha256": "32ca01921bb6acee00d8e78f6b3a0194760bd8d8b27b17bf4aefe12e3075c9e6"
+      }
+    },
+    {
+      "id": "flatbug-n",
+      "icon": "insects",
+      "title": "flat-bug (small)",
+      "purpose": "Insects and other arthropods: finds any land arthropod on any background.",
+      "licence": "MIT",
+      "source": "https://github.com/darsa-group/flat-bug",
+      "file": {
+        "name": "flatbug-n_640_fp16.tflite",
+        "bytes": 5659266,
+        "sha256": "c111a732ff298a24d42a2a01d11de0f13e1eaa796a87c96a38ef59de6202f9db"
+      }
+    },
+    {
+      "id": "insectdct-v8-s",
+      "icon": "flowers",
+      "title": "insectDCT detector",
+      "purpose": "Insects on flowers: finds insects in camera-trap pictures of flowers and vegetation.",
+      "licence": "GPL-3.0",
+      "source": "https://github.com/kimbjerge/insectDCT",
+      "file": {
+        "name": "insectdct-v8-s_640_fp16.tflite",
+        "bytes": 19206825,
+        "sha256": "0fa7eb39974502689054f2da0fe58b8b12aabeecf0bfffd682e0dec3f3507195"
+      }
+    }
+  ],
+  "identification": [
+    {
+      "id": "insectdct-cls-v7",
+      "icon": "flowers",
+      "title": "insectDCT classifier",
+      "purpose": "Flower visitors: names insects in 104 fixed classes, from order down to species where it can.",
+      "licence": "GPL-3.0",
+      "source": "https://github.com/kimbjerge/insectDCT",
+      "file": {
+        "name": "insectdct-cls-v7_eff2s_fp16.tflite",
+        "bytes": 43853456,
+        "sha256": "f19c56fab0a4c87dc526775c1eacdc89f6267b14a6abd803ee813def34085b81"
+      },
+      "lists": [
+        {
+          "title": "Its 104 classes",
+          "file": {
+            "name": "insectdct-cls-v7_eff2s_fp16.fpack",
+            "bytes": 13737,
+            "sha256": "5027667650542dd3a5c6fcbfc7c1c185acfad5c13071434708215a96a661f68b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bioclip-2",
+      "icon": "any",
+      "title": "BioCLIP 2",
+      "purpose": "Any organism: names what it sees, choosing from a name list.",
+      "note": "Fast on phones whose graphics chip can run it.",
+      "licence": "MIT",
+      "source": "https://huggingface.co/imageomics/bioclip-2",
+      "file": {
+        "name": "bioclip-2_image_fp16_4d.tflite",
+        "bytes": 609466720,
+        "sha256": "d9a2196439cb8b41118b727b865d27e915962e1f233be2b7b0d47f154cf9495b"
+      },
+      "lists": [
+        {
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (35,260 names)",
+          "file": {
+            "name": "bioclip2_pollinator_orders_europe_v1.fpack",
+            "bytes": 57479207,
+            "sha256": "94597c90db80f8c53cba48a1adc5388e874f56edeccd1e73e9e7d2a759169f4b"
+          }
+        },
+        {
+          "title": "32 families of common flower visitors, worldwide (38,570 names)",
+          "file": {
+            "name": "bioclip2_flower_visitors_32fam_v1.fpack",
+            "bytes": 62754369,
+            "sha256": "49ce700de25266f8c9a3a55fa5086205c420ab076000552868d113516df41c16"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bioclip-2.5",
+      "icon": "any",
+      "title": "BioCLIP 2.5",
+      "purpose": "Any organism: newer and larger than BioCLIP 2, names what it sees from a name list.",
+      "note": "Slow: on most phones it runs on the main processor only, seconds per picture.",
+      "licence": "MIT",
+      "source": "https://huggingface.co/imageomics/bioclip-2.5-vith14",
+      "file": {
+        "name": "bioclip-25_image_fp16.tflite",
+        "bytes": 1266232624,
+        "sha256": "8afd4d6b8123ceced4e9ea3d43ed01222c8ff572fa2794f71bcd6472dff809bd"
+      },
+      "lists": [
+        {
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,704 names)",
+          "file": {
+            "name": "bioclip25_pollinator_orders_europe_v1.fpack",
+            "bytes": 74339217,
+            "sha256": "4bbb26b317a4cfb849d61a48f19d3da55e836f413cc90b5f1bd8b6c5e55e1c49"
+          }
+        },
+        {
+          "title": "32 families of common flower visitors, worldwide (37,461 names)",
+          "file": {
+            "name": "bioclip25_flower_visitors_32fam_v1.fpack",
+            "bytes": 80131038,
+            "sha256": "6d6cc9d0158df2d5f1d9a218ae693374f3055aabcc8d2ba222e2a71d8a356c0d"
+          }
+        }
+      ]
+    }
+  ]
+}

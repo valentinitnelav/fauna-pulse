@@ -138,10 +138,10 @@ manually re-download the `.apk` every time a new version comes out.
 
 ### A3. Add detection models
 
-The app ships with one **general-purpose** model, so it runs immediately, but that
-model does not recognise insects. For insect work you need a purpose-trained model
-(see [S1. Getting the models](#s1-getting-the-models)). Once you have one or more `.tflite`
-model files to test, add them in either way:
+The app lists no model until one is downloaded or imported (round 268): the **AI models**
+screen (home screen ⋮ menu) offers MegaDetector V6 (common animals) and flat-bug and insectDCT
+(insects) for download. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
+once you have one or more `.tflite` model files to test, add them in either way:
 
 - **In-app (easiest):** open **FaunaPulse → ⋮ (home screen) → AI models → Import…**,
   then pick the `.tflite` file(s) from **Downloads** or another folder. You can
@@ -422,7 +422,8 @@ flutter build apk --release
 ```
 
 Only existing `*.tflite` model weights listed in `fauna-pulse/assets/models/bundled_models.txt` 
-are included in the release app's model picker. 
+are packed into the release APK. Since round 268 the model picker lists only downloaded or
+imported models, so a packed model is no longer offered to users. 
 Other local test weights remain untouched but are left out of the APK file.
 If a listed weight cannot be found, the terminal prints its path with an warning and
 this warning does not stop the build. Before sharing an

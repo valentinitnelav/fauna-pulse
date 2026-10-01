@@ -48,6 +48,7 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/roi_size_sheet.dart';
 import '../widgets/session_info_dialog.dart';
 import '../widgets/track_box_painter.dart';
+import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'settings_sheet.dart';
 import 'session_summary_screen.dart';
@@ -230,6 +231,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // One model-error dialog at a time; repeated failures while it shows are
   // only logged (each failure has already reverted the config anyway).
   bool _modelErrorDialogOpen = false;
+
+  /// Detection models on the phone (round 268), null until scanned. Models
+  /// inside the app are not listed, so AI mode needs one downloaded or
+  /// imported first; motion and time-lapse capture do not.
+  List<ModelEntry>? _detectors;
+  late final Future<void> _detectorScan;
 
   // The model's square input resolution in pixels (e.g. 640 → "640×640 px"),
   // read once from the model metadata via ModelCatalog.inputSizeOf. Tri-state so
@@ -602,9 +609,74 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Show the one-time setup reminder (fix the flower, centre the ROI, lock
     // focus before recording) once the first frame is laid out, unless the user
     // has previously ticked "Don't show again".
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _maybeShowSessionInfo(),
+    _detectorScan = _checkDetectors();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _maybeShowSessionInfo();
+      await _detectorScan;
+      if (mounted && _config.detectorEnabled && _noDetector) {
+        await _showNoDetectorDialog();
+      }
+    });
+  }
+
+  bool get _noDetector => _detectors?.isEmpty ?? false;
+
+  /// Reads which detection models are on the phone (round 268). When the
+  /// config points at a model that is not listed (deleted, or one inside the
+  /// app) and another one is, that one is chosen, saved and named.
+  Future<void> _checkDetectors() async {
+    final listed = await ModelCatalog.build();
+    if (!mounted) return;
+    _detectors = listed;
+    if (listed.isEmpty || _recording || listed.any((m) => m.id == _config.modelPath)) {
+      setState(() {});
+      return;
+    }
+    final first = listed.first;
+    final updated = _config.copyWith(
+      modelPath: first.id,
+      task: YOLOTaskParsing.tryParse(first.task) ?? _config.task,
     );
+    setState(() {
+      _config = updated;
+      _modelInputSize = null;
+      _modelInputProbed = false;
+    });
+    updated.save().catchError((Object e) => logSwallowed('detector_check_save', e));
+    _refreshModelInputSize();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Detection model: ${first.name} (the one chosen before is not on this phone).')),
+    );
+  }
+
+  /// AI mode without a detection model (round 268): offers the AI models
+  /// screen; the camera pauses meanwhile, like under the settings sheet.
+  Future<void> _showNoDetectorDialog() async {
+    final get = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('No detection model'),
+        content: const Text(
+          'AI mode needs a detection model, and none is on this phone yet. Download one that '
+          'finds the animals you watch, or choose motion-triggered or time-lapse capture in '
+          'Settings: they need no model.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Not now')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Get a detection model')),
+        ],
+      ),
+    );
+    if (get != true || !mounted) return;
+    await _controller.pause();
+    _paused = true;
+    if (!mounted) return;
+    await openModelsScreen(context);
+    if (mounted && _paused) {
+      _paused = false;
+      await _controller.resume();
+    }
+    await _checkDetectors();
   }
 
   /// Shows the setup reminder dialog unless the user has dismissed it for good.
@@ -1322,6 +1394,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ),
         );
       }
+      return;
+    }
+    // Round 268: AI mode cannot record without a detection model.
+    if (!_recording && _config.detectorEnabled && _noDetector) {
+      await _showNoDetectorDialog();
       return;
     }
     // Round 126: remember the location this recording uses (fire-and-forget)
@@ -2577,7 +2654,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _paused = false;
       await _controller.resume();
     }
-    if (updated == null) return;
+    // Models may have been added or deleted from the sheet (Manage models…).
+    if (updated == null) {
+      await _checkDetectors();
+      return;
+    }
     await updated.save();
     final modelChanged = updated.modelPath != _config.modelPath;
     setState(() {
@@ -2600,6 +2681,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
     });
     if (modelChanged) _refreshModelInputSize();
+    unawaited(_checkDetectors());
     // Apply a sampling-interval change immediately.
     _rebuildSamplingTimers();
     await _controller.setThresholds(

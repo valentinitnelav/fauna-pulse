@@ -975,6 +975,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   Widget _modelPicker() {
+    // Round 268: no model ships with the app.
+    if (_models.isEmpty) {
+      return NoModelNotice(identification: false, onGet: _busy ? null : _manageModels);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

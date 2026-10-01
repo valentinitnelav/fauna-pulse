@@ -195,6 +195,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('without a detection model the video screen offers one (round 268)', (tester) async {
+    final tmp = _tempDir('video_no_model');
+    await tester.pumpWidget(_host(VideoAnalysisScreen(sessionsDir: tmp, models: const []), (_) {}));
+    await _open(tester);
+    await _pumpUntil(tester, find.text('Get a detection model…'));
+    expect(find.textContaining('No detection model on this phone yet.'), findsOneWidget);
+    expect(find.text('Detection model'), findsNothing);
+  });
+
   testWidgets('import screen fits 360 px, leaves out unusable files and imports the rest', (tester) async {
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_import_screen');

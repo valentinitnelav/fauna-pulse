@@ -690,6 +690,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   List<Widget> _filesSection(IdentifyPrefs prefs) {
     String label(File f) =>
         '${f.path.split('/').last} (${formatBytes(f.lengthSync())})';
+    // Round 268: no model ships with the app.
+    if (_models.isEmpty) {
+      return [
+        const Text('Model and label pack', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        const SizedBox(height: 8),
+        NoModelNotice(identification: true, onGet: _testingSpeed ? null : _manageModels),
+      ];
+    }
     return [
       const HelpLabel(
         label: 'Model and label pack',
@@ -740,6 +748,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                       '${_packHeader!['rows']} names, ${_packHeader!['sink_rows']} "none" entries, '
                       'scale ${(_packHeader!['logit_scale'] as num?)?.toStringAsFixed(1)}',
             style: helperTextStyle,
+          ),
+        ),
+      if (_packs.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'No name list on this phone yet: download one with Manage models… below.',
+            style: TextStyle(color: Colors.amber, fontSize: 13),
           ),
         ),
       const SizedBox(height: 4),

@@ -1,12 +1,11 @@
 // FaunaPulse — the catalog of detection models the user can choose from.
 //
-// Three kinds of model can appear in the picker:
-//   * official  — the local YOLO26 test model (debug builds only).
-//   * bundled   — custom model files shipped inside the app (assets/models/custom/).
-//   * imported  — custom model files the user dropped onto the phone and imported
-//                 at runtime (e.g. from the Downloads folder) via the file picker.
-//                 These live in the app's private internal models folder; use the
-//                 in-app Import or Download controls to add them.
+// Since round 268 only imported models appear in the picker: files the user
+// downloaded (AI models screen catalogue or a link) or imported with the file
+// picker, kept in the app's private internal models folder. The "official"
+// (YOLO26 test model) and "bundled" (assets inside the app) sources remain as
+// values because sessions and device checks still name asset paths, but the
+// picker no longer lists them (owner decision: no model ships with the app).
 //
 // Accepted file formats (round 150, see docs/MODEL_CONVERSION.md): `.tflite`
 // (any precision — the normal case) and `*_qnn.onnx` (an Ultralytics Snapdragon
@@ -27,14 +26,13 @@
 
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
 import 'bundled_models.dart';
+import 'file_download.dart';
 
 import 'model_file_security.dart';
 export 'model_file_security.dart';
@@ -116,29 +114,6 @@ class ModelCatalog {
 
   static final _channel = ChannelConfig.createSingleImageChannel();
 
-  /// Lists bundled model assets by reading Flutter's AssetManifest. Debug builds
-  /// expose all local weights (with YOLO26 kept as its special official entry).
-  /// Release builds read the same text allowlist used by the Android asset copy.
-  static Future<List<String>> _bundledAssets() async {
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    var releaseBundledModelPaths = const <String>{};
-    if (kReleaseMode) {
-      try {
-        releaseBundledModelPaths = parseBundledModelsManifest(
-          await rootBundle.loadString(kBundledModelsManifestPath),
-        );
-      } catch (e) {
-        // A malformed/missing manifest yields no bundled picker entries. The
-        // release build already prints a warning explaining how to fix it.
-        logSwallowed('bundled_models_manifest', e);
-      }
-    }
-    return visibleBundledModelAssets(
-      manifest.listAssets(),
-      releaseBundledModelPaths: releaseBundledModelPaths,
-    );
-  }
-
   static bool _legacyModelMigrationAttempted = false;
 
   /// Private app-internal model storage (created if missing). Keeping parser
@@ -186,28 +161,15 @@ class ModelCatalog {
     }
   }
 
-  /// Builds the full list: bundled custom models, then imported ones (scanned
-  /// from disk now), then the official sizes. Metadata (precision / input size /
-  /// task) is read for the custom models; official ids are left un-inspected so
-  /// we never trigger a model download just to populate the menu.
+  /// Builds the list the user chooses from: the imported (downloaded or
+  /// imported) model files, scanned from disk now, with their metadata
+  /// (precision / input size / task / class names). Round 268: models inside
+  /// the app (bundled assets, the debug-only YOLO26 entry) are no longer
+  /// listed, in debug builds too, so every phone behaves like a user's: a
+  /// detector has to be downloaded or imported first (owner decision: no
+  /// model ships with the app). Device checks still load asset paths directly.
   static Future<List<ModelEntry>> build() async {
     final entries = <ModelEntry>[];
-
-    for (final asset in await _bundledAssets()) {
-      final name = asset.split('/').last;
-      final meta = await _inspect(asset);
-      entries.add(
-        ModelEntry(
-          id: asset,
-          name: name,
-          source: ModelSource.bundled,
-          precision: _precisionFromName(name),
-          inputSize: _imgszFrom(meta),
-          task: meta['task'] as String?,
-          labels: _labelsFrom(meta),
-        ),
-      );
-    }
 
     final dir = await modelsDir();
     final files =
@@ -231,26 +193,6 @@ class ModelCatalog {
           labels: _labelsFrom(meta),
         ),
       );
-    }
-
-    // The general-purpose YOLO26 model is retained only for the project
-    // owner's local tests. Do not inspect it or offer it to release users.
-    if (!kReleaseMode) {
-      for (final entry in officialModels.entries) {
-        final id = entry.key;
-        final meta = await _inspect(kLocalYolo26ModelPath);
-        entries.add(
-          ModelEntry(
-            id: id,
-            name: entry.value,
-            source: ModelSource.official,
-            precision: 'int8',
-            inputSize: _imgszFrom(meta),
-            task: meta['task'] as String?,
-            labels: _labelsFrom(meta),
-          ),
-        );
-      }
     }
 
     return entries;
@@ -338,88 +280,18 @@ class ModelCatalog {
         'Use an HTTPS link to a safely named .tflite or *_qnn.onnx file.',
       );
     }
-    final parsedUrl = Uri.parse(url.trim());
-    final maxBytes = maxModelBytesForName(name);
-    if (expectedSha256 != null && !isValidSha256(expectedSha256)) {
-      throw Exception('The expected SHA-256 value must contain 64 hex digits.');
-    }
     final dir = await modelsDir();
-    final targetFile = safeModelTarget(dir, name);
-    final partFile = File('${targetFile.path}.part');
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 20);
-    try {
-      // GitHub asset links redirect to the real file host; HttpClient follows
-      // redirects on GET by default.
-      final request = await client.getUrl(parsedUrl);
-      final response = await request.close();
-      if (!redirectChainStaysHttps(parsedUrl, response.redirects)) {
-        throw Exception(
-          'The model link redirected to an insecure non-HTTPS address.',
-        );
-      }
-      if (response.statusCode != HttpStatus.ok) {
-        throw Exception('Download failed (HTTP ${response.statusCode}).');
-      }
-      final total = response.contentLength > 0 ? response.contentLength : null;
-      if (total != null && total > maxBytes) {
-        throw Exception(modelSizeLimitMessage(name));
-      }
-      if (total != null) {
-        await ensureModelStorageAvailable(dir.path, total);
-      }
-      var received = 0;
-      final sink = partFile.openWrite();
-      try {
-        // The timeout is BETWEEN chunks: a dead connection errors out (and a
-        // stalled stream would otherwise also never reach the cancel check).
-        final data = response.timeout(
-          const Duration(seconds: 30),
-          onTimeout: (s) =>
-              s.addError(Exception('Connection stalled — try again.')),
-        );
-        await for (final chunk in data) {
-          if (isCancelled?.call() ?? false) {
-            throw Exception('Download cancelled.');
-          }
-          final nextReceived = received + chunk.length;
-          if (nextReceived > maxBytes) {
-            throw Exception(modelSizeLimitMessage(name));
-          }
-          sink.add(chunk);
-          received = nextReceived;
-          onProgress?.call(received, total);
-        }
-        await sink.flush();
-      } finally {
-        await sink.close();
-      }
-      if (received == 0) {
-        throw Exception('The server returned an empty model file.');
-      }
-      await validateModelFile(partFile, name);
-      if (expectedSha256 != null) {
-        final actual = (await sha256.bind(partFile.openRead()).first)
-            .toString();
-        if (actual.toLowerCase() != expectedSha256.toLowerCase()) {
-          throw Exception(
-            'The downloaded model did not match its SHA-256 hash.',
-          );
-        }
-      }
-      if (await targetFile.exists()) await targetFile.delete();
-      final saved = await partFile.rename(targetFile.path);
-      return saved.path;
-    } catch (e) {
-      try {
-        if (await partFile.exists()) await partFile.delete();
-      } catch (e2) {
-        logSwallowed('model_download_cleanup', e2);
-      }
-      rethrow;
-    } finally {
-      client.close();
-    }
+    final saved = await downloadToFile(
+      Uri.parse(url.trim()),
+      safeModelTarget(dir, name),
+      maxBytes: maxModelBytesForName(name),
+      tooLargeMessage: modelSizeLimitMessage(name),
+      validate: (part) => validateModelFile(part, name),
+      expectedSha256: expectedSha256,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    return saved.path;
   }
 
   /// Deletes an imported model file (only imported models can be removed).
