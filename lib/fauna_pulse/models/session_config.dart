@@ -88,17 +88,19 @@ enum CaptureTrigger { detector, motion, timelapse }
 /// videos" afterwards. Wire names are the enum names.
 enum TimeLapseSaveAs { photos, video }
 
-/// Moves missing and obsolete model selections to the current bundled MDV6
-/// default. YOLO26 remains selectable for the project owner's debug builds,
-/// but an upgraded release must not try to download that retired default.
+/// Moves missing and obsolete model selections to "none chosen" (''). Round
+/// 270: no model ships with the app, so there is no built-in default; the
+/// camera takes the first detection model on the phone (or runs without one).
+/// YOLO26 remains selectable for the project owner's debug builds, but an
+/// upgraded release must not try to download that retired default.
 String migrateModelPath(String? stored, {bool releaseMode = kReleaseMode}) {
   const legacyPlaceholderIds = {'yolo26s', 'yolo26m', 'yolo26l', 'yolo26x'};
   if (stored == null || legacyPlaceholderIds.contains(stored)) {
-    return kDefaultBundledModelPath;
+    return '';
   }
   if (releaseMode &&
       (stored == kLocalYolo26ModelId || stored == kLocalYolo26ModelPath)) {
-    return kDefaultBundledModelPath;
+    return '';
   }
   return stored;
 }
@@ -235,8 +237,8 @@ class SessionConfig {
   static const int minimumCameraFpsCap = 5;
   static const int maximumCameraFpsCap = 30;
 
-  /// Model identifier or path (e.g. a bundled "yolo26n" id, or a path to a
-  /// user-placed .tflite file).
+  /// Path of the chosen detection model (a downloaded or imported file), or
+  /// '' when none is chosen yet (round 270: no model ships with the app).
   final String modelPath;
 
   /// Detector task. Insect detection uses bounding boxes ([YOLOTask.detect]).
@@ -636,7 +638,7 @@ class SessionConfig {
   final bool highResSyncCompanion;
 
   const SessionConfig({
-    this.modelPath = kDefaultBundledModelPath,
+    this.modelPath = '',
     this.task = YOLOTask.detect,
     this.confidenceThreshold = 0.25,
     this.iouThreshold = 0.7,

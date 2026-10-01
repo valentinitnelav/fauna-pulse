@@ -132,7 +132,13 @@ class YOLOPlatformView(
                     // onFrame never emits while predictor == null, so the app's calibration cannot finish.
                     // In-place switch failures are excluded (isModelLoaded true): they already surface
                     // through the "setModel" channel result error.
-                    if (!yoloView.isModelLoaded()) {
+                    // Round 270: not after starting without a model (empty path below): a later
+                    // in-place switch reports its failure through the setModel result.
+                    if (!yoloView.isModelLoaded() && modelPath.isNotEmpty()) {
+                        // Round 270: the preview and the no-model heartbeat still start, so motion
+                        // and time-lapse capture work and the app is not left on a black screen.
+                        startStreaming()
+                        yoloView.startWithoutModel()
                         methodChannel?.invokeMethod(
                             "onInitialModelLoadFailed",
                             mapOf(
@@ -152,7 +158,15 @@ class YOLOPlatformView(
             // Load model
             val useGpu = creationParams?.get("useGpu") as? Boolean ?: true
             val cpuThreads = (creationParams?.get("cpuThreads") as? Number)?.toInt() ?: 0
-            yoloView.setModel(modelPath, task, useGpu, cpuThreads)
+            if (modelPath.isEmpty()) {
+                // FaunaPulse (round 270): no detection model on the phone (none ships with the
+                // app). The camera starts without one; a later setModel call loads one in place.
+                initialized = true
+                startStreaming()
+                yoloView.startWithoutModel()
+            } else {
+                yoloView.setModel(modelPath, task, useGpu, cpuThreads)
+            }
             
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing YOLOPlatformView", e)

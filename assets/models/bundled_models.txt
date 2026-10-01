@@ -1,4 +1,5 @@
 # Paste below the model names and their relative path to this repository
 # that will be bundled into the APK file:
 # -----------------------------------------------------------------------------
-/fauna-pulse/assets/models/custom/MDV6-yolov10-c_int8_256.tflite
+# Round 270: empty on purpose. No model ships with the app; users download one
+# on the AI models screen (assets/model_downloads.json) or import their own.

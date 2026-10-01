@@ -238,6 +238,27 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   List<ModelEntry>? _detectors;
   late final Future<void> _detectorScan;
 
+  /// The model the camera loads (round 270): the chosen one when its file is
+  /// on this phone, else '' and the camera runs without a model (motion and
+  /// time-lapse capture need none). A path inside the app or a retired id
+  /// counts as missing: no model ships with the app. Cached per path, as
+  /// build() reads it.
+  String get _cameraModelPath {
+    final path = _config.modelPath;
+    if (path != _cameraModelFor) {
+      _cameraModelFor = path;
+      _cameraModelOnPhone = path.startsWith('/') && File(path).existsSync();
+    }
+    return _cameraModelOnPhone ? path : '';
+  }
+
+  String? _cameraModelFor;
+  bool _cameraModelOnPhone = false;
+
+  /// AI mode cannot run: no detection model on the phone, or the chosen one
+  /// is missing or failed to load.
+  bool get _noModelForAi => _noDetector || (_detectors != null && _cameraModelPath.isEmpty);
+
   // The model's square input resolution in pixels (e.g. 640 → "640×640 px"),
   // read once from the model metadata via ModelCatalog.inputSizeOf. Tri-state so
   // the overlay can distinguish "still reading" from "read, but the metadata
@@ -613,7 +634,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _maybeShowSessionInfo();
       await _detectorScan;
-      if (mounted && _config.detectorEnabled && _noDetector) {
+      if (mounted && _config.detectorEnabled && _noModelForAi) {
         await _showNoDetectorDialog();
       }
     });
@@ -656,10 +677,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('No detection model'),
-        content: const Text(
-          'AI mode needs a detection model, and none is on this phone yet. Download one that '
-          'finds the animals you watch, or choose motion-triggered or time-lapse capture in '
-          'Settings: they need no model.',
+        content: Text(
+          _noDetector
+              ? 'AI mode needs a detection model, and none is on this phone yet. Download one '
+                    'that finds the animals you watch, or choose motion-triggered or time-lapse '
+                    'capture in Settings: they need no model.'
+              : 'AI mode needs a detection model, and the chosen one could not be loaded. '
+                    'Choose another one in Settings (AI tab), or choose motion-triggered or '
+                    'time-lapse capture: they need no model.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Not now')),
@@ -974,17 +999,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Same one-time bootstrap as the detector path below: these maps carry
       // the analysis dims precisely so the ROI push + photo-size probe can
       // run when the app starts straight into motion-only mode.
-      if (!_captureProbeStarted && w > 0 && h > 0) {
-        _captureProbeStarted = true;
-        _pushInferenceRoi();
-        _pushMotionGate();
-        _pushCameraFpsCap();
-        _pushTimeLapse();
-        _probes.begin(
-          analysisDims: () => (_imageWidth, _imageHeight),
-          preferredLensZoom: _config.selectedLensZoom,
-        );
-      }
+      _startUpOnce(w, h);
       return;
     }
 
@@ -1008,17 +1023,32 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           _snapRoiToSourceGrid();
         });
       }
-      if (!_captureProbeStarted && w > 0 && h > 0) {
-        _captureProbeStarted = true;
-        _pushInferenceRoi();
-        _pushMotionGate();
-        _pushCameraFpsCap();
-        _pushTimeLapse();
-        _probes.begin(
-          analysisDims: () => (_imageWidth, _imageHeight),
-          preferredLensZoom: _config.selectedLensZoom,
-        );
+      _startUpOnce(w, h);
+      return;
+    }
+
+    // No detection model loaded (round 270: none on this phone, or it failed
+    // to load) and neither no-AI mode set yet: the native side heartbeats
+    // ~1 Hz with the frame size, so the start-up runs (it switches the native
+    // side into motion-only or time-lapse capture, which need no model) and
+    // the camera readout stays live. Nothing to track and no detector
+    // watchdog: there is no detector.
+    if (data['noModel'] == true) {
+      final w = (data['imageWidth'] as num?)?.toInt() ?? _imageWidth;
+      final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
+      final cameraFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
+      _fpsVN.value = 0;
+      _perfVN.value = const [0, 0, 0];
+      _lastTrackMs = 0;
+      _fpsTrioVN.value = [cameraFps, 0, 0];
+      if (mounted && (w != _imageWidth || h != _imageHeight)) {
+        setState(() {
+          _imageWidth = w;
+          _imageHeight = h;
+          _snapRoiToSourceGrid();
+        });
       }
+      _startUpOnce(w, h);
       return;
     }
 
@@ -1165,17 +1195,25 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Once the camera is delivering frames, probe the full-resolution photo size
     // a single time so the ROI resolution readout reflects the saved photo, and
     // (re)assert the inference ROI now the native pipeline is certainly live.
-    if (!_captureProbeStarted && w > 0 && h > 0) {
-      _captureProbeStarted = true;
-      _pushInferenceRoi();
-      _pushMotionGate();
-      _pushCameraFpsCap();
-      _pushTimeLapse();
-      _probes.begin(
-        analysisDims: () => (_imageWidth, _imageHeight),
-        preferredLensZoom: _config.selectedLensZoom,
-      );
-    }
+    _startUpOnce(w, h);
+  }
+
+  /// The one-time start-up once the camera delivers frames of a known size:
+  /// push the ROI, motion gate, camera frame-rate cap and time-lapse mode to
+  /// the native side and probe the full-resolution photo size. Runs from the
+  /// first map of any kind (detector result, motion-only, time-lapse or
+  /// no-model heartbeat), so the app can start straight into any mode.
+  void _startUpOnce(int w, int h) {
+    if (_captureProbeStarted || w <= 0 || h <= 0) return;
+    _captureProbeStarted = true;
+    _pushInferenceRoi();
+    _pushMotionGate();
+    _pushCameraFpsCap();
+    _pushTimeLapse();
+    _probes.begin(
+      analysisDims: () => (_imageWidth, _imageHeight),
+      preferredLensZoom: _config.selectedLensZoom,
+    );
   }
 
   /// Applies a motion-gate state change reported by the native side: the
@@ -1397,7 +1435,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       return;
     }
     // Round 268: AI mode cannot record without a detection model.
-    if (!_recording && _config.detectorEnabled && _noDetector) {
+    if (!_recording && _config.detectorEnabled && _noModelForAi) {
       await _showNoDetectorDialog();
       return;
     }
@@ -2439,7 +2477,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// value as "probed" either way, so the chip can show a clear "cannot read"
   /// when the metadata doesn't carry it instead of leaving the line blank.
   Future<void> _refreshModelInputSize() async {
-    final size = await ModelCatalog.inputSizeOf(_config.modelPath);
+    final path = _cameraModelPath;
+    final size = path.isEmpty ? null : await ModelCatalog.inputSizeOf(path);
     if (!mounted) return;
     if (size != _modelInputSize || !_modelInputProbed) {
       setState(() {
@@ -2473,15 +2512,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (recovery == null) return; // stale: another model was picked meanwhile
     final updated = _config.copyWith(
       modelPath: recovery.revertToPath,
-      task: recovery.toBundledDefault
-          ? YOLOTask.detect
-          : (_loadedModelTask ?? _config.task),
+      task: _loadedModelTask ?? _config.task,
     );
     setState(() {
       _config = updated;
       // Show "reading…" while the reverted model's input size is re-probed.
       _modelInputSize = null;
       _modelInputProbed = false;
+      if (recovery.revertToPath.isEmpty) {
+        // Nothing runs natively (round 270): forget the failed model, or a
+        // later failure would "revert" to it.
+        _loadedModel = '';
+        _loadedModelPath = '';
+        _loadedModelTask = null;
+      }
     });
     updated.save().catchError(
       (Object e) => logSwallowed('model_error_save', e),
@@ -2499,9 +2543,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _modelErrorDialogOpen = true;
     final failedName = failedPath.split('/').last;
     final hint = modelLoadHint(failedPath, reason);
-    final revertName = recovery.toBundledDefault
-        ? 'the bundled ${recovery.revertToPath.split('/').last}'
-        : recovery.revertToPath.split('/').last;
+    final after = recovery.revertToPath.isEmpty
+        ? 'The camera runs without a detection model now. Choose another one in '
+              'Settings (AI tab).'
+        : 'Switched back to ${recovery.revertToPath.split('/').last}.';
     try {
       await showDialog<void>(
         context: context,
@@ -2511,7 +2556,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             '$failedName could not be loaded.\n\n'
             '$reason\n'
             '${hint.isEmpty ? '' : '\n$hint\n'}'
-            '\nSwitched back to $revertName.',
+            '\n$after',
           ),
           actions: [
             TextButton(
@@ -3281,7 +3326,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // source, rather than cluttering the live preview.)
     // Engine/Model/Input are always shown, with a clear waiting/unknown state
     // instead of a blank line, so the overlay layout doesn't shift as they load.
-    final String engineLabel = _accelerator.isEmpty
+    // Round 270: the camera may run without a model (motion and time-lapse
+    // capture need none), so "none" rather than a "loading…" that never ends.
+    final bool noModel = _cameraModelPath.isEmpty;
+    final String engineLabel = noModel
+        ? 'Engine: none'
+        : _accelerator.isEmpty
         ? 'Engine: detecting…'
         : 'Engine: $_accelerator';
     // The model's input resolution, shown in brackets right after the model name:
@@ -3295,7 +3345,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // A very long model name (e.g. a custom .tflite filename with no spaces) is
     // made wrap-friendly so it flows onto multiple lines in its chip instead of
     // overflowing — see [_wrappable]. The bracketed input size follows the name.
-    final String modelLabel = _loadedModel.isEmpty
+    final String modelLabel = noModel
+        ? 'Model: none'
+        : _loadedModel.isEmpty
         ? 'Model: loading… $inputSuffix'
         : 'Model: ${_wrappable(_loadedModel)} $inputSuffix';
 
@@ -3386,7 +3438,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             key: ValueKey(
               'stream_${_config.streamWidth}x${_config.streamHeight}',
             ),
-            modelPath: _config.modelPath,
+            modelPath: _cameraModelPath,
             task: _config.task,
             controller: _controller,
             useGpu: _config.useGpu,
@@ -4038,7 +4090,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// whether photos can happen right now (round 145 — previously plain AI
   /// mode showed no chip at all). Exactly one mode is active at a time
   /// (CaptureTrigger is a single enum), so the dispatch below is exhaustive:
-  /// - AI detector: "DETECTOR ON"; with the motion gate, "DETECTOR SLEEPING"
+  /// - AI detector: "DETECTOR ON" ("NO DETECTION MODEL" without one, round
+  ///   270); with the motion gate, "DETECTOR SLEEPING"
   ///   while nothing moves in the ROI (expected on a mounted phone over an
   ///   empty flower, NOT a fault — the finer motion % lives on the expanded
   ///   panel's "Gate:" line).
@@ -4102,6 +4155,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Round 240: a live-AI clip is recording (short labels: the chip holds
     // about 20 characters at phone width).
     final video = _liveVideo?.recording ?? false;
+    // Round 270: AI mode with no model loaded runs no detector; say so
+    // instead of "DETECTOR ON" (recording is blocked with a dialog).
+    if (_cameraModelPath.isEmpty) {
+      return _modeChipShell(color: _chipWaitingColor, label: 'NO DETECTION MODEL');
+    }
     if (_config.motionGateEnabled) {
       return _modeChipShell(
         color: _gateIdle ? _chipWaitingColor : _chipActiveColor,

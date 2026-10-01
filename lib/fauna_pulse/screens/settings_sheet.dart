@@ -930,11 +930,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
           child: NoModelNotice(identification: false, onGet: _manageModels),
         )
       else if (!_modelsLoading && !_models.any((m) => m.id == _c.modelPath))
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
           child: Text(
-            '⚠ The chosen model is not on this phone any more. Choose one above.',
-            style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
+            // Round 270: '' = none chosen yet (no built-in default any more).
+            _c.modelPath.isEmpty
+                ? '⚠ No model chosen yet. Choose one above.'
+                : '⚠ The chosen model is not on this phone any more. Choose one above.',
+            style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),
         ),
       if (!_modelsLoading && _duplicateNames.isNotEmpty)

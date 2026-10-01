@@ -65,7 +65,8 @@ Caveats, and why it's not the default recommendation:
 The AI models screen (home screen ⋮ menu) accepts `*_qnn.onnx` through the same Import…
 and Download… buttons as `.tflite`. When a QNN model cannot run on the phone,
 the app shows an error dialog explaining why and automatically switches back to
-a model that works (the previously loaded one, or the bundled MDV6 INT8 default).
+the previously loaded model. When there is none, the camera keeps running without a detection
+model (motion-triggered and time-lapse capture still work) until another one is chosen.
 
 ## Converting: `.pt` → `.tflite` (the recommended route)
 

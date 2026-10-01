@@ -252,6 +252,21 @@ class _YOLOViewState extends State<YOLOView> {
       });
     }
 
+    // FaunaPulse (round 270): an empty path means "no model" (none ships with the app). The
+    // native view then starts the camera without one; there is nothing to resolve and no
+    // onModelLoad. Going back to "no model" from a loaded one keeps the native model.
+    if (modelPath.isEmpty) {
+      if (switchExisting && _platformViewId != null) return;
+      final none = YOLOResolvedModel(
+        modelPath: '',
+        task: task ?? YOLOTask.detect,
+        metadata: const {},
+      );
+      if (mounted) setState(() => _resolvedModel = none);
+      _nativeSwitchTarget = none;
+      return;
+    }
+
     try {
       final resolvedModel = await YOLOModelResolver.resolve(
         modelPath: modelPath,

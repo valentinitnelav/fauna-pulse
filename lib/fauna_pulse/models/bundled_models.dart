@@ -2,12 +2,11 @@
 //
 // Model binaries themselves are git-ignored. The maintainer chooses which local
 // files a release APK ships by editing [kBundledModelsManifestPath]. Android's
-// Gradle build reads the same file when copying assets.
+// Gradle build reads the same file when copying assets. Round 270: the list is
+// empty (owner: no model ships with the app; users download or import them).
+// Debug builds still pack every local weight, for the device checks.
 
 const String kBundledModelsManifestPath = 'assets/models/bundled_models.txt';
-
-const String kDefaultBundledModelPath =
-    'assets/models/custom/MDV6-yolov10-c_int8_256.tflite';
 
 /// Converts the text manifest into Flutter asset paths.
 ///

@@ -145,21 +145,16 @@ void main() {
       );
       expect(r, isNotNull);
       expect(r!.revertToPath, '/storage/models/arthropod_yolov11_int8.tflite');
-      expect(r.toBundledDefault, isFalse);
     });
 
-    test('initial-load failure falls back to bundled MDV6 INT8', () {
+    test('initial-load failure goes to no model (r270: none ships with the app)', () {
       final r = modelLoadRecovery(
         failedPath: qnn,
         currentConfigPath: qnn,
         loadedModelPath: '',
       );
       expect(r, isNotNull);
-      expect(
-        r!.revertToPath,
-        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
-      );
-      expect(r.toBundledDefault, isTrue);
+      expect(r!.revertToPath, '');
     });
 
     test('native reports the RESOLVED path; matching is by file name', () {

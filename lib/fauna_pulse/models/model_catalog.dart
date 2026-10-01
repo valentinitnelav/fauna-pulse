@@ -401,9 +401,9 @@ List<String> visibleBundledModelAssets(
 /// initial load), so the recovery falls back to the release's bundled MDV6
 /// model instead of a previously loaded model.
 class ModelLoadRecovery {
+  /// The model to go back to; '' = none (the camera runs without one).
   final String revertToPath;
-  final bool toBundledDefault;
-  const ModelLoadRecovery(this.revertToPath, this.toBundledDefault);
+  const ModelLoadRecovery(this.revertToPath);
 }
 
 /// Compares two model references by file name, mapping an official bundled id
@@ -422,20 +422,20 @@ bool sameModelFile(String a, String b) {
 /// Decides the recovery after [failedPath] failed to load, or null when the
 /// failure is stale (the config no longer points at the failed model, e.g.
 /// the user already picked another one). When a different model is still
-/// loaded natively ([loadedModelPath]), revert to it; otherwise fall back to
-/// [bundledDefault], which always exists on the device.
+/// loaded natively ([loadedModelPath]), revert to it; otherwise to no model
+/// (round 270: none ships with the app, so there is no built-in fallback; the
+/// camera keeps running without one).
 ModelLoadRecovery? modelLoadRecovery({
   required String failedPath,
   required String currentConfigPath,
   required String loadedModelPath,
-  String bundledDefault = kDefaultBundledModelPath,
 }) {
   if (!sameModelFile(failedPath, currentConfigPath)) return null;
   if (loadedModelPath.isNotEmpty &&
       !sameModelFile(loadedModelPath, currentConfigPath)) {
-    return ModelLoadRecovery(loadedModelPath, false);
+    return ModelLoadRecovery(loadedModelPath);
   }
-  return ModelLoadRecovery(bundledDefault, true);
+  return const ModelLoadRecovery('');
 }
 
 /// A plain-language extra line for known cryptic load errors, or '' when none

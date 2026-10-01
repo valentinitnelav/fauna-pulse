@@ -389,12 +389,9 @@ void main() {
       expect(SessionConfig.fromJson(const {}).captureMode, RoiCaptureMode.fast);
     });
 
-    test('obsolete YOLO placeholders load as the current MDV6 default', () {
+    test('obsolete YOLO placeholders load as "no model chosen" (r270)', () {
       for (final id in ['yolo26s', 'yolo26m', 'yolo26l', 'yolo26x']) {
-        expect(
-          SessionConfig.fromJson({'modelPath': id}).modelPath,
-          'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
-        );
+        expect(SessionConfig.fromJson({'modelPath': id}).modelPath, '');
       }
     });
 
@@ -412,14 +409,13 @@ void main() {
     test(
       'release migrates the retired YOLO default but keeps other models',
       () {
-        const mdv6 = 'assets/models/custom/MDV6-yolov10-c_int8_256.tflite';
-        expect(migrateModelPath('yolo26n', releaseMode: true), mdv6);
+        expect(migrateModelPath('yolo26n', releaseMode: true), '');
         expect(
           migrateModelPath(
             'assets/models/yolo26n_int8.tflite',
             releaseMode: true,
           ),
-          mdv6,
+          '',
         );
         expect(
           migrateModelPath('/models/my_detector.tflite', releaseMode: true),
@@ -428,11 +424,9 @@ void main() {
       },
     );
 
-    test('new configs use the bundled MDV6 INT8 model', () {
-      expect(
-        const SessionConfig().modelPath,
-        'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
-      );
+    test('new configs choose no model: none ships with the app (r270)', () {
+      expect(const SessionConfig().modelPath, '');
+      expect(SessionConfig.fromJson(const {}).modelPath, '');
     });
   });
 

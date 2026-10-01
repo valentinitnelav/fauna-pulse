@@ -264,6 +264,22 @@ class YOLOView @JvmOverloads constructor(
     /** True while a predictor is loaded and inference can run. False after an initial-load failure. */
     fun isModelLoaded(): Boolean = predictor != null
 
+    // FaunaPulse (round 270): no model ships with the app, so the camera may have to run without
+    // one (none on the phone yet, or the chosen one failed to load). Motion-only and time-lapse
+    // capture never use the detector. Set once by [startWithoutModel]; it lifts the
+    // "wait for the model" guard in [startCamera] for the rest of this view's life.
+    @Volatile private var cameraWithoutModel = false
+    private var lastNoModelEmitNs = 0L // analyzer thread only
+
+    /** Starts the camera although no model is loaded (round 270). A later [setModel] loads one
+     *  while the preview keeps running. */
+    fun startWithoutModel() {
+        cameraWithoutModel = true
+        if (allPermissionsGranted() && lifecycleOwner != null && (camera == null || isStopped)) {
+            startCamera()
+        }
+    }
+
     /**
      * Why the most recent [setModel] failed (exception class + message), or null after a success.
      * Written on the loader thread, read on the platform (main) thread when building the channel
@@ -1139,8 +1155,8 @@ class YOLOView @JvmOverloads constructor(
         // Defer binding the camera until a model is loaded. Otherwise the preview starts on view-attach and the heavy
         // first GPU model compile runs while the preview is live, disrupting it. With this guard the camera binds
         // exactly once, from setModel's callback after the predictor is ready. setModel re-invokes startCamera once it
-        // sets predictor.
-        if (predictor == null) {
+        // sets predictor. Round 270: unless the camera runs without a model ([startWithoutModel]).
+        if (predictor == null && !cameraWithoutModel) {
             return
         }
         isStopped = false
@@ -2627,6 +2643,30 @@ class YOLOView @JvmOverloads constructor(
             perfConverted = 0
             perfInferred = 0
             perfToBitmapNs = 0L
+        }
+
+        // FaunaPulse (round 270): no detection model is loaded ([startWithoutModel]). Motion-only
+        // and time-lapse capture need none and take their own branches below; any other frame
+        // has nothing to do, so it is dropped BEFORE the conversion, after a ~1 Hz heartbeat
+        // with the oriented frame size: the app starts up from it (ROI, motion gate, time-lapse
+        // mode) as it does from a detector result, and its camera readout stays live.
+        if (predictor == null && !timeLapseMode && !(motionOnlyMode && motionGateEnabled)) {
+            if (nowNs - lastNoModelEmitNs >= 1_000_000_000L) {
+                lastNoModelEmitNs = nowNs
+                val isRotated = imageProxy.imageInfo.rotationDegrees % 180 != 0
+                streamCallback?.invoke(
+                    mapOf(
+                        "noModel" to true,
+                        "cameraFps" to lastDeliveredFps,
+                        "imageWidth" to (if (isRotated) h else w),
+                        "imageHeight" to (if (isRotated) w else h),
+                        "roiActive" to (inferenceRoi != null),
+                        "timestamp" to System.currentTimeMillis(),
+                    )
+                )
+            }
+            imageProxy.close()
+            return
         }
 
         // Perf review A1: when the motion gate is OFF, a frame the inference

@@ -423,7 +423,9 @@ flutter build apk --release
 
 Only existing `*.tflite` model weights listed in `fauna-pulse/assets/models/bundled_models.txt` 
 are packed into the release APK. Since round 268 the model picker lists only downloaded or
-imported models, so a packed model is no longer offered to users. 
+imported models, so a packed model is no longer offered to users, and since round 270 the list
+is empty: the release APK carries no model, and the camera starts without one (motion-triggered
+and time-lapse capture need none). 
 Other local test weights remain untouched but are left out of the APK file.
 If a listed weight cannot be found, the terminal prints its path with an warning and
 this warning does not stop the build. Before sharing an
