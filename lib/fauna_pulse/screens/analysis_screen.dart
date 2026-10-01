@@ -44,6 +44,7 @@ import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import 'session_summary_screen.dart';
+import 'models_screen.dart';
 
 /// One analyzable session folder. Counts come in TWO units (round 172):
 /// [photoCount]/[donePhotoCount] are PHOTOS (capture moments — a high-res
@@ -682,25 +683,41 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Widget _modelPicker() {
-    return DropdownButtonFormField<ModelEntry>(
-      initialValue: _model,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Detection model',
-        border: OutlineInputBorder(),
-        helperText:
-            'Models are added under camera Settings → AI (Import… / Download…).',
-        helperMaxLines: 2,
-      ),
-      items: [
-        for (final m in _models)
-          DropdownMenuItem(
-            value: m,
-            child: Text(m.label, overflow: TextOverflow.ellipsis),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<ModelEntry>(
+          initialValue: _model,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Detection model',
+            border: OutlineInputBorder(),
           ),
+          items: [
+            for (final m in _models)
+              DropdownMenuItem(
+                value: m,
+                child: Text(m.label, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: _running ? null : (m) => setState(() => _model = m),
+        ),
+        manageModelsButton(onPressed: _running ? null : _manageModels),
       ],
-      onChanged: _running ? null : (m) => setState(() => _model = m),
     );
+  }
+
+  /// Round 267: models are added and deleted on the AI models screen;
+  /// re-reads the list on return and keeps the choice when it still exists.
+  Future<void> _manageModels() async {
+    await openModelsScreen(context);
+    final models = widget.models ?? await ModelCatalog.build();
+    if (!mounted) return;
+    setState(() {
+      _models = models;
+      _model = models.where((m) => m.id == _model?.id).firstOrNull ??
+          models.firstOrNull;
+    });
   }
 
   Widget _thresholdSlider({

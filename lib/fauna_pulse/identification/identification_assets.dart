@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart';
 import 'crop_worker.dart' show kDefaultCropMargin;
+import 'identification_store.dart' show stemOf;
 import 'label_pack.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
@@ -70,11 +71,30 @@ class IdentificationAssets {
   }
 
   /// Opens the file picker and copies validated `.tflite` (models) or
-  /// `.fpack` (packs) files into private storage.
-  static Future<ImportOutcome> importFiles({required bool packs}) async {
-    final ext = packs ? '.fpack' : '.tflite';
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+  /// `.fpack` (packs) files into private storage. [onFileLoading] reports
+  /// when the picker starts copying (the AI models screen shows "Copying…",
+  /// round 267); the picker's own cache copy is removed afterwards.
+  static Future<ImportOutcome> importFiles({
+    required bool packs,
+    void Function(FilePickerStatus)? onFileLoading,
+  }) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      onFileLoading: onFileLoading,
+    );
     if (result == null) return const ImportOutcome([], []);
+    try {
+      return await _copyPicked(result, packs: packs);
+    } finally {
+      await clearFilePickerCache();
+    }
+  }
+
+  static Future<ImportOutcome> _copyPicked(
+    FilePickerResult result, {
+    required bool packs,
+  }) async {
+    final ext = packs ? '.fpack' : '.tflite';
     final dir = packs ? await packsDir() : await modelsDir();
     final imported = <String>[];
     final rejected = <String>[];
@@ -113,6 +133,28 @@ class IdentificationAssets {
       }
     }
     return ImportOutcome(imported, rejected);
+  }
+
+  /// The class lists in [packs] that belong to [model] (same file name, see
+  /// the Identify screen's pairing): they are deleted with it.
+  static List<File> classListsOf(File model, List<File> packs) {
+    final stem = stemOf(model.path);
+    return [for (final p in packs) if (stemOf(p.path) == stem) p];
+  }
+
+  /// Deletes [files] (an identification model and its class lists, or one
+  /// name list) and returns the names it removed (round 267).
+  static Future<List<String>> deleteFiles(List<File> files) async {
+    final deleted = <String>[];
+    for (final f in files) {
+      try {
+        if (await f.exists()) await f.delete();
+        deleted.add(f.path.split('/').last);
+      } catch (e) {
+        logSwallowed('identification_delete', e);
+      }
+    }
+    return deleted;
   }
 }
 

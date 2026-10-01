@@ -262,7 +262,7 @@ logged as `thermal_limit_c`.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Detection model** | the last one used (first in the list the first time) | Any model from camera Settings → AI. There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
+| **Detection model** | the last one used (first in the list the first time) | Any detection model on the AI models screen (home screen ⋮ menu, or Manage models… under the list). There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
 | **Confidence threshold** | `0.25` | Minimum score for a box to count; the live camera's default. |
 | **Frames analyzed per second** | `5` (1–30; 15 before round 254) | How many pictures of each second of the video the AI looks at; the pictures in between are skipped. 5 = one picture every 0.2 s of video, enough for insects that stay on a flower for a second or more; a run takes less than half the time 15 would (not a third: the phone still decodes every picture). More follows fast flying insects better (fewer missed or counted twice) but takes longer; 15 is what the live camera analyzes. It counts seconds of the video, not of the run: a slow or warm phone takes longer, it never looks at fewer pictures. Asking for more than the video has changes nothing (most phone videos have 30). To measure which rate is enough for your videos: [VIDEO_ANALYSIS.md §5](VIDEO_ANALYSIS.md#5-which-frame-rate-is-enough-the-sweep). |
 | **Area to analyze** | Whole picture | Or *A square*, placed on the first frame of the first clip (drag, pinch or slider), its side snapped to a multiple of 32 video pixels as on the live camera. Insects outside it are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the square of its last run, so *Continue* works without placing it again. |
@@ -308,6 +308,7 @@ stored on the phone (`identify_*`) and echoed into the `identify_start` record o
 | Weak: order probability below | 0.50 | `weak_id` when the identification's ORDER-rank probability is below this. `suspect` = short AND (low_det OR weak_id OR no organism); flags only, nothing deleted. |
 | CSV file only: rank of the "pred" columns | family | Changes nothing in the app (the results on screen show every rank). Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` and `pred_imgs` in `tracks_<pack>.csv`, the columns named as in insect-detect-post so files of both tools can be compared (the other ranks are in their own columns anyway). Label before round 247: "Rank for the CSV "pred" columns". |
 
-Model and label pack are chosen on the same screen (Import… copies the files into the app's
-private storage). `docs/IDENTIFICATION.md` explains where the files come from and how the
+Model and label pack are chosen on the same screen; they are added and deleted on the AI
+models screen (Manage models…, or home screen ⋮ → AI models), which copies the files into the
+app's private storage. `docs/IDENTIFICATION.md` explains where the files come from and how the
 answer is computed.

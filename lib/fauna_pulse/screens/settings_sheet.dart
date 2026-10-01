@@ -44,6 +44,7 @@ import '../tracking/tracker.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import 'models_screen.dart';
 
 class SettingsSheet extends StatefulWidget {
   final SessionConfig config;
@@ -152,54 +153,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
     });
   }
 
-  Future<void> _importModels() async {
-    final result = await ModelCatalog.importModels();
-    if (!mounted) return;
-    final imported = result.imported;
-    final base = imported == 0
-        ? 'No model files imported.'
-        : 'Imported $imported model${imported == 1 ? '' : 's'}.';
-    final rejected = result.rejected.isEmpty
-        ? ''
-        : ' Rejected ${result.rejected.length}: ${result.rejected.first}';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$base$rejected'),
-        duration: result.rejected.isEmpty
-            ? const Duration(seconds: 4)
-            : const Duration(seconds: 8),
-      ),
-    );
-    await _reloadModels();
-  }
-
-  /// Asks for a URL (e.g. a GitHub release asset link), downloads the model
-  /// into the imported-models folder, then selects it like a dropdown pick.
-  Future<void> _downloadModel() async {
-    final savedPath = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _DownloadModelDialog(),
-    );
-    if (savedPath == null || !mounted) return;
-    final name = savedPath.split('/').last;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Downloaded $name.')));
-    await _reloadModels();
-    if (!mounted) return;
-    // Auto-select the new model (same as picking it in the dropdown).
-    for (final m in _models) {
-      if (m.id == savedPath) {
-        setState(() {
-          _c = _c.copyWith(
-            modelPath: m.id,
-            task: YOLOTaskParsing.tryParse(m.task) ?? _c.task,
-          );
-        });
-        break;
-      }
-    }
+  /// Opens the AI models screen (round 267: models are added and deleted
+  /// there, not here) and re-reads the list on return.
+  Future<void> _manageModels() async {
+    await openModelsScreen(context);
+    if (mounted) await _reloadModels();
   }
 
   /// The currently-selected model entry (for showing its input resolution), or
@@ -849,28 +807,20 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // width instead of the narrow column left of the two buttons.
       HelpRow(
         helperText:
-            'The AI network that finds insects in the camera image. Add '
-            'models with Download… (paste a link from the FaunaPulse '
-            'releases page) or Import… (pick a .tflite or *_qnn.onnx file '
-            'already on the phone). The input resolution shown under the '
-            'list is the square size every camera frame is shrunk to for '
-            'the model: smaller runs faster, larger sees tiny insects '
-            'better.',
-        // Round 240: the two buttons wrap under the label; in one row with
-        // it they overflowed a 360-px-wide phone by 42 px.
+            'The AI network that finds animals in the camera image and '
+            'draws a box around each one. Add or delete models with Manage '
+            'models… (the same as AI models in the home screen\'s ⋮ menu). '
+            'The input resolution shown under the list is the square size '
+            'every camera frame is shrunk to for the model: smaller runs '
+            'faster, larger sees tiny insects better.',
+        // Round 240: buttons wrap under the label (two in one row with it
+        // overflowed a 360-px-wide phone by 42 px); one since round 267.
         child: Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _label('Detection model'),
-            TextButton.icon(
-              onPressed: _modelsLoading ? null : _downloadModel,
-              icon: const Icon(Icons.cloud_download_outlined, size: 18),
-              label: const Text('Download…'),
-            ),
-            TextButton.icon(
-              onPressed: _modelsLoading ? null : _importModels,
-              icon: const Icon(Icons.file_upload, size: 18),
-              label: const Text('Import…'),
+            manageModelsButton(
+              onPressed: _modelsLoading ? null : _manageModels,
             ),
           ],
         ),
@@ -963,7 +913,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           child: Text(
             '⚠ This model isn\'t available in this build — the bundled MDV6 '
             'INT8 model runs '
-            'instead. Use Download… or Import… above to add it.',
+            'instead. Use Manage models… above to add it.',
             style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
           ),
         ),
@@ -2745,148 +2695,4 @@ class _SettingsSheetState extends State<SettingsSheet> {
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Text(text, style: const TextStyle(color: Colors.white70)),
   );
-}
-
-/// Asks for a direct link to a model file (e.g. a GitHub release asset),
-/// downloads it with a progress bar and pops the saved file path — or null on
-/// cancel. Errors show inline so the URL can be corrected without retyping.
-class _DownloadModelDialog extends StatefulWidget {
-  const _DownloadModelDialog();
-
-  @override
-  State<_DownloadModelDialog> createState() => _DownloadModelDialogState();
-}
-
-class _DownloadModelDialogState extends State<_DownloadModelDialog> {
-  final _url = TextEditingController();
-  bool _downloading = false;
-  bool _cancelRequested = false;
-  String? _error;
-  int _received = 0;
-  int? _total;
-
-  @override
-  void dispose() {
-    _url.dispose();
-    super.dispose();
-  }
-
-  Future<void> _start() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
-      _downloading = true;
-      _cancelRequested = false;
-      _error = null;
-      _received = 0;
-      _total = null;
-    });
-    try {
-      final path = await ModelCatalog.downloadModel(
-        _url.text,
-        onProgress: (received, total) {
-          if (!mounted) return;
-          setState(() {
-            _received = received;
-            _total = total;
-          });
-        },
-        isCancelled: () => _cancelRequested,
-      );
-      if (mounted) Navigator.of(context).pop(path);
-    } catch (e) {
-      if (!mounted) return;
-      if (_cancelRequested) {
-        Navigator.of(context).pop(); // user cancelled; partial file cleaned up
-        return;
-      }
-      setState(() {
-        _downloading = false;
-        // Exception.toString() prefixes "Exception: " — drop it for the UI.
-        _error = '$e'.replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  String get _progressLabel {
-    String mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
-    final total = _total;
-    return total != null
-        ? 'Downloading… ${mb(_received)} of ${mb(total)} MB'
-        : 'Downloading… ${mb(_received)} MB';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final validUrl = modelFileNameFromUrl(_url.text) != null;
-    return AlertDialog(
-      title: const Text('Download model'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _url,
-            enabled: !_downloading,
-            autofocus: true,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-              labelText: 'Link to a .tflite or *_qnn.onnx model file',
-              helperText:
-                  'Model links are published at\n'
-                  'github.com/valentinitnelav/fauna-pulse/releases',
-              helperMaxLines: 3,
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (_downloading) ...[
-            const SizedBox(height: 14),
-            LinearProgressIndicator(
-              value: _total != null && _total! > 0 ? _received / _total! : null,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _progressLabel,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ],
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                '⚠ $_error',
-                style: const TextStyle(
-                  color: Colors.orangeAccent,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          // While downloading, Cancel signals downloadModel between chunks;
-          // its cleanup deletes the partial file, then _start pops the dialog.
-          onPressed: _downloading && _cancelRequested
-              ? null
-              : () {
-                  if (_downloading) {
-                    setState(() => _cancelRequested = true);
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                },
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: _downloading || !validUrl ? null : _start,
-          child: const Text(
-            'Download',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
-    );
-  }
 }

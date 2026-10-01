@@ -12,7 +12,7 @@ convert, and why the app does **not** run plain ONNX files.
 |---|---|
 | A PyTorch checkpoint (`.pt`) | **Best option.** Share the `.pt`, or run the one-line TFLite export below yourself. |
 | A plain ONNX file (`.onnx`) | The app can NOT run it. Convert it (see below); or better, send the `.pt` it was exported from. |
-| A TFLite file (`.tflite`) | Works as-is: Settings → AI → Model → Import… (or Download… from a URL). |
+| A TFLite file (`.tflite`) | Works as-is: home screen ⋮ → AI models → Import… (or Download… from a URL). |
 | An Ultralytics QNN export (`*_qnn.onnx`) | Works as-is, but **only on Snapdragon phones** (runs on the NPU chip). Niche, see below. |
 
 ## Why the app doesn't run plain ONNX
@@ -62,7 +62,7 @@ Caveats, and why it's not the default recommendation:
 - Despite the `.onnx` extension, this is NOT a general ONNX file. A normal
   `yolo export format=onnx` file will not load.
 
-The app's model picker accepts `*_qnn.onnx` through the same Import…
+The AI models screen (home screen ⋮ menu) accepts `*_qnn.onnx` through the same Import…
 and Download… buttons as `.tflite`. When a QNN model cannot run on the phone,
 the app shows an error dialog explaining why and automatically switches back to
 a model that works (the previously loaded one, or the bundled MDV6 INT8 default).
@@ -79,7 +79,7 @@ yolo export model=your_model.pt format=litert quantize=w8a32
 ```
 
 This writes a `..._w8a32.tflite` file that imports straight into the app
-(Settings → AI → Model → Import…, or Download… from a URL).
+(home screen ⋮ → AI models → Import…, or Download… from a URL).
 
 Why this is the recommended export (app support added in round 155):
 

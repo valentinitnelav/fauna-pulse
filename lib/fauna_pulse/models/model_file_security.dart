@@ -5,6 +5,9 @@
 
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+
+import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 
 /// Maximum accepted TFLite weight size.
@@ -22,6 +25,17 @@ const int _maxModelFileNameLength = 128;
 final RegExp _safeModelBaseName = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$');
 final RegExp _sha256Hex = RegExp(r'^[0-9a-fA-F]{64}$');
 final RegExp _controlCharacters = RegExp(r'[\x00-\x1F\x7F]');
+
+/// Deletes the file picker's cache copies after an import (round 267): the
+/// picker copies every picked file into the app's cache first, and an
+/// identification model is up to 1.3 GB.
+Future<void> clearFilePickerCache() async {
+  try {
+    await FilePicker.platform.clearTemporaryFiles();
+  } catch (e) {
+    logSwallowed('picker_cache_clear', e);
+  }
+}
 
 /// True for the two model formats the Android runtime can execute.
 bool isSupportedModelFileName(String name) {

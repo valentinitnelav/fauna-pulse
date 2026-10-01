@@ -22,7 +22,8 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 
 Both are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
-In the app: session gear menu → **Identify organisms** → *Import model…* / *Import label pack…*.
+In the app: home screen ⋮ → **AI models** → *Import model…* / *Import name list…* (also reached
+with *Manage models…* on the Identify screen).
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 
@@ -332,8 +333,8 @@ session here is a YouTube clip, fit for timing only).
 pack's names. It comes as two files with the same name: the model
 (`insectdct-cls-v7_eff2s_fp16.tflite`, 42 MB) and its **class list**
 (`insectdct-cls-v7_eff2s_fp16.fpack`, 14 kB: every class with its kingdom ... species).
-Import both (*Import model…*, *Import label pack…*); choosing the model then chooses its class
-list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
+Import both (AI models screen: *Import model…*, *Import name list…*); choosing the model then
+chooses its class list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
 threshold, tables and files. Differences:
 
 - Each crop gets a score per class on each level; a class's probability combines its own

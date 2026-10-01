@@ -1,7 +1,7 @@
 // FaunaPulse (round 242): on-device check of BioCLIP on the GPU.
 //
-// 1. Loads every identification model the phone has (Identify organisms →
-//    Import…; files/identification/models/) once with the GPU asked for and
+// 1. Loads every identification model the phone has (⋮ → AI models → Import
+//    model…; files/identification/models/) once with the GPU asked for and
 //    once on the CPU, and for each prints which engine it really ran on, why
 //    the GPU was not used (if so), the GPU/CPU agreement of the GPU check, the
 //    load time and the time per crop over a few synthetic crops (the time does

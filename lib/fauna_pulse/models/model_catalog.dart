@@ -70,6 +70,10 @@ class ModelEntry {
   /// Detector task from metadata ("detect", "segment", ...) or null.
   final String? task;
 
+  /// Class names from metadata (what the detector finds, e.g. "animal"),
+  /// empty when the file carries none. Shown on the AI models screen (r267).
+  final List<String> labels;
+
   const ModelEntry({
     required this.id,
     required this.name,
@@ -77,6 +81,7 @@ class ModelEntry {
     this.precision,
     this.inputSize,
     this.task,
+    this.labels = const [],
   });
 
   /// Full, human-readable label for the dropdown: full file name, then the
@@ -199,6 +204,7 @@ class ModelCatalog {
           precision: _precisionFromName(name),
           inputSize: _imgszFrom(meta),
           task: meta['task'] as String?,
+          labels: _labelsFrom(meta),
         ),
       );
     }
@@ -222,6 +228,7 @@ class ModelCatalog {
           precision: _precisionFromName(name),
           inputSize: _imgszFrom(meta),
           task: meta['task'] as String?,
+          labels: _labelsFrom(meta),
         ),
       );
     }
@@ -240,6 +247,7 @@ class ModelCatalog {
             precision: 'int8',
             inputSize: _imgszFrom(meta),
             task: meta['task'] as String?,
+            labels: _labelsFrom(meta),
           ),
         );
       }
@@ -262,9 +270,25 @@ class ModelCatalog {
   /// Opens the system file picker and copies validated models into private
   /// storage. Each file is streamed through the same size and structure checks
   /// as a download, so a document provider cannot smuggle a path or huge file.
-  static Future<ModelImportResult> importModels() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+  /// [onFileLoading] reports when the picker starts copying (round 267: the
+  /// AI models screen shows "Copying…"); the picker's own cache copy is
+  /// removed afterwards.
+  static Future<ModelImportResult> importModels({
+    void Function(FilePickerStatus)? onFileLoading,
+  }) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      onFileLoading: onFileLoading,
+    );
     if (result == null) return const ModelImportResult(imported: 0);
+    try {
+      return await _copyPicked(result);
+    } finally {
+      await clearFilePickerCache();
+    }
+  }
+
+  static Future<ModelImportResult> _copyPicked(FilePickerResult result) async {
     final dir = await modelsDir();
     var imported = 0;
     final rejected = <String>[];
@@ -432,6 +456,11 @@ class ModelCatalog {
       logSwallowed('model_inspect', e);
     }
     return {};
+  }
+
+  static List<String> _labelsFrom(Map<String, dynamic> meta) {
+    final v = meta['labels'];
+    return v is List ? [for (final l in v) '$l'] : const [];
   }
 
   static int? _imgszFrom(Map<String, dynamic> meta) {

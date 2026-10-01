@@ -62,6 +62,7 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
+import 'models_screen.dart';
 
 /// Persisted settings of the video analysis (shared_preferences
 /// `video_analysis_*`, like `analysis_*` for photos; not SessionConfig,
@@ -974,20 +975,33 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   Widget _modelPicker() {
-    return DropdownButtonFormField<ModelEntry>(
-      initialValue: _model,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Detection model',
-        border: OutlineInputBorder(),
-        helperText: 'Models are added under camera Settings → AI (Import… / Download…).',
-        helperMaxLines: 2,
-      ),
-      items: [
-        for (final m in _models) DropdownMenuItem(value: m, child: Text(m.label, overflow: TextOverflow.ellipsis)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<ModelEntry>(
+          initialValue: _model,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Detection model', border: OutlineInputBorder()),
+          items: [
+            for (final m in _models) DropdownMenuItem(value: m, child: Text(m.label, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: _running ? null : (m) => setState(() => _model = m),
+        ),
+        manageModelsButton(onPressed: _busy ? null : _manageModels),
       ],
-      onChanged: _running ? null : (m) => setState(() => _model = m),
     );
+  }
+
+  /// Round 267: models are added and deleted on the AI models screen;
+  /// re-reads the list on return and keeps the choice when it still exists.
+  Future<void> _manageModels() async {
+    await openModelsScreen(context);
+    final models = widget.models ?? await ModelCatalog.build();
+    if (!mounted) return;
+    setState(() {
+      _models = models;
+      _model = models.where((m) => m.id == _model?.id).firstOrNull ?? models.firstOrNull;
+    });
   }
 
   Widget _slider({

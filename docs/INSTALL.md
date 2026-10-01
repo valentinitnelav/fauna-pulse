@@ -143,10 +143,10 @@ model does not recognise insects. For insect work you need a purpose-trained mod
 (see [S1. Getting the models](#s1-getting-the-models)). Once you have one or more `.tflite`
 model files to test, add them in either way:
 
-- **In-app (easiest):** open **FaunaPulse → Settings (gear icon) → Import…**,
+- **In-app (easiest):** open **FaunaPulse → ⋮ (home screen) → AI models → Import…**,
   then pick the `.tflite` file(s) from **Downloads** or another folder. You can
   first copy the model into Downloads over USB.
-- **HTTPS download:** open **Settings → Download model…** and paste a direct HTTPS
+- **HTTPS download:** open **⋮ → AI models → Download…** and paste a direct HTTPS
   model link.
 
 Added models appear in the app's **model dropdown** at the start of a session.

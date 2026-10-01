@@ -3,8 +3,8 @@
 **Status:** round 265 made and checked the phone files and timed them on the Xiaomi test
 phone; since round 266 the Identify screen runs them (section 5). Recommended file:
 `insectdct-cls-v7_eff2s_fp16.tflite` with its class list `insectdct-cls-v7_eff2s_fp16.fpack`
-(section 3, *Which network*). Import both on the Identify screen; choosing the model chooses
-its class list.
+(section 3, *Which network*). Import both on the AI models screen (home screen ⋮ menu);
+choosing the model on the Identify screen chooses its class list.
 
 insectDCT's classifier V7 (Bjerge et al. 2026; `insectdct-cls-v7` in the
 [InsectAI Model Zoo](https://github.com/InsectAI-COST-Action/insect-model-zoo)) names an insect

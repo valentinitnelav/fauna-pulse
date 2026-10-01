@@ -30,6 +30,7 @@ import 'analysis_screen.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'identification_screen.dart';
+import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_summary_screen.dart';
 import 'video_analysis_screen.dart';
@@ -84,7 +85,9 @@ class _PastSession {
 /// settings sheet in round 159 — it is an app-level preference, and this menu
 /// is the established home for those (session settings stay on the camera
 /// screen, which needs the live camera).
-enum _HomeMenuAction { about, importVideos, toggleSetupTips, reportProblem, deleteAllSessions }
+/// "AI models" (round 267) opens the one screen where detection and
+/// identification models are added and deleted.
+enum _HomeMenuAction { about, models, importVideos, toggleSetupTips, reportProblem, deleteAllSessions }
 
 /// Per-session actions in the gear menu on each "Previous sessions" row
 /// (round 182). The gear replaced a decorative histogram icon; it groups
@@ -858,6 +861,8 @@ class _HomeScreenState extends State<HomeScreen> {
         switch (action) {
           case _HomeMenuAction.about:
             _showAbout();
+          case _HomeMenuAction.models:
+            openModelsScreen(context);
           case _HomeMenuAction.importVideos:
             _importVideos();
           case _HomeMenuAction.toggleSetupTips:
@@ -876,6 +881,16 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(Icons.info_outline, size: 20, color: Colors.white70),
               SizedBox(width: 10),
               Text('About FaunaPulse'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: _HomeMenuAction.models,
+          child: Row(
+            children: [
+              Icon(Icons.memory, size: 20, color: Colors.white70),
+              SizedBox(width: 10),
+              Text('AI models'),
             ],
           ),
         ),
@@ -1499,9 +1514,9 @@ class AboutFaunaPulseDialog extends StatelessWidget {
               'of interest over a flower, feeding site or nest entrance. '
               'On AI-capture mode, FaunaPulse detects, tracks and photographs visiting animals '
               'fully on-device (no internet needed) and logs every track ID '
-              'with timestamps, so visitation rates can be computed afterwards'
-              'Other features include: motion-triggered photos, time-lapse capture' 
-              '(photo or video bursts), scheduled multi-hour or multi-day day runs and post-capture AI'
+              'with timestamps, so visitation rates can be computed afterwards. '
+              'Other features include: motion-triggered photos, time-lapse capture '
+              '(photo or video bursts), scheduled multi-hour or multi-day runs and post-capture AI '
               'analysis of saved photos or videos.',
               style: TextStyle(fontSize: 13),
             ),

@@ -36,6 +36,7 @@ import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import 'identification_results_screen.dart';
+import 'models_screen.dart';
 import 'video_analysis_screen.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
@@ -266,33 +267,24 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     });
   }
 
-  Future<void> _import({required bool packs}) async {
-    final outcome = await IdentificationAssets.importFiles(packs: packs);
-    if (!mounted) return;
-    final msg = StringBuffer();
-    if (outcome.imported.isNotEmpty) {
-      msg.write('Imported ${outcome.imported.join(', ')}.');
-    }
-    if (outcome.rejected.isNotEmpty) {
-      msg.write(' Rejected: ${outcome.rejected.join(' ')}');
-    }
-    if (msg.isNotEmpty) _snack(msg.toString());
+  /// Round 267: files are added and deleted on the AI models screen. On
+  /// return the lists are re-read; a chosen file that was deleted falls back
+  /// to the first one, and a model's class list is chosen with it.
+  Future<void> _manageModels() async {
+    await openModelsScreen(context);
     final models = await IdentificationAssets.listModels();
-    final packsList = await IdentificationAssets.listPacks();
+    final packs = await IdentificationAssets.listPacks();
     if (!mounted) return;
+    File? keep(List<File> files, File? current) =>
+        files.where((f) => f.path == current?.path).firstOrNull ?? files.firstOrNull;
     setState(() {
       _models = models;
-      _packs = packsList;
-      if (packs && outcome.imported.isNotEmpty) {
-        _pack = packsList.firstWhere((f) => f.path.endsWith('/${outcome.imported.last}'), orElse: () => _pack ?? packsList.first);
-      }
-      if (!packs && outcome.imported.isNotEmpty) {
-        _model = models.firstWhere((f) => f.path.endsWith('/${outcome.imported.last}'), orElse: () => _model ?? models.first);
-      }
+      _packs = packs;
+      _model = keep(models, _model);
     });
-    final classList = packs ? null : _classListFor(_model, _packs);
-    if (packs || classList != null) await _selectPack(classList ?? _pack);
-    if (!packs) await _checkVisits();
+    await _selectPack(_classListFor(_model, packs) ?? keep(packs, _pack));
+    await _checkVisits();
+    await _loadSpeed();
   }
 
   void _snack(String text) {
@@ -709,7 +701,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'insectDCT knows a fixed list of classes instead: its pack is that CLASS LIST (each class with '
             'its taxonomy) and has the same file name as the model, so choosing the model chooses it. '
             'A model file can be very large (hundreds of MB). '
-            'Download the files on your phone and then use the Import buttons below to make them available to the app. '
+            'Download the files on your phone, then add them with Manage models… below (the same as AI models '
+            "in the home screen's ⋮ menu)."
       ),
       const SizedBox(height: 8),
       // isExpanded (round 209): without it the field takes the width of its
@@ -749,21 +742,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             style: helperTextStyle,
           ),
         ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        children: [
-          OutlinedButton.icon(
-            onPressed: () => _import(packs: false),
-            icon: const Icon(Icons.file_download_outlined),
-            label: const Text('Import model…'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _import(packs: true),
-            icon: const Icon(Icons.file_download_outlined),
-            label: const Text('Import label pack…'),
-          ),
-        ],
+      const SizedBox(height: 4),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: manageModelsButton(onPressed: _testingSpeed ? null : _manageModels),
       ),
     ];
   }

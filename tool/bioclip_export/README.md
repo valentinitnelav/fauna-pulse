@@ -243,8 +243,8 @@ adb push out/bioclip2_flower_visitors_32fam_v1.fpack /sdcard/Download/
 ```
 
 (or copy them over USB / a file manager into the phone's Downloads folder). Then in
-FaunaPulse: home screen, gear menu of a session, **Identify organisms**, *Import model…*
-and *Import label pack…*. The app copies both files into its private storage; the
+FaunaPulse: home screen ⋮ menu, **AI models**, *Import model…* and *Import name list…*
+(the label pack). The app copies both files into its private storage; the
 Downloads copies can be deleted afterwards. `docs/IDENTIFICATION.md` explains the run and
 the results.
 
