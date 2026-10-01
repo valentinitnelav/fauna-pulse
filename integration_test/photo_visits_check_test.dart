@@ -30,7 +30,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart' show roiPhotoFileName;
 import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/track_source.dart';
 import 'package:fauna_pulse/fauna_pulse/models/bundled_models.dart';
@@ -46,6 +45,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'check_sessions.dart';
+
 const _clip = 'VID_20260924_155954.mp4';
 const _clipPath = String.fromEnvironment('PHOTO_CLIP');
 const _model = String.fromEnvironment('REVIEW_MODEL', defaultValue: 'arthropod_yolov11_float16.tflite');
@@ -60,9 +61,6 @@ Future<String> _modelPath() async {
   expect(f.existsSync(), isTrue, reason: 'import $_model in the app first');
   return f.path;
 }
-
-String _rec(String type, int ms, Map<String, dynamic> m) =>
-    jsonEncode({'type': type, 'time_ms': ms, 'time_iso': DateTime.fromMillisecondsSinceEpoch(ms).toIso8601String(), ...m});
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -82,43 +80,8 @@ void main() {
     final out = Directory('$ext/photo_visits_check');
     if (out.existsSync()) out.deleteSync(recursive: true);
     final sessions = Directory('${out.path}/sessions')..createSync(recursive: true);
-    final dir = Directory('${sessions.path}/photo check')..createSync();
-    final frames = Directory('${dir.path}/roi_frames')..createSync();
-    final info = await VideoFrameSource.info(src.path);
-    final upW = info.rotation % 180 == 0 ? info.width : info.height;
-    final upH = info.rotation % 180 == 0 ? info.height : info.width;
-    final side = min2(upW, upH);
-    final roi = [(upW - side) ~/ 2, (upH - side) ~/ 2, side, side];
-    final t0 = DateTime(2026, 9, 26, 12).millisecondsSinceEpoch;
-    // Two 15-s bursts of the clip, the second shown 60 s later.
-    final pts = [for (var t = 0; t < (info.durationMs ?? 30000) - 300; t += _stepMs) t];
-    int wallOf(int t) => t0 + t + (t >= 15000 ? 60000 : 0);
-    final names = [for (final t in pts) roiPhotoFileName(wallOf(t), 'chk')];
-    await VideoFrameSource.openFrames(src.path, roiPx: roi);
-    var done = 0;
-    while (done < pts.length) {
-      final chunk = await VideoFrameSource.saveFrames(
-        ptsUs: [for (final t in pts.skip(done)) t * 1000],
-        paths: [for (final n in names.skip(done)) '${frames.path}/$n'],
-      );
-      expect(chunk.processed, greaterThan(0));
-      done += chunk.processed;
-    }
-    await VideoFrameSource.close();
-    File('${dir.path}/session.jsonl').writeAsStringSync(
-      '${[
-        _rec('start_of_session', t0, {
-          'file_token': 'chk',
-          'config': {'captureTrigger': 'timelapse', 'stepSeconds': _stepMs / 1000, 'durationSeconds': 15.0},
-        }),
-        for (var i = 0; i < pts.length; i++) ...[
-          _rec('timelapse_capture', wallOf(pts[i]), {'jpeg': names[i], 'captured_at_ms': wallOf(pts[i])}),
-          _rec('capture', wallOf(pts[i]), {'file': names[i], 'captured_at_ms': wallOf(pts[i]), 'saved_px': side}),
-        ],
-        _rec('end_of_session', wallOf(pts.last) + 1000, {'ended_normally': true}),
-      ].join('\n')}\n',
-    );
-    _log('SESSION ${pts.length} photos of ${side}px, every $_stepMs ms in two bursts');
+    final (:dir, :photos, :side) = await timeLapseSessionFromClip(src, sessions, 'photo check', stepMs: _stepMs);
+    _log('SESSION $photos photos of ${side}px, every $_stepMs ms in two bursts');
 
     // 2. The detector over the photos.
     final model = await _modelPath();
@@ -247,5 +210,3 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 }
-
-int min2(int a, int b) => a < b ? a : b;

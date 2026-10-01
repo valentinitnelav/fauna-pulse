@@ -48,6 +48,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
+import '../identification/identification_choice.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
@@ -64,6 +65,8 @@ import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/video_speed_chips.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
+import 'identification_choice_fields.dart';
+import 'identification_screen.dart';
 import 'models_screen.dart';
 
 /// Persisted settings of the video analysis (shared_preferences
@@ -245,12 +248,16 @@ class VideoAnalysisScreen extends StatefulWidget {
   final List<ModelEntry>? models;
   final FrameSaveBackend? frameSaveBackend;
 
+  /// Tests replace the identification models and name lists (round 274).
+  final IdentificationChoice? identificationChoice;
+
   const VideoAnalysisScreen({
     super.key,
     this.initialSessionPath,
     this.sessionsDir,
     this.models,
     this.frameSaveBackend,
+    this.identificationChoice,
   });
 
   @override
@@ -265,6 +272,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   ModelEntry? _model;
   VideoAnalysisPrefs _prefs = VideoAnalysisPrefs();
   bool _useGpu = true;
+
+  /// "Also identify them" (round 274) and its model and name list.
+  IdentificationChoice _idChoice = IdentificationChoice();
+  bool _alsoIdentify = false;
 
   /// The analysed square, or null for the whole picture.
   Roi? _roi;
@@ -330,10 +341,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final models = widget.models ?? await ModelCatalog.build();
     final appConfig = await SessionConfig.load();
     final sessions = await _scanSessions();
+    final (idChoice, alsoIdentify) = await AlsoIdentify.load(widget.identificationChoice);
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
       _models = models;
+      _idChoice = idChoice;
+      _alsoIdentify = alsoIdentify;
       _useGpu = appConfig.useGpu;
       _algorithm = appConfig.trackerAlgorithm;
       _newTrackConf = appConfig.trackerAlgorithm == TrackerAlgorithm.cbiou
@@ -659,6 +673,55 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     await _refresh(session);
+    // Round 274: one Start from the boxes to the names, once the kept frames
+    // (what identification names) are all saved.
+    if (_identify && failure == null && !result!.cancelled && result.clipsDone > 0 && _kept.remaining == 0 && mounted) {
+      if (_session case final s?) await _openIdentify(s);
+    }
+  }
+
+  /// "Also identify them" can run: switched on, a model with a name list
+  /// chosen, kept frames on, and not a live detection session (its track IDs
+  /// are named from the session's ⋮ menu).
+  bool get _identify =>
+      _alsoIdentify && _idChoice.ready && _prefs.keepFrames && !(_session?.liveAi ?? false);
+
+  /// Opens Identify organisms on [s], which starts by itself and ends on the
+  /// results; the model and name list chosen here are remembered for it.
+  Future<void> _openIdentify(_VideoSession s) async {
+    await _idChoice.save();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: s.dir, autoStart: true)),
+    );
+    if (!mounted) return;
+    // Another model may have been chosen there.
+    final (choice, _) = await AlsoIdentify.load(widget.identificationChoice);
+    if (mounted) setState(() => _idChoice = choice);
+  }
+
+  Widget _alsoIdentifySection() {
+    if (_session?.liveAi ?? false) {
+      return const Text(
+        'To name the live track IDs: "Identify organisms" in the session\'s ⋮ menu.',
+        style: helperTextStyle,
+      );
+    }
+    return AlsoIdentifySection(
+      value: _alsoIdentify,
+      onChanged: _busy
+          ? null
+          : (v) {
+              setState(() => _alsoIdentify = v);
+              AlsoIdentify.save(v);
+            },
+      blockedReason: _prefs.keepFrames
+          ? null
+          : 'Needs "Keep frames of each track ID" (Track ID settings): identification names the saved frames.',
+      choice: _idChoice,
+      onChoiceChanged: (_) => setState(() {}),
+      onManage: _busy ? null : _manageModels,
+    );
   }
 
   Future<void> _refresh(_VideoSession session) async {
@@ -886,6 +949,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   // or change; every number to tune is one tap away below.
                   _areaSection(),
                   const SizedBox(height: 8),
+                  _alsoIdentifySection(),
                   FoldSection(
                     title: 'Advanced settings',
                     subtitle: _advancedSummary(),
@@ -1042,6 +1106,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _manageModels() async {
     await openModelsScreen(context);
     final models = widget.models ?? await ModelCatalog.build();
+    if (widget.identificationChoice == null) await AlsoIdentify.reload(_idChoice);
     if (!mounted) return;
     setState(() {
       _models = models;
@@ -1173,15 +1238,24 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final changed = s == null || config == null ? const <String>[] : _changedSettings(s, config);
     final pending = s == null ? 0 : s.clips.where((c) => !s.doneClips.contains(c)).length;
     final allDone = s != null && pending == 0 && changed.isEmpty;
+    // Round 274: nothing (more) to analyze, so Start only names the animals
+    // found; also after the videos were deleted, from the kept frames.
+    final identifyOnly = _identify && s != null && s.doneClips.isNotEmpty && (allDone || s.clips.isEmpty);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: s == null || config == null || allDone || _busy || s.clips.isEmpty ? null : _start,
-          icon: const Icon(Icons.play_arrow),
+          onPressed: identifyOnly
+              ? (_busy ? null : () => _openIdentify(s))
+              : s == null || config == null || allDone || _busy || s.clips.isEmpty
+              ? null
+              : _start,
+          icon: Icon(identifyOnly ? Icons.biotech : Icons.play_arrow),
           label: Text(
             s == null
                 ? 'Pick a session to analyze'
+                : identifyOnly
+                ? 'Identify the animals found'
                 : s.clips.isEmpty
                 ? (s.cutOff.isNotEmpty && s.doneClips.isEmpty ? 'No clip can be read' : 'The videos were deleted')
                 : allDone
@@ -1190,9 +1264,17 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                 ? 'Analyze again with these settings'
                 : s.doneClips.isNotEmpty
                 ? 'Continue ($pending of ${s.clips.length} clips left)'
-                : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}',
+                : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}${_identify ? ' and identify' : ''}',
           ),
         ),
+        if (_identify && !identifyOnly && s != null && s.clips.isNotEmpty && !allDone)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'Then the track IDs are found, their frames saved, the animals identified and the results opened.',
+              style: helperTextStyle,
+            ),
+          ),
         if (s != null && s.cutOff.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(

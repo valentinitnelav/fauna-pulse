@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/identification_choice.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
@@ -51,6 +52,16 @@ Future<void> _openFold(WidgetTester tester, String title) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+}
+
+/// Round 274: an insectDCT classifier with its class list, as files (the
+/// fields show their sizes), for the "Also identify them" switch.
+IdentificationChoice idChoice(Directory dir) {
+  final model = File('${dir.path}/insectdct-eff2s_cls.tflite')..writeAsBytesSync([0]);
+  final list = File('${dir.path}/insectdct-eff2s_cls.fpack')..writeAsBytesSync([0]);
+  return IdentificationChoice.fromFiles([model], [list], {
+    list.path: {'model_id': 'insectdct-eff2s_cls', 'kind': 'classes', 'rows': 104, 'sink_rows': 1, 'heads': [0, 1]},
+  });
 }
 
 Directory _tempDir(String name) {
@@ -612,6 +623,115 @@ void main() {
     expect(find.text('Square 480 × 480 px.'), findsNothing);
     expect(tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first).selected, {false});
     expect(tester.takeException(), isNull);
+  });
+
+  group('Also identify them (r274)', () {
+    const models = [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)];
+
+    /// A 640x480 session with one clip; [lines] are extra session.jsonl
+    /// records, [detections] the video_detections.jsonl lines.
+    Directory session(Directory tmp, {List<String> start = const [], List<String>? detections}) {
+      final dir = Directory('${tmp.path}/Echium');
+      Directory('${dir.path}/videos').createSync(recursive: true);
+      File('${dir.path}/videos/a.mp4').writeAsStringSync('video');
+      File('${dir.path}/session.jsonl').writeAsStringSync(
+        [
+          ...start.isEmpty ? ['{"type":"start_of_session","time_ms":1000,"source":"imported_video"}'] : start,
+          '{"type":"video_clip","time_ms":1000,"file":"videos/a.mp4","duration_ms":30000,"width":640,"height":480'
+              '${start.isEmpty ? '' : ',"segment":0'}}',
+          '{"type":"end_of_session","time_ms":31000,"ended_normally":true}',
+        ].join('\n'),
+      );
+      if (detections != null) {
+        File('${dir.path}/${VideoDetector.outputFileName}').writeAsStringSync(detections.join('\n'));
+      }
+      return dir;
+    }
+
+    Future<void> open(WidgetTester tester, Directory tmp, Directory dir, Finder ready) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoAnalysisScreen(
+            initialSessionPath: dir.path,
+            sessionsDir: tmp,
+            models: models,
+            identificationChoice: idChoice(Directory.systemTemp.createTempSync('id_choice')),
+          ),
+        ),
+      );
+      await _pumpUntil(tester, find.text('Area to analyze'));
+      await tester.scrollUntilVisible(ready, 200, scrollable: find.byType(Scrollable).first);
+      await tester.pump();
+    }
+
+    testWidgets('on by default with a usable model: Start says it, the model and list show, fits 360 px', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('also_identify_video');
+      await open(tester, tmp, session(tmp), find.text('Analyze 1 clip and identify'));
+      expect(find.text('Also identify them'), findsOneWidget);
+      expect(find.textContaining('Then the track IDs are found, their frames saved'), findsOneWidget);
+      expect(find.text('Model (.tflite)'), findsOneWidget);
+      expect(find.text('Name list (.fpack)'), findsOneWidget);
+      expect(find.textContaining('Class list of insectdct-eff2s_cls: 104 classes on 2 levels'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // Off: only the detector, and the choice is remembered.
+      final list = find.byType(Scrollable).first;
+      await tester.ensureVisible(find.text('Also identify them'));
+      await tester.pump();
+      await tester.tap(find.text('Also identify them'));
+      await tester.pump();
+      await tester.scrollUntilVisible(find.text('Analyze 1 clip'), 200, scrollable: list);
+      expect(find.text('Analyze 1 clip'), findsOneWidget);
+      expect(find.text('Model (.tflite)'), findsNothing);
+      expect((await SharedPreferences.getInstance()).getBool('find_also_identify'), isFalse);
+    });
+
+    testWidgets('needs kept frames: greyed with the reason', (tester) async {
+      SharedPreferences.setMockInitialValues({'video_analysis_keep_frames': false});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('also_identify_keep_off');
+      await open(tester, tmp, session(tmp), find.text('Analyze 1 clip'));
+      expect(find.textContaining('Needs "Keep frames of each track ID"'), findsOneWidget);
+      expect(find.text('Model (.tflite)'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a live detection session points to Identify organisms instead', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('also_identify_live');
+      final dir = session(
+        tmp,
+        start: ['{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"detector","liveAiVideo":true}}'],
+      );
+      await open(tester, tmp, dir, find.textContaining('To name the live track IDs'));
+      expect(find.text('Also identify them'), findsNothing);
+      expect(find.text('Analyze 1 clip'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('everything analyzed already: Start only identifies', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('also_identify_done');
+      final settings = const VideoRunConfig(
+        modelPath: 'test_model',
+        modelName: 'test_model.tflite',
+        confidence: 0.25,
+        iou: 0.7,
+        useGpu: true,
+        roi: [0.5, 0.5, 0.75],
+      ).identity;
+      final dir = session(
+        tmp,
+        detections: [jsonEncode({'type': 'video_run_start', 'settings': settings}), '{"type":"video_clip_done","clip":"a.mp4"}'],
+      );
+      await open(tester, tmp, dir, find.text('Identify the animals found'));
+      final start = tester.widget<FilledButton>(find.ancestor(of: find.text('Identify the animals found'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
+      expect(start.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('a clip cut off by a killed app: said, left out, deletable at 360 px (r243)', (tester) async {

@@ -241,6 +241,21 @@ you can try a different model or different tiling settings on a finished
 session. The newest result per photo wins downstream (see
 [DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
+### Also identify them (round 274)
+
+A switch under the detection model, with the identification model and name list
+under it while it is on: one Start then finds the animals, their track IDs (when
+the photos are close enough in time), names them and opens the results. After the
+detector, the screen opens *Identify organisms*, which starts by itself and ends on
+the results; its settings (Identify organisms → Advanced, below) apply. The model
+and list are the ones *Identify organisms* remembers (`identify_model`,
+`identify_pack`), so a change on either screen shows on the other. The switch is
+saved as `find_also_identify` (shared by both Find screens); the first time it is
+on when the phone has an identification model with a name list for it. With every
+photo analysed already, Start reads *Identify the animals found*. Not offered for
+live detection sessions: their track IDs are named from the session's ⋮ menu →
+*Identify organisms*.
+
 ### Track IDs (round 237)
 
 Shown once photos of a motion or time-lapse session are analysed. *Find
@@ -288,6 +303,7 @@ rows marked (Track IDs) in the closed fold **Track ID settings**.
 | **Keep frames of each track ID** (Track IDs, r234) | on | After *Find track IDs*, saves pictures of every track ID from the clips into `roi_frames/`, like the photos the live camera takes, for looking at the visitors and for *Identify organisms*. One picture is about as big as a live photo (the analysed area at full size). Off: *Find track IDs* keeps none and removes the ones kept before (a note says how many), unless their video is gone. Saved as `video_analysis_keep_frames`; logged as `keep_frames` in `post_track_start` (null when off). Shown on the Setup tab as *Kept frames per track ID*. |
 | **Keep a frame every** (Track IDs, r234) | `1 s` (0.1–10) | The first frame of a track ID is always kept, then one after each such step, as the live camera's photo step. Shorter catches more poses but fills more storage. Saved as `video_analysis_keep_step_s`; logged as `keep_frames.step_seconds`. |
 | **For up to** (Track IDs, r234) | `10 s` (1–300) | How long into a track ID frames keep being saved, as the live camera's photo duration; a long track ID gives no more after this. A track ID gives up to about 1 + this ÷ the step frames. Saved as `video_analysis_keep_duration_s`; logged as `keep_frames.duration_seconds`. |
+| **Also identify them** (r274) | on the first time when an identification model has a name list; then as left (`find_also_identify`, shared with the photo screen) | Under *Area to analyze*. One Start finds the animals, their track IDs and kept frames, then opens *Identify organisms*, which starts by itself and ends on the results; the identification model and name list under the switch are the ones *Identify organisms* remembers. Needs *Keep frames of each track ID* on (identification names the saved frames; the switch is greyed with the reason otherwise). With every clip analysed already (or the videos deleted), Start reads *Identify the animals found*. Not offered for live detection sessions (their track IDs are named from the session's ⋮ menu). |
 
 ---
 
@@ -300,6 +316,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Round 208. These settings belong to the identification job, not to a recording; they are
 stored on the phone (`identify_*`) and echoed into the `identify_start` record of every run.
+Round 274: opened by *Also identify them* on a Find screen, the screen starts by itself once
+the crops are counted (not with 0 crops) and opens the results when the run ends.
 
 | Setting | Default | Meaning |
 |---|---|---|

@@ -30,6 +30,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart' show probeJpegSize;
+import '../identification/identification_choice.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../models/model_catalog.dart';
@@ -43,8 +44,10 @@ import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResu
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
-import 'session_summary_screen.dart';
+import 'identification_choice_fields.dart';
+import 'identification_screen.dart';
 import 'models_screen.dart';
+import 'session_summary_screen.dart';
 
 /// One analyzable session folder. Counts come in TWO units (round 172):
 /// [photoCount]/[donePhotoCount] are PHOTOS (capture moments — a high-res
@@ -86,11 +89,19 @@ class AnalysisScreen extends StatefulWidget {
   /// Optional session folder to preselect (e.g. long-press on a home row).
   final String? initialSessionPath;
 
-  /// Tests replace the sessions folder and the model list.
+  /// Tests replace the sessions folder and the model list, and (round 274)
+  /// the identification models and name lists.
   final Directory? sessionsDir;
   final List<ModelEntry>? models;
+  final IdentificationChoice? identificationChoice;
 
-  const AnalysisScreen({super.key, this.initialSessionPath, this.sessionsDir, this.models});
+  const AnalysisScreen({
+    super.key,
+    this.initialSessionPath,
+    this.sessionsDir,
+    this.models,
+    this.identificationChoice,
+  });
 
   @override
   State<AnalysisScreen> createState() => _AnalysisScreenState();
@@ -126,6 +137,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   _AnalyzableSession? _session;
   ModelEntry? _model;
   double _confidence = 0.25;
+
+  /// "Also identify them" (round 274) and its model and name list.
+  IdentificationChoice _idChoice = IdentificationChoice();
+  bool _alsoIdentify = false;
   double _iou = 0.7;
 
   /// Cleanup: "keep neighbours within this many seconds of a detection".
@@ -181,11 +196,14 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final prefs = await SharedPreferences.getInstance();
     final models = widget.models ?? await ModelCatalog.build();
     final sessions = await _scanSessions();
+    final (idChoice, alsoIdentify) = await AlsoIdentify.load(widget.identificationChoice);
     if (!mounted) return;
     final savedModel = prefs.getString(_prefModel);
     setState(() {
       _sessions = sessions;
       _models = models;
+      _idChoice = idChoice;
+      _alsoIdentify = alsoIdentify;
       _confidence = prefs.getDouble(_prefConf) ?? 0.25;
       _iou = prefs.getDouble(_prefIou) ?? 0.7;
       _keepGap = prefs.getDouble(_prefKeepGap) ?? 2.0;
@@ -518,6 +536,51 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       });
       await _loadOutcomes();
     }
+    // Round 274: one Start from the boxes to the names.
+    if (_identify && failure == null && !result!.cancelled && mounted) await _openIdentify(session);
+  }
+
+  /// "Also identify them" can run: switched on, a model with a name list
+  /// chosen, and not a live detection session (its track IDs are named from
+  /// the session's ⋮ menu).
+  bool get _identify => _alsoIdentify && _idChoice.ready && !(_session?.live?.usedDetectorLive ?? false);
+
+  /// Opens Identify organisms on [s], which starts by itself and ends on the
+  /// results; the model and name list chosen here are remembered for it.
+  Future<void> _openIdentify(_AnalyzableSession s) async {
+    await _idChoice.save();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: s.dir, autoStart: true)),
+    );
+    if (!mounted) return;
+    // Another model may have been chosen there.
+    final (choice, _) = await AlsoIdentify.load(widget.identificationChoice);
+    if (mounted) setState(() => _idChoice = choice);
+  }
+
+  Widget _alsoIdentifySection() {
+    if (_session?.live?.usedDetectorLive ?? false) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Text(
+          'To name the live track IDs: "Identify organisms" in the session\'s ⋮ menu.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      );
+    }
+    return AlsoIdentifySection(
+      value: _alsoIdentify,
+      onChanged: _running || _tracking
+          ? null
+          : (v) {
+              setState(() => _alsoIdentify = v);
+              AlsoIdentify.save(v);
+            },
+      choice: _idChoice,
+      onChoiceChanged: (_) => setState(() {}),
+      onManage: _running ? null : _manageModels,
+    );
   }
 
   String _eta() {
@@ -572,6 +635,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 const SizedBox(height: 12),
                 _modelPicker(),
                 const SizedBox(height: 8),
+                _alsoIdentifySection(),
                 // Round 273: a general user sees session, model and Start;
                 // every number to tune is one tap away here.
                 FoldSection(
@@ -741,6 +805,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   Future<void> _manageModels() async {
     await openModelsScreen(context);
     final models = widget.models ?? await ModelCatalog.build();
+    if (widget.identificationChoice == null) await AlsoIdentify.reload(_idChoice);
     if (!mounted) return;
     setState(() {
       _models = models;
@@ -955,6 +1020,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         : session.fileCount - session.doneFileCount;
     final filesSuffix = pendingFiles != pending ? ' ($pendingFiles files)' : '';
     final nothingToDo = session != null && pendingFiles == 0;
+    // Round 274: every photo is analyzed, so Start only names the animals found.
+    final identifyOnly = _identify && nothingToDo;
     // An AI-live session must not be re-run with the very model it already
     // used — that can only reproduce the live result.
     final sameModelAsLive =
@@ -966,23 +1033,34 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed:
-              (session == null || _model == null || nothingToDo || sameModelAsLive || _tracking)
+          onPressed: identifyOnly
+              ? (_tracking ? null : () => _openIdentify(session))
+              : (session == null || _model == null || nothingToDo || sameModelAsLive || _tracking)
               ? null
               : _start,
-          icon: const Icon(Icons.play_arrow),
+          icon: Icon(identifyOnly ? Icons.biotech : Icons.play_arrow),
           label: Text(
             session == null
                 ? 'Pick a session to analyze'
+                : identifyOnly
+                ? 'Identify the animals found'
                 : nothingToDo
                 ? 'All photos already analyzed (tick re-analyze to redo)'
                 : sameModelAsLive
                 ? 'Same model as the live session — pick another'
                 : _forceReanalyze
-                ? 'Re-analyze $pending photos$filesSuffix'
-                : 'Analyze $pending photos$filesSuffix',
+                ? 'Re-analyze $pending photos$filesSuffix${_identify ? ' and identify' : ''}'
+                : 'Analyze $pending photos$filesSuffix${_identify ? ' and identify' : ''}',
           ),
         ),
+        if (_identify && !identifyOnly && session != null && !sameModelAsLive)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'Then the track IDs are found, the animals identified and the results opened.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ),
       ],
     );
   }

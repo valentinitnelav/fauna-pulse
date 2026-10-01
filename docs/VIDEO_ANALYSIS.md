@@ -41,7 +41,9 @@ Terms used below:
 2. **Find animals in videos** (home screen): session, model, the proposed area, Start. The
    confidence threshold and *Frames analyzed per second* (default 5 since round 254; live
    detection analyses 15) sit under *Advanced settings* (round 273). This is the slow step
-   (it can be paused and continued). It finds boxes only.
+   (it can be paused and continued). It finds boxes only. With *Also identify them* on
+   (round 274), the same Start goes on through step 3 and the identification (*Identify
+   organisms* starts by itself on the kept frames) and ends on the results.
 3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
    C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length* (under

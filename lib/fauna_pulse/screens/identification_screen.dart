@@ -24,17 +24,18 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../identification/crop_worker.dart';
 import '../identification/identification_assets.dart';
+import '../identification/identification_choice.dart';
 import '../identification/identification_job.dart';
 import '../identification/identification_store.dart';
 import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
-import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
+import 'identification_choice_fields.dart';
 import 'identification_results_screen.dart';
 import 'models_screen.dart';
 import 'video_analysis_screen.dart';
@@ -46,7 +47,13 @@ const int kSpeedTestCrops = 10;
 
 class IdentificationScreen extends StatefulWidget {
   final Directory sessionDir;
-  const IdentificationScreen({super.key, required this.sessionDir});
+
+  /// Round 274: opened by "Also identify them" on a Find screen: the run
+  /// starts by itself once the crops are counted, and a finished run opens
+  /// the results.
+  final bool autoStart;
+
+  const IdentificationScreen({super.key, required this.sessionDir, this.autoStart = false});
 
   @override
   State<IdentificationScreen> createState() => _IdentificationScreenState();
@@ -54,15 +61,13 @@ class IdentificationScreen extends StatefulWidget {
 
 class _IdentificationScreenState extends State<IdentificationScreen> {
   IdentifyPrefs? _prefs;
-  List<File> _models = const [];
-  List<File> _packs = const [];
-  File? _model;
-  File? _pack;
-  Map<String, dynamic>? _packHeader;
 
-  /// Header of every name list by path (round 271), to offer only the lists
-  /// made for the chosen model.
-  Map<String, Map<String, dynamic>> _headers = const {};
+  /// The model and name list (round 274: shared with the Find screens'
+  /// "Also identify them").
+  IdentificationChoice _choice = IdentificationChoice();
+  File? get _model => _choice.model;
+  File? get _pack => _choice.pack;
+  Map<String, dynamic>? get _packHeader => _choice.packHeader;
   int? _plannedCrops;
   int? _plannedTracks;
   // Round 256: kept video frames not saved yet have no crops (the planner
@@ -129,19 +134,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   Future<void> _load() async {
     final prefs = await IdentifyPrefs.load();
-    final models = await IdentificationAssets.listModels();
-    final packs = await IdentificationAssets.listPacks();
-    File? pick(List<File> files, String? name) {
-      if (files.isEmpty) return null;
-      for (final f in files) {
-        if (name != null && f.path.endsWith('/$name')) return f;
-      }
-      return files.first;
-    }
-    final model = pick(models, prefs.modelName);
-    final headers = await _readHeaders(packs);
-    final pack = _classListFor(model, packs) ?? pick(_listsFor(model, packs, headers), prefs.packName);
-    final header = pack == null ? null : headers[pack.path];
+    final choice = await IdentificationChoice.load(modelName: prefs.modelName, packName: prefs.packName);
     ThermalReading? thermal;
     try {
       thermal = await DeviceThermal.read();
@@ -151,18 +144,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
-      _models = models;
-      _packs = packs;
-      _headers = headers;
-      _model = model;
-      _pack = pack;
-      _packHeader = header;
+      _choice = choice;
       _thermal = thermal;
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
     await _plan();
     await _checkVisits();
     await _loadSpeed();
+    if (widget.autoStart && mounted && _model != null && _pack != null && (_plannedCrops ?? 0) > 0) await _start();
   }
 
   Future<void> _checkVisits() async {
@@ -221,52 +210,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     });
   }
 
-  /// Round 266: a fixed-class classifier (e.g. insectDCT) comes with its class
-  /// list under the same file name (`x.tflite` + `x.fpack`); choosing the
-  /// model chooses it.
-  static File? _classListFor(File? model, List<File> packs) {
-    if (model == null) return null;
-    final stem = stemOf(model.path.split('/').last);
-    for (final p in packs) {
-      if (stemOf(p.path.split('/').last) == stem) return p;
-    }
-    return null;
-  }
-
-  bool get _isClassList => _packHeader?['kind'] == 'classes';
-
-  /// 35264 → "35,264".
-  static String _thousands(num n) => '$n'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
-
-  static Future<Map<String, Map<String, dynamic>>> _readHeaders(List<File> packs) async {
-    final headers = <String, Map<String, dynamic>>{};
-    for (final p in packs) {
-      try {
-        headers[p.path] = await LabelPack.readHeader(p);
-      } catch (e) {
-        logSwallowed('identify_pack_header', e);
-      }
-    }
-    return headers;
-  }
-
-  /// The name lists made for [model] (round 271): only these are offered, and
-  /// without one the model cannot identify.
-  static List<File> _listsFor(File? model, List<File> packs, Map<String, Map<String, dynamic>> headers) =>
-      model == null
-      ? const []
-      : [for (final p in packs) if (IdentificationAssets.listBelongsTo(p, headers[p.path], model)) p];
-
-  List<File> get _modelPacks => _listsFor(_model, _packs, _headers);
-
-  /// After the model changed: its class list, else the chosen list when it
-  /// fits the model, else its first list, else none.
-  Future<void> _selectPackForModel() async {
-    final lists = _modelPacks;
-    await _selectPack(
-      _classListFor(_model, lists) ?? lists.where((f) => f.path == _pack?.path).firstOrNull ?? lists.firstOrNull,
-    );
-  }
+  bool get _isClassList => _choice.isClassList;
 
   /// Why [model] and the chosen pack cannot run together, before anything is
   /// loaded (round 266); null when they may. The embedding size is checked
@@ -282,47 +226,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     return null;
   }
 
-  Future<void> _selectPack(File? f) async {
-    Map<String, dynamic>? header;
-    if (f != null) {
-      try {
-        header = await LabelPack.readHeader(f);
-      } catch (e) {
-        logSwallowed('identify_pack_header', e);
-        if (mounted) _snack('Could not read this label pack: ${plainError(e)}');
-      }
-    }
-    if (!mounted) return;
-    setState(() {
-      _pack = f;
-      _packHeader = header;
-    });
-  }
-
   /// Round 267: files are added and deleted on the AI models screen. On
   /// return the lists are re-read; a chosen file that was deleted falls back
   /// to the first one, and a model's class list is chosen with it.
   Future<void> _manageModels() async {
     await openModelsScreen(context);
-    final models = await IdentificationAssets.listModels();
-    final packs = await IdentificationAssets.listPacks();
-    final headers = await _readHeaders(packs);
+    await _choice.reload();
     if (!mounted) return;
-    File? keep(List<File> files, File? current) =>
-        files.where((f) => f.path == current?.path).firstOrNull ?? files.firstOrNull;
-    setState(() {
-      _models = models;
-      _packs = packs;
-      _headers = headers;
-      _model = keep(models, _model);
-    });
-    await _selectPackForModel();
+    setState(() {});
     await _checkVisits();
     await _loadSpeed();
-  }
-
-  void _snack(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> _savePrefs() async {
@@ -497,6 +410,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
     await _checkVisits();
+    // Round 274: the one-Start path ends on the results (newest summary first).
+    if (widget.autoStart && mounted && result != null && !result.cancelled && _error == null) _openResults();
   }
 
   Widget _buttonNote(String name, String text) => Padding(
@@ -721,88 +636,19 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     );
   }
 
-  List<Widget> _filesSection(IdentifyPrefs prefs) {
-    String label(File f) =>
-        '${f.path.split('/').last} (${formatBytes(f.lengthSync())})';
-    // Round 268: no model ships with the app.
-    if (_models.isEmpty) {
-      return [
-        const Text('Model and name list', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        const SizedBox(height: 8),
-        NoModelNotice(identification: true, onGet: _testingSpeed ? null : _manageModels),
-      ];
-    }
-    return [
-      const HelpLabel(
-        label: 'Model and name list',
-        labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        helperText:
-            'The model names a crop by choosing from a NAME LIST made for it; without one it cannot '
-            'identify, so only the lists made for the chosen model are offered. A BioCLIP model works '
-            'with many LABEL PACKS (lists of names with their taxonomy). A classifier such as insectDCT '
-            'knows a fixed set of classes: its CLASS LIST has the same file name as the model and is '
-            'chosen with it. Add files with Download & import models… below (also in the home '
-            "screen's ⋮ menu)."
-      ),
-      const SizedBox(height: 8),
-      // isExpanded (round 209): without it the field takes the width of its
-      // longest item, and a long pack file name overflowed the screen.
-      DropdownButtonFormField<String>(
-        initialValue: _model?.path,
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Model (.tflite)'),
-        items: [for (final f in _models) DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis))],
-        onChanged: (p) {
-          setState(() => _model = _models.firstWhere((f) => f.path == p));
-          _selectPackForModel();
+  List<Widget> _filesSection(IdentifyPrefs prefs) => [
+    IdentificationChoiceFields(
+      choice: _choice,
+      onManage: _testingSpeed ? null : _manageModels,
+      onChanged: (modelChanged) {
+        setState(() {});
+        if (modelChanged) {
           _loadSpeed();
           _checkVisits();
-        },
-      ),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        initialValue: _pack?.path,
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Name list (.fpack)'),
-        items: [
-          for (final f in _modelPacks)
-            DropdownMenuItem(value: f.path, child: Text(label(f), overflow: TextOverflow.ellipsis)),
-        ],
-        onChanged: (p) => _selectPack(_packs.firstWhere((f) => f.path == p)),
-      ),
-      if (_packHeader != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            _isClassList
-                ? 'Class list of ${_packHeader!['model_id']}: ${_packHeader!['rows']} classes on '
-                      '${(_packHeader!['heads'] as List?)?.length ?? 1} levels, ${_packHeader!['sink_rows']} '
-                      '"none" class (e.g. vegetation)'
-                : 'Pack ${_packHeader!['pack_id']} for ${_packHeader!['model_id']}: '
-                      // Names without the "none" rows, as on the Download & import models
-                      // screen and in the catalogue (round 271).
-                      '${_thousands((_packHeader!['rows'] as num? ?? 0) - (_packHeader!['sink_rows'] as num? ?? 0))} '
-                      'names, ${_packHeader!['sink_rows']} "none" entries, '
-                      'scale ${(_packHeader!['logit_scale'] as num?)?.toStringAsFixed(1)}',
-            style: helperTextStyle,
-          ),
-        ),
-      if (_modelPacks.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text(
-            '⚠ No name list for this model, so it cannot identify. Get one with Download & import '
-            'models… below.',
-            style: TextStyle(color: Colors.amber, fontSize: 13),
-          ),
-        ),
-      const SizedBox(height: 4),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: manageModelsButton(onPressed: _testingSpeed ? null : _manageModels),
-      ),
-    ];
-  }
+        }
+      },
+    ),
+  ];
 
   /// Round 256: kept video frames that are not saved yet (the Video screen
   /// was left while saving) have no photo, so their track IDs are missing.

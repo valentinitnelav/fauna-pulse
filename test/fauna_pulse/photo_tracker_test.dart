@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart' show roiPhotoFileName;
+import 'package:fauna_pulse/fauna_pulse/identification/identification_choice.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/dashboard_stats.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/session_log_index.dart';
@@ -25,6 +26,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
+import 'video_screens_test.dart' show idChoice;
 
 final s0 = DateTime(2026, 7, 1, 10).millisecondsSinceEpoch;
 
@@ -239,10 +241,15 @@ void main() {
     setUp(() => wakelockPlusPlatformInstance = _FakeWakelock());
     const models = [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)];
 
-    Future<Finder> openAnalysis(WidgetTester tester, Directory session) async {
+    Future<Finder> openAnalysis(WidgetTester tester, Directory session, {IdentificationChoice? choice}) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: AnalysisScreen(initialSessionPath: session.path, sessionsDir: session.parent, models: models),
+          home: AnalysisScreen(
+            initialSessionPath: session.path,
+            sessionsDir: session.parent,
+            models: models,
+            identificationChoice: choice,
+          ),
         ),
       );
       await _pumpUntil(tester, find.textContaining(session.path.split('/').last));
@@ -316,6 +323,29 @@ void main() {
       expect(find.text('Confidence threshold: 0.25'), findsOneWidget);
       expect(find.text('IoU threshold: 0.70'), findsOneWidget);
       expect(find.text('Small-insect tiling (SAHI)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('"Also identify them": with every photo analyzed, Start only identifies (r274)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
+      _photoFiles(dir);
+      final list = await openAnalysis(tester, dir, choice: idChoice(Directory.systemTemp.createTempSync('id_choice')));
+      await tester.scrollUntilVisible(find.text('Also identify them'), -200, scrollable: list);
+      expect(find.text('Model (.tflite)'), findsOneWidget);
+      final start = find.text('Identify the animals found');
+      await tester.scrollUntilVisible(start, 200, scrollable: list);
+      final button = tester.widget<FilledButton>(
+        find.ancestor(of: start, matching: find.byWidgetPredicate((w) => w is FilledButton)),
+      );
+      expect(button.onPressed, isNotNull);
+      // Off: back to the detector-only button.
+      await tester.ensureVisible(find.text('Also identify them'));
+      await tester.pump();
+      await tester.tap(find.text('Also identify them'));
+      await tester.pump();
+      await tester.scrollUntilVisible(find.textContaining('All photos already analyzed'), 200, scrollable: list);
       expect(tester.takeException(), isNull);
     });
 
