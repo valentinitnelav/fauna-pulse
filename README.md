@@ -271,12 +271,10 @@ Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](h
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse is developed as an open research project. 
-While I intend to continue its development, future maintenance and development cannot be guaranteed. 
-I hope the community will pick up the project, contribute improvements, and help carry its development further.
+FaunaPulse is developed as an open research project.
 
-Contributions are welcome. Start a short-lived branch from `develop` and open
-the pull request back into `develop`; `main` is kept stable for reviewed
+Contributions are welcome. Fork the repo, start a short-lived branch from `develop` and open
+the pull request back into `develop`. `main` is kept stable for reviewed
 changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
 branch names and the dependency-update workflow.
 

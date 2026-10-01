@@ -9,7 +9,7 @@ code fits together, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
 
 The Flutter/Android toolchain setup (SDK versions, `flutter doctor`, device
 setup) is covered in the [Installation & Testing Guide](INSTALL.md). The app
-lives at the repository root (not in a subfolder) and depends on the vendored
+lives at the repository root (not in a subfolder) and depends on the ultralytics
 plugin via a `path:` dependency:
 
 ```yaml
@@ -22,7 +22,7 @@ dependencies:
 
 FaunaPulse uses two long-lived branches:
 
-- `main` is the stable, public-facing branch. It should always be buildable and
+- `main` is the stable, public-facing branch. It must always be buildable and
   receives changes only after review.
 - `develop` is the integration branch for ongoing work. Normal code,
   documentation and dependency-update pull requests target `develop`.
@@ -39,7 +39,7 @@ For a normal contribution:
    ```bash
    git switch develop
    git pull --ff-only
-   git switch -c fix/short-description
+   git switch -c fix/short-description # or some feature
    ```
 
 3. Make one focused change and run the relevant checks.
