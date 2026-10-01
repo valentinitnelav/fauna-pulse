@@ -117,7 +117,142 @@ the settings: knowing the answer changes what one sees. Pick clips across condit
 (sun and shade, wind, busy and quiet flowers) and include clips **without** visits: they
 show how often the app counts leaves, shadows or flowers as insects.
 
-### 3a. Visit counts (what the app's track IDs claim): spreadsheet or BORIS
+### 3a. A test set: insects, appearances and three passes in VIA3 (round 272)
+
+For a set of videos that will be scored again and again (other settings, other detectors),
+annotate the facts once, so that the hand count does not depend on the app's settings.
+Tool: the [VIA3](https://www.robots.ox.ac.uk/~vgg/software/via/) video and image annotators
+(Visual Geometry Group, University of Oxford; version 3.0.13, two-clause BSD licence): single
+HTML files that work offline in any browser, nothing to install.
+
+**The target square.** Only insects inside one square around the flower are annotated, and
+the app analyses the same square: [`prepare_square.py`](../tool/video_eval/prepare_square.py)
+crops the video to it, and the cropped copy is used for both (imported into the app and
+analysed with the area *whole picture*). So the app sees exactly the annotated pixels.
+
+The cropped copy also stands in for a phone time-lapse video (*Save bursts as: Video*),
+which records only the square ROI: the model sees a square, the insects keep their pixels,
+and what is outside the square cannot give false track IDs, as in the field. What still
+differs: the square of a 480-pixel-high video is at most 480 px (a phone records up to the
+*Saved photo side*, 1024 px by default), these videos have 30 frames per second (the phone
+records 15 by default), and the camera and lens are different. For scores that are
+comparable with a phone recording, run *Find animals in videos* at **15 frames per second
+or less**; the copy keeps all 30, so the frame-rate sweep (§5) can still try more.
+
+Choose the square as on the phone, by watching the video and placing it:
+
+```bash
+cd fauna-pulse/tool/video_eval
+python3 prepare_square.py squares ~/videos/
+```
+
+A folder stands for every video file in it (subfolders are not searched); single files work
+too. Everything is written into an `eval` folder next to the videos (`--out` chooses another).
+The project files are data: keep them with the videos, not in the code repository.
+
+1. Open `~/videos/eval/squares_via3.json` in the VIA3 video annotator (steps below). It
+   holds all the videos; the list of files in the toolbar at the top switches between them.
+2. For each video: play it to see where the flower moves, pause, choose the *Rectangle*
+   shape in the toolbar and draw **one** rectangle around the flower. VIA3 has no square
+   tool: the rectangle becomes a square with the same centre and the longer side, moved to
+   stay inside the picture, at most the picture's height. Leave a video without a
+   rectangle to keep its whole picture (for example when the camera itself moves).
+3. Save the project (it lands in the browser's download folder), then:
+
+```bash
+python3 prepare_square.py crop --from-via ~/Downloads/via_project_<date>.json
+```
+
+For each rectangle it prints the square it used, then writes `A_square.mp4` (same frames and
+frame times as the original, checked; the numbers in `A_square.json`), a picture of the square
+on the video (`A_square_preview.jpg`) and everything for annotation: `A_square_via3.json`
+(passes 1 and 2) and 30 pictures in `A_square_snapshots/` with
+`A_square_snapshots_via3.json` (pass 0). It never overwrites a project that already holds
+annotations. A video left without a rectangle: `prepare_square.py annotate A.mp4` makes the
+same annotation files for the whole picture (`annotate` also takes a folder, for example of
+square clips the app recorded itself). A square can also be given by numbers
+(`crop A.mp4 --x 40 --y 0 --side 480`); `range` makes a picture of where the flower moves
+during the video (the brightest value of every pixel, beside the middle frame) as a help.
+
+**What is annotated.**
+
+* **Insect**: one individual, as far as you can tell. One timeline row per insect.
+* **Appearance**: one continuous time span in which that insect is visible inside the
+  square: one time segment in the insect's row. Hidden for less than 1 s (behind a petal)
+  is still the same appearance. When it leaves the square and comes back, give it a second
+  segment in the same row only if you saw it is the same individual; if not sure, start a
+  new row and write "maybe same as insect N" in its note.
+* Every moment of a watched video outside the appearances counts as "no insect". That is
+  what measures false track IDs, so mark a video as watched only when every insect in it is
+  annotated.
+* The row **ignore** marks time left out of all scores (camera knocked, heavy blur, cannot tell).
+* Attributes of each time segment: **taxon** (set it on the insect's first appearance; the
+  others take it over), **focus** (sharp, soft, very blurred), **size** (small = less than 15
+  pixels long), **sure** (it is an animal: yes, probably), **edge** (yes = mostly outside the
+  square; such insects count as neither missed nor extra), **on_flower** (touched the
+  flower, or only flew through), **note**.
+* Annotate what you see, not the app's rule: the scoring joins an insect's appearances
+  into visits with any gap rule, for example the app's occlusion tolerance (§2).
+
+**Three passes.** A pass is one way of going through a video.
+
+| Pass | What | VIA3 file | Time (first guess) |
+|---|---|---|---|
+| 0, snapshot counts | a point on every insect in 30 pictures (one random moment in each 10 s), then *counted: yes* on each picture, also on pictures without insects | image annotator, `*_snapshots_via3.json` | about 10 min per video |
+| 1, insect timeline | the insects' appearances with their attributes | video annotator, `*_via3.json` | 20 to 40 min for a quiet video, 1 to 3 h for a busy one |
+| 2, positions | only when several insects are present at once: a point on each insect every 1 s, and at its start and end | the same project as pass 1 | 1 to 3 h for a busy video |
+
+Do pass 0 first, without looking at anything else: it is the unbiased count of how many
+insects are present at a moment (the "MeanCount" of fish video counts) and checks the other
+passes. Pass 2 lets the scoring tell insects apart when several are present, count when a
+track ID jumps from one insect to another, and see which insect was missed.
+
+**VIA3, video annotator (passes 1 and 2).**
+
+1. Open `via_video_annotator.html` (downloaded from the VIA page) in Firefox (in Chrome,
+   Ctrl + a number switches browser tabs instead of moving the video), click
+   *Open a VIA project* (folder icon) and choose `A_square_via3.json`. A project stores the
+   folder of its files once (VIA3's *location prefix*) and only the file names. After the
+   folder was moved, VIA3 cannot load the file and shows its settings instead: type the new
+   folder (for example `/home/me/videos/eval/`) into the field next to *File Location*,
+   click *Reload File*, and save the project.
+2. The timeline under the video has rows `1` to `5` and `ignore`. To add a row, type its
+   name (`6`) into the field *add/del insect* in the timeline's toolbar and click *Add*.
+3. Space plays and pauses, ← → step one frame, 1 to 9 jump that many seconds back and
+   Ctrl + 1 to 9 forward, + − change the speed (all keys: *Keyboard Shortcuts* in the
+   timeline's toolbar). Select a row
+   (↑ ↓ or a click), then at the insect's first frame press **a** (adds a segment in that
+   row), go to its last frame and press **Shift + a** (moves the segment's end there).
+   A click on a segment shows its attributes beside the timeline.
+4. Pass 2: choose the *Point* shape in the toolbar above the video, select the insect's
+   row, pause and click on the insect. VIA3 labels the point with the selected row. Move on
+   1 s (Ctrl + 1) and repeat.
+5. At the end, set *watched* to *whole video* (in the small table of the video's own
+   attributes shown with the video). Save often with the save
+   icon: VIA3 saves `via_project_<date>.json` into the browser's download folder. Keep the
+   newest one per video, for example in `eval/annotations/`.
+
+**VIA3, image annotator (pass 0).** Open `via_image_annotator.html`, then
+`A_square_snapshots_via3.json`; for each picture choose the point tool, click on every
+insect in it, and set *counted: yes* (also when there is none). Pictures without *counted*
+are not scored.
+
+**Turn the saved projects into tables** with
+[`via3_to_hand_count.py`](../tool/video_eval/via3_to_hand_count.py):
+
+```bash
+python3 via3_to_hand_count.py eval/annotations/*.json --out eval/truth
+```
+
+It writes `hand_count.csv` (one row per appearance; `evaluate_track_ids.py` reads it as it
+is), `ignore_spans.csv`, `positions.csv`, `snapshots.csv` and `snapshot_points.csv`, prints a
+line per video (insects, appearances, insect-seconds) and notes doubtful entries (an insect
+with two taxa, appearances that overlap, a point outside its insect's appearances). Videos not
+marked *watched: whole video* are left out. The scoring of ignore spans, edge insects, snapshot
+counts and positions follows in a later round; until then `evaluate_track_ids.py` scores
+each appearance as one visit.
+
+### 3b. Quick visit counts: spreadsheet or BORIS
 
 No need to annotate every frame. Watch at normal or double speed, pause when an insect
 arrives and note its start and end time.
@@ -143,7 +278,7 @@ arrives and note its start and end time.
     ([issue 747](https://github.com/olivierfriard/BORIS/issues/747)): export all and
     choose with the script's `--behavior visit`.
 
-### 3b. Boxes and tracks (optional)
+### 3c. Boxes and tracks in CVAT (optional)
 
 Only needed to score the tracker frame by frame (for example, how often a track ID jumps
 to another insect). Visit counts do not need it.
@@ -161,7 +296,7 @@ to another insect). Visit counts do not need it.
   [TrackEval](https://github.com/JonathonLuiten/TrackEval)) will be added when these
   annotations exist. `mot/` is already in the format TrackEval reads.
 
-### 3c. Annotation helpers, and what not to use
+### 3d. Annotation helpers, and what not to use
 
 * **[SAM 3](https://github.com/facebookresearch/sam3)** (Meta, 2025) follows every
   object matching a text prompt ("bee") through a video. It needs a computer with a

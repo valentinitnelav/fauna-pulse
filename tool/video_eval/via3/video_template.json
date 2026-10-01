@@ -1,0 +1,121 @@
+{
+  "project": {
+    "pid": "__VIA_PROJECT_ID__",
+    "rev": "__VIA_PROJECT_REV_ID__",
+    "rev_timestamp": "__VIA_PROJECT_REV_TIMESTAMP__",
+    "pname": "",
+    "creator": "FaunaPulse tool/video_eval/prepare_square.py",
+    "created": 0,
+    "vid_list": []
+  },
+  "config": {
+    "file": {
+      "loc_prefix": { "1": "", "2": "", "3": "", "4": "" }
+    },
+    "ui": {
+      "file_content_align": "center",
+      "file_metadata_editor_visible": true,
+      "spatial_metadata_editor_visible": true,
+      "temporal_segment_metadata_editor_visible": true,
+      "spatial_region_label_attribute_id": "1",
+      "gtimeline_visible_row_count": "8"
+    }
+  },
+  "attribute": {
+    "1": {
+      "aname": "insect",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "One timeline row per insect (one individual). Row 'ignore' marks time left out of all scores.",
+      "options": { "ignore": "ignore", "1": "1", "2": "2", "3": "3", "4": "4", "5": "5" },
+      "default_option_id": ""
+    },
+    "2": {
+      "aname": "taxon",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "Taxon group. Set it on the insect's first appearance; empty appearances take it from the others.",
+      "options": {
+        "honey_bee": "honey bee",
+        "bumblebee": "bumblebee",
+        "other_bee": "other bee",
+        "hoverfly": "hoverfly",
+        "other_fly": "other fly",
+        "beetle": "beetle",
+        "butterfly_moth": "butterfly or moth",
+        "wasp": "wasp",
+        "ant": "ant",
+        "other": "other",
+        "unknown": "unknown"
+      },
+      "default_option_id": ""
+    },
+    "3": {
+      "aname": "focus",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "How sharp the insect is in this appearance.",
+      "options": { "sharp": "sharp", "soft": "soft", "very_blurred": "very blurred" },
+      "default_option_id": ""
+    },
+    "4": {
+      "aname": "size",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "Body length in the video: small = under 15 pixels.",
+      "options": { "small": "small", "medium": "medium", "large": "large" },
+      "default_option_id": ""
+    },
+    "5": {
+      "aname": "sure",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "Sure that it is an animal?",
+      "options": { "yes": "yes", "probably": "probably" },
+      "default_option_id": ""
+    },
+    "6": {
+      "aname": "edge",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "yes = mostly outside the square (scored as 'do not care').",
+      "options": { "no": "no", "yes": "yes" },
+      "default_option_id": ""
+    },
+    "7": {
+      "aname": "on_flower",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 4,
+      "desc": "Did it touch the flower in this appearance, or only fly through?",
+      "options": { "yes": "yes", "only_flying": "only flying" },
+      "default_option_id": ""
+    },
+    "8": {
+      "aname": "note",
+      "anchor_id": "FILE1_Z2_XY0",
+      "type": 1,
+      "desc": "Free text, for example 'maybe same as insect 3'.",
+      "options": {},
+      "default_option_id": ""
+    },
+    "9": {
+      "aname": "insect",
+      "anchor_id": "FILE1_Z1_XY1",
+      "type": 1,
+      "desc": "Pass 2: only needed when no timeline row was selected while drawing; then type the row name of the insect.",
+      "options": {},
+      "default_option_id": ""
+    },
+    "10": {
+      "aname": "watched",
+      "anchor_id": "FILE1_Z0_XY0",
+      "type": 4,
+      "desc": "Set to 'whole video' when every insect in the whole video is annotated. Only such videos are scored.",
+      "options": { "no": "not finished", "whole_video": "whole video" },
+      "default_option_id": ""
+    }
+  },
+  "file": {},
+  "view": {},
+  "metadata": {}
+}

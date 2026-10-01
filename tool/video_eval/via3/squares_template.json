@@ -1,0 +1,35 @@
+{
+  "project": {
+    "pid": "__VIA_PROJECT_ID__",
+    "rev": "__VIA_PROJECT_REV_ID__",
+    "rev_timestamp": "__VIA_PROJECT_REV_TIMESTAMP__",
+    "pname": "",
+    "creator": "FaunaPulse tool/video_eval/prepare_square.py",
+    "created": 0,
+    "vid_list": []
+  },
+  "config": {
+    "file": {
+      "loc_prefix": { "1": "", "2": "", "3": "", "4": "" }
+    },
+    "ui": {
+      "file_content_align": "center",
+      "file_metadata_editor_visible": true,
+      "spatial_metadata_editor_visible": true,
+      "spatial_region_label_attribute_id": ""
+    }
+  },
+  "attribute": {
+    "1": {
+      "aname": "note",
+      "anchor_id": "FILE1_Z1_XY1",
+      "type": 1,
+      "desc": "Optional. Draw ONE rectangle per video around the flower, as the ROI square on the phone; it becomes a square with the same centre and the longer side.",
+      "options": {},
+      "default_option_id": ""
+    }
+  },
+  "file": {},
+  "view": {},
+  "metadata": {}
+}

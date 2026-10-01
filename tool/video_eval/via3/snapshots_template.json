@@ -1,0 +1,59 @@
+{
+  "project": {
+    "pid": "__VIA_PROJECT_ID__",
+    "rev": "__VIA_PROJECT_REV_ID__",
+    "rev_timestamp": "__VIA_PROJECT_REV_TIMESTAMP__",
+    "pname": "",
+    "creator": "FaunaPulse tool/video_eval/prepare_square.py",
+    "created": 0,
+    "vid_list": []
+  },
+  "config": {
+    "file": {
+      "loc_prefix": { "1": "", "2": "", "3": "", "4": "" }
+    },
+    "ui": {
+      "file_content_align": "center",
+      "file_metadata_editor_visible": true,
+      "spatial_metadata_editor_visible": true,
+      "spatial_region_label_attribute_id": ""
+    }
+  },
+  "attribute": {
+    "1": {
+      "aname": "focus",
+      "anchor_id": "FILE1_Z0_XY1",
+      "type": 4,
+      "desc": "How sharp this insect is (optional).",
+      "options": { "sharp": "sharp", "soft": "soft", "very_blurred": "very blurred" },
+      "default_option_id": ""
+    },
+    "2": {
+      "aname": "edge",
+      "anchor_id": "FILE1_Z0_XY1",
+      "type": 4,
+      "desc": "yes = mostly outside the square (scored as 'do not care').",
+      "options": { "no": "no", "yes": "yes" },
+      "default_option_id": ""
+    },
+    "3": {
+      "aname": "counted",
+      "anchor_id": "FILE1_Z0_XY0",
+      "type": 4,
+      "desc": "Set to 'yes' when every insect in this picture has a point, also when there is none. Pictures without 'yes' are not scored.",
+      "options": { "yes": "yes" },
+      "default_option_id": ""
+    },
+    "4": {
+      "aname": "note",
+      "anchor_id": "FILE1_Z0_XY0",
+      "type": 1,
+      "desc": "Free text.",
+      "options": {},
+      "default_option_id": ""
+    }
+  },
+  "file": {},
+  "view": {},
+  "metadata": {}
+}
