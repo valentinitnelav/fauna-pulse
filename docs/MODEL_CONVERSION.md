@@ -94,6 +94,17 @@ Why this is the recommended export (app support added in round 155):
   from the older exports' `[1,H,W,3]`), so `format=litert` and older
   `format=tflite` files both work in the same picker.
 
+### Models from the InsectAI Model Zoo, segmentation models, input sizes (round 264)
+
+`tool/detector_export/export_detector.py` does the export above for any Ultralytics
+checkpoint, turns segmentation models (flat-bug) into box detectors, writes one file per
+input size and checks every file against PyTorch on your pictures
+(`tool/detector_export/README.md`, with phone timings of flat-bug n/s and insectDCT v8-s).
+Its default is fp16 weights, not w8a32: on flat-bug n at 640 px, w8a32 lost 6 of 28 boxes
+near the confidence threshold while fp16 kept all 28 with the same confidences; on the
+Xiaomi's GPU both run equally fast, on its CPU w8a32 was 2.3 times faster. So w8a32 stays a
+good choice for CPU-bound phones, after checking its boxes.
+
 ### Older / alternative exports (all still work)
 
 ```bash

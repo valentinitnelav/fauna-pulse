@@ -16,6 +16,7 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | File | What it is | Size | Made with |
 |---|---|---|---|
 | `bioclip2_image_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `tool/bioclip_export/export_image_tower.py` |
+| `bioclip-25_image_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
 
 Both are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
@@ -24,7 +25,11 @@ In the app: session gear menu → **Identify organisms** → *Import model…* /
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 
-Model weights: BioCLIP 2 by Imageomics (MIT). Name embeddings: TreeOfLife-200M (CC0).
+A pack only works with the model it was built for (BioCLIP 2 packs hold 768 numbers per
+name, BioCLIP 2.5 packs 1024; the app refuses a mismatch). BioCLIP 2.5 packs start with
+`bioclip25_`.
+
+Model weights: BioCLIP 2 and BioCLIP 2.5 by Imageomics (MIT). Name embeddings: TreeOfLife-200M (CC0).
 Please cite Gu et al. (2025), *BioCLIP 2: Emergent Properties from Scaling Hierarchical
 Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS.md`).
 
@@ -294,6 +299,31 @@ at a time with a progress line ("Crop 3 of 10, about 40 s left"; round 247, was 
 call with no feedback), and reports seconds per crop, so GPU on/off and thread counts can
 be compared in a minute each (a few minutes on an older phone's CPU); the app does not
 claim a speed it has not measured.
+
+**BioCLIP 2.5 (round 264).** BioCLIP 2.5 Huge (ViT-H/14) is the larger successor of
+BioCLIP 2 (2.1 times the computation per crop, 1024-number embeddings). Its phone file is
+made the same way (`export_image_tower.py --model bioclip-2.5`, GPU-friendly attention,
+fp16: 1.27 GB); against the original PyTorch model it gave the same top family and top
+species on 34 of 34 bumblebee crops (cosine 1.0000). Measured on the Xiaomi test phone
+(Xiaomi 11T Pro, Snapdragon 888, 7.4 GB, plugged in):
+
+| | BioCLIP 2 (fp16) | BioCLIP 2.5 (fp16) |
+|---|---|---|
+| GPU | 0.27 s per crop | not possible on this phone (memory, below) |
+| CPU, 2 threads (the automatic choice) | 2.6 s per crop | **5.3 to 5.6 s per crop** (load 9 s) |
+| CPU, 4 threads | | 16.6 s per crop (slower) |
+| app memory while running on the CPU | | 2.8 GB (3.4 GB at the peak) |
+
+Why no GPU: setting BioCLIP 2 up on this phone's GPU took the app to 3.8 GB for a moment
+(6 times its 0.6 GB file) and left 0.55 GB free on the phone; BioCLIP 2.5 would need about
+7.8 GB, more than the phone has. The memory guard above already sends it to the CPU with a
+note. A phone with 12 GB or more might run it on the GPU (untested). So BioCLIP 2.5 is an
+overnight, plugged-in choice: about 1.5 hours per 1000 crops on this phone. An 8-bit (int8)
+file was also tried: half the size and 1.6 GB of memory, but slower on the phone's CPU
+(9.2 s per crop) and it changed the top family on 2 of 34 crops (one where the original
+was sure) and the top species on 4 of 34; not recommended. Whether BioCLIP 2.5 identifies
+this project's pollinators better than BioCLIP 2 has not been tested yet (the one test
+session here is a YouTube clip, fit for timing only).
 
 **What the times on the screen measure (round 250).** *Test speed* and the progress line
 ("the model takes 0.27 s per crop") time the model alone: a stopwatch around each call,

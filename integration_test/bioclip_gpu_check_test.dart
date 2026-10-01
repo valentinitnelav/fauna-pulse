@@ -16,7 +16,14 @@
 //    clock (the TIMING start/end lines; a test's print() goes to the PC, not to logcat). On
 //    the Xiaomi (round 250) they agreed to 0.01 s per crop. The identification in step 2
 //    also reports how much of its time the model took.
+// 4. Round 264 (BioCLIP 2.5): --dart-define=MODEL=<part of a file name> tests only the matching
+//    models; --dart-define=SESSION=<session folder name> identifies that session from the app's
+//    sessions folder in step 2 instead of the photo_visits_check one (only new files named after
+//    the model and the pack are written); the pack is the first one built for the model's
+//    embedding size (BioCLIP 2 packs have 768 numbers per name, BioCLIP 2.5 packs 1024) whose file
+//    name contains --dart-define=PACK=<part of a file name> (default: any).
 // Run:  flutter test integration_test/bioclip_gpu_check_test.dart -d <serial> --no-uninstall
+//       e.g. --dart-define=MODEL=bioclip-25 --dart-define=SESSION=bumblebee-2 --dart-define=BIOCLIP_GPU=false
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 // Keep the phone on the charger; the check keeps the screen on.
 
@@ -28,6 +35,7 @@ import 'dart:typed_data';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_store.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -40,6 +48,11 @@ const _crops = 6;
 // --dart-define=BIOCLIP_GPU=false: CPU only (a phone whose GPU run would be
 // killed for lack of memory, round 243).
 const _tryGpu = bool.fromEnvironment('BIOCLIP_GPU', defaultValue: true);
+const _modelFilter = String.fromEnvironment('MODEL');
+const _sessionName = String.fromEnvironment('SESSION');
+const _packFilter = String.fromEnvironment('PACK');
+// --dart-define=THREADS=4: CPU threads of step 1's CPU rows (default 0 = the app's automatic choice).
+const _threads = int.fromEnvironment('THREADS');
 
 // ignore: avoid_print
 void _log(String s) => print(s);
@@ -50,14 +63,18 @@ void main() {
   testWidgets('BioCLIP on the GPU and on the CPU on this phone', (tester) async {
     await WakelockPlus.enable();
     addTearDown(WakelockPlus.disable);
-    final models = await IdentificationAssets.listModels();
+    final models = [
+      for (final m in await IdentificationAssets.listModels())
+        if (m.path.split('/').last.contains(_modelFilter)) m,
+    ];
     expect(models, isNotEmpty, reason: 'import a BioCLIP model on the Identify screen first');
     final rng = Random(7);
     File? gpuModel;
+    int? gpuModelDim;
     for (final m in models) {
       for (final gpu in [if (_tryGpu) true, false]) {
         final t0 = await DeviceThermal.read();
-        final info = await ImageEmbedder.load(m.path, useGpu: gpu);
+        final info = await ImageEmbedder.load(m.path, useGpu: gpu, cpuThreads: _threads);
         final side = info.inputWidth * info.inputHeight * 3;
         final images = [
           for (var i = 0; i < _crops; i++) Uint8List.fromList(List.generate(side, (_) => rng.nextInt(256))),
@@ -78,7 +95,10 @@ void main() {
         _log('TIMING $label end ${DateTime.now().toIso8601String()}');
         final perCrop = appMs / _crops / 1000;
         await ImageEmbedder.close();
-        if (gpu && info.accelerator == 'GPU' || !_tryGpu) gpuModel ??= m;
+        if ((gpu && info.accelerator == 'GPU' || !_tryGpu) && gpuModel == null) {
+          gpuModel = m;
+          gpuModelDim = info.dim;
+        }
         final t1 = await DeviceThermal.read();
         _log('EMBED ${m.path.split('/').last} asked ${gpu ? 'GPU' : 'CPU'}: ran on ${info.accelerator}'
             '${info.cpuThreads == null ? '' : ' (${info.cpuThreads} threads)'}, load ${(info.loadMs / 1000).toStringAsFixed(1)} s, '
@@ -91,13 +111,23 @@ void main() {
 
     // 2. Identification of a session on the GPU and on the CPU.
     final m = gpuModel;
-    final packs = await IdentificationAssets.listPacks();
-    final dir = Directory('${(await getExternalStorageDirectory())!.path}/photo_visits_check/sessions/photo check');
-    if (m == null || packs.isEmpty || !dir.existsSync()) {
-      _log('IDENTIFY skipped: ${m == null ? 'no model ran on the GPU' : packs.isEmpty ? 'no label pack' : 'no photo_visits_check session'}');
+    final external = (await getExternalStorageDirectory())!.path;
+    final dir = Directory(_sessionName.isEmpty
+        ? '$external/photo_visits_check/sessions/photo check'
+        : '$external/sessions/$_sessionName');
+    File? found;
+    for (final p in await IdentificationAssets.listPacks()) {
+      if (p.path.split('/').last.contains(_packFilter) && (await LabelPack.readHeader(p))['dim'] == gpuModelDim) {
+        found = p;
+        break;
+      }
+    }
+    if (m == null || found == null || !dir.existsSync()) {
+      _log('IDENTIFY skipped: ${m == null ? 'no model ran on the GPU' : found == null ? 'no label pack for this model' : 'no session ${dir.path}'}');
       return;
     }
-    final pack = packs.first;
+    final pack = found;
+    _log('IDENTIFY ${dir.path} with ${m.path.split('/').last} + ${pack.path.split('/').last}');
     final name = m.path.split('/').last;
     Future<(List<Float32List>, Map, IdentifyResult)> identify(bool gpu) async {
       final info = await ImageEmbedder.load(m.path, useGpu: gpu);

@@ -74,7 +74,8 @@ The manifest records which kind a file is (`"attention": "4d"`).
 Options: `--precision fp32` (nothing cast, 1.2 GB; also runs on the phone),
 `--precision int8` or `int8-weights` (about 0.3 GB; see section 2b before using them),
 `--keep-fp32` (keep the float32 intermediate, useful for `verify_parity.py`),
-`--model bioclip-2.5` (ViT-H/14, 3.9 GB download, about 1.3 GB fp16, needs more RAM),
+`--model bioclip-2.5` (ViT-H/14, 3.9 GB download, 1.27 GB fp16, about 11 GB RAM; section 2c),
+`--weights FILE` (a checkpoint already on disk instead of the Hugging Face download),
 `--onnx` (additionally write an ONNX file).
 
 Check the file before copying it anywhere:
@@ -117,6 +118,39 @@ CPU in seconds. Whether the smaller file then *runs* faster depends on the chip 
 runs it. fp16 helps a GPU. On a CPU only int8 with 8-bit maths can help, and for
 BioCLIP it cost accuracy on unsure crops. That is why the app ships fp16 and uses the
 GPU where it can.
+
+## 2c. BioCLIP 2.5 (round 264)
+
+BioCLIP 2.5 Huge (ViT-H/14, embeddings of 1024 numbers) needs its own model file and its
+own label packs (BioCLIP 2 packs do not fit it). When the checkpoint and the TreeOfLife
+name embeddings are already on disk (for example downloaded by the
+[InsectAI Model Zoo](https://github.com/InsectAI-COST-Action/insect-model-zoo) into its
+`weights/bioclip-2.5/`), point the scripts at them instead of downloading 7 GB again:
+
+```bash
+W=/path/to/insect-model-zoo/weights/bioclip-2.5
+python export_image_tower.py --model bioclip-2.5 --weights $W/open_clip_model.safetensors --out out/bioclip25
+python build_label_pack.py --model bioclip-2.5 --embeddings-dir $W --weights $W/open_clip_model.safetensors \
+  --classes Insecta --species-csv out/species_europe_pollinator_orders.csv \
+  --pack-id bioclip25_pollinator_orders_europe_v1 --out out/bioclip25
+python verify_parity.py --tflite out/bioclip25/bioclip-25_image_fp16.tflite --weights $W/open_clip_model.safetensors \
+  --images /path/to/crops --pack out/bioclip25/bioclip25_pollinator_orders_europe_v1.fpack
+```
+
+Measured on the 15 GB laptop (2026-10-01): export 4 minutes, 10.7 GB RAM at the peak (it
+used swap); the float32 intermediate is 2.5 GB, above the 2 GB limit of a plain `.tflite`,
+which the converter and the quantiser handle by themselves; the fp16 file is 1,266 MB with
+all 193 large layers in fp16 and all 32 attention layers GPU-friendly. Parity on 34
+bumblebee crops: cosine 1.0000, top family 34 of 34, top species 34 of 34. Packs built:
+`bioclip25_pollinator_orders_europe_v1` (34,704 names, 74 MB) and
+`bioclip25_flower_visitors_32fam_v1` (37,461 names, 80 MB); the 2.5 TreeOfLife table has
+794,878 names (BioCLIP 2's: 867,455), so the same filters keep slightly different lists.
+On the phone: `docs/IDENTIFICATION.md`, *BioCLIP 2.5* (CPU only on the 7.4 GB test phone,
+5.3 to 5.6 s per crop).
+
+int8 was tried too (`--precision int8`, 639 MB): cosine 0.996, top family 32 of 34 (one
+miss on a crop PyTorch was sure about), top species 30 of 34, and on the phone's CPU it
+was slower than fp16 (9.2 s against 5.6 s per crop). fp16 stays the choice.
 
 ## 3. Build a label pack (about 5 minutes plus the download)
 
@@ -163,6 +197,8 @@ taxon list is the same one-liner.
 | `bioclip2_pollinator_orders_europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,260 | 57 MB | yes |
 | `bioclip2_mammalia_world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
 | `bioclip2_pollinator_orders_world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
+| `bioclip25_pollinator_orders_europe_v1` | as the Europe pack above, for BioCLIP 2.5 (round 264) | 34,704 | 74 MB | yes (with the BioCLIP 2.5 model) |
+| `bioclip25_flower_visitors_32fam_v1` | the 32 families, for BioCLIP 2.5 (round 264) | 37,461 | 80 MB | yes (with the BioCLIP 2.5 model) |
 
 Every pack ends with six "none of these" rows; `--sink-set arthropod` (default) uses
 flower-scene prompts, `--sink-set mammal` camera-trap prompts, `--no-sink` none.
@@ -329,7 +365,8 @@ classification dataset (Sittinger, Uhler & Pink 2023, https://doi.org/10.5281/ze
 
 ## Licenses and citation
 
-Model weights: BioCLIP 2 by Imageomics, MIT. Name embeddings: TreeOfLife-200M,
+Model weights: BioCLIP 2 and BioCLIP 2.5 by Imageomics, MIT (BioCLIP 2.5 model card:
+https://huggingface.co/imageomics/bioclip-2.5-vith14). Name embeddings: TreeOfLife-200M,
 CC0-1.0. 
 
 Important note - the converted files are unofficial conversions, not provided or

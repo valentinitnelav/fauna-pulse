@@ -41,7 +41,28 @@ packs derive from the TreeOfLife-200M species text embeddings published by the s
 - Also consider to cite the original BioCLIP (Stevens et al., CVPR 2024) and OpenCLIP, as the model card suggests.
 
 The converted files are unofficial conversions made by FaunaPulse maintainers and users on their own PCs;
-they are not provided or endorsed by Imageomics. BioCLIP 2.5 Huge (ViT-H/14, MIT) can be
-exported the same way (`--model bioclip-2.5`).
+they are not provided or endorsed by Imageomics. BioCLIP 2.5 Huge (ViT-H/14, MIT,
+https://huggingface.co/imageomics/bioclip-2.5-vith14) is exported the same way
+(`--model bioclip-2.5`; round 264, `docs/IDENTIFICATION.md`); its label packs come from
+the BioCLIP 2.5 text embeddings in the same TreeOfLife-200M dataset (CC0-1.0).
 
 [bioclip2]: https://huggingface.co/imageomics/bioclip-2
+
+
+## flat-bug and insectDCT (optional detectors, converted on request)
+
+`tool/detector_export/export_detector.py` converts these for the phone (round 264); they are
+not bundled with the app. Weights as packaged by the InsectAI Model Zoo (Markoff and InsectAI
+COST Action CA22129 contributors, 2026, https://github.com/InsectAI-COST-Action/insect-model-zoo).
+
+- **flat-bug** (n, s; YOLOv8-seg, used here as box detectors): Svenning, Mougeot, Alison, Chevalier,
+  Chavez Molina, Ong, Bjerge, Carrillo, Høye & Geissmann (2026). A general method for detection and segmentation of terrestrial arthropods in
+  images. *Methods in Ecology and Evolution* 17(3), 727-739. https://doi.org/10.1111/2041-210x.70249
+  Code https://github.com/darsa-group/flat-bug, MIT.
+- **insectDCT v8-s** (YOLO11s): Bjerge, Wogram, Serra-Marin, Sakhiashvili & Høye
+  (2026). InsectDCT: A generalized pipeline for detection, taxonomic classification, and tracking of
+  insects in camera-trap recordings. bioRxiv. https://doi.org/10.64898/2026.07.07.736939
+  Code https://github.com/kimbjerge/insectDCT, GPL-3.0.
+
+Both were trained with Ultralytics (AGPL-3.0). Converted files are unofficial conversions, not
+provided or endorsed by the authors.

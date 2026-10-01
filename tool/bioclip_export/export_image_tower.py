@@ -31,6 +31,7 @@ maths and the weights are the same (verify_parity.py compares the two exports).
 Usage (see README.md for the environment):
     python export_image_tower.py --model bioclip-2 --precision fp16 --out ./out
     python export_image_tower.py --model bioclip-2.5 --precision fp16 --out ./out
+    python export_image_tower.py --model bioclip-2.5 --weights /path/to/open_clip_model.safetensors --out ./out
     python export_image_tower.py --model bioclip-2 --onnx --out ./out   # extra .onnx
 
 Output: <out>/<model>_image_<precision>.tflite and <same>.json (the manifest the app
@@ -52,6 +53,8 @@ MODELS = {
     "bioclip-2.5": "hf-hub:imageomics/bioclip-2.5-vith14",
     "bioclip-1": "hf-hub:imageomics/bioclip",
 }
+# open_clip architecture of each model, for a checkpoint file already on disk (--weights)
+ARCH = {"bioclip-2": "ViT-L-14", "bioclip-2.5": "ViT-H-14", "bioclip-1": "ViT-B-16"}
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
 CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 KEEP_FP32 = False
@@ -63,6 +66,19 @@ def sha256_of(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def load_open_clip(model_key: str, weights: Path | None = None):
+    """The OpenCLIP model: from Hugging Face (downloaded once into its cache), or from a
+    checkpoint file already on disk (--weights; e.g. the InsectAI Model Zoo's copy), which
+    avoids a second multi-GB download."""
+    import open_clip
+
+    if weights is None:
+        model, _, _ = open_clip.create_model_and_transforms(MODELS[model_key])
+    else:
+        model, _, _ = open_clip.create_model_and_transforms(ARCH[model_key], pretrained=str(weights))
+    return model.eval()
 
 
 def four_dim_attention(mha):
@@ -99,13 +115,11 @@ def four_dim_attention(mha):
     return FourDimAttention()
 
 
-def build_tower(model_key: str, attention: str = "4d"):
+def build_tower(model_key: str, attention: str = "4d", weights: Path | None = None):
     """Load the OpenCLIP model and wrap its image tower for export."""
     import torch
-    import open_clip
 
-    model, _, _ = open_clip.create_model_and_transforms(MODELS[model_key])
-    model.eval()
+    model = load_open_clip(model_key, weights)
     logit_scale = float(model.logit_scale.exp().item())
     if attention == "4d":
         swapped = 0
@@ -205,6 +219,9 @@ def main() -> int:
     ap.add_argument("--attention", choices=["4d", "torch"], default="4d",
                     help="4d (default): attention as steps of at most 4 dimensions, so phone GPUs can run "
                          "it; torch: PyTorch's own layers (exports before round 242)")
+    ap.add_argument("--weights", type=Path, default=None,
+                    help="checkpoint file already on disk (open_clip_model.safetensors) instead of the Hugging "
+                         "Face download")
     ap.add_argument("--out", type=Path, default=Path("out"))
     ap.add_argument("--onnx", action="store_true", help="also write an fp32 ONNX file (PC parity / fallback)")
     ap.add_argument("--skip-tflite", action="store_true", help="only the ONNX + manifest (debugging)")
@@ -217,8 +234,8 @@ def main() -> int:
     KEEP_FP32 = args.keep_fp32
 
     args.out.mkdir(parents=True, exist_ok=True)
-    print(f"Loading {MODELS[args.model]} (downloads the checkpoint on first use)...")
-    tower, image_size, dim, logit_scale = build_tower(args.model, args.attention)
+    print(f"Loading {args.weights or MODELS[args.model]} (a Hugging Face checkpoint is downloaded on first use)...")
+    tower, image_size, dim, logit_scale = build_tower(args.model, args.attention, args.weights)
     print(f"image tower ready: input {image_size}x{image_size}, embedding dim {dim}, logit_scale {logit_scale:.2f}")
 
     stem = f"{args.model.replace('.', '')}_image_{args.precision.replace('-', '_')}"

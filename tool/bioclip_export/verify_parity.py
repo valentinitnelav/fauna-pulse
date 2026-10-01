@@ -42,14 +42,12 @@ def load_rgb01(path: Path, size: int) -> np.ndarray:
     return np.asarray(im, dtype=np.float32) / 255.0  # HWC 0..1
 
 
-def torch_embed(model_key: str, images: list[np.ndarray]) -> np.ndarray:
+def torch_embed(model_key: str, images: list[np.ndarray], weights: Path | None = None) -> np.ndarray:
     import torch
-    import open_clip
 
-    from export_image_tower import MODELS
+    from export_image_tower import load_open_clip
 
-    model, _, _ = open_clip.create_model_and_transforms(MODELS[model_key])
-    model.eval()
+    model = load_open_clip(model_key, weights)
     out = []
     with torch.no_grad():
         for hwc in images:
@@ -89,6 +87,8 @@ def main() -> int:
     ap.add_argument("--tflite", type=Path, required=True)
     ap.add_argument("--images", type=Path, required=True, help="folder of crop images (jpg/png), searched recursively")
     ap.add_argument("--model", default=None, help="model key (default: read from the .json manifest next to the tflite)")
+    ap.add_argument("--weights", type=Path, default=None,
+                    help="checkpoint file already on disk (default: the Hugging Face download)")
     ap.add_argument("--pack", type=Path, default=None, help="label pack to compare top-1 family/species agreement")
     ap.add_argument("--limit", type=int, default=200)
     args = ap.parse_args()
@@ -105,7 +105,7 @@ def main() -> int:
     images = [load_rgb01(p, size) for p in paths]
     print(f"{len(images)} images, model {model_key}, input {size}")
 
-    ref = torch_embed(model_key, images)
+    ref = torch_embed(model_key, images, args.weights)
     got, med_ms = tflite_embed(args.tflite, images)
     cos = np.sum(ref * got, axis=1)
     print(f"cosine similarity: mean {cos.mean():.4f}  min {cos.min():.4f}  (tflite median {med_ms:.0f} ms/crop on this PC)")

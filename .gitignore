@@ -84,4 +84,6 @@ key.properties
 # PC-side identification tools (round 208): virtualenv, converter outputs, caches
 tool/bioclip_export/.venv/
 tool/bioclip_export/out/
+# PC-side detector conversion (round 264): outputs
+tool/detector_export/out/
 **/__pycache__/

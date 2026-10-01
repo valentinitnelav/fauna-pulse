@@ -79,16 +79,22 @@ SINK_SETS = {
 SINK_PROMPTS = SINK_SETS["arthropod"]
 
 
-def load_tol(model_key: str, cache_dir: Path | None):
-    """Download (once) and open the TreeOfLife embeddings for [model_key]."""
-    from huggingface_hub import hf_hub_download
-
+def load_tol(model_key: str, cache_dir: Path | None, embeddings_dir: Path | None = None):
+    """Open the TreeOfLife embeddings for [model_key]: from a folder that already holds
+    the .npy and .json (embeddings_dir, same file names as on Hugging Face), else
+    downloaded once from Hugging Face."""
     repo, npy_name, json_name = EMBEDDINGS[model_key]
-    kw = {"repo_id": repo, "repo_type": "dataset"}
-    if cache_dir is not None:
-        kw["cache_dir"] = str(cache_dir)
-    npy_path = hf_hub_download(filename=npy_name, **kw)
-    json_path = hf_hub_download(filename=json_name, **kw)
+    if embeddings_dir is not None:
+        npy_path = embeddings_dir / Path(npy_name).name
+        json_path = embeddings_dir / Path(json_name).name
+    else:
+        from huggingface_hub import hf_hub_download
+
+        kw = {"repo_id": repo, "repo_type": "dataset"}
+        if cache_dir is not None:
+            kw["cache_dir"] = str(cache_dir)
+        npy_path = hf_hub_download(filename=npy_name, **kw)
+        json_path = hf_hub_download(filename=json_name, **kw)
     emb = np.load(npy_path, mmap_mode="r")  # [dim, N] in pybioclip's layout
     with open(json_path, encoding="utf-8") as f:
         names = json.load(f)
@@ -116,14 +122,15 @@ def row_taxonomy(entry) -> list[str]:
     return sci + [("" if common is None else str(common))]
 
 
-def sink_embeddings(model_key: str, prompts: list[str]) -> np.ndarray:
+def sink_embeddings(model_key: str, prompts: list[str], weights: Path | None = None) -> np.ndarray:
     """Embed the negative prompts with the model's text tower (unit vectors)."""
     import torch
     import open_clip
 
-    model, _, _ = open_clip.create_model_and_transforms(MODEL_HUB[model_key])
-    tokenizer = open_clip.get_tokenizer(MODEL_HUB[model_key])
-    model.eval()
+    from export_image_tower import ARCH, load_open_clip
+
+    model = load_open_clip(model_key, weights)
+    tokenizer = open_clip.get_tokenizer(ARCH[model_key] if weights else MODEL_HUB[model_key])
     with torch.no_grad():
         t = model.encode_text(tokenizer(prompts))
         t = torch.nn.functional.normalize(t, dim=-1)
@@ -146,10 +153,15 @@ def main() -> int:
     ap.add_argument("--logit-scale", type=float, default=None,
                     help="override (normally read from the model when sink rows are built; 100 otherwise)")
     ap.add_argument("--cache-dir", type=Path, default=None, help="Hugging Face download cache folder")
+    ap.add_argument("--embeddings-dir", type=Path, default=None,
+                    help="folder that already holds the TreeOfLife .npy + .json (e.g. the InsectAI Model Zoo's "
+                         "weights/bioclip-2.5) instead of the Hugging Face download")
+    ap.add_argument("--weights", type=Path, default=None,
+                    help="model checkpoint file on disk, for the text tower of the sink rows")
     ap.add_argument("--out", type=Path, default=Path("out"))
     args = ap.parse_args()
 
-    emb, names = load_tol(args.model, args.cache_dir)
+    emb, names = load_tol(args.model, args.cache_dir, args.embeddings_dir)
     dim, n = emb.shape if emb.shape[0] < emb.shape[1] else (emb.shape[1], emb.shape[0])
     transposed = emb.shape[0] == dim and emb.shape[0] < emb.shape[1]
     print(f"TreeOfLife embeddings: {n} rows, dim {dim} (layout {'[dim, N]' if transposed else '[N, dim]'})")
@@ -193,7 +205,7 @@ def main() -> int:
     sink_rows = 0
     sink_prompts = [] if args.no_sink else SINK_SETS[args.sink_set]
     if sink_prompts:
-        sink, model_scale = sink_embeddings(args.model, [p for _, p in sink_prompts])
+        sink, model_scale = sink_embeddings(args.model, [p for _, p in sink_prompts], args.weights)
         mat = np.concatenate([mat, sink], axis=0)
         labels += [sink_label(k, p) for k, p in sink_prompts]
         sink_rows = len(sink_prompts)
