@@ -256,6 +256,16 @@ void main() {
       return list;
     }
 
+    /// Round 273: the settings of the Find screens sit in closed folds.
+    Future<void> openFold(WidgetTester tester, Finder list, String title) async {
+      await tester.scrollUntilVisible(find.text(title), 200, scrollable: list);
+      await tester.pump();
+      await tester.tap(find.text(title));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
     testWidgets('"Find animals in photos" finds the track IDs of close photos (360 px)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);
@@ -263,8 +273,14 @@ void main() {
       _photoFiles(dir);
       final list = await openAnalysis(tester, dir);
       await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
+      // Round 273: folded, with the values in use on the fold's line.
+      expect(find.text('Occlusion tolerance'), findsNothing);
+      expect(find.text('Occlusion tolerance 3.0 s, minimum track 0.2 s'), findsOneWidget);
+      await openFold(tester, list, 'Track ID settings');
       expect(find.text('Occlusion tolerance'), findsOneWidget);
       expect(find.text('Minimum track length'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
+      await tester.pump();
       await tester.tap(find.text('Find track IDs'));
       await _pumpUntil(tester, find.textContaining('1 track ID (occlusion tolerance 3.0 s, minimum track 0.2 s).'));
       expect(find.text('Find track IDs again'), findsOneWidget);
@@ -284,6 +300,22 @@ void main() {
       await _pumpUntil(tester, find.text('1 (found afterwards in the photos)'));
       expect(find.textContaining('Found afterwards in the photos with "Find track IDs"'), findsOneWidget);
       expect(find.textContaining('Time between bursts was not photographed.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('"Find animals in photos" shows session, model and Start; settings folded (r273)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
+      _photoFiles(dir);
+      final list = await openAnalysis(tester, dir);
+      expect(find.byType(Slider), findsNothing);
+      expect(find.text('Small-insect tiling (SAHI)'), findsNothing);
+      expect(find.text('Confidence 0.25, IoU 0.70, small-insect tiling off'), findsOneWidget);
+      await openFold(tester, list, 'Advanced settings');
+      expect(find.text('Confidence threshold: 0.25'), findsOneWidget);
+      expect(find.text('IoU threshold: 0.70'), findsOneWidget);
+      expect(find.text('Small-insect tiling (SAHI)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

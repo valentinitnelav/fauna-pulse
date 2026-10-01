@@ -91,4 +91,25 @@ void main() {
     expect(j['center_x_norm'], 0.4);
     expect(j['center_y_norm'], 0.6);
   });
+
+  test('largestCentredSquare: the default area of a video never analysed (round 273)', () {
+    // Landscape 640x480: 480 px square in the middle.
+    final wide = Roi.largestCentredSquare(640, 480)!;
+    expect(wide.centerX, 0.5);
+    expect(wide.centerY, 0.5);
+    expect(wide.pixelSide(640), closeTo(480, 1e-9));
+    // Portrait 1080x1920: as wide as the picture, rounded down to 1056.
+    final tall = Roi.largestCentredSquare(1080, 1920)!;
+    expect(tall.pixelSide(1080), closeTo(1056, 1e-9));
+    // 1920x1080: 1080 is not a multiple of 32, rounded DOWN so it fits.
+    final hd = Roi.largestCentredSquare(1920, 1080)!;
+    expect(hd.pixelSide(1920), closeTo(1056, 1e-9));
+    final r = hd.pixelRect(1920, 1080);
+    expect(r.top, greaterThanOrEqualTo(0));
+    expect(r.bottom, lessThanOrEqualTo(1080));
+    // Already square (clips recorded by the app) or unknown: whole picture.
+    expect(Roi.largestCentredSquare(480, 480), isNull);
+    expect(Roi.largestCentredSquare(0, 0), isNull);
+    expect(Roi.largestCentredSquare(640, 0), isNull);
+  });
 }

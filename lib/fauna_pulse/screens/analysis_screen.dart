@@ -486,7 +486,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     // in the post_end record, so the user learns what a run of this session
     // costs — SAHI multiplies inferences per photo, and this is the honest
     // bottom line of that choice.
-    final message = failure != null
+    var message = failure != null
         ? 'Analysis failed: $failure'
         : result!.cancelled
         ? 'Stopped — ${result.processed} files analyzed '
@@ -495,6 +495,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               'in ${_fmtElapsed(result.elapsed)}'
               '${result.failed > 0 ? ', ${result.failed} failed' : ''}'
               '${result.skippedDone > 0 ? ' (${result.skippedDone} were already done)' : ''}.';
+    // Round 273: boxes alone are not track IDs yet; link them right away
+    // (seconds), as "Find animals in videos" does, when the photos are close
+    // enough in time and no live tracker ran.
+    if (failure == null && !result!.cancelled) {
+      final t = await PhotoTracker.trackability(session.dir);
+      if (!mounted) return;
+      if (t.possible) {
+        message = '$message ${await _trackPhotos(session)}';
+        if (!mounted) return;
+      }
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     // Refresh the per-session done counts.
     final sessions = await _scanSessions();
@@ -560,20 +571,34 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ],
                 const SizedBox(height: 12),
                 _modelPicker(),
-                const SizedBox(height: 12),
-                _thresholdSlider(
-                  label: 'Confidence threshold',
-                  help: 'Minimum score for a detection to count.',
-                  value: _confidence,
-                  onChanged: (v) => setState(() => _confidence = v),
+                const SizedBox(height: 8),
+                // Round 273: a general user sees session, model and Start;
+                // every number to tune is one tap away here.
+                FoldSection(
+                  title: 'Advanced settings',
+                  subtitle: 'Confidence ${_confidence.toStringAsFixed(2)}, IoU ${_iou.toStringAsFixed(2)}, '
+                      'small-insect tiling ${_sahiEnabled ? 'on' : 'off'}',
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _thresholdSlider(
+                          label: 'Confidence threshold',
+                          help: 'Minimum score for a detection to count. 0.25 is the live camera\'s default.',
+                          value: _confidence,
+                          onChanged: (v) => setState(() => _confidence = v),
+                        ),
+                        _thresholdSlider(
+                          label: 'IoU threshold',
+                          help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
+                          value: _iou,
+                          onChanged: (v) => setState(() => _iou = v),
+                        ),
+                        _sahiSection(),
+                      ],
+                    ),
+                  ],
                 ),
-                _thresholdSlider(
-                  label: 'IoU threshold',
-                  help: 'Overlap level at which two boxes merge into one.',
-                  value: _iou,
-                  onChanged: (v) => setState(() => _iou = v),
-                ),
-                _sahiSection(),
                 if (_session != null && _session!.doneFileCount > 0)
                   HelpSwitchTile(
                     checkbox: true,
@@ -995,36 +1020,51 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           style: const TextStyle(color: Colors.white70, fontSize: 13),
         )
       else ...[
-        NumericSettingField(
-          label: 'Occlusion tolerance',
-          value: _occlusionSeconds,
-          min: 0.2,
-          max: 10,
-          decimals: 1,
-          unitSuffix: 's',
-          helperText:
-              'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
-              'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
-              'step, or every track ID breaks into pieces.',
-          onChanged: (x) async {
-            setState(() => _occlusionSeconds = x);
-            (await SharedPreferences.getInstance()).setDouble(_prefOcclusion, x);
-          },
-        ),
-        NumericSettingField(
-          label: 'Minimum track length',
-          value: _minVisitSeconds,
-          min: 0,
-          max: 2,
-          decimals: 1,
-          unitSuffix: 's',
-          helperText:
-              'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-              'dropped as noise. Default 0.2 s, as the live camera.',
-          onChanged: (x) async {
-            setState(() => _minVisitSeconds = x);
-            (await SharedPreferences.getInstance()).setDouble(_prefMinVisit, x);
-          },
+        // Round 273: the numbers to tune are folded; the button and the
+        // result below stay in view.
+        FoldSection(
+          title: 'Track ID settings',
+          subtitle:
+              'Occlusion tolerance ${_occlusionSeconds.toStringAsFixed(1)} s, minimum track '
+              '${_minVisitSeconds.toStringAsFixed(1)} s',
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                NumericSettingField(
+                  label: 'Occlusion tolerance',
+                  value: _occlusionSeconds,
+                  min: 0.2,
+                  max: 10,
+                  decimals: 1,
+                  unitSuffix: 's',
+                  helperText:
+                      'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
+                      'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
+                      'step, or every track ID breaks into pieces.',
+                  onChanged: (x) async {
+                    setState(() => _occlusionSeconds = x);
+                    (await SharedPreferences.getInstance()).setDouble(_prefOcclusion, x);
+                  },
+                ),
+                NumericSettingField(
+                  label: 'Minimum track length',
+                  value: _minVisitSeconds,
+                  min: 0,
+                  max: 2,
+                  decimals: 1,
+                  unitSuffix: 's',
+                  helperText:
+                      'How long an insect must be seen before it counts as a track ID; shorter sightings are '
+                      'dropped as noise. Default 0.2 s, as the live camera.',
+                  onChanged: (x) async {
+                    setState(() => _minVisitSeconds = x);
+                    (await SharedPreferences.getInstance()).setDouble(_prefMinVisit, x);
+                  },
+                ),
+              ],
+            ),
+          ],
         ),
         const SizedBox(height: 6),
         FilledButton.tonalIcon(
@@ -1062,6 +1102,15 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   Future<void> _findVisits() async {
     final session = _session;
     if (session == null || _tracking) return;
+    final message = await _trackPhotos(session);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await _loadVisits();
+  }
+
+  /// Follows the insects of [session] from photo to photo, off the screen's
+  /// thread. Returns the outcome in words.
+  Future<String> _trackPhotos(_AnalyzableSession session) async {
     setState(() => _tracking = true);
     String message;
     try {
@@ -1075,10 +1124,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       logSwallowed('analysis_find_track_ids', e);
       message = 'Finding track IDs failed: $e';
     }
-    if (!mounted) return;
-    setState(() => _tracking = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    await _loadVisits();
+    if (mounted) setState(() => _tracking = false);
+    return message;
   }
 
   Widget _cleanupSection() {

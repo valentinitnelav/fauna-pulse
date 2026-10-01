@@ -43,6 +43,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
@@ -61,6 +62,7 @@ import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
+import '../widgets/video_speed_chips.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 import 'models_screen.dart';
 
@@ -202,6 +204,11 @@ class _VideoSession {
   final List<String> cutOff;
   final int cutOffBytes;
 
+  /// Upright picture size per clip, from the `video_clip` records (clips
+  /// without one are missing): the default square of a session never
+  /// analysed, and the clips the square editor can play (round 273).
+  final Map<String, (int, int)> clipSizes;
+
   const _VideoSession(
     this.name,
     this.dir,
@@ -217,11 +224,15 @@ class _VideoSession {
     this.liveAi = false,
     this.cutOff = const [],
     this.cutOffBytes = 0,
+    this.clipSizes = const {},
   });
 
   int get allClipCount => clips.length + missingClips.length;
 
   int get totalMs => clips.fold(0, (s, c) => s + (lengthsMs[c] ?? 0));
+
+  int get firstClipWidth => clipSizes[clips.firstOrNull]?.$1 ?? 0;
+  int get firstClipHeight => clipSizes[clips.firstOrNull]?.$2 ?? 0;
 }
 
 class VideoAnalysisScreen extends StatefulWidget {
@@ -402,11 +413,17 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       liveAi: records.values.any((r) => r.containsKey('segment')),
       cutOff: [for (final f in cutOff) f.path.split('/').last],
       cutOffBytes: cutOff.fold(0, (s, f) => s + f.lengthSync()),
+      clipSizes: {
+        for (final e in records.entries)
+          if ((e.value['width'], e.value['height']) case (final num w, final num h)) e.key: (w.toInt(), h.toInt()),
+      },
     );
   }
 
   /// Selects [s] and takes over its last run's square, so "Continue" works
-  /// without placing the square again.
+  /// without placing the square again. A session never analysed starts on
+  /// the largest square in the middle (round 273), as the detector looks at a
+  /// square picture like the camera's square.
   void _select(_VideoSession s) {
     final roi = s.lastSettings?['roi'];
     setState(() {
@@ -415,7 +432,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         _withoutVisits = null;
       }
       _session = s;
-      _roi = roi is List && roi.length == 3
+      _roi = s.lastSettings == null
+          ? Roi.largestCentredSquare(s.firstClipWidth, s.firstClipHeight)
+          : roi is List && roi.length == 3
           ? Roi(
               centerX: (roi[0] as num).toDouble(),
               centerY: (roi[1] as num).toDouble(),
@@ -470,16 +489,30 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     }
   }
 
+  /// The clips the square editor plays: the first clip, then every other clip
+  /// of the same picture size (the square is placed on that picture).
+  List<String> _squareClips(_VideoSession s) {
+    if (s.clips.isEmpty) return const [];
+    final size = s.clipSizes[s.clips.first];
+    return [
+      for (final c in s.clips)
+        if (c == s.clips.first || (size != null && s.clipSizes[c] == size)) '${s.dir.path}/videos/$c',
+    ];
+  }
+
   Future<void> _editSquare() async {
+    final s = _session;
     final frame = await _loadFrame();
-    if (frame == null || !mounted) return;
+    if (s == null || frame == null || !mounted) return;
     final roi = await Navigator.of(context).push<Roi>(
       MaterialPageRoute(
         builder: (_) => VideoSquareEditor(
           frameJpeg: frame.jpeg,
           frameWidth: frame.width,
           frameHeight: frame.height,
-          initial: _roi ?? Roi.defaultRoi,
+          // From "Whole picture": the proposed square again.
+          initial: _roi ?? Roi.largestCentredSquare(frame.width, frame.height) ?? Roi.defaultRoi,
+          videoPaths: _squareClips(s),
         ),
       ),
     );
@@ -849,84 +882,92 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   const SizedBox(height: 12),
                   _modelPicker(),
                   const SizedBox(height: 12),
-                  _slider(
-                    label: 'Confidence threshold: ${_prefs.confidence.toStringAsFixed(2)}',
-                    help: 'Minimum score for a detection to count. 0.25 is the live camera\'s default.',
-                    value: _prefs.confidence,
-                    min: 0.05,
-                    max: 0.95,
-                    divisions: 18,
-                    onChanged: (v) => setState(() => _prefs.confidence = double.parse(v.toStringAsFixed(2))),
-                  ),
-                  _slider(
-                    label: 'Frames analyzed per second: ${_prefs.analysisFps.round()}',
-                    help:
-                        'How many pictures of each second of the video the detector looks at; the pictures in '
-                        'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
-                        'stay on a flower for a second or more, and a run takes less than half the time 15 '
-                        'would (not a third: the phone still has to unpack every picture). More pictures '
-                        'follow fast flying insects better (fewer missed or counted twice) but take longer; '
-                        '15 is what the live camera analyzes. This counts seconds of the video, not of the '
-                        'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
-                        'phone videos have 30 pictures per second; asking for more than the video has '
-                        'changes nothing.',
-                    value: _prefs.analysisFps,
-                    min: 1,
-                    max: 30,
-                    divisions: 29,
-                    onChanged: (v) => setState(() => _prefs.analysisFps = v.roundToDouble()),
-                  ),
-                  if (_session case final s? when s.totalMs > 0)
-                    Text(
-                      'About ${(s.totalMs / 1000 * min(_prefs.analysisFps, 30)).round()} frames for this session.',
-                      style: helperTextStyle,
-                    ),
-                  const SizedBox(height: 12),
+                  // Round 273: the proposed square stays in view, to accept
+                  // or change; every number to tune is one tap away below.
                   _areaSection(),
                   const SizedBox(height: 8),
                   FoldSection(
                     title: 'Advanced settings',
+                    subtitle: _advancedSummary(),
                     children: [
-                      _slider(
-                        label: 'IoU threshold: ${_prefs.iou.toStringAsFixed(2)}',
-                        help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
-                        value: _prefs.iou,
-                        min: 0.05,
-                        max: 0.95,
-                        divisions: 18,
-                        onChanged: (v) => setState(() => _prefs.iou = double.parse(v.toStringAsFixed(2))),
-                      ),
-                      NumericSettingField(
-                        label: 'Pause above battery temperature',
-                        value: _prefs.thermalLimitC,
-                        min: 35,
-                        max: 45,
-                        decimals: 0,
-                        unitSuffix: '°C',
-                        onChanged: (v) {
-                          setState(() => _prefs.thermalLimitC = v);
-                          _prefs.save();
-                        },
-                        helperText:
-                            'The run pauses when the battery reaches this and resumes 3 °C lower. A hot battery '
-                            'ages faster, and a hot phone slows itself down anyway.',
-                      ),
-                      NumericSettingField(
-                        label: 'Measure the phone every',
-                        value: _prefs.sampleSeconds,
-                        min: 5,
-                        max: 60,
-                        decimals: 0,
-                        unitSuffix: 's',
-                        onChanged: (v) {
-                          setState(() => _prefs.sampleSeconds = v);
-                          _prefs.save();
-                        },
-                        helperText:
-                            'How often the battery temperature, power use and analysis speed are written down '
-                            'during a run, also while it pauses to cool down. They make the session\'s Graphs '
-                            'and the file phone_during_analysis.csv. 10 s, as on the live camera, shows how '
-                            'the phone warms up; shorter shows quick changes but gives a longer file.',
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _slider(
+                            label: 'Confidence threshold: ${_prefs.confidence.toStringAsFixed(2)}',
+                            help: 'Minimum score for a detection to count. 0.25 is the live camera\'s default.',
+                            value: _prefs.confidence,
+                            min: 0.05,
+                            max: 0.95,
+                            divisions: 18,
+                            onChanged: (v) => setState(() => _prefs.confidence = double.parse(v.toStringAsFixed(2))),
+                          ),
+                          _slider(
+                            label: 'Frames analyzed per second: ${_prefs.analysisFps.round()}',
+                            help:
+                                'How many pictures of each second of the video the detector looks at; the pictures in '
+                                'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
+                                'stay on a flower for a second or more, and a run takes less than half the time 15 '
+                                'would (not a third: the phone still has to unpack every picture). More pictures '
+                                'follow fast flying insects better (fewer missed or counted twice) but take longer; '
+                                '15 is what the live camera analyzes. This counts seconds of the video, not of the '
+                                'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
+                                'phone videos have 30 pictures per second; asking for more than the video has '
+                                'changes nothing.',
+                            value: _prefs.analysisFps,
+                            min: 1,
+                            max: 30,
+                            divisions: 29,
+                            onChanged: (v) => setState(() => _prefs.analysisFps = v.roundToDouble()),
+                          ),
+                          if (_session case final s? when s.totalMs > 0)
+                            Text(
+                              'About ${(s.totalMs / 1000 * min(_prefs.analysisFps, 30)).round()} frames for this session.',
+                              style: helperTextStyle,
+                            ),
+                          const SizedBox(height: 12),
+                          _slider(
+                            label: 'IoU threshold: ${_prefs.iou.toStringAsFixed(2)}',
+                            help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
+                            value: _prefs.iou,
+                            min: 0.05,
+                            max: 0.95,
+                            divisions: 18,
+                            onChanged: (v) => setState(() => _prefs.iou = double.parse(v.toStringAsFixed(2))),
+                          ),
+                          NumericSettingField(
+                            label: 'Pause above battery temperature',
+                            value: _prefs.thermalLimitC,
+                            min: 35,
+                            max: 45,
+                            decimals: 0,
+                            unitSuffix: '°C',
+                            onChanged: (v) {
+                              setState(() => _prefs.thermalLimitC = v);
+                              _prefs.save();
+                            },
+                            helperText:
+                                'The run pauses when the battery reaches this and resumes 3 °C lower. A hot battery '
+                                'ages faster, and a hot phone slows itself down anyway.',
+                          ),
+                          NumericSettingField(
+                            label: 'Measure the phone every',
+                            value: _prefs.sampleSeconds,
+                            min: 5,
+                            max: 60,
+                            decimals: 0,
+                            unitSuffix: 's',
+                            onChanged: (v) {
+                              setState(() => _prefs.sampleSeconds = v);
+                              _prefs.save();
+                            },
+                            helperText:
+                                'How often the battery temperature, power use and analysis speed are written down '
+                                'during a run, also while it pauses to cool down. They make the session\'s Graphs '
+                                'and the file phone_during_analysis.csv. 10 s, as on the live camera, shows how '
+                                'the phone warms up; shorter shows quick changes but gives a longer file.',
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1026,6 +1067,30 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
+  /// Width in pixels of the selected session's picture: from the loaded
+  /// first frame, else from its first clip's log record; null when unknown.
+  int? get _pictureWidth {
+    final frame = _frame != null && _framePath == _session?.dir.path ? _frame : null;
+    if (frame != null) return frame.width;
+    final w = _session?.firstClipWidth ?? 0;
+    return w > 0 ? w : null;
+  }
+
+  /// "square 480 × 480 px", "whole picture" (round 273).
+  String _areaShort() {
+    final roi = _roi;
+    if (roi == null) return 'whole picture';
+    final w = _pictureWidth;
+    if (w == null) return 'square of ${(roi.sideFraction * 100).round()}% of the picture width';
+    final px = snapToMultipleOf32(roi.sideFraction * w);
+    return 'square $px × $px px';
+  }
+
+  /// The closed Advanced fold's one line: what a run uses now (round 273).
+  String _advancedSummary() =>
+      'Confidence ${_prefs.confidence.toStringAsFixed(2)}, ${_prefs.analysisFps.round()} frames per second, '
+      'IoU ${_prefs.iou.toStringAsFixed(2)}';
+
   Widget _areaSection() {
     final roi = _roi;
     final frame = _frame != null && _framePath == _session?.dir.path ? _frame : null;
@@ -1036,9 +1101,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           label: 'Area to analyze',
           labelStyle: TextStyle(color: Colors.white),
           helperText:
-              'The whole picture suits videos filmed close to the flowers. If the flowers fill only part '
-              'of the picture, place a square around them: insects outside it are ignored, and small '
-              'insects are found more easily '
+              'The detector looks at a square picture, as with the camera\'s square. The largest square in '
+              'the middle of the video is proposed; a video that is already square, such as the clips the app '
+              'records, is used whole. "Change…" plays the video fast, so you see whether the camera or the '
+              'flowers move and the square still covers them. If the flowers fill only part of the picture, a '
+              'smaller square around them helps: insects outside it are ignored, and small insects are found '
+              'more easily. "Whole picture" also includes the edges.',
         ),
         const SizedBox(height: 6),
         SegmentedButton<bool>(
@@ -1062,11 +1130,14 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           ),
         if (roi != null) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              if (frame != null)
-                SizedBox(
-                  height: 90,
+          // The whole first frame with the square, the rest darker: what the
+          // detector will look at. A tap opens the editor, as "Change…".
+          if (frame != null)
+            GestureDetector(
+              onTap: _running ? null : _editSquare,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
                   child: AspectRatio(
                     aspectRatio: frame.width / frame.height,
                     child: Stack(
@@ -1078,13 +1149,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(width: 10),
+              ),
+            ),
+          Row(
+            children: [
               Expanded(
                 child: Text(
-                  frame == null
-                      ? 'Square of ${(roi.sideFraction * 100).round()}% of the picture width.'
-                      : 'Square of ${snapToMultipleOf32(roi.sideFraction * frame.width)} × '
-                            '${snapToMultipleOf32(roi.sideFraction * frame.width)} px.',
+                  '${_areaShort().replaceFirst('square', 'Square')}.',
                   style: const TextStyle(fontSize: 13),
                 ),
               ),
@@ -1207,118 +1278,134 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               style: helperTextStyle,
             ),
           ),
-        const SizedBox(height: 8),
-        NumericSettingField(
-          label: 'Occlusion tolerance',
-          value: _prefs.occlusionSeconds,
-          min: 0.2,
-          max: 10,
-          decimals: 1,
-          unitSuffix: 's',
-          helperText:
-              'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
-              'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
-              'time between two analyzed frames. Default 3 s, as on the live camera.',
-          onChanged: (x) {
-            setState(() => _prefs.occlusionSeconds = x);
-            _prefs.save();
-          },
-        ),
-        NumericSettingField(
-          label: 'Minimum track length',
-          value: _prefs.minVisitSeconds,
-          min: 0,
-          max: 2,
-          decimals: 1,
-          unitSuffix: 's',
-          helperText:
-              'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-              'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
-              'below), so an insect it sees only on and off is dropped too when the value is high. '
-              'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
-              '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
-              'other values with "Find track IDs" again.',
-          onChanged: (x) {
-            setState(() => _prefs.minVisitSeconds = x);
-            _prefs.save();
-          },
-        ),
-        Text(
-          '= ${_minTrackDetections(s)} ${_minTrackDetections(s) == 1 ? 'detection' : 'detections'} in a row '
-          'at ${_fmtFps(_trackFps(s))} frames per second.',
-          style: helperTextStyle,
-        ),
-        Text(
-          'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
-          'camera Settings → Detection → Tracking → Advanced. A new track ID starts only from a box the detector '
-          'is at least ${_newTrackConf.toStringAsFixed(2)} sure of ("New-track confidence", same place); '
-          'weaker boxes only continue one. A changed value needs only "Find track IDs" again, not a new analysis.',
-          style: helperTextStyle,
-        ),
         const SizedBox(height: 4),
-        if (s.liveAi)
-          const Text(
-            'No frames are kept for these track IDs: live detection\'s own photos stay the session\'s pictures.',
-            style: helperTextStyle,
-          )
-        else ...[
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Keep frames of each track ID'),
-            subtitle: const Text(
-              'Saves pictures of every track ID from the videos, like the photos the live camera takes, so '
-              'you can look at the insects and identify them. Uses some storage: one picture is about '
-              'as big as a live photo.',
-              style: helperTextStyle,
-            ),
-            value: _prefs.keepFrames,
-            onChanged: busy
-                ? null
-                : (x) {
-                    setState(() => _prefs.keepFrames = x);
+        // Round 273: the numbers to tune are folded; the button and the
+        // results below stay in view.
+        FoldSection(
+          title: 'Track ID settings',
+          subtitle:
+              'Occlusion tolerance ${_prefs.occlusionSeconds.toStringAsFixed(1)} s, minimum track '
+              '${_prefs.minVisitSeconds.toStringAsFixed(1)} s'
+              '${s.liveAi ? '' : ', keep frames ${_prefs.keepFrames ? 'on' : 'off'}'}',
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                NumericSettingField(
+                  label: 'Occlusion tolerance',
+                  value: _prefs.occlusionSeconds,
+                  min: 0.2,
+                  max: 10,
+                  decimals: 1,
+                  unitSuffix: 's',
+                  helperText:
+                      'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
+                      'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
+                      'time between two analyzed frames. Default 3 s, as on the live camera.',
+                  onChanged: (x) {
+                    setState(() => _prefs.occlusionSeconds = x);
                     _prefs.save();
                   },
-          ),
-          if (!_prefs.keepFrames && kept.saved > 0)
-            Text(
-              'Finding track IDs again with this off removes the ${kept.saved} frames saved before; '
-              'they can be saved again from the videos later.',
-              style: const TextStyle(color: Colors.amber, fontSize: 13),
-            ),
-          if (_prefs.keepFrames) ...[
-            NumericSettingField(
-              label: 'Keep a frame every',
-              value: _prefs.keepStepSeconds,
-              min: 0.1,
-              max: 10,
-              decimals: 1,
-              unitSuffix: 's',
-              helperText:
-                  'The first frame of a track ID is always kept, then one after each such step. Default 1 s, '
-                  'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
-              onChanged: (x) {
-                setState(() => _prefs.keepStepSeconds = x);
-                _prefs.save();
-              },
-            ),
-            NumericSettingField(
-              label: 'For up to',
-              value: _prefs.keepDurationSeconds,
-              min: 1,
-              max: 300,
-              decimals: 0,
-              unitSuffix: 's',
-              helperText:
-                  'How long into a track ID frames keep being saved; a long track ID gives no more after this. '
-                  'Default 10 s, as the live camera\'s photo duration. With these two settings a track ID '
-                  'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
-              onChanged: (x) {
-                setState(() => _prefs.keepDurationSeconds = x);
-                _prefs.save();
-              },
+                ),
+                NumericSettingField(
+                  label: 'Minimum track length',
+                  value: _prefs.minVisitSeconds,
+                  min: 0,
+                  max: 2,
+                  decimals: 1,
+                  unitSuffix: 's',
+                  helperText:
+                      'How long an insect must be seen before it counts as a track ID; shorter sightings are '
+                      'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
+                      'below), so an insect it sees only on and off is dropped too when the value is high. '
+                      'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
+                      '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
+                      'other values with "Find track IDs" again.',
+                  onChanged: (x) {
+                    setState(() => _prefs.minVisitSeconds = x);
+                    _prefs.save();
+                  },
+                ),
+                Text(
+                  '= ${_minTrackDetections(s)} ${_minTrackDetections(s) == 1 ? 'detection' : 'detections'} in a row '
+                  'at ${_fmtFps(_trackFps(s))} frames per second.',
+                  style: helperTextStyle,
+                ),
+                Text(
+                  'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
+                  'camera Settings → Detection → Tracking → Advanced. A new track ID starts only from a box the detector '
+                  'is at least ${_newTrackConf.toStringAsFixed(2)} sure of ("New-track confidence", same place); '
+                  'weaker boxes only continue one. A changed value needs only "Find track IDs" again, not a new analysis.',
+                  style: helperTextStyle,
+                ),
+                const SizedBox(height: 4),
+                if (s.liveAi)
+                  const Text(
+                    'No frames are kept for these track IDs: live detection\'s own photos stay the session\'s pictures.',
+                    style: helperTextStyle,
+                  )
+                else ...[
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Keep frames of each track ID'),
+                    subtitle: const Text(
+                      'Saves pictures of every track ID from the videos, like the photos the live camera takes, so '
+                      'you can look at the insects and identify them. Uses some storage: one picture is about '
+                      'as big as a live photo.',
+                      style: helperTextStyle,
+                    ),
+                    value: _prefs.keepFrames,
+                    onChanged: busy
+                        ? null
+                        : (x) {
+                            setState(() => _prefs.keepFrames = x);
+                            _prefs.save();
+                          },
+                  ),
+                  if (!_prefs.keepFrames && kept.saved > 0)
+                    Text(
+                      'Finding track IDs again with this off removes the ${kept.saved} frames saved before; '
+                      'they can be saved again from the videos later.',
+                      style: const TextStyle(color: Colors.amber, fontSize: 13),
+                    ),
+                  if (_prefs.keepFrames) ...[
+                    NumericSettingField(
+                      label: 'Keep a frame every',
+                      value: _prefs.keepStepSeconds,
+                      min: 0.1,
+                      max: 10,
+                      decimals: 1,
+                      unitSuffix: 's',
+                      helperText:
+                          'The first frame of a track ID is always kept, then one after each such step. Default 1 s, '
+                          'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
+                      onChanged: (x) {
+                        setState(() => _prefs.keepStepSeconds = x);
+                        _prefs.save();
+                      },
+                    ),
+                    NumericSettingField(
+                      label: 'For up to',
+                      value: _prefs.keepDurationSeconds,
+                      min: 1,
+                      max: 300,
+                      decimals: 0,
+                      unitSuffix: 's',
+                      helperText:
+                          'How long into a track ID frames keep being saved; a long track ID gives no more after this. '
+                          'Default 10 s, as the live camera\'s photo duration. With these two settings a track ID '
+                          'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
+                      onChanged: (x) {
+                        setState(() => _prefs.keepDurationSeconds = x);
+                        _prefs.save();
+                      },
+                    ),
+                  ],
+                ],
+              ],
             ),
           ],
-        ],
+        ),
         const SizedBox(height: 8),
         FilledButton.tonalIcon(
           onPressed: busy ? null : _onFindVisits,
@@ -1537,9 +1624,15 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 }
 
-/// Full-screen page to place the analysed square on a video's first frame.
-/// Pops the chosen [Roi] with its side snapped to a multiple of 32 video
-/// pixels (as the live camera's square), or null when left with Back.
+/// Full-screen page to place the analysed square on a video. Pops the chosen
+/// [Roi] with its side snapped to a multiple of 32 video pixels (as the live
+/// camera's square), or null when left with Back.
+///
+/// Round 273: the clip plays under the square (muted, looping, 4× at first,
+/// up to 10×), so camera or flower movement over the whole video shows before
+/// the square is placed. [videoPaths] are the session's clips of the same
+/// picture size, the first clip first. Until the player is ready, or when the
+/// phone cannot play the clip, the first frame ([frameJpeg]) is shown.
 class VideoSquareEditor extends StatefulWidget {
   final Uint8List frameJpeg;
 
@@ -1547,6 +1640,7 @@ class VideoSquareEditor extends StatefulWidget {
   final int frameWidth;
   final int frameHeight;
   final Roi initial;
+  final List<String> videoPaths;
 
   const VideoSquareEditor({
     super.key,
@@ -1554,6 +1648,7 @@ class VideoSquareEditor extends StatefulWidget {
     required this.frameWidth,
     required this.frameHeight,
     required this.initial,
+    this.videoPaths = const [],
   });
 
   @override
@@ -1563,13 +1658,138 @@ class VideoSquareEditor extends StatefulWidget {
 class _VideoSquareEditorState extends State<VideoSquareEditor> {
   late Roi _roi = widget.initial.copyClamped(frameAspect: _aspect);
 
+  VideoPlayerController? _video;
+  int _clip = 0;
+  double _speed = 4;
+  String? _playError;
+  bool _awake = false;
+
+  /// Counts clip openings: a slow one that finishes after the next started
+  /// is dropped.
+  int _opening = 0;
+
   double get _aspect => widget.frameWidth / widget.frameHeight;
 
   /// Largest square that fits the picture, and the smallest the box allows
   /// (5% of the width), both on the 32-pixel grid.
-  int get _maxPx => max(32, min(widget.frameWidth, widget.frameHeight) ~/ 32 * 32);
+  int get _maxPx => max(32, largestSquareSidePx(widget.frameWidth, widget.frameHeight));
   int get _minPx => min(_maxPx, max(32, (0.05 * widget.frameWidth / 32).ceil() * 32));
   int get _sidePx => snapToMultipleOf32(_roi.sideFraction * widget.frameWidth).clamp(_minPx, _maxPx);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.videoPaths.isNotEmpty) _openClip(0);
+  }
+
+  @override
+  void dispose() {
+    _opening++;
+    _video?.removeListener(_onValue);
+    _video?.dispose();
+    _keepAwake(false);
+    super.dispose();
+  }
+
+  Future<void> _openClip(int index) async {
+    final opening = ++_opening;
+    final old = _video;
+    old?.removeListener(_onValue);
+    setState(() {
+      _clip = index;
+      _video = null;
+      _playError = null;
+    });
+    _keepAwake(false);
+    await old?.dispose();
+    final c = VideoPlayerController.file(
+      File(widget.videoPaths[index]),
+      // No audio focus: music the user is listening to keeps playing.
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
+    try {
+      await c.initialize();
+      await c.setVolume(0);
+      await c.setLooping(true);
+      await c.setPlaybackSpeed(_speed);
+      await c.play();
+    } catch (e) {
+      logSwallowed('video_square_open', e);
+      await c.dispose();
+      if (mounted && opening == _opening) setState(() => _playError = '$e');
+      return;
+    }
+    if (!mounted || opening != _opening) {
+      await c.dispose();
+      return;
+    }
+    c.addListener(_onValue);
+    setState(() => _video = c);
+    _onValue();
+  }
+
+  /// The screen stays on while the clip plays (the Android player does not
+  /// keep it on by itself), as in the session's Video tab.
+  void _onValue() => _keepAwake(_video?.value.isPlaying ?? false);
+
+  void _keepAwake(bool on) {
+    if (on == _awake) return;
+    _awake = on;
+    WakelockPlus.toggle(enable: on).catchError((Object e) => logSwallowed('video_square_wakelock', e));
+  }
+
+  void _togglePlay() {
+    final c = _video;
+    if (c == null) return;
+    c.value.isPlaying ? c.pause() : c.play();
+  }
+
+  void _setSpeed(double speed) {
+    setState(() => _speed = speed);
+    _video?.setPlaybackSpeed(speed);
+  }
+
+  /// Clip choice (several clips), play/pause with the time bar, and the
+  /// speeds shared with the session's Video tab.
+  List<Widget> _playerControls() {
+    final c = _video;
+    final n = widget.videoPaths.length;
+    return [
+      if (n > 1)
+        DropdownButton<int>(
+          isExpanded: true,
+          value: _clip,
+          items: [
+            for (var i = 0; i < n; i++)
+              DropdownMenuItem(
+                value: i,
+                child: Text('Clip ${i + 1} of $n: ${widget.videoPaths[i].split('/').last}', overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: (i) => i == null || i == _clip ? null : _openClip(i),
+        ),
+      if (_playError != null)
+        const Text('This phone could not play this clip; its first frame is shown.', style: helperTextStyle)
+      else if (c != null)
+        Row(
+          children: [
+            ValueListenableBuilder<VideoPlayerValue>(
+              valueListenable: c,
+              builder: (_, v, _) => IconButton(
+                tooltip: v.isPlaying ? 'Pause' : 'Play',
+                onPressed: _togglePlay,
+                icon: Icon(v.isPlaying ? Icons.pause : Icons.play_arrow),
+              ),
+            ),
+            Expanded(
+              child: VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.symmetric(vertical: 10)),
+            ),
+          ],
+        ),
+      VideoSpeedChips(speed: _speed, onChanged: _setSpeed),
+      const SizedBox(height: 4),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1592,6 +1812,7 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
                         rect: picture,
                         child: Image.memory(widget.frameJpeg, fit: BoxFit.fill, gaplessPlayback: true),
                       ),
+                      if (_video case final video?) Positioned.fromRect(rect: picture, child: VideoPlayer(video)),
                       Positioned.fill(child: RoiMask(roi: _roi, frameAspect: _aspect)),
                       Positioned.fill(
                         child: RoiOverlay(
@@ -1610,6 +1831,7 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (widget.videoPaths.isNotEmpty) ..._playerControls(),
                   Text(
                     'Square: $_sidePx × $_sidePx px of the ${widget.frameWidth} × ${widget.frameHeight} video',
                     textAlign: TextAlign.center,
@@ -1624,9 +1846,13 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
                         () => _roi = _roi.copyClamped(sideFraction: v / widget.frameWidth, frameAspect: _aspect),
                       ),
                     ),
-                  const Text(
-                    'Drag the square onto the flowers; pinch or use the slider to resize. The first frame '
-                    'of the first clip is shown.',
+                  Text(
+                    widget.videoPaths.isEmpty
+                        ? 'Drag the square onto the flowers; pinch or use the slider to resize. The first frame '
+                              'of the first clip is shown.'
+                        : 'Drag the square onto the flowers; pinch or use the slider to resize. The video plays '
+                              'fast (4×, up to 10×), so you see whether the camera or the flowers move during it '
+                              'and the square still covers them.',
                     style: helperTextStyle,
                   ),
                   const SizedBox(height: 8),

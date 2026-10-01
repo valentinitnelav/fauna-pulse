@@ -89,8 +89,9 @@ detection records) together with the box coordinates. A merged track ID lists al
 `merged_track_ids`. So a join on `track_id` (or on file name for per-crop work) lines up
 detections, photos and identifications without any extra bookkeeping.
 
-Sessions without live detection (motion / time-lapse) have no track IDs. Run "Find animals in photos" first; the
-post-hoc boxes are then identified one by one (no per-track-ID combination).
+Sessions without live detection (motion / time-lapse) have no track IDs. Run "Find animals in photos" first. When
+the photos are at most 0.5 s apart it also finds the track IDs (by itself after each run since round 273), and the
+crops are then combined per track ID; sparser photos have no track IDs, so their boxes are identified one by one.
 
 ## Reading the results
 

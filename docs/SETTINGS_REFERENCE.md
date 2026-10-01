@@ -181,12 +181,20 @@ the main result — stays front and centre.
 
 ## Photo analysis (Analysis screen)
 
-These settings live on the **Analysis** screen (long-press a session), not
-the Settings sheet, and persist in app preferences (`analysis_sahi_*`) — they
-control how saved photos are re-examined *after* a session, so they are not
-part of `SessionConfig`.
+These settings live on the **Find animals in photos** screen, not the Settings
+sheet, and persist in app preferences (`analysis_*`): they control how saved
+photos are re-examined *after* a session, so they are not part of
+`SessionConfig`. Since round 273 the screen shows only the session, the
+detection model and Start; the settings below sit in the closed fold
+**Advanced settings**, whose line names the values in use (for example
+"Confidence 0.25, IoU 0.70, small-insect tiling off").
 
-### Small-insect tiling (SAHI) — advanced
+| Setting | Default | What it does |
+|---|---|---|
+| **Confidence threshold** (Advanced) | `0.25` | Minimum score for a detection to count; the live camera's default. Saved as `analysis_confidence` when a run starts. |
+| **IoU threshold** (Advanced) | `0.7` | Overlap level at which two boxes merge into one; the live camera's default. Saved as `analysis_iou` when a run starts. |
+
+### Small-insect tiling (SAHI) — advanced (inside Advanced settings)
 
 Normally the whole photo is shrunk down to the model's input size before
 detection ("letterboxing" — a 1024 px photo fed to a 640 px model loses about
@@ -240,7 +248,10 @@ track IDs* follows each insect from photo to photo, as the live camera does with
 live detection on, and writes `post_tracks.jsonl` and `track_ids.csv`; the summary,
 dashboard and identification then use those track IDs. Only offered when the
 session's photo step is at most 0.5 s; for sparser photos the section says
-that an insect can move too far between two photos to be followed.
+that an insect can move too far between two photos to be followed. Since round
+273 it runs by itself after every finished run (as on *Find animals in
+videos*); *Find track IDs again* repeats it with other settings. The two
+settings sit in the closed fold **Track ID settings**.
 
 | Setting | Default (range) | What it does |
 |---|---|---|
@@ -258,14 +269,17 @@ are stored on the phone (`video_analysis_*`) and echoed into the `settings` of e
 a change the screen offers "Analyze again with these settings", which replaces the earlier
 results after asking. Since round 229 the session summary's Setup tab lists them (Model &
 detection, Tracking), read back from the last run's records; the pause temperature is
-logged as `thermal_limit_c`.
+logged as `thermal_limit_c`. Since round 273 the screen shows the session, the detection
+model, the proposed area and Start: the rows marked (Advanced) sit in the closed fold
+**Advanced settings**, whose line names the confidence, frame rate and IoU in use, and the
+rows marked (Track IDs) in the closed fold **Track ID settings**.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Detection model** | the last one used (first in the list the first time) | Any detection model on the Download & import models screen (home screen ⋮ menu, or Download & import models… under the list). There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
-| **Confidence threshold** | `0.25` | Minimum score for a box to count; the live camera's default. |
-| **Frames analyzed per second** | `5` (1–30; 15 before round 254) | How many pictures of each second of the video the detector looks at; the pictures in between are skipped. 5 = one picture every 0.2 s of video, enough for insects that stay on a flower for a second or more; a run takes less than half the time 15 would (not a third: the phone still decodes every picture). More follows fast flying insects better (fewer missed or counted twice) but takes longer; 15 is what the live camera analyzes. It counts seconds of the video, not of the run: a slow or warm phone takes longer, it never looks at fewer pictures. Asking for more than the video has changes nothing (most phone videos have 30). To measure which rate is enough for your videos: [VIDEO_ANALYSIS.md §5](VIDEO_ANALYSIS.md#5-which-frame-rate-is-enough-the-sweep). |
-| **Area to analyze** | Whole picture | Or *A square*, placed on the first frame of the first clip (drag, pinch or slider), its side snapped to a multiple of 32 video pixels as on the live camera. Insects outside it are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the square of its last run, so *Continue* works without placing it again. |
+| **Confidence threshold** (Advanced) | `0.25` | Minimum score for a box to count; the live camera's default. |
+| **Frames analyzed per second** (Advanced) | `5` (1–30; 15 before round 254) | How many pictures of each second of the video the detector looks at; the pictures in between are skipped. 5 = one picture every 0.2 s of video, enough for insects that stay on a flower for a second or more; a run takes less than half the time 15 would (not a third: the phone still decodes every picture). More follows fast flying insects better (fewer missed or counted twice) but takes longer; 15 is what the live camera analyzes. It counts seconds of the video, not of the run: a slow or warm phone takes longer, it never looks at fewer pictures. Asking for more than the video has changes nothing (most phone videos have 30). To measure which rate is enough for your videos: [VIDEO_ANALYSIS.md §5](VIDEO_ANALYSIS.md#5-which-frame-rate-is-enough-the-sweep). |
+| **Area to analyze** | The largest square in the middle, proposed (round 273; whole picture before) | The detector looks at a square picture, as with the camera's square, so a session never analysed proposes the largest square in the middle of its first clip, its side rounded down to a multiple of 32 px by the same rule as the camera's largest square (640×480 → 480 × 480, 1920×1080 → 1056 × 1056). It is shown on the first frame with the rest darker, to accept or change. A video that is already square, such as the clips the app records of the camera's square or a copy cropped to a square, starts on the whole picture. *Whole picture* includes the edges. *Change…* (or a tap on the picture) opens the square editor: the clip plays muted and looping at 4× (speeds up to 10×; another clip of the same picture size can be chosen), so camera or flower movement over the whole video shows while the square is dragged, pinched or resized with the slider; its side is snapped to a multiple of 32 video pixels as on the live camera. Insects outside the square are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the area of its last run (square or whole picture), so *Continue* works without placing it again. |
 | **IoU threshold** (Advanced) | `0.7` | Overlap level at which two boxes merge into one; the live camera's default. |
 | **Pause above battery temperature** (Advanced) | `43 °C` (35–45; 40 °C before round 252) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. |
 | **Measure the phone every** (Advanced, r232) | `10 s` (5–60) | How often the battery temperature, power use and analysis speed are written down during a run, also while it pauses to cool down. They make the summary's video graphs and `phone_during_analysis.csv` (DATA_GUIDE §9). 10 s is the live camera's temperature and power interval; shorter shows quick changes but gives a longer file. Saved as `video_analysis_sample_s`, logged as `sample_s` in `video_run_start` (not part of `settings`, so a change never makes the run start over) and shown on the Setup tab. |

@@ -551,12 +551,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// Largest ROI side (px, multiple of 32) the crop source can actually provide:
   /// the biggest 32-multiple that fits the source's short side. Caps the readout
   /// so it never claims a size the frame can't deliver (display == saved).
-  int get _maxRoiPx {
-    final short = _roiSourceWidth < _roiSourceHeight
-        ? _roiSourceWidth
-        : _roiSourceHeight;
-    return (short ~/ 32) * 32;
-  }
+  int get _maxRoiPx => largestSquareSidePx(_roiSourceWidth, _roiSourceHeight);
 
   /// Dimensions the ROI is logged against — kept consistent with the saved crop
   /// source so the logged pixel size matches the files.

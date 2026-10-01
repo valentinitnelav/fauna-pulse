@@ -32,6 +32,13 @@ int snapToMultipleOf32(double pixels) {
   return (steps < 1 ? 1 : steps) * 32;
 }
 
+/// The largest square side (px, multiple of 32) a [width] x [height] picture
+/// can provide: its short side rounded DOWN to the 32-pixel grid, so the
+/// square stays inside the picture. 0 while the size is unknown. One rule for
+/// the camera's square, the video square editor and the default video square
+/// (round 273).
+int largestSquareSidePx(int width, int height) => (math.min(width, height) ~/ 32) * 32;
+
 /// Expresses a normalized frame box as coordinates inside the ROI (0..1),
 /// per CLAUDE.md (boxes are stored relative to the ROI they were found in).
 /// Shared by the live session log and offline tracking of videos (r228).
@@ -72,6 +79,17 @@ class Roi {
     centerY: 0.5,
     sideFraction: 0.45,
   );
+
+  /// Round 273: the default area of a video never analysed, the largest
+  /// square in the middle of an upright [width] x [height] picture
+  /// ([largestSquareSidePx]). Null (whole picture) when the size is unknown
+  /// or the video already is a square, such as the clips the app records of
+  /// the camera's square.
+  static Roi? largestCentredSquare(int width, int height) {
+    if (width <= 0 || height <= 0 || width == height) return null;
+    final side = math.max(32, largestSquareSidePx(width, height));
+    return Roi(centerX: 0.5, centerY: 0.5, sideFraction: side / width);
+  }
 
   /// Half of the square's vertical extent, expressed in normalized (0..1)
   /// frame-height units. [frameAspect] is imageWidth / imageHeight.

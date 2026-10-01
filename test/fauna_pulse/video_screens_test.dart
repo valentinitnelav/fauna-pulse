@@ -41,6 +41,18 @@ Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   expect(ready, findsWidgets, reason: 'content never appeared: $ready');
 }
 
+/// Opens the fold titled [title] (round 273: the settings of the Find
+/// screens sit in closed folds).
+Future<void> _openFold(WidgetTester tester, String title) async {
+  final fold = find.text(title);
+  await tester.scrollUntilVisible(fold, 200, scrollable: find.byType(Scrollable).first);
+  await tester.pump();
+  await tester.tap(fold);
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 Directory _tempDir(String name) {
   final d = Directory.systemTemp.createTempSync(name);
   addTearDown(() {
@@ -296,10 +308,17 @@ void main() {
         ),
       ),
     );
-    // 60 s of video at the default 5 frames per second (round 254; was 15).
-    await _pumpUntil(tester, find.text('About 300 frames for this session.'));
+    await _pumpUntil(tester, find.textContaining('1 analyzed)'));
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('1 analyzed)'), findsOneWidget);
+    // Round 273: the last run was on the whole picture, so that stays; the
+    // numbers sit in the closed Advanced fold, whose line says them.
+    final whole = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
+    expect(whole.selected, {false}, reason: 'whole picture, as the last run');
+    expect(find.byType(Slider), findsNothing);
+    expect(find.text('Confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
+    await _openFold(tester, 'Advanced settings');
+    // 60 s of video at the default 5 frames per second (round 254; was 15).
+    expect(find.text('About 300 frames for this session.'), findsOneWidget);
 
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
@@ -367,11 +386,17 @@ void main() {
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
     await tester.pump();
+    // Round 273: the track ID settings sit in a closed fold, its line says them.
+    expect(find.text('Keep frames of each track ID'), findsNothing);
+    expect(find.text('Occlusion tolerance 3.0 s, minimum track 1.0 s, keep frames on'), findsOneWidget);
+    await _openFold(tester, 'Track ID settings');
     // Round 234: frames kept of each visit (on by default) are saved right
     // after, here by a fake decoder.
     expect(find.text('Keep frames of each track ID'), findsOneWidget);
     expect(find.text('Keep a frame every'), findsOneWidget);
     expect(find.text('For up to'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
+    await tester.pump();
     await tester.tap(find.text('Find track IDs'));
     await _pumpUntil(tester, find.text('Share results'));
     // Round 256: the track IDs show while the frames are saved, then the count.
@@ -528,7 +553,8 @@ void main() {
     File('${session.path}/session.jsonl').writeAsStringSync(
       [
         '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"timelapse","timeLapseSaveAs":"video"}}',
-        '{"type":"video_clip","time_ms":11000,"file":"videos/roi_tok1_a.mp4","duration_ms":10000,"burst":0}',
+        '{"type":"video_clip","time_ms":11000,"file":"videos/roi_tok1_a.mp4","duration_ms":10000,"burst":0,'
+            '"width":480,"height":480}',
         '{"type":"end_of_session","time_ms":20000,"ended_normally":true}',
       ].join('\n'),
     );
@@ -541,9 +567,50 @@ void main() {
         ),
       ),
     );
+    // Round 273: a square clip is the camera's square already, so its default
+    // area is the whole picture.
     await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
     final whole = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
     expect(whole.selected, {false}, reason: 'whole picture');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a video never analysed starts on the largest square in the middle (r273)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_analysis_default_square');
+    final session = Directory('${tmp.path}/Echium');
+    Directory('${session.path}/videos').createSync(recursive: true);
+    File('${session.path}/videos/a.mp4').writeAsStringSync('video');
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      [
+        '{"type":"start_of_session","time_ms":1000,"source":"imported_video"}',
+        '{"type":"video_clip","time_ms":1000,"file":"videos/a.mp4","duration_ms":30000,"width":640,"height":480}',
+        '{"type":"end_of_session","time_ms":31000,"ended_normally":true}',
+      ].join('\n'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.text('Analyze 1 clip'));
+    // The proposed square is in view, to accept or change; the numbers are folded.
+    final area = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
+    expect(area.selected, {true}, reason: 'a square');
+    expect(find.text('Square 480 × 480 px.'), findsOneWidget);
+    expect(find.text('Change…'), findsOneWidget);
+    expect(find.byType(Slider), findsNothing);
+    expect(find.text('Confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
+    // The whole picture is one tap away.
+    await tester.tap(find.text('Whole picture'));
+    await tester.pump();
+    expect(find.text('Square 480 × 480 px.'), findsNothing);
+    expect(tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first).selected, {false});
     expect(tester.takeException(), isNull);
   });
 
@@ -571,7 +638,7 @@ void main() {
         ),
       ),
     );
-    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    await _pumpUntil(tester, find.text('Area to analyze'));
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.textContaining('1 clip was cut off: the app stopped while recording it'), 200, scrollable: list);
     final delete = find.textContaining('Delete the cut-off clip (2 KB)');
@@ -649,9 +716,12 @@ void main() {
         ),
       ),
     );
-    await _pumpUntil(tester, find.textContaining('recorded by the app as the camera'));
+    await _pumpUntil(tester, find.text('Area to analyze'));
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.textContaining('The track IDs found here are for comparison'), 200, scrollable: list);
+    // No keep-frames switch, so the fold's line does not mention it.
+    expect(find.text('Occlusion tolerance 3.0 s, minimum track 1.0 s'), findsOneWidget);
+    await _openFold(tester, 'Track ID settings');
     await tester.scrollUntilVisible(find.textContaining('No frames are kept for these track IDs'), 200, scrollable: list);
     expect(find.text('Keep frames of each track ID'), findsNothing);
     expect(tester.takeException(), isNull);

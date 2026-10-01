@@ -37,6 +37,7 @@ import '../postprocess/video_box_timeline.dart';
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import 'setting_help.dart';
+import 'video_speed_chips.dart';
 
 class VideoReviewPlayer extends StatefulWidget {
   final Directory sessionDir;
@@ -79,7 +80,8 @@ class VideoReviewPlayer extends StatefulWidget {
   static const visitColor = Color(0xFF00E5FF);
   static const rawColor = Color(0xFF76FF03);
 
-  static const speeds = [0.5, 1.0, 2.0, 4.0];
+  /// Shared with the square editor (round 273: 5× and 10× added).
+  static const speeds = VideoSpeedChips.speeds;
 
   @override
   State<VideoReviewPlayer> createState() => VideoReviewPlayerState();
@@ -864,19 +866,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           ],
         ),
       ),
-      Wrap(
-        spacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          const Text('Speed:', style: TextStyle(color: Colors.white70, fontSize: 12)),
-          for (final s in VideoReviewPlayer.speeds)
-            ChoiceChip(
-              label: Text('${s == s.roundToDouble() ? s.round() : s}×'),
-              selected: _speed == s,
-              onSelected: (_) => _setSpeed(s),
-            ),
-        ],
-      ),
+      VideoSpeedChips(speed: _speed, onChanged: _setSpeed),
     ];
   }
 

@@ -9,6 +9,10 @@
 // Run:  flutter test integration_test/photo_visits_check_test.dart -d <serial> --no-uninstall
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).
 // Model: as in video_review_check_test.dart (--dart-define=REVIEW_MODEL=...).
+// Another clip (round 273): --dart-define=PHOTO_CLIP=<path inside the app's
+// external files folder>, e.g. sessions/<session>/videos/<clip>.mp4 (only
+// read). A track ID needs a box at least the camera's saved "New-track
+// confidence"; the laptop-screen clip may give none with a stricter value.
 // Screenshots: "SHOT <name>" lines, as in video_review_check_test.dart.
 // Unlock the phone first; the check keeps the screen on while it runs.
 //
@@ -18,7 +22,9 @@
 //    photo step and burst time in post_tracks.jsonl;
 //  - identification plans its crops per visit;
 //  - the summary: the visit count "found afterwards in the photos" and a
-//    photo of a visit with its number (SHOT).
+//    photo of a visit with its number (SHOT);
+//  - round 273: a run started on the screen itself ("Re-analyze photos
+//    already done") finds the track IDs by itself, without a tap (SHOT).
 
 import 'dart:convert';
 import 'dart:io';
@@ -41,6 +47,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _clip = 'VID_20260924_155954.mp4';
+const _clipPath = String.fromEnvironment('PHOTO_CLIP');
 const _model = String.fromEnvironment('REVIEW_MODEL', defaultValue: 'arthropod_yolov11_float16.tflite');
 const _stepMs = 200;
 
@@ -69,8 +76,9 @@ void main() {
 
     // 1. A time-lapse session made from the clip.
     final ext = (await getExternalStorageDirectory())!.path;
-    final src = File('$ext/video_check/videos/$_clip');
-    expect(src.existsSync(), isTrue, reason: 'push $_clip to $ext/video_check/videos first');
+    final src = File(_clipPath.isEmpty ? '$ext/video_check/videos/$_clip' : '$ext/$_clipPath');
+    expect(src.existsSync(), isTrue, reason: 'push ${src.path.split('/').last} to ${src.parent.path} first');
+    _log('CLIP ${src.path.substring(ext.length + 1)}');
     final out = Directory('$ext/photo_visits_check');
     if (out.existsSync()) out.deleteSync(recursive: true);
     final sessions = Directory('${out.path}/sessions')..createSync(recursive: true);
@@ -203,6 +211,38 @@ void main() {
     if (inVisit.evaluate().isNotEmpty) await tester.ensureVisible(inVisit.first);
     _log('PHOTO ${inVisit.evaluate().isEmpty ? 'no track ID photo in the sample' : 'a photo of a track ID shown'}');
     await shot('photo_visits_photos');
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // 6. Round 273: a run on the screen finds the track IDs by itself.
+    final firstRunId = start['run_id'];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: AnalysisScreen(
+          initialSessionPath: dir.path,
+          sessionsDir: sessions,
+          models: [ModelEntry(id: model, name: model.split('/').last, source: ModelSource.imported)],
+        ),
+      ),
+    );
+    await waitFor(find.textContaining('photo check'));
+    await tester.pump(const Duration(seconds: 1));
+    final screen = find.byType(Scrollable).first;
+    final redo = find.text('Re-analyze photos already done');
+    await tester.scrollUntilVisible(redo, 300, scrollable: screen);
+    await tester.tap(redo);
+    await tester.pump();
+    final run2 = find.textContaining(RegExp(r'^Re-analyze \d+ photos'));
+    await tester.scrollUntilVisible(run2, 300, scrollable: screen);
+    await tester.tap(run2);
+    await waitFor(find.textContaining(RegExp(r'track IDs? in \d+ photos\.')), seconds: 600);
+    final after = jsonDecode(File('${dir.path}/$postTracksFileName').readAsLinesSync().first) as Map;
+    _log('AUTO TRACK IDS run ${after['run_id']} (first run ${firstRunId ?? 'none'}), '
+        '${(await VideoTracker.readSummary(dir))?.visits} track IDs');
+    expect(after['run_id'], isNot(firstRunId));
+    await tester.scrollUntilVisible(find.text('Find track IDs again'), 300, scrollable: screen);
+    await shot('photo_visits_auto');
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 500));
   });

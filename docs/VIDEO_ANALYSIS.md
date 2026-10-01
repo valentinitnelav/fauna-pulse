@@ -28,19 +28,24 @@ Terms used below:
    time, and go straight to step 2 (their session summary opens on the Video tab with a
    *Find animals in videos* button). For imported clips: one session per site and day works
    best. Check the start time on the import sheet: track IDs per hour and the dashboard use
-   it. Optionally, draw a square around the flower. The analysed area is scaled down to
-   the model's input size, so a small insect in a whole 4K frame shrinks to a few pixels;
-   a square keeps it large.
+   it. *Find animals in videos* proposes the largest square in the middle of the video
+   (round 273; a video that is already square is used whole); under *Area to analyze* you
+   can choose the whole picture, or *Change…* the square while the video plays fast (4×, up
+   to 10×) to see whether the camera or the flowers move. The analysed area is scaled down
+   to the model's input size, so a small insect in a whole 4K frame shrinks to a few
+   pixels; a square keeps it large.
    A live detection session with *Also record the ROI as video* (round 240) can be analysed the
    same way, for comparison with what live detection found: its Video tab then switches between
    *Live detection* and *Detection afterwards* on the same clips (round 241), which shows, for example,
    track IDs live detection missed while the phone was hot or the motion gate slept.
-2. **Find animals in videos** (home screen): model, confidence threshold and *Frames analyzed
-   per second* (default 15, live detection's rate). This is the slow step (it can be paused
-   and continued). It finds boxes only.
+2. **Find animals in videos** (home screen): session, model, the proposed area, Start. The
+   confidence threshold and *Frames analyzed per second* (default 5 since round 254; live
+   detection analyses 15) sit under *Advanced settings* (round 273). This is the slow step
+   (it can be paused and continued). It finds boxes only.
 3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
-   C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length*. It
+   C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length* (under
+   *Track ID settings*). It
    takes seconds and can be run again with other settings. A new track ID starts only
    from a box the detector is at least *New-track confidence* sure of (0.50, camera Settings →
    AI → Tracking → Advanced); weaker boxes, down to the confidence threshold, only
@@ -128,7 +133,8 @@ HTML files that work offline in any browser, nothing to install.
 **The target square.** Only insects inside one square around the flower are annotated, and
 the app analyses the same square: [`prepare_square.py`](../tool/video_eval/prepare_square.py)
 crops the video to it, and the cropped copy is used for both (imported into the app and
-analysed with the area *whole picture*). So the app sees exactly the annotated pixels.
+analysed with the area *whole picture*, which a square video gets by itself since round
+273). So the app sees exactly the annotated pixels.
 
 The cropped copy also stands in for a phone time-lapse video (*Save bursts as: Video*),
 which records only the square ROI: the model sees a square, the insects keep their pixels,
@@ -156,7 +162,9 @@ The project files are data: keep them with the videos, not in the code repositor
    shape in the toolbar and draw **one** rectangle around the flower. VIA3 has no square
    tool: the rectangle becomes a square with the same centre and the longer side, moved to
    stay inside the picture, at most the picture's height. Leave a video without a
-   rectangle to keep its whole picture (for example when the camera itself moves).
+   rectangle to keep its whole picture (for example when the camera itself moves). In the
+   app such a video starts on the largest square in the middle (round 273): choose *Whole
+   picture* under *Area to analyze* before the run.
 3. Save the project (it lands in the browser's download folder), then:
 
 ```bash

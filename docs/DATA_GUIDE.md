@@ -1238,6 +1238,7 @@ what the detector found and whether the analysed square was well placed. The tab
   should move: *Change square and analyse again* opens *Find animals in videos* for the session,
   and the tab reloads on return.
 * **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
-  track ID (each starts 1 s before the track ID); speed 0.5×, 1×, 2× or 4×; sound is off until
+  track ID (each starts 1 s before the track ID); speed 0.5×, 1×, 2×, 4×, 5× or 10× (5× and
+  10× since round 273, for an overview; the player may skip pictures); sound is off until
   switched on. The coloured bars under the time bar mark the track IDs, and tapping a track ID in
   the list below the player jumps to it.

@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/clip_cleanup.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_box_timeline.dart';
@@ -19,6 +20,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart' show VideoSquareEditor;
 import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -292,6 +294,8 @@ void main() {
     await tester.tap(find.byTooltip('Play'));
     await tester.pump();
     expect(wake.on, isTrue);
+    expect(find.text('5×'), findsOneWidget); // round 273
+    expect(find.text('10×'), findsOneWidget);
     await tester.tap(find.text('2×'));
     await tester.pump(const Duration(milliseconds: 250));
     expect(player.calls, containsAllInOrder(['play', 'speed 2.0']));
@@ -753,6 +757,77 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  testWidgets('square editor plays the clips fast: 4× first, up to 10×, clip choice, fits 360 px (r273)', (tester) async {
+    simulateBottomSystemBar(tester);
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    );
+    Object? popped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async => popped = await Navigator.of(context).push<Roi>(
+                  MaterialPageRoute(
+                    builder: (_) => VideoSquareEditor(
+                      frameJpeg: png,
+                      frameWidth: 1920,
+                      frameHeight: 1080,
+                      initial: Roi.largestCentredSquare(1920, 1080)!,
+                      videoPaths: const ['/x/videos/a.mp4', '/x/videos/b.mp4'],
+                    ),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    // Plays by itself, muted, looping, at 4× (the player takes the speed once
+    // it plays); the screen stays on meanwhile.
+    await _pumpUntil(tester, find.byTooltip('Pause'));
+    expect(player.calls, containsAllInOrder(['create a.mp4', 'volume 0.0', 'play', 'speed 4.0']));
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '4×')).selected, isTrue);
+    expect(find.text('5×'), findsOneWidget);
+    expect(wake.on, isTrue);
+    await tester.tap(find.text('10×'));
+    await tester.pump();
+    expect(player.calls.last, 'speed 10.0');
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+    expect(player.calls.last, 'pause');
+    expect(wake.on, isFalse);
+
+    // The second clip of the same size opens at the chosen speed.
+    await tester.tap(find.text('Clip 1 of 2: a.mp4'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Clip 2 of 2: b.mp4').last);
+    await tester.pump(const Duration(milliseconds: 400));
+    await _pumpUntil(tester, find.byTooltip('Pause'));
+    expect(player.calls, containsAllInOrder(['create b.mp4', 'play', 'speed 10.0']));
+    expect(tester.takeException(), isNull);
+
+    final use = find.text('Use this square');
+    expectAboveBottomInset(tester, use);
+    await tester.tap(use);
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect((popped as Roi).sideFraction * 1920, closeTo(1056, 1e-6), reason: 'the proposed square, unchanged');
+    expect(wake.on, isFalse);
+    // Both players are released: the first when the second clip opened.
+    for (var i = 0; i < 20 && player.calls.where((c) => c == 'dispose').length < 2; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect(player.calls.where((c) => c == 'dispose'), hasLength(2));
   });
 
   testWidgets('live sessions keep the Photos tab', (tester) async {
