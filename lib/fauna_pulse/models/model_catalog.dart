@@ -172,22 +172,26 @@ class ModelCatalog {
           // Alphabetical by file name, upper and lower case alike (round 275).
           ..sort((a, b) => fileNameOrder(a.path, b.path));
     for (final f in files) {
-      final name = f.path.split('/').last;
-      final meta = await _inspect(f.path);
-      entries.add(
-        ModelEntry(
-          id: f.path,
-          name: name,
-          source: ModelSource.imported,
-          precision: _precisionFromName(name),
-          inputSize: _imgszFrom(meta),
-          task: meta['task'] as String?,
-          labels: _labelsFrom(meta),
-        ),
-      );
+      entries.add(await entryOf(f));
     }
 
     return entries;
+  }
+
+  /// One model file as [build] lists it, inspected now (round 278: the
+  /// "watch" page makes a downloaded file the camera's model).
+  static Future<ModelEntry> entryOf(File f) async {
+    final name = f.path.split('/').last;
+    final meta = await _inspect(f.path);
+    return ModelEntry(
+      id: f.path,
+      name: name,
+      source: ModelSource.imported,
+      precision: _precisionFromName(name),
+      inputSize: _imgszFrom(meta),
+      task: meta['task'] as String?,
+      labels: _labelsFrom(meta),
+    );
   }
 
   /// File names that occur more than once across the catalog (so the UI can warn

@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart' show fileNameOrder;
+import '../models/model_choice_keys.dart';
 import 'crop_worker.dart' show kDefaultCropMargin;
 import 'identification_store.dart' show modelIdOf, modelKey, stemOf;
 import 'label_pack.dart' show isClassListHeader;
@@ -163,8 +164,8 @@ class IdentifyPrefs {
     this.dropFactor = 10,
   });
 
-  static const _kModel = 'identify_model';
-  static const _kPack = 'identify_pack';
+  static const _kModel = kIdentifyModelPref;
+  static const _kPack = kIdentifyPackPref;
   static const _kGpu = 'identify_use_gpu';
   static const _kThreads = 'identify_cpu_threads';
   static const _kMargin = 'identify_margin';

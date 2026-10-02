@@ -892,6 +892,16 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
+    private fun closePredictors(predictors: List<Predictor>) {
+        for (p in predictors) {
+            try {
+                (p as? BasePredictor)?.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing predictor", e)
+            }
+        }
+    }
+
     private fun closePredictor(predictor: Predictor) {
         // Cache eviction/replacement runs on the main thread, but onFrame() calls predict() on this predictor on the
         // camera executor thread. Defer the close onto that same single thread so the native interpreter is never freed
@@ -3906,6 +3916,8 @@ class YOLOView @JvmOverloads constructor(
             previewUseCase?.setSurfaceProvider(null)
             previewUseCase = null
 
+            // The executor still running a frame after the waits below (null = drained).
+            var busyExec: ExecutorService? = null
             cameraExecutor?.let { exec ->
                 exec.shutdown()
                 try {
@@ -3914,11 +3926,13 @@ class YOLOView @JvmOverloads constructor(
                         exec.shutdownNow()
                         if (!exec.awaitTermination(500, TimeUnit.MILLISECONDS)) {
                             Log.e(TAG, "Executor failed to terminate after forced shutdown")
+                            busyExec = exec
                         }
                     }
                 } catch (e: InterruptedException) {
                     Log.e(TAG, "Interrupted while waiting for executor shutdown", e)
                     exec.shutdownNow()
+                    busyExec = exec
                     Thread.currentThread().interrupt()
                 }
             }
@@ -3930,19 +3944,28 @@ class YOLOView @JvmOverloads constructor(
             // disposed view doesn't leak their native LiteRT interpreters / tensor buffers. Closing also makes a later
             // same-key setModel() fast path unable to serve a now-closed instance (use-after-close).
             val closing = predictor
-            try {
-                (closing as? BasePredictor)?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing predictor", e)
-            }
-            for (cached in predictorCache.values) {
-                if (cached !== closing) {
+            val toClose = listOfNotNull(closing) + predictorCache.values.filter { it !== closing }
+            val busy = busyExec
+            if (busy == null) {
+                closePredictors(toClose)
+            } else {
+                // FaunaPulse (round 278): a frame is still inside predict(): one picture can take seconds on the
+                // main processor (1.9 s for flat-bug s at 1024 px on the Xiaomi test phone). shutdownNow() cannot
+                // stop native inference, so closing now freed the model under it (SIGSEGV in
+                // LiteRtRunCompiledModelWithOptions, found by the slow-phone check). Close once that frame is done.
+                Thread({
+                    var done = false
                     try {
-                        (cached as? BasePredictor)?.close()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error closing cached predictor", e)
+                        done = busy.awaitTermination(60, TimeUnit.SECONDS)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
                     }
-                }
+                    if (done) {
+                        closePredictors(toClose)
+                    } else {
+                        Log.e(TAG, "Inference still running after 60 s; its model is left open")
+                    }
+                }, "yolo-predictor-close").start()
             }
             predictorCache.clear()
             predictorCacheOrder.clear()

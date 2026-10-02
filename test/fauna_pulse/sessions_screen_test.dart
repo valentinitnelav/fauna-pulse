@@ -1,18 +1,15 @@
 // Round 277 (owner): the past sessions on their own screen, with a search,
 // a filter panel, a sort menu, and press-and-hold to select several sessions
-// to delete; and the home screen that leads to it.
+// to delete. The home screen that leads to it: home_screen_test.dart.
 
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
-import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_actions.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/sessions_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/session_tile.dart';
-import 'package:fauna_pulse/fauna_pulse/widgets/support_faunapulse.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'past_sessions_test.dart' show session;
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
@@ -212,104 +209,5 @@ void main() {
     await tester.tap(find.text('Filters'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'the filter panel fits');
-  });
-
-  group('home screen', () {
-    setUp(() => SharedPreferences.setMockInitialValues({}));
-
-    Future<void> pumpHome(WidgetTester tester, List<PastSession> list) async {
-      await tester.pumpWidget(
-        MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: HomeScreen(scan: () async => list)),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('bottom bar: Menu, a raised New session, Dashboard; Sessions under the name', (tester) async {
-      simulateBottomSystemBar(tester);
-      await pumpHome(tester, _sessions);
-      // The three bottom buttons, each with its word under it.
-      final fab = find.byType(FloatingActionButton);
-      expect(fab, findsOneWidget);
-      expect(tester.getSize(fab), const Size(72, 72));
-      expect(find.text('New session'), findsOneWidget);
-      expect(find.text('Menu'), findsOneWidget);
-      expect(find.text('Dashboard'), findsOneWidget);
-      final bar = tester.getRect(find.byType(BottomAppBar));
-      expect(tester.getRect(fab).top, lessThan(bar.top), reason: 'raised above the bar');
-      expect(tester.getCenter(find.text('New session')).dy, greaterThan(tester.getRect(fab).bottom - 1));
-      expect(tester.getCenter(find.text('Menu')).dx, lessThan(tester.getCenter(fab).dx));
-      expect(tester.getCenter(find.text('Dashboard')).dx, greaterThan(tester.getCenter(fab).dx));
-      // The bar's colour may reach under the system bar; its words may not.
-      for (final word in ['Menu', 'New session', 'Dashboard']) {
-        expectAboveBottomInset(tester, find.text(word), label: word);
-      }
-      // The content, top to bottom.
-      expect(find.text('Sessions'), findsOneWidget);
-      expect(find.text('4 saved'), findsOneWidget);
-      expect(find.text('Import videos…'), findsOneWidget);
-      expect(find.text('Find animals in photos'), findsOneWidget);
-      expect(find.text('Find animals in videos'), findsOneWidget);
-      double y(String text) => tester.getCenter(find.text(text)).dy;
-      expect(y('Sessions'), lessThan(y('Import videos…')));
-      expect(y('Import videos…'), lessThan(y('Find animals in photos')));
-      expect(find.byType(SessionTile), findsNothing, reason: 'no latest session row');
-      await tester.scrollUntilVisible(find.text('Support FaunaPulse'), 200, scrollable: find.byType(Scrollable).first);
-      expect(find.text('Sponsor on GitHub'), findsNothing, reason: 'no money link unless built with DONATION_LINK');
-      expect(find.text('How to cite'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('the side menu: models first, About last; Support opens the box', (tester) async {
-      await pumpHome(tester, _sessions);
-      await tester.tap(find.text('Menu'));
-      await tester.pumpAndSettle();
-      final items = [
-        for (final tile in tester.widgetList<ListTile>(find.descendant(of: find.byType(Drawer), matching: find.byType(ListTile))))
-          ((tile.title as Text).data)!,
-      ];
-      expect(items, [
-        'Download & import models',
-        'Show setup tips at session start',
-        'Report a problem',
-        'Share FaunaPulse',
-        'Support FaunaPulse',
-        'About FaunaPulse',
-      ]);
-      expect(find.text('Import videos…'), findsOneWidget, reason: 'only on the screen, not in the menu');
-      await tester.tap(find.text('Support FaunaPulse'));
-      await tester.pumpAndSettle();
-      expect(find.byType(Drawer), findsNothing, reason: 'the menu closes');
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('stays free for science')), findsOneWidget);
-    });
-
-    testWidgets('the support box with the donation link (GitHub release builds)', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: SupportFaunaPulseCard(donationLink: true, onReportProblem: () {})),
-        ),
-      );
-      expect(find.text('Sponsor on GitHub'), findsOneWidget);
-      expect(find.textContaining('own budget'), findsOneWidget);
-      expect(supportText(donationLink: false), isNot(contains('budget')));
-      expect(kDonationLink, isFalse, reason: 'tests and normal builds have no money link');
-    });
-
-    testWidgets('no sessions yet', (tester) async {
-      await pumpHome(tester, const []);
-      expect(find.text('None yet'), findsOneWidget);
-    });
-
-    testWidgets('a small screen scrolls instead of overflowing', (tester) async {
-      tester.view.physicalSize = const Size(320, 480);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await pumpHome(tester, _sessions);
-      expect(tester.takeException(), isNull);
-      await tester.drag(find.byType(ListView), const Offset(0, -2000));
-      await tester.pumpAndSettle();
-      expect(find.text('Support FaunaPulse'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
   });
 }

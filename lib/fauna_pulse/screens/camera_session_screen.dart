@@ -33,6 +33,7 @@ import '../models/session_config.dart';
 import '../services/recording_keepalive.dart';
 import '../models/track.dart';
 import '../perf/adaptive_inference_throttle.dart';
+import '../perf/slow_phone_hint.dart';
 import '../session/camera_diagnostics_controller.dart';
 import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
@@ -140,6 +141,27 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // preference, not a session parameter — deliberately not in SessionConfig).
   static const String _statsExpandedKey = 'stats_panel_expanded';
   bool _statsExpanded = false;
+
+  // Round 278 (owner): a hint when the phone checks fewer than 5 pictures per
+  // second in live detection (perf/slow_phone_hint.dart), once per visit of
+  // this screen. Hidden until the "Don't show again" choice is read.
+  final _slowHint = SlowPhoneHint();
+  bool _hideSlowHint = true;
+
+  /// Pictures per second while the hint shows; null otherwise.
+  double? _slowPerSecond;
+
+  Future<void> _closeSlowHint({required bool forGood}) async {
+    setState(() => _slowPerSecond = null);
+    if (!forGood) return;
+    _hideSlowHint = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kHideSlowPhoneHintPrefKey, true);
+    } catch (e) {
+      logSwallowed('slow_hint_save', e);
+    }
+  }
 
   Future<void> _toggleStatsExpanded() async {
     setState(() => _statsExpanded = !_statsExpanded);
@@ -569,6 +591,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     SharedPreferences.getInstance()
         .then((p) {
           final v = p.getBool(_statsExpandedKey) ?? false;
+          _hideSlowHint = p.getBool(kHideSlowPhoneHintPrefKey) ?? false;
           if (mounted && v != _statsExpanded) {
             setState(() => _statsExpanded = v);
           }
@@ -1092,6 +1115,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // maintained by the frame processor.
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     _fpsTrioVN.value = [cameraFps, fps, _frame.updatePipelineFps(nowMs)];
+
+    // Too slow for live detection? (round 278; work per picture, not fps).
+    if (_config.detectorEnabled &&
+        !_hideSlowHint &&
+        !_calibrating &&
+        _slowHint.add(nowMs, preMs + inferMs + postMs)) {
+      final perSecond = 1000 / _slowHint.medianMs!;
+      debugPrint('SLOW_PHONE_HINT median ${_slowHint.medianMs!.toStringAsFixed(0)} ms per picture');
+      setState(() => _slowPerSecond = perSecond);
+    }
 
     // Inference watchdog: if the camera is delivering frames but the detector
     // never produces any (0 FPS) for a while, the model is likely failing
@@ -3835,6 +3868,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               child: Align(
                 alignment: Alignment.topCenter,
                 child: _errorBanner((_logWriteError ?? _inferenceError)!),
+              ),
+            )
+          else if (_slowPerSecond != null)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SlowPhoneBanner(
+                  perSecond: _slowPerSecond!,
+                  onOk: () => _closeSlowHint(forGood: false),
+                  onNeverAgain: () => _closeSlowHint(forGood: true),
+                ),
               ),
             ),
           // Bottom controls.

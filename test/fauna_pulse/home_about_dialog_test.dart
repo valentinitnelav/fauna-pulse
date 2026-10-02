@@ -1,4 +1,4 @@
-// Widget tests for the ⋮ menu's About dialog (AboutFaunaPulseDialog).
+// Widget tests for the side menu's About dialog (AboutFaunaPulseDialog).
 //
 // Round 193: the muted "Third-party licenses" action is back (store releases
 // must ship the bundled packages' license texts; Flutter's auto-generated
@@ -43,6 +43,10 @@ void main() {
     expect(find.text('github.com/valentinitnelav/fauna-pulse'), findsOneWidget);
     expect(find.textContaining('AGPL-3.0'), findsOneWidget);
     expect(find.text('Third-party licenses'), findsOneWidget);
+    // Round 278: the text for a broad audience says that the phone names
+    // the animals too, and who made the models.
+    expect(find.textContaining('name them: an identification model on the phone'), findsOneWidget);
+    expect(find.textContaining('keep their own licences'), findsOneWidget);
   });
 
   testWidgets('a null version renders no version line', (tester) async {

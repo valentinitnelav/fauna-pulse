@@ -105,6 +105,12 @@ push, gate config, lens/focus, fast crop) and `YOLO.predict` options.
 - `setCaptureRequestOptions` is called **only** inside `applyInteropOptions()`.
 - `YOLOView.stop()` is restartable; `YOLOView.release()` is the terminal step
   that shuts the view-lifetime executors (r161).
+- `YOLOView.stop()` never frees a model while a frame is still inside
+  `predict()` (r278): when the camera executor has not ended after its two
+  500 ms waits (one picture can take seconds on the main processor), the
+  predictors are closed on a `yolo-predictor-close` thread once it ends
+  (up to 60 s; after that the model is left open, logged). Closing at once
+  crashed the app (SIGSEGV in `LiteRtRunCompiledModelWithOptions`).
 - Idle/time-lapse frame drops happen **before** bitmap conversion and above
   the native frame counter (the low camera-FPS readout while the gate sleeps
   is the fix working, not a bug).

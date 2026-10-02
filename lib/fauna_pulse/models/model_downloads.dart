@@ -30,6 +30,12 @@
 // Round 277 (owner): no "how to cite" field. A citation changes (a preprint
 // becomes a journal paper) and the authors keep theirs up to date at the
 // source, so the card shows the source and the screen asks to cite from there.
+//
+// Round 278 (owner): `uses`, the answers to the home screen's "What do you
+// want to watch?" (pollinators on flowers, insects on a flat surface, mammals
+// and birds), each with the models suggested for it: detection models by
+// `id`, identification models with the name list to use. Kept in the list so
+// the suggestions change without new code.
 
 import 'dart:convert';
 import 'dart:io';
@@ -109,12 +115,45 @@ class ModelDownload {
   bool get offered => file != null;
 }
 
+/// An identification model with the name list it uses.
+typedef NamingDownload = (ModelDownload model, NameListDownload list);
+
+/// One answer to "What do you want to watch?" (round 278).
+class WatchUse {
+  final String id;
+
+  /// Which drawing the tile shows (widgets/watch_tiles.dart).
+  final String icon;
+  final String title;
+
+  /// One sentence on where to put the phone.
+  final String setup;
+
+  /// Suggested detection models, the best first.
+  final List<ModelDownload> find;
+
+  /// Suggested identification models with their name list, the best first.
+  final List<NamingDownload> name;
+
+  const WatchUse({
+    required this.id,
+    required this.icon,
+    required this.title,
+    required this.setup,
+    required this.find,
+    this.name = const [],
+  });
+}
+
 class ModelDownloads {
   /// Every known model of each kind; [offers] are the ones to download.
   final List<ModelDownload> detectors;
   final List<ModelDownload> identification;
 
-  const ModelDownloads({this.detectors = const [], this.identification = const []});
+  /// The answers to "What do you want to watch?" (round 278).
+  final List<WatchUse> uses;
+
+  const ModelDownloads({this.detectors = const [], this.identification = const [], this.uses = const []});
 
   List<ModelDownload> get detectorOffers => [for (final d in detectors) if (d.offered) d];
   List<ModelDownload> get identificationOffers => [for (final d in identification) if (d.offered) d];
@@ -197,7 +236,64 @@ class ModelDownloads {
         logSwallowed('model_downloads_entry', e);
       }
     }
-    return ModelDownloads(detectors: detectors, identification: identification);
+    return ModelDownloads(
+      detectors: detectors,
+      identification: identification,
+      uses: _parseUses(j['uses'] as List? ?? const [], detectors, identification),
+    );
+  }
+
+  /// `uses` (round 278). A suggestion naming a model that is not offered, or
+  /// a list that model does not have, is left out (logged); a use left with
+  /// no detection model is skipped.
+  static List<WatchUse> _parseUses(List raw, List<ModelDownload> detectors, List<ModelDownload> identification) {
+    ModelDownload? offered(List<ModelDownload> all, String id) =>
+        all.where((d) => d.offered && modelKey(d.id) == modelKey(id)).firstOrNull;
+    final uses = <WatchUse>[];
+    for (final u in raw) {
+      try {
+        final e = u as Map<String, dynamic>;
+        final id = e['id'] as String;
+        final find = <ModelDownload>[];
+        for (final m in (e['find'] as List? ?? const [])) {
+          final d = offered(detectors, m as String);
+          if (d != null) {
+            find.add(d);
+          } else {
+            logSwallowed('model_downloads_use', 'no offered detection model $m in use $id');
+          }
+        }
+        final name = <NamingDownload>[];
+        for (final n in (e['name'] as List? ?? const [])) {
+          final m = (n as Map<String, dynamic>)['model'] as String;
+          final d = offered(identification, m);
+          final listName = n['list'] as String?;
+          // A classifier has one list (its classes): it may be left out.
+          final list = d?.nameLists
+              .where((l) => listName == null ? d.nameLists.length == 1 : l.file.name == listName)
+              .firstOrNull;
+          if (d != null && list != null) {
+            name.add((d, list));
+          } else {
+            logSwallowed('model_downloads_use', 'no offered identification model $m with list $listName in use $id');
+          }
+        }
+        if (find.isEmpty) throw FormatException('no detection model offered for use $id');
+        uses.add(
+          WatchUse(
+            id: id,
+            icon: e['icon'] as String? ?? id,
+            title: e['title'] as String,
+            setup: e['setup'] as String? ?? '',
+            find: find,
+            name: name,
+          ),
+        );
+      } catch (e) {
+        logSwallowed('model_downloads_use', e);
+      }
+    }
+    return uses;
   }
 
   /// The entry of the model file [fileName] (a name or a path): the one

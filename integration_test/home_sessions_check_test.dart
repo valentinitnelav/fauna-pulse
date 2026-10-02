@@ -1,10 +1,14 @@
 // FaunaPulse (round 277): on-device check of the new home screen, the
 // Sessions screen (with the phone's own sessions) and the credits note of
-// Download & import models.
+// Download & import models. Round 278: the home screen as steps, its scroll
+// bar, the page of each "What do you want to watch?" answer (the phone's own
+// files shown as on the phone; nothing downloaded) and the About text.
 //
-// Nothing is deleted, imported or saved: the check only opens screens, opens
-// and closes the filter panel and the menus, and selects one session and
-// stops selecting again. It opens Android's photo picker for "Import
+// Nothing is deleted, imported, downloaded or saved: the check only opens
+// screens, opens and closes the filter panel and the menus, and selects one
+// session and stops selecting again. Opening an answer's page remembers
+// which answer was last opened (home_watch_use): the check puts the phone's
+// value back. It opens Android's photo picker for "Import
 // videos…" once: run it with shots_back.sh, which presses Back on the phone
 // after the "SHOT ..._back" screenshot, so nothing is chosen.
 // Run:  flutter test integration_test/home_sessions_check_test.dart -d <serial> --no-uninstall
@@ -15,10 +19,12 @@
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/watch_plan_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/session_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 // ignore: avoid_print
@@ -68,14 +74,52 @@ void main() {
       await settle();
     }
 
-    // 2. Home: the bottom bar, the side menu, the support box.
+    // 2. Home: the steps, the bottom bar, the side menu, the support box.
+    final prefs = await SharedPreferences.getInstance();
+    final watchUse = prefs.getString(kHomeWatchUsePref);
+    addTearDown(() async {
+      final p = await SharedPreferences.getInstance();
+      watchUse == null ? await p.remove(kHomeWatchUsePref) : await p.setString(kHomeWatchUsePref, watchUse);
+    });
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: const HomeScreen()));
-    await waitFor(find.text(all.isEmpty ? 'None yet' : '${all.length} saved'));
+    await waitFor(find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs)')));
     await settle();
+    _log('MODELS ${tester.widget<Text>(find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs)'))).data}');
     await shot('home');
+
+    // Each answer's page, then back (nothing downloaded).
+    for (final (tile, name) in [
+      ('Pollinators on flowers', 'watch_pollinators'),
+      ('Insects on a flat surface', 'watch_flat_surface'),
+      ('Mammals and birds', 'watch_mammals_birds'),
+    ]) {
+      await tester.tap(find.text(tile));
+      await waitFor(find.text('To find the animals'));
+      await settle();
+      final onPhone = find.text('On this phone').evaluate().length;
+      await shot(name);
+      // The button is at the end of the page (built once in view).
+      await tester.drag(find.byType(ListView), const Offset(0, -3000));
+      await settle();
+      final button = find.textContaining(RegExp(r'^(Download \(|Use them$)'));
+      _log('WATCH $tile: "On this phone" $onPhone times at the top, button "${tester.widget<Text>(button).data}"');
+      await shot('${name}_end');
+      await back();
+      await waitFor(find.byType(HomeScreen));
+    }
+    expect(find.byType(WatchPlanScreen), findsNothing);
+
     await tester.tap(find.text('Menu'));
     await settle();
     await shot('home_menu');
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('About FaunaPulse')));
+    await waitFor(find.textContaining('name them: an identification model'));
+    await settle();
+    await shot('home_about');
+    await tester.tap(find.text('Close'));
+    await settle();
+    await tester.tap(find.text('Menu'));
+    await settle();
     // The menu's item (the box of the same name can be visible behind it).
     await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Support FaunaPulse')));
     await settle();
@@ -100,8 +144,8 @@ void main() {
     expect(find.byType(SnackBar), findsNothing, reason: 'no hint after closing the picker');
     await shot('import_cancelled');
 
-    // 4. Sessions.
-    await tester.tap(find.text('Sessions'));
+    // 4. Sessions (in the bottom bar).
+    await tester.tap(find.descendant(of: find.byType(BottomAppBar), matching: find.text('Sessions')));
     await waitFor(find.byType(all.isEmpty ? Text : SessionTile));
     await settle();
     await shot('sessions');

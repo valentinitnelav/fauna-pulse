@@ -1,6 +1,6 @@
 // Tests for the model list (rounds 268, 276): the shipped
 // assets/model_downloads.json parses completely and names every known model
-// with its licence, source and citation, links are built from the base URL,
+// with its licence and source, links are built from the base URL,
 // a file finds its model by name (the naming rule), a bad entry is skipped
 // without hiding the others, and the download dialog resumes with the file
 // that failed.
@@ -30,7 +30,7 @@ void main() {
     final all = [
       for (final d in [...c.detectorOffers, ...c.identificationOffers]) ...[d.file!, for (final l in d.nameLists) l.file],
     ];
-    expect(all, hasLength(3 + 3 + 1 + 2 + 2));
+    expect(all, hasLength(3 + 3 + 1 + 3 + 2), reason: 'BioCLIP 2: three name lists since round 278');
     for (final f in all) {
       expect(f.url.isScheme('https'), isTrue, reason: f.name);
       expect(f.url.path, endsWith('/${f.name}'));
@@ -98,6 +98,32 @@ void main() {
     expect(c.detectors.first.file!.sha256, isNull);
     expect(c.detectors.last.offered, isFalse);
     expect(c.detectorOffers.map((d) => d.id), ['ok']);
+  });
+
+  test('uses (r278): a suggestion of a model that is not offered, or of a list it lacks, is left out', () {
+    final c = ModelDownloads.parse('''
+{"base_url": "https://example.org/r/",
+ "models": [
+   {"id": "det", "kind": "detection_model", "title": "Det", "purpose": "p", "file": {"name": "det_640_fp16.tflite", "bytes": 5}},
+   {"id": "known", "kind": "detection_model", "title": "Known", "purpose": "p"},
+   {"id": "cls", "kind": "identification_model", "title": "Cls", "purpose": "p", "file": {"name": "cls_224_fp16.tflite", "bytes": 3},
+    "name_lists": [{"kind": "class_list", "title": "Its classes", "file": {"name": "cls_224_fp16.fpack", "bytes": 1}}]},
+   {"id": "clip", "kind": "identification_model", "title": "Clip", "purpose": "p", "file": {"name": "clip_224_fp16.tflite", "bytes": 9},
+    "name_lists": [{"kind": "label_pack", "title": "A", "file": {"name": "clip_a_v1.fpack", "bytes": 1}},
+                   {"kind": "label_pack", "title": "B", "file": {"name": "clip_b_v1.fpack", "bytes": 1}}]}
+ ],
+ "uses": [
+   {"id": "bees", "icon": "pollinators", "title": "Bees", "setup": "s",
+    "find": ["known", "nothing", "det"],
+    "name": [{"model": "cls"}, {"model": "clip"}, {"model": "clip", "list": "clip_b_v1.fpack"}, {"model": "clip", "list": "clip_z_v1.fpack"}]},
+   {"id": "empty", "title": "No detector offered", "find": ["known"]},
+   {"title": "No id"}
+ ]}''');
+    final u = c.uses.single;
+    expect(u.id, 'bees');
+    expect(u.find.map((d) => d.id), ['det'], reason: 'known but not offered, and unknown, are left out');
+    expect([for (final (m, l) in u.name) '${m.id}/${l.file.name}'], ['cls/cls_224_fp16.fpack', 'clip/clip_b_v1.fpack'],
+        reason: 'a model with several lists needs the list named');
   });
 
   testWidgets('the download dialog shows the total, and Try again continues with the failed file', (tester) async {

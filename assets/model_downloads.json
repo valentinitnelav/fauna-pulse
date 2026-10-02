@@ -135,6 +135,17 @@
             "bytes": 62754369,
             "sha256": "49ce700de25266f8c9a3a55fa5086205c420ab076000552868d113516df41c16"
           }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Mammals and birds of the world (17,130 names)",
+          "licence": "CC0-1.0 (TreeOfLife-200M species embeddings)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2_mammals-birds-world_v1.fpack",
+            "bytes": 28120298,
+            "sha256": "2a78f3973af78fc1779277e43d7b8ef7266a13c68af95dbdd93e32e2af258d48"
+          }
         }
       ]
     },
@@ -173,6 +184,69 @@
             "bytes": 80131038,
             "sha256": "6d6cc9d0158df2d5f1d9a218ae693374f3055aabcc8d2ba222e2a71d8a356c0d"
           }
+        }
+      ]
+    }
+  ],
+  "uses": [
+    {
+      "id": "pollinators",
+      "icon": "pollinators",
+      "title": "Pollinators on flowers",
+      "setup": "Fix the phone on a tripod or a pole, close to one flower or a group of flowers, and put the square over them.",
+      "find": [
+        "insectdct-v8s",
+        "flatbug-n"
+      ],
+      "name": [
+        {
+          "model": "insectdct-cls-v7-eff2s"
+        },
+        {
+          "model": "bioclip-2",
+          "list": "bioclip2_pollinator_orders_europe_v1.fpack"
+        },
+        {
+          "model": "bioclip-2",
+          "list": "bioclip2_flower_visitors_32fam_v1.fpack"
+        }
+      ]
+    },
+    {
+      "id": "flat_surface",
+      "icon": "flat_surface",
+      "title": "Insects on a flat surface",
+      "setup": "Fix the phone above a flat surface where insects land or walk (for example a coloured platform), looking straight down.",
+      "find": [
+        "flatbug-n",
+        "insectdct-v8s"
+      ],
+      "name": [
+        {
+          "model": "insectdct-cls-v7-eff2s"
+        },
+        {
+          "model": "bioclip-2",
+          "list": "bioclip2_pollinator_orders_europe_v1.fpack"
+        },
+        {
+          "model": "bioclip-2",
+          "list": "bioclip2_flower_visitors_32fam_v1.fpack"
+        }
+      ]
+    },
+    {
+      "id": "mammals_birds",
+      "icon": "mammals_birds",
+      "title": "Mammals and birds",
+      "setup": "Point the phone at a feeding site, a path or a nest entrance, and make the square large.",
+      "find": [
+        "mdv6-yolov10c"
+      ],
+      "name": [
+        {
+          "model": "bioclip-2",
+          "list": "bioclip-2_mammals-birds-world_v1.fpack"
         }
       ]
     }

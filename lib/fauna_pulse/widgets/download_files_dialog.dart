@@ -9,6 +9,25 @@ import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_downloads.dart';
 import '../models/model_file_security.dart' show plainModelError;
 
+/// Downloads one catalogue file into the folder of its kind (injectable for
+/// tests; Download & import models and the "watch" page, round 278).
+typedef CatalogueFileDownloader =
+    Future<void> Function(
+      DownloadFile file,
+      bool identification,
+      void Function(int receivedBytes, int? totalBytes) onProgress,
+      bool Function() isCancelled,
+    );
+
+Future<void> downloadCatalogueFileForReal(
+  DownloadFile file,
+  bool identification,
+  void Function(int receivedBytes, int? totalBytes) onProgress,
+  bool Function() isCancelled,
+) async {
+  await downloadCatalogueFile(file, identification: identification, onProgress: onProgress, isCancelled: isCancelled);
+}
+
 /// Downloads one file, reporting progress; injectable for tests.
 typedef CatalogueDownloader =
     Future<void> Function(

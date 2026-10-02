@@ -80,6 +80,15 @@ In the code, "pack" means such a file of either kind.
 - `bytes` and `sha256`: the app shows the size and checks every download against the
   checksum. A file on the phone counts as present by its **name** only, so re-exported
   weights on the phone are not flagged.
+- `uses` (round 278): the answers to the home screen's *What do you want to watch?*, in the
+  order of the tiles. Each has `id`, `icon` (which drawing the tile shows: `pollinators`,
+  `flat_surface`, `mammals_birds`; `widgets/watch_tiles.dart`), `title`, `setup` (one sentence
+  on where to put the phone), `find` (the `id`s of the suggested detection models, the best
+  first) and `name` (the suggested identification models, each `{"model": id, "list": file
+  name}`; a classifier with one class list may leave out `list`). Only offered entries count;
+  a suggestion that names a model that is not offered, or a list it does not have, is left out
+  (logged), and an answer with no detection model left is skipped. Change the suggestions here,
+  without new code.
 
 ## When weights change
 
@@ -102,6 +111,10 @@ In the code, "pack" means such a file of either kind.
 | `bioclip-2_image_fp16_4d.tflite` | `tool/bioclip_export/out/gpu4d/bioclip-2_image_fp16.tflite` (**rename**: the GPU export) |
 | `bioclip2_pollinator_orders_europe_v1.fpack`, `bioclip2_flower_visitors_32fam_v1.fpack` | `tool/bioclip_export/out/` |
 | `bioclip-25_image_fp16.tflite`, `bioclip25_*_v1.fpack` | `tool/bioclip_export/out/bioclip25/` |
+| `bioclip-2_mammals-birds-world_v1.fpack` (round 278, named by the rule) | `tool/bioclip_export/out/` |
+
+On 2026-10-02 only the MegaDetector file was online; the others answer "not found" (HTTP 404),
+which the app shows in plain words, until they are uploaded.
 
 GitHub release assets may be up to 2 GiB each; BioCLIP 2.5 (1.27 GB) fits. The licences are in
 `docs/THIRD_PARTY_MODELS.md`.

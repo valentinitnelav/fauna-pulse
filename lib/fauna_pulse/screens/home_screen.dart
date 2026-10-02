@@ -15,6 +15,16 @@
 //   • a "Support FaunaPulse" box (widgets/support_faunapulse.dart; no money
 //     link in Google Play builds);
 //   • no latest-session row (the owner preferred the space for the above).
+//
+// Round 278 (owner): the page leads a first-time user step by step, like a
+// wizard that stays on the screen: 1 AI models (what is on the phone, and
+// "What do you want to watch?": pollinators on flowers, insects on a flat
+// surface, mammals and birds, other models; each answer opens a page with the
+// suggested models, screens/watch_plan_screen.dart), 2 Record, 3 Or use your
+// own videos, 4 Find and name the animals. Sessions and the models moved into
+// the bottom bar (Menu, Sessions | New session | Dashboard, AI models), so
+// they are one tap away without scrolling. A quiet scroll bar shows that the
+// page goes on below (widgets/scroll_hint.dart).
 
 import 'dart:async';
 import 'dart:io';
@@ -27,21 +37,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 import '../logging/past_sessions.dart';
+import '../models/model_downloads.dart';
+import '../models/models_on_phone.dart';
 import '../models/session_config.dart';
+import '../perf/slow_phone_hint.dart' show kHideSlowPhoneHintPrefKey;
 import '../widgets/external_link.dart';
+import '../widgets/scroll_hint.dart';
 import '../widgets/support_faunapulse.dart';
+import '../widgets/watch_tiles.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_actions.dart';
 import 'sessions_screen.dart';
+import 'watch_plan_screen.dart';
+
+/// The last answer to "What do you want to watch?" (its tile is marked).
+const kHomeWatchUsePref = 'home_watch_use';
 
 class HomeScreen extends StatefulWidget {
   /// Reads the sessions; tests give their own.
   final Future<List<PastSession>> Function() scan;
 
-  const HomeScreen({super.key, this.scan = scanPastSessions});
+  /// Counts the models on the phone; tests give their own.
+  final Future<ModelsOnPhone> Function() countModels;
+
+  /// Reads the download list (its `uses`); tests give their own.
+  final Future<ModelDownloads> Function() loadDownloads;
+
+  /// The model file names on the phone, for the "watch" pages; tests give
+  /// their own.
+  final Future<Set<String>> Function() modelNames;
+
+  const HomeScreen({
+    super.key,
+    this.scan = scanPastSessions,
+    this.countModels = ModelsOnPhone.count,
+    this.loadDownloads = ModelDownloads.load,
+    this.modelNames = modelFileNamesOnPhone,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -49,7 +84,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SessionActions {
   bool _starting = false;
-  bool _loadingSessions = true;
+
   /// Every session, newest first (counted here; the problem report offers
   /// them).
   List<PastSession> _sessions = const [];
@@ -59,11 +94,62 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   /// as a check item in the side menu.
   bool _showSetupTips = true;
 
+  /// Null while counting.
+  ModelsOnPhone? _models;
+
+  /// The answers to "What do you want to watch?" (the download list's `uses`).
+  List<WatchUse> _uses = const [];
+  String? _watchUse;
+
+  final _list = ScrollController();
+
   @override
   void initState() {
     super.initState();
     reloadSessions();
+    _reloadModels();
     _loadSetupTipsPref();
+    _loadUses();
+  }
+
+  @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reloadModels() async {
+    final m = await widget.countModels();
+    if (mounted) setState(() => _models = m);
+  }
+
+  Future<void> _loadUses() async {
+    final d = await widget.loadDownloads();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _uses = d.uses;
+      _watchUse = prefs.getString(kHomeWatchUsePref);
+    });
+  }
+
+  /// Opens the suggested models of [use]; back with them, the user is
+  /// pointed at New session.
+  Future<void> _openWatch(WatchUse use) async {
+    setState(() => _watchUse = use.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kHomeWatchUsePref, use.id);
+    if (!mounted) return;
+    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => WatchPlanScreen(use: use, onPhone: widget.modelNames)));
+    await _reloadModels();
+    if (done == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Done. Press New session to start.')));
+    }
+  }
+
+  Future<void> _openModels() async {
+    await openModelsScreen(context);
+    await _reloadModels();
   }
 
   /// Reads the persisted "hide setup tips" flag so the menu check item
@@ -77,20 +163,20 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   /// Turns the one-time setup reminder on/off by writing the persisted flag.
   /// On = reminder shows next time a session screen opens; Off = stays hidden.
+  /// Round 278: turning it on also brings back the slow-phone hint after its
+  /// "Don't show again" (the only way back to it).
   Future<void> _toggleSetupTips() async {
     setState(() => _showSetupTips = !_showSetupTips);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(kHideSessionInfoPrefKey, !_showSetupTips);
+    if (_showSetupTips) await prefs.remove(kHideSlowPhoneHintPrefKey);
   }
 
   @override
   Future<void> reloadSessions() async {
     final found = await widget.scan();
     if (!mounted) return;
-    setState(() {
-      _sessions = found;
-      _loadingSessions = false;
-    });
+    setState(() => _sessions = found);
   }
 
   Future<void> _start() async {
@@ -113,8 +199,10 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
         builder: (_) => CameraSessionScreen(initialConfig: config),
       ),
     );
-    // A new session may have been recorded; refresh on return.
+    // A new session may have been recorded (and a model downloaded from the
+    // camera's question); refresh on return.
     await reloadSessions();
+    await _reloadModels();
   }
 
   /// Builds a diagnostic report from outside a session (e.g. after a crash and
@@ -261,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
               ),
             ),
             const Divider(height: 1),
-            item(Icons.download, 'Download & import models', () => openModelsScreen(context)),
+            item(Icons.download, 'Download & import models', _openModels),
             // An explicit check box (round 184): a blank space for "off"
             // left the owner unsure whether the option was on. The menu stays
             // open, so the tick is seen to change.
@@ -301,16 +389,21 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     ),
   );
 
+  /// Menu, Sessions | New session (the word under the raised button) |
+  /// Dashboard, AI models. The middle is a bit wider, for "New session".
   Widget _bottomBar() => BottomAppBar(
     height: 76,
     padding: EdgeInsets.zero,
     child: Row(
       children: [
         Expanded(
+          flex: 4,
           child: _BarItem(icon: Icons.menu, label: 'Menu', onTap: () => _scaffold.currentState?.openDrawer()),
         ),
+        Expanded(flex: 4, child: _BarItem(icon: Icons.history, label: 'Sessions', onTap: _openSessions)),
         // The word under the raised button; tapping it starts too.
         Expanded(
+          flex: 5,
           child: InkWell(
             onTap: _starting ? null : _start,
             child: const Align(
@@ -327,7 +420,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
             ),
           ),
         ),
-        Expanded(child: _BarItem(icon: Icons.insights, label: 'Dashboard', onTap: _openDashboard)),
+        Expanded(flex: 4, child: _BarItem(icon: Icons.insights, label: 'Dashboard', onTap: _openDashboard)),
+        Expanded(flex: 4, child: _BarItem(icon: Icons.download, label: 'AI models', onTap: _openModels)),
       ],
     ),
   );
@@ -337,9 +431,54 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     child: Text(text, style: const TextStyle(fontSize: 13, color: Colors.white70)),
   );
 
+  /// Step 1: the models on the phone, and "What do you want to watch?".
+  Widget _modelsStep() {
+    final m = _models;
+    final none = m != null && m.none;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: none ? Colors.amber : Colors.white24),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: _Step(
+        number: 1,
+        done: m != null && m.detectors > 0,
+        title: 'AI models',
+        children: [
+          if (m != null)
+            _sectionText(
+              none
+                  ? 'FaunaPulse needs AI models: files that teach it to find animals in the picture and to '
+                        'name them. They are free.'
+                  : m.summary,
+            ),
+          const Text('What do you want to watch?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final u in _uses)
+                Expanded(
+                  child: WatchTile(
+                    icon: u.icon,
+                    label: u.title,
+                    selected: u.id == _watchUse,
+                    onTap: () => _openWatch(u),
+                  ),
+                ),
+              Expanded(
+                child: WatchTile(icon: kOtherModelsIcon, label: 'Other models', onTap: _openModels),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final n = _sessions.length;
     return Scaffold(
       key: _scaffold,
       drawer: _drawer(),
@@ -348,66 +487,140 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       bottomNavigationBar: _bottomBar(),
       body: SafeArea(
         bottom: false, // the bottom bar keeps clear of the system bar
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: RefreshIndicator(
-              onRefresh: reloadSessions,
-              child: ListView(
-                // Room at the end for the raised New session button.
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 48),
-                children: [
-                  // One nature icon only (round 183): a camera icon beside
-                  // it read as a "take a photo" button.
-                  const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'FaunaPulse',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 20),
-                  _SessionsButton(
-                    subtitle: _loadingSessions
-                        ? '…'
-                        : n == 0
-                        ? 'None yet'
-                        : '$n saved',
-                    onTap: _openSessions,
-                  ),
-                  const SizedBox(height: 24),
-                  _sectionText('Have your own videos? Import them to find, track and identify the animals in them.'),
-                  OutlinedButton.icon(
-                    onPressed: () => importVideos(),
-                    icon: const Icon(Icons.video_library_outlined, size: 18),
-                    label: const Text('Import videos…'),
-                  ),
-                  const SizedBox(height: 24),
-                  _sectionText(
-                    'Photos and videos already in FaunaPulse (from time-lapse or motion sessions, or '
-                    'imported):',
-                  ),
-                  // Round 135: a (bigger) detector over saved photos, no
-                  // camera, no time limit.
-                  OutlinedButton.icon(
-                    onPressed: () => openAnalysis(),
-                    icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                    label: const Text('Find animals in photos'),
-                  ),
-                  const SizedBox(height: 6),
-                  OutlinedButton.icon(
-                    onPressed: () => openVideoAnalysis(),
-                    icon: const Icon(Icons.movie_filter_outlined, size: 18),
-                    label: const Text('Find animals in videos'),
-                  ),
-                  const SizedBox(height: 28),
-                  SupportFaunaPulseCard(onReportProblem: _reportProblem),
-                ],
+        child: ScrollHint(
+          controller: _list,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await reloadSessions();
+                  await _reloadModels();
+                },
+                child: ListView(
+                  controller: _list,
+                  // Room at the end for the raised New session button.
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
+                  children: [
+                    // One nature icon only (round 183): a camera icon beside
+                    // it read as a "take a photo" button.
+                    const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'FaunaPulse',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Find, follow and name animals with your phone',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 20),
+                    _modelsStep(),
+                    const SizedBox(height: 20),
+                    _Step(
+                      number: 2,
+                      title: 'Record',
+                      children: [
+                        _sectionText(
+                          'Press New session below. Fix the phone steady and put the square over the place '
+                          'to watch. Live detection works well when the phone checks at least 5 pictures per '
+                          'second ("det … fps" on the camera screen). On a slower phone, take time-lapse '
+                          'photos or videos instead and find the animals afterwards (step 4).',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _Step(
+                      number: 3,
+                      title: 'Or use your own videos',
+                      children: [
+                        _sectionText('Import videos from the phone to find, track and identify the animals in them.'),
+                        OutlinedButton.icon(
+                          onPressed: () => importVideos(),
+                          icon: const Icon(Icons.video_library_outlined, size: 18),
+                          label: const Text('Import videos…'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _Step(
+                      number: 4,
+                      title: 'Find and name the animals',
+                      children: [
+                        _sectionText(
+                          'In photos and videos already in FaunaPulse (from time-lapse or motion sessions, or '
+                          'imported). With an identification model, finding can also name them.',
+                        ),
+                        // Round 135: a (bigger) detector over saved photos, no
+                        // camera, no time limit.
+                        OutlinedButton.icon(
+                          onPressed: () => openAnalysis(),
+                          icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                          label: const Text('Find animals in photos'),
+                        ),
+                        const SizedBox(height: 6),
+                        OutlinedButton.icon(
+                          onPressed: () => openVideoAnalysis(),
+                          icon: const Icon(Icons.movie_filter_outlined, size: 18),
+                          label: const Text('Find animals in videos'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+                    SupportFaunaPulseCard(onReportProblem: _reportProblem),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One numbered step of the home screen: the number in a circle (a tick
+/// when [done]), the title, then [children].
+class _Step extends StatelessWidget {
+  final int number;
+  final bool done;
+  final String title;
+  final List<Widget> children;
+
+  const _Step({required this.number, required this.title, required this.children, this.done = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = done ? Colors.lightGreen : Theme.of(context).colorScheme.primary;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 1.5)),
+          child: done
+              ? Icon(Icons.check, size: 16, color: color, semanticLabel: 'done')
+              : Text('$number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 3, bottom: 6),
+                child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+              ...children,
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -429,45 +642,6 @@ class _BarItem extends StatelessWidget {
         Icon(icon, size: 26),
         const SizedBox(height: 4),
         Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-      ],
-    ),
-  );
-}
-
-/// The wide "Sessions" button under the app name.
-class _SessionsButton extends StatelessWidget {
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _SessionsButton({required this.subtitle, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => OutlinedButton(
-    onPressed: onTap,
-    style: OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.history, size: 28),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Sessions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Colors.white54),
-              ),
-            ],
-          ),
-        ),
-        const Icon(Icons.chevron_right),
       ],
     ),
   );
@@ -585,16 +759,24 @@ class AboutFaunaPulseDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Round 278 (owner): for a broad audience, and naming the
+            // animals (identification on the phone) said plainly.
             const Text(
-              'A passive, non-invasive field tool that turns a smartphone '
-              'into an AI-powered wildlife camera. Place the square region '
-              'of interest over a flower, feeding site or nest entrance. '
-              'In live detection mode, FaunaPulse detects, tracks and photographs visiting animals '
-              'fully on-device (no internet needed) and logs every track ID '
-              'with timestamps, so visitation rates can be computed afterwards. '
-              'Other features include: motion-triggered photos, time-lapse capture '
-              '(photo or video bursts), scheduled multi-hour or multi-day runs, finding animals afterwards '
-              'in saved photos or videos, and naming them (identification).',
+              'FaunaPulse turns a phone into a camera that watches animals for you: for example insects '
+              'visiting a flower, or birds and mammals at a feeding site.\n\n'
+              'With AI models (free files you download or import in the app), FaunaPulse can:\n'
+              '• find the animals in the picture and follow each one while it stays, live or later in '
+              'saved photos and videos;\n'
+              '• name them: an identification model on the phone suggests the group or species of each '
+              'animal;\n'
+              '• record when each visit starts and ends, so you can count visits and see how long they '
+              'last.\n\n'
+              'Everything runs on the phone. No internet is needed in the field, and your photos and '
+              'videos stay on your phone.\n\n'
+              'It can also take photos when something moves, take time-lapse photos or videos, run for '
+              'hours or days on a schedule, and work with videos from the phone\'s camera app.\n\n'
+              'The AI models are made by research teams and keep their own licences (see Download & '
+              'import models).',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 14),

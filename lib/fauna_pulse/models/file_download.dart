@@ -40,6 +40,11 @@ Future<File> downloadToFile(
     if (!redirectChainStaysHttps(url, response.redirects)) {
       throw Exception('The link redirected to an insecure non-HTTPS address.');
     }
+    // Round 278: in plain words, as the app's own list can name files that
+    // are not uploaded yet.
+    if (response.statusCode == HttpStatus.notFound) {
+      throw Exception('Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.');
+    }
     if (response.statusCode != HttpStatus.ok) {
       throw Exception('Download failed (HTTP ${response.statusCode}).');
     }

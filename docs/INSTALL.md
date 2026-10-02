@@ -138,12 +138,15 @@ manually re-download the `.apk` every time a new version comes out.
 
 ### A3. Add detection models
 
-The app lists no model until one is downloaded or imported (round 268): the **Download & import models**
-screen (home screen: Menu, bottom left) offers MegaDetector V6 (common animals) and flat-bug and insectDCT
-(insects) for download. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
+The app lists no model until one is downloaded or imported (round 268). The quickest way is the home
+screen's step 1, *What do you want to watch?* (round 278): each answer (pollinators on flowers, insects on
+a flat surface, mammals and birds) suggests a detection model and an identification model with its name
+list, and downloads them in one go (use Wi-Fi: BioCLIP 2 is about 600 MB). The **Download & import
+models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers every model,
+MegaDetector V6 (common animals) and flat-bug and insectDCT (insects) among them. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:
 
-- **In-app (easiest):** open **FaunaPulse → Menu (home screen, bottom left) → Download & import models → Import model
+- **In-app (easiest):** open **FaunaPulse → AI models (home screen, bottom bar) → Import model
   files…**, then pick the `.tflite` file(s) from **Downloads** or another folder (to take every file of
   a folder: press and hold one file, then *Select all*). You can first copy the model into Downloads
   over USB. The app checks what each file is: a detection model, an identification model or a name

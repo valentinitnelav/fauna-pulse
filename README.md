@@ -123,7 +123,7 @@ NOTE:
   - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
   - 1.3. For advanced users: build from source - see "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen: Menu, bottom left), which offers models for common animals and for insects, or add your own there with **Import model files…** or **Download from a link…** (the app checks what each file is and puts it in its place). In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
+3. **Get the AI models.** No model comes inside the app. The home screen leads through the steps: step 1 asks *What do you want to watch?* (pollinators on flowers, insects on a flat surface, mammals and birds) and suggests, for each answer, a detection model and an identification model with its name list, downloaded together (*Use them from now on* makes them the choice of new sessions, Find animals and Identify). Every model, and your own (**Import model files…**, **Download from a link…**), is on the **Download & import models** screen (*AI models* in the home screen's bottom bar, or the Menu). Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -183,13 +183,13 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ### Detectors
 
-No detector comes inside the app. The **Download & import models** screen (home screen: Menu, bottom left) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
+No detector comes inside the app. The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
 
 Most of these models were made by other research teams; FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence; if you publish results, please cite the original model as its authors ask on its source page (linked in the app's ⓘ card of each model). See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 
 Custom AI detectors can be added:
 
-- **Download from a link…** on the Download & import models screen (home screen: Menu, bottom left), pasting a link to a `.tflite` file (for example a GitHub release asset), or
+- **Download from a link…** on the Download & import models screen (home screen: *AI models* in the bottom bar), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place), or
 - train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md).
 

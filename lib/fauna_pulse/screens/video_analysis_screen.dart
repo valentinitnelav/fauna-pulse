@@ -51,6 +51,7 @@ import '../logging/device_storage.dart' show formatBytes;
 import '../logging/past_sessions.dart' show sessionsRoot;
 import '../identification/identification_choice.dart';
 import '../models/model_catalog.dart';
+import '../models/model_choice_keys.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../postprocess/clip_cleanup.dart';
@@ -120,7 +121,7 @@ class VideoAnalysisPrefs {
   KeepFramesSettings? get keep =>
       keepFrames ? KeepFramesSettings(stepSeconds: keepStepSeconds, durationSeconds: keepDurationSeconds) : null;
 
-  static const _kModel = 'video_analysis_model';
+  static const _kModel = kVideoAnalysisModelPref;
   static const _kConf = 'video_analysis_confidence';
   static const _kIou = 'video_analysis_iou';
   static const _kFps = 'video_analysis_fps';

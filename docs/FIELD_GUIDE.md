@@ -59,6 +59,8 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 
 ## 2. Starting a session
 
+0. **Get the AI models at home, on Wi-Fi** (they are large): home screen, step 1,
+   *What do you want to watch?* Each answer suggests the models for it.
 1. **Open the app.** The home screen asks for camera permission (and, on first
    run, notification permission — this lets the app keep recording reliably in
    the background; see §6). Grant both.

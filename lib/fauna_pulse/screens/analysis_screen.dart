@@ -34,6 +34,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
 import '../models/model_catalog.dart';
+import '../models/model_choice_keys.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/photo_tracker.dart';
@@ -110,7 +111,7 @@ class AnalysisScreen extends StatefulWidget {
 class _AnalysisScreenState extends State<AnalysisScreen> {
   // Last-used analysis settings, remembered app-wide (like the report email —
   // never part of SessionConfig: these describe a post-hoc job, not a session).
-  static const _prefModel = 'analysis_model';
+  static const _prefModel = kAnalysisModelPref;
   static const _prefConf = 'analysis_confidence';
   static const _prefIou = 'analysis_iou';
   static const _prefKeepGap = 'analysis_keep_gap';

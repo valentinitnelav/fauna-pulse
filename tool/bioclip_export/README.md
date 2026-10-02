@@ -198,6 +198,7 @@ taxon list is the same one-liner.
 | `bioclip-2_flower-visitors-32fam_v1` | 32 flower-visitor families, worldwide | 38,570 | 60 MB | yes |
 | `bioclip-2_pollinator-orders-europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,264 | 57 MB | yes |
 | `bioclip-2_mammalia-world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
+| `bioclip-2_mammals-birds-world_v1` | classes Mammalia and Aves, worldwide, camera-trap sink prompts (round 278; offered for "Mammals and birds" on the home screen) | 17,130 | 28 MB | yes |
 | `bioclip-2_pollinator-orders-world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
 | `bioclip-2.5_pollinator-orders-europe_v1` | as the Europe pack above, for BioCLIP 2.5 (round 264) | 34,704 | 74 MB | yes (with the BioCLIP 2.5 model) |
 | `bioclip-2.5_flower-visitors-32fam_v1` | the 32 families, for BioCLIP 2.5 (round 264) | 37,461 | 80 MB | yes (with the BioCLIP 2.5 model) |

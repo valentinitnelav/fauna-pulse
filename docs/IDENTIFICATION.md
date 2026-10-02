@@ -20,10 +20,15 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
 | `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
-The simplest way (round 268): home screen Menu → **Download & import models** → *Available to download*; a name
-list brings its model along when the model is not on the phone yet (BioCLIP 2 and 2.5 with
-two name lists each, the insectDCT classifier with its class list; the list is
-`assets/model_downloads.json`, see `tool/model_downloads/README.md`).
+The simplest way (round 278): the home screen's step 1, *What do you want to watch?*. Each answer
+suggests an identification model with its name list (and a detection model), downloaded in one go:
+*Pollinators on flowers* and *Insects on a flat surface* the insectDCT classifier or BioCLIP 2 with
+one of its insect lists, *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
+(17,130 names, 28 MB, round 278). Every model is on **Download & import models** (home screen: *AI
+models* in the bottom bar) → *Available to download* (round 268); a name list brings its model
+along when the model is not on the phone yet (BioCLIP 2 with three name lists, BioCLIP 2.5 with
+two, the insectDCT classifier with its class list; the list is `assets/model_downloads.json`, see
+`tool/model_downloads/README.md`).
 
 **Words (round 276):** a *name list* is what an identification model chooses its names from. It
 is one of two kinds, both `.fpack` files ("FaunaPulse pack"): a *class list* (the fixed classes of a

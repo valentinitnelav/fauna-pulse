@@ -103,24 +103,6 @@ class NoModelNotice extends StatelessWidget {
   }
 }
 
-/// Downloads one catalogue file (injectable for tests).
-typedef CatalogueFileDownloader =
-    Future<void> Function(
-      DownloadFile file,
-      bool identification,
-      void Function(int receivedBytes, int? totalBytes) onProgress,
-      bool Function() isCancelled,
-    );
-
-Future<void> _downloadForReal(
-  DownloadFile file,
-  bool identification,
-  void Function(int receivedBytes, int? totalBytes) onProgress,
-  bool Function() isCancelled,
-) async {
-  await downloadCatalogueFile(file, identification: identification, onProgress: onProgress, isCancelled: isCancelled);
-}
-
 const _detectionIcon = Icons.center_focus_strong_outlined;
 const _identificationIcon = Icons.biotech_outlined;
 
@@ -246,7 +228,7 @@ class ModelsScreen extends StatefulWidget {
   const ModelsScreen({
     super.key,
     this.scan = ModelsInventory.scan,
-    this.download = _downloadForReal,
+    this.download = downloadCatalogueFileForReal,
     this.importFiles = ModelImport.pickAndImport,
     this.linkDownload = ModelImport.download,
     this.onPhoneAs = ModelImport.onPhoneAs,
