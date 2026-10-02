@@ -1,1 +1,1 @@
-See AGENTS.md file
+@AGENTS.md
