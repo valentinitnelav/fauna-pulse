@@ -67,6 +67,14 @@ COST Action CA22129 contributors, 2026, https://github.com/InsectAI-COST-Action/
 Both were trained with Ultralytics (AGPL-3.0). Converted files are unofficial conversions, not
 provided or endorsed by the authors.
 
+- **ArthroNat n** (YOLO11n, 640 px; trained on the ArthroNat and flat-bug pictures; not offered
+  for download, listed so that converted files show their details): Remy, Carlier, Massol,
+  Kacimi, Chaine & Cauchoix (2026). Towards a general Detector of terrestrial Arthropods in
+  Natural backgrounds. bioRxiv. https://doi.org/10.64898/2026.05.06.723207
+  Weights https://huggingface.co/edgaremy/arthropod-detector (AGPL-3.0, as listed by the model
+  card's licence tag and the InsectAI Model Zoo); code and dataset
+  https://github.com/edgaremy/arthropod-detection-dataset (MIT).
+
 **insectDCT hierarchical classifier V7** (`insectdct-cls-v7`; ConvNeXt-Base, EfficientNetV2-S
 and ResNet50 versions; 104 classes on three levels): same authors, paper and licence (GPL-3.0)
 as insectDCT above; weights as packaged by the InsectAI Model Zoo. Converted for the phone
@@ -83,4 +91,7 @@ No model ships inside FaunaPulse. The Download & import models screen offers the
 classifier, BioCLIP 2 and 2.5 with their name lists), hosted as release assets of the
 FaunaPulse repository. Each entry names its licence and source; the conversions are unofficial,
 as described above. `tool/model_downloads/README.md` explains how the list is kept current.
+Since round 276 the same list also names the models that are not offered (other sizes and
+networks) with their licence, source and citation, taken from this page; the app shows them in
+the (i) card of each file.
 

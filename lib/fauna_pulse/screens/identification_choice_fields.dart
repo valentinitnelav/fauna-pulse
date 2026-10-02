@@ -112,7 +112,7 @@ class IdentificationChoiceFields extends StatelessWidget {
                   ? 'Class list of ${header['model_id']}: ${header['rows']} classes on '
                         '${(header['heads'] as List?)?.length ?? 1} levels, ${header['sink_rows']} '
                         '"none" class (e.g. vegetation)'
-                  : 'Pack ${header['pack_id']} for ${header['model_id']}: '
+                  : 'Label pack ${header['pack_id']} for ${header['model_id']}: '
                         // Names without the "none" rows, as on the Download & import models
                         // screen and in the catalogue (round 271).
                         '${thousands((header['rows'] as num? ?? 0) - (header['sink_rows'] as num? ?? 0))} '

@@ -16,7 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart' show fileNameOrder;
 import 'crop_worker.dart' show kDefaultCropMargin;
-import 'identification_store.dart' show stemOf;
+import 'identification_store.dart' show modelIdOf, modelKey, stemOf;
+import 'label_pack.dart' show isClassListHeader;
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Cap for one identification file (image tower or label pack). BioCLIP 2.5
@@ -74,17 +75,22 @@ class IdentificationAssets {
 
   /// Round 271: whether the name list [list] (its [header], null when
   /// unreadable) belongs to the model file [model], so the two are shown
-  /// together and Identify offers only matching lists. A class list has the
-  /// model's file name; a label pack names its model in `model_id`, which is
-  /// the start of the model's file name, dots left out ("bioclip-2" ↔
-  /// bioclip-2_image_fp16_4d.tflite, "bioclip-2.5" ↔ bioclip-25_image_fp16.tflite).
+  /// together and Identify offers only matching lists.
+  /// - A class list has the model's file name (round 266), and only that.
+  /// - A label pack (round 276, the naming rule `<model>_<list>_v<n>`)
+  ///   belongs to every model file with the same first part
+  ///   (`bioclip-2_flower-visitors-32fam_v1` ↔ `bioclip-2_224_fp16`).
+  /// - Otherwise the pack's header names its model in `model_id` (files
+  ///   named before the rule, or renamed: `bioclip-2.5` ↔
+  ///   `bioclip-25_image_fp16.tflite`).
+  /// Model ids are compared with [modelKey].
   static bool listBelongsTo(File list, Map<String, dynamic>? header, File model) {
-    final stem = stemOf(model.path);
-    if (stemOf(list.path) == stem) return true;
-    final id = header?['model_id'];
-    if (id is! String || header?['kind'] == 'classes') return false;
-    String norm(String s) => s.toLowerCase().replaceAll('.', '');
-    return norm(id) == norm(stem.split('_').first);
+    if (stemOf(list.path) == stemOf(model.path)) return true;
+    if (header == null || isClassListHeader(header)) return false;
+    final key = modelKey(modelIdOf(model.path));
+    if (modelKey(modelIdOf(list.path)) == key) return true;
+    final id = header['model_id'];
+    return id is String && modelKey(id) == key;
   }
 
   /// Deletes [files] (an identification model and its class lists, or one

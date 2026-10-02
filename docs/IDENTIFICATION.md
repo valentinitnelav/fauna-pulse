@@ -25,13 +25,19 @@ list brings its model along when the model is not on the phone yet (BioCLIP 2 an
 two name lists each, the insectDCT classifier with its class list; the list is
 `assets/model_downloads.json`, see `tool/model_downloads/README.md`).
 
+**Words (round 276):** a *name list* is what an identification model chooses its names from. It
+is one of two kinds, both `.fpack` files ("FaunaPulse pack"): a *class list* (the fixed classes of a
+classifier such as insectDCT) or a *label pack* (names with their embeddings, for BioCLIP).
+
 **A model needs a name list made for it (round 271).** The Download & import models screen
 lists each identification model with its name lists under it, and flags a model that has none:
 it cannot identify. The Identify screen offers only the lists made for the chosen model and does
-not start without one. A class list belongs to the model with the same file name; a label pack
-names its model in its header (`model_id`), which must match the start of the model's file name,
-dots left out (`bioclip-2` for `bioclip-2_image_fp16_4d.tflite`, `bioclip-2.5` for
-`bioclip-25_image_fp16.tflite`). Keep that start when you rename a model file.
+not start without one. A class list belongs to the model with the same file name. A label pack
+belongs to every model file whose name starts the same way, by the naming rule of round 276
+(`tool/model_downloads/README.md`): `bioclip-2_flower-visitors-32fam_v1.fpack` goes with
+`bioclip-2_224_fp16.tflite` and `bioclip-2_224_fp32.tflite`. A pack also names its model in its
+header (`model_id`), so a renamed pack still finds a model whose name starts with that id
+(upper and lower case, "-" and "." alike: `bioclip-2.5` for `bioclip-25_image_fp16.tflite`).
 Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
 In the app: home screen ⋮ → **Download & import models** → *Import model files…* (also reached with
@@ -72,7 +78,7 @@ already have their track IDs: use the steps below.
    stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
    Photos tab then shows each track ID's identification under its photos.
 
-**Re-score with this pack** repeats only the last step (seconds): the stored embeddings are
+**Re-score with this name list** repeats only the last step (seconds): the stored embeddings are
 compared against a different label pack, e.g. a country-restricted one, without running
 the model again. For track IDs found in videos, *Find track IDs* numbers the track IDs anew each
 time: after it ran again, the stored crops belong to the old numbers, so the button is

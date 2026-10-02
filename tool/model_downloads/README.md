@@ -1,4 +1,4 @@
-# Model downloads: the catalogue the app offers (round 268)
+# Model downloads: the list of every model the app knows (rounds 268, 276)
 
 No model ships inside FaunaPulse. The **Download & import models** screen (home screen ⋮ menu) offers the
 models listed in [`assets/model_downloads.json`](../../assets/model_downloads.json): a title,
@@ -7,6 +7,39 @@ detection model, or an identification model together with the name list chosen (
 for BioCLIP, the class list for insectDCT). A model already on the phone is not downloaded
 again: two BioCLIP name lists share one model.
 
+Since round 276 the same file lists **every model the project knows**, also those not offered
+for download (other input sizes, other networks). The (i) card of a file on the phone shows
+its entry: what the model is for, its licence, source and how to cite it. A file finds its
+entry by its name (see the naming rule below); a file that is not in the list shows "not
+known".
+
+## Naming rule (round 276)
+
+`<model>_<input px>_<precision>[_<extra>].<ext>`, for example `flatbug-n_640_fp16.tflite`,
+`mdv6-yolov10c_256_int8.tflite`, `insectdct-cls-v7-eff2s_224_fp16.tflite`.
+
+- Lower case. "-" joins words inside a part, "_" separates the parts. A dot only inside a
+  version number (`bioclip-2.5`).
+- `<model>` names one trained set of weights and is unique. It is the entry's `id` in the
+  list, so every export of the same weights (other sizes, other precision) finds the same
+  details: the part of the file name before its first "_".
+- `<input px>`: the picture size the model takes (224, 256, 320, 640, 1024).
+- `<precision>`: `int8`, `w8a32` (int8 weights, float activations), `fp16` or `fp32`.
+- `<extra>`: only when two exports would otherwise get the same name, for example `e2e`
+  (end-to-end output) or `5d` (the old BioCLIP export that phone GPUs cannot run).
+- Name lists: a **class list** has exactly its classifier's name (`.fpack`); a **label pack**
+  is `<model>_<list>_v<n>.fpack`, for example `bioclip-2_flower-visitors-32fam_v1.fpack`.
+  A label pack belongs to every model file with the same first part.
+- About 40 characters at most (without the extension).
+
+The export tools write names by this rule (`tool/detector_export`, `tool/classifier_export`,
+`tool/bioclip_export`). To check names: `python update_catalogue.py --names <files…>` lists
+the files that do not follow the rule, or whose `<model>` is not an `id` in the list.
+
+The app compares the `<model>` part loosely (upper and lower case, "-" and "." alike), so files
+named before the rule (`MDV6-yolov10-c_int8_320.tflite`, `bioclip-25_image_fp16.tflite`) still
+find their entry.
+
 ## Why separate files, not one zip per model
 
 Model weights barely compress, unpacking a zip needs twice the space for a moment (2.5 GB for
@@ -14,11 +47,33 @@ BioCLIP 2.5) and a zip per name list would repeat the shared BioCLIP model. So e
 a separate download, grouped by the catalogue, the way model hubs such as Hugging Face keep
 models (separate files plus a list of what belongs together).
 
-## The catalogue file
+## Words (one name per thing)
+
+| Word on the screens | In this list (`kind`) | File | What it is |
+|---|---|---|---|
+| detection model | `detection_model` | `.tflite`, `*_qnn.onnx` | finds animals and draws a box around each one |
+| identification model | `identification_model` | `.tflite` | names what is inside each box, choosing from a name list |
+| name list | (an entry of `name_lists`) | `.fpack` | the names an identification model chooses from; one of the two kinds below |
+| class list | `class_list` | `.fpack`, same name as its classifier | the fixed classes of a classifier (insectDCT) |
+| label pack | `label_pack` | `.fpack`, `<model>_<list>_v<n>` | names with their embeddings, for BioCLIP |
+
+`.fpack` stands for **FaunaPulse pack**, the file format of both kinds of name list
+(`tool/bioclip_export/fpack.py`); its header says `"kind": "class_list"` or `"label_pack"`
+(files written before round 276: `"classes"`, or nothing for a label pack; the app reads both).
+In the code, "pack" means such a file of either kind.
+
+## The list file (format 3)
 
 - `base_url`: where the files are; a file's link is `base_url` + its name. A file can carry
   its own `"url"` instead (for example a Hugging Face link, or a file in another release).
-- `detectors`: one `file` each. `identification`: a model `file` plus `lists`.
+- `models`: one entry per model, with `id` (the `<model>` part of its file names, unique),
+  `kind` (`detection_model` or `identification_model`), `title`, `purpose`, optional `note`,
+  `licence`, `source` and `cite` (how to cite it; texts from `docs/THIRD_PARTY_MODELS.md`).
+- `file` (optional): the file offered for download. An entry without it is known but not
+  offered (its files on the phone still show its details).
+- `name_lists` (identification models): each with `kind` (`class_list` or `label_pack`),
+  `title` and `file`, and its own `licence` and `source` when the names come from elsewhere
+  (the TreeOfLife embeddings, CC0).
 - `bytes` and `sha256`: the app shows the size and checks every download against the
   checksum. A file on the phone counts as present by its **name** only, so re-exported
   weights on the phone are not flagged.
@@ -33,7 +88,7 @@ models (separate files plus a list of what belongs together).
    under a new file name or a new release tag and change the catalogue (`base_url`, or the
    file's own `"url"`), so old and new app versions both keep working.
 
-## Files listed in round 268 (placeholder links, release `v0.8.0-alpha.1`)
+## Files offered since round 268 (release `v0.8.0-alpha.1`, names from before the naming rule)
 
 | Catalogue name | Local file to upload |
 |---|---|

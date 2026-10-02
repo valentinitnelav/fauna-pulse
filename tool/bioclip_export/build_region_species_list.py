@@ -29,7 +29,7 @@ Examples:
     python build_region_species_list.py --countries DE,AT,CH,CZ,PL --orders Diptera,Hymenoptera --out out/species_central_europe_flies_bees.csv
 
 Then:
-    python build_label_pack.py --model bioclip-2 --species-csv out/species_europe_pollinator_orders.csv --pack-id bioclip2_pollinator_orders_europe_v1 --out ./out
+    python build_label_pack.py --model bioclip-2 --species-csv out/species_europe_pollinator_orders.csv --pack-id bioclip-2_pollinator-orders-europe_v1 --out ./out
 
 Only arthropods are covered by the mapping; other groups need their own key mapping.
 """

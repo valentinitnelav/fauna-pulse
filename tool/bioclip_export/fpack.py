@@ -75,7 +75,9 @@ def write_class_list(path: Path, header: dict) -> None:
     for idx in hdr["head_index"]:
         if len(idx) != len(sizes) or any(not 0 <= i < n for i, n in zip(idx, sizes)):
             raise ValueError(f"head_index entry {idx} does not fit the heads {sizes}")
-    hdr.update({"format": "fpack", "version": 1, "kind": "classes", "rows": rows,
+    # "class_list" since round 276 (the word of assets/model_downloads.json; the app also
+    # reads the older "classes").
+    hdr.update({"format": "fpack", "version": 1, "kind": "class_list", "rows": rows,
                 "dim": int(sum(sizes)), "dtype": "none"})
     hdr_bytes = json.dumps(hdr, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     with open(path, "wb") as f:

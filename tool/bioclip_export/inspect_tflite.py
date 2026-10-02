@@ -10,7 +10,7 @@ every large layer (quantise_tflite.py explains the kinds):
     float32 weights (not quantised)           fp32 file, or a layer the quantiser missed
     weights computed at runtime (unfolded)    converted in the memory-saving mode (see README)
 
-Usage: python inspect_tflite.py out/bioclip-2_image_fp16.tflite [more files]
+Usage: python inspect_tflite.py out/bioclip-2_224_fp16.tflite [more files]
 """
 
 from __future__ import annotations

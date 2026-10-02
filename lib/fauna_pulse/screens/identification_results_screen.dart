@@ -1238,12 +1238,12 @@ class _TrackSheetState extends State<_TrackSheet> {
     );
     if (split) {
       help.write(
-        'Each Conf. is the sum over all species of that taxon in the label pack. $mine got '
+        'Each Conf. is the sum over all species of that taxon in the name list. $mine got '
         '${_pct(_ladder[j]['p'] as num?)} in total, but that is shared among several of its $plural, '
         'so $pick keeps only $pickP. $theirs got less in total, but a larger share of it sits in $rival, '
         'which therefore reaches $rivalP on its own. So the model leans towards $mine as a whole, while '
         'the single most likely $rank is in $theirs: the photos fit two readings (for example a bee and a '
-        'hover fly that mimics bees). A group with many species in the label pack collects more summed '
+        'hover fly that mimics bees). A group with many species in the name list collects more summed '
         'Conf. at the higher ranks, which makes this more likely. ',
       );
     }
@@ -1494,7 +1494,7 @@ class _TrackSheetState extends State<_TrackSheet> {
             labelStyle: helperTextStyle,
             helperChild: _ColumnsHelp(
               intro:
-                  'The flags column of tracks_<pack>.csv for this track ID, for filtering in R. Each flag is '
+                  'The flags column of tracks_<name list>.csv for this track ID, for filtering in R. Each flag is '
                   'also shown above, where it applies: an amber ⚠ line (tap it for the reason), amber numbers, '
                   'or ⚠ on a ladder row.',
               heading: 'What each flag means:',
@@ -1567,7 +1567,7 @@ class _TrackSheetState extends State<_TrackSheet> {
           'Suspect: short track ID with ${weak.join(' and ')}; possibly a false detection (suspect)',
           'Suspect = short AND at least one weak signal (low detector confidence, weak identification or '
               '"no organism"). Such track IDs are often false detections, but nothing is deleted: check the '
-              'photos here and filter them in R with the suspect column of tracks_<pack>.csv.',
+              'photos here and filter them in R with the suspect column of tracks_<name list>.csv.',
         ),
     ];
   }
@@ -1586,7 +1586,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         _flagNote(
           'Weak identification: order Conf. ${_pct(order?['p'] as num?)}${minOrder == null ? '' : ', below ${_pct(minOrder)}'} (weak_id)',
           'Even the order, a broad rank, is uncertain for this track ID. Common causes: blurry or small crops, '
-              'an unusual view, or an animal the label pack does not contain. Together with a short track ID this '
+              'an unusual view, or an animal the name list does not contain. Together with a short track ID this '
               'makes the track ID suspect. Limit: "Weak: order probability below" under "Suspect track IDs" in '
               'the Identify screen\'s settings.',
         ),
@@ -1594,14 +1594,14 @@ class _TrackSheetState extends State<_TrackSheet> {
         _flagNote(
           'Unidentified: no rank reached $tau, not even kingdom (unidentified)',
           'No taxonomic rank reached the confidence threshold ($tau), not even kingdom, the highest rank, so '
-              'no identification is reported and no ladder row is highlighted. In a pack of animals only (all '
-              'current packs), kingdom Conf. is 100 % minus the "none of these" share, so this happens when '
+              'no identification is reported and no ladder row is highlighted. In a name list of animals only (all '
+              'current lists), kingdom Conf. is 100 % minus the "none of these" share, so this happens when '
               'that share is large but not above the "No organism" threshold ($noneThr).',
         ),
       if (_has('no_organism'))
         _flagNote(
           '"None of these" (flower, leaf, shadow …): ${_pct(t['none_p'] as num?)}, above $noneThr (no_organism)',
-          'The label pack\'s "none of these" entries (flower, leaf, shadow …) together got more than $noneThr '
+          'The name list\'s "none of these" entries (flower, leaf, shadow …) together got more than $noneThr '
               '(the "No organism" threshold), so this track ID is reported as "no organism": the detector most '
               'likely fired on something that is not an organism.',
         ),
@@ -1754,7 +1754,7 @@ class _TrackSheetState extends State<_TrackSheet> {
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
             '"?" = a value missing from these results because an older app version made them. '
-            '"Re-score with this pack" on the Identify screen fills them in within seconds.',
+            '"Re-score with this name list" on the Identify screen fills them in within seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),

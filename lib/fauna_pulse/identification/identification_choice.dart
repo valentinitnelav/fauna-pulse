@@ -77,7 +77,7 @@ class IdentificationChoice {
   Map<String, dynamic>? get packHeader => pack == null ? null : headers[pack!.path];
 
   /// A fixed-class classifier's list (round 266), not a label pack.
-  bool get isClassList => packHeader?['kind'] == 'classes';
+  bool get isClassList => isClassListHeader(packHeader);
 
   /// A model and a name list made for it are chosen: a run can identify.
   bool get ready => model != null && pack != null;

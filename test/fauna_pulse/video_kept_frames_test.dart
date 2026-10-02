@@ -371,7 +371,7 @@ void main() {
       final secondRun = (await VideoTracker.readSummary(dir))!.runId;
       expect(secondRun, isNot(firstRun));
       // Round 235: until then the stored crops are outdated, and scoring
-      // them alone ("Re-score with this pack") refuses.
+      // them alone ("Re-score with this name list") refuses.
       expect(await IdentificationJob.cropsOutdated(dir, settings.modelName), isTrue);
       expect(
         () => IdentificationJob.scoreSessionSync(

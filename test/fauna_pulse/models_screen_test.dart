@@ -27,20 +27,21 @@ final _classList = File('$_dir/packs/insectdct-cls-v7_eff2s_fp16.fpack');
 
 final _downloads = ModelDownloads.parse('''
 {"base_url": "https://example.org/r/",
- "detectors": [
-   {"id": "md", "title": "MegaDetector V6", "purpose": "Common animals.",
-    "licence": "AGPL-3.0", "source": "https://github.com/microsoft/MegaDetector", "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
-   {"id": "fb", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
-    "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266}}
- ],
- "identification": [
-   {"id": "cls", "title": "insectDCT classifier", "purpose": "Flower visitors.",
+ "models": [
+   {"id": "md", "kind": "detection_model", "title": "MegaDetector V6", "purpose": "Common animals.",
+    "licence": "AGPL-3.0", "source": "https://github.com/microsoft/MegaDetector",
+    "cite": "Microsoft AI for Good Lab. MegaDetector V6.", "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
+   {"id": "fb", "kind": "detection_model", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
+    "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266}},
+   {"id": "flatbug-s", "kind": "detection_model", "title": "flat-bug s (larger)", "purpose": "Insects, a larger network.",
+    "licence": "MIT", "source": "https://github.com/darsa-group/flat-bug"},
+   {"id": "cls", "kind": "identification_model", "title": "insectDCT classifier", "purpose": "Flower visitors.",
     "file": {"name": "insectdct-cls-v7_eff2s_fp16.tflite", "bytes": 43853456},
-    "lists": [{"title": "Its 104 classes", "file": {"name": "insectdct-cls-v7_eff2s_fp16.fpack", "bytes": 13737}}]},
-   {"id": "b2", "title": "BioCLIP 2", "purpose": "Any organism.",
+    "name_lists": [{"kind": "class_list", "title": "Its 104 classes", "file": {"name": "insectdct-cls-v7_eff2s_fp16.fpack", "bytes": 13737}}]},
+   {"id": "b2", "kind": "identification_model", "title": "BioCLIP 2", "purpose": "Any organism.",
     "file": {"name": "bioclip-2_image_fp16_4d.tflite", "bytes": 609466720},
-    "lists": [{"title": "Europe", "file": {"name": "bioclip2_pollinator_orders_europe_v1.fpack", "bytes": 57479207}},
-              {"title": "32 families", "file": {"name": "bioclip2_flower_visitors_32fam_v1.fpack", "bytes": 62754369}}]}
+    "name_lists": [{"kind": "label_pack", "title": "Europe", "file": {"name": "bioclip2_pollinator_orders_europe_v1.fpack", "bytes": 57479207}},
+              {"kind": "label_pack", "title": "32 families", "file": {"name": "bioclip2_flower_visitors_32fam_v1.fpack", "bytes": 62754369}}]}
  ]}''');
 
 ModelsInventory _inventory() => ModelsInventory(
@@ -60,6 +61,13 @@ ModelsInventory _inventory() => ModelsInventory(
       inputSize: 640,
       task: 'detect',
       labels: ['bee', 'hoverfly'],
+    ),
+    // Known (round 276), by its first part, though not offered.
+    ModelEntry(
+      id: '/data/app/files/models/flatbug-s_1024_fp16.tflite',
+      name: 'flatbug-s_1024_fp16.tflite',
+      source: ModelSource.imported,
+      inputSize: 1024,
     ),
   ],
   idModels: [_cls],
@@ -142,18 +150,27 @@ void main() {
     expect(find.text('my_bees_640.tflite'), findsOneWidget);
     expect(find.textContaining('Finds:'), findsNothing, reason: 'details only in the card');
     await _card(tester, _mdv6);
-    expect(find.text('In the download list as'), findsOneWidget);
+    expect(find.text('Model'), findsOneWidget);
     expect(find.text('MegaDetector V6'), findsOneWidget);
     expect(find.text('Common animals.'), findsOneWidget);
     expect(find.text('256 px (each picture is resized to this for the model)'), findsOneWidget);
     expect(find.text('int8'), findsOneWidget);
     expect(find.text('AGPL-3.0'), findsOneWidget);
     expect(find.text('https://github.com/microsoft/MegaDetector'), findsOneWidget);
+    expect(find.text('How to cite'), findsOneWidget);
+    expect(find.text('Microsoft AI for Good Lab. MegaDetector V6.'), findsOneWidget);
     await _close(tester);
     await _card(tester, 'my_bees_640.tflite');
     expect(find.text('bee, hoverfly'), findsOneWidget);
     expect(find.text('On this phone, 6.0 MB'), findsOneWidget);
-    expect(find.text('In the download list as'), findsNothing, reason: 'the user\'s own file');
+    expect(find.text('Model'), findsNothing, reason: 'the user\'s own file');
+    expect(find.text("Not known: this file is not in the app's model list. Ask whoever made it."), findsOneWidget);
+    await _close(tester);
+    // A variant that is not offered finds its model by its first part (round 276).
+    expect(find.text('flat-bug s (larger)'), findsNothing, reason: 'not offered for download');
+    await _card(tester, 'flatbug-s_1024_fp16.tflite');
+    expect(_inCard('flat-bug s (larger)'), findsOneWidget);
+    expect(_inCard('MIT'), findsOneWidget);
     await _close(tester);
     await _card(tester, _clsName);
     expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsOneWidget, reason: 'its name lists');
@@ -451,6 +468,24 @@ void main() {
     expect(belongs('insectdct-cls-v7_eff2s_fp16.fpack', cls, 'insectdct-cls-v7_eff2s_fp16.tflite'), isTrue);
     expect(belongs('insectdct-cls-v7_eff2s_fp16.fpack', cls, 'insectdct-cls-v7_res_fp16.tflite'), isFalse);
     expect(belongs('unreadable.fpack', null, 'bioclip-2_image_fp16.tflite'), isFalse);
+  });
+
+  test('round 276: a label pack belongs to every model file with the same first part', () {
+    bool belongs(String list, Map<String, dynamic>? header, String model) =>
+        IdentificationAssets.listBelongsTo(File('/p/$list'), header, File('/m/$model'));
+    const b2 = {'model_id': 'bioclip-2'};
+    const b25 = {'model_id': 'bioclip-2.5'};
+    expect(belongs('bioclip-2_flower-visitors-32fam_v1.fpack', b2, 'bioclip-2_224_fp16.tflite'), isTrue);
+    expect(belongs('bioclip-2_flower-visitors-32fam_v1.fpack', b2, 'bioclip-2_224_fp32.tflite'), isTrue);
+    expect(belongs('bioclip-2.5_pollinator-orders-europe_v1.fpack', b25, 'bioclip-2.5_224_fp16.tflite'), isTrue);
+    expect(belongs('bioclip-2.5_pollinator-orders-europe_v1.fpack', b25, 'bioclip-2_224_fp16.tflite'), isFalse);
+    // A renamed pack still finds its model through its header.
+    expect(belongs('my_list.fpack', b25, 'bioclip-2.5_224_fp16.tflite'), isTrue);
+    expect(belongs('bioclip-2_x_v1.fpack', null, 'bioclip-2_224_fp16.tflite'), isFalse, reason: 'unreadable');
+    // A class list goes with its classifier's exact name only.
+    final cls = {'kind': 'classes', 'model_id': 'insectdct-cls-v7-eff2s_224_fp16'};
+    expect(belongs('insectdct-cls-v7-eff2s_224_fp16.fpack', cls, 'insectdct-cls-v7-eff2s_224_fp16.tflite'), isTrue);
+    expect(belongs('insectdct-cls-v7-eff2s_224_fp16.fpack', cls, 'insectdct-cls-v7-eff2s_224_fp32.tflite'), isFalse);
   });
 
   testWidgets('fits a 360-px screen and the last row stays above the system bar', (tester) async {

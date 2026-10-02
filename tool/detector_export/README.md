@@ -78,8 +78,8 @@ Round 264 (2026-10-01), weights from the InsectAI Model Zoo, checked on the 32 f
 | `flatbug-n_1024_fp16` | 5.5 MiB | 40 of 40, conf. within 0.005 | 37 ms | 1.9 s |
 | `flatbug-s_640_fp16` | 19.0 MiB | 18 of 18, conf. within 0.002 | 34 ms | 1.7 s |
 | `flatbug-s_1024_fp16` | 19.2 MiB | 31 of 31, conf. within 0.002 | 71 ms | 5.0 s |
-| `insectdct-v8-s_640_fp16` | 18.3 MiB | 17 of 17, conf. within 0.001 | 34 ms | 1.6 s |
-| `insectdct-v8-s_1024_fp16` | 18.5 MiB | 22 of 22, conf. within 0.002 | 76 ms | 4.2 s |
+| `insectdct-v8s_640_fp16` | 18.3 MiB | 17 of 17, conf. within 0.001 | 34 ms | 1.6 s |
+| `insectdct-v8s_1024_fp16` | 18.5 MiB | 22 of 22, conf. within 0.002 | 76 ms | 4.2 s |
 
 - Every file compiled on the phone's GPU. On a single check picture the phone's boxes
   matched the PC's to within 0.003 of the picture size (GPU in 16-bit), so the app decodes

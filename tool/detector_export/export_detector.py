@@ -28,7 +28,7 @@ look larger in pixels than in training; FaunaPulse feeds the square area of inte
 Usage (environment: see README.md in this folder):
     python export_detector.py --weights flat_bug_S.pt --name flatbug-s --imgsz 1024 640 \
         --check-images ../../../test_videos/frames_bumblebees_720p --out out
-    python export_detector.py --weights insects8Color11s.pt --name insectdct-v8-s --imgsz 1024 640 ...
+    python export_detector.py --weights insects8Color11s.pt --name insectdct-v8s --imgsz 1024 640 ...
     # full 8-bit (weights and maths, fastest on phone CPUs) needs calibration images:
     python export_detector.py --weights my.pt --name my --imgsz 640 --quantize int8 --data my_data.yaml
 

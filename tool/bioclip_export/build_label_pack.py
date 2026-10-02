@@ -15,7 +15,7 @@ Examples:
 
     # Same, restricted to a species list (one column 'species', "Genus epithet"):
     python build_label_pack.py --model bioclip-2 --classes Insecta,Arachnida \
-        --species-csv species_DE.csv --pack-id bioclip2_insecta_arachnida_DE --out ./out
+        --species-csv species_DE.csv --pack-id bioclip-2_insecta-arachnida-de_v1 --out ./out
 
     # Only some orders (small pack for a first phone test):
     python build_label_pack.py --model bioclip-2 --orders Diptera,Hymenoptera,Coleoptera,Lepidoptera --out ./out
@@ -214,13 +214,20 @@ def main() -> int:
     if logit_scale is None:
         logit_scale = 100.0
 
-    pack_id = args.pack_id or "_".join(
-        [args.model.replace(".", ""), "_".join(sorted(keep_classes)) or "all",
-         *(["_".join(sorted(keep_orders))] if keep_orders else []),
-         *([f"{len(keep_families)}families"] if keep_families else []),
-         *([args.species_csv.stem] if args.species_csv else [])]
-    )
+    # Naming rule (tool/model_downloads/README.md, round 276): <model>_<list>_v<n>.fpack, so the
+    # app pairs the pack with every file of its model by the first part of the name.
+    words = sorted(keep_classes) or ["all"]
+    words += sorted(keep_orders)
+    if keep_families:
+        words.append(f"{len(keep_families)}fam")
+    if args.species_csv:
+        words.append(args.species_csv.stem)
+    pack_id = args.pack_id or f"{args.model}_{'-'.join(w.lower().replace('_', '-') for w in words)}_v1"
+    if not pack_id.startswith(f"{args.model}_"):
+        print(f"note: '{pack_id}' does not start with '{args.model}_'; the app then pairs it with its model "
+              "only through the header (naming rule: tool/model_downloads/README.md)")
     header = {
+        "kind": "label_pack",  # round 276: the word of assets/model_downloads.json
         "pack_id": pack_id,
         "model_id": args.model,
         "logit_scale": float(logit_scale),

@@ -34,8 +34,10 @@ Usage (see README.md for the environment):
     python export_image_tower.py --model bioclip-2.5 --weights /path/to/open_clip_model.safetensors --out ./out
     python export_image_tower.py --model bioclip-2 --onnx --out ./out   # extra .onnx
 
-Output: <out>/<model>_image_<precision>.tflite and <same>.json (the manifest the app
-and verify_parity.py read: dim, input size and layout, logit scale, sha256).
+Output: <out>/<model>_<input px>_<precision>.tflite and <same>.json (the manifest the app
+and verify_parity.py read: dim, input size and layout, logit scale, sha256), named by the
+rule in tool/model_downloads/README.md (round 276): bioclip-2_224_fp16.tflite,
+bioclip-2.5_224_fp16.tflite; int8-weights is written "w8a32"; --attention torch adds "_5d".
 """
 
 from __future__ import annotations
@@ -154,6 +156,12 @@ def build_tower(model_key: str, attention: str = "4d", weights: Path | None = No
     return tower, image_size, dim, logit_scale
 
 
+def precision_tag(precision: str) -> str:
+    """The precision part of a file name (naming rule, round 276): weight-only int8 is
+    "w8a32" (int8 weights, float activations), as for the detectors."""
+    return "w8a32" if precision == "int8-weights" else precision
+
+
 def export_tflite(tower, image_size: int, precision: str, out_path: Path, lightweight: bool = False) -> None:
     """Convert with litert-torch (0.9+, no TensorFlow needed), then quantise the weights.
 
@@ -170,7 +178,7 @@ def export_tflite(tower, image_size: int, precision: str, out_path: Path, lightw
 
     sample = (torch.zeros(1, 3, image_size, image_size),)
     fp32_path = out_path if precision == "fp32" else out_path.with_name(
-        out_path.name.replace(f"_{precision.replace('-', '_')}.tflite", "_fp32.tflite"))
+        out_path.name.replace(f"_{precision_tag(precision)}", "_fp32", 1))
     t0 = time.time()
     if not fp32_path.exists():
         # Full constant folding (lightweight=False) matters: the memory-saving mode
@@ -238,7 +246,7 @@ def main() -> int:
     tower, image_size, dim, logit_scale = build_tower(args.model, args.attention, args.weights)
     print(f"image tower ready: input {image_size}x{image_size}, embedding dim {dim}, logit_scale {logit_scale:.2f}")
 
-    stem = f"{args.model.replace('.', '')}_image_{args.precision.replace('-', '_')}"
+    stem = f"{args.model}_{image_size}_{precision_tag(args.precision)}{'_5d' if args.attention == 'torch' else ''}"
     tflite_path = args.out / f"{stem}.tflite"
     manifest = {
         "kind": "embedder",
@@ -256,7 +264,7 @@ def main() -> int:
         "license": "MIT (model weights, Imageomics)",
     }
     if args.onnx:
-        onnx_path = args.out / f"{args.model.replace('.', '')}_image_fp32.onnx"
+        onnx_path = args.out / f"{args.model}_{image_size}_fp32.onnx"
         export_onnx(tower, image_size, onnx_path)
         manifest["onnx_sha256"] = sha256_of(onnx_path)
     if not args.skip_tflite:

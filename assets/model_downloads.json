@@ -1,13 +1,24 @@
 {
-  "format": 1,
+  "format": 3,
   "base_url": "https://github.com/valentinitnelav/fauna-pulse/releases/download/v0.8.0-alpha.1/",
-  "detectors": [
+  "models": [
     {
-      "id": "megadetector-v6",
+      "id": "arthronat-n",
+      "kind": "detection_model",
+      "title": "ArthroNat n",
+      "purpose": "Insects and other arthropods: finds land arthropods on natural backgrounds (trained on the ArthroNat and flat-bug pictures).",
+      "licence": "AGPL-3.0",
+      "source": "https://huggingface.co/edgaremy/arthropod-detector",
+      "cite": "Remy, Carlier, Massol, Kacimi, Chaine & Cauchoix (2026). Towards a general Detector of terrestrial Arthropods in Natural backgrounds. bioRxiv. https://doi.org/10.64898/2026.05.06.723207"
+    },
+    {
+      "id": "mdv6-yolov10c",
+      "kind": "detection_model",
       "title": "MegaDetector V6",
       "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles.",
       "licence": "AGPL-3.0",
       "source": "https://github.com/microsoft/MegaDetector",
+      "cite": "Microsoft AI for Good Lab. MegaDetector V6 (MDV6-yolov10-c), Pytorch-Wildlife model weights v27. Zenodo. https://zenodo.org/records/15398270",
       "file": {
         "name": "MDV6-yolov10-c_int8_256.tflite",
         "bytes": 2548785,
@@ -16,10 +27,12 @@
     },
     {
       "id": "flatbug-n",
-      "title": "flat-bug (small)",
+      "kind": "detection_model",
+      "title": "flat-bug n (small)",
       "purpose": "Insects and other arthropods: finds any land arthropod on any background.",
       "licence": "MIT",
       "source": "https://github.com/darsa-group/flat-bug",
+      "cite": "Svenning, Mougeot, Alison, Chevalier, Chavez Molina, Ong, Bjerge, Carrillo, Høye & Geissmann (2026). A general method for detection and segmentation of terrestrial arthropods in images. Methods in Ecology and Evolution 17(3), 727-739. https://doi.org/10.1111/2041-210x.70249",
       "file": {
         "name": "flatbug-n_640_fp16.tflite",
         "bytes": 5659266,
@@ -27,32 +40,45 @@
       }
     },
     {
-      "id": "insectdct-v8-s",
+      "id": "flatbug-s",
+      "kind": "detection_model",
+      "title": "flat-bug s (larger)",
+      "purpose": "Insects and other arthropods: finds any land arthropod on any background.",
+      "note": "About four times the size of flat-bug n, so slower on the phone.",
+      "licence": "MIT",
+      "source": "https://github.com/darsa-group/flat-bug",
+      "cite": "Svenning, Mougeot, Alison, Chevalier, Chavez Molina, Ong, Bjerge, Carrillo, Høye & Geissmann (2026). A general method for detection and segmentation of terrestrial arthropods in images. Methods in Ecology and Evolution 17(3), 727-739. https://doi.org/10.1111/2041-210x.70249"
+    },
+    {
+      "id": "insectdct-v8s",
+      "kind": "detection_model",
       "title": "insectDCT detector",
       "purpose": "Insects on flowers: finds insects in camera-trap pictures of flowers and vegetation.",
       "licence": "GPL-3.0",
       "source": "https://github.com/kimbjerge/insectDCT",
+      "cite": "Bjerge, Wogram, Serra-Marin, Sakhiashvili & Høye (2026). InsectDCT: A generalized pipeline for detection, taxonomic classification, and tracking of insects in camera-trap recordings. bioRxiv. https://doi.org/10.64898/2026.07.07.736939",
       "file": {
         "name": "insectdct-v8-s_640_fp16.tflite",
         "bytes": 19206825,
         "sha256": "0fa7eb39974502689054f2da0fe58b8b12aabeecf0bfffd682e0dec3f3507195"
       }
-    }
-  ],
-  "identification": [
+    },
     {
-      "id": "insectdct-cls-v7",
+      "id": "insectdct-cls-v7-eff2s",
+      "kind": "identification_model",
       "title": "insectDCT classifier",
       "purpose": "Flower visitors: names insects in 104 fixed classes, from order down to species where it can.",
       "licence": "GPL-3.0",
       "source": "https://github.com/kimbjerge/insectDCT",
+      "cite": "Bjerge, Wogram, Serra-Marin, Sakhiashvili & Høye (2026). InsectDCT: A generalized pipeline for detection, taxonomic classification, and tracking of insects in camera-trap recordings. bioRxiv. https://doi.org/10.64898/2026.07.07.736939",
       "file": {
         "name": "insectdct-cls-v7_eff2s_fp16.tflite",
         "bytes": 43853456,
         "sha256": "f19c56fab0a4c87dc526775c1eacdc89f6267b14a6abd803ee813def34085b81"
       },
-      "lists": [
+      "name_lists": [
         {
+          "kind": "class_list",
           "title": "Its 104 classes",
           "file": {
             "name": "insectdct-cls-v7_eff2s_fp16.fpack",
@@ -63,20 +89,45 @@
       ]
     },
     {
+      "id": "insectdct-cls-v7-cnb",
+      "kind": "identification_model",
+      "title": "insectDCT classifier (ConvNeXt-Base)",
+      "purpose": "Flower visitors: names insects in 104 fixed classes, from order down to species where it can.",
+      "note": "The authors' ConvNeXt-Base network. The EfficientNetV2-S one is offered for download.",
+      "licence": "GPL-3.0",
+      "source": "https://github.com/kimbjerge/insectDCT",
+      "cite": "Bjerge, Wogram, Serra-Marin, Sakhiashvili & Høye (2026). InsectDCT: A generalized pipeline for detection, taxonomic classification, and tracking of insects in camera-trap recordings. bioRxiv. https://doi.org/10.64898/2026.07.07.736939"
+    },
+    {
+      "id": "insectdct-cls-v7-res",
+      "kind": "identification_model",
+      "title": "insectDCT classifier (ResNet50)",
+      "purpose": "Flower visitors: names insects in 104 fixed classes, from order down to species where it can.",
+      "note": "The authors' ResNet50 network. The EfficientNetV2-S one is offered for download.",
+      "licence": "GPL-3.0",
+      "source": "https://github.com/kimbjerge/insectDCT",
+      "cite": "Bjerge, Wogram, Serra-Marin, Sakhiashvili & Høye (2026). InsectDCT: A generalized pipeline for detection, taxonomic classification, and tracking of insects in camera-trap recordings. bioRxiv. https://doi.org/10.64898/2026.07.07.736939"
+    },
+    {
       "id": "bioclip-2",
+      "kind": "identification_model",
       "title": "BioCLIP 2",
       "purpose": "Any organism: names what it sees, choosing from a name list.",
       "note": "Fast on phones whose graphics chip can run it.",
       "licence": "MIT",
       "source": "https://huggingface.co/imageomics/bioclip-2",
+      "cite": "Gu, Stevens, Campolongo, et al. (2025). BioCLIP 2: Emergent Properties from Scaling Hierarchical Contrastive Learning. NeurIPS 2025. https://arxiv.org/abs/2505.23883",
       "file": {
         "name": "bioclip-2_image_fp16_4d.tflite",
         "bytes": 609466720,
         "sha256": "d9a2196439cb8b41118b727b865d27e915962e1f233be2b7b0d47f154cf9495b"
       },
-      "lists": [
+      "name_lists": [
         {
+          "kind": "label_pack",
           "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)",
+          "licence": "CC0-1.0 (TreeOfLife-200M species embeddings)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
             "name": "bioclip2_pollinator_orders_europe_v1.fpack",
             "bytes": 57479207,
@@ -84,7 +135,10 @@
           }
         },
         {
+          "kind": "label_pack",
           "title": "32 families of common flower visitors, worldwide (38,570 names)",
+          "licence": "CC0-1.0 (TreeOfLife-200M species embeddings)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
             "name": "bioclip2_flower_visitors_32fam_v1.fpack",
             "bytes": 62754369,
@@ -95,19 +149,24 @@
     },
     {
       "id": "bioclip-2.5",
+      "kind": "identification_model",
       "title": "BioCLIP 2.5",
       "purpose": "Any organism: newer and larger than BioCLIP 2, names what it sees from a name list.",
       "note": "Slow: on most phones it runs on the main processor only, seconds per picture.",
       "licence": "MIT",
       "source": "https://huggingface.co/imageomics/bioclip-2.5-vith14",
+      "cite": "Imageomics. BioCLIP 2.5 Huge (ViT-H/14): cite as its model card asks, https://huggingface.co/imageomics/bioclip-2.5-vith14",
       "file": {
         "name": "bioclip-25_image_fp16.tflite",
         "bytes": 1266232624,
         "sha256": "8afd4d6b8123ceced4e9ea3d43ed01222c8ff572fa2794f71bcd6472dff809bd"
       },
-      "lists": [
+      "name_lists": [
         {
+          "kind": "label_pack",
           "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,704 names)",
+          "licence": "CC0-1.0 (TreeOfLife-200M species embeddings)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
             "name": "bioclip25_pollinator_orders_europe_v1.fpack",
             "bytes": 74339217,
@@ -115,7 +174,10 @@
           }
         },
         {
+          "kind": "label_pack",
           "title": "32 families of common flower visitors, worldwide (37,461 names)",
+          "licence": "CC0-1.0 (TreeOfLife-200M species embeddings)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
             "name": "bioclip25_flower_visitors_32fam_v1.fpack",
             "bytes": 80131038,

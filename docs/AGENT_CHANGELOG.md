@@ -270,7 +270,7 @@ Each round below was prompted by hands-on testing on the phone.
       match. The ROI now reaches the full sensor square (e.g. 3000×3000) and is
       clamped to the fully-visible frame, so it can never leave the preview.
       Detection still runs only on the ROI crop — never the full frame.
-    - **A custom model crashed the app** (`yolo11n_float16_MaxS_platform.tflite`).
+    - **A custom model crashed the app** (a custom 320 px YOLO11n fp16 file).
       It was a native GPU-compile crash (uncatchable in Kotlin). The crash guard
       from round 13 was upgraded to a **per-model GPU blocklist**: a model that
       fails to compile on the GPU **twice** is routed to CPU from then on, while
@@ -316,7 +316,7 @@ Each round below was prompted by hands-on testing on the phone.
       the custom models.
     - **GPU/CPU diagnosis confirmed from `logcat`** (see §6 table): the int8 YOLO26
       compiles on the GPU, a YOLO11 fp16 export returns `Failed to compile model` and
-      runs on CPU, and the `MaxS_platform` variant was found on the on-device GPU
+      runs on CPU, and the other custom YOLO11n fp16 file was found on the on-device GPU
       blocklist — exactly as the crash-guard intends. This disproved the earlier
       "int8 ⇒ CPU" assumption (round 11).
 
@@ -590,7 +590,7 @@ Each round below was prompted by hands-on testing on the phone.
       Graphs) so all four share the width and are always on screen.
 
 32. **Custom models with a non-"images" input tensor now work (broader model
-    compatibility).** A custom model (`yolo11n_float16_MaxS_platform.tflite`, 320px)
+    compatibility).** A custom model (a 320 px YOLO11n fp16 file)
     loaded but every frame threw `LiteRtException: TensorBuffer host memory buffer
     size is smaller than the given data size, 1228800 vs 4915200` (caught as "Error
     during prediction") → 0 FPS and an endless "Calibrating…". Root cause: `LiteRtModel`
@@ -1607,7 +1607,7 @@ Confirmed on the test phone (Adreno GPU), straight from `logcat`:
 |---|---|---|
 | `yolo26n` (int8, YOLO26) | succeeds (all nodes delegated) | **GPU** |
 | `yolo11n_float16` (fp16, YOLO11) | `Failed to compile model` → clean fallback | **CPU** (works) |
-| `yolo11n_float16_MaxS_platform` (fp16) | hard crash → blocklisted after 2 strikes | **CPU** |
+| another custom YOLO11n (fp16) | hard crash → blocklisted after 2 strikes | **CPU** |
 
 So an fp16 export is **not** a guarantee of GPU execution — a YOLO11 fp16 graph
 failed to compile on this GPU while an int8 YOLO26 graph ran on it. GPU-compilability
@@ -8758,3 +8758,19 @@ Owner feedback on the models screen before the start-up wizard: importing a mode
 - Xiaomi check (`models_screen_check_test.dart`, the phone's own files after the owner imported all detectors of one folder at once with "Select all"): all 32 files recognised by their shapes (23 detection models, 4 identification models incl. the 1.2 GB BioCLIP 2.5, 5 name lists) in 6 to 34 ms per model file (120 to 160 ms per BioCLIP name list, whose header is larger); no file kept with the wrong kind; lists alphabetical; cards and the "Already on this phone" question fit the screen; Keep left the file unchanged. App settings identical before and after; normal debug build reinstalled.
 - After the check (owner): the import says what each file became and where it is listed. One file: a message ("Imported x.tflite: an identification model, listed under Identification models."); more files, or files kept or refused: a dialog grouped by kind (`ModelImportReport.namesOf`, `_showImportReport`). `ReplaceQuestion` gets the number of chosen files still to come; while more follow, the question offers "Same answer for the other chosen files already on the phone" (`confirmReplaceModelFile(offerForAll:)` returns `(replace, forAll)`), so a re-imported folder asks once. `ModelFileKind.withArticle` for the texts.
 - Tests after the follow-up: `flutter analyze` clean; 788 passed, 2 skipped (new: one-file message and one answer for many files).
+
+## Round 276 (2026-10-02): one list of every model (licence, source, citation) and the naming rule
+
+Owner (after round 275): the (i) card showed a licence and a source for some models but not for others (only the 6 offered downloads were in the list), and the file names were mixed. Owner decisions: the naming rule below; plan in two steps, (1) one list of every model the project knows (this round), (2) the same details written into each file (round 277, with the renamed files published as a new release).
+
+- Naming rule (`tool/model_downloads/README.md`, the one place it is written): `<model>_<input px>_<precision>[_<extra>].<ext>`; lower case, "-" inside a part, "_" between parts, a dot only in a version number (`bioclip-2.5`); `<model>` = one trained set of weights, unique, and the entry `id` in the list; precision `int8` / `w8a32` / `fp16` / `fp32`; `<extra>` only to tell apart two exports (`e2e`, `5d`); a class list has its classifier's exact name, a label pack is `<model>_<list>_v<n>.fpack`; about 40 characters at most.
+- List (`assets/model_downloads.json`, format 2; same file and `ModelDownloads` class): every known model with `id`, `title`, `purpose`, `note`, `licence`, `source` and new `cite` (texts from `docs/THIRD_PARTY_MODELS.md`); `file` is optional (known but not offered: flat-bug s, insectDCT classifier ConvNeXt-Base and ResNet50); a name list may carry its own `licence`/`source` (BioCLIP lists: TreeOfLife-200M embeddings, CC0-1.0). The offered files keep their old names until the renamed release (round 277), and the owner's own models wait for their licences and sources (open items of the plan).
+- App: `ModelDownload.file` optional, `cite`, `offered`; `ModelDownloads.detectorOffers`/`identificationOffers`; a repeated `id` is skipped. `modelFor(fileName)`: the entry offering exactly this file, else the entry whose `id` is the file's first part (`modelIdOf`, new next to `stemOf`), compared loosely with `modelKey` (case, "-" and "." alike), so files named before the rule (`MDV6-yolov10-c_int8_320`, `bioclip-25_image_fp16`) already find their entry. `IdentificationAssets.listBelongsTo`: a class list by exact name only; a label pack by the same first part (new names), else by its header's `model_id` (as before, now via `modelKey`). Models screen card: "Model" (the title), Use, Note, Licence, Source and new "How to cite"; a file not in the list shows "Licence and source: Not known: this file is not in the app's model list. Ask whoever made it."; a name list shows its own licence and source when the list gives them.
+- Tools write names by the rule: `export_insectdct_cls.py` → `insectdct-cls-v7-<backbone>_224_<precision>` (+ class list), `export_image_tower.py` → `<model>_<px>_<precision>` (`bioclip-2.5` keeps its dot, int8-weights is written `w8a32`, `--attention torch` adds `_5d`; the fp32 intermediate name is derived from the precision part), `build_label_pack.py` default `<model>_<words joined by ->_v1` (and a note when a given `--pack-id` does not start with the model). `export_detector.py` already wrote `<name>_<px>_<quantize>`. `update_catalogue.py`: entries without a file; `--names` lists files that do not follow the rule or whose `<model>` is not an `id` (on the laptop's 40 model files: 34 to rename, as planned). Examples in the tool READMEs and scripts use the new names. Removed `tool/bioclip_export/catalog.example.json` (a sketch of the download list from before round 268; nothing read it).
+- Docs: `tool/model_downloads/README.md` (list format 2, naming rule), MODEL_CONVERSION (name your files by the rule), IDENTIFICATION (pairing by name), THIRD_PARTY_MODELS (the list now names every model).
+- Tests: `model_downloads_test.dart` (the shipped list: every model with licence, source and citation, offers; matching by offered name and by first part incl. old names; repeated id, entry without file), `models_screen_test.dart` (card with "How to cite", a not-offered variant found by its first part, "not known" for an own file; label packs by first part, renamed pack by header, class list by exact name only). `flutter analyze` clean; 790 passed, 2 skipped. No phone check this round (no native or file change); the check comes with round 277.
+- Follow-up before the commit (owner: say in the list what each entry is, and use one name per thing): the list is **format 3**, one `models` array; every entry has `kind` `detection_model` or `identification_model`, and an identification model's `name_lists` (was `lists`) each have `kind` `class_list` or `label_pack`, the words the screens use. Not `label_packs` for the field: the insectDCT class list is a name list but not a label pack. Words written down once in `tool/model_downloads/README.md` (table) and IDENTIFICATION: name list = class list or label pack, both `.fpack` ("FaunaPulse pack"; in the code "pack" = such a file of either kind). `NameListDownload.classList` (the screen's download text uses it instead of comparing file names; offer cards say "Class list" or "Label pack"); `ModelDownload.nameLists`; an unknown `kind` skips the entry. `.fpack` headers: new `isClassListHeader` (label_pack.dart) reads `"class_list"` and the older `"classes"`; `fpack.py` writes `"class_list"`, `build_label_pack.py` writes `"kind": "label_pack"`. `update_catalogue.py` reads format 3.
+- Screens: texts that mean either kind of name list say "name list" (Identify: re-score button "Re-score with this name list", the size check, the help of the confidence threshold and "No organism" threshold; results: flag and ladder help; the summary's "Identifications (name list …)" row and the Identify introduction); the Identify field's line for a BioCLIP list starts "Label pack …"; the results folder README and the help name the files `tracks_<name list>.csv` and so on.
+- List: new known entry `arthronat-n` (ArthroNat n, YOLO11n 640 px; licence AGPL-3.0 as on the model card's tag and in the InsectAI Model Zoo; source the Hugging Face model card; Remy et al. 2026, bioRxiv), also in THIRD_PARTY_MODELS. The owner's own SEPPI models are not listed (not published before their data paper).
+- Early changelog entries: a custom model's file name replaced by a description (owner request).
+- Tests: format 3 (kinds, unknown kinds skipped, class list kind), `arthronat-n` found by name; `flutter analyze` clean; 790 passed, 2 skipped.

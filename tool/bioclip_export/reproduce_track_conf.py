@@ -71,7 +71,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("session_dir")
     ap.add_argument("pack")
-    ap.add_argument("--model", default="bioclip-2_image_fp16", help="embeddings file stem (default: bioclip-2_image_fp16)")
+    ap.add_argument("--model", default="bioclip-2_224_fp16", help="embeddings file stem (default: bioclip-2_224_fp16)")
     ap.add_argument("--tau", type=float, default=0.6)
     ap.add_argument("--drop-factor", type=float, default=10.0)
     ap.add_argument("--temperature", type=float, default=None, help="override the pack's calibration temperature")

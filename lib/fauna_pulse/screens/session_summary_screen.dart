@@ -2787,7 +2787,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
-            'Identifications (pack ${id.packId}, '
+            'Identifications (name list ${id.packId}, '
             '${id.generatedIso.length >= 16 ? id.generatedIso.substring(0, 16).replaceFirst('T', ' ') : id.generatedIso}) '
             'are shown under each photo, one per track ID: the answer is per TRACK ID '
             '(all photos of that track ID combined), not per photo.',
@@ -2945,12 +2945,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           'Runs an identification model (BioCLIP) over the saved photos of every '
           'tracked organism and combines the photos of each track ID into one answer '
           'with a confidence per rank (order, family, genus, species). Needs a model '
-          'file and a label pack, imported once on the next screen. '
+          'file and a name list, imported once on the next screen. '
           'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
           'Results land in the session folder as CSV and JSON. '
           'And when ready, a "View results" button will also appear here '
           'Please treat the results as suggestions. ' 
-          'Misidentifications are possible, especially for taxa that are not in the label pack.',
+          'Misidentifications are possible, especially for taxa that are not in the name list.',
     ),
     const SizedBox(height: 8),
     Wrap(

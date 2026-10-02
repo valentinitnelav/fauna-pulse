@@ -6,7 +6,7 @@ on a normal computer (no GPU needed) and copied to the phone:
 
 | File | What it is | Size (BioCLIP 2) |
 |---|---|---|
-| `bioclip-2_image_fp16.tflite` | the image tower converted for the phone (fp16 weights) | 581 MiB |
+| `bioclip-2_224_fp16.tflite` | the image tower converted for the phone (fp16 weights) | 581 MiB |
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their pre-computed embeddings, their taxonomy, plus six "none of these" entries (flower, leaf, shadow, debris, blurry, web) | 60 MiB for 32 flower-visitor families; up to ~430 MB for all Insecta + Arachnida |
 
 Everything below was run end to end on 2026-09-20 (Ubuntu 24.04, Python 3.12, 15 GB RAM,
@@ -56,8 +56,8 @@ graph); `litert-torch` converts it to a float32 `.tflite` (1,216 MB, 74 s, about
 RAM); `ai-edge-quantizer` casts the weights to fp16 (609 MB, 6 s). Output:
 
 ```
-out/bioclip-2_image_fp16.tflite   the model for the phone
-out/bioclip-2_image_fp16.json     manifest: embedding size 768, input 224x224, logit scale 100, sha256
+out/bioclip-2_224_fp16.tflite   the model for the phone
+out/bioclip-2_224_fp16.json     manifest: embedding size 768, input 224x224, logit scale 100, sha256
 ```
 
 **GPU-friendly attention (round 242, the default).** Every attention layer is exported as
@@ -81,7 +81,7 @@ Options: `--precision fp32` (nothing cast, 1.2 GB; also runs on the phone),
 Check the file before copying it anywhere:
 
 ```bash
-python inspect_tflite.py out/bioclip-2_image_fp16.tflite
+python inspect_tflite.py out/bioclip-2_224_fp16.tflite
 ```
 
 Expected (4d export): `FULLY_CONNECTED: {'fp16 weights': 145}` (every large layer is
@@ -132,9 +132,9 @@ W=/path/to/insect-model-zoo/weights/bioclip-2.5
 python export_image_tower.py --model bioclip-2.5 --weights $W/open_clip_model.safetensors --out out/bioclip25
 python build_label_pack.py --model bioclip-2.5 --embeddings-dir $W --weights $W/open_clip_model.safetensors \
   --classes Insecta --species-csv out/species_europe_pollinator_orders.csv \
-  --pack-id bioclip25_pollinator_orders_europe_v1 --out out/bioclip25
-python verify_parity.py --tflite out/bioclip25/bioclip-25_image_fp16.tflite --weights $W/open_clip_model.safetensors \
-  --images /path/to/crops --pack out/bioclip25/bioclip25_pollinator_orders_europe_v1.fpack
+  --pack-id bioclip-2.5_pollinator-orders-europe_v1 --out out/bioclip25
+python verify_parity.py --tflite out/bioclip25/bioclip-2.5_224_fp16.tflite --weights $W/open_clip_model.safetensors \
+  --images /path/to/crops --pack out/bioclip25/bioclip-2.5_pollinator-orders-europe_v1.fpack
 ```
 
 Measured on the 15 GB laptop (2026-10-01): export 4 minutes, 10.7 GB RAM at the peak (it
@@ -142,8 +142,8 @@ used swap); the float32 intermediate is 2.5 GB, above the 2 GB limit of a plain 
 which the converter and the quantiser handle by themselves; the fp16 file is 1,266 MB with
 all 193 large layers in fp16 and all 32 attention layers GPU-friendly. Parity on 34
 bumblebee crops: cosine 1.0000, top family 34 of 34, top species 34 of 34. Packs built:
-`bioclip25_pollinator_orders_europe_v1` (34,704 names, 74 MB) and
-`bioclip25_flower_visitors_32fam_v1` (37,461 names, 80 MB); the 2.5 TreeOfLife table has
+`bioclip-2.5_pollinator-orders-europe_v1` (34,704 names, 74 MB) and
+`bioclip-2.5_flower-visitors-32fam_v1` (37,461 names, 80 MB); the 2.5 TreeOfLife table has
 794,878 names (BioCLIP 2's: 867,455), so the same filters keep slightly different lists.
 On the phone: `docs/IDENTIFICATION.md`, *BioCLIP 2.5* (CPU only on the 7.4 GB test phone,
 5.3 to 5.6 s per crop).
@@ -160,7 +160,7 @@ butterflies, bugs, lacewings, scorpionflies, crab, orb and jumping spiders), 38,
 species, 60 MiB:
 
 ```bash
-python build_label_pack.py --model bioclip-2 --pack-id bioclip2_flower_visitors_32fam_v1 --out ./out \
+python build_label_pack.py --model bioclip-2 --pack-id bioclip-2_flower-visitors-32fam_v1 --out ./out \
   --families Apidae,Halictidae,Andrenidae,Megachilidae,Colletidae,Vespidae,Syrphidae,Muscidae,Calliphoridae,Sarcophagidae,Bombyliidae,Empididae,Conopidae,Stratiomyidae,Tachinidae,Coccinellidae,Oedemeridae,Cantharidae,Pieridae,Nymphalidae,Lycaenidae,Hesperiidae,Papilionidae,Zygaenidae,Sphingidae,Pentatomidae,Miridae,Panorpidae,Chrysopidae,Thomisidae,Araneidae,Salticidae
 ```
 
@@ -184,7 +184,7 @@ Sittinger's `insect-detect-post`. One GBIF request per order and region, about 1
 
 ```bash
 python build_region_species_list.py --continent EUROPE   --orders Diptera,Hymenoptera,Coleoptera,Lepidoptera --out out/species_europe_pollinator_orders.csv
-python build_label_pack.py --model bioclip-2 --classes Insecta   --species-csv out/species_europe_pollinator_orders.csv --pack-id bioclip2_pollinator_orders_europe_v1 --out ./out
+python build_label_pack.py --model bioclip-2 --classes Insecta   --species-csv out/species_europe_pollinator_orders.csv --pack-id bioclip-2_pollinator-orders-europe_v1 --out ./out
 ```
 
 Countries instead of a continent: `--countries DE,AT,CH,CZ,PL` (union). Any CSV with a
@@ -195,12 +195,12 @@ taxon list is the same one-liner.
 
 | Pack id | Selection | Names | Size | Runs in the app today |
 |---|---|---|---|---|
-| `bioclip2_flower_visitors_32fam_v1` | 32 flower-visitor families, worldwide | 38,570 | 60 MB | yes |
-| `bioclip2_pollinator_orders_europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,264 | 57 MB | yes |
-| `bioclip2_mammalia_world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
-| `bioclip2_pollinator_orders_world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
-| `bioclip25_pollinator_orders_europe_v1` | as the Europe pack above, for BioCLIP 2.5 (round 264) | 34,704 | 74 MB | yes (with the BioCLIP 2.5 model) |
-| `bioclip25_flower_visitors_32fam_v1` | the 32 families, for BioCLIP 2.5 (round 264) | 37,461 | 80 MB | yes (with the BioCLIP 2.5 model) |
+| `bioclip-2_flower-visitors-32fam_v1` | 32 flower-visitor families, worldwide | 38,570 | 60 MB | yes |
+| `bioclip-2_pollinator-orders-europe_v1` | Diptera, Hymenoptera, Coleoptera, Lepidoptera with GBIF records in Europe | 35,264 | 57 MB | yes |
+| `bioclip-2_mammalia-world_v1` | class Mammalia, worldwide, camera-trap sink prompts (`--sink-set mammal`) | 5,999 | 9.4 MB | yes (for MegaDetector "animal" boxes) |
+| `bioclip-2_pollinator-orders-world_v1` | the four orders, worldwide | 204,620 | 318 MB | not yet (needs the native scorer of a later app round) |
+| `bioclip-2.5_pollinator-orders-europe_v1` | as the Europe pack above, for BioCLIP 2.5 (round 264) | 34,704 | 74 MB | yes (with the BioCLIP 2.5 model) |
+| `bioclip-2.5_flower-visitors-32fam_v1` | the 32 families, for BioCLIP 2.5 (round 264) | 37,461 | 80 MB | yes (with the BioCLIP 2.5 model) |
 
 Every pack ends with six "none of these" rows; `--sink-set arthropod` (default) uses
 flower-scene prompts, `--sink-set mammal` camera-trap prompts, `--no-sink` none.
@@ -222,8 +222,8 @@ scorer.
 ## 4. Verify the export (recommended, about 3 minutes)
 
 ```bash
-python verify_parity.py --tflite out/bioclip-2_image_fp16.tflite --images /path/to/some/crops \
-  --pack out/bioclip2_flower_visitors_32fam_v1.fpack --limit 50
+python verify_parity.py --tflite out/bioclip-2_224_fp16.tflite --images /path/to/some/crops \
+  --pack out/bioclip-2_flower-visitors-32fam_v1.fpack --limit 50
 ```
 
 Compares the phone model with the original PyTorch model on your images: cosine
@@ -238,8 +238,8 @@ works (jpg/png, searched recursively).
 ## 5. Copy the files to the phone and import them
 
 ```bash
-adb push out/bioclip-2_image_fp16.tflite /sdcard/Download/
-adb push out/bioclip2_flower_visitors_32fam_v1.fpack /sdcard/Download/
+adb push out/bioclip-2_224_fp16.tflite /sdcard/Download/
+adb push out/bioclip-2_flower-visitors-32fam_v1.fpack /sdcard/Download/
 ```
 
 (or copy them over USB / a file manager into the phone's Downloads folder). Then in
@@ -327,7 +327,6 @@ References:
 | `verify_parity.py` | PyTorch vs `.tflite` comparison on real images |
 | `inspect_tflite.py` | ops, constant sizes and how each layer's weights are stored (fp16, int8, float32) |
 | `requirements.txt`, `requirements-lock.txt` | packages (ranges / exact verified versions) |
-| `catalog.example.json` | example of the download catalogue the app will read (model + pack entries with URL, size, sha256) |
 | `out/`, `.venv/` | outputs and the environment (git-ignored) |
 
 ## Attribution of methods and data used here

@@ -32,6 +32,11 @@
 // the app checks what each file is (models/model_import.dart) and asks
 // before replacing a file already on the phone. A file kept with the wrong
 // kind (imported before this round) is flagged.
+//
+// Round 276 (owner): the card shows the licence, source and citation of every
+// model in the app's list (assets/model_downloads.json, format 2), also of
+// files that are not offered, found by the first part of the file name (the
+// naming rule, tool/model_downloads/README.md); "not known" otherwise.
 
 import 'dart:io';
 
@@ -39,7 +44,6 @@ import 'package:file_picker/file_picker.dart' show FilePickerStatus;
 import 'package:flutter/material.dart';
 
 import '../identification/identification_assets.dart';
-import '../identification/identification_store.dart' show stemOf;
 import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -387,9 +391,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// its model when the model is not on the phone yet.
   Future<void> _get(ModelDownload d, {NameListDownload? list}) async {
     final onPhone = _inv?.onPhone ?? const <String>{};
-    final withModel = !onPhone.contains(d.file.name);
-    final files = [if (withModel) d.file, ?list?.file];
-    final classList = list != null && stemOf(list.file.name) == stemOf(d.file.name);
+    final model = d.file!; // only offers have a Download button
+    final withModel = !onPhone.contains(model.name);
+    final files = [if (withModel) model, ?list?.file];
+    final classList = list?.classList ?? false;
     final what = !d.identification
         ? 'The detection model.'
         : classList
@@ -568,23 +573,31 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ),
   );
 
-  /// What the download list says about a file on the phone.
+  /// What the app's model list says about a file on the phone (round 276:
+  /// every known model, found by the file's first part).
   static List<(String, String)> _catalogueRows(ModelDownload? d) => [
     if (d != null) ...[
-      ('In the download list as', d.title),
+      ('Model', d.title),
       ('Use', d.purpose),
       if (d.note != null) ('Note', d.note!),
     ],
   ];
 
+  static const _unknownOrigin = (
+    'Licence and source',
+    "Not known: this file is not in the app's model list. Ask whoever made it.",
+  );
+
   static List<(String, String)> _originRows(ModelDownload? d) => [
+    if (d == null) _unknownOrigin,
     if (d != null && d.licence.isNotEmpty) ('Licence', d.licence),
     if (d != null && d.source.isNotEmpty) ('Source', d.source),
+    if (d != null && d.cite.isNotEmpty) ('How to cite', d.cite),
   ];
 
   static String _listKind(Map<String, dynamic>? h) => h == null
       ? 'A name list that could not be read'
-      : h['kind'] == 'classes'
+      : isClassListHeader(h)
       ? 'Class list of ${h['model_id']}: ${_count(h['rows'])} classes'
       // The pack's rows include its "none of these" entries (flower,
       // leaf, ...); the names are the rest, as in the catalogue titles.
@@ -625,11 +638,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   void _nameListCard(File f, ModelsInventory inv) {
     final offer = inv.downloads.listFor(_nameOf(f));
+    final list = offer?.$2;
     _showCard(Icons.list_alt, _nameOf(f), [
       ('Kind', _listKind(inv.headers[f.path])),
-      if (offer != null) ('In the download list as', '${offer.$1.title}: ${offer.$2.title}'),
+      if (offer != null) ('Name list', '${offer.$1.title}: ${offer.$2.title}'),
       ('File', _onPhone(f.path, inv)),
-      ..._originRows(offer?.$1),
+      // The names' own licence and source (round 276), else the model's.
+      if (list != null && list.licence.isNotEmpty) ('Licence', list.licence),
+      if (list != null && list.source.isNotEmpty) ('Source', list.source),
+      if (list == null || list.licence.isEmpty) ..._originRows(offer?.$1),
     ]);
   }
 
@@ -637,8 +654,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ('Kind', d.identification ? 'Identification model' : 'Detection model'),
     ('Use', d.purpose),
     if (d.note != null) ('Note', d.note!),
-    ('File', '${d.file.name}, ${formatBytes(d.file.bytes)}'),
-    for (final l in d.lists) ('Name list', '${l.title}\n${l.file.name}, ${formatBytes(l.file.bytes)}'),
+    ('File', '${d.file!.name}, ${formatBytes(d.file!.bytes)}'),
+    for (final l in d.nameLists)
+      (l.classList ? 'Class list' : 'Label pack', '${l.title}\n${l.file.name}, ${formatBytes(l.file.bytes)}'),
     ..._originRows(d),
   ]);
 
@@ -726,12 +744,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// Detection models not on the phone yet.
   List<Widget> _detectorOffers(ModelsInventory inv) {
     final onPhone = inv.onPhone;
-    final offers = _byTitle(inv.downloads.detectors.where((d) => !onPhone.contains(d.file.name)));
+    final offers = _byTitle(inv.downloads.detectorOffers.where((d) => !onPhone.contains(d.file!.name)));
     if (offers.isEmpty) return const [];
     return [
       _subheading('Available to download'),
       for (final d in offers)
-        _offerTile(_detectionIcon, d.title, formatBytes(d.file.bytes), () => _offerCard(d), () => _get(d)),
+        _offerTile(_detectionIcon, d.title, formatBytes(d.file!.bytes), () => _offerCard(d), () => _get(d)),
     ];
   }
 
@@ -740,18 +758,19 @@ class _ModelsScreenState extends State<ModelsScreen> {
   List<Widget> _identificationOffers(ModelsInventory inv) {
     final onPhone = inv.onPhone;
     final rows = <Widget>[];
-    for (final d in _byTitle(inv.downloads.identification)) {
-      final hasModel = onPhone.contains(d.file.name);
-      final missing = [for (final l in d.lists) if (!onPhone.contains(l.file.name)) l];
+    for (final d in _byTitle(inv.downloads.identificationOffers)) {
+      final model = d.file!;
+      final hasModel = onPhone.contains(model.name);
+      final missing = [for (final l in d.nameLists) if (!onPhone.contains(l.file.name)) l];
       if (missing.isEmpty) continue;
-      if (d.lists.length == 1) {
+      if (d.nameLists.length == 1) {
         // A classifier and its class list: one row, one download.
         final l = missing.single;
         rows.add(
           _offerTile(
             _identificationIcon,
             d.title,
-            formatBytes((hasModel ? 0 : d.file.bytes) + l.file.bytes),
+            formatBytes((hasModel ? 0 : model.bytes) + l.file.bytes),
             () => _offerCard(d),
             () => _get(d, list: l),
           ),
@@ -768,7 +787,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
           subtitle: Text(
             hasModel
                 ? 'Model on this phone; name lists below'
-                : 'Model ${formatBytes(d.file.bytes)}, downloaded with the first name list',
+                : 'Model ${formatBytes(model.bytes)}, downloaded with the first name list',
             style: helperTextStyle,
           ),
           trailing: _infoButton(() => _offerCard(d), tooltip: 'About this model'),

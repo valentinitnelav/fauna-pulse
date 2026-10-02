@@ -56,7 +56,7 @@ void main() {
     }
     expect(find.text('Identified'), findsOneWidget);
     expect(find.text('#7 Bombus (genus, 87 %)'), findsOneWidget);
-    expect(find.textContaining('Identifications (pack pack1, 2026-09-21 10:00)'), findsOneWidget);
+    expect(find.textContaining('Identifications (name list pack1, 2026-09-21 10:00)'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

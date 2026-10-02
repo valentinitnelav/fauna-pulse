@@ -14,6 +14,18 @@
 // from the local files. A file counts as "on this phone" by its NAME only
 // (re-exported weights change their checksum); the checksum, when given, only
 // verifies a download.
+//
+// Round 276 (owner): the list names EVERY model the project knows, with its
+// licence, source and how to cite it; only entries with a `file` are offered
+// for download. Format 3: one `models` array; every entry and every name list
+// says what it is in `kind`, with the words the screens use:
+// "detection_model" / "identification_model", and for the name lists of an
+// identification model ("name_lists") "class_list" (a classifier's fixed
+// classes) / "label_pack" (BioCLIP's names). Both name lists are .fpack files
+// (FaunaPulse pack, tool/bioclip_export/fpack.py). A file on the phone finds its entry by the
+// naming rule (tool/model_downloads/README.md): the part before its first
+// "_" is the entry's `id` (`flatbug-s_1024_fp16.tflite` → `flatbug-s`), or
+// by the exact name of the offered file.
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,6 +33,7 @@ import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../identification/identification_assets.dart';
+import '../identification/identification_store.dart' show modelIdOf, modelKey;
 import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
 import 'file_download.dart';
@@ -44,7 +57,16 @@ class DownloadFile {
 class NameListDownload {
   final String title;
   final DownloadFile file;
-  const NameListDownload(this.title, this.file);
+
+  /// A classifier's class list (`"kind": "class_list"`), else a label pack.
+  final bool classList;
+
+  /// The names' own licence and source when they differ from the model's
+  /// (round 276; e.g. the TreeOfLife embeddings, CC0).
+  final String licence;
+  final String source;
+
+  const NameListDownload(this.title, this.file, {this.classList = false, this.licence = '', this.source = ''});
 }
 
 class ModelDownload {
@@ -60,11 +82,15 @@ class ModelDownload {
   final String licence;
   final String source;
 
-  /// The model file itself.
-  final DownloadFile file;
+  /// How to cite the model (round 276), '' when not given.
+  final String cite;
 
-  /// Identification models only.
-  final List<NameListDownload> lists;
+  /// The model file offered for download; null when the model is known
+  /// (details for its files on the phone) but not offered (round 276).
+  final DownloadFile? file;
+
+  /// Identification models only (`name_lists`).
+  final List<NameListDownload> nameLists;
 
   const ModelDownload({
     required this.id,
@@ -74,16 +100,24 @@ class ModelDownload {
     this.note,
     required this.licence,
     required this.source,
-    required this.file,
-    this.lists = const [],
+    this.cite = '',
+    this.file,
+    this.nameLists = const [],
   });
+
+  /// Offered for download.
+  bool get offered => file != null;
 }
 
 class ModelDownloads {
+  /// Every known model of each kind; [offers] are the ones to download.
   final List<ModelDownload> detectors;
   final List<ModelDownload> identification;
 
   const ModelDownloads({this.detectors = const [], this.identification = const []});
+
+  List<ModelDownload> get detectorOffers => [for (final d in detectors) if (d.offered) d];
+  List<ModelDownload> get identificationOffers => [for (final d in identification) if (d.offered) d];
 
   static Future<ModelDownloads> load() async {
     try {
@@ -94,8 +128,9 @@ class ModelDownloads {
     }
   }
 
-  /// Parses the catalogue; an entry with a missing field or an unsafe file
-  /// name is skipped (logged), so one typo cannot hide the others.
+  /// Parses the catalogue; an entry with a missing field, an unsafe file
+  /// name or a repeated `id` is skipped (logged), so one typo cannot hide
+  /// the others.
   static ModelDownloads parse(String text) {
     final j = jsonDecode(text) as Map<String, dynamic>;
     final base = Uri.parse(j['base_url'] as String);
@@ -112,52 +147,72 @@ class ModelDownloads {
       );
     }
 
-    List<ModelDownload> entries(String key, {required bool identification}) {
-      final out = <ModelDownload>[];
-      for (final raw in (j[key] as List? ?? const [])) {
-        try {
-          final e = raw as Map<String, dynamic>;
-          final model = file(e['file'] as Map<String, dynamic>);
-          final lists = [
-            for (final l in (e['lists'] as List? ?? const []))
-              NameListDownload(l['title'] as String, file(l['file'] as Map<String, dynamic>)),
-          ];
-          final safe = identification
-              ? isSafeIdentificationFileName(model.name, ext: '.tflite') &&
-                    lists.every((l) => isSafeIdentificationFileName(l.file.name, ext: '.fpack'))
-              : isSafeModelBaseName(model.name);
-          if (!safe) throw FormatException('unsafe file name in ${e['id']}');
-          out.add(
-            ModelDownload(
-              id: e['id'] as String,
-              identification: identification,
-              title: e['title'] as String,
-              purpose: e['purpose'] as String,
-              note: e['note'] as String?,
-              licence: e['licence'] as String? ?? '',
-              source: e['source'] as String? ?? '',
-              file: model,
-              lists: lists,
+    final ids = <String>{};
+    final detectors = <ModelDownload>[];
+    final identification = <ModelDownload>[];
+    for (final raw in (j['models'] as List? ?? const [])) {
+      try {
+        final e = raw as Map<String, dynamic>;
+        final id = e['id'] as String;
+        final isId = switch (e['kind']) {
+          'detection_model' => false,
+          'identification_model' => true,
+          _ => throw FormatException('unknown kind ${e['kind']} of $id'),
+        };
+        if (!ids.add(modelKey(id))) throw FormatException('repeated id $id');
+        final model = e['file'] is Map ? file(e['file'] as Map<String, dynamic>) : null;
+        final lists = [
+          for (final l in (e['name_lists'] as List? ?? const []))
+            NameListDownload(
+              l['title'] as String,
+              file(l['file'] as Map<String, dynamic>),
+              classList: switch (l['kind']) {
+                'class_list' => true,
+                'label_pack' => false,
+                _ => throw FormatException('unknown name list kind ${l['kind']} in $id'),
+              },
+              licence: l['licence'] as String? ?? '',
+              source: l['source'] as String? ?? '',
             ),
-          );
-        } catch (e) {
-          logSwallowed('model_downloads_entry', e);
-        }
+        ];
+        final safe = isId
+            ? (model == null || isSafeIdentificationFileName(model.name, ext: '.tflite')) &&
+                  lists.every((l) => isSafeIdentificationFileName(l.file.name, ext: '.fpack'))
+            : (model == null || isSafeModelBaseName(model.name)) && lists.isEmpty;
+        if (!safe) throw FormatException('unsafe file name in $id');
+        (isId ? identification : detectors).add(
+          ModelDownload(
+            id: id,
+            identification: isId,
+            title: e['title'] as String,
+            purpose: e['purpose'] as String,
+            note: e['note'] as String?,
+            licence: e['licence'] as String? ?? '',
+            source: e['source'] as String? ?? '',
+            cite: e['cite'] as String? ?? '',
+            file: model,
+            nameLists: lists,
+          ),
+        );
+      } catch (e) {
+        logSwallowed('model_downloads_entry', e);
       }
-      return out;
     }
-
-    return ModelDownloads(
-      detectors: entries('detectors', identification: false),
-      identification: entries('identification', identification: true),
-    );
+    return ModelDownloads(detectors: detectors, identification: identification);
   }
 
-  /// The catalogue entry whose model file is [fileName] (a name or a path).
+  /// The entry of the model file [fileName] (a name or a path): the one
+  /// that offers exactly this file, else the one whose `id` is the file's
+  /// first part (round 276, compared with [modelKey]).
   ModelDownload? modelFor(String fileName) {
     final name = fileName.split('/').last;
-    for (final d in [...detectors, ...identification]) {
-      if (d.file.name == name) return d;
+    final all = [...detectors, ...identification];
+    for (final d in all) {
+      if (d.file?.name == name) return d;
+    }
+    final key = modelKey(modelIdOf(name));
+    for (final d in all) {
+      if (modelKey(d.id) == key) return d;
     }
     return null;
   }
@@ -166,7 +221,7 @@ class ModelDownloads {
   (ModelDownload, NameListDownload)? listFor(String fileName) {
     final name = fileName.split('/').last;
     for (final d in identification) {
-      for (final l in d.lists) {
+      for (final l in d.nameLists) {
         if (l.file.name == name) return (d, l);
       }
     }

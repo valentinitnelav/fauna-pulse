@@ -8,7 +8,7 @@
 // phone indoors (plan section 11.12).
 //
 // Round 235: when the visits of a video session were found again since the
-// stored crops were made, "Re-score with this pack" is hidden (the crops
+// stored crops were made, "Re-score with this name list" is hidden (the crops
 // carry the old visit numbers) and a note says the next run starts over.
 
 import 'dart:async';
@@ -319,8 +319,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final packDim = (_packHeader?['dim'] as num?)?.toInt();
       if (packDim != null && packDim != info.dim) {
         throw Exception(
-          'The label pack ${pack.path.split('/').last} was built for a model that gives $packDim numbers '
-          'per crop; ${model.path.split('/').last} gives ${info.dim}. Choose the pack made for this model.',
+          'The name list ${pack.path.split('/').last} was made for a model that gives $packDim numbers '
+          'per crop; ${model.path.split('/').last} gives ${info.dim}. Choose the name list made for this model.',
         );
       }
       if (!mounted) return;
@@ -710,7 +710,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'photos that agree reinforce each other (not a vote per photo), giving a probability per '
             'rank. Track IDs '
             'are not joined unless "Merge consecutive track IDs" is on (Advanced settings). '
-            'Identification runs on this phone with the chosen model and label pack; no image '
+            'Identification runs on this phone with the chosen model and name list; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
             'resumed at any time, and pauses when the battery gets warmer than the temperature '
             'set under Advanced settings. Plug the phone in for long runs.',
@@ -757,7 +757,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             OutlinedButton.icon(
               onPressed: _rescore,
               icon: const Icon(Icons.refresh),
-              label: const Text('Re-score with this pack'),
+              label: const Text('Re-score with this name list'),
             ),
           if (_summaries.isNotEmpty)
             FilledButton.icon(
@@ -821,9 +821,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
             if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
-                'Re-score with this pack',
+                'Re-score with this name list',
                 'recomputes the results from the stored model outputs without running the model: use it '
-                    'after changing the label pack or any threshold, merge or flag setting (seconds).',
+                    'after changing the name list or any threshold, merge or flag setting (seconds).',
               ),
             if (_summaries.isNotEmpty) _buttonNote('View results', 'opens the newest results of this session.'),
           ],
@@ -1066,7 +1066,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.tau = v),
           helperText:
-              'The model gives every name in the label pack a probability (they add up to 100 %); '
+              'The model gives every name in the name list a probability (they add up to 100 %); '
               'a family\'s probability is the sum of its species, and so on up to kingdom. Going '
               'from kingdom down to species, the deepest rank whose probability still reaches this '
               'value is reported as the answer. Deeper ranks are still listed in the results, with '
@@ -1080,7 +1080,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 2,
           onChanged: (v) => _edit(() => prefs.noneThreshold = v),
           helperText:
-              'The label pack also contains a few "none of these" entries (flower, leaf, shadow, empty '
+              'The name list also contains a few "none of these" entries (flower, leaf, shadow, empty '
               'background). When their summed probability is above this, the track ID is reported as '
               '"no organism": the detector most likely fired on nothing.',
         ),
@@ -1220,7 +1220,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: Text(
             // Round 247 (owner: unclear what this does, and "default is family" next to genus).
             'Changes nothing in the app: the results on screen always show every rank. It only '
-            'matters for the CSV file of the results (tracks_<pack>.csv): its columns pred, '
+            'matters for the CSV file of the results (tracks_<name list>.csv): its columns pred, '
             'pred_prob_weighted, pred_prob_mean and pred_imgs give the answer at ONE rank, as the '
             'insect-detect-post tool of Maximilian Sittinger does, so the files of both can be '
             'compared; this picks that rank. All ranks are in the bioclip_<rank> and p_<rank> columns '

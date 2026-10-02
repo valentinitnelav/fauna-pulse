@@ -2,7 +2,7 @@
 
 **Status:** round 265 made and checked the phone files and timed them on the Xiaomi test
 phone; since round 266 the Identify screen runs them (section 5). Recommended file:
-`insectdct-cls-v7_eff2s_fp16.tflite` with its class list `insectdct-cls-v7_eff2s_fp16.fpack`
+`insectdct-cls-v7-eff2s_224_fp16.tflite` with its class list `insectdct-cls-v7-eff2s_224_fp16.fpack`
 (section 3, *Which network*). Import both on the Download & import models screen (home screen ⋮ menu);
 choosing the model on the Identify screen chooses its class list.
 
@@ -48,12 +48,12 @@ python export_insectdct_cls.py --zoo-dir /path/to/weights/insectdct-cls-v7 --bac
 1. insectDCT's own code builds the network and loads the V7 weights. (It would first download
    ImageNet starting weights that the V7 weights replace anyway; the script skips that
    download, like the zoo's wrapper does.)
-2. The phone file `out/insectdct-cls-v7_<backbone>_fp16.tflite`: input one 224 x 224 RGB crop
+2. The phone file `out/insectdct-cls-v7-<backbone>_224_fp16.tflite`: input one 224 x 224 RGB crop
    in 0..1 (insectDCT uses no further colour normalisation), output the 164 raw scores of the
    three heads one after the other (19 + 41 + 104). Converted with litert-torch; fp16 weights
    by `../bioclip_export/quantise_tflite.py`. A `.json` manifest lists the classes of every
    head, the source file and its sha256. Next to it the **class list**
-   `insectdct-cls-v7_<backbone>_fp16.fpack` (round 266, 14 kB): the app's label pack for this
+   `insectdct-cls-v7-<backbone>_224_fp16.fpack` (round 266, 14 kB): the app's label pack for this
    model, without name vectors (the model scores its own classes). One row per level-3 class
    with kingdom ... species from the taxonomy table (section 4), its own name and its place
    in each head; `Vegetation` is the "none of these" row. Written by `fpack.write_class_list`
@@ -202,7 +202,7 @@ pairing; tests share the fixture `test/fauna_pulse/fixtures/tiny_classes.fpack` 
    vectors: one row per level-3 class with kingdom ... species from the table, the model's
    own class name, and its place in each head; `Vegetation` as a "none of these" row. The
    export script writes it from the table. It is named like the model file
-   (`insectdct-cls-v7_eff2s_fp16.fpack` next to the `.tflite`), so choosing the model on the
+   (`insectdct-cls-v7-eff2s_224_fp16.fpack` next to the `.tflite`), so choosing the model on the
    Identify screen chooses it. Before a run the screen refuses a class list of another model,
    and after loading the model it compares the pack's size field (the model's output length,
    164) with the model's. The app stores each crop's raw scores, so a corrected table only

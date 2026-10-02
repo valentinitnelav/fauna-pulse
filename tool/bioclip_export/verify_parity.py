@@ -7,7 +7,7 @@ cosine similarity (1.0 = identical direction). With a label pack it also reports
 how often the two agree on the top family and species.
 
 Usage:
-    python verify_parity.py --tflite out/bioclip2_image_fp16.tflite --images ./crops [--pack out/x.fpack] [--limit 200]
+    python verify_parity.py --tflite out/bioclip-2_224_fp16.tflite --images ./crops [--pack out/x.fpack] [--limit 200]
 
 Acceptance (plan section 7, Phase 0): mean cosine >= 0.99 and >= 95 % family agreement.
 

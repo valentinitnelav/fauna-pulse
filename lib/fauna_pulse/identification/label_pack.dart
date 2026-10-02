@@ -22,6 +22,14 @@
 // (sizes add up to dim, the model's output length), "head_index" = each row's
 // class in every head. Scorer (track_fusion.dart) turns the raw scores into one
 // probability per row; everything after that is the same as for BioCLIP.
+//
+// Words (round 276, owner: one name per thing): the screens call both kinds a
+// NAME LIST, either a LABEL PACK (BioCLIP) or a CLASS LIST (a classifier). The
+// file format of both is ".fpack" (FaunaPulse pack); in the code "pack" means
+// such a file of either kind. Since round 276 the header's "kind" is
+// "label_pack" or "class_list", the words of assets/model_downloads.json;
+// files written before say "classes" for a class list and nothing for a label
+// pack, and are read the same way ([isClassListHeader]).
 
 import 'dart:convert';
 import 'dart:io';
@@ -38,6 +46,13 @@ const List<String> kRankNames = [
   'genus',
   'species',
 ];
+
+/// A classifier's class list, by its header's `kind`: "class_list" (written
+/// since round 276) or "classes" (before). Anything else is a label pack.
+bool isClassListHeader(Map<String, dynamic>? header) {
+  final kind = header?['kind'];
+  return kind == 'class_list' || kind == 'classes';
+}
 
 /// Kingdom value marking a "none of these" sink row.
 const String kSinkKingdom = 'none';
@@ -203,7 +218,7 @@ class LabelPack {
       }
       labels.add(LabelRow(l.sublist(0, 7), l[7]));
     }
-    if (header['kind'] == 'classes') {
+    if (isClassListHeader(header)) {
       return _classList(header, labels, dim, rows);
     }
     final n = rows * dim;

@@ -15,6 +15,12 @@ convert, and why the app does **not** run plain ONNX files.
 | A TFLite file (`.tflite`) | Works as-is: home screen ⋮ → Download & import models → Import model files… (or Download from a link…). |
 | An Ultralytics QNN export (`*_qnn.onnx`) | Works as-is, but **only on Snapdragon phones** (runs on the NPU chip). Niche, see below. |
 
+**Name your files by the project's naming rule** (round 276):
+`<model>_<input px>_<precision>.tflite`, for example `my-bees-yolo11n_640_fp16.tflite`. The rule
+and its reasons are in [`tool/model_downloads/README.md`](../tool/model_downloads/README.md#naming-rule-round-276).
+The app shows every file by its name; a model listed in `assets/model_downloads.json` (by the
+`<model>` part) also shows its licence, source and how to cite it.
+
 ## Why the app doesn't run plain ONNX
 
 If you deploy models on Linux boxes or NVIDIA Jetson-style microcomputers, ONNX (or
