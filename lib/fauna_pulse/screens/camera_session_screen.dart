@@ -27,7 +27,6 @@ import '../logging/error_reporter.dart';
 import '../logging/roi_update_debouncer.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
-import '../models/model_downloads.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
@@ -638,7 +637,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// a model was added.
   Future<void> _askForDetector() async {
     final listed = await ModelCatalog.build();
-    final catalogue = await ModelDownloads.load();
     if (!mounted) return;
     final chosen = _config.modelPath;
     final missing = chosen.isNotEmpty ? chosen.split('/').last : null;
@@ -672,9 +670,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.center_focus_strong_outlined),
-                  title: Text(catalogue.modelFor(m.name)?.title ?? m.name),
+                  // The file name, as on Download & import models (round 275).
+                  title: Text(m.name),
                   // What it finds helps to choose among the user's own files.
-                  subtitle: _detectorSubtitle(m, catalogue),
+                  subtitle: _detectorSubtitle(m),
                   onTap: () => Navigator.of(ctx).pop(m),
                 ),
             ],
@@ -711,14 +710,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
   }
 
-  static Widget? _detectorSubtitle(ModelEntry m, ModelDownloads catalogue) {
-    final lines = [
-      if (catalogue.modelFor(m.name) != null) m.name,
-      if (m.labels.isNotEmpty)
-        'Finds: ${m.labels.take(3).join(', ')}${m.labels.length > 3 ? ', …' : ''}',
-    ];
-    return lines.isEmpty ? null : Text(lines.join('\n'));
-  }
+  static Widget? _detectorSubtitle(ModelEntry m) => m.labels.isEmpty
+      ? null
+      : Text('Finds: ${m.labels.take(3).join(', ')}${m.labels.length > 3 ? ', …' : ''}');
 
   /// Makes [m] the camera's detection model and saves it.
   void _useDetector(ModelEntry m) {

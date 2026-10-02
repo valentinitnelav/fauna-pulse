@@ -34,8 +34,11 @@ dots left out (`bioclip-2` for `bioclip-2_image_fp16_4d.tflite`, `bioclip-2.5` f
 `bioclip-25_image_fp16.tflite`). Keep that start when you rename a model file.
 Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
-In the app: home screen ⋮ → **Download & import models** → *Import identification model…* / *Import name list…*
-(also reached with *Download & import models…* on the Identify screen).
+In the app: home screen ⋮ → **Download & import models** → *Import model files…* (also reached with
+*Download & import models…* on the Identify screen), or *Download from a link…*. Since round 275 one
+import takes every kind of file: the app reads what each `.tflite` file is (an identification model
+gives one row of numbers per picture, a detection model a table of boxes) and puts it in its place,
+and it asks before replacing a file of the same name.
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 
@@ -352,7 +355,7 @@ session here is a YouTube clip, fit for timing only).
 pack's names. It comes as two files with the same name: the model
 (`insectdct-cls-v7_eff2s_fp16.tflite`, 42 MB) and its **class list**
 (`insectdct-cls-v7_eff2s_fp16.fpack`, 14 kB: every class with its kingdom ... species).
-Import both (Download & import models screen: *Import model…*, *Import name list…*); choosing the model then
+Import both (Download & import models screen: *Import model files…*, both files at once); choosing the model then
 chooses its class list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
 threshold, tables and files. Differences:
 

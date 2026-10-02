@@ -2,21 +2,21 @@
 // packs) in private storage, plus the job's persisted settings.
 //
 // Both file kinds are produced on a PC (tool/bioclip_export/) and brought to
-// the phone by the user; Import copies them through the same streamed
-// checks as detector models (safe name, size cap, structural header), with
-// a separate, much larger cap because an image tower is 0.3 to 1.3 GB.
+// the phone by the user, or downloaded from the catalogue. Since round 275
+// one import for every model file (models/model_import.dart) checks what a
+// file is and copies it here, with the same streamed checks as detector
+// models (safe name, size cap, structural header) and a separate, much
+// larger cap because an image tower is 0.3 to 1.3 GB.
 
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
-import '../models/model_file_security.dart';
+import '../models/model_file_security.dart' show fileNameOrder;
 import 'crop_worker.dart' show kDefaultCropMargin;
 import 'identification_store.dart' show stemOf;
-import 'label_pack.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 /// Cap for one identification file (image tower or label pack). BioCLIP 2.5
@@ -31,12 +31,6 @@ bool isSafeIdentificationFileName(String name, {required String ext}) =>
     !name.contains('..') &&
     _safeName.hasMatch(name) &&
     name.toLowerCase().endsWith(ext);
-
-class ImportOutcome {
-  final List<String> imported;
-  final List<String> rejected;
-  const ImportOutcome(this.imported, this.rejected);
-}
 
 class IdentificationAssets {
   static Future<Directory> _sub(String name) async {
@@ -66,73 +60,9 @@ class IdentificationAssets {
     await for (final e in dir.list(followLinks: false)) {
       if (e is File && e.path.toLowerCase().endsWith(ext)) out.add(e);
     }
-    out.sort((a, b) => a.path.compareTo(b.path));
+    // Alphabetical by file name, upper and lower case alike (round 275).
+    out.sort((a, b) => fileNameOrder(a.path, b.path));
     return out;
-  }
-
-  /// Opens the file picker and copies validated `.tflite` (models) or
-  /// `.fpack` (packs) files into private storage. [onFileLoading] reports
-  /// when the picker starts copying (the AI models screen shows "Copying…",
-  /// round 267); the picker's own cache copy is removed afterwards.
-  static Future<ImportOutcome> importFiles({
-    required bool packs,
-    void Function(FilePickerStatus)? onFileLoading,
-  }) async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      onFileLoading: onFileLoading,
-    );
-    if (result == null) return const ImportOutcome([], []);
-    try {
-      return await _copyPicked(result, packs: packs);
-    } finally {
-      await clearFilePickerCache();
-    }
-  }
-
-  static Future<ImportOutcome> _copyPicked(
-    FilePickerResult result, {
-    required bool packs,
-  }) async {
-    final ext = packs ? '.fpack' : '.tflite';
-    final dir = packs ? await packsDir() : await modelsDir();
-    final imported = <String>[];
-    final rejected = <String>[];
-    for (final picked in result.files) {
-      final display = safeModelDisplayName(picked.name);
-      final path = picked.path;
-      if (path == null) {
-        rejected.add('$display: the selected file could not be read.');
-        continue;
-      }
-      if (!isSafeIdentificationFileName(picked.name, ext: ext)) {
-        rejected.add('$display: expected a safely named $ext file.');
-        continue;
-      }
-      final target = File('${dir.path}/${picked.name}');
-      try {
-        await copyAndValidateModel(
-          File(path),
-          target,
-          picked.name,
-          maxBytes: kMaxIdentificationFileBytes,
-        );
-        if (packs) {
-          // Structural check: magic + parseable header.
-          try {
-            await LabelPack.readHeader(target);
-          } catch (e) {
-            await target.delete();
-            rethrow;
-          }
-        }
-        imported.add(picked.name);
-      } catch (e) {
-        rejected.add('$display: ${plainModelError(e)}');
-        logSwallowed('identification_import', e);
-      }
-    }
-    return ImportOutcome(imported, rejected);
   }
 
   /// The class lists in [packs] that belong to [model] (same file name, see

@@ -45,6 +45,15 @@ bool isSupportedModelFileName(String name) {
 
 bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
 
+/// Alphabetical order of two files by name, upper and lower case alike
+/// (round 275: every model list is sorted this way).
+int fileNameOrder(String a, String b) {
+  final x = a.split('/').last;
+  final y = b.split('/').last;
+  final c = x.toLowerCase().compareTo(y.toLowerCase());
+  return c != 0 ? c : x.compareTo(y);
+}
+
 int maxModelBytesForName(String name) =>
     isQnnModelPath(name) ? kMaxQnnModelBytes : kMaxTfliteModelBytes;
 

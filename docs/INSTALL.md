@@ -143,11 +143,13 @@ screen (home screen ⋮ menu) offers MegaDetector V6 (common animals) and flat-b
 (insects) for download. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:
 
-- **In-app (easiest):** open **FaunaPulse → ⋮ (home screen) → Download & import models → Import…**,
-  then pick the `.tflite` file(s) from **Downloads** or another folder. You can
-  first copy the model into Downloads over USB.
-- **HTTPS download:** open **⋮ → Download & import models → Download…** and paste a direct HTTPS
-  model link.
+- **In-app (easiest):** open **FaunaPulse → ⋮ (home screen) → Download & import models → Import model
+  files…**, then pick the `.tflite` file(s) from **Downloads** or another folder (to take every file of
+  a folder: press and hold one file, then *Select all*). You can first copy the model into Downloads
+  over USB. The app checks what each file is: a detection model, an identification model or a name
+  list goes to its own list, and it asks before replacing a file of the same name (round 275).
+- **HTTPS download:** open **⋮ → Download & import models → Download from a link…** and paste a
+  direct HTTPS link to a model file or name list.
 
 Added models appear in the app's **model dropdown** at the start of a session.
 They are copied into private app storage, so they are not directly browsable over USB.

@@ -6,6 +6,8 @@
 // (YOLO26 test model) and "bundled" (assets inside the app) sources remain as
 // values because sessions and device checks still name asset paths, but the
 // picker no longer lists them (owner decision: no model ships with the app).
+// Round 275: files come in through models/model_import.dart, which checks
+// that a .tflite file is a detection model before it is put here.
 //
 // Accepted file formats (round 150, see docs/MODEL_CONVERSION.md): `.tflite`
 // (any precision — the normal case) and `*_qnn.onnx` (an Ultralytics Snapdragon
@@ -27,26 +29,15 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
 import 'bundled_models.dart';
-import 'file_download.dart';
 
 import 'model_file_security.dart';
 export 'model_file_security.dart';
 
 enum ModelSource { official, bundled, imported }
-
-/// Result of a multi-file import. Rejections are returned to the settings UI
-/// instead of becoming uncaught errors or silently accepting unsafe files.
-class ModelImportResult {
-  final int imported;
-  final List<String> rejected;
-
-  const ModelImportResult({required this.imported, this.rejected = const []});
-}
 
 /// One selectable model plus whatever we could learn about it cheaply.
 class ModelEntry {
@@ -178,7 +169,8 @@ class ModelCatalog {
             .whereType<File>()
             .where((f) => isSupportedModelFileName(f.path))
             .toList()
-          ..sort((a, b) => a.path.compareTo(b.path));
+          // Alphabetical by file name, upper and lower case alike (round 275).
+          ..sort((a, b) => fileNameOrder(a.path, b.path));
     for (final f in files) {
       final name = f.path.split('/').last;
       final meta = await _inspect(f.path);
@@ -207,91 +199,6 @@ class ModelCatalog {
       seen[e.name] = (seen[e.name] ?? 0) + 1;
     }
     return seen.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
-  }
-
-  /// Opens the system file picker and copies validated models into private
-  /// storage. Each file is streamed through the same size and structure checks
-  /// as a download, so a document provider cannot smuggle a path or huge file.
-  /// [onFileLoading] reports when the picker starts copying (round 267: the
-  /// AI models screen shows "Copying…"); the picker's own cache copy is
-  /// removed afterwards.
-  static Future<ModelImportResult> importModels({
-    void Function(FilePickerStatus)? onFileLoading,
-  }) async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      onFileLoading: onFileLoading,
-    );
-    if (result == null) return const ModelImportResult(imported: 0);
-    try {
-      return await _copyPicked(result);
-    } finally {
-      await clearFilePickerCache();
-    }
-  }
-
-  static Future<ModelImportResult> _copyPicked(FilePickerResult result) async {
-    final dir = await modelsDir();
-    var imported = 0;
-    final rejected = <String>[];
-    for (final picked in result.files) {
-      final displayName = safeModelDisplayName(picked.name);
-      final path = picked.path;
-      if (path == null) {
-        rejected.add('$displayName: the selected file could not be read.');
-        continue;
-      }
-      final name = picked.name;
-      if (!isSafeModelBaseName(name)) {
-        rejected.add('$displayName: unsafe or unsupported file name.');
-        continue;
-      }
-      try {
-        final source = File(path);
-        final target = safeModelTarget(dir, name);
-        await copyAndValidateModel(source, target, name);
-        imported++;
-      } catch (e) {
-        rejected.add('$displayName: ${plainModelError(e)}');
-        logSwallowed('model_import_copy', e);
-      }
-    }
-    return ModelImportResult(imported: imported, rejected: rejected);
-  }
-
-  /// Downloads a model file from [url] into the imported-models folder, so
-  /// models published as GitHub release assets can be added without a cable.
-  /// Streams into a temporary `<name>.part` file and renames only on success,
-  /// so a dropped connection never leaves a half model in the picker. Reports
-  /// progress via [onProgress] (total is null when the server doesn't say);
-  /// [isCancelled] is checked between chunks so the dialog's Cancel button
-  /// can abandon a stalled download (the partial file is deleted).
-  /// Returns the saved file's path; throws with a plain-language message on
-  /// any failure (the dialog shows it verbatim).
-  static Future<String> downloadModel(
-    String url, {
-    void Function(int receivedBytes, int? totalBytes)? onProgress,
-    bool Function()? isCancelled,
-    String? expectedSha256,
-  }) async {
-    final name = modelFileNameFromUrl(url);
-    if (name == null) {
-      throw Exception(
-        'Use an HTTPS link to a safely named .tflite or *_qnn.onnx file.',
-      );
-    }
-    final dir = await modelsDir();
-    final saved = await downloadToFile(
-      Uri.parse(url.trim()),
-      safeModelTarget(dir, name),
-      maxBytes: maxModelBytesForName(name),
-      tooLargeMessage: modelSizeLimitMessage(name),
-      validate: (part) => validateModelFile(part, name),
-      expectedSha256: expectedSha256,
-      onProgress: onProgress,
-      isCancelled: isCancelled,
-    );
-    return saved.path;
   }
 
   /// Deletes an imported model file (only imported models can be removed).
@@ -359,14 +266,16 @@ class ModelCatalog {
 /// The model file name a download URL points at (query string ignored), or
 /// null when it is not an HTTPS URL with a safe supported base name. Uri
 /// pathSegments are decoded, so this also rejects encoded traversal/separators.
-String? modelFileNameFromUrl(String url) {
+/// [accept] (round 275) widens the names, e.g. to name lists for the link
+/// dialog of Download & import models.
+String? modelFileNameFromUrl(String url, {bool Function(String name) accept = isSafeModelBaseName}) {
   final uri = Uri.tryParse(url.trim());
   if (uri == null || !uri.isScheme('https') || uri.host.isEmpty) {
     return null;
   }
   if (uri.pathSegments.isEmpty) return null;
   final name = uri.pathSegments.last;
-  if (!isSafeModelBaseName(name)) return null;
+  if (!accept(name)) return null;
   return name;
 }
 

@@ -123,7 +123,7 @@ NOTE:
   - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
   - 1.3. For advanced users: build from source - see "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import…** (a file) or a link. In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
+3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import model files…** or **Download from a link…** (the app checks what each file is and puts it in its place). In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -189,8 +189,8 @@ See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 
 Custom AI detectors can be added:
 
-- **Download…** on the Download & import models screen (home screen ⋮ menu), pasting a link to a `.tflite` file (for example a GitHub release asset), or
-- **Import…**, selecting a `.tflite` file stored on the phone, or
+- **Download from a link…** on the Download & import models screen (home screen ⋮ menu), pasting a link to a `.tflite` file (for example a GitHub release asset), or
+- **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place), or
 - train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md).
 
 Motion-triggered and time-lapse capture record without any detection model.
