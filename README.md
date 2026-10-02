@@ -123,7 +123,7 @@ NOTE:
   - 1.2. Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/). Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
   - 1.3. For advanced users: build from source - see "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 2. **Grant permissions** when prompted: camera, location (one GPS fix per session) and notifications (used by the long-running recording service).
-3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen ⋮ menu), which offers models for common animals and for insects, or add your own there with **Import model files…** or **Download from a link…** (the app checks what each file is and puts it in its place). In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
+3. **Choose a detection model.** No model comes inside the app: download one on the **Download & import models** screen (home screen: Menu, bottom left), which offers models for common animals and for insects, or add your own there with **Import model files…** or **Download from a link…** (the app checks what each file is and puts it in its place). In live detection mode the camera then asks which one to use. Motion-triggered and time-lapse capture need no model at all. See [Models](#models).
 4. **Set up the shot.** Position the phone over your observation area and drag the square region of interest (ROI) over it. See also the [Field Guide](docs/FIELD_GUIDE.md).
 5. **Run a short test session** first to confirm framing, detections and capture behave as expected before a long deployment.
 6. **Inspect the output.** Review the captured crops on-device, and read `session.jsonl` on a computer — the [Data Guide](docs/DATA_GUIDE.md) documents the format and how to compute visitation rates in R or Python.
@@ -158,7 +158,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | Maintainer | Review the prioritized performance and robustness roadmap. |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact. |
-| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What the vendored plugin fork changed vs upstream; re-audit checklist. |
+| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream; re-audit checklist. |
 | [AGENTS.md](./AGENTS.md) | Code agent | A coding agent will first read this file to build context. |
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |
 | [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent | Detailed append-only development journal. |
@@ -183,13 +183,13 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ### Detectors
 
-No detector comes inside the app. The **Download & import models** screen (home screen ⋮ menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
+No detector comes inside the app. The **Download & import models** screen (home screen: Menu, bottom left) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
 
-See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
+Most of these models were made by other research teams; FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence; if you publish results, please cite the original model as its authors ask on its source page (linked in the app's ⓘ card of each model). See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 
 Custom AI detectors can be added:
 
-- **Download from a link…** on the Download & import models screen (home screen ⋮ menu), pasting a link to a `.tflite` file (for example a GitHub release asset), or
+- **Download from a link…** on the Download & import models screen (home screen: Menu, bottom left), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place), or
 - train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md).
 

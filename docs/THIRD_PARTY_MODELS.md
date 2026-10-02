@@ -92,6 +92,9 @@ classifier, BioCLIP 2 and 2.5 with their name lists), hosted as release assets o
 FaunaPulse repository. Each entry names its licence and source; the conversions are unofficial,
 as described above. `tool/model_downloads/README.md` explains how the list is kept current.
 Since round 276 the same list also names the models that are not offered (other sizes and
-networks) with their licence, source and citation, taken from this page; the app shows them in
-the (i) card of each file.
+networks) with their licence and source, taken from this page; the app shows them in the (i)
+card of each file. Since round 277 the screen also says that most models were made by other
+research teams and only adapted for phones, that each keeps its creators' licence, and asks
+users to cite the original model as its authors ask on its source page (the list holds no
+citations, since they change and the authors keep theirs current).
 

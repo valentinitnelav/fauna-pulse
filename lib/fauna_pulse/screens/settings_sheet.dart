@@ -626,7 +626,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // Display toggles all have good defaults, so they sit folded (round
       // 159). "Show FPS" moved in from the AI tab the same round: it is a
       // display toggle, not an AI setting. "Show setup tips" left for the
-      // home screen's ⋮ menu (an app-level preference, not per-session).
+      // home screen's menu (an app-level preference, not per-session).
       FoldSection(
         title: 'On-screen display',
         subtitle: 'Boxes, info panel, FPS readout, capture flash.',
@@ -827,7 +827,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'The detection model that finds animals in the camera image and '
             'draws a box around each one. Add or delete models with Download & '
-            'import models… (also in the home screen\'s ⋮ menu). '
+            'import models… (also in the home screen\'s Menu). '
             'The input resolution shown under the list is the square size '
             'every camera frame is shrunk to for the model: smaller runs '
             'faster, larger sees tiny insects better.',
@@ -1675,7 +1675,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             '"Photo step". Video saves each burst as one MP4 clip of the ROI '
             'with every frame (see "Video frame rate"), so an insect can be '
             'followed from frame to frame. The detector runs later, at home: on the '
-            'home screen, the session\'s gear menu → "Find animals in videos" finds '
+            'Sessions screen, the session\'s ⋮ menu → "Find animals in videos" finds '
             'the insects and their track IDs. Video needs more storage (estimate '
             'below). The clip\'s side is the "Saved photo side" on the Photos '
             'tab (smaller when the ROI covers fewer camera pixels).',

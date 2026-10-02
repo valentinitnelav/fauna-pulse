@@ -16,7 +16,7 @@
 // verifies a download.
 //
 // Round 276 (owner): the list names EVERY model the project knows, with its
-// licence, source and how to cite it; only entries with a `file` are offered
+// licence and source; only entries with a `file` are offered
 // for download. Format 3: one `models` array; every entry and every name list
 // says what it is in `kind`, with the words the screens use:
 // "detection_model" / "identification_model", and for the name lists of an
@@ -26,6 +26,10 @@
 // naming rule (tool/model_downloads/README.md): the part before its first
 // "_" is the entry's `id` (`flatbug-s_1024_fp16.tflite` → `flatbug-s`), or
 // by the exact name of the offered file.
+//
+// Round 277 (owner): no "how to cite" field. A citation changes (a preprint
+// becomes a journal paper) and the authors keep theirs up to date at the
+// source, so the card shows the source and the screen asks to cite from there.
 
 import 'dart:convert';
 import 'dart:io';
@@ -82,9 +86,6 @@ class ModelDownload {
   final String licence;
   final String source;
 
-  /// How to cite the model (round 276), '' when not given.
-  final String cite;
-
   /// The model file offered for download; null when the model is known
   /// (details for its files on the phone) but not offered (round 276).
   final DownloadFile? file;
@@ -100,7 +101,6 @@ class ModelDownload {
     this.note,
     required this.licence,
     required this.source,
-    this.cite = '',
     this.file,
     this.nameLists = const [],
   });
@@ -189,7 +189,6 @@ class ModelDownloads {
             note: e['note'] as String?,
             licence: e['licence'] as String? ?? '',
             source: e['source'] as String? ?? '',
-            cite: e['cite'] as String? ?? '',
             file: model,
             nameLists: lists,
           ),

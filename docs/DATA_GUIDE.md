@@ -345,7 +345,7 @@ null in `post_track_start`), so `roi_frames/` holds only the live photos. The Vi
 number their track IDs independently.
 
 Round 239: such a session is analysed like imported videos (§9): *Find animals in videos* (the
-Video tab's button, or the session's gear menu) lists it, starts on the whole picture (each
+Video tab's button, or the session's ⋮ menu) lists it, starts on the whole picture (each
 clip already is the ROI square), and writes `video_detections.jsonl`, `post_tracks.jsonl`
 and `track_ids.csv` next to the recording's own `session.jsonl`, whose `thermal`, `fps` and
 `power` records describe the phone during the recording. *Copy videos* (Video tab) copies
@@ -510,8 +510,8 @@ as in §2, not by its position.)
 
 ### `session_renamed` — the session was renamed after recording (round 182+)
 
-Written when the user renames a session from the app's home screen (the gear
-menu on a session row). The rename also rewrites `config.folderName` in the
+Written when the user renames a session from its ⋮ menu (on the Sessions
+screen, or the latest session on the home screen). The rename also rewrites `config.folderName` in the
 `start_of_session` record so the log agrees with the folder; this record is
 the audit trail of that edit — the one sanctioned post-recording change to an
 otherwise append-only file. It appears AFTER `end_of_session` (one per
@@ -816,7 +816,7 @@ is NOT part of the scientific record; analysis workflows should read
 
 ## 8. Identification output (`identification/`, round 208+)
 
-"Identify organisms" (session gear menu, or the summary's Photos tab) runs the BioCLIP
+"Identify organisms" (the session's ⋮ menu, or the summary's Photos tab) runs the BioCLIP
 image tower over the crops of every track ID and writes its files into
 `<session>/identification/`. All `.jsonl` files are strict one-object-per-line;
 `docs/IDENTIFICATION.md` explains the method, `README_identification.txt` inside the
@@ -937,7 +937,8 @@ aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = l
 
 ## 9. Imported videos (`videos/`, `video_detections.jsonl`), round 225+
 
-*Import videos…* (home screen ⋮ menu, round 227) makes a session from video files
+*Import videos…* (round 227; since round 277 a button on the home screen, also in the Sessions
+screen's ⋮ menu and on the Find animals in videos screen) makes a session from video files
 filmed elsewhere: the phone's camera app, a collaborator, a published dataset. The files
 are moved into `<session>/videos/` (names made file-system safe; the original name is
 logged). `session.jsonl` then only records where the clips came from: the start record

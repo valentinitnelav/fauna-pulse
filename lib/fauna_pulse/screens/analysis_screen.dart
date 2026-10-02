@@ -24,7 +24,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -33,6 +32,7 @@ import '../capture/roi_capture.dart' show probeJpegSize;
 import '../identification/identification_choice.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
+import '../logging/past_sessions.dart' show sessionsRoot;
 import '../models/model_catalog.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
@@ -86,7 +86,7 @@ class _AnalyzableSession {
 }
 
 class AnalysisScreen extends StatefulWidget {
-  /// Optional session folder to preselect (e.g. long-press on a home row).
+  /// Optional session folder to preselect (e.g. a session's ⋮ menu).
   final String? initialSessionPath;
 
   /// Tests replace the sessions folder and the model list, and (round 274)
@@ -330,10 +330,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final found = <_AnalyzableSession>[];
     try {
       var dir = widget.sessionsDir;
-      if (dir == null) {
-        final base = (await getExternalStorageDirectory()) ?? await getApplicationDocumentsDirectory();
-        dir = Directory('${base.path}/sessions');
-      }
+      dir ??= await sessionsRoot();
       if (!await dir.exists()) return found;
       for (final entity in dir.listSync()) {
         if (entity is! Directory) continue;

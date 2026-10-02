@@ -37,7 +37,7 @@ come back as soon as a mode that uses them is selected.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Model** | none (you choose) | Which detection model finds the animals. No model comes inside the app (round 268): download one on the Download & import models screen (home screen ⋮ menu, or Download & import models… here), or import your own (see [INSTALL.md](INSTALL.md)). Until a detection model is on the phone, the capture trigger "Live detection" is greyed out. Round 271: nothing is picked for you; in live detection mode the camera asks you to choose one (and says so when the chosen file was deleted) before it records. Motion-triggered and time-lapse capture need no model. |
+| **Model** | none (you choose) | Which detection model finds the animals. No model comes inside the app (round 268): download one on the Download & import models screen (home screen Menu, or Download & import models… here), or import your own (see [INSTALL.md](INSTALL.md)). Until a detection model is on the phone, the capture trigger "Live detection" is greyed out. Round 271: nothing is picked for you; in live detection mode the camera asks you to choose one (and says so when the chosen file was deleted) before it records. Motion-triggered and time-lapse capture need no model. |
 | **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
 | **IoU threshold** | `0.7` | *(Detection tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets multiple overlapping boxes. |
 | **CPU threads** | `0` (auto) | *(Detection tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2 since round 226 (LiteRT's own default is 1; on both test phones 2 was ~1.9× faster than 1, and 4 at most ~15% faster than 2 for twice the busy cores). Run the engine benchmark in the same fold before changing it. |
@@ -275,7 +275,9 @@ settings sit in the closed fold **Track ID settings**.
 
 ## Video analysis (Find animals in videos screen)
 
-Round 227. Videos come in through the home screen's ⋮ menu → *Import videos…*, which
+Round 227. Videos come in through *Import videos…* (round 277: a button on the home screen,
+also on the Find animals in videos screen and in the Sessions screen's ⋮ menu; it opens Android's
+photo picker, whose ⋮ menu browses the phone's folders), which
 asks only for a session name and when filming started (both logged, see
 [DATA_GUIDE.md §9](DATA_GUIDE.md)). "Find animals in videos" then finds the insects in them.
 Like the photo analysis, these settings belong to the analysis, not to a recording: they
@@ -291,7 +293,7 @@ rows marked (Track IDs) in the closed fold **Track ID settings**.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Detection model** | the last one used (first in the list the first time) | Any detection model on the Download & import models screen (home screen ⋮ menu, or Download & import models… under the list). There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
+| **Detection model** | the last one used (first in the list the first time) | Any detection model on the Download & import models screen (home screen Menu, or Download & import models… under the list). There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
 | **Confidence threshold** (Advanced) | `0.25` | Minimum score for a box to count; the live camera's default. |
 | **Frames analyzed per second** (Advanced) | `5` (1–30; 15 before round 254) | How many pictures of each second of the video the detector looks at; the pictures in between are skipped. 5 = one picture every 0.2 s of video, enough for insects that stay on a flower for a second or more; a run takes less than half the time 15 would (not a third: the phone still decodes every picture). More follows fast flying insects better (fewer missed or counted twice) but takes longer; 15 is what the live camera analyzes. It counts seconds of the video, not of the run: a slow or warm phone takes longer, it never looks at fewer pictures. Asking for more than the video has changes nothing (most phone videos have 30). To measure which rate is enough for your videos: [VIDEO_ANALYSIS.md §5](VIDEO_ANALYSIS.md#5-which-frame-rate-is-enough-the-sweep). |
 | **Area to analyze** | The largest square in the middle, proposed (round 273; whole picture before) | The detector looks at a square picture, as with the camera's square, so a session never analysed proposes the largest square in the middle of its first clip, its side rounded down to a multiple of 32 px by the same rule as the camera's largest square (640×480 → 480 × 480, 1920×1080 → 1056 × 1056). It is shown on the first frame with the rest darker, to accept or change. A video that is already square, such as the clips the app records of the camera's square or a copy cropped to a square, starts on the whole picture. *Whole picture* includes the edges. *Change…* (or a tap on the picture) opens the square editor: the clip plays muted and looping at 4× (speeds up to 10×; another clip of the same picture size can be chosen), so camera or flower movement over the whole video shows while the square is dragged, pinched or resized with the slider; its side is snapped to a multiple of 32 video pixels as on the live camera. Insects outside the square are ignored, and small ones are found more easily because the square is shrunk less before detection. Kept per session, not as an app setting: reopening a session takes the area of its last run (square or whole picture), so *Continue* works without placing it again. |
@@ -341,6 +343,6 @@ the crops are counted (not with 0 crops) and opens the results when the run ends
 | CSV file only: rank of the "pred" columns | family | Changes nothing in the app (the results on screen show every rank). Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` and `pred_imgs` in `tracks_<pack>.csv`, the columns named as in insect-detect-post so files of both tools can be compared (the other ranks are in their own columns anyway). Label before round 247: "Rank for the CSV "pred" columns". |
 
 Model and name list are chosen on the same screen; they are added and deleted on the Download
-& import models screen (the link under the lists, or home screen ⋮), which copies the files into the
+& import models screen (the link under the lists, or the home screen's Menu), which copies the files into the
 app's private storage. `docs/IDENTIFICATION.md` explains where the files come from and how the
 answer is computed.

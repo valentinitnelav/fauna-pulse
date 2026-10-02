@@ -48,7 +48,7 @@ app.*.map.json
 # planned). The ios/ folders may exist locally but are never committed here.
 **/ios/
 
-# Build artifacts anywhere in the tree (root app + vendored packages/ plugin)
+# Build artifacts anywhere in the tree (root app + the Ultralytics plugin in packages/)
 **/build/
 **/.dart_tool/
 **/.gradle/

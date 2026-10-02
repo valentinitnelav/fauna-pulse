@@ -1,6 +1,6 @@
 # Model downloads: the list of every model the app knows (rounds 268, 276)
 
-No model ships inside FaunaPulse. The **Download & import models** screen (home screen ⋮ menu) offers the
+No model ships inside FaunaPulse. The **Download & import models** screen (home screen: Menu, bottom left) offers the
 models listed in [`assets/model_downloads.json`](../../assets/model_downloads.json): a title,
 one plain line on what each model is for, the size and the licence. One tap downloads a
 detection model, or an identification model together with the name list chosen (a label pack
@@ -9,7 +9,7 @@ again: two BioCLIP name lists share one model.
 
 Since round 276 the same file lists **every model the project knows**, also those not offered
 for download (other input sizes, other networks). The (i) card of a file on the phone shows
-its entry: what the model is for, its licence, source and how to cite it. A file finds its
+its entry: what the model is for, its licence and its source. A file finds its
 entry by its name (see the naming rule below); a file that is not in the list shows "not
 known".
 
@@ -68,7 +68,10 @@ In the code, "pack" means such a file of either kind.
   its own `"url"` instead (for example a Hugging Face link, or a file in another release).
 - `models`: one entry per model, with `id` (the `<model>` part of its file names, unique),
   `kind` (`detection_model` or `identification_model`), `title`, `purpose`, optional `note`,
-  `licence`, `source` and `cite` (how to cite it; texts from `docs/THIRD_PARTY_MODELS.md`).
+  `licence` and `source` (the authors' page: a repository or a Hugging Face page).
+  No citation field (round 277, owner): a citation changes (a preprint becomes a journal
+  paper) and the authors keep theirs up to date on that page. The screen asks users to cite
+  the original model from there.
 - `file` (optional): the file offered for download. An entry without it is known but not
   offered (its files on the phone still show its details).
 - `name_lists` (identification models): each with `kind` (`class_list` or `label_pack`),

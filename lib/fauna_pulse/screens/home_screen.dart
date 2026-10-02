@@ -1,122 +1,68 @@
 // FaunaPulse — entry / welcome screen.
 //
-// Starts a new recording session, and lists previously recorded sessions so the
-// user can re-open any of them and view its summary (stats + graphs + photos)
-// without recording anything new.
+// Starts a new recording session, leads to the past sessions, the video
+// import, the Find screens and the dashboard.
+//
+// Round 277 (owner): the past sessions moved to their own Sessions screen
+// (search, filters, selecting several to delete). After a phone check the
+// owner reshaped the screen, after the Seek app (owner choices from mock-ups):
+//   • a bar at the bottom: "Menu" (the side menu that replaced the ⋮ menu),
+//     a large round "New session" button raised in the middle, "Dashboard";
+//     words under the three icons;
+//   • under the app name: "Sessions" (how many are saved);
+//   • "Import videos…" for the user's own videos; then the two Find buttons
+//     for photos and videos already in the app;
+//   • a "Support FaunaPulse" box (widgets/support_faunapulse.dart; no money
+//     link in Google Play builds);
+//   • no latest-session row (the owner preferred the space for the above).
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../capture/crop_export.dart';
 import '../logging/app_error_hooks.dart';
-import '../logging/device_storage.dart';
 import '../logging/error_reporter.dart';
-import '../logging/session_rename.dart';
+import '../logging/past_sessions.dart';
 import '../models/session_config.dart';
-import '../identification/identification_store.dart';
-import '../postprocess/post_detector.dart';
-import '../postprocess/video_detector.dart';
-import 'analysis_screen.dart';
+import '../widgets/external_link.dart';
+import '../widgets/support_faunapulse.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
-import 'identification_screen.dart';
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
-import 'session_summary_screen.dart';
-import 'video_analysis_screen.dart';
-import 'video_import_screen.dart';
-
-/// One past session found on disk: its folder name and log file, the real
-/// session [start]/[end] clock times read from the log (falling back to the
-/// file's last-modified time when a record is missing), how long it ran
-/// ([duration]), whether it stopped cleanly ([endedNormally]) and how much
-/// storage the whole session folder uses ([sizeBytes] — log + photos +
-/// diagnostic files). [end] and [duration] are null when the session has no
-/// end record (e.g. it crashed before writing one).
-class _PastSession {
-  final String name;
-  final File logFile;
-  final DateTime start;
-  final DateTime? end;
-  final Duration? duration;
-  final bool endedNormally;
-  final int sizeBytes;
-
-  /// Whether a post-hoc analysis output (post_detections.jsonl) exists for
-  /// this session (round 135) — shown as a small badge on the row.
-  final bool hasAnalysis;
-
-  /// Whether identification results (identification/summary_*.json) exist
-  /// for this session (round 208) — a second badge on the row.
-  final bool hasIdentification;
-
-  /// Whether the session has clips in `videos/` (round 227): its analysis
-  /// is "Run AI on videos" instead of "Run AI on photos".
-  final bool hasVideos;
-
-  const _PastSession(
-    this.name,
-    this.logFile,
-    this.start, {
-    this.end,
-    this.duration,
-    this.endedNormally = false,
-    this.sizeBytes = 0,
-    this.hasAnalysis = false,
-    this.hasIdentification = false,
-    this.hasVideos = false,
-  });
-}
-
-/// Actions in the home screen's top-right "⋮" overflow menu: app-level
-/// preferences and actions on ALL sessions at once (a single session is
-/// managed from its own summary screen). Future bulk actions (filtering,
-/// export, …) get their own value here. "Show setup tips" moved here from the
-/// settings sheet in round 159 — it is an app-level preference, and this menu
-/// is the established home for those (session settings stay on the camera
-/// screen, which needs the live camera).
-/// "AI models" (round 267) opens the one screen where detection and
-/// identification models are added and deleted.
-enum _HomeMenuAction { about, models, importVideos, toggleSetupTips, reportProblem, deleteAllSessions }
-
-/// Per-session actions in the gear menu on each "Previous sessions" row
-/// (round 182). The gear replaced a decorative histogram icon; it groups
-/// everything that manages ONE session without opening its summary: rename,
-/// gallery export, post-hoc analysis (same as the row long-press) and
-/// delete. Opening the summary stays the row tap.
-enum _SessionAction { rename, exportPhotos, analyze, identify, delete }
+import 'session_actions.dart';
+import 'sessions_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// Reads the sessions; tests give their own.
+  final Future<List<PastSession>> Function() scan;
+
+  const HomeScreen({super.key, this.scan = scanPastSessions});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SessionActions {
   bool _starting = false;
   bool _loadingSessions = true;
-  List<_PastSession> _sessions = const [];
+  /// Every session, newest first (counted here; the problem report offers
+  /// them).
+  List<PastSession> _sessions = const [];
 
   /// Whether the one-time setup reminder shows at session start. Mirrors the
   /// inverse of the persisted "hide" flag ([kHideSessionInfoPrefKey]); shown
-  /// as a check item in the ⋮ menu.
+  /// as a check item in the side menu.
   bool _showSetupTips = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSessions();
+    reloadSessions();
     _loadSetupTipsPref();
   }
 
@@ -137,184 +83,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setBool(kHideSessionInfoPrefKey, !_showSetupTips);
   }
 
-  /// Scans the app's sessions folder for past sessions (a sub-folder containing
-  /// a session.jsonl), newest first.
-  Future<void> _loadSessions() async {
-    setState(() => _loadingSessions = true);
-    final found = <_PastSession>[];
-    try {
-      final base =
-          (await getExternalStorageDirectory()) ??
-          await getApplicationDocumentsDirectory();
-      final dir = Directory('${base.path}/sessions');
-      if (await dir.exists()) {
-        for (final entity in dir.listSync()) {
-          if (entity is! Directory) continue;
-          final log = File('${entity.path}/session.jsonl');
-          if (log.existsSync()) {
-            // Read just the first/last records to learn when the session started,
-            // ended and how long it ran (cheap — no full scan, even for a huge log).
-            final span = await _readSessionSpan(log);
-            final sizeBytes = await folderSizeBytes(entity);
-            final start = span.startMs != null
-                ? DateTime.fromMillisecondsSinceEpoch(span.startMs!)
-                : log.statSync().modified;
-            final end = span.endMs != null
-                ? DateTime.fromMillisecondsSinceEpoch(span.endMs!)
-                : null;
-            final dur =
-                (span.startMs != null &&
-                    span.endMs != null &&
-                    span.endMs! >= span.startMs!)
-                ? Duration(milliseconds: span.endMs! - span.startMs!)
-                : null;
-            found.add(
-              _PastSession(
-                entity.path.split('/').last,
-                log,
-                start,
-                end: end,
-                duration: dur,
-                endedNormally: span.endedNormally,
-                sizeBytes: sizeBytes,
-                hasAnalysis:
-                    File(
-                      '${entity.path}/${PostDetector.outputFileName}',
-                    ).existsSync() ||
-                    File(
-                      '${entity.path}/${VideoDetector.outputFileName}',
-                    ).existsSync(),
-                hasIdentification: IdentificationPaths(
-                  entity,
-                ).existingSummaries().isNotEmpty,
-                // Round 236: still a video session once its clips were
-                // deleted to free storage (its boxes stay).
-                hasVideos: VideoDetector.clipsOf(entity).isNotEmpty ||
-                    File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
-              ),
-            );
-          }
-        }
-      }
-      found.sort((a, b) => b.start.compareTo(a.start));
-    } catch (e) {
-      // Leave empty on any error (e.g. storage not ready).
-      logSwallowed('session_list_scan', e);
-    }
-    if (mounted) {
-      setState(() {
-        _sessions = found;
-        _loadingSessions = false;
-      });
-    }
-  }
-
-  /// Reads only the head and tail of a session log to recover its start time, end
-  /// time and clean-stop flag — the same cheap head/tail trick the summary screen
-  /// uses, so listing many sessions never scans a full (possibly huge) log.
-  Future<({int? startMs, int? endMs, bool endedNormally})> _readSessionSpan(
-    File log,
-  ) async {
-    int? startMs, endMs;
-    var endedNormally = false;
-    try {
-      final raf = await log.open();
-      try {
-        final len = await raf.length();
-        // Head: the first record is the session start.
-        final head = await raf.read(min(8192, len));
-        for (final l in utf8.decode(head, allowMalformed: true).split('\n')) {
-          if (l.contains('"start_of_session"')) {
-            startMs = (_tryDecode(l)?['time_ms'] as num?)?.toInt();
-            break;
-          }
-        }
-        // Tail: the last record (if any) is the session end.
-        final tailLen = min(16384, len);
-        await raf.setPosition(len - tailLen);
-        final tail = await raf.read(tailLen);
-        final tailLines = utf8
-            .decode(tail, allowMalformed: true)
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .toList();
-        for (final l in tailLines.reversed) {
-          if (l.contains('"end_of_session"')) {
-            final rec = _tryDecode(l);
-            endMs = (rec?['time_ms'] as num?)?.toInt();
-            endedNormally = rec?['ended_normally'] == true;
-            break;
-          }
-        }
-      } finally {
-        await raf.close();
-      }
-    } catch (e) {
-      // Leave nulls; a truncated/empty file just yields an unknown duration.
-      logSwallowed('session_duration_scan', e);
-    }
-    return (startMs: startMs, endMs: endMs, endedNormally: endedNormally);
-  }
-
-  Map<String, dynamic>? _tryDecode(String line) {
-    try {
-      return jsonDecode(line) as Map<String, dynamic>;
-    } catch (_) {
-      // Deliberately silent (B7-reviewed): a line truncated by a crash is
-      // expected in an append-only log, and this runs per line.
-      return null;
-    }
-  }
-
-  /// Formats a session length so the unit always matches the duration: **mm:ss**
-  /// under an hour, **hh:mm:ss** for 1–24 h, and **dd:hh:mm:ss** at a day or more
-  /// (sessions can run for days). Matches the live REC-banner clock's style.
-  String _formatDuration(Duration d) {
-    final total = d.inSeconds;
-    final days = total ~/ 86400;
-    final h = (total % 86400) ~/ 3600;
-    final m = (total % 3600) ~/ 60;
-    final s = total % 60;
-    String two(int v) => v.toString().padLeft(2, '0');
-    if (days > 0) return '${two(days)}:${two(h)}:${two(m)}:${two(s)}';
-    if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
-    return '${two(m)}:${two(s)}';
-  }
-
-  /// A small rounded "pill" showing the session length. Amber with a timer icon
-  /// for a normally-ended session; orange with a warning icon and the word
-  /// "incomplete" when there is no end record (a crash / force-stop).
-  Widget _durationPill(_PastSession s) {
-    final complete = s.duration != null;
-    final color = complete ? Colors.amber : Colors.orange;
-    final label = complete ? _formatDuration(s.duration!) : 'incomplete';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            complete ? Icons.timer_outlined : Icons.warning_amber_rounded,
-            size: 13,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
+  @override
+  Future<void> reloadSessions() async {
+    final found = await widget.scan();
+    if (!mounted) return;
+    setState(() {
+      _sessions = found;
+      _loadingSessions = false;
+    });
   }
 
   Future<void> _start() async {
@@ -337,430 +113,8 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => CameraSessionScreen(initialConfig: config),
       ),
     );
-    // A new session may have been recorded; refresh the list on return.
-    _loadSessions();
-  }
-
-  /// Opens the analysis screen, optionally preselecting [sessionDirPath]
-  /// (a long-press on a session row). Rescans on return — a finished run
-  /// adds the row's "analyzed" badge.
-  Future<void> _openAnalysis([String? sessionDirPath]) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AnalysisScreen(initialSessionPath: sessionDirPath),
-      ),
-    );
-    _loadSessions();
-  }
-
-  /// The video twin of [_openAnalysis] (round 227).
-  Future<void> _openVideoAnalysis([String? sessionDirPath]) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => VideoAnalysisScreen(initialSessionPath: sessionDirPath),
-      ),
-    );
-    _loadSessions();
-  }
-
-  /// Picks videos and opens the import screen (round 227). The picker
-  /// copies every file into the app's cache before it returns, which takes
-  /// a while for long videos, so a dialog says so meanwhile.
-  Future<void> _importVideos() async {
-    var dialogShown = false;
-    var failed = false;
-    FilePickerResult? picked;
-    try {
-      picked = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        allowMultiple: true,
-        onFileLoading: (status) {
-          if (status != FilePickerStatus.picking || dialogShown || !mounted) {
-            return;
-          }
-          dialogShown = true;
-          showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => const PopScope(
-              canPop: false,
-              child: AlertDialog(
-                content: Row(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(width: 16),
-                    Expanded(child: Text('Reading the videos…')),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      failed = true;
-      logSwallowed('video_pick', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the videos: $e')),
-        );
-      }
-    } finally {
-      if (dialogShown && mounted) Navigator.of(context).pop();
-    }
-    if (!mounted) return;
-    if (picked == null) {
-      // Closing the picker often means the video was not in the list.
-      if (!failed) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(videoPickTipSnackBar(onRetry: _importVideos));
-      }
-      return;
-    }
-    final files = [
-      for (final f in picked.files)
-        if (f.path != null) PickedVideo(f.path!, f.name, f.size),
-    ];
-    if (files.isEmpty) return;
-    final imported = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => VideoImportScreen(files: files)),
-    );
-    await _loadSessions();
-    // The import screen's "Run AI on these videos" returns the new folder.
-    if (imported != null && mounted) await _openVideoAnalysis(imported);
-  }
-
-  /// Opens the identification screen for one session (round 208); rescans
-  /// on return so the row's badge appears after a finished run.
-  Future<void> _openIdentification(_PastSession s) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => IdentificationScreen(sessionDir: s.logFile.parent),
-      ),
-    );
-    _loadSessions();
-  }
-
-  Future<void> _openSession(_PastSession s) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SessionSummaryScreen(logFile: s.logFile),
-      ),
-    );
-    // The summary can DELETE its session (round 90) — rescan so the list and
-    // the per-session sizes stay accurate.
-    _loadSessions();
-  }
-
-  /// Rename dialog for one session (round 182). The heavy lifting —
-  /// folder rename, start-record update, `session_renamed` audit record —
-  /// is `renameSession` (logging/session_rename.dart); this dialog only
-  /// collects the name and shows any failure inline so the user can correct
-  /// it without retyping.
-  Future<void> _renameSession(_PastSession s) async {
-    final controller = TextEditingController(text: s.name);
-    String? error;
-    var busy = false;
-    final renamed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Rename session'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                enabled: !busy,
-                decoration: InputDecoration(
-                  labelText: 'Session name',
-                  border: const OutlineInputBorder(),
-                  errorText: error,
-                  errorMaxLines: 3,
-                  helperText:
-                      'Letters, digits, spaces, - and _ '
-                      '(anything else becomes _).',
-                  helperMaxLines: 2,
-                ),
-                onChanged: (_) {
-                  if (error != null) setSt(() => error = null);
-                },
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Renames the session folder and updates the name inside the '
-                'session\'s data log too (the change itself is documented '
-                'there as a "session_renamed" record). Photos keep their '
-                'file names.',
-                style: TextStyle(fontSize: 12, color: Colors.white54),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: busy ? null : () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setSt(() => busy = true);
-                      try {
-                        await renameSession(
-                          s.logFile.parent,
-                          controller.text,
-                        );
-                        if (ctx.mounted) Navigator.of(ctx).pop(true);
-                      } on SessionRenameException catch (e) {
-                        setSt(() {
-                          busy = false;
-                          error = e.message;
-                        });
-                      } catch (e) {
-                        setSt(() {
-                          busy = false;
-                          error = 'Rename failed: $e';
-                        });
-                      }
-                    },
-              child: const Text('Rename'),
-            ),
-          ],
-        ),
-      ),
-    );
-    final newName = sanitizeSessionName(controller.text);
-    controller.dispose();
-    if (renamed == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Session renamed to "$newName".')),
-      );
-      _loadSessions();
-    }
-  }
-
-  /// Whole-session gallery copy from the gear menu (round 182): the same
-  /// scan → confirm → copy flow as the summary's Photos-tab "Copy photos"
-  /// button (shared `scanSessionPhotos` / `exportPhotosToGallery` helpers),
-  /// with the progress shown as a modal dialog since this screen has no
-  /// inline slot.
-  Future<void> _exportSessionPhotos(_PastSession s) async {
-    final scan = await scanSessionPhotos(s.logFile.parent.path);
-    if (!mounted) return;
-    if (scan.files.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This session has no saved photos to export.'),
-        ),
-      );
-      return;
-    }
-    final album = galleryAlbumName(s.name);
-    final n = scan.referenceCount;
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Copy ${scan.files.length} photos to Gallery?'),
-        content: Text(
-          'Copies every saved photo of this session into the phone\'s '
-          'Gallery app, as the album "Pictures/FaunaPulse/$album". '
-          '${n > 0 ? 'Includes $n reference photo${n == 1 ? '' : 's'} '
-                    '(fixed-interval shots, taken whether or not anything '
-                    'was detected). ' : ''}'
-          'The copies take about ${formatBytes(scan.bytes)} of extra '
-          'storage; the originals stay in the session folder. Photos '
-          'already copied are skipped, so re-running is safe.',
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Copy',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (sure != true || !mounted) return;
-
-    // Modal progress: the export runs in chunks, so the bar moves while the
-    // dialog blocks other taps. `progressOpen` guards the final pop against
-    // the Android back button dismissing the dialog first.
-    var done = 0;
-    final total = scan.files.length;
-    StateSetter? progressUpdate;
-    var progressOpen = true;
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text('Copying photos…'),
-          content: StatefulBuilder(
-            builder: (ctx, setSt) {
-              progressUpdate = setSt;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LinearProgressIndicator(
-                    value: total == 0 ? null : done / total,
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Photo $done of $total', style: const TextStyle(fontSize: 13)),
-                ],
-              );
-            },
-          ),
-        ),
-      ).then((_) => progressOpen = false),
-    );
-    final res = await exportPhotosToGallery(
-      scan.files,
-      album,
-      onProgress: (d, _) {
-        done = d;
-        progressUpdate?.call(() {});
-      },
-    );
-    if (!mounted) return;
-    if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
-    final msg = !res.supported
-        ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
-              'older Android. The photos are still on the phone in the '
-              'session folder (reachable over USB).'
-        : 'Copied ${res.exported} photos to Gallery ▸ '
-              'Pictures/FaunaPulse/$album.'
-              '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
-              '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-    _loadSessions();
-  }
-
-  /// Delete ONE session from the gear menu (round 182) — since round 187
-  /// (the summary's red button retired with its Overview tab) the only
-  /// per-session delete entry point.
-  Future<void> _confirmDeleteSession(_PastSession s) async {
-    final size = s.sizeBytes > 0 ? ' (${formatBytes(s.sizeBytes)})' : '';
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this session?'),
-        content: Text(
-          'This permanently deletes "${s.name}"$size from the phone: the '
-          'data log, all metadata and every saved photo. '
-          'This cannot be undone.',
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (sure != true || !mounted) return;
-    try {
-      await s.logFile.parent.delete(recursive: true);
-    } catch (e) {
-      logSwallowed('session_delete', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete the session.')),
-        );
-      }
-      return;
-    }
-    _loadSessions();
-  }
-
-  /// Asks for typed confirmation, then deletes EVERY listed session.
-  ///
-  /// Bulk-deleting field data is the most destructive action in the app, so a
-  /// single stray tap must never be enough: the red button only arms once the
-  /// word "delete" is typed. Each recognized session folder is deleted
-  /// individually (never the whole `sessions/` root) so anything else placed
-  /// under `sessions/` — e.g. over USB — survives.
-  Future<void> _confirmDeleteAllSessions() async {
-    final sessions = List<_PastSession>.of(_sessions);
-    if (sessions.isEmpty) return;
-    final totalBytes = sessions.fold<int>(0, (sum, s) => sum + s.sizeBytes);
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (_) => DeleteAllSessionsDialog(
-        count: sessions.length,
-        totalBytes: totalBytes,
-      ),
-    );
-    if (sure != true || !mounted) return;
-
-    // Folders with thousands of photos take a while to delete — block the UI
-    // behind a progress dialog so nothing races the deletes.
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 16),
-            Expanded(child: Text('Deleting ${sessions.length} sessions…')),
-          ],
-        ),
-      ),
-    );
-    var failures = 0;
-    for (final s in sessions) {
-      try {
-        await s.logFile.parent.delete(recursive: true);
-      } catch (e) {
-        failures++;
-        logSwallowed('sessions_delete_all', e);
-      }
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop(); // dismiss progress dialog
-    if (failures > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not delete $failures session${failures == 1 ? '' : 's'}.',
-          ),
-        ),
-      );
-    }
-    _loadSessions();
-  }
-
-  /// The calendar date, e.g. `2026-06-22`.
-  String _dateOnly(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
-  }
-
-  /// The wall-clock time of day, `hh:mm:ss`.
-  String _timeOnly(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+    // A new session may have been recorded; refresh on return.
+    await reloadSessions();
   }
 
   /// Builds a diagnostic report from outside a session (e.g. after a crash and
@@ -820,11 +174,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (share == true && mounted) await ErrorReporter.share(saved);
   }
 
-  /// The top-right "⋮" menu (a PopupMenuButton — Android's standard
-  /// "more actions" button) for actions that affect all sessions at once.
-  /// The ⋮ menu's About dialog (round 183; replaced the landing-screen
-  /// tagline): a condensed version of the README's Overview, the app version
-  /// (from the build, so it can never drift) and a link to the public GitHub
+  /// The About dialog (round 183; replaced the landing-screen tagline): a
+  /// condensed version of the README's Overview, the app version (from the
+  /// build, so it can never drift) and a link to the public GitHub
   /// repository. Round 184: a custom dialog instead of `showAboutDialog` —
   /// its mandatory "View licenses" button drowned the About in hundreds of
   /// framework/package entries (owner feedback). The app's OWN license
@@ -853,521 +205,272 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _overflowMenu() {
-    return PopupMenuButton<_HomeMenuAction>(
-      icon: const Icon(Icons.more_vert, color: Colors.white70),
-      tooltip: 'All-session actions',
-      onSelected: (action) {
-        switch (action) {
-          case _HomeMenuAction.about:
-            _showAbout();
-          case _HomeMenuAction.models:
-            openModelsScreen(context);
-          case _HomeMenuAction.importVideos:
-            _importVideos();
-          case _HomeMenuAction.toggleSetupTips:
-            _toggleSetupTips();
-          case _HomeMenuAction.reportProblem:
+  /// The menu's "Support FaunaPulse": the home screen's box in a dialog.
+  Future<void> _showSupport() => showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
+      content: SingleChildScrollView(
+        child: SupportFaunaPulseCard(
+          framed: false,
+          onReportProblem: () {
+            Navigator.of(ctx).pop();
             _reportProblem();
-          case _HomeMenuAction.deleteAllSessions:
-            _confirmDeleteAllSessions();
-        }
-      },
-      itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: _HomeMenuAction.about,
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, size: 20, color: Colors.white70),
-              SizedBox(width: 10),
-              Text('About FaunaPulse'),
-            ],
-          ),
+          },
         ),
-        const PopupMenuItem(
-          value: _HomeMenuAction.models,
-          child: Row(
-            children: [
-              Icon(Icons.download, size: 20, color: Colors.white70),
-              SizedBox(width: 10),
-              Text('Download & import models'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        // Round 227: videos filmed elsewhere become a session; the AI runs
-        // on them afterwards ("Run AI on videos").
-        const PopupMenuItem(
-          value: _HomeMenuAction.importVideos,
-          child: Row(
-            children: [
-              Icon(Icons.video_library_outlined, size: 20, color: Colors.white70),
-              SizedBox(width: 10),
-              Text('Import videos…'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        // An explicit checkbox glyph instead of CheckedPopupMenuItem
-        // (round 184): its unchecked state was just blank space, so the
-        // owner could not tell whether the option was on or off.
-        PopupMenuItem(
-          value: _HomeMenuAction.toggleSetupTips,
-          child: Row(
-            children: [
-              Icon(
-                _showSetupTips
-                    ? Icons.check_box
-                    : Icons.check_box_outline_blank,
-                size: 20,
-                color: _showSetupTips
-                    ? Colors.lightBlueAccent
-                    : Colors.white54,
-              ),
-              const SizedBox(width: 10),
-              const Flexible(
-                child: Text('Show setup tips at session start'),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        // Moved here from the landing screen's action block (round 190,
-        // owner request) — still always available, one tap further away.
-        const PopupMenuItem(
-          value: _HomeMenuAction.reportProblem,
-          child: Row(
-            children: [
-              Icon(Icons.bug_report_outlined, size: 20, color: Colors.white70),
-              SizedBox(width: 10),
-              Text('Report a problem'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: _HomeMenuAction.deleteAllSessions,
-          enabled: _sessions.isNotEmpty,
-          child: Row(
-            children: [
-              Icon(
-                Icons.delete_sweep,
-                size: 20,
-                color: _sessions.isNotEmpty
-                    ? Colors.red.shade300
-                    : Colors.white38,
-              ),
-              const SizedBox(width: 10),
-              const Text('Delete all sessions…'),
-            ],
-          ),
-        ),
-      ],
-    );
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
+    ),
+  );
+
+  Future<void> _openSessions() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
+    await reloadSessions();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Stack(
+  Future<void> _openDashboard() =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DashboardScreen()));
+
+  final _scaffold = GlobalKey<ScaffoldState>();
+
+  /// The side menu, opened with "Menu" at the bottom left (round 277, owner;
+  /// was the ⋮ menu at the top right): Download & import models first, About
+  /// FaunaPulse last.
+  Widget _drawer() {
+    Widget item(IconData icon, String text, VoidCallback onTap) => ListTile(
+      leading: Icon(icon),
+      title: Text(text),
+      onTap: () {
+        Navigator.of(context).pop(); // the menu
+        onTap();
+      },
+    );
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
           children: [
-            Column(
-              children: [
-                const SizedBox(height: 24),
-                // One nature icon only (round 183): the camera icon that
-                // used to sit beside it read as a "take a photo" button.
-                // The old tagline is gone too — what the app does now lives
-                // in the ⋮ menu's About dialog.
-                const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
-                const SizedBox(height: 8),
-                const Text(
-                  'FaunaPulse',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                // The three actions render as one equal-width stack
-                // (round 185): IntrinsicWidth sizes the column to its
-                // widest button and the stretch alignment pulls the other
-                // two up to it, so the block reads as a unit whatever the
-                // labels' lengths.
-                Center(
-                  child: IntrinsicWidth(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: _starting ? null : _start,
-                          icon: _starting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.videocam),
-                          label: const Text('New session'),
-                        ),
-                        const SizedBox(height: 6),
-                        // Post-hoc analysis (round 135): run a (bigger)
-                        // detector over a finished session's saved photos —
-                        // no camera, no time limit.
-                        OutlinedButton.icon(
-                          onPressed: _openAnalysis,
-                          icon: const Icon(
-                            Icons.auto_awesome_outlined,
-                            size: 18,
-                          ),
-                          label: const Text('Find animals in photos'),
-                        ),
-                        // Round 227: the same for imported videos, shown
-                        // once a session has videos (import: ⋮ menu).
-                        if (_sessions.any((s) => s.hasVideos)) ...[
-                          const SizedBox(height: 6),
-                          OutlinedButton.icon(
-                            onPressed: _openVideoAnalysis,
-                            icon: const Icon(
-                              Icons.movie_filter_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Find animals in videos'),
-                          ),
-                        ],
-                        // "Report a problem" moved into the ⋮ menu
-                        // (round 190, owner request — above Delete all
-                        // sessions); it stays reachable after a crash and
-                        // restart, just one tap further away.
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // A full-width rule marks where the action block ends and
-                // the session history begins (round 183).
-                const Divider(height: 1, color: Colors.white24),
-                const SizedBox(height: 2),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Previous sessions',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const Spacer(),
-                      // Cross-session totals + activity charts (round 186).
-                      TextButton.icon(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const DashboardScreen(),
-                          ),
-                        ),
-                        icon: const Icon(Icons.insights, size: 18),
-                        label: const Text('Dashboard'),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(child: _sessionList()),
-              ],
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 16),
+              child: Row(
+                children: [
+                  Icon(Icons.emoji_nature, size: 36, color: Colors.amber),
+                  SizedBox(width: 12),
+                  Text('FaunaPulse', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
-            // Floats over the top-right corner (the title block stays centered).
-            Positioned(top: 0, right: 4, child: _overflowMenu()),
+            const Divider(height: 1),
+            item(Icons.download, 'Download & import models', () => openModelsScreen(context)),
+            // An explicit check box (round 184): a blank space for "off"
+            // left the owner unsure whether the option was on. The menu stays
+            // open, so the tick is seen to change.
+            ListTile(
+              leading: Icon(
+                _showSetupTips ? Icons.check_box : Icons.check_box_outline_blank,
+                color: _showSetupTips ? Colors.lightBlueAccent : Colors.white54,
+              ),
+              title: const Text('Show setup tips at session start'),
+              onTap: _toggleSetupTips,
+            ),
+            // Round 190 (owner request): always reachable, also after a crash
+            // and restart.
+            item(Icons.bug_report_outlined, 'Report a problem', _reportProblem),
+            const Divider(height: 1),
+            item(Icons.share_outlined, 'Share FaunaPulse', shareFaunaPulse),
+            item(Icons.volunteer_activism_outlined, 'Support FaunaPulse', _showSupport),
+            item(Icons.info_outline, 'About FaunaPulse', _showAbout),
           ],
         ),
       ),
     );
   }
 
-  Widget _sessionList() {
-    if (_loadingSessions) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_sessions.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No recorded sessions yet.\nTap "New session" to start one.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54),
-          ),
+  /// The large round button raised in the middle of the bottom bar.
+  Widget _newSessionButton() => SizedBox(
+    width: 72,
+    height: 72,
+    child: FloatingActionButton(
+      heroTag: 'home_new_session',
+      tooltip: 'New session',
+      shape: const CircleBorder(),
+      onPressed: _starting ? null : _start,
+      child: _starting
+          ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3))
+          : const Icon(Icons.videocam, size: 36),
+    ),
+  );
+
+  Widget _bottomBar() => BottomAppBar(
+    height: 76,
+    padding: EdgeInsets.zero,
+    child: Row(
+      children: [
+        Expanded(
+          child: _BarItem(icon: Icons.menu, label: 'Menu', onTap: () => _scaffold.currentState?.openDrawer()),
         ),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _loadSessions,
-      child: ListView.separated(
-        itemCount: _sessions.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (_, i) {
-          final s = _sessions[i];
-          return ListTile(
-            // The gear menu (round 182) replaced a purely decorative
-            // histogram icon: per-session management (rename, export,
-            // analyze, delete) lives here, opening the summary stays the
-            // row tap.
-            leading: PopupMenuButton<_SessionAction>(
-              icon: const Icon(Icons.settings, color: Colors.amber),
-              tooltip: 'Session actions',
-              onSelected: (a) {
-                switch (a) {
-                  case _SessionAction.rename:
-                    _renameSession(s);
-                  case _SessionAction.exportPhotos:
-                    _exportSessionPhotos(s);
-                  case _SessionAction.analyze:
-                    s.hasVideos
-                        ? _openVideoAnalysis(s.logFile.parent.path)
-                        : _openAnalysis(s.logFile.parent.path);
-                  case _SessionAction.identify:
-                    _openIdentification(s);
-                  case _SessionAction.delete:
-                    _confirmDeleteSession(s);
-                }
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: _SessionAction.rename,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.drive_file_rename_outline),
-                    title: Text('Rename session'),
-                  ),
+        // The word under the raised button; tapping it starts too.
+        Expanded(
+          child: InkWell(
+            onTap: _starting ? null : _start,
+            child: const Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'New session',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
-                const PopupMenuItem(
-                  value: _SessionAction.exportPhotos,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.photo_library_outlined),
-                    title: Text('Copy photos to Gallery'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: _SessionAction.analyze,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.auto_awesome_outlined),
-                    title: Text(
-                      s.hasVideos ? 'Find animals in videos' : 'Find animals in photos',
-                    ),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: _SessionAction.identify,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.biotech_outlined),
-                    title: Text('Identify organisms'),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: _SessionAction.delete,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_forever, color: Colors.red),
-                    title: Text(
-                      'Delete session',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            title: Row(
-              children: [
-                Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
-                if (s.hasAnalysis)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 6),
-                    child: Tooltip(
-                      message: 'Post-hoc analysis results exist',
-                      child: Icon(
-                        Icons.auto_awesome,
-                        size: 14,
-                        color: Colors.lightBlueAccent,
-                      ),
-                    ),
-                  ),
-                if (s.hasIdentification)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 6),
-                    child: Tooltip(
-                      message: 'Identification results exist',
-                      child: Icon(
-                        Icons.biotech,
-                        size: 14,
-                        color: Colors.greenAccent,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            // Two compact lines under the name: the calendar date with the
-            // folder's storage size on the right, then the start→end clock
-            // times on the left with a colour-coded duration pill on the right.
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _dateOnly(s.start),
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const Spacer(),
-                      const Icon(
-                        Icons.sd_storage_outlined,
-                        size: 13,
-                        color: Colors.white38,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        formatBytes(s.sizeBytes),
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.schedule,
-                        size: 13,
-                        color: Colors.white38,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        // "14:30:05 → 15:42:11" (end shown as "—" if the session
-                        // has no end record).
-                        '${_timeOnly(s.start)} → '
-                        '${s.end != null ? _timeOnly(s.end!) : '—'}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      const Spacer(),
-                      _durationPill(s),
-                    ],
-                  ),
-                ],
               ),
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openSession(s),
-            // Long-press = analyze THIS session (same screen the "Analyze
-            // saved photos" button opens, with the session preselected).
-            onLongPress: () => s.hasVideos
-                ? _openVideoAnalysis(s.logFile.parent.path)
-                : _openAnalysis(s.logFile.parent.path),
-          );
-        },
-      ),
-    );
-  }
-}
+          ),
+        ),
+        Expanded(child: _BarItem(icon: Icons.insights, label: 'Dashboard', onTap: _openDashboard)),
+      ],
+    ),
+  );
 
-/// The type-to-confirm dialog for "Delete all sessions". Pops `true` only when
-/// the user has typed `delete` and pressed the red button.
-///
-/// This is a real StatefulWidget (not a StatefulBuilder inside the caller) so
-/// the text field's controller is owned and disposed by the dialog's own
-/// State. Round 103's first field test crashed (fixed round 104) with an
-/// `InheritedElement '_dependents.isEmpty'` assertion because the caller
-/// disposed the controller — and pushed the progress dialog — while this
-/// dialog was still animating out with the keyboard focused; letting the
-/// framework drive the teardown order fixes that.
-class DeleteAllSessionsDialog extends StatefulWidget {
-  final int count;
-  final int totalBytes;
-  const DeleteAllSessionsDialog({
-    super.key,
-    required this.count,
-    required this.totalBytes,
-  });
-
-  @override
-  State<DeleteAllSessionsDialog> createState() =>
-      _DeleteAllSessionsDialogState();
-}
-
-class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
-  final _typed = TextEditingController();
-
-  @override
-  void dispose() {
-    _typed.dispose();
-    super.dispose();
-  }
-
-  void _close(bool result) {
-    // Dismiss the keyboard BEFORE popping — tearing the route down while the
-    // text field still holds focus is part of what crashed the first field
-    // test (see the class comment).
-    FocusManager.instance.primaryFocus?.unfocus();
-    Navigator.of(context).pop(result);
-  }
+  Widget _sectionText(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final armed = _typed.text.trim().toLowerCase() == 'delete';
-    return AlertDialog(
-      title: const Text('Delete ALL sessions?'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'This permanently deletes all ${widget.count} sessions '
-            '(${formatBytes(widget.totalBytes)}) from the phone — every data '
-            'log, all metadata and every saved photo. This cannot be undone.',
-            style: const TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _typed,
-            autofocus: true,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-              labelText: 'Type "delete" to confirm',
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => _close(false), child: const Text('Cancel')),
-        TextButton(
-          onPressed: armed ? () => _close(true) : null,
-          child: Text(
-            'Delete all',
-            style: TextStyle(
-              color: armed ? Colors.red : null,
-              fontWeight: FontWeight.bold,
+    final n = _sessions.length;
+    return Scaffold(
+      key: _scaffold,
+      drawer: _drawer(),
+      floatingActionButton: _newSessionButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: _bottomBar(),
+      body: SafeArea(
+        bottom: false, // the bottom bar keeps clear of the system bar
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: RefreshIndicator(
+              onRefresh: reloadSessions,
+              child: ListView(
+                // Room at the end for the raised New session button.
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 48),
+                children: [
+                  // One nature icon only (round 183): a camera icon beside
+                  // it read as a "take a photo" button.
+                  const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'FaunaPulse',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  _SessionsButton(
+                    subtitle: _loadingSessions
+                        ? '…'
+                        : n == 0
+                        ? 'None yet'
+                        : '$n saved',
+                    onTap: _openSessions,
+                  ),
+                  const SizedBox(height: 24),
+                  _sectionText('Have your own videos? Import them to find, track and identify the animals in them.'),
+                  OutlinedButton.icon(
+                    onPressed: () => importVideos(),
+                    icon: const Icon(Icons.video_library_outlined, size: 18),
+                    label: const Text('Import videos…'),
+                  ),
+                  const SizedBox(height: 24),
+                  _sectionText(
+                    'Photos and videos already in FaunaPulse (from time-lapse or motion sessions, or '
+                    'imported):',
+                  ),
+                  // Round 135: a (bigger) detector over saved photos, no
+                  // camera, no time limit.
+                  OutlinedButton.icon(
+                    onPressed: () => openAnalysis(),
+                    icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                    label: const Text('Find animals in photos'),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () => openVideoAnalysis(),
+                    icon: const Icon(Icons.movie_filter_outlined, size: 18),
+                    label: const Text('Find animals in videos'),
+                  ),
+                  const SizedBox(height: 28),
+                  SupportFaunaPulseCard(onReportProblem: _reportProblem),
+                ],
+              ),
             ),
           ),
         ),
-      ],
+      ),
     );
   }
+}
+
+/// An icon with its word under it, in the bottom bar.
+class _BarItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _BarItem({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 26),
+        const SizedBox(height: 4),
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+      ],
+    ),
+  );
+}
+
+/// The wide "Sessions" button under the app name.
+class _SessionsButton extends StatelessWidget {
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _SessionsButton({required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+    onPressed: onTap,
+    style: OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.history, size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Sessions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right),
+      ],
+    ),
+  );
 }
 
 /// Shown after a problem report is written to disk: where it landed (with
@@ -1411,16 +514,7 @@ class ReportSavedDialog extends StatelessWidget {
           // Round 189 (owner request): the public issue tracker as the
           // suggested channel — open an issue and paste the report's text.
           InkWell(
-            onTap: () async {
-              try {
-                await launchUrl(
-                  Uri.parse(ErrorReporter.githubIssuesUrl),
-                  mode: LaunchMode.externalApplication,
-                );
-              } catch (e) {
-                logSwallowed('report_open_issues', e);
-              }
-            },
+            onTap: () => openExternalLink(ErrorReporter.githubIssuesUrl, 'report_open_issues'),
             child: const Text.rich(
               TextSpan(
                 style: TextStyle(fontSize: 12, color: Colors.white54),
@@ -1456,24 +550,7 @@ class ReportSavedDialog extends StatelessWidget {
   }
 }
 
-/// Shown when the video picker is closed without a choice (round 233). The
-/// picker's Downloads view lists only files Android marked as downloads, so a
-/// clip saved by another app (the owner's WhatsApp video) and then moved into
-/// Download is missing there, although the phone's own storage view and
-/// Videos list it. Public so it can be widget-tested standalone.
-SnackBar videoPickTipSnackBar({required VoidCallback onRetry}) => SnackBar(
-  duration: const Duration(seconds: 12),
-  // A snack bar with an action stays until tapped unless told otherwise.
-  persist: false,
-  content: const Text(
-    'Video not in the list? In the file window, tap ☰ (top left) and '
-    'choose Videos, or your phone\'s name and then the same folder. The '
-    'Downloads view hides some files, for example videos saved by WhatsApp.',
-  ),
-  action: SnackBarAction(label: 'Try again', onPressed: onRetry),
-);
-
-/// The ⋮ menu's About dialog content (extracted as a public widget in round
+/// The menu's About dialog content (extracted as a public widget in round
 /// 193 so it can be widget-tested standalone, like [DeleteAllSessionsDialog]).
 /// [version] is the display string from the build (null when PackageInfo
 /// failed). The "Third-party licenses" action PUSHES the auto-generated
@@ -1522,16 +599,7 @@ class AboutFaunaPulseDialog extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             InkWell(
-              onTap: () async {
-                try {
-                  await launchUrl(
-                    Uri.parse(ErrorReporter.githubRepoUrl),
-                    mode: LaunchMode.externalApplication,
-                  );
-                } catch (e) {
-                  logSwallowed('about_open_github', e);
-                }
-              },
+              onTap: () => openExternalLink(ErrorReporter.githubRepoUrl, 'about_open_github'),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

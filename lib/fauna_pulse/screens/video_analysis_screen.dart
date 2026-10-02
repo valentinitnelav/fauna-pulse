@@ -1,8 +1,8 @@
 // FaunaPulse (round 227): "Run AI on videos", the video twin of "Run AI on
 // photos" (analysis_screen.dart).
 //
-// The user picks a session with clips in `videos/` (imported from the home
-// ⋮ menu), a detection model, how many frames per second to look at and the
+// The user picks a session with clips in `videos/` (imported with "Import
+// videos…", on this screen since round 277), a detection model, how many frames per second to look at and the
 // area to analyze; the clips then run through the detector on the phone
 // (postprocess/video_detector.dart) while a panel shows the clip, position,
 // speed and battery temperature. Results go to `video_detections.jsonl` in
@@ -48,6 +48,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
+import '../logging/past_sessions.dart' show sessionsRoot;
 import '../identification/identification_choice.dart';
 import '../models/model_catalog.dart';
 import '../models/roi.dart';
@@ -68,6 +69,7 @@ import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
 import 'models_screen.dart';
+import 'video_import_screen.dart' show pickAndImportVideos;
 
 /// Persisted settings of the video analysis (shared_preferences
 /// `video_analysis_*`, like `analysis_*` for photos; not SessionConfig,
@@ -365,10 +367,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final found = <_VideoSession>[];
     try {
       var dir = widget.sessionsDir;
-      if (dir == null) {
-        final base = (await getExternalStorageDirectory()) ?? await getApplicationDocumentsDirectory();
-        dir = Directory('${base.path}/sessions');
-      }
+      dir ??= await sessionsRoot();
       if (!dir.existsSync()) return found;
       for (final entity in dir.listSync().whereType<Directory>()) {
         final files = VideoDetector.clipsOf(entity);
@@ -937,7 +936,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                     label: 'Runs a detector over a session\'s videos, frame by frame (no camera involved).',
                     labelStyle: TextStyle(color: Colors.white70, fontSize: 13),
                     helperText:
-                        'For videos imported from the home screen\'s ⋮ menu. There is no real-time limit, '
+                        'For imported videos and video bursts. There is no real-time limit, '
                         'so a bigger model than the live one can be used; it only takes longer.',
                   ),
                   const SizedBox(height: 16),
@@ -1050,13 +1049,44 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
+  /// Round 277: videos are imported here too (also with the home screen's
+  /// "Import videos…"); the new session is chosen once the import is done.
+  Future<void> _importVideos() async {
+    final before = {for (final s in _sessions) s.dir.path};
+    final imported = await pickAndImportVideos(context);
+    final sessions = await _scanSessions();
+    if (!mounted) return;
+    setState(() => _sessions = sessions);
+    final added = sessions.where((s) => imported != null ? s.dir.path == imported : !before.contains(s.dir.path));
+    if (added.isNotEmpty) _select(added.first);
+  }
+
+  Widget _importButton(String label) => Align(
+    alignment: Alignment.centerLeft,
+    child: TextButton.icon(
+      onPressed: _busy ? null : _importVideos,
+      icon: const Icon(Icons.video_library_outlined, size: 18),
+      label: Text(label),
+    ),
+  );
+
   Widget _sessionPicker() {
     if (_sessions.isEmpty) {
-      return const Text(
-        'No sessions with videos yet. Import videos from the home screen\'s ⋮ menu.',
-        style: TextStyle(color: Colors.white54),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('No sessions with videos yet.', style: TextStyle(color: Colors.white54)),
+          _importButton('Import videos…'),
+        ],
       );
     }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_sessionDropdown(), _importButton('Import other videos…')],
+    );
+  }
+
+  Widget _sessionDropdown() {
     return DropdownButtonFormField<_VideoSession>(
       initialValue: _session,
       isExpanded: true,

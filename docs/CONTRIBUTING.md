@@ -164,5 +164,5 @@ private session data, signing credentials or model weights.
 ## License
 
 The project is **AGPL-3.0** (see [`LICENSE`](../LICENSE)), inherited from the
-Ultralytics `ultralytics_yolo` plugin it builds upon. The vendored plugin
-retains its own `LICENSE`. Contributions are made under AGPL-3.0.
+Ultralytics `ultralytics_yolo` plugin it builds upon. That plugin
+(`packages/ultralytics_yolo/`) retains its own `LICENSE`. Contributions are made under AGPL-3.0.

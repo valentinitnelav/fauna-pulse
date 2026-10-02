@@ -48,7 +48,7 @@ android {
         // user-visible and renaming it would mean moving all native sources.)
         applicationId = "com.faunapulse.app"
         // Pinned (round 158), see the compileSdk note above.
-        // minSdk 24 = Android 7.0. The vendored plugin's own floor is 23 (LiteRT),
+        // minSdk 24 = Android 7.0. The Ultralytics plugin's own floor is 23 (LiteRT),
         // but the release build already dexed at 24, so this changes nothing and
         // keeps the supported-device set stable.
         minSdk = 24

@@ -2,7 +2,7 @@
 
 Field app for detecting and timing flower-visiting insects. This folder holds
 all app-specific Dart code; `lib/main.dart` points at the home screen. The app
-sits on a **vendored, modified** Ultralytics YOLO plugin
+sits on a **modified copy** of the Ultralytics YOLO plugin
 (`packages/ultralytics_yolo/`, camera + on-device detector; see
 `packages/ultralytics_yolo/FAUNAPULSE_FORK.md` for what the fork changed) plus
 a small native app shell (`android/.../MainActivity.kt`, high-res crop +

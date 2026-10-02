@@ -20,7 +20,7 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
 | `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
-The simplest way (round 268): home screen ⋮ → **Download & import models** → *Available to download*; a name
+The simplest way (round 268): home screen Menu → **Download & import models** → *Available to download*; a name
 list brings its model along when the model is not on the phone yet (BioCLIP 2 and 2.5 with
 two name lists each, the insectDCT classifier with its class list; the list is
 `assets/model_downloads.json`, see `tool/model_downloads/README.md`).
@@ -40,7 +40,7 @@ header (`model_id`), so a renamed pack still finds a model whose name starts wit
 (upper and lower case, "-" and "." alike: `bioclip-2.5` for `bioclip-25_image_fp16.tflite`).
 Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
-In the app: home screen ⋮ → **Download & import models** → *Import model files…* (also reached with
+In the app: home screen Menu → **Download & import models** → *Import model files…* (also reached with
 *Download & import models…* on the Identify screen), or *Download from a link…*. Since round 275 one
 import takes every kind of file: the app reads what each `.tflite` file is (an identification model
 gives one row of numbers per picture, a detection model a table of boxes) and puts it in its place,
@@ -64,7 +64,7 @@ animals and their track IDs, opens *Identify organisms*, which starts by itself,
 the results. The steps below are the same, only without the taps. Live detection sessions
 already have their track IDs: use the steps below.
 
-1. Open a session's gear menu (home screen) or its summary → Photos tab → **Identify organisms**.
+1. Open a session's ⋮ menu (Sessions screen) or its summary → Photos tab → **Identify organisms**.
 2. Pick the model and the label pack. The screen shows how many crops will be processed
    (one per photo per tracked insect, capped per track ID) and, after the first run on this
    phone, a time estimate.

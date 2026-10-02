@@ -30,7 +30,12 @@ echo "Building per-ABI release APKs for v${version}..."
 # build of the same release (same app, LOWER versionCode). The flag below keeps
 # the pubspec build number unchanged, so GitHub APKs and the Play AAB share one
 # versionCode and can update each other (RELEASE_PLAN.md, signing strategy).
-flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true
+# DONATION_LINK=true (round 277): these APKs are published outside Google
+# Play, so their "Support FaunaPulse" box links to GitHub Sponsors. The Play
+# bundle (security_release_gate.sh) must never get this flag: Google Play
+# allows donation links only for validated tax-exempt charities.
+flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true \
+  --dart-define=DONATION_LINK=true
 
 out="build/app/outputs/flutter-apk"
 mkdir -p dist

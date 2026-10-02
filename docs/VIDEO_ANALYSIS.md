@@ -22,7 +22,11 @@ Terms used below:
 
 ## 1. The workflow
 
-1. **Import or record**: home screen ⋮ → *Import videos…* for clips filmed elsewhere, or
+1. **Import or record**: *Import videos…* (a button on the home screen, also on the Find animals
+   in videos screen and in the Sessions screen's ⋮ menu) for clips filmed elsewhere. It opens
+   Android's photo picker (the camera's videos first); a video saved elsewhere, e.g. in
+   Download, is found with the picker's own ⋮ menu ("Browse"). The videos are copied, so they take storage twice
+   until the originals are deleted. Or
    record them with the app itself (round 238): capture trigger *Time-lapse*, *Save bursts
    as: Video*. Recorded clips are already the ROI square, carry the camera's own start
    time, and go straight to step 2 (their session summary opens on the Video tab with a

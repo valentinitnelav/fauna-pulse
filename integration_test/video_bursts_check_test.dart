@@ -5,7 +5,7 @@
 // only to: time-lapse, video bursts of 10 s every 25 s (15 s break), 15
 // frames per second, no camera sleep, no torch, no schedule, folder
 // "video_burst_check". The phone's saved settings are restored afterwards.
-// The recorded session stays on the phone (Previous sessions) for a look and
+// The recorded session stays on the phone (Sessions screen) for a look and
 // for `adb pull`; delete it there when done.
 // Run:  flutter test integration_test/video_bursts_check_test.dart -d <serial> --no-uninstall
 // Always pass --no-uninstall (see video_decode_check_test.dart for why).

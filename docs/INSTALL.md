@@ -139,16 +139,16 @@ manually re-download the `.apk` every time a new version comes out.
 ### A3. Add detection models
 
 The app lists no model until one is downloaded or imported (round 268): the **Download & import models**
-screen (home screen ⋮ menu) offers MegaDetector V6 (common animals) and flat-bug and insectDCT
+screen (home screen: Menu, bottom left) offers MegaDetector V6 (common animals) and flat-bug and insectDCT
 (insects) for download. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:
 
-- **In-app (easiest):** open **FaunaPulse → ⋮ (home screen) → Download & import models → Import model
+- **In-app (easiest):** open **FaunaPulse → Menu (home screen, bottom left) → Download & import models → Import model
   files…**, then pick the `.tflite` file(s) from **Downloads** or another folder (to take every file of
   a folder: press and hold one file, then *Select all*). You can first copy the model into Downloads
   over USB. The app checks what each file is: a detection model, an identification model or a name
   list goes to its own list, and it asks before replacing a file of the same name (round 275).
-- **HTTPS download:** open **⋮ → Download & import models → Download from a link…** and paste a
+- **HTTPS download:** open **Menu → Download & import models → Download from a link…** and paste a
   direct HTTPS link to a model file or name list.
 
 Added models appear in the app's **model dropdown** at the start of a session.

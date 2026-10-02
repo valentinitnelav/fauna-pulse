@@ -14,7 +14,7 @@ explain why.
 
 - [ ] `flutter analyze`
 - [ ] `flutter test test/fauna_pulse`
-- [ ] Vendored plugin tests, if the plugin changed
+- [ ] Ultralytics plugin tests (`packages/ultralytics_yolo`), if the plugin changed
 - [ ] Android lint/native tests, if Android or Kotlin changed
 - [ ] On-device check, if camera, storage, permissions or native runtimes changed
 

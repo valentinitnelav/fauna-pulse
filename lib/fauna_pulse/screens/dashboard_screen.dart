@@ -1,6 +1,6 @@
 // FaunaPulse — cross-session dashboard (round 186).
 //
-// Reached from the "Previous sessions" header on the home screen. Answers
+// Reached from the home screen's "Dashboard" button. Answers
 // the citizen scientist's "what have I seen so far?": total insect visits
 // across every AI-mode session, watch time, visit lengths, and two activity
 // bar charts (by hour of day, by day/week). Motion and time-lapse sessions
@@ -18,10 +18,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/dashboard_stats.dart';
+import '../logging/past_sessions.dart' show sessionsRoot;
 import '../widgets/mini_bar_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -48,10 +48,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _load() async {
     final collected = <SessionDashboardStats>[];
     try {
-      final base =
-          (await getExternalStorageDirectory()) ??
-          await getApplicationDocumentsDirectory();
-      final root = Directory('${base.path}/sessions');
+      final root = await sessionsRoot();
       final dirs = <Directory>[];
       if (await root.exists()) {
         for (final entity in root.listSync()) {

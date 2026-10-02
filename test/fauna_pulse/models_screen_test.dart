@@ -18,6 +18,7 @@ import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_import.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/external_link.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 
@@ -30,7 +31,7 @@ final _downloads = ModelDownloads.parse('''
  "models": [
    {"id": "md", "kind": "detection_model", "title": "MegaDetector V6", "purpose": "Common animals.",
     "licence": "AGPL-3.0", "source": "https://github.com/microsoft/MegaDetector",
-    "cite": "Microsoft AI for Good Lab. MegaDetector V6.", "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
+    "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
    {"id": "fb", "kind": "detection_model", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
     "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266}},
    {"id": "flatbug-s", "kind": "detection_model", "title": "flat-bug s (larger)", "purpose": "Insects, a larger network.",
@@ -145,6 +146,9 @@ void main() {
     await _pump(tester);
     expect(find.text('Download & import models'), findsOneWidget);
     expect(find.text('Storage free: 12.4 GB'), findsOneWidget);
+    // Round 277 (owner): who made the models, and to cite the originals.
+    expect(find.textContaining('made by other research teams'), findsOneWidget);
+    expect(find.textContaining("keeps its creators' licence"), findsOneWidget);
     expect(find.text(_mdv6), findsOneWidget);
     expect(find.text('MegaDetector V6'), findsNothing, reason: 'no catalogue title for a file on the phone');
     expect(find.text('my_bees_640.tflite'), findsOneWidget);
@@ -156,9 +160,8 @@ void main() {
     expect(find.text('256 px (each picture is resized to this for the model)'), findsOneWidget);
     expect(find.text('int8'), findsOneWidget);
     expect(find.text('AGPL-3.0'), findsOneWidget);
-    expect(find.text('https://github.com/microsoft/MegaDetector'), findsOneWidget);
-    expect(find.text('How to cite'), findsOneWidget);
-    expect(find.text('Microsoft AI for Good Lab. MegaDetector V6.'), findsOneWidget);
+    // The source is a link: its authors say there how to cite the model (round 277).
+    expect(find.widgetWithText(ExternalLinkText, 'https://github.com/microsoft/MegaDetector'), findsOneWidget);
     await _close(tester);
     await _card(tester, 'my_bees_640.tflite');
     expect(find.text('bee, hoverfly'), findsOneWidget);

@@ -40,7 +40,7 @@ jobs:
       - name: Run application regression tests
         run: flutter test test/fauna_pulse
 
-      - name: Run vendored Flutter plugin tests
+      - name: Run Ultralytics plugin tests (packages/ultralytics_yolo)
         working-directory: packages/ultralytics_yolo
         run: |
           flutter pub get

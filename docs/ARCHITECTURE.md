@@ -10,13 +10,13 @@ defaults and invariants, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERV
 
 ## 1. The two sides
 
-The app is a **Flutter (Dart)** application running on top of a **vendored,
-modified Ultralytics YOLO plugin** whose performance-critical code is **native
+The app is a **Flutter (Dart)** application running on top of a **modified copy of
+the Ultralytics YOLO plugin** whose performance-critical code is **native
 Android (Kotlin)**.
 
 - **App (Dart):** `lib/fauna_pulse/` — all custom code (ROI, tracking, capture
   scheduling, logging, screens). `lib/main.dart` is the entry point.
-- **Vendored plugin:** `packages/ultralytics_yolo/` — the camera + detector.
+- **Ultralytics plugin:** `packages/ultralytics_yolo/` — the camera + detector.
   Dart widget (`YOLOView`) plus native Kotlin (CameraX capture + LiteRT
   inference). Forked from upstream commit `22b2e5d` and modified for
   ROI-crop inference and fast ROI capture.
@@ -108,7 +108,7 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
 
 ## 5. What the plugin fork changed vs upstream
 
-The vendored `packages/ultralytics_yolo/` is **not** stock — a new developer
+The Ultralytics plugin in `packages/ultralytics_yolo/` is **not** stock — a new developer
 reading its (upstream) docs won't see these. The authoritative fork document
 (upstream base and audit history, the full change list, fork-only invariants,
 and the re-audit checklist) is

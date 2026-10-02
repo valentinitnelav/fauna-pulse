@@ -13,10 +13,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
+import '../widgets/external_link.dart';
 
 /// One pickable session for the "Include session data" dropdown (round 191).
 typedef ReportSessionOption = ({String name, String logPath});
@@ -161,16 +161,7 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
               // Round 189 (owner request): point at the public issue tracker
               // as an alternative reporting channel, up front.
               InkWell(
-                onTap: () async {
-                  try {
-                    await launchUrl(
-                      Uri.parse(ErrorReporter.githubIssuesUrl),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  } catch (e) {
-                    logSwallowed('describe_open_issues', e);
-                  }
-                },
+                onTap: () => openExternalLink(ErrorReporter.githubIssuesUrl, 'describe_open_issues'),
                 child: const Text.rich(
                   TextSpan(
                     style: TextStyle(fontSize: 12, color: Colors.white54),

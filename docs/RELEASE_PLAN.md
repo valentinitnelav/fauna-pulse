@@ -100,6 +100,9 @@ Still open:
   `flutter build apk --release --split-per-abi` and stages
   `dist/faunapulse-v<version>-<abi>.apk` (arm64-v8a and armeabi-v7a) under the
   stable Obtainium-friendly names; `dist/` is git-ignored. Used in Phase 1 step 7.
+  Round 277: it builds with `--dart-define=DONATION_LINK=true`, so these APKs (outside
+  Google Play) show the GitHub Sponsors link in "Support FaunaPulse"; the Play bundle never
+  gets the flag (Google Play allows donation links only for validated tax-exempt charities).
 - [x] Third-party license attribution (round 193, owner decision reversing round 189
   for the store release): the About dialog carries a muted "Third-party licenses"
   button again. It opens Flutter's auto-generated LicensePage (zero maintenance,

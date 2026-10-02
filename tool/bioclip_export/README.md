@@ -243,7 +243,7 @@ adb push out/bioclip-2_flower-visitors-32fam_v1.fpack /sdcard/Download/
 ```
 
 (or copy them over USB / a file manager into the phone's Downloads folder). Then in
-FaunaPulse: home screen ⋮ menu, **Download & import models**, *Import model files…* (the model and the
+FaunaPulse: home screen Menu, **Download & import models**, *Import model files…* (the model and the
 label pack, both at once: the app sorts them). The app copies both files into its private storage; the
 Downloads copies can be deleted afterwards. `docs/IDENTIFICATION.md` explains the run and
 the results.

@@ -265,6 +265,8 @@ void main() {
     await tester.scrollUntilVisible(button, 200, scrollable: list);
     await tester.pump(); // lay out after the final ensureVisible jump
     expectAboveBottomInset(tester, button);
+    // Round 277 (owner): said before the import, that the videos are copies.
+    expect(find.textContaining('take storage twice'), findsOneWidget);
 
     await tester.tap(button);
     await _pumpUntil(tester, find.text('Find animals in these videos'));

@@ -2,27 +2,81 @@
 // them, for clips filmed outside FaunaPulse (the phone's camera app, a
 // collaborator, a published dataset).
 //
-// The home ⋮ menu picks the files; this screen shows what was picked and
+// [pickAndImportVideos] picks the files; this screen shows what was picked and
 // when each clip started (and how sure that is), lets the user fix the start
 // and name the session, then moves the files into a new session folder
-// (postprocess/video_import.dart). Detection runs later, on the "Run AI on
-// videos" screen, which the finished import offers to open.
+// (postprocess/video_import.dart). Detection runs later, on the "Find animals
+// in videos" screen, which the finished import offers to open.
+//
+// Round 277: the pick-and-import flow moved here from the home screen, so the
+// home screen's "Find animals in videos" (when no videos are imported yet),
+// the Sessions screen's ⋮ menu and the Find animals in videos screen start the
+// same flow. The home screen's ⋮ menu no longer has it. Later in round 277
+// (owner: start where the camera's videos are): Android's photo picker, whose
+// own ⋮ menu browses the phone's folders (the file picker and its round 233
+// hint are gone); a note on this screen says the videos are copies that take
+// storage twice.
 
 import 'dart:io';
 import 'dart:math';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, VideoInfo;
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
+import '../logging/past_sessions.dart' show sessionsRoot;
 import '../postprocess/video_import.dart';
 import '../postprocess/video_start_time.dart';
 import '../widgets/setting_help.dart';
+
+/// Picks videos with Android's photo picker and opens [VideoImportScreen]
+/// (round 227; the photo picker since round 277: it looks like the Gallery,
+/// lists the camera's videos first, and its own ⋮ menu browses the phone's
+/// folders). The picker copies every chosen file into the app's cache before
+/// it returns, which takes a while for long videos, so a dialog says so
+/// meanwhile. Closing the picker without a choice just returns (owner: the
+/// hint messages shown then were redundant with the picker's ⋮ menu). Returns
+/// the new session folder when the user chose to find animals in it right
+/// away, else null (also when a session was imported without that choice).
+Future<String?> pickAndImportVideos(BuildContext context) async {
+  // The photo picker has no progress report: the dialog opens under it and
+  // shows once it closes, while the chosen videos are copied.
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(child: Text('Reading the videos…')),
+          ],
+        ),
+      ),
+    ),
+  );
+  List<PickedVideo> files = const [];
+  try {
+    final picked = await ImagePicker().pickMultiVideo();
+    files = [for (final x in picked) PickedVideo(x.path, x.name, await x.length())];
+  } catch (e) {
+    logSwallowed('video_pick', e);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open the videos: $e')));
+    }
+  } finally {
+    if (context.mounted) Navigator.of(context).pop(); // the dialog
+  }
+  if (files.isEmpty || !context.mounted) return null;
+  return Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => VideoImportScreen(files: files)));
+}
 
 /// One file the picker returned: its path in the picker's cache, the name it
 /// had on the phone, and its size.
@@ -89,7 +143,16 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
   Future<void> _clearPickerCache() async {
     if (widget.infoFn != null) return; // tests: no picker ran
     try {
-      await FilePicker.platform.clearTemporaryFiles();
+      // The photo picker (round 277) puts each copy in a folder of its own
+      // in the app's cache; an imported clip was moved away already.
+      final cache = (await getTemporaryDirectory()).path;
+      for (final f in widget.files) {
+        final copy = File(f.path);
+        if (!copy.path.startsWith('$cache/')) continue;
+        if (await copy.exists()) await copy.delete();
+        final folder = copy.parent;
+        if (folder.path != cache && await folder.exists() && await folder.list().isEmpty) await folder.delete();
+      }
     } catch (e) {
       logSwallowed('video_import_clear_cache', e);
     }
@@ -133,10 +196,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       }
     }
     Directory? sessionsDir = widget.sessionsDir;
-    if (sessionsDir == null) {
-      final base = (await getExternalStorageDirectory()) ?? await getApplicationDocumentsDirectory();
-      sessionsDir = Directory('${base.path}/sessions');
-    }
+    sessionsDir ??= await sessionsRoot();
     int? free;
     if (widget.sessionsDir == null) {
       free = (await DeviceStorage.read(path: sessionsDir.parent.path)).freeBytes;
@@ -355,12 +415,16 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
                     '${(_rewrite! * 100).round()} %',
           textAlign: TextAlign.center,
         ),
-      ] else
+      ] else ...[
+        // Read before the import (round 277, owner).
+        const _StorageNote(),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: _enoughSpace ? _import : null,
           icon: const Icon(Icons.download_done),
           label: Text('Import ${plan.length} ${plan.length == 1 ? 'clip' : 'clips'}'),
         ),
+      ],
     ];
   }
 
@@ -451,4 +515,35 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
     if (d.inMinutes > 0) return '${d.inMinutes} min ${_two(d.inSeconds % 60)} s';
     return '${d.inSeconds} s';
   }
+}
+
+/// Round 277 (owner): imported videos are copies, so the user learns before
+/// importing that they take storage twice and how to get it back.
+class _StorageNote extends StatelessWidget {
+  const _StorageNote();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(8)),
+    child: const Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: 1),
+          child: Icon(Icons.sd_storage_outlined, size: 18, color: Colors.white70),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'The videos are copied into FaunaPulse, so they take storage twice: the originals stay '
+            'in your Gallery or folder. Nothing leaves the phone. If storage runs short, you can '
+            'delete the originals after the import; the session can copy its videos back to the '
+            'Gallery later (its summary, "Copy videos to gallery").',
+            style: TextStyle(fontSize: 13, color: Colors.white70),
+          ),
+        ),
+      ],
+    ),
+  );
 }

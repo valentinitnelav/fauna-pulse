@@ -1,14 +1,14 @@
 # FaunaPulse fork of the Ultralytics YOLO Flutter plugin
 
-**Who this is for:** a developer or reviewer who needs to know how this vendored
-plugin relates to its upstream, what was changed, and how to audit a newer
+**Who this is for:** a developer or reviewer who needs to know how this copy of
+the plugin relates to its upstream, what was changed, and how to audit a newer
 upstream release safely. Written in round 169 (perf review E10).
 
 ## Provenance
 
 - **Upstream:** [`ultralytics/yolo-flutter-app`](https://github.com/ultralytics/yolo-flutter-app),
   the official Ultralytics YOLO Flutter plugin.
-- **Base:** upstream commit `22b2e5d` (upstream label 0.6.4), vendored into the
+- **Base:** upstream commit `22b2e5d` (upstream label 0.6.4), copied into the
   FaunaPulse repo at `packages/ultralytics_yolo/` and consumed via a `path:`
   dependency. This copy is never published to pub.dev.
 - **License:** AGPL-3.0, unchanged (the app inherits it; see the repo root
@@ -19,7 +19,7 @@ upstream release safely. Written in round 169 (perf review E10).
 - The plugin's `README.md` stays upstream-verbatim below a short fork banner,
   on purpose: keeping it byte-close to upstream makes future diffs cleaner.
   This file is the fork's own documentation. Parts of that README (pub.dev
-  install instructions, the example app) do not apply to this vendored copy.
+  install instructions, the example app) do not apply to this copy.
 
 ## Upstream audit history
 

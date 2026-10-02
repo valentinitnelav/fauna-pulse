@@ -68,7 +68,7 @@ class IdentificationChoiceFields extends StatelessWidget {
                 'with many LABEL PACKS (lists of names with their taxonomy). A classifier such as insectDCT '
                 'knows a fixed set of classes: its CLASS LIST has the same file name as the model and is '
                 'chosen with it. Add files with Download & import models… below (also in the home '
-                "screen's ⋮ menu).",
+                "screen's Menu).",
           ),
           const SizedBox(height: 8),
         ],

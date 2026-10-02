@@ -37,11 +37,11 @@ void main() {
       expect(f.bytes, greaterThan(0), reason: f.name);
       expect(f.sha256, matches(RegExp(r'^[0-9a-f]{64}$')), reason: f.name);
     }
-    // Every known model says where it comes from, under which licence, and how to cite it.
+    // Every known model says where it comes from (where its authors say how to
+    // cite it) and under which licence.
     for (final d in [...c.detectors, ...c.identification]) {
       expect(d.licence, isNotEmpty, reason: d.id);
       expect(d.source, startsWith('https://'), reason: d.id);
-      expect(d.cite, isNotEmpty, reason: d.id);
     }
     expect(
       c.detectorOffers.first.file!.url.toString(),
@@ -85,7 +85,7 @@ void main() {
    {"id": "ok", "kind": "detection_model", "title": "Ok", "purpose": "p", "file": {"name": "ok.tflite", "bytes": 5, "url": "https://huggingface.co/x/resolve/main/ok.tflite"}},
    {"id": "OK", "kind": "detection_model", "title": "Again", "purpose": "p"},
    {"id": "what", "kind": "detector", "title": "Unknown kind", "purpose": "p"},
-   {"id": "known", "kind": "detection_model", "title": "Known", "purpose": "p", "cite": "Someone (2026)."},
+   {"id": "known", "kind": "detection_model", "title": "Known", "purpose": "p"},
    {"id": "cls", "kind": "identification_model", "title": "Cls", "purpose": "p", "file": {"name": "cls_224_fp16.tflite", "bytes": 3},
     "name_lists": [{"kind": "class_list", "title": "Its classes", "file": {"name": "cls_224_fp16.fpack", "bytes": 1}}]},
    {"id": "odd", "kind": "identification_model", "title": "Odd", "purpose": "p",
@@ -97,7 +97,6 @@ void main() {
     expect(c.detectors.first.file!.url.host, 'huggingface.co');
     expect(c.detectors.first.file!.sha256, isNull);
     expect(c.detectors.last.offered, isFalse);
-    expect(c.detectors.last.cite, 'Someone (2026).');
     expect(c.detectorOffers.map((d) => d.id), ['ok']);
   });
 

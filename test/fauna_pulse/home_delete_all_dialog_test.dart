@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/session_actions.dart';
 
 /// Pumps a host app whose button opens the dialog and — exactly like the home
 /// screen — pushes a "Deleting…" progress dialog in the same turn the confirm

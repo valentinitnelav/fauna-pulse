@@ -1,5 +1,5 @@
 // FaunaPulse (round 267): one screen for every model file, "Download & import
-// models" since round 271 (owner: "AI models" was too vague): home ⋮ menu,
+// models" since round 271 (owner: "AI models" was too vague): home screen menu,
 // and a "Download & import models…" link next to every model list.
 //
 // Two kinds of model, named for what they do (owner decision, round 267):
@@ -33,10 +33,15 @@
 // before replacing a file already on the phone. A file kept with the wrong
 // kind (imported before this round) is flagged.
 //
-// Round 276 (owner): the card shows the licence, source and citation of every
-// model in the app's list (assets/model_downloads.json, format 2), also of
-// files that are not offered, found by the first part of the file name (the
-// naming rule, tool/model_downloads/README.md); "not known" otherwise.
+// Round 276 (owner): the card shows the licence and source of every model in
+// the app's list (assets/model_downloads.json, format 3), also of files that
+// are not offered, found by the first part of the file name (the naming rule,
+// tool/model_downloads/README.md); "not known" otherwise.
+//
+// Round 277 (owner): a short credits note at the top says who made the models,
+// that FaunaPulse only adapted them for phones, that each keeps its creators'
+// licence, and asks to cite the original model from its source (a link in the
+// card; the list has no citations, which change and which the authors keep).
 
 import 'dart:io';
 
@@ -53,6 +58,7 @@ import '../models/model_file_kind.dart';
 import '../models/model_import.dart';
 import '../widgets/download_files_dialog.dart';
 import '../widgets/download_model_dialog.dart';
+import '../widgets/external_link.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 
 /// Opens the Download & import models screen; the caller re-reads its own
@@ -256,6 +262,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
       'and draws a box around each one: live in a session, or afterwards with "Find animals in '
       'photos / videos". An identification model then names what is inside each box ("Identify '
       'organisms"). You choose which one to use on the screen that runs it.';
+
+  static const _credits =
+      'Most of these models were made by other research teams. FaunaPulse tools only adapted them '
+      "to run on a phone, and each model keeps its creators' licence. If you publish results, please "
+      'cite the original model: tap ⓘ, then its Source, where the authors say how to cite it.';
 
   static const _namesHelp =
       'Each identification model needs a name list made for it: a label pack for BioCLIP, the '
@@ -562,7 +573,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label, style: helperTextStyle),
-                    SelectableText(value, style: const TextStyle(fontSize: 14)),
+                    if (_isLink(value))
+                      ExternalLinkText(value, logTag: 'model_card_link')
+                    else
+                      SelectableText(value, style: const TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
@@ -572,6 +586,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
       actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
     ),
   );
+
+  static bool _isLink(String value) => value.startsWith('https://') && !value.contains(RegExp(r'\s'));
 
   /// What the app's model list says about a file on the phone (round 276:
   /// every known model, found by the file's first part).
@@ -592,7 +608,6 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (d == null) _unknownOrigin,
     if (d != null && d.licence.isNotEmpty) ('Licence', d.licence),
     if (d != null && d.source.isNotEmpty) ('Source', d.source),
-    if (d != null && d.cite.isNotEmpty) ('How to cite', d.cite),
   ];
 
   static String _listKind(Map<String, dynamic>? h) => h == null
@@ -823,6 +838,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
                     _intro,
                     style: TextStyle(fontSize: 13.5, color: Colors.white70),
                   ),
+                  const SizedBox(height: 10),
+                  const _CreditsNote(_credits),
                   if (inv.storage.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -897,4 +914,30 @@ class _ModelsScreenState extends State<ModelsScreen> {
       ),
     );
   }
+}
+
+/// The credits note at the top of the screen (round 277).
+class _CreditsNote extends StatelessWidget {
+  final String text;
+  const _CreditsNote(this.text);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+    decoration: BoxDecoration(
+      border: Border.all(color: Colors.white24),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 1),
+          child: Icon(Icons.handshake_outlined, size: 18, color: Colors.white70),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13, color: Colors.white70))),
+      ],
+    ),
+  );
 }

@@ -437,14 +437,14 @@ Trigger: the owner measured the new Ultralytics demo app at **11–12 FPS**
 (yolo26n, Xiaomi 2107113SG) while FaunaPulse shows **7–8 FPS** (detector and
 pipeline) on the same phone. A fresh upstream copy sits at
 `/InsectDetectApp/yolo-flutter-app-main` and was compared file-by-file
-against the vendored Ultralytics plugin (`./fauna-pulse/packages/ultralytics_yolo`).
+against our copy of the Ultralytics plugin (`./fauna-pulse/packages/ultralytics_yolo`).
 
 ### C0. Verdict of the comparison — nothing big to port (recorded so we never redo this)
 
-Our vendored plugin is the **same generation** as upstream v0.6.10. Every
+Our copy of the Ultralytics plugin is the **same generation** as upstream v0.6.10. Every
 load-bearing upstream performance feature is already present in our fork:
 
-| Feature | Upstream v0.6.10 | Our vendored plugin |
+| Feature | Upstream v0.6.10 | Our plugin copy |
 |---|---|---|
 | RGBA_8888 camera output (no YUV→JPEG round-trip) | `YOLOView.kt:786` | `YOLOView.kt:987-992` |
 | LiteRT 2.x `CompiledModel`, GPU-first + CPU fallback | `LiteRtModel.kt` | same (plus our crash-guard blocklist) |
@@ -881,7 +881,7 @@ implementation, tests, and measurements are complete (codex's own instruction).
   ORT/QNN, or live-pipeline changes. The D0 parity conclusions are unaffected.
   Part D's "v0.6.10" statements are historical (true when written on
   2026-07-27) and are deliberately NOT rewritten.
-- The vendored plugin's pubspec still says `version: 0.6.4`. That is a stale
+- Our Ultralytics plugin's pubspec still says `version: 0.6.4`. That is a stale
   label, not the audit state: parity against 0.6.10 was established in Parts
   C/D (D1-D3 selectively ported r154-156). E10's FAUNAPULSE_FORK.md should
   record base version + audit dates so the label stops misleading.
@@ -955,18 +955,18 @@ session.
 
 ### E2. [x] Port upstream's deterministic native predictor cleanup
 
-- Verified defect: vendored `YOLOInstanceManager.kt:169-180` `dispose()` holds
+- Verified defect: our copy's `YOLOInstanceManager.kt:169-180` `dispose()` holds
   an EMPTY try block with the comment "YOLO class doesn't have a close()
   method, just remove from map", so every dispose leaks the native LiteRT
-  interpreter/delegates/buffers until GC maybe finalizes them. Vendored
-  `YOLO.kt` has no `close()` at all. Vendored `YOLOPlugin.kt:634` launches on
+  interpreter/delegates/buffers until GC maybe finalizes them. Our copy's
+  `YOLO.kt` has no `close()` at all. Our `YOLOPlugin.kt:634` launches on
   `GlobalScope`. This matters most for the r135+ batch analyze/cancel/
   re-analyze flows, which dispose predictors repeatedly.
 - Port from upstream 0.6.11: idempotent synchronized `YOLO.close()` closing its
   BasePredictor (upstream `YOLO.kt:730-734`); `YOLOInstanceManager.dispose()`
   removes the instance then closes it on `Dispatchers.IO` (upstream
   `YOLOInstanceManager.kt:116-119`); synchronized predict with temporary
-  thresholds restored in a real `finally` (upstream `:90-104`, the vendored
+  thresholds restored in a real `finally` (upstream `:90-104`, our
   copy restores in try/catch so a non-Exception Throwable corrupts them);
   reject prediction after close. Replace GlobalScope with a plugin-owned
   SupervisorJob scope cancelled on engine detach (upstream pattern:
@@ -1226,7 +1226,7 @@ remaining work.
   `predictSingleImage` channel round trip, and the native re-decode; the D3
   field data says Xiaomi heat dominates SAHI wall time, so this gate may well
   fail, and that outcome should be recorded as a skipped lead.
-- If justified: add `predictTiledImage` to the vendored plugin (decode the
+- If justified: add `predictTiledImage` to the Ultralytics plugin (decode the
   source JPEG once, sequentially crop + infer one tile at a time, recycle
   temporary bitmaps, return source dimensions + tile rectangles + per-tile
   detections; never parallelize access to the mutable predictor). Keep

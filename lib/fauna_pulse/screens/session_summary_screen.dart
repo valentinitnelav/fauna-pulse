@@ -3,8 +3,8 @@
 // Three tabs since round 187 (Photos | Graphs | Setup — the old Overview tab
 // was redundant with Setup and is gone: its dates/battery/storage rows lead
 // the Setup tab, the visit count sits above the Graphs tab's timeline, the
-// gallery export lives on the Photos tab, and Delete stayed only in the home
-// list's per-session gear menu).
+// gallery export lives on the Photos tab, and Delete stayed only in the
+// per-session menu of the session list (the Sessions screen since round 277)).
 //
 // Two loading stages, to stay fast even after a long, busy session:
 //  1. Headline stats read cheaply from just the first and last lines of the
@@ -41,6 +41,7 @@ import '../logging/device_storage.dart';
 import '../logging/track_source.dart';
 import '../logging/visit_stats.dart';
 import '../widgets/mini_bar_chart.dart';
+import '../widgets/session_tile.dart' show sessionDate, sessionTime;
 import '../widgets/setting_help.dart';
 import '../widgets/video_review_player.dart';
 import '../postprocess/photo_keep.dart';
@@ -971,7 +972,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// detector, no motion check.
   bool get _timeLapseSession => _setting('captureTrigger') == 'timelapse';
 
-  /// True for videos imported from the home ⋮ menu (round 227): no camera
+  /// True for videos imported with "Import videos…" (round 227): no camera
   /// settings, and the AI runs afterwards ("Run AI on videos").
   bool get _importedVideoSession => _startRec?['source'] == 'imported_video';
 
@@ -1781,15 +1782,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // the bare time isn't ambiguous.
     final endLabel = end == null
         ? 'unknown'
-        : (start != null && _dateOnly(end) != _dateOnly(start))
-        ? '${_dateOnly(end)}, ${_timeOnly(end)}'
-        : _timeOnly(end);
+        : (start != null && sessionDate(end) != sessionDate(start))
+        ? '${sessionDate(end)}, ${sessionTime(end)}'
+        : sessionTime(end);
     return [
       const Text('Overview', style: TextStyle(fontWeight: FontWeight.bold)),
       const SizedBox(height: 4),
       _stat('Capture mode', _captureModeLabel),
-      _stat('Date', start != null ? _dateOnly(start) : 'unknown'),
-      _stat('Start time', start != null ? _timeOnly(start) : 'unknown'),
+      _stat('Date', start != null ? sessionDate(start) : 'unknown'),
+      _stat('Start time', start != null ? sessionTime(start) : 'unknown'),
       _stat('End time', endLabel),
       // Round 126: the session's single location fix, when one was set.
       if (SessionLocation.fromJson(
@@ -1831,8 +1832,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
         ),
       _stat('Saved to', widget.logFile.parent.path),
-      // --- Storage (round 90; Delete moved to the home list's per-session
-      // gear menu when the Overview tab was retired, round 187) ---
+      // --- Storage (round 90; Delete moved to the per-session menu of the
+      // session list when the Overview tab was retired, round 187) ---
       _stat(
         'Session storage',
         _sessionSizeBytes != null
@@ -1847,18 +1848,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             : 'unknown',
       ),
     ];
-  }
-
-  /// The calendar date, e.g. `2026-06-22` — same format as the home list.
-  String _dateOnly(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
-  }
-
-  /// The wall-clock time of day, `hh:mm:ss` — same format as the home list.
-  String _timeOnly(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
   }
 
   /// Lists the session's saved photos, asks for confirmation (count + the
@@ -3196,7 +3185,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ? 'No track IDs found in the videos.'
               : _videoSession
               ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Find animals in videos" '
-                    '(Video tab, or the session\'s gear menu on the home screen) finds the '
+                    '(Video tab, or the session\'s ⋮ menu on the Sessions screen) finds the '
                     'insects, then "Find track IDs" there follows each one from frame to frame.'
               : 'No track IDs recorded.',
           textAlign: TextAlign.center,

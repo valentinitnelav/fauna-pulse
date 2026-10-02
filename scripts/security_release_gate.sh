@@ -21,6 +21,8 @@ flutter test test/fauna_pulse
   ./gradlew :ultralytics_yolo:testDebugUnitTest :app:lintRelease
 )
 
+# The Google Play bundle: no --dart-define=DONATION_LINK=true here (round 277;
+# Play allows donation links only for validated tax-exempt charities).
 flutter build appbundle --release
 
 echo "Security release gate passed: build/app/outputs/bundle/release/app-release.aab"
