@@ -19,6 +19,8 @@
 // with a thin box in the camera's live box colour, and the bee is the
 // FaunaPulse bee of the app icon; assets/images/roi_<icon>.png is that phone
 // screen alone, for the home screen's step 2.
+// Round 286 (owner: the answer in use should show at a glance): its circle
+// gets a thicker ring and a tick, and its words are bold.
 
 import 'dart:math' as math;
 
@@ -39,7 +41,7 @@ class WatchIcon extends StatelessWidget {
   final String icon;
   final double size;
 
-  /// A ring in the picture's colour (the last answer chosen).
+  /// A ring and a tick in the picture's colour (the answer in use).
   final bool selected;
 
   const WatchIcon({super.key, required this.icon, this.size = 52, this.selected = false});
@@ -77,16 +79,43 @@ class WatchIcon extends StatelessWidget {
       ),
       _ => Icon(Icons.add, size: s * 0.5, color: color),
     };
-    return Container(
+    final circle = Container(
       width: s,
       height: s,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.16),
-        border: selected ? Border.all(color: color, width: 2) : null,
+        color: color.withValues(alpha: selected ? 0.28 : 0.16),
+        border: selected ? Border.all(color: color, width: 2.5) : null,
       ),
       child: picture,
+    );
+    if (!selected) return circle;
+    final badge = s * 0.38;
+    return SizedBox(
+      width: s,
+      height: s,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          circle,
+          Positioned(
+            right: -badge * 0.15,
+            top: -badge * 0.15,
+            child: Container(
+              width: badge,
+              height: badge,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                // A rim in the page colour sets the tick apart from the ring.
+                border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
+              ),
+              child: Icon(Icons.check, size: badge * 0.62, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -147,24 +176,27 @@ class WatchTile extends StatelessWidget {
   const WatchTile({super.key, required this.icon, required this.label, required this.onTap, this.selected = false});
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(12),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          WatchIcon(icon: icon, selected: selected),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11.5, height: 1.2),
-          ),
-        ],
+  Widget build(BuildContext context) => Semantics(
+    selected: selected,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            WatchIcon(icon: icon, selected: selected),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5, height: 1.2, fontWeight: selected ? FontWeight.bold : null),
+            ),
+          ],
+        ),
       ),
     ),
   );

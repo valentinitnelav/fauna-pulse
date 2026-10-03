@@ -10,9 +10,9 @@
 //
 // Nothing is deleted, imported, downloaded or saved: the check only opens
 // screens, opens and closes the filter panel and the menus, and selects one
-// session and stops selecting again. Opening an answer's page remembers
-// which answer was last opened (home_watch_use): the check puts the phone's
-// value back. It opens Android's photo picker for "Import
+// session and stops selecting again. Since round 286 a tap on an answer whose
+// models are on the phone makes them the chosen models: the check puts every
+// saved setting back afterwards. It opens Android's photo picker for "Import
 // videos…" once: run it with shots_back.sh, which presses Back on the phone
 // after the "SHOT ..._back" screenshot, so nothing is chosen.
 // Run:  flutter test integration_test/home_sessions_check_test.dart -d <serial> --no-uninstall
@@ -80,10 +80,26 @@ void main() {
 
     // 2. Home: the steps, the bottom bar, the side menu, the support box.
     final prefs = await SharedPreferences.getInstance();
-    final watchUse = prefs.getString(kHomeWatchUsePref);
+    final before = {for (final k in prefs.getKeys()) k: prefs.get(k)};
     addTearDown(() async {
       final p = await SharedPreferences.getInstance();
-      watchUse == null ? await p.remove(kHomeWatchUsePref) : await p.setString(kHomeWatchUsePref, watchUse);
+      for (final k in p.getKeys().difference(before.keys.toSet())) {
+        await p.remove(k);
+      }
+      for (final MapEntry(:key, :value) in before.entries) {
+        switch (value) {
+          case String v:
+            await p.setString(key, v);
+          case bool v:
+            await p.setBool(key, v);
+          case int v:
+            await p.setInt(key, v);
+          case double v:
+            await p.setDouble(key, v);
+          case List v:
+            await p.setStringList(key, v.cast<String>());
+        }
+      }
     });
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: const HomeScreen()));
     final step1 = find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs|Set up for|Chosen AI models)'));

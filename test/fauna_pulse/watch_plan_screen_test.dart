@@ -8,6 +8,8 @@
 // the other models on the phone (one's own detector, for example). Round
 // 284: the box is "Suggested AI models"; BioCLIP 2 with the European list
 // names pollinators; the answer used last opens with the models in use.
+// Round 286: the button returns the choice; readyChoice says what a tap on an
+// answer switches to; each answer remembers its own models.
 
 import 'dart:io';
 
@@ -28,6 +30,9 @@ class _Calls {
   final downloaded = <(String, bool)>[];
   final saved = <(String?, String?, String?)>[];
   Object? failWith;
+
+  /// What the page returned.
+  ModelChoice? popped;
 }
 
 Future<void> _pump(
@@ -47,7 +52,7 @@ Future<void> _pump(
         builder: (context) => Scaffold(
           body: Center(
             child: ElevatedButton(
-              onPressed: () => Navigator.of(context).push<bool>(
+              onPressed: () async => calls.popped = await Navigator.of(context).push<ModelChoice>(
                 MaterialPageRoute(
                   builder: (_) => WatchPlanScreen(
                     use: use,
@@ -172,6 +177,7 @@ void main() {
     await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
     expect(calls.saved, [(use.find.single.file!.name, model.file!.name, list.file.name)]);
+    expect(calls.popped, (detector: use.find.single.file!.name, idModel: model.file!.name, nameList: list.file.name));
   });
 
   testWidgets('mammals and birds: the new name list and a large download', (tester) async {
@@ -268,6 +274,38 @@ void main() {
     expect(find.text('None (animals are found and counted, not named)'), findsOneWidget);
     await _tap(tester, find.text('Use these'));
     expect(calls.saved, [('insectdct-v8-s_640_fp16.tflite', null, null)]);
+  });
+
+  test('readyChoice: the models used last if on the phone, else suggestions that are on the phone', () {
+    final use = _use('flat_surface');
+    const flatbug = 'flatbug-n_640_fp16.tflite', insectdct = 'insectdct-v8-s_640_fp16.tflite';
+    const classifier = ('insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack');
+    const bioclip = ('bioclip-2_image_fp16_4d.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack');
+    ModelFilesOnPhone files(Set<String> detectors, List<(String, String)> namings) => ModelFilesOnPhone(
+      detectors: detectors,
+      idModels: {for (final n in namings) n.$1},
+      nameLists: {for (final n in namings) n.$2},
+    );
+    expect(readyChoice(use, null, files({flatbug, insectdct}, [classifier, bioclip])),
+        (detector: flatbug, idModel: bioclip.$1, nameList: bioclip.$2), reason: 'the first suggestions');
+    expect(readyChoice(use, null, files({insectdct, 'my_bees_640_fp16.tflite'}, [classifier])),
+        (detector: insectdct, idModel: classifier.$1, nameList: classifier.$2), reason: 'the first ones on the phone');
+    expect(readyChoice(use, null, files({flatbug}, const [])), isNull, reason: 'no suggested naming on the phone');
+    expect(readyChoice(use, null, files({'my_bees_640_fp16.tflite'}, [classifier])), isNull, reason: 'no suggested detector');
+    const mine = (detector: 'my_bees_640_fp16.tflite', idModel: null, nameList: null);
+    expect(readyChoice(use, mine, files({'my_bees_640_fp16.tflite'}, const [])), mine,
+        reason: 'the models used last for this answer, no naming');
+    expect(readyChoice(use, mine, files({flatbug}, [bioclip])), isNull,
+        reason: 'its own detector was deleted: the page shows what to do, no silent change to the suggestions');
+  });
+
+  test('each answer remembers its own models', () async {
+    await rememberWatchChoice('pollinators', (detector: 'a.tflite', idModel: 'b.tflite', nameList: 'b.fpack'));
+    await rememberWatchChoice('mammals_birds', (detector: 'c.tflite', idModel: null, nameList: null));
+    expect(await watchChoices(['pollinators', 'flat_surface', 'mammals_birds']), {
+      'pollinators': (detector: 'a.tflite', idModel: 'b.tflite', nameList: 'b.fpack'),
+      'mammals_birds': (detector: 'c.tflite', idModel: null, nameList: null),
+    });
   });
 
   test('namingPairs: a class list only with its own model, a label pack with each model of its name', () {

@@ -28,6 +28,9 @@
 // opens with the models in use now (as home step 1), so pressing the button
 // again does not silently replace a model the user chose; a link goes back
 // to the suggestions.
+// Round 286 (owner): a tap on an answer whose models are on the phone
+// switches to it before its page opens (readyChoice; home screen); the button
+// returns the choice, which the home screen remembers for that answer.
 
 import 'package:flutter/material.dart';
 
@@ -41,6 +44,29 @@ import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
 import '../widgets/home_button.dart';
 import 'models_screen.dart';
+
+/// What a tap on [use] switches to: the models used last for it ([last]) if
+/// their files are still on the phone ([files]); for an answer without them,
+/// its first suggested detection model on the phone with its first suggested
+/// identification model (and name list) on the phone. Null when something
+/// must be downloaded or chosen first (its page offers it).
+ModelChoice? readyChoice(WatchUse use, ModelChoice? last, ModelFilesOnPhone files) {
+  if (last != null) {
+    final detector = last.detector, idModel = last.idModel, list = last.nameList;
+    final ready =
+        detector != null &&
+        files.detectors.contains(detector) &&
+        (idModel == null || (list != null && files.idModels.contains(idModel) && files.nameLists.contains(list)));
+    return ready ? last : null;
+  }
+  final detector = use.find.map((d) => d.file!.name).where(files.detectors.contains).firstOrNull;
+  final naming = use.name
+      .map((n) => (n.$1.file!.name, n.$2.file.name))
+      .where((n) => files.idModels.contains(n.$1) && files.nameLists.contains(n.$2))
+      .firstOrNull;
+  if (detector == null || (use.name.isNotEmpty && naming == null)) return null;
+  return (detector: detector, idModel: naming?.$1, nameList: naming?.$2);
+}
 
 /// Saves the choice of files (tests give their own).
 typedef UseModels = Future<void> Function({String? detector, String? idModel, String? nameList});
@@ -175,7 +201,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         }
       }
       await widget.saveChoice(detector: _find, idModel: _name?.$1, nameList: _name?.$2);
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop<ModelChoice>((detector: _find, idModel: _name?.$1, nameList: _name?.$2));
     } catch (e) {
       logSwallowed('watch_plan_use', e);
       if (mounted) {

@@ -36,6 +36,12 @@
 // Round 280 (owner): step 1 also says what is missing from a choice ("Name:
 // none", or "Find: none" and what naming can still do), and step 2 shows the
 // phone screen of the answer chosen last (roi_<icon>.png).
+// Round 286 (owner: the tile tapped last and step 2 should say which models
+// New session uses): a tap on an answer whose models are on the phone
+// switches to it at once (the models used last for it, or its suggestions
+// on the phone); its tile then carries a tick and step 2 shows its phone
+// screen. An answer with models still to download switches only with its
+// page's button.
 
 import 'dart:async';
 import 'dart:io';
@@ -66,7 +72,7 @@ import 'sessions_screen.dart';
 import 'watch_plan_screen.dart';
 
 /// The answer to "What do you want to watch?" whose models were chosen last
-/// (its tile is marked; written when its page saved the choice).
+/// (its tile is marked while the camera uses its model).
 const kHomeWatchUsePref = 'home_watch_use';
 
 class HomeScreen extends StatefulWidget {
@@ -86,6 +92,10 @@ class HomeScreen extends StatefulWidget {
   /// Reads the chosen models back (step 1); tests give their own.
   final Future<ModelChoice> Function(Set<String> onPhone) modelChoice;
 
+  /// Makes models the choice of the camera, Find and Identify; tests give
+  /// their own.
+  final UseModels saveChoice;
+
   const HomeScreen({
     super.key,
     this.scan = scanPastSessions,
@@ -93,6 +103,7 @@ class HomeScreen extends StatefulWidget {
     this.loadDownloads = ModelDownloads.load,
     this.modelFiles = ModelFilesOnPhone.load,
     this.modelChoice = currentModelChoice,
+    this.saveChoice = useModels,
   });
 
   @override
@@ -120,6 +131,12 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   /// The answers to "What do you want to watch?" (the download list's `uses`).
   List<WatchUse> _uses = const [];
   String? _watchUse;
+
+  /// The models used last for each answer (by its id).
+  Map<String, ModelChoice> _lastChoices = const {};
+
+  /// An answer's page is opening (a second tap opens nothing).
+  bool _opening = false;
 
   final _list = ScrollController();
 
@@ -151,34 +168,89 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   Future<void> _loadUses() async {
     final d = await widget.loadDownloads();
     final prefs = await SharedPreferences.getInstance();
+    final last = await watchChoices(d.uses.map((u) => u.id));
     if (!mounted) return;
     setState(() {
       _uses = d.uses;
       _watchUse = prefs.getString(kHomeWatchUsePref);
+      _lastChoices = last;
     });
   }
 
-  /// Opens the suggested models of [use]; back with them, the user is
-  /// pointed at New session.
+  /// The answer whose models New session uses: the one chosen last, while
+  /// the camera's model is still the one chosen for it (a model chosen
+  /// elsewhere, on the camera screen for example, belongs to no answer).
+  WatchUse? _activeUse(ModelChoice? c) {
+    final detector = c?.detector;
+    if (detector == null) return null;
+    for (final u in _uses) {
+      if (u.id != _watchUse) continue;
+      final last = _lastChoices[u.id];
+      if (last != null ? last.detector == detector : u.find.any((d) => d.file?.name == detector)) return u;
+    }
+    return null;
+  }
+
+  /// Makes [c] the models of [use] and [use] the answer in use.
+  Future<void> _setUp(WatchUse use, ModelChoice c) async {
+    await rememberWatchChoice(use.id, c);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kHomeWatchUsePref, use.id);
+    if (mounted) {
+      setState(() {
+        _watchUse = use.id;
+        _lastChoices = {..._lastChoices, use.id: c};
+      });
+    }
+  }
+
+  /// Switches to [use] when its models are on the phone, then opens its page
+  /// (its models, the setup drawing, other models); back with a choice, the
+  /// user is pointed at New session.
   Future<void> _openWatch(WatchUse use) async {
-    final done = await Navigator.of(context).push<bool>(
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _switchAndOpen(use);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _switchAndOpen(WatchUse use) async {
+    final files = await widget.modelFiles();
+    final now = await widget.modelChoice(files.all);
+    var switched = false;
+    if (_activeUse(now) != use) {
+      // The answer chosen last has the models in use as its own until it
+      // remembers some (its page opens with them too).
+      final ready = readyChoice(use, _lastChoices[use.id] ?? (use.id == _watchUse ? now : null), files);
+      if (ready != null) {
+        if (ready != now) {
+          await widget.saveChoice(detector: ready.detector, idModel: ready.idModel, nameList: ready.nameList);
+        }
+        await _setUp(use, ready);
+        switched = true;
+      }
+    }
+    if (!mounted) return;
+    final chosen = await Navigator.of(context).push<ModelChoice>(
       MaterialPageRoute(
         builder: (_) => WatchPlanScreen(
           use: use,
           onPhone: widget.modelFiles,
-          // The answer used last opens with the models in use now.
+          saveChoice: widget.saveChoice,
+          // The answer in use opens with the models in use now.
           inUse: use.id == _watchUse ? widget.modelChoice : null,
         ),
       ),
     );
-    if (done == true) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(kHomeWatchUsePref, use.id);
-      if (mounted) setState(() => _watchUse = use.id);
-    }
+    if (chosen != null) await _setUp(use, chosen);
     await _reloadModels();
-    if (done == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Done. Press New session to start.')));
+    if ((chosen != null || switched) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Set up for: ${use.title}. Press New session to start.')),
+      );
     }
   }
 
@@ -523,10 +595,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     final choice = _choice;
     final detector = choice?.detector;
     final chosen = detector != null || choice?.idModel != null;
-    WatchUse? setUpFor;
-    for (final u in _uses) {
-      if (detector != null && u.id == _watchUse && u.find.any((d) => d.file?.name == detector)) setUpFor = u;
-    }
+    final setUpFor = _activeUse(choice);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       decoration: BoxDecoration(

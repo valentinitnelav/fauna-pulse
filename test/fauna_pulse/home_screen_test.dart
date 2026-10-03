@@ -5,7 +5,9 @@
 // quiet scroll bar. Round 279: step 1 keeps its number and says what was set
 // up (the answer and the chosen file names); step 2 shows the yellow square.
 // Round 280: step 1 says what a choice lacks ("Name: none", "Find: none");
-// step 2 shows the phone screen of the answer chosen last.
+// step 2 shows the phone screen of the answer chosen last. Round 286: a tap
+// on an answer whose models are on the phone switches to it (its tile ticked,
+// step 2 its phone screen); each answer gets its own models back.
 
 import 'dart:io';
 
@@ -42,7 +44,10 @@ Future<void> _pumpHome(
   WidgetTester tester, {
   ModelsOnPhone models = const ModelsOnPhone(),
   ModelChoice choice = _noChoice,
+  ModelFilesOnPhone files = const ModelFilesOnPhone(),
+  List<ModelChoice>? saved,
 }) async {
+  var current = choice;
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
@@ -50,8 +55,12 @@ Future<void> _pumpHome(
         scan: () async => _sessions,
         countModels: () async => models,
         loadDownloads: () async => _downloads,
-        modelFiles: () async => const ModelFilesOnPhone(),
-        modelChoice: (_) async => choice,
+        modelFiles: () async => files,
+        modelChoice: (_) async => current,
+        saveChoice: ({detector, idModel, nameList}) async {
+          current = (detector: detector, idModel: idModel, nameList: nameList);
+          saved?.add(current);
+        },
       ),
     ),
   );
@@ -147,7 +156,7 @@ void main() {
     expect(ModelsOnPhone.namersOf(models, const []), 0);
   });
 
-  testWidgets('a tile opens its suggested models; back without choosing marks nothing', (tester) async {
+  testWidgets('models still to download: a tile opens its page; back without choosing changes nothing', (tester) async {
     await _pumpHome(tester);
     await tester.tap(find.text('Mammals and birds'));
     await tester.pumpAndSettle();
@@ -158,6 +167,95 @@ void main() {
     expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), isNull);
     final icons = tester.widgetList<WatchIcon>(find.byType(WatchIcon)).toList();
     expect([for (final i in icons) i.selected], [false, false, false, false]);
+  });
+
+  testWidgets('models on the phone: a tap switches to the answer, ticked, step 2 its phone screen', (tester) async {
+    final pollinators = _downloads.uses.first, flat = _downloads.uses[1];
+    const flatModels = (
+      detector: 'flatbug-n_640_fp16.tflite',
+      idModel: 'bioclip-2_image_fp16_4d.tflite',
+      nameList: 'bioclip2_pollinator_orders_europe_v1.fpack',
+    );
+    // Pollinators was set up earlier with its own choice: no naming.
+    const pollinatorModels = (detector: 'insectdct-v8-s_640_fp16.tflite', idModel: null, nameList: null);
+    SharedPreferences.setMockInitialValues({
+      kHomeWatchUsePref: pollinators.id,
+      'flutter.watch_choice_${pollinators.id}': [pollinatorModels.detector, '', ''],
+    });
+    _phoneSize(tester, const Size(360, 1600));
+    final saved = <ModelChoice>[];
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(detectors: 2, namers: 1),
+      choice: pollinatorModels,
+      files: ModelFilesOnPhone(
+        detectors: {pollinatorModels.detector, flatModels.detector},
+        idModels: {flatModels.idModel},
+        nameLists: {flatModels.nameList},
+      ),
+      saved: saved,
+    );
+    List<bool> ticked() => [for (final i in tester.widgetList<WatchIcon>(find.byType(WatchIcon))) i.selected];
+    expect(ticked(), [true, false, false, false]);
+    expect(_image(roiPicture('pollinators')), findsOneWidget);
+
+    await tester.tap(find.text(flat.title));
+    await tester.pumpAndSettle();
+    expect(saved, [flatModels], reason: 'switched at the tap: its suggestions are on the phone');
+    expect(find.text('Suggested AI models'), findsOneWidget);
+    expect(find.text('Use these'), findsOneWidget, reason: 'its page shows the models now in use');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(ticked(), [false, true, false, false]);
+    expect(find.byIcon(Icons.check), findsOneWidget, reason: 'the tick on the chosen tile');
+    expect(_image(roiPicture('flat_surface')), findsOneWidget, reason: 'step 2 follows the answer in use');
+    expect(find.text('Set up for: ${flat.title}'), findsOneWidget);
+    expect(find.text('Set up for: ${flat.title}. Press New session to start.'), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), flat.id);
+
+    await tester.tap(find.text(flat.title));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(saved, hasLength(1), reason: 'the answer in use: nothing saved again');
+
+    await tester.tap(find.text(pollinators.title));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(saved.last, pollinatorModels, reason: 'its own models back, not the suggestions');
+    expect(ticked(), [true, false, false, false]);
+    expect(find.text('Name: none (animals are found and counted, not named)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the answer chosen last with a model of its own: a tap ticks it and changes no model', (tester) async {
+    // As on the test phone: chosen from "Other models on this phone" before
+    // answers remembered their models.
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'flat_surface'});
+    const mine = (
+      detector: 'flatbug-s_640_fp16.tflite',
+      idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
+      nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+    );
+    final saved = <ModelChoice>[];
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(detectors: 1, namers: 1),
+      choice: mine,
+      files: ModelFilesOnPhone(detectors: {mine.detector}, idModels: {mine.idModel}, nameLists: {mine.nameList}),
+      saved: saved,
+    );
+    List<bool> ticked() => [for (final i in tester.widgetList<WatchIcon>(find.byType(WatchIcon))) i.selected];
+    expect(ticked(), [false, false, false, false], reason: 'flatbug-s is not a suggestion: unknown yet');
+    await tester.tap(find.text('Insects on a flat surface'));
+    await tester.pumpAndSettle();
+    expect(find.text('Your choice'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(ticked(), [false, true, false, false]);
+    expect(saved, isEmpty, reason: 'the models in use stay');
+    expect(await watchChoices(['flat_surface']), {'flat_surface': mine});
   });
 
   testWidgets("the app's own icon on top and in the menu; the house on a page goes home", (tester) async {

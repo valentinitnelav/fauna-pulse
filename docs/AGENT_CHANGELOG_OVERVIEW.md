@@ -159,7 +159,7 @@ Outside `SessionConfig` (shared_preferences): focus (manual close-up preset, scr
 Find animals in photos `analysis_*`; Find animals in videos `video_analysis_*` (5 fps, occlusion 3
 s, min track 1 s); Identify `identify_*`; thermal pause 43 °C (resume 3 °C lower) for video
 analysis and identification; chosen models `analysis_model`, `video_analysis_model`,
-`identify_model`, `identify_pack`; `home_watch_use`.
+`identify_model`, `identify_pack`; `home_watch_use`, `watch_choice_<answer id>` (the models used last per answer).
 
 ## Key invariants
 
@@ -461,19 +461,27 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `update_catalogue.py` refreshes sizes and checksums. Files are not online yet except
   MegaDetector (base_url = release v0.8.0-alpha.1).
 - **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Suggested AI
-  models" / "Your choice" by file name; the answer used last (`home_watch_use`) opens with
+  models" / "Your choice" by file name; the answer in use (`home_watch_use`) opens with
   `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
-  these"); the fold "Choose other models" lists the other suggestions plus "Other models on this
+  these"; it pops the `ModelChoice`); the fold "Choose other models" lists the other suggestions plus "Other models on this
   phone" (every other detector and identification model + name list pair, `namingPairs`). Saving
   = `useModels`: camera `modelPath` + task, `analysis_model`, `video_analysis_model`,
   `identify_model`/`identify_pack` ("Not now" removes both).
+- **A tap on an answer switches to it** when its models are on the phone (`readyChoice`): the
+  models used last for it (`watch_choice_<id>`, `rememberWatchChoice`/`watchChoices`), or for an
+  answer without them its first suggested detector on the phone plus its first suggested
+  naming on the phone; the answer in `home_watch_use` without them keeps the models in use. Then
+  its page opens (Back keeps the switch; unsaved choices on the page are dropped). Nothing
+  ready: only the page's button switches. The answer in use (`_activeUse`: `home_watch_use`
+  while the camera's detector is the one remembered for it, or one of its `find` if none) has a
+  ring, a tick and bold words (`WatchIcon.selected`); step 2 shows its phone screen.
 - A model needs a list entry only to be offered or suggested; any model on the phone can be
   chosen everywhere.
 
 ### Home, Sessions, summary
 - **Home** (`home_screen.dart`): tagline "Your phone as a camera trap: find, count and name
   animals" (no "follow": the phone stays in place); numbered steps that stay on the page: 1 AI models (amber frame
-  when none; tiles from `uses` + "Other models"; after a page saved: "Set up for: <answer>" or
+  when none; tiles from `uses` + "Other models"; with an answer in use: "Set up for: <answer>" or
   "Chosen AI models" with Find/Name file names from `currentModelChoice`, "none (…)" lines), 2
   Record (the answer's phone-screen drawing `roiPicture(icon)`), 3 Import videos…, 4 the two Find
   buttons; Support box last. Steps keep their numbers (no ticks). Bottom bar Menu, Sessions |

@@ -14,6 +14,8 @@
 // Round 281 (owner: models already on the phone, such as one's own trained
 // detector, could not be chosen on those pages): ModelFilesOnPhone lists the
 // files by kind, with each identification model's name lists by name.
+// Round 286 (owner): each answer remembers its own models (watchChoices), so
+// a tap on its tile can switch back to them.
 
 import 'dart:io';
 
@@ -180,4 +182,24 @@ Future<void> useModels({String? detector, String? idModel, String? nameList}) as
     await prefs.setString(kVideoAnalysisModelPref, entry.id);
   }
   await saveNamingChoice(idModel, nameList);
+}
+
+/// The models used last for the answer [useId] to "What do you want to
+/// watch?" (round 286), so tapping that answer again brings them back.
+String _watchChoiceKey(String useId) => 'watch_choice_$useId';
+
+Future<void> rememberWatchChoice(String useId, ModelChoice c) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setStringList(_watchChoiceKey(useId), [c.detector ?? '', c.idModel ?? '', c.nameList ?? '']);
+}
+
+/// The models used last for each answer of [useIds] that has some.
+Future<Map<String, ModelChoice>> watchChoices(Iterable<String> useIds) async {
+  final prefs = await SharedPreferences.getInstance();
+  String? name(String s) => s.isEmpty ? null : s;
+  return {
+    for (final id in useIds)
+      if (prefs.getStringList(_watchChoiceKey(id)) case [final d, final m, final l])
+        id: (detector: name(d), idModel: name(m), nameList: name(l)),
+  };
 }
