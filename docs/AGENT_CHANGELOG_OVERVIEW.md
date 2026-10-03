@@ -1,812 +1,573 @@
-# FaunaPulse — Current-State Overview (for Claude Code)
+# FaunaPulse: current-state overview (for coding agents)
 
-This file is a *current* picture of the app, meant to ground a new Claude session cheaply 
-(instead of reading the full thousands-line log history from AGENT_CHANGELOG.md).
-**Rewrite this file in place instead of appending to avoid unnecessary verbosity** 
-Update it whenever a change alters a default, an invariant, or the file map. 
-Keep it short (under ~400 lines). 
-The round-by-round narrative, details and rationale belong in `AGENT_CHANGELOG.md`, **not** here.
+Read at the start of every session. It says what the app is now: where code lives, the defaults,
+and the rules that keep it working. When something changes, replace or delete the entry in place.
+No history here (which round, why, old values, measurements behind a decision): that goes to
+`AGENT_CHANGELOG.md`. Keep this file under 75,000 characters (`wc -m`).
 
-## What the app is about
+## What the app is
 
-An Android field app that detects flower-visiting insects in real time on-device
-(Ultralytics YOLO via LiteRT) inside a draggable square **Region of Interest (ROI)** over a
-flower, tracks each insect with a stable **track id**, and logs every visit. The scientific
-deliverable is the **visitation rate** (how often + how long insects visit a flower). Built
-on a clone of `ultralytics/yolo-flutter-app`.
+Android field app (Flutter + Kotlin). A phone on a tripod watches a square Region of Interest
+(ROI, "the yellow square" in the UI) over flowers or another fixed spot.
+- **Live detection:** a YOLO detector (LiteRT, on the phone) finds animals inside the ROI, a
+  tracker gives each one a **track ID**, every detection is logged and ROI photos are saved. The
+  scientific output is the visitation rate (how often and how long animals visit).
+- **No-AI capture:** motion-triggered photos, time-lapse photo bursts or ROI video clips.
+- **AI later:** detection, track IDs and identification (BioCLIP image tower with name lists, or
+  fixed-class classifiers) run afterwards on saved photos and videos, also on imported videos.
+- Everything runs on the phone. No model ships in the APK: users download or import them.
+- Owner: pollination ecologist, not a mobile developer. UI text is plain English for citizen
+  scientists; expert settings sit in closed folds.
 
-## Where the code lives
+## Where things live
 
-- **App (Dart):** `fauna-pulse/lib/fauna_pulse/` — all custom code. `lib/main.dart`
-  points to the home screen.
-- **Plugin:** `packages/ultralytics_yolo/` — Dart widget + native Kotlin
-  (CameraX + LiteRT inference). Modified for ROI-crop inference and fast ROI capture.
+- **App = repository root:** `lib/main.dart` → `lib/fauna_pulse/` (all app code);
+  `test/fauna_pulse/` (unit + widget tests); `integration_test/` (device checks); `assets/`
+  (`model_downloads.json`, `images/` setup drawings, `models/` local weights for debug device
+  checks only); `docs/`; `tool/` (PC scripts); `scripts/` (release builds).
+- **Plugin:** `packages/ultralytics_yolo/`, a modified copy (fork) of the Ultralytics YOLO Flutter
+  plugin (from `ultralytics/yolo-flutter-app`), used as a path dependency. Dart `YOLOView`/`YOLO`/`YOLOViewController` + Kotlin (CameraX,
+  LiteRT, ROI crops, motion gate, video decode/encode, embedder; `YOLOPlugin.kt` holds
+  `benchmarkAccelerators` and `predictTiledImage`). What changed vs upstream and
+  the re-audit checklist: `packages/ultralytics_yolo/FAUNAPULSE_FORK.md`. Call it "the Ultralytics
+  plugin" (never "vendored"); "modified copy (fork)" where the licence matters.
 - **Native app shell:** `android/app/src/main/kotlin/com/ultralytics/yolo/MainActivity.kt`
-  — hosts the full-res `cropRoiJpeg` method channel.
-- **Ignore / off-limits:** `ios/` is git-ignored. `sessions/` (recorded field data) and
-  other sibling folders under `/InsectDetectApp/` are owner data and **deny-listed** — do
-  not read them unless the owner points you at a specific path.
+  (full-res `cropRoiJpeg`, MediaStore gallery saves, uncaught-exception crash files).
+- **Off-limits:** `ios/` (git-ignored). `~/InsectDetectApp/sessions/` and other sibling folders
+  of the repository are owner data: read only a path the owner names.
 
 ## Module map (`lib/fauna_pulse/`)
 
-| Area | Files | Purpose |
-|------|-------|---------|
-| Models | `models/roi.dart`, `models/track.dart`, `models/session_config.dart`, `models/model_catalog.dart`, `models/model_file_security.dart`, `models/model_file_kind.dart`, `models/model_import.dart` | ROI/tracking/config types plus bundled, private imported and HTTPS-downloaded model discovery and validation. r275: `modelFileKind` reads a `.tflite` file's main-graph tensor shapes from its FlatBuffer (`readTfliteShapes`, 4 KB page reads, no native code): first output 3-D = detection model, all outputs 2-D = identification model, input must be a 4-D colour picture; `.fpack` by header, `*_qnn.onnx` = detection. `ModelImport.importFiles`/`pickAndImport` (one import for every kind, `ReplaceQuestion` before overwriting) and `ModelImport.download` (link → app cache → checked → moved; `onPhoneAs` asked first); the per-kind `ModelCatalog.importModels`/`downloadModel` and `IdentificationAssets.importFiles` are gone. `fileNameOrder` = case-insensitive alphabetical order of every model list. r276: `assets/model_downloads.json` format 3 = one `models` array of every known model (`id` = the `<model>` part of the naming rule in `tool/model_downloads/README.md`, `kind` detection_model/identification_model, `licence`, `source` (r277: no `cite`; the authors keep their citation at the source), optional `file` = offered, `name_lists` each with `kind` class_list/label_pack; words table in that README; `.fpack` header kind via `isClassListHeader`); `ModelDownloads.modelFor` by offered name, else by `modelIdOf`/`modelKey` (case, "-", "." alike); `listBelongsTo`: class list by exact name, label pack by first part, else header `model_id`; `update_catalogue.py --names` checks names against the rule; r278 optional `uses` (the home screen's "What do you want to watch?": `WatchUse` id, icon, title, setup, `find` ids, `name` {model, list}; only offered entries count) and the BioCLIP 2 list `bioclip-2_mammals-birds-world_v1.fpack` (17,130 names, 28 MB); only the MegaDetector file was online on 2026-10-02 |
-| Tracking | `tracking/tracker.dart`, `tracking/byte_track.dart`, `tracking/c_biou_track.dart`, `tracking/tracker_replay.dart` | `InsectTracker` interface + two pure-Dart trackers (ByteTrack-style default, C-BIoU-style alternative) + offline replay harness for comparing them on recorded raw detections |
-| Logging | `logging/session_logger.dart`, `logging/device_thermal.dart`, `logging/error_reporter.dart`, `logging/crash_store.dart`, `logging/session_log_index.dart`, `logging/past_sessions.dart`, `logging/session_filter.dart` | Append-only JSONL writer; phone-temperature reader; private problem reports/crash files; r163 streaming one-pass session.jsonl index (built off the UI isolate, feeds every summary tab) r277: `logging/past_sessions.dart` (moved from the home screen): `sessionsRoot()` (the one sessions-folder lookup, also used by Find animals in photos / videos, Import videos and the Dashboard), `PastSession` (+ `kind`), `scanPastSessions({root})` (64 KB head read for the start record, 16 KB tail), `RecordingKind` + `recordingKindOf(startRecord)` (imported videos / time-lapse / motion incl. the r95 flag / live detection); `logging/session_filter.dart` `SessionFilter` (name search, `DateFilter` calendar days, `LengthFilter`, kinds, Find animals done, identified; `chips()` with `without`; `apply(all, SessionSort, now)`). |
-| Capture | `capture/roi_capture.dart` | Time-lapse scheduler + background-isolate JPEG crop of the ROI |
-| Time-lapse video bursts (r238, video plan Phase 3) | `capture/roi_video.dart` (`TimeLapseVideoClips`, storage estimate, `roiVideoFileName`), plugin `RoiVideoWriter.kt` + `YOLOView.startRoiVideo/stopRoiVideo` (channel `startRoiVideo`/`stopRoiVideo`), device check `integration_test/video_bursts_check_test.dart` | `SessionConfig.timeLapseSaveAs` (`photos`/`video`) + `timeLapseVideoFps` (15, 1 to 30); `timeLapseVideo` getter. One MP4 per burst in `videos/` (`roi_<token>_<stamp>.mp4`): the time-lapse tick calls `sync(burst or null)` on burst edges (`TimeLapsePlan.nextEdgeDelayMs`, ≤ 1 s ticks in a burst; null while `_paused` or the camera is not `framesUsable`), `stop` before parking and in `_stopRecording` before the log closes. Native: while a clip is open the time-lapse pre-conversion sampler is replaced by the writer's PTS-deadline sampler (`wants`, quarter-interval tolerance); `offer` copies the UNROTATED ROI square (`ImageUtils.roiSourceSquare` + a plain Canvas blit, ~1 ms per frame vs ~10 ms for the rotated `prepareBitmapForModelRoi` draw at 480 px) into one of two reused bitmaps and skips (counts) when the writer thread is busy; the writer thread uploads it to its own EGL context (EGL_RECORDABLE_ANDROID) on the encoder's input surface, turns it upright by texture coordinates (`setQuad(degrees)`) and scales to the clip side on the GPU; PTS = camera sensor ns via `eglPresentationTimeANDROID` (file times start at 0; `start_epoch_ms` = first frame's sensor time). NOT `lockHardwareCanvas`: it aborted the app on the Xiaomi (HWUI `enableFrameTimestamps` over the codec's HIDL producer). H.264, I-frame 1 s, BT.709 limited, 0.25 bits/px/frame (files ~20 % larger on the Xiaomi: `kRoiVideoSizeMargin` 1.2 in the estimate), `areSizeAndRateSupported` with a −32 px fallback (hardware encoders first). `pauseCamera`/`stop` close an open clip (`roiVideoClosedByView`, collected by the next stop). Records `timelapse_video_start`, `video_clip` (import fields + `frames_skipped`, `burst`, `end_reason`, timings), `video_skipped` (`storage_low`/`start_failed`/`no_frames`/`stop_failed`); chip `VIDEO: RECORDING/STORAGE FULL/FAILED/STARTING` ("TIME-LAPSE VIDEO: …" was cut off). Settings: "Save bursts as" + "Video frame rate" + estimate + camera-cap warning (Setup), photo step / photo source / companion greyed (`_applicableIf`); `notApplicableConfigKeys(trigger, saveAs:)`. r239 after recording: summary `_recordedVideoSession` (time-lapse + `timeLapseSaveAs: video`) / `_videoSession` (imported or recorded) gate the Video tab, Setup model rows from `video_run_start`, visit wording, kept-frames row; recorded Setup rows Clips / Video files / Filmed time / Bursts without a clip from `VideoClipTotals.read` (roi_video.dart; `video_clip` + `video_skipped` records), clip line `VideoClipTotals.label` as the player's new `header`; the player shows "Not analysed yet" (instead of "Square in the wrong place?") while no clip is analysed; Graphs: recorded sessions keep the live graphs and, once analysed, a `While recording / While the AI ran` switch (`_graphsOfAnalysis`, `_showRunGraphs`, `_liveGraphs()`, `_clearGraphData()`). `VideoDetector.clipRecordsFromLog` (shared `video_clip` reader). Run AI on videos: `_VideoSession.recorded` (a `video_clip` record with `burst`) → hint under *Area to analyze*; the default stays the whole picture. "Copy videos" (Video tab): `exportVideosToGallery` (one clip per call) → native `saveVideosToGallery` → `Movies/FaunaPulse/<album>` via the generic `insertIntoMediaStore(video)` / `saveFilesToGallery` (MainActivity). Device check `integration_test/video_bursts_after_check_test.dart` (on the r238 check's session). r240: heat notice under the capture trigger in AI mode (always visible); 3b live AI + ROI video: `SessionConfig.liveAiVideo` (off) / `liveAiVideoFps` (15), AI tab fold "Check the live AI (advanced)" (`_liveVideoSection`, `liveAiVideoStorageEstimate`); camera screen `_liveVideo` = `_videoClips(live: true)` synced by a 1 s `_liveVideoTimer` to segment = elapsed ÷ `kLiveVideoSegmentMs` (5 min), null while `_paused`; records `live_video_start` + `segment`. Native: outside time-lapse a clip frame (`wants`) passes the gate idle sampler and the inference-cap drop as `videoOnly`, is offered after conversion (`offerRoiVideo`, shared with time-lapse) and returns before the gate/detector; with no clip open the path is unchanged. Summary: `_liveVideoSession` (not no-AI, `liveAiVideo`) → Video tab with `VideoReviewPlayer(live: true)` over `VideoBoxTimeline.readLiveSync` (live `detections` placed by `frame_sensor_ms` − clip `start_epoch_ms`, `box_in_roi` = video frame; positions only where a track was logged; no raw boxes, no analysis button) and the session's own photos (`_photoSection(videoFrames: false, withVideoCopy: true)`). AI tab model row: label + Download…/Import… in a Wrap (overflowed 360 px by 42 px). Device check `integration_test/live_video_check_test.dart`. r241: live sessions compare with "AI afterwards": `VideoReviewPlayer` holds `_liveTimeline` + `_afterTimeline` (`_timeline` getter by `_showAfter`); `_canCompare` (live and analysed) shows a `Live AI | AI afterwards` switch under the player; live view has "Compare with the AI afterwards" + `Run AI on videos (again)`, afterwards view the normal controls (All AI boxes, square, notes); legend numbers "on the photos and in the Graphs" (live) vs "in visits.csv". Run AI on videos: `_VideoSession.liveAi` (a `video_clip` with `segment`) → `_keepFor` null (no kept frames: `roi_frames/` stays the live photos), keep-frames switch replaced by a note, comparison note in Visits. Summary: `_afterVisits` (`VideoTracker.readSummary`) → Graphs row "Visits found afterwards in the videos: N (for comparison; Video tab)"; the `While recording / While the AI ran` switch also for live video sessions; `_clearGraphData` keeps `_uniqueTracks` and the start/end charging flag (`_chargingAtStartOrEnd`). Device check `integration_test/live_video_after_check_test.dart` (on the r240 check's session B). Video plan Phase 3 complete. r243: in time-lapse mode the native inference-cap check is skipped and the Dart adaptive throttle only learns in AI mode (`_config.detectorEnabled`): the detector's first frames before the mode switch had capped a slow phone's bursts at 3 fps. r245: `_parkTimeLapseCamera` re-plans the tick after `cam.parked()` (the park tick's delay was computed while still running, so the prewake was missed with breaks ≤ ~70 s); device check `integration_test/camera_modes_check_test.dart` covers every recording mode |
-| BioCLIP on the GPU (r242) | `tool/bioclip_export/export_image_tower.py` (`--attention 4d`, default: `four_dim_attention` replaces each `nn.MultiheadAttention` of the image tower, ≤ 4-D tensors), plugin `Embedder.kt` (`checkGpu`, `GPU_MIN_AGREEMENT` 0.995, `embedder_gpu_checks.txt`), `ImageEmbedderInfo.gpuAgreement`, `gpuNoteText` (identification_assets.dart), device check `integration_test/bioclip_gpu_check_test.dart` | Old exports: PyTorch MHA's 5-D in-projection reshape → LiteRT GPU "RESHAPE bad input dims size", 63/1488 ops → "Failed to compile model" → CPU. 4d export: 1392/1392 ops in one GPU partition, parity cos 1.0000 vs PyTorch; Xiaomi 0.27 s/crop GPU vs 2.6 s CPU. First GPU use per model file + `Build.FINGERPRINT`: embed a fixed sine test picture on GPU, close, CPU, close, reopen GPU (one model in memory at a time); cosine < 0.995 → CPU with a note. GPU maths stays the default 16-bit (real crops 0.994–0.997 vs CPU, same answers); 32-bit GPU (`GpuOptions.precision = FP32`, ~1.2 GB) got the app killed by lmkd on the 7.4 GB phone, not offered. `identify_start` extra `gpu_note`, `gpu_agreement`. r243 memory guard (`gpuMemoryNote`): GPU only when `GPU_MEMORY_FACTOR` 4.5 × file size ≤ `GPU_MEMORY_SHARE` 0.6 × `totalMem`, else CPU with a note (Samsung 3.9 GB: lmkd killed the GPU setup at 2.7 GB). r250: the quantisation step lives in `tool/bioclip_export/quantise_tflite.py` (fp16 / int8 dynamic / int8-weights, `--check`; the export calls it, output byte-identical); BioCLIP int8 changed the family on 6 of 30 unsure frames → ship fp16. Identify screen: *Last run* = whole time incl. model load + the model's share (`IdentifyResult.modelTime`); time left counted from the first crop (`_embedStarted`). Xiaomi CPU re-measured: 2.6–3.0 s/crop on 2 threads (r226's 9.4 s was ~3.5× too slow at every count). r264 **BioCLIP 2.5** (`--model bioclip-2.5 --weights <zoo safetensors>`, packs `--embeddings-dir`; `bioclip-25_image_fp16.tflite` 1.27 GB, dim 1024, packs `bioclip25_*`): parity 34/34 family+species; Xiaomi (= 11T Pro, SD888) **CPU only, 5.3–5.6 s/crop** (2 threads; 4 threads 16.6 s), 2.8 GB app memory; GPU impossible there (BioCLIP 2 GPU setup peaks 3.8 GB = 6× file → 2.5 ≈ 7.8 GB > 7.4 GB phone; guard already refuses); int8 slower (9.2 s) + family changed 2/34 → not used. `bioclip_gpu_check_test.dart` defines MODEL/SESSION/PACK/THREADS |
-| Session (round 73) | `session/frame_processor.dart`, `session/session_recorder.dart`, `session/camera_diagnostics_controller.dart`, `session/time_lapse_camera_coordinator.dart` | Per-frame mapping/tracking + gate-idle state (unit-testable), recording lifecycle (folder/logger/photos/keep-alive/stop order), one-time camera probes + lens cycling, r163 pure park/wake state machine for time-lapse camera sleep |
-| Widgets | `widgets/roi_overlay.dart`, `widgets/track_box_painter.dart`, `widgets/preview_transform.dart`, `widgets/calibrating_banner.dart`, `widgets/session_info_dialog.dart`, `widgets/roi_size_sheet.dart`, `widgets/session_tile.dart`, `widgets/external_link.dart` | Draggable ROI, track-id boxes, camera "cover-fit" coordinate mapping, calibration banner, setup dialog, exact-ROI-size sheet r277: `widgets/session_tile.dart` `SessionTile` (recording-kind icon at the start, ⋮ `SessionAction` menu at the end, tick box while selecting; `formatSessionDuration`, `sessionDate`/`sessionTime` shared with the summary); `widgets/external_link.dart`. |
-| Screens | `screens/home_screen.dart`, `screens/camera_session_screen.dart`, `screens/settings_sheet.dart`, `screens/session_summary_screen.dart`, `screens/analysis_screen.dart`, `screens/dashboard_screen.dart`, `screens/models_screen.dart`, `screens/sessions_screen.dart`, `screens/session_actions.dart` | r267 AI models screen (home ⋮ → AI models; `openModelsScreen`/`manageModelsButton` = the "Manage models…" link under every model list): the ONLY place to import, download (detection models) and delete model files and name lists (`.fpack`); deleting a classifier deletes its same-name class list (`IdentificationAssets.classListsOf`/`deleteFiles`); pickers only choose and re-read their list on return. r275 (owner): every file listed by its file name (no catalogue title, also in the camera's "Choose a detection model" dialog), alphabetically, its details in a card behind an ⓘ (`_showCard`); offers sorted by title, with their size; "Your own models" = two buttons, *Import model files…* (many at once, "Select all" hint) and *Download from a link…* (any kind); `confirmReplaceModelFile` asks before a same-name file is replaced; `ModelsInventory.wrongKind` flags a file kept with the wrong kind. UI names: "Detection models" (find animals, draw boxes) and "Identification models" (name what is in a box). Imports pass `onFileLoading` ("Copying into the app…") and clear the picker cache (`clearFilePickerCache`). Entry/permissions, live orchestration (UI only since round 73 — logic in `session/`), settings, end-of-session dashboard, post-hoc analysis setup+progress (r135; r273, step 3a of the simpler UI: *Find animals in photos / videos* show session, model and Start, the numbers sit in closed `FoldSection`s "Advanced settings" (its line names the values in use) and "Track ID settings"; photos find track IDs by themselves after a finished run when `PhotoTrackability.possible` (`_trackPhotos`), as videos already did; a video session never analysed proposes `Roi.largestCentredSquare` of its first clip's logged `width`/`height` (`_VideoSession.clipSizes`; 640×480 → 480 px, a square clip → whole picture) in view on the first frame, a session run before keeps its last area; one rule `largestSquareSidePx` for camera, editor and default; `VideoSquareEditor` plays the same-size clips muted and looping at 4× (`videoPaths`); shared `VideoSpeedChips` 0.5× to 10× (5× and 10× new) in the editor and the Video tab), r274 step 3b: "Also identify them" on both Find screens (`AlsoIdentify`/`AlsoIdentifySection` in `identification_choice_fields.dart`, pref `find_also_identify`, first time on when `anyUsable`; model + list under the switch, shared with Identify organisms; hidden for live detection sessions, greyed without kept frames on videos): after the detector and track IDs (videos: and all kept frames saved) the Find screen pushes `IdentificationScreen(autoStart: true)`, which ends on the results; Start reads "… and identify", or "Identify the animals found" when all is analysed; device check `integration_test/find_and_identify_check_test.dart` (session builder shared in `integration_test/check_sessions.dart`), r186 cross-session Dashboard (totals + hour-of-day/day activity bars over AI sessions; per-session stats cached as `<session>/dashboard_stats.json` keyed by log size+mtime via `logging/dashboard_stats.dart` — pure `aggregateDashboard` does the math; motion/time-lapse sessions have no track ids so they only appear as a "not counted" note) r277: Download & import models opens with a framed credits note (models made by other teams, only adapted for phones, creators' licence, cite the original from its Source); card values that are web links open the browser (`widgets/external_link.dart` `openExternalLink`/`ExternalLinkText`, also used by the About and problem-report links). r277 Sessions (owner chose from mock-ups): `screens/sessions_screen.dart`: search, Filters panel (bottom sheet, "Show n sessions"), removable chips, Sort menu, "n of m sessions (size)"; press and hold = select (top bar "n selected", select all shown, delete; back ends selecting); ⋮ Select sessions / Import videos… / Delete all sessions…; deleting every session still needs "delete" typed. `screens/session_actions.dart` mixin `SessionActions` (open, Find animals, Identify, rename, copy photos, delete one, `confirmDeleteSessions`) + `DeleteAllSessionsDialog` (moved); `pickAndImportVideos` + `videoPickTipSnackBar` moved to `video_import_screen.dart`; Find animals in videos has "Import videos…" / "Import other videos…" under its session choice. r278 home (owner, a journey like a wizard that stays on the screen): bottom bar Menu, Sessions | raised 72 px "New session" | Dashboard, AI models (flex 4/4/5/4/4; drawer: models first, About last); the page = numbered `_Step`s: 1 AI models (`models/models_on_phone.dart` `ModelsOnPhone.count()` from file names only: "On this phone: n to find animals, m to name them", amber frame when none; tiles `widgets/watch_tiles.dart` from the list's `uses` plus "Other models"; a tile opens `screens/watch_plan_screen.dart` (r279): the setup drawing (`SetupPicture`, `assets/images/setup_<icon>.png`), "Chosen for you" = the first of `find`/`name` shown by FILE NAME, one button kept at the bottom edge (`bottomNavigationBar`) "Download and use (size)" / "Use these" (no tick box: choosing is using) → one `DownloadFilesDialog`, then `useModels` writes SessionConfig `modelPath`+`task` (`ModelCatalog.entryOf`), `analysis_model`, `video_analysis_model`, `identify_model`/`identify_pack` (keys in `models/model_choice_keys.dart`); other suggestions in the closed fold "Choose other models", r281 with "Other models on this phone" (every detector and every identification model + name list pair on the phone that is not a suggestion, `ModelFilesOnPhone.load` by kind, pairs by name only via `namingPairs`; a class list goes only with its own model), so own models need no list entry; pref `home_watch_use` is written only when a page saved its choice; step 1 then shows "Set up for: <answer>" and Find/Name file names read back by `currentModelChoice` ("Chosen AI models" when the camera's model is not one of that answer's; r280 "Find: none (naming works only where animals were already found)" / "Name: none (animals are found and followed, not named)", `kNoNamingNote`; "Not now" on a page clears Identify's choice via `saveNamingChoice`), steps keep their numbers (no tick)), 2 Record ("the yellow square"; r280 `roiPicture(icon)` = `assets/images/roi_<icon>.png`, the phone screen of the answer chosen last, pollinators by default; drawings show the FaunaPulse bee and cyan live boxes, sources in `~/InsectDetectApp/generated_art/`; slow phones left to the camera hint), 3 *Import videos…* (`pickAndImportVideos(context)`, photo picker only), 4 the two Find buttons; `SupportFaunaPulseCard` last (`widgets/support_faunapulse.dart`: GitHub Sponsors link only with `--dart-define=DONATION_LINK=true`, set by `scripts/build_release_apks.sh`, never in the Play bundle; share via `SharePlus`); `widgets/scroll_hint.dart` `ScrollHint` (bar at most 1/3 of the height, faint path, touch-through). About text for a broad audience. Camera: `perf/slow_phone_hint.dart` banner when the median work per picture (pre+inference+post) of 30 pictures (or of 10 s of pictures, at least 5) after the first 15 s is over 200 ms (under 5 per second), live detection only, once per screen; "Don't show again" = pref `faunapulse_hide_slow_phone_hint`, cleared when the Menu's setup tips are turned on. A 404 download says "not online yet" in plain words. r279 Download & import models: "Delete all detection models…" / "Delete all identification models…" under lists of 2+ files, press and hold selects (app bar "n selected", Select all, Delete; Back ends it), one `_delete` for all (an identification model takes its name lists, `_withLists`, except lists another remaining model can use), injectable `deleteFiles`. Plugin: `YOLOView.stop()` closes the models only after a frame still inside `predict()` ends (r278; closing under a slow CPU inference crashed the app). |
-| Post-processing (r135–136) | `postprocess/post_detector.dart`, `postprocess/photo_keep.dart` | Batch detector over a session's saved `roi_frames/` JPEGs via the plugin's camera-free `YOLO.predict` → append-only `<session>/post_detections.jsonl` (`post_start`/`post_detection`/`post_end`/`post_cleanup`); resumable (done photos skipped), `_live.jpg` companions skipped when the main photo exists; injectable predictor for tests. PURPOSE (r136): storage triage for AI-FREE sessions (motion/time-lapse) — keep photos with a detection + neighbours within a gap (default 2 s, `analysis_keep_gap`) + failed analyses, delete the rest (confirm dialog; audit record; summary viewer shows "Photo deleted" for them). AI-live sessions get a notice; re-analysis with the SAME live model is blocked. r137: high-res/`_live` pairs — BOTH members analyzed, a hit on either keeps both; review-before-delete in the summary Photos tab (`initialTabIndex`, green post-hoc boxes per shown file, red ✕ + chip on cleanup-marked photos, same delete action there); analysis screen scrolls fully (SafeArea). r138: keep window is a typed `DurationSettingField` (0 s–60 min); kept/deleted % (complement rounding) live on input; `keepDecisions` is the single keep-rule source — kept-without-own-detection photos show an amber "kept — detection X later/earlier" chip + a "Kept" info row naming the decisive file. r139 SAHI: `postprocess/sahi.dart` — from-scratch pure Dart (`image` pkg only; NO external SAHI library — obss/sahi & Ultralytics' are Python-only, cite as concept refs); opt-in tiled analysis as a pure `PredictFn` wrapper (tile 0=auto→model input, overlap 25%, full pass on, merge IoU 0.5; prefs `analysis_sahi_*`; grid auto-fits photo/model ratio, no-op when photo ≤ tile); cost preview from first-photo size; `force` re-analysis flag (last record per photo wins); `sahi` params in `post_start`. Job settings live in shared_preferences `analysis_*`, NOT SessionConfig. Home: "Run AI on photos" button (r184 wording; was "Analyze saved photos"), ✨ row badge, row long-press = analyze that session. r140 user docs: SETTINGS_REFERENCE "Photo analysis" section (SAHI settings), DATA_GUIDE §6 (`post_detections.jsonl` record dictionary incl. `sahi` map). r141 small-box artifact fix: merge is IoS-NMS (was IoU — contained partial-insect boxes at tile borders survived; `merge_metric: "ios"` in the `sahi` map marks r141+ runs) + opt-in speck filter `minBoxFrac` (pref `analysis_sahi_min_box_pct`, tile boxes only pre-merge — never trims full-pass boxes, so a SAHI run ⊇ plain run; r143: tests the NARROWER box side — the r141 both-dims rule let elongated border slivers through). r168 (perf review E6 step 1): `postprocess/sahi_profile.dart` `SahiPhaseProfile` — per-phase wall-time profile of a SAHI run (decode / tile-prep / transfer / predict / merge), embedded as `phases` in `post_end`, which also gains `elapsed_ms` for every run; the analysis completion message shows the total run duration. r179 review-time sensitivity filter: `applyMinBoxFrac`/`lastSahiMinBoxFrac` (photo_keep.dart) apply the "Ignore tiny tile boxes" % LIVE over recorded boxes — cleanup stats + summary review re-derive instantly, no re-analysis (size-only, post-merge; can't go below the run's own recorded filter, amber hint; `post_cleanup` audits `min_box_frac`). r172 count units: analysis-screen "photos" = capture moments (a r108 high-res/`_live` pair counts ONCE, same unit as the summary Photos tab; `photoUnitCount`/`analyzedPhotoUnitCount` in photo_keep.dart), while driver progress/cleanup numbers are labeled "files" (both pair members are walked/deleted) — never show a file count as "photos" |
-| Identification (r208) | `identification/label_pack.dart`, `identification/crop_planner.dart`, `identification/crop_worker.dart`, `identification/track_fusion.dart`, `identification/identification_store.dart`, `identification/identification_job.dart`, `identification/identification_assets.dart`; screens `identification_screen.dart`, `identification_results_screen.dart`; plugin `Embedder.kt` + `ImageEmbedder` (`embedderLoad/Run/Close`); PC tools `tool/bioclip_export/` | On-device taxonomic identification of tracked visits with the BioCLIP image tower (TFLite export made on a PC) against a label pack (`.fpack`: name embeddings + taxonomy + "none" rows). Job: plan crops from the log index (one per photo per track, `_live` companion preferred) → crop in an isolate (`planCrop`: border = margin × box's longer side; r262 `IdentifyPrefs.squareCrops`/`square_crops`, default true = square on the longer side, false = box shape stretched to the input; CLIP-mean padding) → native embed (batches of 8) → append-only `embeddings_<model>.{jsonl,bin}` (resumable) → per-track certainty-weighted AVERAGE EMBEDDING scored once (r219 "Average Logit"; r217 averaged probabilities, r208-216 a quality-weighted embedding), taxonomy roll-up, ladder with tau=0.6 → `tracks_<pack>.{csv,json}`, `summary_<pack>.json`. Thermal governor pauses at 43 °C (`kDefaultPauseTempC`, r252; was 40). Settings in shared_preferences `identify_*` (NOT SessionConfig). Files: 2 GiB cap via `copyAndValidateModel(maxBytes:)`. r209 (first device feedback): results screen = per-taxon TABLE (`identification/taxa_table.dart` `aggregateTracks`, grouped "as identified" or by order/family/genus/species with a "not resolved to <rank>" bucket; visits/time/median confidence; folded at 25 rows; visits behind a row open in a lazy sheet, then the ladder) — the min-confidence slider is gone; `summary_<pack>.json` `tracks[]` carries `src` for no-AI crops; `LatestIdentification.load` (store) feeds the summary Photos tab's "Identified" info row (per track id = per VISIT, refreshed when the Identify screen closes); Photos tab sample chips 10/50/100/All + new-draw button replace "Show all". r210: opt-in **visit merge** (`identification/visit_merge.dart`, prefs `identify_merge_visits` / `identify_merge_gap_s`, default off / 3 s (r212; was 5 s)): after per-track fusion, consecutive non-overlapping track ids with a compatible taxon (same key at the shallower identified rank) and mean crop size within 2x are re-fused as one visit → `track_ids` (JSON/summary), trailing CSV `merged_track_ids`, flag `merged`, summary `visits_merged` / `tracks_before_merge`. Identify screen: Advanced settings auto-save on change via `_edit()` (setState + save; the r208 plain assignment left the NumericSettingField's blur-snap showing the OLD value), two-row AppBar title, temperature gauge (green/amber/red vs the pause limit, cooling advice while paused; `tempC` now reported during embedding, not only when paused), progress counter advances per PHOTO (all its crops). r211: `InferenceModel.accelerationNote` (Predictor.kt, default null; LiteRtModel sets the GPU compile error text or "blocklisted") → `embedderLoad` returns `accelerationNote` → `ImageEmbedderInfo.accelerationNote` → Identify screen shows "GPU not used: <reason>" in the stage text and Last-run card; "Test speed" button (8 session crops after a warm-up, s per crop on GPU/CPU + threads, nothing written) so GPU/thread claims are measured, not asserted (BioCLIP on GPU is UNVERIFIED on any phone; the Xiaomi falls back to CPU). r212: merge rule = gap + compatible taxon + **cosine of fused embeddings ≥ `merge_min_cos` (0.85)** + mean relative box side within `merge_size_tol` (0.5) (replaces the r210 cropPx 2x ratio; no position continuity by design); **suspect flags** at scoring (`flag_min_duration_s` 2, `flag_min_detections` 3, `flag_min_det_conf` 0.2, `flag_min_order_p` 0.5; 2 s and 0.2 = the insect-detect-post SOFTWARE's `filter_tracks` defaults, cite Sittinger 2026 Zenodo 10.5281/zenodo.21822140): `short`/`low_det`/`weak_id`/`suspect` (= short AND weak), CSV trailing `n_detections`,`suspect`, JSON/summary `suspect`, summary count `suspect`; results table hides suspect behind a switch, Photos tab appends "· suspect"; nothing deleted. `ScoredTrack.detections` from the log's per-track frame count. r213: `EmbeddingIndex` keeps the first run's `margin`/`min_crop_px` (r262 + `squareCrops`) and the measured size of every `too_small` skip; `run(restart:)` deletes the embeddings files first; `skippedFor(minCropPx)` retries too-small crops when the threshold drops; Identify screen asks "Keep stored crops / Recompute all crops" when the margin or crop shape differs (the resume key does not include it); `IdentificationJob.storedIndex()`; button styles: Start/Continue = outlined, **View results = filled** (owner), also on the summary Photos tab beside "Identify organisms" (`LatestIdentification.summaryFile`/`packStem`); "Share results (CSV file)" wording. Identification results stay OUT of `session.jsonl` (owner agreed: raw vs derived; join on `track_id` / photo name). r214 results-screen aesthetics (owner): key/value header (Model / Label pack / Date run / Visits, no per-rank sentence); `_Col`/`_SortHeader`/`_TableRow` mini-table kit (bold header + thicker rule, thin row dividers, tap-to-sort with ▲▼) used by the taxon table (Rank as its own column + rank-filter dropdown), the visits sheets (`_VisitsSheet`: No. 1..N + Track id column) and the visit sheet (`_TrackSheet`: aligned ladder with the chosen rank highlighted, flag glossary, photo with detector box (amber) + crop (cyan, `planCrop` on a virtual 1000-px square, margin + `square_crops` from the summary settings) with show/hide + InteractiveViewer zoom, crops table with Side px / Weight / Conf. / Best guess + file name line, tap = show that crop). r215 (owner's numbers-don't-add-up review, verified against session_2/3 on the phone): vocabulary **∑Conf.** (taxon probability = pack names under it summed, from the COMBINED embedding) vs **Conf.** (one species); `Scorer.massesAt` (integer rank-key ids built once per pack) gives every crop its own ∑Conf. under each ladder taxon → `FusedTrack.perCropMass`, JSON `crops[].p_ladder`, `LadderStep.meanMass` (JSON `p_mean` = "Avg" column = weighted mean of per-crop masses = `massesBar` at the key), `crops_<pack>.csv` (one row per crop), exact `pred_prob_mean`/`pred_imgs`; best view = highest own ∑Conf. under the reported taxon (was highest single-species p); results screen: column widths MEASURED with TextPainter (`_fitWidths`; header arrows never ellipsise), alignment standard (ids/names left, quantities right), `_MiniTable` scrolls sideways with a visible scrollbar when a table cannot fit (crops table), ladder Rank/Taxon/∑Conf./Avg/Agree(3/5), crops No./∑Conf./Agree/Species/Conf./Side px/Weight + "shown" icon, per-taxon visit sheets drop the Taxon column and the rank/flags line (All-visits keeps taxon + rank), times "35.2 s / 1.5 m / 1.3 h" everywhere (`formatVisitTime`), path_conflict explained. r216 wording pass (owner): "∑" dropped; S2 column **Med. Conf.** (median of Conf. across the row's track ids; S3 states the same median above its table), S3/S4 **Conf.**, S4.crops **"Conf. <taxon>"** (the header names the ladder taxon; tapping a ladder row selects it, cyan left bar) + **Top species / Species conf.**; "track id" instead of "visit" on all results screens (S2 column "Track ids", S2.all "All n track ids", S4 title "Track id #n"); `HelpLabel.helperChild` + `_ColumnsHelp` = info texts with "Columns of the table below:" and bold column names one per line; S4.ladder info carries a worked Avg example computed from the data; S2 lineage line removed; S3 without taxon column is left-packed (no flex); `summary_<pack>.json` gains `capture` {photo_step_s, photo_duration_s} from the log's config so S4 says "this session: one every 1 s during the first 10 s". r217 (owner decision after offline comparison on session_2 #19/#7 and session_3 #6): **Conf. = certainty-weighted mean of the per-crop probability vectors, weight = the crop's top-1 probability** (`Scorer.fuse`: pbar = Σ w_i p_i / Σ w_i, masses = rollUp(pbar); identity mass[k] = Σ w_i·perCropMass[i][k] / Σ w_i); `qualityWeight`, the mean-embedding softmax, "Avg" (`massesBar`), `rule_conflict`, `FusedTrack.weights`, `CropEmbedding` quality fields and every `weight` column are GONE; `fusedEmbedding` (same weights) survives only for the merge cosine; `LadderStep` = mass / support / meanMass (plain mean) / maxMass (`p`, `p_mean`, `p_max`, `support` in JSON); tracks CSV: `p_mean_<rank>` + `p_max_<rank>` blocks after `p_<rank>`, `support_` → `agree_`; best view = highest top-1 non-sink probability; tau default 0.7; S3 Agree column, S4 ladder Rank/Taxon/Conf./Agree("50 % (5/10)") + "Best single photo" line, crops table without Weight (Species conf. IS the weight), worked example from data. NOTE `pred_prob_weighted`/`pred_prob_mean` share insect-detect-post's NAMES only (there: voting-image mean × vote share). **r219 owner decision: Conf. = "Average Logit" (Dussert et al. 2025): the crops' unit embeddings averaged with certainty weights (top-1 p), crops below max(w)/`drop_factor` (default 10, pref `identify_drop_factor`, setting "Ignore crops far less sure than the best") left out, the average NOT re-normalised, scored once, rolled up; `FusedTrack.counted`, `LadderStep.agreeMass` (`p_agree`, CSV `p_agree_<rank>`; agree × p_agree = Sittinger's number), crops CSV/JSON `counted`; r217's per-crop probability mean survives only as `p_mean`; no worked-example arithmetic on S4 (Conf. is not a function of the crops table); `tool/bioclip_export/reproduce_track_conf.py` reproduces the app's numbers from embeddings + pack (cross-checked to 4 decimals on session_2). Defaults documented as NOT tested on pollinators (IDENTIFICATION.md "Validation status"); temperature 1.0 = uncalibrated. Phone-verified values expected: #10 B. impatiens 88 %, #19 Apidae 86 % / Bombus 54 %, #6 Bombus 92 %, #7 Insecta 86 %.** Docs: `docs/IDENTIFICATION.md`, DATA_GUIDE §8, SETTINGS_REFERENCE "Identification". r247: Test speed = 10 crops one per call with progress (`kSpeedTestCrops`, `_speedProgress`; r251: progress + result directly under the buttons, `_showSpeed` scrolls them into view); CSV rank setting relabelled "CSV file only: rank of the "pred" columns". r252: the S4 crops table's No. column reserves the shown-crop photo icon (two-digit numbers overflowed); `temperatureGauge` is a coloured scale with a pointer ("Phone temperature", "25 °C … pauses at N °C"), no longer a filling bar under the progress bar. r274: the model + name list choice is shared (`identification/identification_choice.dart` `IdentificationChoice`: load/reload/selectModel/selectPack/ready/save, rules of r266/r271; widget `screens/identification_choice_fields.dart` `IdentificationChoiceFields`); `IdentificationScreen(autoStart: true)` starts by itself after counting crops (not with 0) and opens the results after a finished run |
-| Video analysis (r225 to r237, Phases 1a to 1e and 2a to 2d of the video plan) | `postprocess/video_detector.dart`, `postprocess/video_frame_keeper.dart`, `postprocess/video_box_timeline.dart`, `widgets/video_review_player.dart`, `postprocess/video_run_samples.dart`, `logging/track_source.dart`, `postprocess/video_start_time.dart`, `postprocess/video_import.dart`, `postprocess/video_tracker.dart`, `postprocess/track_export.dart`, `logging/thermal_pause.dart`; screens `video_import_screen.dart`, `video_analysis_screen.dart` (+ `VideoSquareEditor`); widget `widgets/temperature_gauge.dart`; plugin `VideoFrameSource.kt` + Dart `VideoFrameSource` (`videoInfo/Thumbnail/Open/Next/Close`, r234 `openFrames/saveFrames`, own single-thread executor "yolo-video"); device checks `integration_test/video_decode_check_test.dart`, `video_import_check_test.dart`, `video_samples_check_test.dart`, `video_convert_check_test.dart`, `video_keep_frames_check_test.dart`, `video_cleanup_check_test.dart`, `photo_visits_check_test.dart` | "AI later" pass 1 over `<session>/videos/*`: MediaCodec decode (ByteBuffer, YUV420Flexible) → ROI-only integer YUV→RGB (BT.601/709, limited/full, rotation applied while writing) → detect on a loaded `YOLO` instance → append-only `<session>/video_detections.jsonl` (`video_run_start`/`video_clip_start`/`raw_detections` + `clip`,`pts_us`,`frame`/`video_clip_done`/`video_clip_error`/`video_run_end`). Boxes `[l,t,r,b,conf,class]` normalized to the whole upright frame (live `raw_detections` shape, so `tracker_replay` reads it). Frames numbered in display order; sampled by PTS deadline (default 5 fps since r254, was 15); `frame_ms` = clip start + PTS offset, start from `video_clip` record > file name > stored MP4 time minus duration (Android stores the STOP time) > day-only name (WhatsApp, noon) > file mtime minus duration; weak guesses that would overlap the clip before move after it (`after_previous`); the user can shift all (`user`) (`start_time_source`, DATA_GUIDE §9). Resumable per clip by last `pts_us`; other settings need `startOver`. 10-bit/HDR refused with a plain-language re-export message. Shared thermal pause (default 43 °C = `kDefaultPauseTempC` since r252, resume 3 °C lower) also used by identification. Import (r227): home ⋮ "Import videos…" → file_picker (always copies to its cache; cleared after) → import screen (name, start + how sure, per-clip rows, rejected files, free-space check) → files moved to `<session>/videos/`, `session.jsonl` = start (`source: imported_video`, no config) + `video_clip` per clip + clean end. "Run AI on videos" (home action shown only when a video session exists; gear item on video sessions): session/model/confidence/fps (5 since r254, `kDefaultVideoAnalysisFps`; was 15)/area (whole or a square placed on the first-frame thumbnail, per session, prefilled from the last run), Advanced IoU + pause temperature; prefs `video_analysis_*`; changed settings ask before replacing results. Offline tracking (r228): "Find visits" (screen Visits section; also runs after each finished analysis) replays done clips through `SessionConfig.buildTracker(fps)` (the one builder, shared with the camera screen) via `replayTracker(onFrame:, initialFps:)`; fps = median frame gap; one tracker carries into the next clip only when `0 < gap <= occlusion` (else reset; ids kept unique by an id offset); own prefs `video_analysis_occlusion_s` (3) / `video_analysis_min_visit_s` (0.2), algorithm shared with camera Settings. Writes (tmp + rename, replaced each run) `post_tracks.jsonl` (`post_track_start` / live-shaped `detections` + `track_event` with `time_ms` = frame time, + `clip`,`frame`,`pts_us`; `box_in_roi` via shared `boxInRoi` in `models/roi.dart` / `post_track_end`), `visits.csv` (start_s = first sighting, n_frames from confirmation), `mot/<clip>.txt` (MOTChallenge, frames from 1, video px); "Share results" zips them + both logs. r229: ONE visits file per session, never merged: `trackSourceOf(dir)` = afterwards when `post_tracks.jsonl` exists and `liveTrackerRan(config)` is false (imported, motion, time-lapse), else live; readers `SessionLogIndex.build` (track types `detection`/`detections`/`capture` from that file only, rest from `session.jsonl`; `trackSource`, `postTrackStart`), identification `scoreSessionSync` (`tracksFileOf`), `DashboardStatsCache` (cache key + post file len/mtime; imported sessions count after Find visits; visits/h over `observed_ms` = union of clip spans). Summary: Visits "(found afterwards in the videos)", timeline note, Setup rows from `video_run_start` (+ `thermal_limit_c`) and `post_track_start`, Videos rows. Report bundle: `video_detections_runs.jsonl`, `post_tracks_runs.jsonl` (run records only). Live AI + post file stays live (3b toggle later). r230 (1d, PC kit, no app change): `docs/VIDEO_ANALYSIS.md` (import → count by hand in BORIS/spreadsheet → score → fps sweep, datasets); `tool/video_eval/evaluate_visits.py` (stdlib; plain CSV or BORIS aggregated export, one observation per video, time offset 0; greedy time-overlap matching with ±0.5 s tolerance; found/missed/extra/split/merged, tidy `--out`/`--pairs`; clip names mapped via `video_clip.original_name`), `mot_to_cvat.py` (MOT results layout → CVAT MOT 1.1 zip with class column from visits.csv); `test/fauna_pulse/video_fps_sweep_test.dart` (`SWEEP_SESSION`; thins `raw_detections` with the PtsSampler rule, runs `VideoTracker.run` per fps × tracker). TrackEval script deferred until box annotations exist. r272 hand-annotated test set (PC only, no app change): `tool/video_eval/prepare_square.py` (`range`/`preview` choose the target square, `crop` = ffmpeg crop with frames + times checked, then `annotate` = VIA3 video project + 30 snapshot pictures, one random frame per 10 s, + their VIA3 image project; never overwrites an annotated project), templates `tool/video_eval/via3/`, `via3_to_hand_count.py` (VIA3 → `hand_count.csv` one row per appearance, `ignore_spans.csv`, `positions.csv`, `snapshots.csv`, `snapshot_points.csv`; `--draft`); protocol (insect = timeline row, appearance = segment, passes 0 snapshot counts / 1 timeline / 2 positions) in VIDEO_ANALYSIS §3a; a collaborator's 5 videos + `eval/` folder under `~/InsectDetectApp/test_videos/` (outside git); plan `~/.claude/plans/pasted-content-id-f534-you-proposed-fluttering-eagle.md` (next: `detect_video_pc.py` AI drafts with a chosen .pt/.tflite, scorer extensions, sweep `SWEEP_CONF`). r231 (2a): summary first tab = "Video" for imported sessions (`_videoTab`; live keeps Photos): `VideoReviewPlayer` (dep `video_player` ^2.14.0, ExoPlayer; one controller, muted, `mixWithOthers`, paused on tab change; Ticker extrapolates the 100 ms position reports) over `VideoBoxTimeline` (per clip, frames keyed by `pts_us/1000` = player position; latest frame at or before, held ≤ 1.5 × median step; tracked boxes from post_tracks `detections` (`box_in_roi` → frame via `roi_px`); visits stale when `detections_run_ms` ≠ first `video_run_start.time_ms`; square = `roi_px`, else settings roi). Switches Whole frame / What the AI saw (same texture zoomed) and Visits / All AI boxes; "Change square and analyse again" → `VideoAnalysisScreen`, reload. Wakelock while playing (Android ignores preventsDisplaySleep); play/pause row on a `ValueNotifier<bool>`, not the controller (rebuilding it at 10 Hz made 4× stutter). Device check `integration_test/video_review_check_test.dart`. r232 phone samples during a run: `VideoDetector` writes live-shaped `thermal` (+ `clip`, `paused`) and `power` records plus new `analysis_speed` (`period_ms`, `frames`, `frames_decoded`, `frames_per_s`, per-frame `decode_ms`/`convert_ms`/`detect_ms`, `paused_ms`) every `sample_s` (setting "Measure the phone every", 10 s, 5 to 60, pref `video_analysis_sample_s`; also while paused, poll = min(15 s, interval)), all three at one `time_ms`, and `video_thermal_pause`/`video_thermal_resume`; `waitWhileWarm` hands its reading over (`onReading`, `ThermalWait.reading`), so the sensor is read once. `VideoRunSamples` puts runs back to back on an analysis clock (gap max(60 s, 5 × longest interval); a killed run ends at its last `raw_detections`) for the summary's imported-session Graphs ("While the AI ran on the videos": numbers row, temperature, headroom, fps, detector ms, power unless plugged; pauses shaded via `_SeriesPainter.shade`; Wh skips the run gaps via `_buildEnergySeries(maxStepMs:)`) and `phone_during_analysis.csv` in Share results (golden `test/fauna_pulse/fixtures/phone_during_analysis.csv`). r233: the YUV→RGB convert runs in bands of rows on a small pool (half the cores, at most 4; workers take 8-row-plus chunks on demand) and fills the bitmap with `copyPixelsFromBuffer` (pixels written in RGBA byte order); bit-exact boxes against references made by the old code (`video_convert_check_test.dart`, per clip/size/square); `max_side_px` stays 1280 (shrinking to the model input size was 2× faster but changed half the boxes; needs a hand-counted field clip). Home: closing the video picker without a choice shows a tip (the picker's Downloads view lists only MediaStore rows with `is_download=1`; a WhatsApp clip moved into Download has 0). r234 (2c) kept frames: `VideoTracker.run(keep: KeepFramesSettings?)` applies the live photo rule, now the pure `TrackKeepRule` in `capture/roi_capture.dart` shared with `RoiCaptureScheduler` (first frame, then every step, up to duration; evaluated on every frame), and writes live-shaped `capture` records (`file` = `roiPhotoFileName(frame ms, file_token)`, `track_ids`, `source: video`, `clip`, `frame`, `pts_us`, `roi_px`, `saved_px` or `saved_w`/`saved_h`) plus `jpeg` on the track entries; `post_track_start` gets `keep_frames` + `file_token`, `post_track_end` `kept_frames`. Name clash: +1 ms unless the old run kept that name and its video still exists; after the rename, frames the old run kept and this one does not are deleted, never when their video is gone. `VideoFrameKeeper` (after Find visits, or "Save the remaining N frames") saves missing files per clip in pts order through `saveFrames` (12 per call, time budget, one forward decode, seeks when > SEEK_AHEAD ahead, tmp + rename, JPEG 90, analysed area at full size); `KeptFramesStatus` for the screen; `_busy` = analysing, tracking or keeping (one native source slot). Prefs `video_analysis_keep_frames` (on) / `_keep_step_s` (1) / `_keep_duration_s` (10); Setup row "Kept frames per visit". Index reads `saved_w/h`, `clip`, `pts_us` (`IndexedPhoto.clip/ptsUs`); the Video tab footer is the photo viewer on saved kept frames (non-square frames letterboxed; boxes/crop mapped to the image rect) with "Show in video" → `VideoReviewPlayerState.showMoment`. Identification: `identify_start.visits_run_id` = current `post_track_start.run_id` (afterwards sessions); a different stored id deletes the embeddings and starts over; summary `capture` gets `visits_run_id` and the keep rule as `photo_step_s/duration_s`; results screen warns when it differs from `VideoTracker.readSummary().runId`. r235: `IdentificationJob.currentVisitsRunId(dir)` (afterwards sessions only) and `cropsOutdated(dir, model)`; `scoreSessionSync` throws when the crops' `visitsRunId` ≠ current (Identify screen hides "Re-score with this pack", amber note, skips the margin dialog); `LatestIdentification.visitsRunId` → the summary hides stale labels on the frames (amber note) and reloads identification after Run AI on videos. `showMoment` scrolls the player block (`_playerBlock`: picker, notes, player, controls in one Column) to the top via `_scroll.position.ensureVisible` (jumps to 0 first when the block is not built; `Scrollable.ensureVisible` would also move the tab pager); white 2-px ticks (`_KeptTickPainter`, key `kept_frame_ticks`) under the visit strip at saved kept frames + legend line. `KeptFramesStatus.bytes` ("Kept frames saved: X of Y (N MB)"); the kept status is read for the selected session only (`_kept`, `_loadKept`), not per session in `_readSession`. r236 (2d part 1): `postprocess/clip_cleanup.dart` `ClipCleanup.planWithoutVisits` (tracked clips with no `detections`/`track_event` in post_tracks) / `planAll` / `run` (deletes files, appends `video_cleanup` {mode, clips, freed_bytes, visits_run_id} to session.jsonl after `end_of_session`) / `deletedClips`; "Free storage" section on Run AI on videos (delete-all only when not stale, all analysed, all kept frames saved; confirm dialogs); sessions with `video_detections.jsonl` but no clip files stay listed (`_VideoSession.missingClips`, `allClipCount`; start disabled "The videos were deleted"; start-over warns); home `hasVideos` also from `video_detections.jsonl`; player note with deletion date, picker "video deleted", "Other visit settings?" when no files; summary Setup row "Videos deleted". r237 (2d part 2): `postprocess/photo_tracker.dart` `PhotoTracker.trackability` (trigger, stepSeconds, analysed count, last `post_start`; only step ≤ 0.5 s, not AI sessions) / `run` (newest `post_detection` per photo, pairs as one moment, `replayTracker`, post_tracks.jsonl `source: photos` with `jpeg` per non-coasted entry, `observed_ms` = burst coverage for time-lapse, visits.csv from session start); index reads `capture` from both files (no longer a track type) and skips pass 2 for `source: photos`; "Visits" section on Run AI on photos (prefs `analysis_occlusion_s`/`analysis_min_visit_s`, isolate via static helper); summary wording "found afterwards in the photos", viewer hides green boxes on photos with visit boxes. r243 cut-off clips (app killed while recording, no `moov` index): `VideoDetector.isReadableVideo` (top-level box walk; non-`ftyp` files left to the decoder) / `cutOffClipsOf`; the run skips them (`clips_cut_off` in `video_run_start`), Run AI on videos shows an amber note + "Delete the cut-off clip…" under it (`ClipCleanup.planCutOff`, mode `cut_off`), "No clip can be read" when all are cut off; the Video tab leaves them out with a note; device check `video_cut_off_check_test.dart`. r247: new track IDs start only at the tracker's "New-track confidence" (`highThresh`, 0.5; was labelled High-score threshold; weaker boxes only continue a track), named on Run AI on videos and in the Video tab note, a changed value marks visits as changed (`PostTrackSummary.newTrackConfidence`); Video tab *Track IDs | All AI boxes*, raw-box strip (`ClipBoxes.rawBoxMs`), folded "Track IDs in this clip (N)" with a false-detection note; Graphs lanes show start–end (`ganttTime`); sweep `SWEEP_HIGH`. Owner decision: "visit" → "track ID" everywhere incl. files/records (r248). r252: a **fragmented MP4** (top-level `moof`, `isFragmentedMp4`; YouTube downloaders) is rewritten at import by native `VideoFrameSource.remux` (MediaExtractor → MediaMuxer, samples unchanged, then checked: same frame count and times up to one constant shift plus rounding ≤ min(2 ms, shortest frame gap ÷ 4) (r253: the Xiaomi's writer rounds by 439 µs; logged as `rewrite_max_time_error_us`), else `ImportRewriteFailed` (quoted name + a ready ffmpeg command, selectable) and no half session); `video_clip.rewritten_from: fragmented_mp4`. Why: ExoPlayer cannot seek in them (stays on frame 1 while reporting the asked position → boxes on the wrong picture) and the Xiaomi's retriever reports length 0 (`info` now falls back to the frame times). The rewrite adds an edit list (first pts +45 ms); ExoPlayer and MediaExtractor read it alike (frame-exact at a scene cut, both phones; also an ffmpeg `-c copy` remux). Rewrite of 520 MB: Xiaomi 21 s, Samsung 139 s. Video tab: boxes hidden while the player fetches a jump's picture (`_waiting` = buffering flag, or a sent jump for ≤ 0.5 s; Samsung 0.8 to 2.7 s after a long jump). Device check `integration_test/fragmented_mp4_check_test.dart`. r273: the area proposes the largest middle square, the editor plays the video fast (Screens row). Plan: `~/.claude/plans/pasted-content-id-a09e-what-about-pure-yeti.md` |
-| SAM 3 experiment, PARKED (r257-r261) | code only on branch `sam3` / tag `archive/sam3` (not on develop); `docs/SAM3.md` | Text-prompted detector ("insect"): finds bees the fast models miss, but too slow on today's phones (Xiaomi GPU gives NaN, CPU ~3.3 min/picture); EfficientSAM3 misses bees. Verdict, reopen triggers and how to resume (`git switch sam3 && git merge develop`) in SAM3.md. |
-| Tests | `test/fauna_pulse/*` | Unit tests for ROI math, tracker, logger, throttle, capture scheduler, frame processor |
+**models/**
+- `session_config.dart`: `SessionConfig`, every recording setting (source of truth for defaults;
+  JSON in each session's start record; migrations in `fromJson`; `buildTracker(fps)`, the one
+  tracker builder for camera and videos; `notApplicableConfigKeys(trigger, saveAs:)`).
+- `roi.dart` (`Roi`, ÷32 snapping `snapSideToGrid`/`copyClamped`, `boxInRoi`,
+  `largestCentredSquare`, `largestSquareSidePx`), `track.dart`, `schedule_window.dart`.
+- `model_catalog.dart`: detection models on the phone (`ModelCatalog.build`, `entryOf`,
+  `modelsDir`; `isSupportedModelFileName` = the one format filter; `fileNameOrder`).
+- `model_file_kind.dart`: `modelFileKind` reads a `.tflite`'s tensor shapes from its FlatBuffer
+  (first output 3-D = detection, all outputs 2-D = identification, input must be a 4-D colour
+  picture); `.fpack` by header; `*_qnn.onnx` = detection.
+- `model_file_security.dart` (intake checks, size limits), `model_import.dart`
+  (`ModelImport.importFiles`/`pickAndImport`/`download`/`onPhoneAs`, `ReplaceQuestion`),
+  `file_download.dart` (shared HTTPS download), `bundled_models.dart`.
+- `model_downloads.dart`: reader of `assets/model_downloads.json` (`ModelDownloads`,
+  `ModelDownload`, `NameListDownload`, `NamingDownload`, `WatchUse`, `downloadCatalogueFile`,
+  `modelFor`).
+- `models_on_phone.dart`: `ModelsOnPhone.count` (home step 1 counts, file names only),
+  `ModelFilesOnPhone.load` (files by kind), `namingPairs`, `currentModelChoice`, `useModels`,
+  `saveNamingChoice`, `kNoNamingNote`. `model_choice_keys.dart`: pref keys of the chosen models.
+
+**session/** `frame_processor.dart` (per-frame mapping + tracking, gate-idle state, pipeline
+fps), `session_recorder.dart` (recording lifecycle: folder, logger, photos, keep-alive, stop
+order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, focus preset),
+`capture_calibration_cache.dart`, `time_lapse_camera_coordinator.dart`, `schedule_plan.dart`,
+`location_fix.dart`.
+
+**tracking/** `tracker.dart` (`InsectTracker`, `TrackEventBuffer`), `byte_track.dart` (default),
+`c_biou_track.dart`, `tracker_replay.dart` (`replayTracker`, offline replay of `raw_detections`).
+
+**capture/** `roi_capture.dart` (`RoiCaptureScheduler`, `TrackKeepRule`, `chooseCapturePath`,
+`savedSidePx`/`capSavedSidePx`, `rawRectForUprightRect`, `uprightHighResDims`,
+`roiPhotoFileName`, background JPEG crop `_cropJpeg`), `time_lapse_plan.dart`, `roi_video.dart`
+(ROI video clips, storage estimate, `VideoClipTotals`, `roiVideoFileName`), `crop_export.dart`
+(crop export, gallery copy, `scanSessionPhotos`).
+
+**logging/** `session_logger.dart` (append-only JSONL writer), `session_log_index.dart`
+(`SessionLogIndex.build`: one pass over a session, feeds every summary tab), `past_sessions.dart`
+(`sessionsRoot`, `scanPastSessions`, `PastSession`, `RecordingKind`, `recordingKindOf`),
+`session_filter.dart`, `session_rename.dart`, `track_source.dart` (`trackSourceOf`),
+`dashboard_stats.dart`, `visit_stats.dart`, `photo_box_matcher.dart`, `roi_update_debouncer.dart`
+(`SettledUpdateDebouncer`), `device_thermal.dart`, `device_storage.dart` (`formatBytes`,
+`folderSizeBytes`), `thermal_pause.dart` (`kDefaultPauseTempC` 43), `diagnostics.dart`,
+`app_error_hooks.dart` (`logSwallowed`), `crash_store.dart`, `error_reporter.dart`,
+`report_bundle.dart`.
+
+**perf/** `adaptive_inference_throttle.dart`, `slow_phone_hint.dart`.
+
+**postprocess/** photos: `post_detector.dart`, `photo_keep.dart` (`keepDecisions`), `sahi.dart`,
+`sahi_profile.dart`, `photo_tracker.dart`; videos: `video_import.dart`, `video_start_time.dart`,
+`video_detector.dart`, `video_tracker.dart`, `video_frame_keeper.dart`, `video_box_timeline.dart`,
+`video_run_samples.dart`, `clip_cleanup.dart`; `track_export.dart`.
+
+**identification/** `label_pack.dart` (`.fpack` reader, `LabelPack`, `Scorer`),
+`crop_planner.dart` (`planCrop`), `crop_worker.dart`, `identification_job.dart`,
+`identification_store.dart` (result files, `stemOf`, `modelIdOf`, `modelKey`,
+`LatestIdentification`), `track_fusion.dart`, `visit_merge.dart`, `taxa_table.dart`,
+`identification_assets.dart` (model and list folders, `listBelongsTo`, GPU notes),
+`identification_choice.dart` (`IdentificationChoice`, shared model + list choice).
+
+**screens/** `home_screen.dart`; `camera_session_screen.dart` (live orchestration UI; logic in
+`session/`); `settings_sheet.dart`; `session_summary_screen.dart`; `sessions_screen.dart` +
+`session_actions.dart` (`SessionActions` mixin, `DeleteAllSessionsDialog`);
+`dashboard_screen.dart`; `models_screen.dart` (Download & import models, `openModelsScreen`,
+`NoModelNotice`); `watch_plan_screen.dart` (the "What do you want to watch?" pages);
+`analysis_screen.dart` (Find animals in photos); `video_import_screen.dart`
+(`pickAndImportVideos`); `video_analysis_screen.dart` (Find animals in videos,
+`VideoSquareEditor`); `identification_screen.dart`, `identification_results_screen.dart`,
+`identification_choice_fields.dart` (`AlsoIdentify`); `problem_description_screen.dart`.
+
+**widgets/** `roi_overlay.dart`, `roi_mask.dart`, `track_box_painter.dart` (live boxes cyan
+`0xFF00E5FF`; ROI yellow `0xFFFFEB3B`), `preview_transform.dart`, `setting_help.dart`
+(`HelpLabel`, `HelpSwitchTile`, `HelpRow`, `FoldSection`, `helperTextStyle`),
+`numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
+`video_review_player.dart`, `video_speed_chips.dart`, `temperature_gauge.dart`,
+`mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
+`roiPicture`), `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
+`support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
+`roi_size_sheet.dart`, `calibrating_banner.dart`.
+
+**services/** `recording_keepalive.dart` (foreground service + wake-lock).
 
 ## Current defaults
 
-Source of truth: `lib/fauna_pulse/models/session_config.dart` constructor (~`:161-192`).
+`SessionConfig` constructor in `models/session_config.dart`:
 
 | Setting | Default | Notes |
 |---|---|---|
-| Model | `MDV6-yolov10-c_int8_256.tflite` | r199: release APKs ship exactly the existing model weights listed in `assets/models/bundled_models.txt`; comments and blank lines are ignored, and missing files warn without failing the build. Both `assets/models/` and `assets/models/custom/` are supported; unlisted local weights are excluded without being deleted. The release picker uses the same manifest. Debug builds list every supported local weight, with top-level YOLO26 kept as its special test entry. Existing release configs saved as `yolo26n` migrate to MDV6, so no runtime YOLO download is attempted. Models are added via Download… (`ModelCatalog.downloadModel`, `widgets/download_model_dialog.dart`) or Import… (file picker) on the AI models screen only (r267). r268 (owner: no model ships with the app): the picker lists only imported/downloaded files (`ModelCatalog.build` no longer lists assets or YOLO26, debug builds too; device checks still load asset paths). Download catalogue `assets/model_downloads.json` (`models/model_downloads.dart`: detectors one file, identification model + name lists; `downloadCatalogueFile` via the shared `models/file_download.dart`; `widgets/download_files_dialog.dart`); presence = file NAME only, `sha256` only verifies a download; refresh sizes/checksums with `tool/model_downloads/update_catalogue.py`. AI mode needs a listed detector: Setup trigger item disabled + `NoModelNotice` (models_screen.dart), camera `_checkDetectors` (config not listed but others are → first listed, snackbar; none → record opens `_showNoDetectorDialog`), Run AI on photos/videos and Identify show `NoModelNotice`. r270: the camera starts WITHOUT a model: `SessionConfig.modelPath` default '' (none chosen; `migrateModelPath` maps null/retired ids to ''), the camera passes `_cameraModelPath` (config path only when it is an existing absolute file, else ''), plugin `YOLOView` treats '' as "no model" (no resolve, no onModelLoad; going back to '' keeps the native model), `YOLOPlatformView` with '' or after a failed initial load calls `YOLOView.startWithoutModel()` (lifts the `startCamera` predictor guard) + `startStreaming()`; `onFrame` without a predictor and outside motion-only/time-lapse drops the frame before conversion after a ~1 Hz `noModel` heartbeat (dims, cameraFps), which runs the Dart start-up (`_startUpOnce`, shared by all four map kinds) so the native side switches into motion-only/time-lapse. `modelLoadRecovery` → still-loaded model else '' (`ModelLoadRecovery.toBundledDefault` gone). Overlay "Model: none" / "Engine: none". `bundled_models.txt` is EMPTY (release APK ships no model; `kDefaultBundledModelPath` removed); debug builds still pack local weights for device checks (`kLocalYolo26ModelPath`). r271: names (owner): screen "Download & import models" (`openModelsScreen`, link `manageModelsButton`), "Find animals in photos / videos" (was Run AI on…), capture trigger "Live detection", settings tab "Detection" (was AI); no silent detector pick: `_askForDetector` (camera) only when live detection has no usable model; `_cameraModelPath` file check, `_recheckModelFile` after Settings/models screen; name lists grouped under their model via `IdentificationAssets.listBelongsTo` (stem, or pack `model_id` = model file name start before "_", dots removed), Identify offers only matching lists and needs one to start. r269: the AI models screen shows two icons only, `center_focus_strong_outlined` = detection, `biotech_outlined` = identification (owner: per-purpose icons were too many). r150: accepted formats = `.tflite` OR `*_qnn.onnx` (Snapdragon-NPU export); plain `.onnx` stays rejected everywhere (`isSupportedModelFileName` is the single filter); for `*_qnn.onnx`, the GPU/CPU benchmark is replaced by an NPU note. r151: QNN context binaries are per-Hexagon-generation (`min_arch`); a failed load reverts via `modelLoadRecovery()` + an error dialog. r155: `format=litert` NCHW exports (`*_w8a32.tflite`) load and run (detect-only). Guide: `docs/MODEL_CONVERSION.md` |
-| Confidence | `0.25` | min detection score |
-| IoU (NMS) | `0.7` | overlap threshold |
-| Time-lapse step | `1.0 s` | first photo on detection, then every step; min 0.1 s since r96 (sub-second steps need the fast photo source — high-res photos can't keep up) |
-| Capture duration | `10.0 s` | per track id; must be > step |
-| Session length | `60 min` | user-editable; ignored during scheduled runs |
-| Scheduled recording | off | r94: 1–3 daily windows (default 06:00–10:00) × N days (default 1); REC starts the run; sleeps dark between windows |
-| Inference FPS cap | `15` | r195: explicit inference FPS (AI-analyzed camera frames/s), no `0 = Max`, legacy inference `0` migrates to 15. r196: both user-facing rate controls have a 30 FPS maximum; a positive camera cap is the tighter inference bound, and lowering it also lowers the auto-throttle floor if needed. r129: deadline scheduler keeps non-divisor caps accurate |
-| Camera FPS cap | `15` | r82: caps the camera HARDWARE rate (Camera2 AE fps range), the standing sensor/ISP load the gate can't touch; `0` removes this cap and still survives reload. r195: its default matches inference FPS; r196: both controls share the 30 FPS maximum |
-| Auto-throttle | on | min `3` FPS, duty target `0.5`; cap above is its ceiling |
-| Motion gate | off (opt-in) | r58: detector sleeps while ROI is still; pixelDelta `25`, area `0.5%`, wake `3 s`, grid `48` cells/side (r60: 16–160; the check is 2× supersampled so coarse grids stay calm), idle check rate `5` fps (r64: 1–30, frames dropped pre-conversion while asleep) |
-| Capture trigger | `detector` | r97 enum `CaptureTrigger {detector, motion, timelapse}` (Setup-tab dropdown; replaces r95 `motionOnlyCapture` bool — legacy configs migrate). r147: the settings sheet is mode-aware (AI tab + show-boxes + auto-throttle greyed/hidden in no-AI modes, gate block hidden in time-lapse; values never erased), the summary collapses inert sections to "not applicable" notes, and the start record carries `config_not_applicable` (list of inert config keys via `notApplicableConfigKeys`; values keep their types for pandas). `motion`: photos on ROI motion, detector NEVER runs (model loads, `predict()` never called), gate forced on, gate tunables = sensitivity, logs `motion_capture` records. `timelapse`: clock-driven bursts, no AI + no gate, logs `timelapse_capture` records. Both: NO `detections` records |
-| Time between bursts | `30 min` | r174 "Time between bursts" (`timeLapseGapSeconds`, s/min/h input, min 0): the BREAK between bursts, one burst's END to the next one's START (owner decision after the session_2 surprise; exactly the window camera parking can use); 0 = continuous. Replaces r97 "Repeat burst every" (`timeLapseIntervalSeconds`, START-TO-START; ≤ duration silently meant continuous); legacy configs migrate in fromJson (gap = interval − duration clamped ≥ 0, effective timing unchanged); summary shows whichever key the session has. `TimeLapsePlan` is gap-based (`cycleMs` = burst + gap; continuous ⇔ gap 0 — this absorbed the r173 fix: cycles advance every cycleMs so the capture window is re-armed on every cycle change; r97-r172 continuous sessions captured ONLY the first photo-duration's photos, and `timelapse_capture.burst` increments per block since r173; DATA_GUIDE notes both changes). Photo duration max 24 h |
-| Time-lapse camera sleep | off (opt-in) | r163 (perf review E3) `timeLapseCameraSleep`: fully unbind the camera between bursts (idle gap ≥ 30 s only), rebind `timeLapseWakeLeadSeconds` (r164, default 10 s, 1–60 s; owner field test: 5 s → dark+blurry first photo, the wake needs AE ramp + lens-actuator travel to the locked focus) before the next; composes with blackout (shared `_paused` guard). See the time-lapse invariant below |
-| Time-lapse torch (nocturnal) | off (opt-in) | r180 `timeLapseTorch` + `timeLapseTorchLeadSeconds` (default 5 s, 1–60): LED torch on `lead` before each burst (AE settles under final light; AE lives in the HAL repeating request, unaffected by the 1 fps between-burst sampling) through burst end, off in the break. NO native change — the plugin's dormant `setTorchMode` path (controller cache + `resetTorchState`) does it all; TorchControl's FLASH_MODE is disjoint from the interop funnel. Parking kills the LED physically → the tick's mismatch-retry (only while `framesUsable`) re-lights it after each wake; prewake = max(wake lead, torch lead) when both on. Sparse `torch` JSONL records (outcome transitions only); chip "· torch"; first burst of a recording/window has no lead |
-| Focus | always manual (r164) | NO autofocus anywhere: screen open locks a close-up preset (`kFocusPresetDioptres` 7.5 dpt ≈ 13 cm, `focusPresetNormalized` in camera_diagnostics_controller.dart, clamped to the lens range), amber badge on the focus button until the user drags the slider; re-probed + re-applied per lens switch (native zoom event = rebind-settled signal, 3 s fallback). Wire values unchanged (`manual`/`fixed`; `auto` = pre-r164 sessions only). Focus is screen state, deliberately NOT SessionConfig |
-| Stream resolution | auto (r109) | while `streamResolutionExplicit` false, the camera screen once-per-lifetime picks the smallest probed size with short side ≥ **the user's `targetRoiSavedPx`** (r122; default 1024 — `autoStreamResolution`, honours the r56 ceiling; Xiaomi → 1440×1080) so fast crops can reach the target; r122 fallback: if no size reaches the target, the LARGEST size under the ceiling. A manual dropdown pick sets explicit and is never overridden (pre-109 configs: stored ≠ 640×480 migrates to explicit); short side caps the fast ROI crop. r159: Photos tab — "Saved photo side" leads the tab, the stream dropdown sits in the "Advanced (camera stream)" fold below it, and Auto still re-picks on edit |
-| Photo source mode | `fast` (r117; was `auto`) | r117: fast live-frame crops are the default — a high-res photo pauses the analysis stream 0.13–1.5 s (r115 finding), lands late and often blurs, so it is opt-in, never "recommended". `auto` (r61 `chooseCapturePath`): per-photo fast crop when it meets the min target, high-res otherwise; `highRes` forces the slow path. r112 RENAME: user-facing + Dart say "high-res" (`RoiCaptureMode.highRes`, `CapturePath.highRes`), but the WIRE stays `still` (config `captureMode`, capture `path`, `roi_source` — via `wireName`/`_captureModeWireName`; legacy `fullResPhotos:true` loads as `highRes`, `false` as `fast`) |
-| Sync companion (high-res) | on | r108 (Dart field `highResSyncCompanion` since r112; JSON key frozen `stillSyncCompanion`): every high-res-path photo also saves the trigger-moment live crop as `…_live.jpg`; companion written even if the high-res photo fails; `capture` records carry `live_*` + `content_lag_ms`/`callback_lag_ms`/`grab_ms`. Verified in the field (session_6); owner also saw motion-ghosting on high-res photos that the live crops don't have. r110 ZSL VERDICT (sessions 12/14, manual focus in both): high-res content lag ~0.4 s at cameraFpsCap 15 vs ~0.17 s at cap 0 — the fps cap (not manual focus) throttles the photo pipeline, but lag NEVER goes negative: true ZSL doesn't engage on the Xiaomi. ~0.17 s is the device floor; don't chase it in software — the companion is the zero-lag capture. r111/112: the summary photo viewer shows the companion by DEFAULT (boxes match it); ⚡ flips to the high-res photo; one per-view "Lag" row (`content_lag_ms` high-res / new `live_lag_ms` companion upper bound); crop/export follow the shown file |
-| Saved photo side | `1024 px` | r63 single target (replaces r61's min/max pair): auto-decision threshold AND downscale cap, so photos save at exactly this when the ROI can supply it; **never upscaled**, ⚠ readout when even a high-res photo can't reach it |
-| Occlusion tolerance | `3.0 s` | track buffer |
-| Min hits | `0.2 s` (videos `1 s`, r256) | before a track is confirmed (UI label "Minimum track length"); frames = round(s × fps) detections in a row; videos convert at one fixed rate per run (the analysis rate, r256), live re-derives it every second |
-| Tracker algorithm | `bytetrack` | r105: AI-tab "Visit tracking" dropdown; `cbiou` = buffered-IoU alternative (search margins 0.30/0.50, own highThresh 0.5); both share the seconds-based settings above |
-| Log raw detections | off | r105 eval toggle (tracking Advanced): one `raw_detections` JSONL record per frame (pre-tracking boxes) for the offline tracker replay harness; ~1–2 MB/h |
-| Reference photos | on / every `30 s` | r107 as "ground-truth frames" (eval toggle, off/5 s), promoted r152: ON by default, Setup-tab control (greyed in time-lapse — keys in `config_not_applicable` there, timer un-armed, no `gt_frames/` dir), `ref_` filename prefix, fast path FORCED (`RoiCaptureMode.fast` — high-res would stall the stream), capture-cue flash wired, photos visible in summary Photos tab (chip, no boxes) + gallery export. Wire names FROZEN: `gt_frames/`, `gt_capture`, `gtFramesEnabled`/`gtFrameSeconds`. Default flip only reaches configs missing the keys (toJson always writes them) — the owner's device needs one manual flip ON. Interval 1 s–1 h; size follows `targetRoiSavedPx`; second RoiCaptureScheduler driven by a 1 s screen timer via `SessionRecorder.recordGtFrame`. Post-hoc analysis/cleanup stay roi_frames-only (deliberate r152 scope) |
-| Diagnostic sampling | always on | `fps`/`thermal`/`power` records are ALWAYS logged while recording (r149 owner decision: the readings exist anyway — thermal feeds the on-screen temp/storage, fps is maintained per frame — so a log line is free; ~2–3 MB per 8 h). Only their DISPLAY is opt-in (summary "Extra graphs" collapse, below). Sample intervals: FPS `5 s`, temperature `10 s`, power `10 s` (Graphs tab; applied live via `_rebuildSamplingTimers` since r148). History: r148 briefly made logging opt-in via `diagnosticsEnabled` (default off) and removed `autoComputeGraphs` (summary now always parses graphs on tab open); r149 removed the toggle again — the summary keeps a note branch for the few r148-window sessions whose config block says `diagnosticsEnabled:false`. r188: `power`/`thermal` records also carry `is_plugged` (EXTRA_PLUGGED; a full battery on a power bank reports NOT_CHARGING while plugged) — the summary's W graph hides on EITHER flag, and an all-zero W series (dead sensor + stuck charge counter) is never rendered. `fps.inf_ms` = the model run ONLY (pre_ms/post_ms carry prep + NMS; DATA_GUIDE now defines all four) |
-| Crop 1:1 lock | off | r91: forces the summary-viewer crop-export box square; viewer chip ↔ Settings → Summary switch |
-| GPU when faster | on | see GPU/CPU note below |
-| CPU threads | `0` (auto = 2, r226) | r76: XNNPACK thread count when running on CPU; user-triggered engine benchmark (Settings → AI) times GPU vs CPU thread variants and can apply the fastest. r226: LiteRT's own default is 1 thread; auto = 2 was ~1.9× faster on both phones (4 at most ~15% more, twice the busy cores) and reaches every CPU path (live, video, photo/SAHI, embedder) |
+| Detection model `modelPath` | `''` (none) | nothing ships; the camera starts without a model; live detection asks for one |
+| Confidence / IoU | 0.25 / 0.7 | |
+| Capture trigger | `detector` ("Live detection") | `motion`, `timelapse`: no detections, `predict()` never runs |
+| Photo step / duration | 1 s / 10 s per track ID | step ≥ 0.1 s; duration > step |
+| Session length | 60 min | ignored in scheduled runs |
+| Scheduled recording | off | 1–3 daily windows (06:00–10:00) × N days |
+| Inference FPS cap | 15 | 1–30 |
+| Camera FPS cap | 15 | 0 = no cap; max 30 |
+| Auto-throttle | on | min 3 fps, duty target 0.5 |
+| Motion gate | off | pixel delta 25, area 0.5 %, wake 3 s, grid 48 (16–160), idle check 5 fps (1–30) |
+| Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
+| Save bursts as | photos | `timeLapseSaveAs`; `video`: one MP4 per burst at `timeLapseVideoFps` 15 |
+| Live AI video | off | `liveAiVideo`, 15 fps, 5-min segments |
+| Camera sleep between bursts | off | `timeLapseCameraSleep`; idle gap ≥ 30 s; wake lead 10 s (1–60) |
+| Time-lapse torch | off | `timeLapseTorch`; lead 5 s (1–60) |
+| Stream resolution | auto | smallest probed size whose short side ≥ saved photo side; a manual pick sets `streamResolutionExplicit` |
+| Photo source | `fast` | `auto`, `highRes` (wire name `still`) |
+| High-res sync companion | on | `…_live.jpg` beside each high-res photo |
+| Saved photo side | 1024 px | never upscaled |
+| Occlusion tolerance | 3 s | |
+| Minimum track length | 0.2 s | videos 1 s (Find animals in videos) |
+| Tracker | `bytetrack` | `cbiou` |
+| Log raw detections | off | |
+| Reference photos | on, every 30 s | `gt_frames/` |
+| Samples fps / temperature / power | 5 s / 10 s / 10 s | always logged |
+| GPU when faster / CPU threads | on / 0 = auto = 2 | |
+| Crop 1:1 lock | off | |
+
+Outside `SessionConfig` (shared_preferences): focus (manual close-up preset, screen state);
+Find animals in photos `analysis_*`; Find animals in videos `video_analysis_*` (5 fps, occlusion 3
+s, min track 1 s); Identify `identify_*`; thermal pause 43 °C (resume 3 °C lower) for video
+analysis and identification; chosen models `analysis_model`, `video_analysis_model`,
+`identify_model`, `identify_pack`; `home_watch_use`.
 
 ## Key invariants
 
-- **"Track ID", not "visit" (owner, round 248).** Every text, file and record name says
-  track ID (`track_ids.csv`, `post_track_end.track_ids`, `track_ids_run_id`,
-  `merge_track_ids`, `track_ids_merged`, `without_track_ids`); durations say "track
-  length". "Visit" only for the ecological quantity (hand counts, visitation rate) and the
-  notes "in pollination ecology a track ID usually stands for one visit". Readers accept the
-  pre-248 names; saved-settings keys and internal Dart identifiers kept their old names on
-  purpose. PC: `tool/video_eval/evaluate_track_ids.py` (`evaluate_visits.py` forwards).
+### Words and screens
+- **"Track ID", not "visit"**, in every text, file and record name (`track_ids.csv`,
+  `post_track_end.track_ids`, …); durations say "track length". "Visit" only for the ecological
+  quantity (hand counts, visitation rate). Readers accept older names; saved-settings keys and
+  Dart identifiers kept old names on purpose.
+- Screen names in the UI: "Download & import models", "Find animals in photos / videos",
+  capture trigger "Live detection", settings tab "Detection". Refer to screens by their top title.
+- **Every new tunable ships user-adjustable:** Settings control + `SessionConfig` JSON + summary
+  row (`_settingsSection()`, `na:` when not applicable) + round-trip test, in the same round.
+- **New-screen layout checklist** (new screens keep shipping with these bugs): body in
+  `SafeArea`, ListView bottom padding ≥ 32 or `+ MediaQuery.paddingOf(context).bottom` (an
+  explicit `padding:` loses the automatic inset; a `Positioned(bottom:)` anchors to the screen
+  bottom, under the gesture bar, since the app is edge-to-edge); `DropdownButtonFormField`
+  `isExpanded: true`; long text in `Expanded`/`Flexible` + ellipsis (also in ListTile titles and
+  sheets); a widget test at 360 px width with `simulateBottomSystemBar` that scrolls to the end
+  and checks the last row with `expectAboveBottomInset` (templates:
+  `summary_bottom_inset_test.dart`, `identification_results_screen_test.dart`).
+- **Settings sheet tabs:** Setup / Detection / Photos / Power. All heat controls (auto-throttle,
+  inference and camera caps, motion gate) are on Power, because Detection is greyed in the no-AI
+  modes while the gate must stay editable. Expert knobs in `FoldSection`s. Every explanation sits
+  behind an ⓘ (`setting_help.dart`); live status that depends on values (`statusText`) is always
+  visible; on tiles only the ⓘ toggles help; `HelpSwitchTile` draws help below the tile, never as
+  a `ListTile.subtitle` (toggling it trips a baseline assertion; tested).
+- Session settings stay on the camera screen (they need the live camera); app-level actions go in
+  the home Menu (drawer).
 
-- **Every native camera view gets the screen's live settings (round 244).** `YOLOView`
-  is keyed on the stream size, so the automatic stream pick (r109) or a Settings change
-  builds a NEW native view that knows only its creation params (model, thresholds, lens
-  facing, stream). `YOLOView.onNativeViewCreated` → camera screen resets
-  `_captureProbeStarted`, so the next frame map re-sends ROI, motion gate, camera fps
-  cap, time-lapse mode and re-runs the probes (lens, focus preset). Anything new that is
-  sent to the native view through the controller must go into that start-up sequence,
-  not only into one-off calls. Thresholds travel as creation params;
-  `YOLOViewController.init` re-sends them only when set on the controller before
-  attach (it used to overwrite the user's confidence/IoU with 0.25/0.7). Diagnose with
-  logcat `FRAMEPERF … gate=on awake= frames= wakes=motion/box/roi/settings`, "YOLOView
-  created", "confidence threshold"; check `integration_test/view_recreate_check_test.dart`.
+### Camera and native view
+- **Every new native camera view gets the live settings.** `YOLOView` is keyed on the stream
+  size, so a stream change builds a new native view that only knows its creation params.
+  `onNativeViewCreated` → the camera screen resets `_captureProbeStarted`, and the next frame map
+  re-sends ROI, motion gate, camera fps cap, time-lapse mode and re-runs the probes. Anything new
+  sent through the controller belongs in that start-up sequence. Thresholds travel as creation
+  params. Check: `integration_test/view_recreate_check_test.dart`; logcat `FRAMEPERF`.
+- **Camera2 interop options go through one funnel:** `applyInteropOptions()` in `YOLOView.kt`
+  is the only caller of `setCaptureRequestOptions` (it replaces the whole option set, so manual
+  focus and the fps cap are always applied together). Re-runs after every (re)bind and preview
+  reattach. The fps cap picks a HAL AE range (closest ≤ requested; logged).
+- **Plugin lifecycle:** `YOLOView.stop()` is restartable (never shut executors there);
+  `YOLOView.release()` (from `YOLOPlatformView.dispose()`) is terminal. Model loads go through
+  the one `modelLoadExecutor` + generation token; completions run on a main-looper Handler, not
+  `View.post`. `stop()` closes models only after a frame still inside `predict()` ends.
+- **No model:** `modelPath ''` → plugin `startWithoutModel()` + `startStreaming()`; frames
+  without a predictor (outside motion/time-lapse) send a ~1 Hz `noModel` heartbeat so the Dart
+  start-up still runs. The camera passes `_cameraModelPath` (the config path only when that file
+  exists) and re-checks after Settings or the models screen (`_recheckModelFile`); live detection
+  without a usable model asks (`_askForDetector`), never picks silently. A failed load
+  (`onInitialModelLoadFailed` → `onModelError` → `_onModelLoadError`) reverts via
+  `modelLoadRecovery()` (still-loaded model, else none) + dialog. `migrateModelPath` maps old ids
+  to ''.
+- **Blackout (power save) detaches only the Preview use case** (`setPreviewEnabled(false)`);
+  analysis and ImageCapture stay bound, a recording continues. A timed session end calls
+  `_exitBlackout()` before pushing the summary (brightness override is per Activity).
+- **No YUV→RGB in Dart**: the native pipeline does it.
+- **Portrait only**, locked in the manifest and in `main()`; the crop/rotation math assumes an
+  upright phone. Lift both locks only with a full orientation audit.
+- **Start-up calibration is one cycle and cached:** `_calibrating` (first analysis frame +
+  photo probe + analysis-ceiling probe) gates the controls; a failed model load still completes
+  it. The slow photo-size probe is cached per device + app version + lens zoom
+  (`capture_calibration_cache.dart`); start record `capture_dims_from_cache`.
+- **Focus is always manual:** preset `kFocusPresetDioptres` 7.5 dpt (~13 cm), re-applied per lens
+  switch; amber badge until the user moves the slider. No autofocus anywhere.
+- **GPU vs CPU** depends on whether the GPU backend compiles the model's op graph, not on int8 vs
+  fp16. A 2-strike GPU-crash blocklist demotes crashing models to CPU (`LiteRtModel.kt`). The
+  engine benchmark (Settings) is user-triggered only.
+- **Stream resolution:** the dropdown hides sizes above the probed analysis ceiling; the live
+  "Stream: W×H" readout is the truth. Stream size only affects fast-crop sharpness, not
+  detection. Logs record requested and delivered (`analysis_w/h`).
+- **Motion gate idle:** only `motionGateIdleFps` frames/s are inspected (the rest are dropped in
+  `YOLOView.onFrame` before conversion), so the camera fps readout shows ~that number while the
+  gate sleeps; time-lapse shows ~1 fps between bursts. That is correct.
 
-- **Repository branch and dependency workflow (round 202).** `main` is the
-  stable default branch; `develop` is the integration branch and the base for
-  normal contribution and Dependabot version-update pull requests. Work happens
-  on short-lived branches and their head branches are deleted after review.
-  Dependabot opens at most three version PRs per configured entry: GitHub
-  Actions are grouped, Pub patch updates are grouped per Dart project, and the
-  Gradle/Android Gradle Plugin/Kotlin toolchain is one compatibility group. QNN
-  and ONNX Runtime upgrades stay separate because they require targeted device
-  validation. See `docs/CONTRIBUTING.md` and
-  `.github/pull_request_template.md`.
+### ROI and photos
+- **ROI is ÷32 WYSIWYG:** the box, readout, saved crop and inference ROI are the same square;
+  side snaps to a multiple of 32, capped to the frame's short side (720 → 704). Single mutation
+  funnel `_onRoiChanged` (camera screen); helpers in `models/roi.dart`.
+- **One scale:** the box readout, slider and snapping use the analysis stream grid
+  (`_roiSourceWidth == _imageWidth`); the high-res source only feeds the "saves N×N" label
+  (`_savedSideNow`). Never make the box grid follow `_activePath`.
+- **Crop paths already snap and cap** (don't fix again): plugin `ImageUtils.cropRoiFromFrame`
+  (fast, on `stillExecutor` via `captureRoiFromFrameAsync`), `MainActivity.cropRoiJpeg`
+  (high-res), Dart fallback `_cropJpeg`. Downscale above the target, never upscale.
+- **Photo source is chosen per photo** (`chooseCapturePath`, `savedSidePx`, `capSavedSidePx`;
+  `targetRoiSavedPx` is both threshold and cap). High-res photos pause the analysis stream
+  0.13–1.5 s and show the scene after the detection; the `_live` companion is the trigger-moment
+  crop. Records log `path`, `saved_px`, `content_lag_ms`, `live_*`. True zero-shutter-lag never
+  engages on the Xiaomi (~0.17 s is the floor): don't chase it in software.
+- **High-res photos are processed off the main thread and never full-frame rotated:**
+  `capturePhotoRaw` returns the unrotated JPEG; ROI mapped by `rawRectForUprightRect` (Dart, with
+  a Kotlin mirror in `MainActivity.kt`: keep in sync); probe dims go through
+  `uprightHighResDims` (the probe decode may already be upright). Don't reintroduce
+  `normalizeJpegOrientation` on this path.
+- **ROI logging:** the `roi` block is expressed against the photo source; start and `roi_update`
+  records also carry `roi_side_stream_px` (what the summary shows). `roi_update` is debounced
+  (2 s, flushed in `_stopRecording`).
+- **Photo file names:** `roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg` (4-char session token
+  `file_token`, then the trigger moment in local time; path sort = capture order). No track IDs
+  in names. Session photos carry no EXIF; only user-exported crops get DateTimeOriginal + GPS.
+  The trigger moment is logged as `captured_at_ms`.
 
-- **Android release toolchain (round 203).** Release builds use Gradle 9.1.0,
-  AGP 9.0.1, and Kotlin 2.3.20. The app namespace and application id are
-  `com.faunapulse.app`; native app classes and the bundled YOLO library remain
-  in `com.ultralytics.yolo`, so manifest component names are fully qualified.
-  Keep `android.builtInKotlin=false` and `android.newDsl=false` until every
-  Android plugin supports AGP built-in Kotlin. `file_picker` stays on `^10.3.10`:
-  8.x hard-coded compile SDK 34, while 11.x assumes built-in Kotlin. Root lint
-  disables only `geolocator_android` 4.6.2 `MissingPermission` false positive;
-  the host manifest and runtime flows still declare and request
-  `POST_NOTIFICATIONS`.
-- **Security and backup boundary (rounds 200-201).** Imported/downloaded models live
-  in private app storage. Intake is HTTPS-only, rejects unsafe names and
-  traversal, streams through a temporary file, validates the TFLite `TFL3`
-  identifier, enforces 30 MiB for TFLite and 256 MiB for QNN, and bounds native
-  model metadata parsing. Change the TFLite limit only at
-  `kMaxTfliteModelBytes` in `models/model_file_security.dart`. These checks run
-  only on model intake, never in the live camera/inference path. Crash files and
-  problem reports are private and share only through the report FileProvider.
-  Android backup includes shared preferences only, which can contain the last
-  optional GPS coordinates; sessions, photos, models and diagnostics are
-  excluded. Cleartext traffic is blocked. The direct battery-exemption and
-  unused data-sync foreground-service permissions are absent. Release lint must
-  pass. CI and clean clones require the tracked `android/gradlew`,
-  `android/gradlew.bat` and `android/gradle/wrapper/gradle-wrapper.jar`; do not
-  re-add them to `android/.gitignore`. The recording service is non-sticky and
-  renews a 30-minute wake-lock
-  fail-safe every 25 minutes, so it still supports multi-day sessions without
-  leaving an orphan battery drain after process death.
-- **Edge-to-edge bottom insets (round 165).** The app renders edge-to-edge
-  (forced by targetSdk 36 on Android 15+), so two recurring traps hide the
-  screen's last element under the system navigation/gesture bar: (1) a
-  ListView with an EXPLICIT `padding:` loses Flutter's automatic
-  MediaQuery-inset padding — always add `MediaQuery.paddingOf(context).bottom`
-  to the bottom term (see the summary screen's `_tabPadding`); (2) a
-  `Positioned(bottom: N)` in a full-body Stack anchors to the SCREEN bottom
-  — add the inset there too. Screens whose body is wrapped in `SafeArea`
-  (home, analysis r137, problem report, identify + results r209) are already
-  safe. RULE: any new screen with bottom-anchored content or an
-  explicitly-padded scrollable gets a regression test reusing `expectAboveBottomInset` +
-  the FakeViewPadding fixture in
-  `test/fauna_pulse/summary_bottom_inset_test.dart` (that file also
-  documents the widget-test async traps: sync fixture IO, runAsync/pump
-  interleave).
-- **NEW-SCREEN LAYOUT CHECKLIST (round 209; owner: "such display issues are
-  quite common when you implement a new screen").** Round 208's Identify screen
-  shipped with BOTH classic traps (a "right overflow by 40 pixels" banner and an
-  unreachable last row). Before declaring any new screen/sheet done: (1) body in
-  `SafeArea`, ListView padding bottom ≥ 32 (or add `MediaQuery.paddingOf(context).bottom`);
-  (2) every `DropdownButtonFormField` gets `isExpanded: true` (else it takes the
-  width of its longest item; file names are long); (3) every `Row` whose text can
-  be long puts it in `Expanded`/`Flexible` with `overflow: TextOverflow.ellipsis`,
-  and the same inside `ListTile` titles and bottom sheets; (4) a widget test on a
-  360-px-wide screen with `simulateBottomSystemBar` (a RenderFlex overflow fails
-  the test by itself) that jumps to `maxScrollExtent` and asserts the last row with
-  `expectAboveBottomInset` (`identification_results_screen_test.dart` is the template).
-- **Settings-sheet tabs are user-intent groups (round 159).** Setup / AI /
-  Photos (was Camera) / Power (was Graphs). ALL heat controls live on POWER
-  (auto-throttle + inference caps, camera fps cap, motion gate + sensitivity),
-  NOT on AI: the AI tab is whole-greyed (r147) in the no-AI modes while the
-  gate must stay editable in motion mode. Expert knobs sit in collapsed
-  `FoldSection` ExpansionTiles (6 folds; the gate-sensitivity fold
-  auto-expands in motion mode via ValueKey + initiallyExpanded);
-  "Show setup tips" is a CheckedPopupMenuItem in the home ⋮ menu. NO
-  SessionConfig keys changed. Pre-r159 docs/screenshots naming "Camera
-  tab"/"Graphs tab" for these controls are stale — SETTINGS_REFERENCE.md
-  carries the migration note. r181: EVERY control's explanation (not just
-  numeric fields) hides behind a ⓘ via `widgets/setting_help.dart`
-  (`HelpLabel` labels, `HelpSwitchTile` switch/checkbox tiles, `HelpRow`
-  buttons, `FoldSection` — also used on the analysis screen). RULES: live
-  status/warnings that depend on current values (e.g. "the camera will stay
-  on", "Not used in time-lapse mode") stay ALWAYS visible via `statusText`,
-  never behind the ⓘ; on tiles only the ⓘ toggles help (row tap keeps
-  flipping the switch); HelpSwitchTile renders status/help BELOW the tile,
-  never as ListTile `subtitle` — toggling a subtitle null↔non-null with the
-  padded ⓘ in the title trips a RenderShiftedBox baseline assertion
-  (regression-tested in setting_help_test.dart).
-- **ROI is ÷32 WYSIWYG (round 57).** The ROI box, the on-screen resolution readout, the
-  saved JPEG crop, and the inference ROI are all the **same** square. The side snaps to a
-  multiple of 32 and is capped to the frame's short side, so the saved size can **never
-  exceed** the short-side floor (e.g. a 720 short edge → 704, never 720). When maxed, the
-  box leaves a small exact margin (~8 px/side at 720) from the preview edge to indicate that band is
-  the pixels *not* in the saved crop. Reuse `Roi.snapSideToGrid` / `snapToMultipleOf32` and
-  `Roi.copyClamped` in `models/roi.dart`; the single mutation funnel is `_onRoiChanged` in
-  `screens/camera_session_screen.dart`.
-- **Crop/save paths all already ÷32-snap and cap to short side** — don't "fix" them again:
-  fast `ImageUtils.cropRoiFromFrame` (plugin Kotlin), full-res `MainActivity.cropRoiJpeg`
-  (app Kotlin), and the Dart fallback `_cropJpeg` (`capture/roi_capture.dart`). Fast path
-  crops the live frame; the high-res path takes a full photo then region-crops (and, above
-  `maxRoiSavedPx`, downscales — never upscales).
-- **The photo source is chosen PER PHOTO (round 61).** `chooseCapturePath` /
-  `savedSidePx` / `capSavedSidePx` in `capture/roi_capture.dart` are the single source of
-  the decision + size math; the single `targetRoiSavedPx` (r63) is both threshold and
-  cap. Capture records log `path` + `saved_px` per photo, ROI records log `roi_source`
-  + `saves_px`. High-res-path caveat (r108: measured ~0.76 s content lag on the Xiaomi
-  even though CameraX grants ZERO_SHUTTER_LAG — suspect the r82 interop options
-  defeat ZSL; `content_lag_ms` in every high-res `capture` record now answers this
-  per photo, negative = ZSL worked): the high-res photo shows the scene AFTER the detection
-  that scheduled it, so fast insects can be gone and `box_in_roi` may not align.
-  Mitigated by the r108 sync companion (`highResSyncCompanion`, default on): the
-  trigger-moment live crop is saved as `…_live.jpg` beside every high-res photo.
-- **High-res photos are processed off the main thread and NEVER full-frame-rotated (round 63).**
-  `capturePhotoRaw` returns the unrotated JPEG + rotation/mirror info; CameraX's
-  callback runs on `stillExecutor` (handing it the main executor froze UI/preview/
-  detector ~1.5 s per photo — session_96 PerfMonitor). The ROI is mapped into raw
-  coordinates by `rawRectForUprightRect` (Dart original with unit tests in
-  `roi_capture.dart`; Kotlin mirror in `MainActivity.kt` — KEEP IN SYNC) and only the
-  small square is rotated. Don't reintroduce `normalizeJpegOrientation` on this path.
-- **While the motion gate is idle, only `motionGateIdleFps` frames/s are inspected
-  (round 63; user-tunable since round 64, default 5).** The early skip in
-  `YOLOView.onFrame` closes the rest BEFORE bitmap conversion (idle heat fix).
-  Consequence: the delivered/camera FPS readout legitimately shows ~that number while
-  the gate sleeps — that is the fix working, not a camera fault. Same semantics in
-  time-lapse mode (r146): the pre-conversion sampler sits ABOVE the native frame
-  counter, so the readout shows ~1 fps between bursts; the panel's Camera line is
-  relabelled there ("frames kept for time-lapse — the camera itself runs at full
-  rate") and the Model line is hidden in both no-AI modes (model loaded, never runs).
-- **Photo dims from the probe must go through `uprightHighResDims` (round 64).** The
-  probe's JPEG decode is EXIF-aware and may return the photo already upright; a blind
-  w/h swap for rotation 90/270 double-rotates (session_97: predicted 1024, saved 992,
-  summary showed un-snapped 1304). The summary photo browser shows each file's exact
-  `saved_px` from its capture record, not box geometry.
-- **Owner rule: every new tunable parameter ships user-adjustable** — Settings control
-  + SessionConfig JSON + summary row + round-trip test, in the same round it appears.
-- **Session location (round 126).** ONE GPS fix per session, never continuous:
-  `session/location_fix.dart` (pure `LocationFixTracker`: best fix, done at ≤15 m or
-  60 s) + map-free pin-button dialog (offline/flight-mode friendly; manual entry +
-  "use last session's" from prefs `last_session_location`). Start record gains
-  `location` {lat, lon, accuracy_m, fix_time_ms, source gps|manual|previous};
-  `redactLocation` (error_reporter.dart) strips it from problem-report samples
-  (protected-species sites). Silent screen-open acquire only when permission was
-  already granted; the dialog is the prompting path. Dep: geolocator; manifest:
-  ACCESS_FINE/COARSE_LOCATION.
-- **Portrait-only (round 124).** Locked in BOTH the manifest
-  (`android:screenOrientation="portrait"`) and `main()`
-  (`SystemChrome.setPreferredOrientations`): the crop/rotation math assumes an upright
-  phone (`uprightHighResDims`, `rawRectForUprightRect` Dart+Kotlin pair) and the
-  overlays overflow in landscape. Lift both locks together only with a full
-  orientation-aware audit. Same round (+125): the on-screen stats list is collapsible
-  (default = one "▸ det fps · temp" line — cam fps in the no-AI modes; state in
-  shared_preferences `stats_panel_expanded`, NOT SessionConfig); the mode
-  chip shares ONE row with the toggle line so the header always clears the REC banner
-  (its `top: 52` was sized to the chip). r145: the chip is ALWAYS shown (one
-  `_modeChip()` for all three capture modes, labels mode-prefixed, e.g.
-  "MOTION: WAITING", "TIME-LAPSE: press REC") and sits in a Flexible with
-  ellipsis so long labels can never right-overflow the header; the expanded
-  panel gets a ~75%-black backdrop and, while expanded, the REC banner
-  (`recBanner` local, ValueKey'd, two mutually exclusive Stack slots) drops
-  BELOW the strip so the panel is readable — collapse restores today's
-  banner-on-top look. r125 verdict: landscape-HELD recording is
-  data-safe — crops have no EXIF, boxes are pixel-space; content is just rotated 90°.
-- **Start-up calibration is ONE cycle (round 120) and CACHED (round 121).**
-  `_calibrating` in `camera_session_screen.dart` (first analysis frame + full-res photo
-  probe + analysis-ceiling probe; every term terminates) gates the controls row.
-  r151 termination guard: a FAILED initial model load used to break the "first
-  analysis frame" term forever (predictor null = no frames); native now sends
-  `onInitialModelLoadFailed` (view method channel) → plugin `onModelError` → the
-  screen's `_onModelLoadError` reverts to a runnable model (still-loaded one, else
-  no model since r270: native then starts the camera without one) + dialog, so calibration always completes
-  (settings gear, blackout, lens switch, focus, REC) and both calibrating indicators,
-  so half-probed settings (e.g. the incomplete stream-resolution list) can never be
-  opened. The slow photo-size probe is stale-while-revalidate cached
-  (`session/capture_calibration_cache.dart`, shared_preferences key = device model +
-  app version + lens zoom): cached dims apply instantly, the real test photo still
-  confirms/corrects + re-saves; the analysis-frame fallback is NEVER cached; the start
-  record carries `capture_dims_from_cache: true` while unconfirmed. The settings sheet
-  background is fully opaque (`Color(0xFF141414)` — black87 let the preview bleed
-  through). Placement convention: session settings stay on the camera screen (they need
-  the live camera); future app-level settings go in the home screen's ⋮ menu (r267: AI models is the first one).
-- **ROI box geometry lives in ONE scale: the stream grid (round 62).** The box's px
-  readout, resize slider and ÷32 snapping always use the analysis frame
-  (`_roiSourceWidth` == `_imageWidth`); the high-res source only feeds the separate
-  "saves N×N (path)" part of the label (`_savedSideNow`) and the crops themselves.
-  Do NOT make the box grid follow `_activePath` again — field-tested (session_95):
-  the scale-flipping readout misled the owner into shrinking the box to ~17% of the
-  frame without realising it.
-- **ROI logging & history (round 109).** The logged `roi` block stays expressed
-  against the photo source (`_roiLogDims` — high-res frame on that path, hence
-  session_6's confusing "1333" for an on-screen 480), but start + `roi_update`
-  records now ALSO carry `roi_side_stream_px` (the on-screen ÷32 side; same
-  `savedSidePx` math) and the summary shows THAT ("Initial ROI", "Initial ROI
-  saves", "ROI changes during the session"; pre-109 logs recomputed via
-  `roiStreamSideFromLog` in roi_capture.dart). `roi_update` writes are debounced
-  (`logging/roi_update_debouncer.dart`: 2 s stability, skip-if-unchanged,
-  seeded at start, FLUSHED in `_stopRecording` before the logger closes) — one
-  record per settled adjustment; the box/inference ROI still update per tick.
-- **GPU vs CPU is decided by whether the GPU backend can compile the model's op graph — not
-  by int8 vs fp16** (log §6; re-verified r77: `arthropod_yolov11_int8` runs on GPU). A
-  2-strike GPU-crash blocklist demotes crashing models to CPU. The chosen engine is logged
-  and shown on screen. Engine choice is user-informed via the benchmark (r76:
-  `benchmarkAccelerators` in `YOLOPlugin.kt`, noise input at the model's own resolution,
-  3 warm-up + 20 timed runs per config; deliberately never run automatically).
-- **Stream resolution honesty (round 56; tightened r123).** The dropdown now HIDES
-  sizes above the probed analysis ceiling (they'd be silently shrunk; only a legacy
-  saved choice above the ceiling stays listed, annotated). The
-  live "Stream: W×H" readout is ground truth (CameraX may cap the analysis stream). Stream
-  size only affects fast-crop sharpness, **not** detection (every frame is downscaled to the
-  model's input tensor). Logs record both requested and delivered (`analysis_w/h`).
-- **Logging.** Append-only JSONL (crash/battery-loss safe): start metadata, one
-  `detections` record per frame (round 69) whose `tracks[]` entries carry track id +
-  ROI-relative `box_in_roi` (0..1) + saved filenames — plus (r114) `frame_ms`
-  (emit-clock epoch, SAME basis as `raw_detections.frame_ms`) and
-  `frame_sensor_ms` (sensor-exposure epoch via `sensorNanosToEpochMs` in
-  YOLOView.kt, absent on odd HALs; comparable to `capture.content_at_ms`) —
-  ROI geometry updates, and stop metadata with `ended_normally`. Sessions ≤ round 68 used per-track `detection`
-  records — parsers (summary screen, DATA_GUIDE snippets) must accept both.
-  r116 **track lifecycle is explicit**: both trackers emit `track_event` lines
-  (`event`: `created`/`lost`/`recovered`/`removed`, + `track_id`, `frame_ms`,
-  `box_in_roi`, `hits`, `first_seen_ms`, `last_seen_ms`, `frames_missed`,
-  `reason` `aged_out`|`gate_expired`) via the `TrackEventBuffer` mixin
-  (`tracking/tracker.dart`) → drained per frame by `FrameProcessor` →
-  `SessionRecorder.recordFrame`. Invariant made explicit the same round:
-  `detections[].tracks[]` boxes are ALWAYS detector-observed (unmatched tracks
-  go `lost`, which `update()` never returns) — a `coasted:true` guard key
-  would flag any future tracker that returns predicted boxes. Post-processing
-  can now tell temporary track loss / id churn apart from analysis pauses
-  (e.g. the r115 high-res capture holes) without inferring from gaps. Writes go
-  through an in-logger queue drained by one async writer loop (I/O on the Dart VM's
-  background thread pool — never sync file I/O in the frame callback); fsync every
-  ~0.5 s; `close()` is async and must be awaited so `end_of_session` lands.
-- **A session never dies silently (round 67).** `SessionLogger` swallows + counts write
-  failures (storage full) instead of throwing in the frame callback; `onWriteError` fires
-  once → persistent red banner; writes keep being attempted so logging resumes if space
-  frees. Global traps in `logging/app_error_hooks.dart` (installed in `main()`) route
-  uncaught errors to the live session's `app_error` lines via `appErrorSink` (rate-limited
-  to 1 per 2 s) and mark uncaught async errors handled (app stays alive). Don't add naked
-  fire-and-forget futures — route failures to `_logAsyncError` / `RoiCaptureScheduler.onError`.
-  Best-effort `catch` blocks (probes, platform calls, cleanup) must not be empty (r79, review
-  B7): call `logSwallowed(site, e)` from `app_error_hooks.dart` — rate-limited debugPrint
-  (reaches `logcat_end.txt`) + `app_error` JSONL line while recording.
-- **Photo filenames (rounds 98–99).** `roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg`
-  (e.g. `roi_elhp_2026-07-14_155813_119.jpg`): 4-char per-session random token
-  (grouping: pooled multi-session folders sort by session), then the TRIGGER moment —
-  the frame that made the photo due, not the write-completion time — as a fixed-width
-  LOCAL-time stamp (`roiPhotoFileName` in `capture/roi_capture.dart`; token from
-  `session_recorder.dart`, logged as `file_token` in the start record). Invariants:
-  token first + fixed-width stamp (within a session, path sort == capture order —
-  gallery export relies on it); track ids never in the name (one photo can serve
-  several tracks); r126 EXCEPTION: user-exported CROPS (and only crops) get EXIF
-  DateTimeOriginal + GPS stamped at export time (`CropExifInfo`/`applyCropExif` in
-  crop_export.dart) — session photos stay EXIF-free, and no orientation tag is ever
-  written; the same trigger moment is logged as `captured_at_ms` in
-  `capture`/`motion_capture`/`timelapse_capture` records (the records' own `time_ms`
-  is stamped later — at enqueue / after the JPEG write) and the summary's Photos tab
-  shows it as "Captured". Saved crops carry NO EXIF (all paths re-encode raw pixels);
-  filename + JSONL are the capture-time ground truth. `session.jsonl` stays strict
-  one-object-per-line JSON Lines — never pretty-print it.
-  r132 comparability records: start carries `app_version`/`app_build`/`build_mode`
-  (never compare perf across mixed binaries) and `blackout_at_start`; `blackout`
-  records log every screen-cover toggle; `focus_change` records log settled
-  mid-recording focus moves (debounced via `SettledUpdateDebouncer<T>`, the
-  generalized `RoiUpdateDebouncer` base in `logging/roi_update_debouncer.dart`).
-- **Tracker.** Two pure-Dart trackers behind the `InsectTracker` interface
-  (`tracking/tracker.dart`, r105): ByteTrack-style (`byte_track.dart`, default —
-  its distance-association fallback fixed track-id fragmentation) and
-  C-BIoU-style (`c_biou_track.dart`, cascaded buffered-IoU matching for big
-  between-frame jumps). Both share visit semantics (high-score spawn rule,
-  frame-count buffers re-derived live from the user's seconds). The camera
-  screen swaps the instance only on settings close (settings are locked while
-  recording, so ids never restart mid-log); the start record's
-  `tracker_params.algorithm` says which tracker produced a session. The
-  "Log raw detections" toggle writes pre-tracking `raw_detections` records
-  that `tracking/tracker_replay.dart` replays through either tracker
-  (`flutter test test/fauna_pulse/tracker_replay_test.dart
-  --dart-define=REPLAY_SESSION=…/session.jsonl` — prints the full variant
-  matrix incl. a throttle-staircase stress stream); judge reports against a
-  hand count from the session's `gt_frames/` photos, not MOT benchmarks.
-  r107: both trackers carry INTERNAL evaluation flags (constructor-only,
-  never SessionConfig): `timeAwareMotion` (velocity per second of real
-  elapsed time) and ByteTracker's `FallbackMode.bufferedIou`. Adoption rule:
-  a variant becomes default only after it wins on sessions with hand-counted
-  ground truth (less fragmentation, no new merges); until then live behavior
-  is unchanged. r108 status, from the owner's bumblebee sessions 3–5
-  (expected ~1 visit): plain ByteTrack hit ground truth (1, 1, 2 visits);
-  C-BIoU fragmented 3–6× on identical input; dtAware didn't reliably help
-  and bIoU-fb over-merged r106 data — ByteTrack stays default, no variant
-  adopted.
-- **Problem reports & crash files (round 118; reworked r190).** "Report a problem"
-  (home ⋮ menu since r190, above "Delete all sessions…"; was a landing-screen button)
-  builds a `.txt` into `error_reports/`: app/device info, user text, up to 3 recent
-  crash files, settings, a HEAD+TAIL sample of the latest session.jsonl (30 + 200
-  lines, lines capped 2000 chars — `headTailSample` in `error_reporter.dart`), last
-  2000 logcat lines. r190: the describe screen can attach SCREENSHOTS
-  (image_picker `pickMultiImage`; `ProblemDescriptionResult` carries paths; build()
-  copies them into `error_reports/` as `report_<stamp>_screenshotN.<ext>` — the only
-  FileProvider-served folder). r191: Share always sends ONE file — `report_<stamp>.zip`
-  (txt + screenshots + sampled session files) when anything beyond the .txt exists,
-  else the bare .txt; the r190 multi-file mixed-type share made WhatsApp drop ALL
-  attachments (owner test). r191: WHICH session's data rides along is a visible
-  dropdown on the describe screen (newest preselected, "No session data" available;
-  home passes `_sessions`, the in-session flow keeps the live session).
-  `logging/report_bundle.dart` samples that session's files into zip members
-  (r192 names): `session_events_sample.jsonl` (flood types detections/track_event/
-  raw_detections/capture* dropped, location redacted, head 100 + tail 300),
-  `logcat_{start,end}_sample.txt` (drops `updateAcquireFence` + PERF/FRAMEPERF
-  noise — measured 71–93% of those files — head/tail 150),
-  `post_detections_runs.jsonl` (per-run summaries only). The `.jsonl` members stay
-  VALID JSON Lines: the omission marker is a JSON record
-  `{"type":"sample_omitted","omitted_lines":N}` (r192 — the owner reads them with
-  pandas). r192: the .txt no longer embeds the 30+200 log excerpt when samples ride
-  in the zip (it just points at them; the excerpt is appended only as the
-  zip-FAILURE fallback), and the .txt's LIVE logcat capture drops the
-  `updateAcquireFence` noise (keepLiveLogcatLine — PERF stays: it is the only perf
-  record when "No session data" is chosen). NEW
-  direct dep `archive` (was transitive via image). Send = share sheet or the GitHub
-  issue link (r189, shown on the describe screen +
-  "Report saved" dialog + .txt footer). The r118 "Email…" option is GONE from the UI
-  (r190 owner decision: don't encourage mailed reports) — `ErrorReporter.emailTo`,
-  the `report_recipient_email` pref and native `sendFileByEmail` (via the
-  `<appId>.reports.fileprovider` FileProvider, serves ONLY `error_reports/`) stay
-  DORMANT in code; a revival must add multi-attachment support to the native intent.
-  The describe screen's helper texts are white70/white54 (r190 — the original
-  black54/black45 was near-invisible on the app's dark theme).
-  Uncaught errors persist as `crashes/crash_<yyyy-MM-dd>_<HHmmss>.txt` (newest 20 kept):
-  Dart `crash_store.dart` (both global hooks) + Kotlin uncaught-handler in `MainActivity`
-  (KEEP `writeCrashFile` ↔ `crashFileBody` IN SYNC); C++ signal crashes aren't captured.
-  `ErrorReporter.githubIssuesUrl` is set to the public repo's Issues page (r134).
-- **Versioning:** pubspec `version:` (now `0.8.0-alpha.1+13`) is the single source of truth
-  (Gradle + package_info_plus derive from it). Bump the build number for every tester APK;
-  tag releases `v<version>` keeping any pre-release suffix (`v0.7.0-alpha.1`). Release
-  metadata that must move together: pubspec `version`, CITATION.cff `version` +
-  `date-released` + the version-DOI `identifiers` entry (the concept DOI
-  `10.5281/zenodo.22309221` in `doi:` and the README badge NEVER changes; r207),
-  CHANGELOG.md heading, `fastlane/.../changelogs/<versionCode>.txt`.
-  `scripts/build_release_apks.sh` passes `-P force-version-code-ignoring-abi=true` so the
-  per-ABI GitHub APKs carry the SAME versionCode as the Play AAB (r205; Flutter's default
-  would stamp 2011/1011 and block GitHub → Play switches). Licence id everywhere is
-  `AGPL-3.0-only` (SPDX) / "AGPL-3.0" (prose); the one-line description lives in
-  pubspec `description` == CITATION.cff `title` (r224: "... detection, tracking and
-  identification of animals" from v0.8.0-alpha.1, see RELEASE_PLAN
-  "v0.8.0-alpha.1"). Zenodo reads only title/abstract/authors/keywords/licence
-  from CITATION.cff and the version from the tag; never retitle an already-archived version.
-- **No reimplementing YUV→RGB** in the Dart path — the native pipeline already does it.
-- **Camera2 interop options go through ONE funnel (round 82).**
-  `applyInteropOptions()` in `YOLOView.kt` is the only place
-  `setCaptureRequestOptions` may be called: that API REPLACES the whole option
-  set, so manual focus and the camera fps cap must always be applied together
-  (a separate call would silently erase the other — e.g. unlock the focus).
-  The funnel re-runs after every camera (re)bind and after a preview reattach.
-  The fps cap picks a HAL-advertised AE range (closest ≤ requested; logged as
-  "Camera fps cap: requested=X applied=[a, b]"). Xiaomi accepts a fixed [15,15].
-- **Plugin native lifecycle (round 161, perf review E2).** `YOLOView.stop()` is
-  RESTARTABLE (a later `setModel()` rebinds the camera), so never shut the
-  view-lifetime executors there; the terminal step is `YOLOView.release()`
-  (called from `YOLOPlatformView.dispose()` after `stop()`), which shuts down
-  `stillExecutor` + `modelLoadExecutor`. Model loads go through the ONE owned
-  `modelLoadExecutor` + generation token (superseded loads are cached, not
-  installed; post-disposal loads self-close); their completions run on a
-  main-looper Handler, NOT `View.post` (a detached view parks View.post
-  runnables forever → the fresh predictor would leak). `YOLO.close()` /
-  suspend `YOLOInstanceManager.dispose()` really release native models now
-  (remove-then-close on Dispatchers.IO); `YOLOPlugin` owns a cancellable
-  `pluginScope` (no GlobalScope) and calls `disposeAll()` on engine detach.
-- **Blackout (power save) detaches the Preview use case (round 82).** The black
-  scrim + min brightness alone saved ~nothing (measured: camera HAL ~2 cores,
-  app ~1 core kept running under it). `setPreviewEnabled(false)` unbinds ONLY
-  the preview stream — analysis (detector/gate) + ImageCapture stay bound and
-  a recording continues; wake reattaches it (~0.2 s) and re-asserts the interop
-  funnel. A timed session end must (and does, r83) `_exitBlackout()` before
-  pushing the summary — the window-brightness override is per-Activity, so a
-  summary pushed over the cover would render unreadably dim with no cover to tap. 
-  Measured effect (r82, gate asleep, USB-charging): total CPU ~490%→
-  ~225%, skin temp plateau ~58 °C → flat ~48 °C. The r78 "idle warming is real"
-  analysis is the *why*; r81/82 in AGENT_CHANGELOG.md carry the numbers.
-- **Field power invariant (owner, 2026-07-11):** the phone is assumed to be on
-  a power bank during field sessions — charging heat is a given, plan heat
-  budgets with it; don't build features that assume battery-only operation.
-- **Scheduled recording (round 94).** `SchedulePlan` (`session/schedule_plan.dart`,
-  pure Dart, clock-injected) plans "1–3 daily windows × N days";
-  `_scheduleTick()` in the camera screen reconciles real state against
-  `phaseAt(now)` on a timer capped at 60 s (doze/clock jumps self-heal — never
-  accumulate). Each window = its OWN session (folder `<name>_d<day>w<win>`,
-  normal `ended_normally` end; log format unchanged); between windows =
-  scheduled sleep: session closed, camera FULLY unbound via `_controller.pause()`
-  (blackout alone only detaches preview), blackout cover in a status-tap
-  variant (tap shows next-window info, never wakes). `SessionRecorder.stop(
-  retainKeepAlive: true)` keeps the foreground service + wakelock across
-  sleeps; only the run's very end (or abort/dispose) releases them. In schedule
-  mode `_sessionTimer` (session length) is NOT armed. Deliberately NO
-  AlarmManager/deep sleep: staying foreground with a wakelock is the app's
-  MIUI-survival strategy, and the phone is on a power bank anyway.
-- **Motion gate (round 58, opt-in).** Native `MotionGate.kt` (48×48 EMA background diff on
-  the ROI) skips inference while nothing moves; motion, detections, and ROI drags all
-  extend a `wakeSeconds` window, and the gate always starts awake. While idle the native
-  side heartbeats `gateIdle: true` ~1 Hz — `_onStreamingData` short-circuits on it (no
-  watchdog, "Gate: idle" stat line). On wake after sleeping > `occlusionSeconds`,
-  `ByteTracker.expireLostTracks()` runs so a newcomer never inherits a stale id. Gate
-  transitions are logged as `motion_gate` JSONL entries. r77: while idle, per-second
-  `fps` records OMIT all inference-derived fields and carry `gate_idle: true` instead
-  (absent = detector off — never log stale/zero inference numbers), the on-screen
-  Pipeline/FPS/inference values read 0, and summary graphs break lines across the gap.
-  r85: a wake (or any long pause — settings sheet, summary screen) must NOT blend the
-  gap into the fps EMAs — `Predictor.finishTiming` (native) and
-  `FrameProcessor.updatePipelineFps` (Dart) share a resume guard (gap > max(2 s, 5×
-  interval) → skip blend; KEEP IN SYNC), and the summary FPS graph plots
-  `pipeline_fps ?? fps` so pre-r85 sessions read honestly too.
-  Don't gate in Dart — frames never leave the native layer. UI (r59, labels r145): green "DETECTOR ON" / grey "DETECTOR SLEEPING" chip
-  atop the status strip + ROI border turns grey while idle (priority: capture flash >
-  gate-idle grey > recording red > yellow).
-  r95 **motion-only capture**: a `motionOnlyMode` branch in `onFrame` sits BEFORE
-  `predictor?.let` (needs nothing from the model; detector path untouched when off) —
-  gate check on every converted frame, awake stream maps `{motionOnly:true,
-  gateIdle:false, motionScore, cameraFps, imageWidth/Height, roiActive}` at ≤10 Hz
-  (fixed 100 ms, NOT shouldRunInference — that cap needs inference timings; wake
-  transition emits immediately; dims are MANDATORY — the Dart probe/ROI bootstrap
-  needs them), idle heartbeat via the shared `maybeEmitGateIdleHeartbeat` helper.
-  Dart: `camera_session_screen` branches on `motionOnly:true` maps → zeroes
-  inference numbers → `SessionRecorder.recordMotionFrame` →
-  `RoiCaptureScheduler.evaluateMotion` (ONE shared window, step/duration cadence)
-  → returns BEFORE the 0-FPS watchdog (critical). r96: a new motion event = a
-  gate sleep→wake CYCLE — `_setGateIdle` (idle transition, motion-only) calls
-  `recorder.onMotionGateIdle()` → `resetMotionWindow()`; the in-window
-  gap>durationMs rule is a paused-stream backstop ONLY (awake emissions flow
-  every 100 ms for the whole wakeSeconds window, so it can never fire while
-  awake — relying on it required ~wake+duration of stillness, the r96 field bug).
-  No ROI video (VideoCapture is full-frame; 4th use case exceeds device combos; r225 plan Phase 3 instead encodes the cached ROI bitmap);
-  ≥5 fps bursts = fast photo source + step ≤ 0.2 s (fast crops cap at the
-  stream short side).
-- **Time-lapse capture (round 97, `CaptureTrigger.timelapse`).** Photos on a pure
-  Dart clock: `TimeLapsePlan` (`capture/time_lapse_plan.dart`, pure + clock-
-  injected like SchedulePlan) + a self-rescheduling `_timeLapseTick` timer in the
-  camera screen (armed per recording, capped 60 s) → `recordTimeLapseFrame`
-  reuses the scheduler's motion window (`evaluateMotion` + `resetMotionWindow`
-  at each burst start via `beginTimeLapseBurst`). Native `setTimeLapse(enabled,
-  sampleFps)`: pre-conversion frame drop (Dart pushes ceil(2/step) during a
-  burst, 1 fps between) + ~1 Hz `{timeLapse:true, dims…}` heartbeats emitted
-  BEFORE `predictor?.let` — predict() never runs; the Dart branch returns before
-  the 0-FPS watchdog. Gate forced OFF natively in this mode. Chip: green
-  "TIME-LAPSE: CAPTURING" / grey "NEXT BURST in mm:ss" (pre-REC: "TIME-LAPSE:
-  press REC", r145). `recordFrame` is gated
-  on `detectorEnabled` (startup race guard for both no-AI modes). Scheduled
-  windows compose (each window anchors its own plan); session length applies.
-  r163 camera parking (perf review E3, opt-in `timeLapseCameraSleep`):
-  `session/time_lapse_camera_coordinator.dart` is a PURE clock-injected state
-  machine (running/parked/warming/fallbackBound; idle gap ≥ 30 s to park,
-  prewake = `timeLapseWakeLeadSeconds` r164 default 10 s, wake allowance
-  20 s) — the screen does the r94
-  `pause()`/`resume()` calls and reports outcomes. INVARIANTS: photos only
-  when `framesUsable` (parked/warming means the native frame cache is stale —
-  never save it as a photo); the burst grid NEVER shifts (late wake = late
-  photos, same grid); a failed park/wake → fallbackBound (camera stays on,
-  parking off for the session — reliability first); the dead-camera watchdog
-  is suppressed ONLY while `cameraIntentionallyDown` (parked/warming), so it
-  still fires after a failed wake; blackout steady state re-asserted after
-  the wake rebind; `camera_sleep` JSONL records audit every transition
-  (DATA_GUIDE). Chip appends "· camera off" while parked. r180 torch:
-  `_setTorch` reconciles `_tlTorchOn` with the platform-CONFIRMED state and
-  the tick retries on mismatch, but only while `framesUsable` (a call while
-  parked/warming could only fail, and a transient rebind failure is
-  indistinguishable from "lens has no flash"); park resets the controller's
-  torch cache, stop forces the LED off.
-  Future (not built): on-device post-processing detector/tracker on saved
-  photos.
-  `recordFrame` is skipped in this mode (startup race must not write `detections`
-  records). `fps` records omit inference fields even while awake + carry
-  `motion_only:true` (r77 rule). Summary: `motion_capture` records (and, backstop,
-  `capture` records) seed the Photos list; timeline/unique-insects show a
-  motion-only note. Chip reads "MOTION: CAPTURING"/"MOTION: WAITING" (r145). Handheld shake keeps the gate awake by
-  design — it is meant for a mounted phone. r60: the thumbnail is drawn 2× supersampled
-  and box-averaged (bilinear minification is point-sampling; without this, coarse grids
-  were NOISIER than fine ones — session_89 observation). r74 (review A5): on frames that
-  run inference the thumbnail is derived from the detector's already-rasterized
-  model-input bitmap (`motionDetectedFromModelInput` ← `BasePredictor.lastRoiModelInput()`,
-  checked right after `predict`) so the ROI is copied out of the camera frame once per
-  frame; idle and FPS-capped frames keep the gate's own direct draw (no model raster
-  exists there), so the gate still sees every converted frame while awake.
-- **Home screen look (rounds 183–184).** One nature icon (the camera icon read
-  as a capture button), no tagline — what the app is lives in the ⋮ menu's
-  "About FaunaPulse" (`_showAbout`: condensed README overview, live app
-  version via package_info_plus, GitHub repo link via url_launcher — NEW dep
-  + an https VIEW `<queries>` entry in the manifest). r184: custom dialog,
-  NOT `showAboutDialog` (its mandatory View-licenses button overwhelmed);
-  states the app's own AGPL-3.0 license. r189 removed the muted
-  "Third-party licenses" action; r193 (owner decision, store compliance:
-  bundled BSD/MIT/Apache texts must ship with the binary) brought it BACK
-  as a muted TextButton that PUSHES the auto-generated LicensePage over the
-  dialog (no pop; page header warns the list is long). The dialog is the
-  extracted public `AboutFaunaPulseDialog` widget (version param), tested
-  in `home_about_dialog_test.dart`. r189: the report-a-problem flow (describe
-  screen + "Report saved" dialog) links `ErrorReporter.githubIssuesUrl` as
-  an alternative reporting channel. r190: "Report a problem" moved from the
-  action block into the ⋮ menu (above "Delete all sessions…"), so the landing
-  screen has two buttons (New session / Run AI on photos); a white24 divider
-  separates the action block from "Previous sessions"; the ⋮ setup-tips
-  toggle draws an explicit checkbox glyph (blank unchecked state was
-  ambiguous).
-  `ErrorReporter.githubRepoUrl` is the repo-link constant.
-- **Session rename + per-session gear menu (round 182).** Each Previous-sessions
-  row's leading icon is a gear `PopupMenuButton` (replaced the decorative
-  histogram icon): Rename / Copy photos to Gallery (r187 wording, was
-  "Export…") / Run AI on photos (r184 wording) / Delete (since r187 the ONLY
-  per-session delete — the summary's red button retired with its Overview tab);
-  opening the summary stays the row tap, analyze stays on long-press too.
-  Rename = `renameSession` (`logging/session_rename.dart`): renames the folder,
-  rewrites `config.folderName` in the start record (streamed to a temp file +
-  atomic replace, so a crash can't corrupt the log) and APPENDS a
-  `session_renamed` audit record ({old_name, new_name}; DATA_GUIDE §3) — the
-  ONE sanctioned post-recording edit of session.jsonl. Nothing else stores the
-  name: photos and post_detections.jsonl reference bare file names, and the
-  gallery album name derives from the folder at export time.
-  `scanSessionPhotos` (crop_export.dart) is the shared photo-list scan behind
-  both gallery-copy entry points (summary Photos-tab button + gear menu).
-- **Session summary is tabbed (round 60; r187 layout):** Photos | Graphs |
-  Setup (`DefaultTabController`, `session_summary_screen.dart`). The Overview
-  tab was REMOVED r187 (redundant with Setup): its date/battery/storage rows
-  now LEAD the Setup tab as an "Overview" block, the visit count sits on the
-  Graphs tab as "Insect visits (track IDs)" right above the timeline, gallery
-  copying moved to Photos, and Delete lives only in the home gear menu.
-  `initialTabIndex` callers use the r187 indices (Photos 0, Graphs 1, Setup 2).
-  Round 197: Setup's Overview starts with "Capture mode" (AI detector,
-  motion-triggered photos without AI, or time-lapse photo bursts without AI)
-  before the date rows. In both no-AI modes, Model reads "Not applicable (no
-  AI detector used)" and Inference engine is omitted.
-  Round 198: "All session settings" still keeps rows for recorded settings,
-  but `add(na: true)` replaces every inert saved default with a muted
-  "Not applicable" value; the JSON record itself remains untouched. Current
-  dependencies include detector/tracker rows in no-AI modes, time-lapse rows
-  outside time-lapse, gate details while the gate is off, wake/torch leads
-  while their parent toggle is off, and the high-res companion in fast-photo
-  mode. Reference photos still show "off" when deliberately disabled.
-  Scheduled recording = No makes Schedule windows/days not applicable instead
-  of exposing their 06:00-10:00 defaults; when scheduling is on, Max session
-  length is not applicable. The camera row is labeled "Maximum camera
-  resolution this phone can deliver". The tab reads the `config` block from
-  the start record, so every new `SessionConfig` field appears in the JSON
-  automatically; add a display row in `_settingsSection()` when adding a
-  setting and mark dependencies with its `na:` flag.
-  Graphs r187: below the timeline, a visit-length histogram (bin-width
-  dropdown 1 s–1 h, pref `summary_duration_bin_s`; pure math in
-  `logging/visit_stats.dart`, ≤60 bars + "≥" overflow bar) and a per-session
-  "Visits by time of day" (both drawn by `widgets/mini_bar_chart.dart`,
-  extracted from the r186 Dashboard — same visual language).
-  Photos r187: a RANDOM sample of ≤10 photos auto-loads (no more count
-  slider/Show buttons); "Show all N photos" warns first above 300 photos
-  (slow on phone, USB copy suggested); "Copy photos to gallery" block at the
-  tab's bottom (HelpLabel ⓘ: extra storage, gallery-app indexing lag, copies
-  carry no boxes/metadata). Round 198: the bounding-box legend is introduced
-  by "Bounding box colors (if AI was used)" and each color explanation is its
-  own wrapping line, never a combined truncated line.
-  r84: the power (W) graph + energy numbers render only for sessions with
-  NO charging detected (per-sample `is_charging` in `power` records; start/end thermal
-  flags as fallback for older logs) — battery-terminal current measures charging, not
-  consumption, while plugged in, so a note replaces the graph. Raw `power` records are
-  still always logged (r149; only r148-window sessions may lack them).
-  r148: the Graphs tab always parses on open (no "Generate graphs" button); the visit
-  timeline renders at top and everything else (temperature, headroom, FPS, inference,
-  power) sits behind a ▸/▾ "Extra graphs" disclosure (pref `extra_graphs_expanded`,
-  collapsed by default — mirrors the r125 stats-panel pattern). r165: the
-  floating Hide/Show-timeline toggle only exists for a REAL timeline with
-  > 10 lanes (`_timelineCollapsible`) — no-AI sessions show only the
-  explanatory note there, no button. Sessions recorded with
-  the r148 build's `diagnosticsEnabled:false` show an explanatory note there instead
-  of empty charts, and their sample-interval rows are dropped from the Setup tab. r86: the Photos tab draws EVERY insect of the photo's trigger
-  frame (the `jpeg` filename is shared across the record's entries at parse time —
-  only due tracks carry it in the log): cyan box = triggered the photo, amber =
-  co-detected in the same frame, with a legend line; legacy per-track records (≤ r68)
-  stay trigger-only. r87: photo viewer has a top-right tool column — boxes on/off +
-  pinch/slider zoom (per-page `TransformationController`, overlay inside the
-  transform, double-tap resets). r111/112: ⚡ tool button (rendered only when
-  the session saved r108 `_live` companions) flips trigger-moment live crop
-  (DEFAULT view — boxes need no remap, they're ROI-normalized to the trigger
-  frame) ↔ high-res photo; "Showing" + per-view "Lag" info rows
-  (`content_lag_ms` / `live_lag_ms`); crop-export follows the shown file.
-  r114/115: the HIGH-RES view draws TIME-MATCHED boxes at the photo's
-  `content_at_ms` (matcher in `logging/photo_box_matcher.dart`). KEY FACT
-  (session_16): capturing a high-res photo PAUSES the analysis stream —
-  frame holes 0.13–1.5 s bracket every capture, exactly where the content
-  moment falls. r115 therefore INTERPOLATES each track's `box_in_roi`
-  between the nearest frames before/after the content moment
-  (`FrameBracketAccumulator` ±1.5 s window walks OUTWARD so one pause
-  spanning two photos serves both; `buildPhotoBoxes`, span cap 2 s,
-  constant-velocity like the tracker); single-side tracks keep their
-  frame's box. The tolerance max(250 ms, 1.5× median interval) only picks
-  the "Boxes" info-row TONE — NEVER rejects boxes (r114's rejection fell
-  back to trigger boxes that were FARTHER away — field bug). Trigger-box
-  fallback only for: `roi_update` in trigger→content+2.5 s (checked FIRST)
-  or no frame within ±1.5 s ("insect had likely left"). Pre-r114 logs keep
-  trigger boxes. Pixel-accurate boxes = re-run the detector offline on the
-  saved crops (DATA_GUIDE §5b); on-device re-inference rejected (heat).
-  r112 layout invariant: NO buttons overlay the photo — tools are a row above
-  the preview (zoom slider horizontal below them), ‹ › + pan pad in rows
-  under it; only text mode-chips may sit on the image.
-  r91 crop-and-export: a crop tool button enters a
-  mode where a one-finger drag draws a box over the photo (drag layer ABOVE the
-  InteractiveViewer, points mapped via `toScene` so it works while zoomed; ancestor
-  scrollables freeze exactly as in zoom mode); optional 1:1 lock
-  (`cropSquareLock` — the in-viewer chip and the Settings → Summary switch are the
-  same setting). r92: a drag starting INSIDE the drawn box MOVES it (size and 1:1
-  preserved — `moveSceneRect`; four-arrow glyph at the box's top-right as the cue),
-  outside redraws. Save cuts the box FROM THE ORIGINAL JPEG (never the screen;
-  `capture/crop_export.dart`, background isolate) into the Gallery via MediaStore
-  (`saveImageToGallery` on the `faunapulse/crop` channel →
-  Pictures/FaunaPulse; < Android 10 or MediaStore failure →
-  `<session>/crops/`); Share opens the share sheet (Google Lens / iNaturalist).
-  The crop bar shows the crop's real saved-pixel size (⚠ tiny under 100 px).
-  In-app API identification (Observation.org NIA / iNaturalist upload) stays
-  future work — needs GPS in session logs + platform decisions first.
-  r88/r89: while zoomed, ALL ancestor scrollables freeze (`NeverScrollableScrollPhysics`
-  on the inner PageView, the Photos ListView AND the TabBarView via `onZoomChanged` —
-  each otherwise wins drags meant as photo panning); ‹ › buttons change photo
-  (resetting zoom first), a chip shows the zoom mode, a 4-arrow pan pad nudges the
-  view without any drag gesture, and `_BoxPainter` divides stroke/label size by the
-  zoom so boxes stay thin on screen. r90 rows (Date/Start/End in home-list
-  formats above Duration + storage: session folder size via shared
-  `folderSizeBytes`/`formatBytes` in `logging/device_storage.dart`; phone free
-  GB) lead Setup's Overview block since r187; the r90 red "Delete session"
-  button is gone (home gear menu covers it; the home list still rescans on
-  return from a summary). r103: the home screen has
-  a top-right ⋮ overflow menu (`_HomeMenuAction` — the intended home for future
-  all-session bulk actions) with a type-to-confirm "Delete all sessions"
-  (user must type `delete`; deletes each recognized session folder, never the
-  `sessions/` root). r93 gallery copy ("Copy photos" on the Photos tab since
-  r187; user-facing wording is "copy", not "export"):
-  batch-copies the session's `roi_frames/*.jpg`
-  into the shared album `Pictures/FaunaPulse/<session>` so the phone's
-  own Gallery shows each session as an album — `saveImagesToGallery` on
-  `faunapulse/crop` takes file PATHS (never bytes; Kotlin reads the JPEGs
-  itself), Dart sends chunks of 25 (`exportPhotosToGallery` in
-  `capture/crop_export.dart`) for a determinate progress bar, re-export is
-  idempotent (native DISPLAY_NAME query per RELATIVE_PATH — stored WITH a
-  trailing slash), < Android 10 replies `supported:false` (clear message, no
-  legacy permission), Delete is disabled while exporting. Photos only —
-  session.jsonl stays private. Capture path untouched.
+### Logging and session data
+- **`session.jsonl` is append-only JSON Lines** (one object per line, never pretty-printed):
+  start record (config, `app_version`, `app_build`, `build_mode`, `file_token`, `location`,
+  `tracker_params`, `config_not_applicable`), one `detections` record per frame (`tracks[]` with
+  track ID, `box_in_roi` 0..1, saved file names, `frame_ms`, `frame_sensor_ms`), `track_event`
+  (`created`/`lost`/`recovered`/`removed`), `capture`/`motion_capture`/`timelapse_capture`,
+  `raw_detections` (opt-in), `fps`/`thermal`/`power` (with `is_plugged`), `motion_gate`,
+  `roi_update`, `blackout`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
+  `video_skipped`, `app_error`, `end_of_session` (`ended_normally`). Record dictionary:
+  `docs/DATA_GUIDE.md`. Parsers also accept the old per-track `detection` records.
+- `detections[].tracks[]` boxes are always detector-observed (unmatched tracks go `lost`).
+- **Frozen wire names** (do not rename): reference photos `gt_frames/`, `gt_capture`,
+  `gtFramesEnabled`/`gtFrameSeconds`; high-res photo source `still` (config `captureMode`,
+  capture `path`, `roi_source`); JSON key `stillSyncCompanion` (Dart `highResSyncCompanion`).
+- The session folder also holds `logcat_start.txt` / `logcat_end.txt` (the app's own logcat
+  lines), `roi_frames/`, `gt_frames/`, `videos/`, and the post-hoc files.
+- While the gate is idle (or in no-AI modes) `fps` records omit inference fields and carry
+  `gate_idle: true` / `motion_only: true`: never log stale or zero inference numbers. The fps
+  EMAs skip long gaps (`Predictor.finishTiming` ↔ `FrameProcessor.updatePipelineFps`: keep in
+  sync).
+- **Writes:** an in-logger queue with one async writer (never sync I/O in the frame callback),
+  fsync ~0.5 s, `close()` must be awaited so `end_of_session` lands.
+- **A session never dies silently:** the logger counts write failures (storage full) and shows a
+  red banner; global hooks (`app_error_hooks.dart`) route uncaught errors to `app_error` lines.
+  No naked fire-and-forget futures; best-effort `catch` blocks call `logSwallowed(site, e)`.
+- **Rename** (`renameSession`) is the one allowed edit of a finished log: folder rename,
+  `config.folderName` rewritten via temp file + atomic replace, plus an appended
+  `session_renamed` record.
+- **Derived results stay out of `session.jsonl`:** post-hoc files (`post_detections.jsonl`,
+  `video_detections.jsonl`, `post_tracks.jsonl`, identification files) join on file names and
+  track IDs. Exceptions appended after the end: `session_renamed`, `video_cleanup`.
+- **Location:** one GPS fix per session (`LocationFixTracker`: done at ≤ 15 m or 60 s), or manual
+  / previous; `redactLocation` strips it from problem reports.
+- **Problem reports** (Menu → Report a problem; built in `error_reports/`, the only folder the
+  report FileProvider serves): one `.txt`, or one `report_<stamp>.zip` when
+  screenshots or session samples ride along (sharing several files made WhatsApp drop all).
+  Session samples stay valid JSON Lines (`{"type":"sample_omitted",…}` marker), flood records and
+  logcat noise dropped, location redacted. Send via share sheet or the GitHub Issues link
+  (`ErrorReporter.githubIssuesUrl`); e-mail code stays dormant. Crash files
+  `crashes/crash_<stamp>.txt` (newest 20) from Dart `crash_store.dart` and Kotlin
+  `MainActivity` (keep `writeCrashFile` ↔ `crashFileBody` in sync).
+
+### Capture modes
+- **Motion gate** (native `MotionGate.kt`, EMA background diff on the ROI): skips inference while
+  nothing moves; motion, detections and ROI drags extend the wake window; idle heartbeats
+  `gateIdle: true` ~1 Hz; on wake after > occlusion, lost tracks expire. Never gate in Dart.
+- **Motion-only capture** (`motion` trigger): a `motionOnlyMode` branch in `onFrame` before
+  `predictor?.let`; awake maps at ≤ 10 Hz with dims (mandatory for the Dart ROI bootstrap); a new
+  motion event = a gate sleep→wake cycle (`resetMotionWindow`). Returns before the 0-FPS
+  watchdog. `recordFrame` is skipped (no `detections`).
+- **Time-lapse** (`timelapse` trigger): photos on a Dart clock (`TimeLapsePlan`, gap-based:
+  `cycleMs` = burst + gap) with a self-rescheduling `_timeLapseTick` (≤ 60 s). Native
+  `setTimeLapse` drops frames before conversion (ceil(2/step) fps in a burst, 1 fps between);
+  gate forced off; `predict()` never runs, also not the inference-cap check.
+- **Camera sleep between bursts** (`TimeLapseCameraCoordinator`, pure state machine
+  running/parked/warming/fallbackBound): photos only when `framesUsable`; the burst grid never
+  shifts; a failed park/wake → camera stays on for the session; the dead-camera watchdog is
+  suppressed only while the camera is intentionally down. Torch: `_setTorch` reconciles with the
+  confirmed state, retried only while `framesUsable`; prewake = max(wake lead, torch lead).
+- **ROI video clips** (Save bursts as: Video; live AI video): plugin `RoiVideoWriter.kt` +
+  `YOLOView.startRoiVideo/stopRoiVideo`. Frames are the unrotated ROI square copied into reused
+  bitmaps, made upright and scaled on the GPU in the writer's own EGL context; PTS from sensor
+  time. Never `lockHardwareCanvas` (aborted the app on the Xiaomi). H.264, files
+  `videos/roi_<token>_<stamp>.mp4`; records `video_clip` / `video_skipped`. `pauseCamera`/`stop`
+  close an open clip. Live AI video: segments of `kLiveVideoSegmentMs` (5 min), frames taken
+  before the gate/detector path.
+- **Scheduled recording** (`SchedulePlan`, reconciled by `_scheduleTick` ≤ 60 s): each window is
+  its own session (`<name>_d<day>w<win>`); between windows the camera is fully unbound
+  (`_controller.pause()`) behind a status-tap blackout; `SessionRecorder.stop(retainKeepAlive:
+  true)` keeps the foreground service and wake-lock. No AlarmManager: staying in the foreground
+  is the MIUI survival strategy.
+- **Field power:** the phone is on a power bank in the field. Charging heat is expected; the W
+  graph hides when plugged or charging (current then measures charging).
+- **Keep-alive service** is non-sticky and renews a 30-min wake-lock every 25 min.
+
+### Tracking
+- Two pure-Dart trackers behind `InsectTracker`: ByteTrack-style (default; distance fallback
+  against ID fragmentation) and C-BIoU-style (buffered IoU). Shared seconds-based settings
+  (frame counts re-derived live; videos use one fixed rate per run). New track IDs start only at
+  "New-track confidence" (`highThresh` 0.5). The camera swaps the tracker only when settings
+  close (settings are locked while recording). The start record's
+  `tracker_params.algorithm` names it.
+- Replay: `flutter test test/fauna_pulse/tracker_replay_test.dart
+  --dart-define=REPLAY_SESSION=…/session.jsonl`. A tracker variant becomes default only after
+  it wins on hand-counted sessions (ByteTrack matched them; C-BIoU fragmented).
+
+### Find animals in photos (`analysis_screen.dart`)
+- `PostDetector` runs the plugin's camera-free `YOLO.predict` over `roi_frames/` →
+  `post_detections.jsonl` (`post_start`/`post_detection`/`post_end`/`post_cleanup`); resumable;
+  a high-res/`_live` pair is one capture moment ("photos" count moments, "files" count files).
+  Settings in prefs `analysis_*`, not SessionConfig.
+- Purpose: storage triage for no-AI sessions: keep photos with a detection plus neighbours
+  within a gap (2 s), delete the rest after review (`keepDecisions` is the one keep rule).
+  Re-analysis of a live-AI session with the same model is blocked.
+- SAHI tiles (`sahi.dart`, own pure-Dart code, no SAHI library; native `predictTiledImage` with
+  automatic fallback): merge by IoS, opt-in tiny-box filter applied live at review
+  (`applyMinBoxFrac`).
+- Track IDs from photos (`PhotoTracker`, `PhotoTrackability.possible`): only for no-AI sessions
+  with step ≤ 0.5 s; writes
+  `post_tracks.jsonl` (`source: photos`).
+- "Also identify them" (both Find screens, pref `find_also_identify`): after detection and track
+  IDs, pushes `IdentificationScreen(autoStart: true)`.
+
+### Find animals in videos (`video_analysis_screen.dart`)
+- Import (`video_import.dart`): files moved into `<session>/videos/`; `session.jsonl` = start
+  (`source: imported_video`) + `video_clip` per clip + end. Clip start time: `video_clip` record
+  > file name > MP4 time minus duration (Android stores the stop time) > day-only name > mtime
+  (DATA_GUIDE §9). Fragmented MP4s (top-level `moof`) are rewritten at import by native
+  `VideoFrameSource.remux` (`isFragmentedMp4`) and checked (same frames, times within rounding),
+  else `ImportRewriteFailed` with a ready ffmpeg command; 10-bit/HDR refused.
+- Detection (`VideoDetector`): MediaCodec decode → ROI-only YUV→RGB (banded thread pool) →
+  detect → `video_detections.jsonl` (`video_run_start`, `video_clip_start`, `raw_detections` with
+  `clip`/`pts_us`/`frame`, `video_clip_done`/`video_clip_error`, `video_run_end`; boxes
+  `[l,t,r,b,conf,class]` normalised to the whole upright frame, the live shape). Sampled by PTS
+  at `kDefaultVideoAnalysisFps` 5; resumable per clip; one native video source at a time
+  (`_busy`). Cut-off clips (no `moov`; `isReadableVideo`, `cutOffClipsOf`) are skipped with a
+  delete option.
+- Area: a session never analysed proposes the largest centred square of its first clip
+  (`largestSquareSidePx`, one rule for camera, editor and default); a session run before keeps
+  its last area. `VideoSquareEditor` plays clips muted at 4×.
+- Video tab (`VideoReviewPlayer`, ExoPlayer via `video_player`, over `VideoBoxTimeline`): play
+  state on a `ValueNotifier`, not the controller (rebuilding at 10 Hz made playback stutter);
+  boxes hidden while the player fetches the picture after a jump; wake-lock while playing. Live
+  AI video sessions can switch "Live AI | AI afterwards".
+- Track IDs (`VideoTracker.run` via `replayTracker`): one tracker across clips only when the gap
+  ≤ occlusion; writes `post_tracks.jsonl` (`post_track_start`, live-shaped `detections` +
+  `track_event`, `post_track_end`; tmp + rename), `track_ids.csv`, `mot/<clip>.txt`.
+  **One tracks file per session:** `trackSourceOf(dir)` = afterwards when `post_tracks.jsonl`
+  exists and no live tracker ran, else live; every reader (index, identification, dashboard)
+  uses it.
+- Kept frames (`TrackKeepRule`, shared with live capture; `VideoFrameKeeper`): live-shaped
+  `capture` records with `source: video`; a new run deletes frames the old one kept, never when
+  their video is gone. Identification stores `visits_run_id`: crops from an older run are
+  outdated (`cropsOutdated`).
+- Free storage: `ClipCleanup` (`planWithoutVisits`/`planAll`/`planCutOff`/`run`) deletes clips
+  without track IDs, all clips, or cut-off clips and
+  appends `video_cleanup`; sessions whose clips were deleted stay listed.
+- Phone samples during a run (`thermal`, `power`, `analysis_speed`) feed the summary's "While
+  the AI ran" graphs (`VideoRunSamples`).
+- PC evaluation kit: `docs/VIDEO_ANALYSIS.md`, `tool/video_eval/` (`evaluate_track_ids.py`,
+  `prepare_square.py`, VIA3 hand counts `via3_to_hand_count.py`); sweep test
+  `test/fauna_pulse/video_fps_sweep_test.dart`.
+
+### Identification (`docs/IDENTIFICATION.md`)
+- Job: plan crops from the log index (one per photo per track ID, `_live` preferred; square on
+  the box's longer side by default (`square_crops`), margin × side; CLIP-mean padding) → crop in an isolate →
+  native embed (batches of 8, plugin `Embedder.kt`) → append-only
+  `embeddings_<model>.{jsonl,bin}` (resumable) → score → `tracks_<pack>.{csv,json}`,
+  `crops_<pack>.csv`, `summary_<pack>.json`. Settings in prefs `identify_*`.
+- Score per track ID: "Average Logit" (Dussert et al. 2025): crops' unit embeddings averaged with
+  certainty weights
+  (top-1 p), crops below max weight / `drop_factor` (10) left out, scored once, rolled up the
+  taxonomy; ladder tau 0.7. Columns Conf. / Agree; suspect flags (short, few detections, weak
+  ID; defaults from insect-detect-post's `filter_tracks`, Sittinger 2026, Zenodo
+  10.5281/zenodo.21822140: credit the idea's source and the implementer separately). Optional merge of consecutive track IDs (off). `reproduce_track_conf.py` reproduces the
+  numbers on a PC. Defaults are not validated on pollinators (IDENTIFICATION.md).
+- Class lists: a classifier (`insectdct-cls-v7_eff2s_fp16.tflite`, raw scores) pairs with the
+  `.fpack` of the same name (`LabelPack.isClassList`, `ImageEmbedder.load(normalize: false)`).
+  Label packs pair by the first part of the name (`listBelongsTo`, else header `model_id`).
+  Identify needs a matching list; a dimension mismatch is refused before embedding.
+- GPU: checked once per model file + `Build.FINGERPRINT` against CPU (cosine ≥ 0.995
+  `GPU_MIN_AGREEMENT`, else CPU with a note); refused when `GPU_MEMORY_FACTOR` 4.5 × file size >
+  `GPU_MEMORY_SHARE` 0.6 × phone memory (`Embedder.kt`). BioCLIP 2 needs the 4-D
+  attention export (`export_image_tower.py --attention 4d`); BioCLIP 2.5 is CPU-only on today's
+  phones. fp16 everywhere (int8 changed answers).
+- Results screens: taxon table → track-ID sheets → one track ID (ladder, photo with detector box
+  and crop). Mini-table kit measures column widths; ids/names left, numbers right.
+
+### Models and downloads
+- Formats: `.tflite` or `*_qnn.onnx` (Snapdragon NPU); plain `.onnx` refused
+  (`isSupportedModelFileName`). LiteRT `format=litert` NCHW exports run (detect only).
+- **Security:** models live in private app storage; intake is HTTPS-only, rejects unsafe names
+  and traversal, streams through a temp file, checks the `TFL3` identifier; limits 30 MiB for
+  detection `.tflite` (`kMaxTfliteModelBytes`), 256 MiB for QNN, 2 GiB for identification files
+  (`kMaxIdentificationFileBytes`). These checks run only at intake, never in the camera path.
+- **No bundled models:** `assets/models/bundled_models.txt` is empty; the camera picker lists only
+  imported/downloaded files. Debug builds still pack local weights for device checks.
+- **Download & import models** (`models_screen.dart`) is the only place to import, download and
+  delete model files and name lists. Every file is listed by its file name, details behind ⓘ
+  (from the file: classes, input size, precision; plus title, licence and source when listed).
+  Deleting an identification model takes its name lists along unless another model still uses
+  them; "Delete all …" per kind; press and hold selects several.
+- **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
+  one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
+  optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home
+  answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; the first of each is
+  "Chosen for you"). Presence on the phone = file name only; `sha256` only verifies a download.
+  `update_catalogue.py` refreshes sizes and checksums. Files are not online yet except
+  MegaDetector (base_url = release v0.8.0-alpha.1).
+- **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Chosen for you"
+  / "Your choice" by file name, one button at the bottom edge ("Download and use (size)" / "Use
+  these"); the fold "Choose other models" lists the other suggestions plus "Other models on this
+  phone" (every other detector and identification model + name list pair, `namingPairs`). Saving
+  = `useModels`: camera `modelPath` + task, `analysis_model`, `video_analysis_model`,
+  `identify_model`/`identify_pack` ("Not now" removes both).
+- A model needs a list entry only to be offered or suggested; any model on the phone can be
+  chosen everywhere.
+
+### Home, Sessions, summary
+- **Home** (`home_screen.dart`): numbered steps that stay on the page: 1 AI models (amber frame
+  when none; tiles from `uses` + "Other models"; after a page saved: "Set up for: <answer>" or
+  "Chosen AI models" with Find/Name file names from `currentModelChoice`, "none (…)" lines), 2
+  Record (the answer's phone-screen drawing `roiPicture(icon)`), 3 Import videos…, 4 the two Find
+  buttons; Support box last. Steps keep their numbers (no ticks). Bottom bar Menu, Sessions |
+  New session | Dashboard, AI models. Menu (drawer): Download & import models, Show setup tips
+  at session start, Report a problem, Share, Support, About. `ScrollHint` scroll bar. Donation
+  link only with `--dart-define=DONATION_LINK=true` (GitHub APKs), never in the Play build. About
+  is the custom `AboutFaunaPulseDialog` (AGPL-3.0 line; the licences button pushes the generated
+  LicensePage, needed for store compliance).
+- **Sessions** (`sessions_screen.dart`): search, Filters sheet, chips, Sort, press and hold to
+  select; ⋮ Select / Import videos… / Delete all sessions… (type "delete"; never deletes the
+  `sessions/` root). Row ⋮ actions from `SessionActions`.
+- **Summary** tabs: Photos (Video for video sessions) | Graphs | Setup. Setup reads the start
+  record's `config`; inert settings show "Not applicable". Graphs: track-ID timeline,
+  track-length histogram, time of day; extra graphs folded. Photo viewer: cyan = box that
+  triggered the photo, amber = other boxes in that frame; high-res view interpolates boxes to the
+  photo's `content_at_ms`; no buttons over the photo; while zoomed every ancestor scrollable
+  freezes; the interpolation tolerance only sets the info-row tone, it never rejects boxes. Crop
+  export cuts from the original JPEG. Gallery copy → `Pictures/FaunaPulse/<session>`
+  (paths, chunks of 25, idempotent, channel `faunapulse/crop` in `MainActivity`; videos →
+  `Movies/FaunaPulse/`).
+- **Dashboard:** totals and activity over AI sessions (`aggregateDashboard`), per-session cache
+  `<session>/dashboard_stats.json` (`DashboardStatsCache`, key: log size + mtime).
+- **Slow-phone hint** (camera, live detection): median work per picture > 200 ms after 15 s →
+  banner suggesting time-lapse video + Find animals afterwards; "Don't show again" pref
+  `faunapulse_hide_slow_phone_hint`.
+
+### Build, release, repository
+- **Branches:** `main` = stable, `develop` = integration (base for PRs and Dependabot). Never
+  commit or push without the owner's request. Commit messages start "Round <n>".
+- **Toolchain:** Gradle 9.1.0, AGP 9.0.1, Kotlin 2.3.20; `compileSdk`/`targetSdk` 36, `minSdk`
+  24 pinned in `android/app/build.gradle`. Keep `android.builtInKotlin=false` and
+  `android.newDsl=false`; `file_picker` stays `^10.3.10`. Root lint disables only the
+  `geolocator_android` `MissingPermission` false positive. App id `com.faunapulse.app`; native
+  classes stay in `com.ultralytics.yolo` (fully qualified manifest names). Keep the tracked
+  Gradle wrapper files.
+- **Release:** release builds fail without a keystore (`scripts/create_release_keystore.sh`);
+  `scripts/security_release_gate.sh` = analyze, tests, native security tests, release lint,
+  signed AAB. `scripts/build_release_apks.sh` gives per-ABI APKs the Play versionCode and sets
+  the donation define. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
+  blocked.
+- **Versioning:** pubspec `version:` (now `0.8.0-alpha.1+13`) is the single source; bump the
+  build number for every tester APK; tags `v<version>`. Move together: pubspec version,
+  CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
+  never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`. Licence
+  `AGPL-3.0-only`. Pubspec `description` == CITATION.cff `title`; never retitle an archived
+  version.
 
 ## Device quirks (test phones)
 
-- **Xiaomi `2107113SG`** (adb `2b2dc560`): primary test device. Deploy **debug build only**,
-  Install via USB, MIUI quirk. Thermal character (r132, session_28): fast but hot —
-  camera-first throttle at ~41–42 °C, auto-throttle then holds ~6 fps to ≥46 °C;
-  MIUI `thermal_status` claims "none" throughout. AE fps-range menu (r167, camera 0):
-  [12,12], [15,15], [12,30], [30,30] — 12 is the lowest forced camera rate, reachable
-  today via Camera FPS cap = 12. Battery reports a 2-cell SERIES voltage (~8.8 V):
-  raw logged `power_w` reads ~2× high; the summary halves >4.6 V per cell (r41),
-  `tool/perf_summary.dart` deliberately does NOT (r188 warning in
-  PERFORMANCE_BENCHMARKING.md; aligning it is a recorded follow-up). It offers the app only
-  its main lens (r246: a saved 0.6× resolves to 1×).
-- **Samsung `RF8T403A3AT`** (Galaxy M12-class, SM-M127F): secondary test device.
-  Thermal character (r132, 5×1 h): never passed ~32 °C — compute-limited, not
-  heat-limited (yolo26n ~260 ms ⇒ ~2.8 fps; int8 arthropod 65 ms ⇒ ~7 fps).
-  Its `battery_current_ua` is broken (µA-scale) — use battery-% drop, not power_w.
-  AE fps-range menu (r167, cameras 0/2 identical): lowest forced rate is [15,15];
-  the [8,30]/[10,30] entries are AE-variable (low-light only), not caps.
-  r243 (Exynos 850 / Mali-G52, 3.9 GB, Android 13; Play build replaced by a debug build with
-  the owner's consent): BioCLIP 2 GPU setup → lmkd kill at 2.7 GB, now refused by the
-  Embedder memory guard (CPU 15.5 s/crop); live AI + ROI video clips hold ~10 fps (camera
-  ~13 fps, frames arriving during the 90–130 ms inference are lost); r243's "motion gate
-  never slept" was the r244 camera-view rebuild bug (fixed, not Samsung-specific); first
-  burst clip on a fresh install starts late (stream switch).
+- **Xiaomi 11T Pro `2107113SG`** (adb `2b2dc560`, Snapdragon 888, 7.4 GB): primary; debug builds
+  only. PIN lock: a person unlocks it. Reports the laptop USB cable as AC power, so keep it awake
+  with `adb -s 2b2dc560 shell svc power stayon true`. Hot: camera throttles at ~41–42 °C, then
+  auto-throttle holds ~6 fps; MIUI `thermal_status` always "none". Lowest forced camera rate 12
+  (AE range [12,12]). Battery voltage is 2-cell series: the summary halves it,
+  `tool/perf_summary.dart` does not. Only the main lens is offered. Often tethers the laptop's
+  internet over USB: avoid big downloads. GPU speeds: flat-bug n/s and insectDCT v8-s detectors
+  34 ms at 640 px (s at 1024: ~75 ms); BioCLIP 2 0.27 s/crop (CPU 2.6 s); BioCLIP 2.5 CPU only,
+  5.5 s/crop; insectDCT classifier eff2s 0.02 s/crop (the cnb variant gives wrong GPU output).
+- **Samsung `RF8T403A3AT`** (Galaxy M12-class, Exynos 850, 3.9 GB, Android 13): secondary; debug
+  builds now (no Play build). Compute-limited, never hot. `battery_current_ua` broken (use
+  battery % drop). Lowest forced camera rate 15. BioCLIP 2 GPU refused by the memory guard (CPU
+  ~15 s/crop). Swipe lock (adb can wake and swipe).
 
 ## Pointers
 
-- **Full history & rationale:** `AGENT_CHANGELOG.md` (append-only journal with many rounds entries). These is a large txt file - avoid to parse unless owner points to them.
-- **Human-facing docs (r66):** `FIELD_GUIDE.md` (run a session + troubleshoot), `SETTINGS_REFERENCE.md` (per-setting meanings), `DATA_GUIDE.md` (session.jsonl dictionary + R/Python visitation-rate), `ARCHITECTURE.md` (data flow, channel contract, keep-in-sync pairs), `CONTRIBUTING.md` (build/test/rules + docs index), `MODEL_CONVERSION.md` (r150: collaborator guide — accepted model formats, pt→tflite export, INT8 calibration, why no generic ONNX; r155: leads with the one-command calibration-free `format=litert quantize=w8a32` export), `PERFORMANCE_BENCHMARKING.md` (r162: how to measure honestly — device/build matrix, paired-run protocol, acceptance criteria, `dart tool/perf_summary.dart` usage), `packages/ultralytics_yolo/FAUNAPULSE_FORK.md` (r169: plugin fork provenance, upstream audit history, fork-only invariants, re-audit checklist; the plugin README stays upstream-verbatim under a fork banner). These are the durable references; this OVERVIEW stays the short AI-grounding snapshot. These are large txt files - avoid to parse unless owner points to them.
-- **Perf/robustness roadmap (r66):** `PERF_AND_ROBUSTNESS_REVIEW.md` (prioritized checkbox list; Parts A/B complete r79; Part C (r128) vs upstream 0.6.10: plugin at parity — C1 deadline-scheduler cap DONE r129 + field-verified r130 (true 10.0 at cap 10/camera 15); C2/C3 done: thermal governor ≥40 °C throttles the CAMERA hardest (session_27: cam 1.6–3 fps, inference fine; auto-throttle recovered as designed), toBitmap 0.3→4.4 ms at 640→1440 stream (guidance only); C5 DONE r131 (pipeline-FPS now interval-EMA like the native detector FPS — reads a true 10, was ~11 rate-EMA Jensen bias); OPEN: C4 micro-ports likely skip, record corrected r153. Part D (r153): fresh upstream main is STILL 0.6.10, parity stands, no live-FPS gains to port; D1 DONE r154 (fast ROI crop now runs on `stillExecutor` via `captureRoiFromFrameAsync`, callback on main thread); D2 DONE r155 (format=litert NCHW support, detect-only: input/output name probes + `inputUsesNchw` + CHW packing via the fork's LUT; Stage A guard subsumed, OrtQnn transpose untouched); D3 DONE r156 (`includeAnnotatedImage: false` on the batch/SAHI predict path; wire key sent only when false, native default true). Part D fully closed — D4 is a skipped-leads record, no open work). Part E (r160): codex-authored proposals, adversarially verified against the code before recording; E2 DONE r161 (native predictor lifecycle: `YOLO.close()` + closed guard, remove-then-close dispose on Dispatchers.IO, plugin-owned scope replaces GlobalScope + `disposeAll()` on engine detach, owned model-load executor with generation token, terminal `YOLOView.release()` from platform-view dispose, MainActivity crop-executor shutdown; owner still owes the on-device heap/thread-plateau check); E1 DONE r162 (`docs/PERFORMANCE_BENCHMARKING.md` protocol + pure-Dart `tool/perf_summary.dart` streaming session-log summarizer with `--csv`; QNN bench v73 alignment; the E3/E4/E6/E9 measurement gates now have their method); E5 DONE r162+r163 (bounded `boundedHeadTailSample` error-report sampler + the streaming `SessionLogIndex` — one off-UI-isolate parse feeds all summary tabs); E3 DONE r163 (time-lapse camera parking: `TimeLapseCameraCoordinator` + opt-in `timeLapseCameraSleep` + `camera_sleep` records; paired field measurement still owed per the E1 protocol); E4 step 1 DONE r166 (interop funnel logs the HAL's full AE fps-range menu + requested/applied once per lens; lands in `logcat_start.txt`) and E4 REJECTED r167 on that evidence (lowest forced rate: Xiaomi [12,12], Samsung [15,15] = the current cap; a static Camera FPS cap of 12 on the Xiaomi already achieves the idle-cap ceiling all session, so gate-idle switching adds nothing; recorded follow-up = paired cap-12-vs-15 Xiaomi run, inference cap 10 verified to stay a true ~10 on a 12 fps camera); E6 step 1 DONE r168 (`postprocess/sahi_profile.dart` per-phase SAHI profiling → `phases` map + `elapsed_ms` in `post_end`, run duration shown at completion; gate evaluation owed: `tile_overhead_ms` vs `elapsed_ms` < 15% closes E6 as a skipped lead); E6 step 2 DONE r176 — gate PASSED overwhelmingly (owner release-build run, 180×1024 px photos, 320 px model: Dart tile prep alone 73% of wall, total tiling overhead 83-86%, inference ~17%; refutes the r160 "heat dominates" guess) → E6 step 3 DONE r177: native `predictTiledImage` (YOLOPlugin.kt, background thread + main-looper reply; decode once, sequential per-tile predicts, optional full pass, per-tile box lists) + `YOLO.predictTiled` (detect-only) + `sahiPredictFn(tiledPredict:)` with Dart-side grid planning on a header-only `jpegDimensions` probe, shared mapping/filter/merge helpers, dims-echo verification and automatic per-run fallback to the pure-Dart path (`native_tiled_photos`/`native_fallbacks` in `post_end.phases`); VALIDATED r178 (owner release re-run, same 180 photos: 199.0 s → 30.8 s, 6.5×; 180 native / 0 fallbacks; overhead 82.8% → 0.26%) — E6 fully closed; r175 fixed the r163-broken post-hoc box overlay (Isolate.run closure captured the runZonedGuarded custom Zone → unsendable → silently swallowed; fix = sync static wrapper à la SessionLogIndex.build, regression test summary_posthoc_boxes_test.dart); E10 DONE r169 (documentation truth pass: new `packages/ultralytics_yolo/FAUNAPULSE_FORK.md` + plugin-README fork banner, `lib/fauna_pulse/README.md` + `test/README.md` replaced, CONTRIBUTING/ARCHITECTURE/FIELD_GUIDE/DATA_GUIDE/RELEASE_PLAN stale claims fixed); E7 DONE r170 (thermal+power sample coalescing: 900 ms monotonic cache + shared in-flight call in `DeviceThermal.read()`, one native sample per tick; C++ NMS early break in native-lib.cpp, byte-identical per a 48k-case host parity harness; `PostDetector` progress throttled to ~5 Hz with mandatory first/final updates; E7's original headroom-caching premise had been corrected r160, only these three survived); E8 DONE r171 (document-only per scope: `docs/LEAN_QNN_PACKAGING.md` records the lean no-QNN default + `-Pqnn` artifact design, the `isQnnRuntimeAvailable` capability-query approach and reopen triggers; the accepted single QNN-inclusive build stands, nothing built); REMAINING: E6 step 2 (owner's SAHI profiling run gates it) + E9 (build-time camera A/B experiments); upstream copy is v0.6.11 (iOS-only change, Android parity stands).
-- **Build/release config (r158, r194, r199-r202):** SDK levels are PINNED in
-  `android/app/build.gradle` (`compileSdk 36`, `minSdk 24`, `targetSdk 36`;
-  no longer `flutter.*SdkVersion`; Play requires target 36 for new apps from
-  2026-08-31). Release builds fail fast without a keystore
-  (`scripts/create_release_keystore.sh` writes `android/key.properties`).
-  Release lint is a failing gate. `scripts/security_release_gate.sh` runs
-  analysis, app/plugin tests, native security tests, release lint and the signed
-  AAB build. CI repeats the unsigned checks; Dependabot watches GitHub Actions,
-  Pub and Gradle.
-  `assets/models/bundled_models.txt` is the single release-model allowlist
-  (blank/comment lines ignored; accepts `assets/models/...` and
-  `/fauna-pulse/assets/models/...`). The asset copy and release picker both use
-  it, including supported files directly under `assets/models/` or in `custom/`.
-  Missing listed weights print a warning but do NOT fail the build; unlisted local
-  weights stay untouched and are excluded from the APK. The `fetchBundledModels`
-  task is removed. Root `PRIVACY_POLICY.md` describes settings-only Android
-  backup and private diagnostics.
-- **Release plan (r157):** `docs/RELEASE_PLAN.md` — phased checklist for the first public
-  release (Zenodo DOI, GitHub+Obtainium and Google Play distribution, citizen-scientist
-  docs, settings-sheet reorg where the Graphs tab becomes Power and the heat controls move
-  there). Re-ground THERE for any release/distribution work; tick items as rounds land.
-- **Identification (r208):** `docs/IDENTIFICATION.md` (user + collaborator guide: files, run, reading results, method), `tool/bioclip_export/README.md` (PC scripts).
-- **Detector conversion (r264):** `tool/detector_export/` (`export_detector.py`: .pt → `<name>_<imgsz>_<fp16|w8a32|fp32|int8>.tflite` + manifest; seg → box head surgery; agreement check vs PyTorch with `rect=False`; default fp16 because w8a32 lost 6/28 boxes on flat-bug n; runs in the bioclip_export venv + ultralytics 8.4.170). Phone timing: `integration_test/detector_speed_check_test.dart` (files/detector_check/, optional check.jpg box print). flat-bug n/s + insectDCT v8-s at 640/1024 all run on the Xiaomi GPU (34 ms at 640, 71–76 ms at 1024 for s). Check pictures: `~/InsectDetectApp/test_videos/frames_bumblebees_720p`, crops `crops_bumblebees_720p_square` (feature references only). Owner's design notes outside git: `/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`.
-- **Fixed-class classifiers (r265 conversion, r266 in the app):** `tool/classifier_export/` (`export_insectdct_cls.py`: insectDCT hierarchical classifier V7 → `insectdct-cls-v7_<cnb|eff2s|res>_fp16.tflite` (output 164 raw scores = heads 19+41+104) + **class list** `.fpack` (same stem; `fpack.write_class_list`: kind `classes`, dtype none, `heads`, `head_index`, `classes`, labels from `taxa/insectdct-cls-v7.csv`); check runs insectDCT's own `makePrediction` with the phone file swapped in (34/34 identical); GPU rewrites: ConvNeXt avgpool→mean (GATHER_ND), ResNet maxpool zero-pad (PADV2)). App: `LabelPack.isClassList` (headSizes/headIndex/classNames), `Scorer.probs` = mean over heads of log-softmax then softmax over rows (= `fpack.class_probabilities`, shared fixture `tiny_classes.fpack`), pooling/ladder unchanged, `FusedTrack.pooledTop`, outputs `model_class`/`model_class_p` (tracks), `top1_class` (crops), sheet line *Model's own class*; `ImageEmbedder.load(normalize: false)` → `Embedder` raw output, GPU check cosine with lengths; Identify screen pairs model + class list by file stem, refuses another model's class list and a pack/model dim mismatch before embedding. Recommended: eff2s (authors' V6 test F1 above ResNet50 at every level; Xiaomi GPU 0.02 s/crop, CPU 0.15 s); cnb GPU output wrong on the Xiaomi (CPU 0.7 s). Device checks: ask the owner for a quiet slot (backgrounded test app stalls); the Xiaomi often USB-tethers the PC's internet: avoid downloads.
-- **Photo-resolution explainer for collaborators:** `HOW_PHOTO_RESOLUTION_WORKS.md` (plain-language: why a small on-screen ROI still yields sharp 1024 px photos; where each number lands in session.jsonl).
-- **Archived selected Claude chats:** `/InsectDetectApp/exported_claude_conversations/` (dated txt files, 
-large; avoid to parse unless owner points to them; they are ignored also in `/.claude/settings.local.json`).
-- **General spec:** `/InsectDetectApp/CLAUDE.md`. This should load at the beginning of each session for general context.
-- **Deny-listed:** see `.claude/settings.local.json`.
+- **History:** `docs/AGENT_CHANGELOG.md` (append only; never read it whole; ask before reading
+  past rationale).
+- **Docs:** `FIELD_GUIDE.md` (run a session), `INSTALL.md`, `SETTINGS_REFERENCE.md` (every
+  setting), `DATA_GUIDE.md` (record dictionary, R/Python analysis), `ARCHITECTURE.md` (data flow,
+  channel contract, keep-in-sync pairs), `CONTRIBUTING.md`, `IDENTIFICATION.md`,
+  `VIDEO_ANALYSIS.md`, `MODEL_CONVERSION.md`, `THIRD_PARTY_MODELS.md`,
+  `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `RELEASE_PLAN.md` (re-ground
+  there for release work), `LEAN_QNN_PACKAGING.md`, `SAM3.md` (parked experiment, code on branch
+  `sam3`), `PLAY_STORE_LISTING_DRAFT.md`. `PERF_AND_ROBUSTNESS_REVIEW.md`: all parts closed except
+  E9 (build-time camera A/B experiments); owed field checks: heap/thread plateau after E2, paired
+  camera-sleep run (E3), paired cap 12 vs 15 on the Xiaomi.
+- **PC tools:** `tool/model_downloads/` (download list, naming rule), `tool/detector_export/`
+  (.pt → fp16 `.tflite`, agreement check), `tool/classifier_export/` (insectDCT classifier +
+  class list), `tool/bioclip_export/` (image tower, label packs, quantisation), `tool/video_eval/`,
+  `tool/perf_summary.dart`.
+- **Outside git:** design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
+  sources `~/InsectDetectApp/generated_art/` (`make_setup_sketches.py`); test videos and the hand
+  count set `~/InsectDetectApp/test_videos/` (feature references only; check pictures
+  `frames_bumblebees_720p`, crops `crops_bumblebees_720p_square`); plans
+  `~/.claude/plans/pasted-content-id-f534-you-proposed-fluttering-eagle.md` (video evaluation
+  next steps), `~/.claude/plans/pasted-content-id-a09e-what-about-pure-yeti.md` (video plan).
+- **Agent rules:** `AGENTS.md` (repository root). Deny list:
+  `~/InsectDetectApp/.claude/settings.local.json` (do not read).
 
+## Build and test
 
-## Build / test quick reference
-
-- Analyze: `flutter analyze` — Test suite: `flutter test test/fauna_pulse`.
-- Build: `flutter build apk --debug` (the app deploys as debug).
-- Signed Play gate: `scripts/security_release_gate.sh`.
-- Camera-screen device checks need the phone awake and UNLOCKED at start (behind a lock screen no frames
-  arrive and the check waits for ever): Samsung = swipe lock (adb wake + swipe), Xiaomi = PIN (a person).
-- Device checks: `flutter test integration_test/<file> -d <serial> --no-uninstall`. ALWAYS pass `--no-uninstall`: by default flutter uninstalls the app after an integration test (and also when the install fails, e.g. signature mismatch), which deletes every session on the phone. Debug builds only (signed with `~/.android/debug.keystore`, matching the installed app); never profile/release there. The Samsung has the Play build (`com.faunapulse.app`, release-signed): never `flutter test/run/install` there; use the side-by-side `com.faunapulse.app.check` copy (`ORG_GRADLE_PROJECT_debugIdSuffix=.check flutter build apk --debug -t integration_test/<file>.dart`, `adb install -r`, `am start`, results in logcat `flutter:I`; r226, recipe in test/README.md).
-- Pre-existing KGP/Gradle deprecation warnings are unrelated to app logic.
-- do not git commit or run git push without owner's consent.
+- `flutter analyze`; `flutter test test/` (about 840 tests, ~1 min). No whole-file `dart format`
+  (the repository is not formatter-clean).
+- Debug APK: `flutter build apk --debug`, then `adb -s <serial> install -r`.
+- Device checks: `flutter test integration_test/<file> -d <serial> --no-uninstall`. Always pass
+  `--no-uninstall` (otherwise flutter uninstalls the app and every session on the phone is
+  deleted). Afterwards rebuild and reinstall the normal debug app. Ask the owner before using a
+  phone, back up the app's settings first (`adb exec-out run-as com.faunapulse.app cat
+  shared_prefs/FlutterSharedPreferences.xml`) and compare after. Camera checks need the phone
+  awake and unlocked at the start. Screenshots: checks print `SHOT <name>` lines. A side-by-side
+  `com.faunapulse.app.check` copy (no risk to the installed app) is described in
+  `test/README.md`.
+- Checks in `integration_test/`: app launch, camera modes, view recreate, slow-phone hint, CPU
+  threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
+  models screen, models delete, photo track IDs, video decode / import / convert / samples /
+  default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+
+  after), live video (+ after), QNN smoke / benchmark; shared session builder
+  `check_sessions.dart`.
+- KGP/Gradle deprecation warnings are known and unrelated.

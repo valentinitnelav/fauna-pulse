@@ -22,22 +22,24 @@ The app sits at the git repository root and paths below are relative to it.
 
 **Grounding order at the start of a session:** 
 
-1. Read `docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, file maps, key invariants and pointers. 
+1. Read `docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, 
+    file maps, key invariants and pointers. 
     Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants.
     It is read at the start of every session, so each entry says only what is true 
     now and where it lives: replace or remove text when it changes instead of adding to it.
     Keep `AGENT_CHANGELOG_OVERVIEW.md` under 75000 characters.
     The history of a change (which round, why) belongs in `AGENT_CHANGELOG.md`.
 2. The very long, extra detailed history in `docs/AGENT_CHANGELOG.md` 
-    should never be read fully due to its size and therefore wasting tokens. Always ask for permission to read it 
-    if explicit past rationale or a round-by-round change log is absolutely needed. 
-    Just append summary changes to it without reading it entirely so that the full history is being tracked. 
-    No need to consume many tokens on reading it when updating history, just append
-    / add summary of changes and implementations at the end of the file.
-    For example add a header line like this "## Round xy (yyyy-mm-dd): some short title"
-    example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
-    then add the summary text, bullet points, etc. that is useful for future developers, myself and coding agents,
-    then add an empty line that will separate future entries.
+    should never be read fully due to its size. 
+    Always ask for permission to read round entries if explicit past rationale or a round-by-round 
+    change log is absolutely needed. 
+    Append summary changes at the end of the file without reading it entirely. 
+    Add a header line like this: "## Round xy (yyyy-mm-dd): some short title"
+    Example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
+    Each round entry: what was asked, what changed (visible behaviour and main files), 
+    why (decisions, evidence, rejected options), what was checked, and what is open, 
+    in about 1,500–3,000 characters; leave details the git diff shows to the diff.
+    Add an empty line that will separate future entries.
 
 ## General rules
 
