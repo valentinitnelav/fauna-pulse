@@ -23,6 +23,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/dashboard_stats.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
 import '../widgets/mini_bar_chart.dart';
+import '../widgets/home_button.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -83,7 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final agg = aggregateDashboard(_stats, sinceMs: _sinceMs);
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(title: const Text('Dashboard'), actions: const [HomeButton()]),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),

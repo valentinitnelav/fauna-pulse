@@ -377,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
               padding: EdgeInsets.fromLTRB(16, 20, 16, 16),
               child: Row(
                 children: [
-                  Icon(Icons.emoji_nature, size: 36, color: Colors.amber),
+                  AppIcon(size: 36),
                   SizedBox(width: 12),
                   Text('FaunaPulse', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 ],
@@ -606,9 +606,9 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                   // Room at the end for the raised New session button.
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
                   children: [
-                    // One nature icon only (round 183): a camera icon beside
-                    // it read as a "take a photo" button.
-                    const Icon(Icons.emoji_nature, size: 56, color: Colors.amber),
+                    // The app's own icon (round 285, owner): the bee with a
+                    // flower read as the "Pollinators on flowers" answer.
+                    const Center(child: AppIcon(size: 56)),
                     const SizedBox(height: 6),
                     const Text(
                       'FaunaPulse',
@@ -700,6 +700,18 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       ),
     );
   }
+}
+
+/// The app's own icon, the one the phone shows to open FaunaPulse (a copy
+/// of the launcher picture), at the top of the home screen, the menu and
+/// About.
+class AppIcon extends StatelessWidget {
+  final double size;
+  const AppIcon({super.key, required this.size});
+
+  @override
+  Widget build(BuildContext context) =>
+      Image.asset('assets/images/faunapulse_icon.png', width: size, height: size, excludeFromSemantics: true);
 }
 
 /// One numbered step of the home screen: the number in a circle (always: a
@@ -856,7 +868,7 @@ class AboutFaunaPulseDialog extends StatelessWidget {
     return AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.emoji_nature, size: 32, color: Colors.amber),
+          const AppIcon(size: 32),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

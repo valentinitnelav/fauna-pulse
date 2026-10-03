@@ -116,7 +116,8 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
 `roiPicture`), `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
-`roi_size_sheet.dart`, `calibrating_banner.dart`.
+`roi_size_sheet.dart`, `calibrating_banner.dart`, `home_button.dart` (`HomeButton`, `goHome`, `FitTitle`),
+`selection_app_bar.dart`.
 
 **services/** `recording_keepalive.dart` (foreground service + wake-lock).
 
@@ -187,6 +188,14 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   a `ListTile.subtitle` (toggling it trips a baseline assertion; tested).
 - Session settings stay on the camera screen (they need the live camera); app-level actions go in
   the home Menu (drawer).
+- **The house (`HomeButton`) in every title bar** but Home and Camera (left of a ⋮ menu):
+  `goHome` closes screens one by one with `maybePop`, as that many Back presses would, so a
+  screen that asks before closing (PopScope: a run, an import, a selection) stops the way there.
+  New screens add `actions: const [HomeButton()]`; a long one-line title uses `FitTitle` (shrinks
+  instead of being cut with a large system font size).
+- **Selection mode** (Sessions, Download & import models): `selectionAppBar` (X "Stop selecting",
+  "n selected", bar tinted like the selected rows). Back, the X, or unticking the last item ends
+  it; a tap on empty space does not (not an Android convention).
 
 ### Camera and native view
 - **Every new native camera view gets the live settings.** `YOLOView` is keyed on the stream
@@ -472,7 +481,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   at session start, Report a problem, Share, Support, About. `ScrollHint` scroll bar. Donation
   link only with `--dart-define=DONATION_LINK=true` (GitHub APKs), never in the Play build. About
   is the custom `AboutFaunaPulseDialog` (AGPL-3.0 line; the licences button pushes the generated
-  LicensePage, needed for store compliance).
+  LicensePage, needed for store compliance). Home top, Menu and About show `AppIcon`
+  (`assets/images/faunapulse_icon.png`, a copy of the 192 px launcher picture); the bee with a
+  flower is only the pollinators answer.
 - **Sessions** (`sessions_screen.dart`): search, Filters sheet, chips, Sort, press and hold to
   select; ⋮ Select / Import videos… / Delete all sessions… (type "delete"; never deletes the
   `sessions/` root). Row ⋮ actions from `SessionActions`.

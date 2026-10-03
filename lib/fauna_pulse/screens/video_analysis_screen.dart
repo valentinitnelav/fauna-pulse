@@ -66,6 +66,7 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/video_speed_chips.dart';
+import '../widgets/home_button.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
@@ -924,7 +925,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   Widget _screen() {
     return Scaffold(
-      appBar: AppBar(title: const Text('Find animals in videos')),
+      appBar: AppBar(title: const FitTitle('Find animals in videos'), actions: const [HomeButton()]),
       // SafeArea: without it the list's last lines sit under the system
       // navigation bar and can never be scrolled into view.
       body: SafeArea(
@@ -1908,7 +1909,7 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
   Widget build(BuildContext context) {
     final steps = (_maxPx - _minPx) ~/ 32;
     return Scaffold(
-      appBar: AppBar(title: const Text('Area to analyze')),
+      appBar: AppBar(title: const Text('Area to analyze'), actions: const [HomeButton()]),
       body: SafeArea(
         child: Column(
           children: [

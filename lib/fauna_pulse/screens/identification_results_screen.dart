@@ -52,6 +52,7 @@ import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
+import '../widgets/home_button.dart';
 
 const _cellStyle = TextStyle(color: Colors.white, fontSize: 13);
 const _dimCellStyle = TextStyle(color: Colors.white54, fontSize: 13);
@@ -651,6 +652,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
                 ? () => SharePlus.instance.share(ShareParams(files: [XFile(widget.tracksCsv.path)]))
                 : null,
           ),
+          const HomeButton(),
         ],
       ),
       body: SafeArea(

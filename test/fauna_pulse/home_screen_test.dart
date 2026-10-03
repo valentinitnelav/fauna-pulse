@@ -160,6 +160,21 @@ void main() {
     expect([for (final i in icons) i.selected], [false, false, false, false]);
   });
 
+  testWidgets("the app's own icon on top and in the menu; the house on a page goes home", (tester) async {
+    await _pumpHome(tester);
+    const icon = 'assets/images/faunapulse_icon.png';
+    expect(_image(icon), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_nature), findsOneWidget, reason: 'the bee with a flower: the pollinators answer only');
+    await tester.tap(find.text('Mammals and birds'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Home screen'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WatchPlanScreen), findsNothing);
+    await tester.tap(find.text('Menu'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(Drawer), matching: _image(icon)), findsOneWidget);
+  });
+
   testWidgets('the answer used last opens with the models in use, the others with the suggestions', (tester) async {
     SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'pollinators'});
     await _pumpHome(

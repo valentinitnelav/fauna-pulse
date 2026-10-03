@@ -35,6 +35,7 @@ import '../postprocess/video_tracker.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
+import '../widgets/home_button.dart';
 import 'identification_choice_fields.dart';
 import 'identification_results_screen.dart';
 import 'models_screen.dart';
@@ -609,6 +610,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             Text(_sessionName, style: const TextStyle(fontSize: 13, color: Colors.white70), overflow: TextOverflow.ellipsis),
           ],
         ),
+        actions: const [HomeButton()],
       ),
       // SafeArea + bottom padding (round 209): the app is edge-to-edge, so an
       // explicitly padded ListView otherwise hides its last row (the end of

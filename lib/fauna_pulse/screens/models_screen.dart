@@ -68,6 +68,8 @@ import '../widgets/download_files_dialog.dart';
 import '../widgets/download_model_dialog.dart';
 import '../widgets/external_link.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
+import '../widgets/home_button.dart';
+import '../widgets/selection_app_bar.dart';
 
 /// Opens the Download & import models screen; the caller re-reads its own
 /// model list after.
@@ -540,9 +542,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return true;
   }
 
+  /// Unticking the last file ends the selection, as in Android's own apps
+  /// (round 285).
   void _toggle(String path) => setState(() {
     final sel = _selected ??= {};
     if (!sel.remove(path)) sel.add(path);
+    if (sel.isEmpty) _selected = null;
   });
 
   void _endSelecting() => setState(() => _selected = null);
@@ -910,12 +915,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// screen).
   PreferredSizeWidget _appBar(ModelsInventory? inv) {
     final sel = _selected;
-    if (sel == null || inv == null) return AppBar(title: const Text('Download & import models'));
+    if (sel == null || inv == null) {
+      return AppBar(title: const FitTitle('Download & import models'), actions: const [HomeButton()]);
+    }
     final all = _deletablePaths(inv);
     final allSelected = all.isNotEmpty && all.every(sel.contains);
-    return AppBar(
-      leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Stop selecting', onPressed: _endSelecting),
-      title: Text('${sel.length} selected'),
+    return selectionAppBar(
+      context,
+      count: sel.length,
+      onClose: _endSelecting,
       actions: [
         IconButton(
           icon: Icon(allSelected ? Icons.deselect : Icons.select_all),

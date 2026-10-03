@@ -20,6 +20,8 @@ import '../logging/past_sessions.dart';
 import '../logging/session_filter.dart';
 import '../widgets/session_tile.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
+import '../widgets/home_button.dart';
+import '../widgets/selection_app_bar.dart';
 import 'session_actions.dart';
 
 enum _MenuAction { select, importVideos, deleteAll }
@@ -72,9 +74,12 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
 
   List<PastSession> get _shown => _filter.apply(_all ?? const [], _sort, widget.now());
 
+  /// Unticking the last session ends the selection, as in Android's own apps
+  /// (round 285).
   void _toggle(PastSession s) => setState(() {
     final sel = _selected ??= {};
     if (!sel.remove(s.dir.path)) sel.add(s.dir.path);
+    if (sel.isEmpty) _selected = null;
   });
 
   void _endSelecting() => setState(() => _selected = null);
@@ -101,9 +106,10 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
     if (sel != null) {
       final shown = _shown;
       final allShownSelected = shown.isNotEmpty && shown.every((s) => sel.contains(s.dir.path));
-      return AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Stop selecting', onPressed: _endSelecting),
-        title: Text('${sel.length} selected'),
+      return selectionAppBar(
+        context,
+        count: sel.length,
+        onClose: _endSelecting,
         actions: [
           IconButton(
             icon: Icon(allShownSelected ? Icons.deselect : Icons.select_all),
@@ -130,6 +136,7 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
     return AppBar(
       title: const Text('Sessions'),
       actions: [
+        const HomeButton(),
         PopupMenuButton<_MenuAction>(
           tooltip: 'More',
           onSelected: _onMenu,

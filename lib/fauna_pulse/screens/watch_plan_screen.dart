@@ -39,6 +39,7 @@ import '../identification/identification_store.dart' show stemOf;
 import '../widgets/download_files_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
+import '../widgets/home_button.dart';
 import 'models_screen.dart';
 
 /// Saves the choice of files (tests give their own).
@@ -400,7 +401,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   Widget build(BuildContext context) {
     final use = widget.use;
     return Scaffold(
-      appBar: AppBar(title: Text(use.title)),
+      appBar: AppBar(title: FitTitle(use.title), actions: const [HomeButton()]),
       bottomNavigationBar: _onPhone == null ? null : _button(),
       body: SafeArea(
         child: _onPhone == null

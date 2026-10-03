@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 import '../widgets/external_link.dart';
+import '../widgets/home_button.dart';
 
 /// One pickable session for the "Include session data" dropdown (round 191).
 typedef ReportSessionOption = ({String name, String logPath});
@@ -137,7 +138,8 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Describe the problem'),
+        title: const FitTitle('Describe the problem'),
+        actions: const [HomeButton()],
         // Closing without text returns null (the default pop result), which the
         // caller treats as "cancelled" and skips creating a report.
       ),

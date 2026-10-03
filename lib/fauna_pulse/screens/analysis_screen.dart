@@ -45,6 +45,7 @@ import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResu
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/home_button.dart';
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
 import 'models_screen.dart';
@@ -604,7 +605,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Find animals in photos')),
+      appBar: AppBar(title: const FitTitle('Find animals in photos'), actions: const [HomeButton()]),
       // SafeArea: without it the list's last lines sit under the system
       // navigation/gesture bar and can never be scrolled into view.
       body: SafeArea(

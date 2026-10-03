@@ -618,6 +618,16 @@ void main() {
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
       expect(find.text('Download & import models'), findsOneWidget, reason: 'Back ended the selection, the screen stays');
+      await tester.longPress(find.text(_clsName));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(_clsName));
+      await tester.pumpAndSettle();
+      expect(find.text('Download & import models'), findsOneWidget, reason: 'unticking the last file ends it');
+      await tester.longPress(find.text(_clsName));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Stop selecting'));
+      await tester.pumpAndSettle();
+      expect(find.text('Download & import models'), findsOneWidget, reason: 'the X ends it');
     });
   });
 

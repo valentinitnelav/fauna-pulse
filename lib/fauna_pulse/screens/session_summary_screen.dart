@@ -44,6 +44,7 @@ import '../widgets/mini_bar_chart.dart';
 import '../widgets/session_tile.dart' show sessionDate, sessionTime;
 import '../widgets/setting_help.dart';
 import '../widgets/video_review_player.dart';
+import '../widgets/home_button.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
@@ -1725,6 +1726,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Session summary'),
+          actions: const [HomeButton()],
           bottom: TabBar(
             tabs: [
               Tab(text: _videoTab ? 'Video' : 'Photos'),

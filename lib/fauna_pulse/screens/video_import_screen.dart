@@ -33,6 +33,7 @@ import '../logging/past_sessions.dart' show sessionsRoot;
 import '../postprocess/video_import.dart';
 import '../postprocess/video_start_time.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/home_button.dart';
 
 /// Picks videos with Android's photo picker and opens [VideoImportScreen]
 /// (round 227; the photo picker since round 277: it looks like the Gallery,
@@ -301,7 +302,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
     return PopScope(
       canPop: !_importing,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Import videos')),
+        appBar: AppBar(title: const Text('Import videos'), actions: const [HomeButton()]),
         // SafeArea: without it the list's last lines sit under the system
         // navigation bar and can never be scrolled into view.
         body: SafeArea(

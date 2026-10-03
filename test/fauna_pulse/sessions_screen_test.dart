@@ -113,6 +113,12 @@ void main() {
     await tester.tap(find.text('meadow_live'));
     await tester.pumpAndSettle();
     expect(find.text('1 selected'), findsOneWidget, reason: 'a second tap unselects');
+    await tester.tap(find.text('river_videos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sessions'), findsOneWidget, reason: 'unticking the last one ends the selection');
+    expect(find.byType(Checkbox), findsNothing);
+    await tester.longPress(find.text('river_videos'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Select all shown'));
     await tester.pumpAndSettle();
     expect(find.text('4 selected'), findsOneWidget);
