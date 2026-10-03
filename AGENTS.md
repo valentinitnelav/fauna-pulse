@@ -36,7 +36,7 @@ The app sits at the git repository root and paths below are relative to it.
     Append summary changes at the end of the file without reading it entirely. 
     Add a header line like this: "## Round xy (yyyy-mm-dd): some short title"
     Example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
-    Each round entry: what was asked, what changed (visible behaviour and main files), 
+    Each round entry: what was asked, what changed (visible behavior and main files), 
     why (decisions, evidence, rejected options), what was checked, and what is open, 
     in about 1,500–3,000 characters; leave details the git diff shows to the diff.
     Add an empty line that will separate future entries.
@@ -45,43 +45,52 @@ The app sits at the git repository root and paths below are relative to it.
 
 Keep answers concise, but clear and easy to understand.
 
-Less is more: the simplest code solution is the better solution as long as core functionality is not lost
-and as long as the code remains readable for humans too.
+Less is more: the simplest code solution is the better solution as long as core 
+functionality is not lost and as long as the code remains readable for humans too.
 
-Do not place in any git tracked file any private or sensitive data like email addresses, passwords, any sort of digital keys.
+Do not place in any git tracked file any private or sensitive data like email addresses,
+passwords, any sort of digital keys.
 
 Do not read without being asked specifically into the folder `~/InsectDetectApp/sessions/`. 
-This folder contains a lot of txt files with session outputs, and it will consume a lot of tokens.
-Sometimes for diagnostics, the project owner might ask you to read specific files or lines within those files.
-If you ever decide by yourself that reading into some of these files, then ask for permission first and
-always use keywords search and do not read entire large txt files as some of them can have tens of thousands of lines.
+It contains many txt files with test session outputs.
+Sometimes for diagnostics, the project owner might ask you to read specific 
+files or lines within those files.
+If needing to read some of those files at `~/InsectDetectApp/sessions/`,
+then ask for permission first and always use keywords search and do not read entire 
+large txt files.
+
+Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round brackets).
 
 Git related:
 - Do not perform destructive Git operations without explicit approval.
 - Do not git commit or git push changes unless requested by project owner via prompts.
 - Never git push to main branch and never force push. 
-- When you implement code changes, and git is on main, then git brach into `develop`, but do not git commit the changes.
+- When you implement code changes, and git is on main, then git branch into `develop`,
+  but do not git commit the changes.
 
 If code changes happened, then suggest also clear, readable git message.
 That message must start with "Round <counter>" (e.g. Round 76) where <counter> 
 is the same counter/round id used in the appended summary rounds in `AGENT_CHANGELOG.md` 
 (and also matches the counter in the title of the git messages).
-After the first line in the git message, you can add a short summary of cahnges and why 
+After the first line in the git message, you can add a short summary of changes and why 
 those were needed.
-Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round brackets).
 
 ## Pipeline & Technical Specifications
 
-The development foundation relies on a clone of the Flutter-based `yolo-flutter-app` repository, 
-executing Dart application code over native Kotlin or Swift code. 
+The app is Dart (Flutter) code on top of native Android code in Kotlin.
 Computer vision detection runs on smartphone (on the device) using LiteRT, 
 and real-time inference is handled via the YOLOView camera widget. 
 
 ### Tracking & Region of Interest (ROI)
 
-* **Tracking:** To calculate accurate visitation rates, a tracker follows each detected animal across frames and gives it a track ID: ByteTrack by default, C-BIoU selectable (`lib/fauna_pulse/tracking/`).
-* **ROI:** To eliminate background noise, a draggable, square (1:1) Region of Interest overlay is placed on the camera preview. 
-This square matching also ensures cropping eliminates letterbox padding before sending data to the machine learning model.
-* **Triggers:** When an organism enters the ROI, the tracking pipeline activates and assigns track IDs.
-Each session is saved in its own folder under the app's `files/sessions` folder (reachable over USB):
-photos (JPEG) or videos, and the session's log.
+* **Tracking:** To calculate accurate visitation rates, a tracker follows each 
+detected animal across frames and gives it a track ID: ByteTrack by default, 
+C-BIoU selectable (`lib/fauna_pulse/tracking/`).
+
+* **ROI:** To eliminate background noise, a draggable, square (1:1) Region of Interest 
+overlay is placed on the camera preview. This square matching also ensures cropping 
+eliminates letterbox padding before sending data to the machine learning model.
+
+* **Triggers:** When an organism enters the ROI, the tracking pipeline activates 
+and assigns track IDs. Each session is saved in its own folder under the app's 
+`files/sessions` folder (reachable over USB): photos (JPEG) or videos, and the session's log.
