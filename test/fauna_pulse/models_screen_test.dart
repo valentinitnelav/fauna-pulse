@@ -8,7 +8,7 @@
 // with the question before replacing a file (round 275), and the 360-px
 // layout with a bottom system bar. Round 279: "Delete all …" per kind,
 // pressing and holding to select several, and an identification model's
-// name lists deleted with it.
+// name lists deleted with it. Round 288: each kind in a panel of its colour.
 
 import 'dart:io';
 
@@ -21,6 +21,7 @@ import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_import.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/external_link.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/model_kind_panel.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 
@@ -513,6 +514,22 @@ void main() {
     await tester.pumpAndSettle();
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('each kind of model in a panel of its own colour (r288)', (tester) async {
+    await _pump(tester);
+    bool panelOf(String text) =>
+        tester.widget<ModelKindPanel>(find.ancestor(of: find.text(text), matching: find.byType(ModelKindPanel))).identification;
+    expect(panelOf('Detection models'), isFalse);
+    expect(panelOf('my_bees_640.tflite'), isFalse);
+    expect(panelOf('Delete all detection models…'), isFalse);
+    await _show(tester, find.text('insectdct-cls-v7_eff2s_fp16.fpack'));
+    expect(panelOf('Identification models'), isTrue);
+    expect(panelOf('insectdct-cls-v7_eff2s_fp16.tflite'), isTrue);
+    expect(panelOf('insectdct-cls-v7_eff2s_fp16.fpack'), isTrue, reason: 'name lists with their model');
+    await _show(tester, find.text('Import model files…'));
+    expect(find.ancestor(of: find.text('Import model files…'), matching: find.byType(ModelKindPanel)), findsNothing);
+    expect(kDetectionColor, isNot(kIdentificationColor));
   });
 
   group('deleting several files (r279)', () {

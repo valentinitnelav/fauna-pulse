@@ -35,6 +35,8 @@
 // are two panels, each with its own faint colour and a thick line in that
 // colour on top; each radio button sits beside its file name (a ListTile
 // put it lower when a row had no details, and in the middle of long ones).
+// Round 288 (owner): the panels are ModelKindPanel, shared with Download &
+// import models, with the icons of the two kinds of model.
 
 import 'package:flutter/material.dart';
 
@@ -47,6 +49,7 @@ import '../widgets/download_files_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
 import '../widgets/home_button.dart';
+import '../widgets/model_kind_panel.dart';
 import 'models_screen.dart';
 
 /// What a tap on [use] switches to: the models used last for it ([last]) if
@@ -361,43 +364,6 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     ),
   );
 
-  /// The colours of the fold's two parts, so they are told apart at a glance.
-  static const _findColor = Colors.lightBlue, _nameColor = Colors.orange;
-
-  /// One part of the fold: a faint fill in [color] with a thick line in it on
-  /// top, and the [title] beside its [icon].
-  Widget _section(String title, IconData icon, Color color, List<Widget> children) => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    // A Material (not a plain coloured box), so a tap's ripple shows on it.
-    child: Material(
-      color: color.withValues(alpha: 0.10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: color, width: 4))),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 20, color: color),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              ...children,
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
   /// Above the models of a kind that the phone has besides the suggestions.
   Widget _otherOnPhone() => const Padding(
     padding: EdgeInsets.only(top: 8),
@@ -420,7 +386,8 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         title: const Text('Choose other models'),
         subtitle: const Text('For example a larger, more accurate one', style: helperTextStyle),
         children: [
-          _section('To find the animals', Icons.search, _findColor, [
+          const SizedBox(height: 12),
+          ModelKindPanel(identification: false, title: 'To find the animals', children: [
             for (final d in use.find)
               _choice(
                 chosen: d.file!.name == _find,
@@ -433,8 +400,9 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
             for (final f in otherDetectors)
               _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
           ]),
-          if (_namingOffered)
-            _section('To name them', Icons.label_outline, _nameColor, [
+          if (_namingOffered) ...[
+            const SizedBox(height: 12),
+            ModelKindPanel(identification: true, title: 'To name them', children: [
               for (final n in use.name)
                 _choice(
                   chosen: _names(n) == _name,
@@ -463,6 +431,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
                   onTap: () => setState(() => _name = (m, l)),
                 ),
             ]),
+          ],
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,

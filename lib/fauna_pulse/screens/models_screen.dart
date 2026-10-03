@@ -49,6 +49,10 @@
 // the Sessions screen), and deleting an identification model deletes its
 // name lists too (not only a classifier's class list), except a list another
 // model on the phone can still use.
+//
+// Round 288 (owner): Detection models and Identification models each sit in
+// a panel of their own colour (ModelKindPanel, as on the "What do you want to
+// watch?" pages); the icons of the files to download take that colour.
 
 import 'dart:io';
 
@@ -69,6 +73,7 @@ import '../widgets/download_model_dialog.dart';
 import '../widgets/external_link.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/home_button.dart';
+import '../widgets/model_kind_panel.dart';
 import '../widgets/selection_app_bar.dart';
 
 /// Opens the Download & import models screen; the caller re-reads its own
@@ -112,9 +117,6 @@ class NoModelNotice extends StatelessWidget {
     );
   }
 }
-
-const _detectionIcon = Icons.center_focus_strong_outlined;
-const _identificationIcon = Icons.biotech_outlined;
 
 /// Everything the screen lists, read in one go (injectable for tests).
 class ModelsInventory {
@@ -678,7 +680,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   void _detectorCard(ModelEntry m, ModelsInventory inv) {
     final d = inv.downloads.modelFor(m.name);
-    _showCard(_detectionIcon, m.name, [
+    _showCard(kDetectionIcon, m.name, [
       ('Kind', 'Detection model: finds animals and draws a box around each one'),
       ..._catalogueRows(d),
       if (m.labels.isNotEmpty) ('Finds', _finds(m.labels)),
@@ -700,7 +702,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   void _idModelCard(File f, ModelsInventory inv) {
     final d = inv.downloads.modelFor(_nameOf(f));
     final lists = inv.listsOf(f);
-    _showCard(_identificationIcon, _nameOf(f), [
+    _showCard(kIdentificationIcon, _nameOf(f), [
       ('Kind', 'Identification model: names what is inside each box, choosing from a name list made for it'),
       ..._catalogueRows(d),
       ('Name lists', lists.isEmpty ? 'None on this phone: it cannot identify yet' : lists.map(_nameOf).join('\n')),
@@ -723,7 +725,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ]);
   }
 
-  void _offerCard(ModelDownload d) => _showCard(d.identification ? _identificationIcon : _detectionIcon, d.title, [
+  void _offerCard(ModelDownload d) => _showCard(d.identification ? kIdentificationIcon : kDetectionIcon, d.title, [
     ('Kind', d.identification ? 'Identification model' : 'Detection model'),
     ('Use', d.purpose),
     if (d.note != null) ('Note', d.note!),
@@ -790,7 +792,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Widget _offerTile(IconData? icon, String title, String details, VoidCallback? onInfo, VoidCallback onGet) => ListTile(
     contentPadding: EdgeInsets.only(left: icon == null ? 40 : 0),
     dense: true,
-    leading: icon == null ? null : Icon(icon, color: Colors.lightBlueAccent),
+    leading: icon == null
+        ? null
+        : Icon(icon, color: icon == kIdentificationIcon ? kIdentificationColor : kDetectionColor),
     minLeadingWidth: 24,
     title: Text(title),
     subtitle: Text(details, style: helperTextStyle),
@@ -806,7 +810,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Widget _detectorTile(ModelEntry m, ModelsInventory inv) {
     final wrong = inv.wrongKind[m.id];
     return _tile(
-      _detectionIcon,
+      kDetectionIcon,
       m.name,
       () => _detectorCard(m, inv),
       path: m.source == ModelSource.imported ? m.id : null,
@@ -820,7 +824,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     final wrong = inv.wrongKind[f.path];
     return [
       _tile(
-        _identificationIcon,
+        kIdentificationIcon,
         _nameOf(f),
         () => _idModelCard(f, inv),
         path: f.path,
@@ -852,7 +856,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return [
       _subheading('Available to download'),
       for (final d in offers)
-        _offerTile(_detectionIcon, d.title, formatBytes(d.file!.bytes), () => _offerCard(d), () => _get(d)),
+        _offerTile(kDetectionIcon, d.title, formatBytes(d.file!.bytes), () => _offerCard(d), () => _get(d)),
     ];
   }
 
@@ -871,7 +875,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         final l = missing.single;
         rows.add(
           _offerTile(
-            _identificationIcon,
+            kIdentificationIcon,
             d.title,
             formatBytes((hasModel ? 0 : model.bytes) + l.file.bytes),
             () => _offerCard(d),
@@ -884,7 +888,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         ListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          leading: const Icon(_identificationIcon, color: Colors.lightBlueAccent),
+          leading: const Icon(kIdentificationIcon, color: kIdentificationColor),
           minLeadingWidth: 24,
           title: Text(d.title),
           subtitle: Text(
@@ -982,49 +986,57 @@ class _ModelsScreenState extends State<ModelsScreen> {
                           ],
                         ),
                       ),
-                    _section(
-                      'Detection models',
-                      'Find animals and draw a box around each one',
+                    const SizedBox(height: 20),
+                    ModelKindPanel(
+                      identification: false,
+                      title: 'Detection models',
+                      subtitle: 'Find animals and draw a box around each one',
+                      children: [
+                        _subheading('On this phone'),
+                        if (inv.detectors.isEmpty)
+                          const Text(
+                            'None yet: live detection and "Find animals in photos / videos" need one.',
+                            style: helperTextStyle,
+                          ),
+                        for (final m in inv.detectors) _detectorTile(m, inv),
+                        ..._deleteAll(
+                          'Delete all detection models…',
+                          'all detection models',
+                          _deletablePaths(inv, identification: false),
+                        ),
+                        ..._detectorOffers(inv),
+                      ],
                     ),
-                    _subheading('On this phone'),
-                    if (inv.detectors.isEmpty)
-                      const Text(
-                        'None yet: live detection and "Find animals in photos / videos" need one.',
-                        style: helperTextStyle,
-                      ),
-                    for (final m in inv.detectors) _detectorTile(m, inv),
-                    ..._deleteAll(
-                      'Delete all detection models…',
-                      'all detection models',
-                      _deletablePaths(inv, identification: false),
+                    const SizedBox(height: 20),
+                    ModelKindPanel(
+                      identification: true,
+                      title: 'Identification models',
+                      subtitle: 'Name what is inside each box',
+                      children: [
+                        _subheading('On this phone'),
+                        if (inv.idModels.isEmpty)
+                          const Text(
+                            'None yet: "Identify organisms" needs one.',
+                            style: helperTextStyle,
+                          ),
+                        if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
+                        for (final f in inv.idModels) ..._idModelGroup(f, inv),
+                        if (inv.orphanLists.isNotEmpty) ...[
+                          _subheading('Name lists without their model'),
+                          const Text(
+                            'Their model is not on this phone, so they cannot be used yet.',
+                            style: TextStyle(color: Colors.amber, fontSize: 13),
+                          ),
+                          for (final f in inv.orphanLists) _nameListRow(f, inv),
+                        ],
+                        ..._deleteAll(
+                          'Delete all identification models…',
+                          'all identification models and name lists',
+                          _deletablePaths(inv, identification: true),
+                        ),
+                        ..._identificationOffers(inv),
+                      ],
                     ),
-                    ..._detectorOffers(inv),
-                    _section(
-                      'Identification models',
-                      'Name what is inside each box',
-                    ),
-                    _subheading('On this phone'),
-                    if (inv.idModels.isEmpty)
-                      const Text(
-                        'None yet: "Identify organisms" needs one.',
-                        style: helperTextStyle,
-                      ),
-                    if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
-                    for (final f in inv.idModels) ..._idModelGroup(f, inv),
-                    if (inv.orphanLists.isNotEmpty) ...[
-                      _subheading('Name lists without their model'),
-                      const Text(
-                        'Their model is not on this phone, so they cannot be used yet.',
-                        style: TextStyle(color: Colors.amber, fontSize: 13),
-                      ),
-                      for (final f in inv.orphanLists) _nameListRow(f, inv),
-                    ],
-                    ..._deleteAll(
-                      'Delete all identification models…',
-                      'all identification models and name lists',
-                      _deletablePaths(inv, identification: true),
-                    ),
-                    ..._identificationOffers(inv),
                     _section('Your own models', _ownHelp),
                     const SizedBox(height: 8),
                     FilledButton.tonalIcon(

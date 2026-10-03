@@ -114,7 +114,8 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
 `video_review_player.dart`, `video_speed_chips.dart`, `temperature_gauge.dart`,
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
-`roiPicture`), `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
+`roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons),
+`download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
 `roi_size_sheet.dart`, `calibrating_banner.dart`, `home_button.dart` (`HomeButton`, `goHome`, `FitTitle`),
 `selection_app_bar.dart`.
@@ -451,7 +452,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   delete model files and name lists. Every file is listed by its file name, details behind ⓘ
   (from the file: classes, input size, precision; plus title, licence and source when listed).
   Deleting an identification model takes its name lists along unless another model still uses
-  them; "Delete all …" per kind; press and hold selects several.
+  them; "Delete all …" per kind; press and hold selects several. Each kind sits in a
+  `ModelKindPanel`: detection light blue, identification orange (faint fill, thick line on top,
+  framed-circle or microscope icon); the same panels split the watch pages' fold.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
   optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home
@@ -464,9 +467,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   models" / "Your choice" by file name; the answer in use (`home_watch_use`) opens with
   `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
   these"; it pops the `ModelChoice`); the fold "Choose other models" lists the other suggestions plus "Other models on this
-  phone" (every other detector and identification model + name list pair, `namingPairs`), in two panels ("To find the
-  animals" light blue, "To name them" orange: faint fill, thick line on top); each row is a radio icon centred on the file
-  name, details under it (no `ListTile`: it moved the icon off the name). Saving
+  phone" (every other detector and identification model + name list pair, `namingPairs`), in two `ModelKindPanel`s
+  ("To find the animals", "To name them"); each row is a radio icon centred on the file name, details under it (no
+  `ListTile`: it moved the icon off the name). Saving
   = `useModels`: camera `modelPath` + task, `analysis_model`, `video_analysis_model`,
   `identify_model`/`identify_pack` ("Not now" removes both).
 - **A tap on an answer switches to it** when its models are on the phone (`readyChoice`): the
