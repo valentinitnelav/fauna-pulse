@@ -86,8 +86,9 @@ In the code, "pack" means such a file of either kind.
   on where to put the phone), `find` (the `id`s of the suggested detection models, the best
   first) and `name` (the suggested identification models, each `{"model": id, "list": file
   name}`; a classifier with one class list may leave out `list`). The first of `find` and of
-  `name` are chosen for the user (round 279: "Chosen for you"; the others wait under *Choose
-  other models*). The page shows the drawing `assets/images/setup_<icon>.png` when there is one
+  `name` are the page's *Suggested AI models* (the others wait under *Choose other models*; the
+  page of the answer used last opens with the models in use instead). For naming, BioCLIP 2
+  with the name list that fits the answer comes first in every answer. The page shows the drawing `assets/images/setup_<icon>.png` when there is one
   (the side view and the phone screen with the yellow square; the round icon otherwise), and
   the home screen's step 2 shows `assets/images/roi_<icon>.png` (that phone screen alone) for
   the answer chosen last. A model needs an entry here only to be offered for download or

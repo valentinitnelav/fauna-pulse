@@ -160,6 +160,22 @@ void main() {
     expect([for (final i in icons) i.selected], [false, false, false, false]);
   });
 
+  testWidgets('the answer used last opens with the models in use, the others with the suggestions', (tester) async {
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'pollinators'});
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(detectors: 1),
+      choice: (detector: 'my_bees_640_fp16.tflite', idModel: null, nameList: null),
+    );
+    for (final (tile, box) in [('Pollinators on flowers', 'Your choice'), ('Mammals and birds', 'Suggested AI models')]) {
+      await tester.tap(find.text(tile));
+      await tester.pumpAndSettle();
+      expect(find.text(box), findsOneWidget, reason: tile);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('set up: step 1 names the answer and the chosen files, its tile marked', (tester) async {
     SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'pollinators'});
     await _pumpHome(
@@ -211,7 +227,7 @@ void main() {
       choice: (detector: 'flatbug-n_640_fp16.tflite', idModel: null, nameList: null),
     );
     expect(find.text('Set up for: Insects on a flat surface'), findsOneWidget);
-    expect(find.text('Name: none (animals are found and followed, not named)'), findsOneWidget);
+    expect(find.text('Name: none (animals are found and counted, not named)'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await _pumpHome(
       tester,

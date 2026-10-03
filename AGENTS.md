@@ -39,6 +39,7 @@ The app sits at the git repository root and paths below are relative to it.
     Each round entry: what was asked, what changed (visible behavior and main files), 
     why (decisions, evidence, rejected options), what was checked, and what is open, 
     in about 1,500–3,000 characters; leave details the git diff shows to the diff.
+    Do not write suggested commit message here.
     Add an empty line that will separate future entries.
 
 ## General rules
@@ -61,12 +62,15 @@ large txt files.
 
 Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round brackets).
 
-Git related:
+**Git related:**
+
 - Do not perform destructive Git operations without explicit approval.
 - Do not git commit or git push changes unless requested by project owner via prompts.
 - Never git push to main branch and never force push. 
 - When you implement code changes, and git is on main, then git branch into `develop`,
   but do not git commit the changes.
+- Suggest commit messages & title that are short, clear and easy to understand 
+   what the overall edits were about.
 
 If code changes happened, then suggest also clear, readable git message.
 That message must start with "Round <counter>" (e.g. Round 76) where <counter> 

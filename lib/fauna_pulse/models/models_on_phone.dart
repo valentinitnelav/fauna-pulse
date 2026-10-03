@@ -149,7 +149,7 @@ Future<ModelChoice> currentModelChoice(Set<String> onPhone) async {
 
 /// Said wherever no identification model is chosen (home step 1, the
 /// "What do you want to watch?" pages).
-const kNoNamingNote = 'animals are found and followed, not named';
+const kNoNamingNote = 'animals are found and counted, not named';
 
 /// Identify's choice: the identification model [idModel] with its name list
 /// [nameList] (file names), or none when either is null.

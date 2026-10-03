@@ -24,8 +24,9 @@ The simplest way (round 278): the home screen's step 1, *What do you want to wat
 chooses an identification model with its name list (and a detection model) for you, downloaded and set
 up with one button (other suggestions, and the other models already on the phone, under *Choose
 other models*):
-*Pollinators on flowers* and *Insects on a flat surface* the insectDCT classifier or BioCLIP 2 with
-one of its insect lists, *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
+*Pollinators on flowers* and *Insects on a flat surface* BioCLIP 2 with *Flies, bees and wasps,
+beetles, butterflies and moths of Europe* (or the insectDCT classifier, or BioCLIP 2 with the
+32 flower-visitor families), *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
 (17,130 names, 28 MB, round 278). Every model is on **Download & import models** (home screen: *AI
 models* in the bottom bar) → *Available to download* (round 268); a name list brings its model
 along when the model is not on the phone yet (BioCLIP 2 with three name lists, BioCLIP 2.5 with

@@ -23,6 +23,11 @@
 // phone ("Other models on this phone": the user's own, such as a detector
 // they trained, and those suggested for other answers), so they can be
 // chosen without a download or an entry in the list file.
+// Round 284 (owner): the box is "Suggested AI models" ("Chosen for you" read
+// as if the choice were made for good). The page of the answer used last
+// opens with the models in use now (as home step 1), so pressing the button
+// again does not silently replace a model the user chose; a link goes back
+// to the suggestions.
 
 import 'package:flutter/material.dart';
 
@@ -47,12 +52,17 @@ class WatchPlanScreen extends StatefulWidget {
   final CatalogueFileDownloader download;
   final UseModels saveChoice;
 
+  /// For the answer used last: reads the models in use now, to open with
+  /// them instead of the suggestions (null: open with the suggestions).
+  final Future<ModelChoice> Function(Set<String> onPhone)? inUse;
+
   const WatchPlanScreen({
     super.key,
     required this.use,
     this.onPhone = ModelFilesOnPhone.load,
     this.download = downloadCatalogueFileForReal,
     this.saveChoice = useModels,
+    this.inUse,
   });
 
   @override
@@ -83,13 +93,27 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    _reload(first: true);
   }
 
-  Future<void> _reload() async {
+  Future<void> _reload({bool first = false}) async {
     final names = await widget.onPhone();
-    if (mounted) setState(() => _onPhone = names);
+    final inUse = first ? await widget.inUse?.call(names.all) : null;
+    if (!mounted) return;
+    setState(() {
+      _onPhone = names;
+      if (inUse != null) {
+        _find = inUse.detector ?? _find;
+        final (idModel: m, nameList: l, detector: _) = inUse;
+        _name = m != null && l != null ? (m, l) : null;
+      }
+    });
   }
+
+  void _backToSuggestions() => setState(() {
+    _find = _defaultFind;
+    _name = _defaultName;
+  });
 
   bool _has(DownloadFile f) => _onPhone?.has(f.name) ?? false;
 
@@ -203,7 +227,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     return notes.isEmpty ? const SizedBox.shrink() : Text(notes.join(' '), style: helperTextStyle);
   }
 
-  /// A label and the file names under it, in the "Chosen for you" box.
+  /// A label and the file names under it, in the "Suggested AI models" box.
   Widget _chosenRow(String label, List<String> files) => Padding(
     padding: const EdgeInsets.only(top: 8),
     child: Column(
@@ -228,7 +252,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            _isDefault ? 'Chosen for you' : 'Your choice',
+            _isDefault ? 'Suggested AI models' : 'Your choice',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           _chosenRow('To find the animals', [_find]),
@@ -238,6 +262,15 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
                 : _chosenRow('To name them', [n.$1, if (_listFile(n.$1, n.$2) case final f?) 'with $f']),
           const SizedBox(height: 10),
           _boxNote(),
+          if (!_isDefault)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _busy ? null : _backToSuggestions,
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                child: const Text('Back to the suggested models'),
+              ),
+            ),
         ],
       ),
     );

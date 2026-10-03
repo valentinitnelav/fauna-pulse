@@ -5,7 +5,8 @@
 // files shown as on the phone; nothing downloaded) and the About text.
 // Round 279: the answer pages with their drawing, "Chosen for you" and the
 // fold "Choose other models"; step 1 without a tick, step 2 with the yellow
-// square.
+// square. Round 284: the box is "Suggested AI models", or "Your choice" on
+// the page of the answer used last when other models are in use.
 //
 // Nothing is deleted, imported, downloaded or saved: the check only opens
 // screens, opens and closes the filter panel and the menus, and selects one
@@ -98,12 +99,16 @@ void main() {
       ('Mammals and birds', 'watch_mammals_birds'),
     ]) {
       await tester.tap(find.text(tile));
-      await waitFor(find.text('Chosen for you'));
+      final box = find.textContaining(RegExp(r'^(Suggested AI models|Your choice)$'));
+      await waitFor(box);
       await settle();
       final onPhone = find.text('On this phone').evaluate().length;
       await shot(name);
       final button = find.textContaining(RegExp(r'^(Download and use \(|Use these$)'));
-      _log('WATCH $tile: "On this phone" $onPhone times, button "${tester.widget<Text>(button).data}"');
+      _log(
+        'WATCH $tile: "${tester.widget<Text>(box).data}", "On this phone" $onPhone times, '
+        'button "${tester.widget<Text>(button).data}"',
+      );
       await tester.tap(find.text('Choose other models'));
       await settle();
       await tester.drag(find.byType(ListView), const Offset(0, -600));

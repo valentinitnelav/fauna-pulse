@@ -5,7 +5,9 @@
 // suggestions in a closed fold "Choose other models". Round 280: "Not now"
 // says what it means and clears Identify's choice; each answer has the phone
 // screen of its drawing alone (home step 2). Round 281: the fold also lists
-// the other models on the phone (one's own detector, for example).
+// the other models on the phone (one's own detector, for example). Round
+// 284: the box is "Suggested AI models"; BioCLIP 2 with the European list
+// names pollinators; the answer used last opens with the models in use.
 
 import 'dart:io';
 
@@ -28,7 +30,13 @@ class _Calls {
   Object? failWith;
 }
 
-Future<void> _pump(WidgetTester tester, WatchUse use, ModelFilesOnPhone onPhone, _Calls calls) async {
+Future<void> _pump(
+  WidgetTester tester,
+  WatchUse use,
+  ModelFilesOnPhone onPhone,
+  _Calls calls, {
+  ModelChoice? inUse,
+}) async {
   tester.view.physicalSize = const Size(360, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -49,6 +57,7 @@ Future<void> _pump(WidgetTester tester, WatchUse use, ModelFilesOnPhone onPhone,
                       calls.downloaded.add((f.name, identification));
                     },
                     saveChoice: ({detector, idModel, nameList}) async => calls.saved.add((detector, idModel, nameList)),
+                    inUse: inUse == null ? null : (_) async => inUse,
                   ),
                 ),
               ),
@@ -78,7 +87,12 @@ void main() {
   test('the shipped list has the three answers, each with offered models and a drawing', () {
     expect(_downloads.uses.map((u) => u.id), ['pollinators', 'flat_surface', 'mammals_birds']);
     expect(_use('pollinators').find.map((d) => d.id), ['insectdct-v8s', 'flatbug-n']);
-    expect(_use('pollinators').name.map((n) => n.$1.id), ['insectdct-cls-v7-eff2s', 'bioclip-2', 'bioclip-2']);
+    expect(_use('pollinators').name.map((n) => n.$1.id), ['bioclip-2', 'insectdct-cls-v7-eff2s', 'bioclip-2']);
+    expect(_use('pollinators').name.first.$2.file.name, 'bioclip2_pollinator_orders_europe_v1.fpack');
+    expect(_use('flat_surface').name.first.$2.file.name, 'bioclip2_pollinator_orders_europe_v1.fpack');
+    for (final u in _downloads.uses) {
+      expect(u.name.first.$1.id, 'bioclip-2', reason: '${u.id}: BioCLIP 2 is suggested for naming');
+    }
     expect(_use('flat_surface').find.first.id, 'flatbug-n');
     final (model, list) = _use('mammals_birds').name.single;
     expect(model.id, 'bioclip-2');
@@ -92,31 +106,34 @@ void main() {
     }
   });
 
-  testWidgets('pollinators: chosen for the user by file name, one download, the choice saved', (tester) async {
+  testWidgets('pollinators: the suggested models by file name, one download, the choice saved', (tester) async {
     final calls = _Calls();
     await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(detectors: {'insectdct-v8-s_640_fp16.tflite'}), calls);
     expect(find.byType(SetupPicture), findsOneWidget);
-    expect(find.text('Chosen for you'), findsOneWidget);
+    expect(find.text('Suggested AI models'), findsOneWidget);
+    expect(find.text('Back to the suggested models'), findsNothing);
     expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
-    expect(find.text('insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
-    expect(find.textContaining('with '), findsNothing, reason: 'a class list has its model\'s name');
+    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
+    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsOneWidget);
     expect(find.text('flatbug-n_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
     expect(find.text('Choose other models'), findsOneWidget);
     expect(find.text('Use them from now on'), findsNothing, reason: 'choosing is using');
     expect(tester.takeException(), isNull, reason: 'nothing overflows at 360 px');
-    final cls = _use('pollinators').name.first;
-    final button = 'Download and use (${formatBytes(cls.$1.file!.bytes + cls.$2.file.bytes)})';
-    expect(find.text('The rest is on this phone.'), findsOneWidget);
+    final bioclip = _use('pollinators').name.first;
+    final button = 'Download and use (${formatBytes(bioclip.$1.file!.bytes + bioclip.$2.file.bytes)})';
+    expect(find.text('The rest is on this phone. A large download: use Wi-Fi.'), findsOneWidget);
     await _tap(tester, find.text(button));
     expect(
       find.textContaining(
-        'insectdct-cls-v7_eff2s_fp16.tflite, insectdct-cls-v7_eff2s_fp16.fpack (the other chosen files are on this phone).',
+        'bioclip-2_image_fp16_4d.tflite, bioclip2_pollinator_orders_europe_v1.fpack (the other chosen files are on this phone).',
       ),
       findsOneWidget,
     );
     await _tap(tester, _inDialog('Download'));
-    expect(calls.downloaded, [('insectdct-cls-v7_eff2s_fp16.tflite', true), ('insectdct-cls-v7_eff2s_fp16.fpack', true)]);
-    expect(calls.saved, [('insectdct-v8-s_640_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack')]);
+    expect(calls.downloaded, [('bioclip-2_image_fp16_4d.tflite', true), ('bioclip2_pollinator_orders_europe_v1.fpack', true)]);
+    expect(calls.saved, [
+      ('insectdct-v8-s_640_fp16.tflite', 'bioclip-2_image_fp16_4d.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack'),
+    ]);
     expect(find.byType(WatchPlanScreen), findsNothing, reason: 'back on the home screen');
   });
 
@@ -125,14 +142,14 @@ void main() {
     await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.text('Choose other models'));
     expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)'), findsOneWidget);
-    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsOneWidget);
+    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsNWidgets(2), reason: 'box and fold');
     expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
     await _tap(tester, find.text('flatbug-n_640_fp16.tflite'));
     await _tap(tester, find.text('Not now'));
     expect(find.text('Your choice'), findsOneWidget);
     expect(find.text('Download and use (${formatBytes(_use('pollinators').find[1].file!.bytes)})').hitTestable(), findsOneWidget,
         reason: 'the button stays in view below the open fold');
-    expect(find.text('None (animals are found and followed, not named)'), findsOneWidget, reason: 'in the box');
+    expect(find.text('None (animals are found and counted, not named)'), findsOneWidget, reason: 'in the box');
     expect(find.text('Not now'), findsOneWidget, reason: 'in the fold');
     final flatbug = _use('pollinators').find[1].file!;
     await _tap(tester, find.text('Download and use (${formatBytes(flatbug.bytes)})'));
@@ -206,6 +223,51 @@ void main() {
     await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
     expect(calls.saved, [('my_bees_640_fp16.tflite', 'my_moths_224_fp16.tflite', 'my_moths_224_fp16.fpack')]);
+  });
+
+  testWidgets('the answer used last opens with the models in use, and goes back to the suggestions', (tester) async {
+    final calls = _Calls();
+    await _pump(
+      tester,
+      _use('pollinators'),
+      const ModelFilesOnPhone(
+        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
+        idModels: {'insectdct-cls-v7_eff2s_fp16.tflite'},
+        nameLists: {'insectdct-cls-v7_eff2s_fp16.fpack'},
+      ),
+      calls,
+      inUse: (
+        detector: 'my_bees_640_fp16.tflite',
+        idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
+        nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+      ),
+    );
+    expect(find.text('Your choice'), findsOneWidget);
+    expect(find.text('my_bees_640_fp16.tflite'), findsOneWidget, reason: 'in the box (the fold is closed)');
+    expect(find.text('insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
+    expect(find.text('On this phone'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _tap(tester, find.text('Back to the suggested models'));
+    expect(find.text('Suggested AI models'), findsOneWidget);
+    expect(find.text('Back to the suggested models'), findsNothing);
+    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
+    expect(calls.saved, isEmpty, reason: 'nothing saved before the button');
+  });
+
+  testWidgets('models in use: no detector keeps the suggested one; no naming shows None', (tester) async {
+    final calls = _Calls();
+    await _pump(
+      tester,
+      _use('pollinators'),
+      const ModelFilesOnPhone(detectors: {'insectdct-v8-s_640_fp16.tflite'}),
+      calls,
+      inUse: (detector: null, idModel: null, nameList: null),
+    );
+    expect(find.text('Your choice'), findsOneWidget);
+    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('None (animals are found and counted, not named)'), findsOneWidget);
+    await _tap(tester, find.text('Use these'));
+    expect(calls.saved, [('insectdct-v8-s_640_fp16.tflite', null, null)]);
   });
 
   test('namingPairs: a class list only with its own model, a label pack with each model of its name', () {

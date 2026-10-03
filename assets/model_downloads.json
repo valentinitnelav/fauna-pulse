@@ -200,11 +200,11 @@
       ],
       "name": [
         {
-          "model": "insectdct-cls-v7-eff2s"
-        },
-        {
           "model": "bioclip-2",
           "list": "bioclip2_pollinator_orders_europe_v1.fpack"
+        },
+        {
+          "model": "insectdct-cls-v7-eff2s"
         },
         {
           "model": "bioclip-2",
@@ -223,11 +223,11 @@
       ],
       "name": [
         {
-          "model": "insectdct-cls-v7-eff2s"
-        },
-        {
           "model": "bioclip-2",
           "list": "bioclip2_pollinator_orders_europe_v1.fpack"
+        },
+        {
+          "model": "insectdct-cls-v7-eff2s"
         },
         {
           "model": "bioclip-2",

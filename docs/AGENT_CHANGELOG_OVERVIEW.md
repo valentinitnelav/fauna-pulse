@@ -447,11 +447,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
   optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home
   answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; the first of each is
-  "Chosen for you"). Presence on the phone = file name only; `sha256` only verifies a download.
+  "Suggested AI models"; naming is BioCLIP 2 first in every answer: the Europe 5-order list for
+  pollinators and flat surface, the world list for mammals and birds). Presence on the phone = file name only; `sha256` only verifies a download.
   `update_catalogue.py` refreshes sizes and checksums. Files are not online yet except
   MegaDetector (base_url = release v0.8.0-alpha.1).
-- **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Chosen for you"
-  / "Your choice" by file name, one button at the bottom edge ("Download and use (size)" / "Use
+- **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Suggested AI
+  models" / "Your choice" by file name; the answer used last (`home_watch_use`) opens with
+  `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
   these"); the fold "Choose other models" lists the other suggestions plus "Other models on this
   phone" (every other detector and identification model + name list pair, `namingPairs`). Saving
   = `useModels`: camera `modelPath` + task, `analysis_model`, `video_analysis_model`,
@@ -460,7 +462,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   chosen everywhere.
 
 ### Home, Sessions, summary
-- **Home** (`home_screen.dart`): numbered steps that stay on the page: 1 AI models (amber frame
+- **Home** (`home_screen.dart`): tagline "Your phone as a camera trap: find, count and name
+  animals" (no "follow": the phone stays in place); numbered steps that stay on the page: 1 AI models (amber frame
   when none; tiles from `uses` + "Other models"; after a page saved: "Set up for: <answer>" or
   "Chosen AI models" with Find/Name file names from `currentModelChoice`, "none (…)" lines), 2
   Record (the answer's phone-screen drawing `roiPicture(icon)`), 3 Import videos…, 4 the two Find

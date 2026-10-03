@@ -161,7 +161,16 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   /// Opens the suggested models of [use]; back with them, the user is
   /// pointed at New session.
   Future<void> _openWatch(WatchUse use) async {
-    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => WatchPlanScreen(use: use, onPhone: widget.modelFiles)));
+    final done = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => WatchPlanScreen(
+          use: use,
+          onPhone: widget.modelFiles,
+          // The answer used last opens with the models in use now.
+          inUse: use.id == _watchUse ? widget.modelChoice : null,
+        ),
+      ),
+    );
     if (done == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(kHomeWatchUsePref, use.id);
@@ -607,8 +616,11 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 2),
+                    // Round 284 (owner): "camera trap" says the phone stays in
+                    // place ("follow" read as moving the phone after the
+                    // animal).
                     const Text(
-                      'Find, follow and name animals with your phone',
+                      'Your phone as a camera trap: find, count and name animals',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: Colors.white70),
                     ),
@@ -865,13 +877,14 @@ class AboutFaunaPulseDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Round 278 (owner): for a broad audience, and naming the
-            // animals (identification on the phone) said plainly.
+            // animals (identification on the phone) said plainly. Round 284:
+            // the phone stays in one place (a camera trap).
             const Text(
-              'FaunaPulse turns a phone into a camera that watches animals for you: for example insects '
-              'visiting a flower, or birds and mammals at a feeding site.\n\n'
+              'FaunaPulse turns a phone, fixed in one place, into a camera trap that watches animals for '
+              'you: for example insects visiting a flower, or birds and mammals at a feeding site.\n\n'
               'With AI models (free files you download or import in the app), FaunaPulse can:\n'
-              '• find the animals in the picture and follow each one while it stays, live or later in '
-              'saved photos and videos;\n'
+              '• find the animals in the picture and tell them apart from picture to picture while they '
+              'stay, live or later in saved photos and videos;\n'
               '• name them: an identification model on the phone suggests the group or species of each '
               'animal;\n'
               '• record when each visit starts and ends, so you can count visits and see how long they '
