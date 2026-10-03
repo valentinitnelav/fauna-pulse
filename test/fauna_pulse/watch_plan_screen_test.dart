@@ -9,7 +9,8 @@
 // 284: the box is "Suggested AI models"; BioCLIP 2 with the European list
 // names pollinators; the answer used last opens with the models in use.
 // Round 286: the button returns the choice; readyChoice says what a tap on an
-// answer switches to; each answer remembers its own models.
+// answer switches to; each answer remembers its own models. Round 287: the
+// fold's two parts in their own colours, radio buttons beside the file names.
 
 import 'dart:io';
 
@@ -151,6 +152,8 @@ void main() {
     expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
     await _tap(tester, find.text('flatbug-n_640_fp16.tflite'));
     await _tap(tester, find.text('Not now'));
+    await tester.drag(find.byType(ListView), const Offset(0, 3000)); // back to the box at the top
+    await tester.pumpAndSettle();
     expect(find.text('Your choice'), findsOneWidget);
     expect(find.text('Download and use (${formatBytes(_use('pollinators').find[1].file!.bytes)})').hitTestable(), findsOneWidget,
         reason: 'the button stays in view below the open fold');
@@ -229,6 +232,37 @@ void main() {
     await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
     expect(calls.saved, [('my_bees_640_fp16.tflite', 'my_moths_224_fp16.tflite', 'my_moths_224_fp16.fpack')]);
+  });
+
+  testWidgets('the fold: its two parts in their own colours, each radio button beside its file name', (tester) async {
+    await _pump(
+      tester,
+      _use('flat_surface'),
+      const ModelFilesOnPhone(
+        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
+        idModels: {'my_moths_224_fp16.tflite'},
+        nameLists: {'my_moths_224_fp16.fpack'},
+      ),
+      _Calls(),
+    );
+    await _tap(tester, find.text('Choose other models'));
+    // .last: the fold comes after the box, which has the same words.
+    Color fillOf(String text) =>
+        tester.widget<Material>(find.ancestor(of: find.text(text).last, matching: find.byType(Material)).first).color!;
+    expect(fillOf('To find the animals'), isNot(fillOf('To name them')));
+    expect(fillOf('my_bees_640_fp16.tflite'), fillOf('To find the animals'), reason: 'other models in their part');
+    expect(fillOf('my_moths_224_fp16.tflite'), fillOf('To name them'));
+    // A model without details (one's own, where the button sat lower), one
+    // with three lines under it (the button sat in their middle), "Not now".
+    for (final name in ['my_bees_640_fp16.tflite', 'flatbug-n_640_fp16.tflite', 'Not now']) {
+      final title = find.text(name).last;
+      final radio = find.descendant(
+        of: find.ancestor(of: title, matching: find.byType(Row)).first,
+        matching: find.byType(Icon),
+      );
+      expect(tester.getCenter(radio).dy, moreOrLessEquals(tester.getCenter(title).dy, epsilon: 0.5), reason: name);
+    }
+    expect(tester.takeException(), isNull, reason: 'the panels fit 360 px');
   });
 
   testWidgets('the answer used last opens with the models in use, and goes back to the suggestions', (tester) async {

@@ -31,6 +31,10 @@
 // Round 286 (owner): a tap on an answer whose models are on the phone
 // switches to it before its page opens (readyChoice; home screen); the button
 // returns the choice, which the home screen remembers for that answer.
+// Round 287 (owner): in the fold, "To find the animals" and "To name them"
+// are two panels, each with its own faint colour and a thick line in that
+// colour on top; each radio button sits beside its file name (a ListTile
+// put it lower when a row had no details, and in the middle of long ones).
 
 import 'package:flutter/material.dart';
 
@@ -212,11 +216,6 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     }
   }
 
-  Widget _heading(String text) => Padding(
-    padding: const EdgeInsets.only(top: 16, bottom: 4),
-    child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-  );
-
   /// "On this phone", or what is still to download.
   Widget _sizeLine(List<DownloadFile> files) {
     final bytes = _bytesOf(files);
@@ -319,25 +318,84 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     );
   }
 
+  /// One model to choose: the radio button beside the file name (also when
+  /// the name takes two lines or the font is large), the details under it.
   Widget _choice({
     required bool chosen,
     required String title,
     required List<String> lines,
     Widget? size,
     required VoidCallback onTap,
-  }) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    leading: Icon(
-      chosen ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-      color: chosen ? Theme.of(context).colorScheme.primary : Colors.white54,
+  }) => Semantics(
+    inMutuallyExclusiveGroup: true,
+    checked: chosen,
+    child: InkWell(
+      onTap: _busy ? null : onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  chosen ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  color: chosen ? Theme.of(context).colorScheme.primary : Colors.white54,
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(title, style: Theme.of(context).textTheme.bodyLarge)),
+              ],
+            ),
+            if (lines.isNotEmpty || size != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 36),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [for (final l in lines) Text(l, style: helperTextStyle), ?size],
+                ),
+              ),
+          ],
+        ),
+      ),
     ),
-    minLeadingWidth: 24,
-    title: Text(title),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [for (final l in lines) Text(l, style: helperTextStyle), ?size],
+  );
+
+  /// The colours of the fold's two parts, so they are told apart at a glance.
+  static const _findColor = Colors.lightBlue, _nameColor = Colors.orange;
+
+  /// One part of the fold: a faint fill in [color] with a thick line in it on
+  /// top, and the [title] beside its [icon].
+  Widget _section(String title, IconData icon, Color color, List<Widget> children) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    // A Material (not a plain coloured box), so a tap's ripple shows on it.
+    child: Material(
+      color: color.withValues(alpha: 0.10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
+      child: DecoratedBox(
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: color, width: 4))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 20, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ...children,
+            ],
+          ),
+        ),
+      ),
     ),
-    onTap: _busy ? null : onTap,
   );
 
   /// Above the models of a kind that the phone has besides the suggestions.
@@ -362,48 +420,49 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         title: const Text('Choose other models'),
         subtitle: const Text('For example a larger, more accurate one', style: helperTextStyle),
         children: [
-          _heading('To find the animals'),
-          for (final d in use.find)
-            _choice(
-              chosen: d.file!.name == _find,
-              title: d.file!.name,
-              lines: [d.purpose],
-              size: _sizeLine([d.file!]),
-              onTap: () => setState(() => _find = d.file!.name),
-            ),
-          if (otherDetectors.isNotEmpty) _otherOnPhone(),
-          for (final f in otherDetectors)
-            _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
-          if (_namingOffered) ...[
-            _heading('To name them'),
-            for (final n in use.name)
+          _section('To find the animals', Icons.search, _findColor, [
+            for (final d in use.find)
               _choice(
-                chosen: _names(n) == _name,
-                title: n.$1.file!.name,
-                lines: [
-                  if (_listFile(n.$1.file!.name, n.$2.file.name) case final f?)
-                    ...['with $f', n.$2.title]
-                  else
-                    n.$1.purpose,
-                ],
-                size: _sizeLine([n.$1.file!, n.$2.file]),
-                onTap: () => setState(() => _name = _names(n)),
+                chosen: d.file!.name == _find,
+                title: d.file!.name,
+                lines: [d.purpose],
+                size: _sizeLine([d.file!]),
+                onTap: () => setState(() => _find = d.file!.name),
               ),
-            _choice(
-              chosen: _name == null,
-              title: 'Not now',
-              lines: const ['Then $kNoNamingNote.'],
-              onTap: () => setState(() => _name = null),
-            ),
-            if (otherNamings.isNotEmpty) _otherOnPhone(),
-            for (final (m, l) in otherNamings)
+            if (otherDetectors.isNotEmpty) _otherOnPhone(),
+            for (final f in otherDetectors)
+              _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
+          ]),
+          if (_namingOffered)
+            _section('To name them', Icons.label_outline, _nameColor, [
+              for (final n in use.name)
+                _choice(
+                  chosen: _names(n) == _name,
+                  title: n.$1.file!.name,
+                  lines: [
+                    if (_listFile(n.$1.file!.name, n.$2.file.name) case final f?)
+                      ...['with $f', n.$2.title]
+                    else
+                      n.$1.purpose,
+                  ],
+                  size: _sizeLine([n.$1.file!, n.$2.file]),
+                  onTap: () => setState(() => _name = _names(n)),
+                ),
               _choice(
-                chosen: (m, l) == _name,
-                title: m,
-                lines: [if (_listFile(m, l) case final f?) 'with $f'],
-                onTap: () => setState(() => _name = (m, l)),
+                chosen: _name == null,
+                title: 'Not now',
+                lines: const ['Then $kNoNamingNote.'],
+                onTap: () => setState(() => _name = null),
               ),
-          ],
+              if (otherNamings.isNotEmpty) _otherOnPhone(),
+              for (final (m, l) in otherNamings)
+                _choice(
+                  chosen: (m, l) == _name,
+                  title: m,
+                  lines: [if (_listFile(m, l) case final f?) 'with $f'],
+                  onTap: () => setState(() => _name = (m, l)),
+                ),
+            ]),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,

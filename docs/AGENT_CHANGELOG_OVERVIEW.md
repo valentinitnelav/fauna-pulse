@@ -464,7 +464,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   models" / "Your choice" by file name; the answer in use (`home_watch_use`) opens with
   `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
   these"; it pops the `ModelChoice`); the fold "Choose other models" lists the other suggestions plus "Other models on this
-  phone" (every other detector and identification model + name list pair, `namingPairs`). Saving
+  phone" (every other detector and identification model + name list pair, `namingPairs`), in two panels ("To find the
+  animals" light blue, "To name them" orange: faint fill, thick line on top); each row is a radio icon centred on the file
+  name, details under it (no `ListTile`: it moved the icon off the name). Saving
   = `useModels`: camera `modelPath` + task, `analysis_model`, `video_analysis_model`,
   `identify_model`/`identify_pack` ("Not now" removes both).
 - **A tap on an answer switches to it** when its models are on the phone (`readyChoice`): the
