@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../session/location_fix.dart';
+import 'dialog_title.dart';
 
 /// What the dialog decided. A null [location] means "remove the session
 /// location"; the dialog pops plain null for "no change".
@@ -94,7 +95,8 @@ class _LocationDialogState extends State<LocationDialog> {
   Widget build(BuildContext context) {
     final prev = widget.previous;
     return AlertDialog(
-      title: const Text('Session location'),
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Session location'), onClose: () => Navigator.of(context).pop()),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

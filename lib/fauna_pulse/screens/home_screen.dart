@@ -63,6 +63,7 @@ import '../widgets/external_link.dart';
 import '../widgets/scroll_hint.dart';
 import '../widgets/support_faunapulse.dart';
 import '../widgets/watch_tiles.dart';
+import '../widgets/dialog_title.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'models_screen.dart';
@@ -408,6 +409,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       content: SingleChildScrollView(
         child: SupportFaunaPulseCard(
           framed: false,
+          onClose: () => Navigator.of(ctx).pop(),
           onReportProblem: () {
             Navigator.of(ctx).pop();
             _reportProblem();
@@ -870,7 +872,8 @@ class ReportSavedDialog extends StatelessWidget {
               '${shots > 0 ? ' + $shots screenshot${shots == 1 ? '' : 's'}' : ''}'
               '${samples > 0 ? ' + $samples session file sample${samples == 1 ? '' : 's'}' : ''}). ';
     return AlertDialog(
-      title: const Text('Report saved'),
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Report saved'), onClose: () => Navigator.of(context).pop()),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,7 +911,7 @@ class ReportSavedDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Done'),
+          child: const Text('Close'),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
@@ -935,22 +938,26 @@ class AboutFaunaPulseDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(
-        children: [
-          const AppIcon(size: 32),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('FaunaPulse'),
-              if (version != null)
-                Text(
-                  version!,
-                  style: const TextStyle(fontSize: 12, color: Colors.white54),
-                ),
-            ],
-          ),
-        ],
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(
+        Row(
+          children: [
+            const AppIcon(size: 32),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('FaunaPulse'),
+                if (version != null)
+                  Text(
+                    version!,
+                    style: const TextStyle(fontSize: 12, color: Colors.white54),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        onClose: () => Navigator.of(context).pop(),
       ),
       content: SingleChildScrollView(
         child: Column(

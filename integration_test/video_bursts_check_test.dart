@@ -87,7 +87,7 @@ void main() {
     _log('REC BUTTONS ${recButton.evaluate().length}');
     Directory? dir;
     for (var i = 0; i < 30 && dir == null; i++) {
-      if (find.text('Not now').evaluate().isNotEmpty) await tester.tap(find.text('Not now'));
+      if (find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).evaluate().isNotEmpty) await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).first);
       await tester.tap(recButton.first, warnIfMissed: false);
       await tester.pump(const Duration(seconds: 1));
       final added = sessions.listSync().whereType<Directory>().where((d) => !before.contains(d.path)).toList();

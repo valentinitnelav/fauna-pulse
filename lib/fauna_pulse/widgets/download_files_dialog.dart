@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_downloads.dart';
 import '../models/model_file_security.dart' show plainModelError;
+import 'dialog_title.dart';
 
 /// Downloads one catalogue file into the folder of its kind (injectable for
 /// tests; Download & import models and the "watch" page, round 278).
@@ -108,8 +109,20 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
     final total = _total;
     final n = widget.files.length;
     final done = _doneBytes + _received;
+    // While downloading, Cancel (and the X) is checked between chunks; the
+    // partial file is deleted and the dialog closes.
+    final VoidCallback? cancel = _running && _cancel
+        ? null
+        : () {
+            if (_running) {
+              setState(() => _cancel = true);
+            } else {
+              Navigator.of(context).pop(false);
+            }
+          };
     return AlertDialog(
-      title: Text('Download ${widget.title}'),
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(Text('Download ${widget.title}'), onClose: cancel),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,20 +154,7 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          // While downloading, Cancel is checked between chunks; the partial
-          // file is deleted and the dialog closes.
-          onPressed: _running && _cancel
-              ? null
-              : () {
-                  if (_running) {
-                    setState(() => _cancel = true);
-                  } else {
-                    Navigator.of(context).pop(false);
-                  }
-                },
-          child: const Text('Cancel'),
-        ),
+        TextButton(onPressed: cancel, child: const Text('Cancel')),
         TextButton(
           onPressed: _running ? null : _start,
           child: Text(_error == null ? 'Download' : 'Try again', style: const TextStyle(fontWeight: FontWeight.bold)),

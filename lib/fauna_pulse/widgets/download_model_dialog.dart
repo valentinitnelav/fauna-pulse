@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/model_import.dart';
+import 'dialog_title.dart';
 
 /// Asks whether to replace [name], already on this phone as a [kind], with
 /// the new file ([fromLink]: before downloading it). Shared by the import
@@ -26,7 +27,8 @@ Future<({bool replace, bool forAll})> confirmReplaceModelFile(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => AlertDialog(
-        title: const Text('Already on this phone'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Already on this phone'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,8 +152,21 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
   @override
   Widget build(BuildContext context) {
     final validUrl = ModelImport.linkFileName(_url.text) != null;
+    // While downloading, Cancel (and the X) signals the download between
+    // chunks; its cleanup deletes the partial file, then _start pops the
+    // dialog.
+    final VoidCallback? cancel = _downloading && _cancelRequested
+        ? null
+        : () {
+            if (_downloading) {
+              setState(() => _cancelRequested = true);
+            } else {
+              Navigator.of(context).pop();
+            }
+          };
     return AlertDialog(
-      title: const Text('Download from a link'),
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Download from a link'), onClose: cancel),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,20 +213,7 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          // While downloading, Cancel signals the download between chunks;
-          // its cleanup deletes the partial file, then _start pops the dialog.
-          onPressed: _downloading && _cancelRequested
-              ? null
-              : () {
-                  if (_downloading) {
-                    setState(() => _cancelRequested = true);
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                },
-          child: const Text('Cancel'),
-        ),
+        TextButton(onPressed: cancel, child: const Text('Cancel')),
         TextButton(
           onPressed: _downloading || !validUrl ? null : _start,
           child: const Text(

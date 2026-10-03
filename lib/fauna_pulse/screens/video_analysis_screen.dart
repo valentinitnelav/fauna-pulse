@@ -67,6 +67,7 @@ import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/video_speed_chips.dart';
 import '../widgets/home_button.dart';
+import '../widgets/dialog_title.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
@@ -571,7 +572,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Replace the earlier results?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Replace the earlier results?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'These videos were analyzed before with other settings'
           '${changed.isEmpty ? '' : ' (changed: ${changed.join(', ')})'}. '
@@ -906,7 +908,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(keeping ? 'Frames are still being saved' : 'The detector is still running'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text(keeping ? 'Frames are still being saved' : 'The detector is still running'), onClose: () => Navigator.pop(ctx, false)),
         content: Text(
           keeping
               ? 'Leaving stops saving the kept frames${p == null ? '' : ' (${p.done} of ${p.total} done)'}. '
@@ -1628,12 +1631,16 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          all
-              ? 'Delete all videos?'
-              : cut
-              ? 'Delete the cut-off ${n == 1 ? 'clip' : 'clips'}?'
-              : 'Delete the clips without any track ID?',
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(
+          Text(
+            all
+                ? 'Delete all videos?'
+                : cut
+                ? 'Delete the cut-off ${n == 1 ? 'clip' : 'clips'}?'
+                : 'Delete the clips without any track ID?',
+          ),
+          onClose: () => Navigator.of(ctx).pop(false),
         ),
         content: SingleChildScrollView(
           child: Text(

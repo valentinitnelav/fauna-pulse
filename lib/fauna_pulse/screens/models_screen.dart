@@ -53,6 +53,13 @@
 // Round 288 (owner): Detection models and Identification models each sit in
 // a panel of their own colour (ModelKindPanel, as on the "What do you want to
 // watch?" pages); the icons of the files to download take that colour.
+//
+// Round 289 (owner: after importing BioCLIP 2's image model under another file
+// name, BioCLIP 2 was still offered, and its name lists read like more
+// models): a name list counts any file of its model on the phone (idModelFor),
+// and the lists still to download sit under that model ("Name lists to
+// download for it"), each with the list icon. The text at the top of the panel
+// says what a name list is, and why a short list gives better names.
 
 import 'dart:io';
 
@@ -60,7 +67,7 @@ import 'package:file_picker/file_picker.dart' show FilePickerStatus;
 import 'package:flutter/material.dart';
 
 import '../identification/identification_assets.dart';
-import '../identification/identification_store.dart' show stemOf;
+import '../identification/identification_store.dart' show modelIdOf, modelKey, stemOf;
 import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -75,6 +82,7 @@ import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/home_button.dart';
 import '../widgets/model_kind_panel.dart';
 import '../widgets/selection_app_bar.dart';
+import '../widgets/dialog_title.dart';
 
 /// Opens the Download & import models screen; the caller re-reads its own
 /// model list after.
@@ -162,6 +170,16 @@ class ModelsInventory {
     for (final l in nameLists)
       if (!idModels.any((m) => IdentificationAssets.listBelongsTo(l, headers[l.path], m))) l,
   ];
+
+  /// The identification model on the phone that the name lists of [d] work
+  /// with: its own file or, for BioCLIP (label packs), any file of the same
+  /// model, such as one imported under another name. Null when none is on
+  /// the phone.
+  File? idModelFor(ModelDownload d) {
+    final own = idModels.where((f) => f.path.split('/').last == d.file?.name).firstOrNull;
+    if (own != null || d.nameLists.any((l) => l.classList)) return own;
+    return idModels.where((f) => modelKey(modelIdOf(f.path)) == modelKey(d.id)).firstOrNull;
+  }
 
   /// File names on the phone (a catalogue file counts as present by name).
   Set<String> get onPhone => {
@@ -270,8 +288,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
       'cite the original model: tap ⓘ, then its Source, where the authors say how to cite it.';
 
   static const _namesHelp =
-      'Each identification model needs a name list made for it: a label pack for BioCLIP, the '
-      'class list of a classifier such as insectDCT. They are shown together below.';
+      'An identification model names each animal by choosing from a name list. A classifier such '
+      'as insectDCT has one fixed list, which comes with it. BioCLIP can use different lists: '
+      'choose the one for your region and the animals you watch. A short list gives better names, '
+      'as BioCLIP only chooses names on it: with a list of every animal in the world, it could give '
+      'a hoverfly in Europe the name of a wasp from Australia.';
 
   static const _ownHelp =
       'Model files you already have (for example in Download), or a link to one: detection models, '
@@ -372,12 +393,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          r.rejected.isEmpty
-              ? 'Imported'
-              : r.imported.isEmpty
-              ? 'Not imported'
-              : 'Some files were not imported',
+        title: DialogTitle(
+          Text(
+            r.rejected.isEmpty
+                ? 'Imported'
+                : r.imported.isEmpty
+                ? 'Not imported'
+                : 'Some files were not imported',
+          ),
+          onClose: () => Navigator.of(ctx).pop(),
         ),
         content: SingleChildScrollView(
           child: Column(
@@ -392,7 +416,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
+        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
       ),
     );
   }
@@ -413,7 +437,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Future<void> _get(ModelDownload d, {NameListDownload? list}) async {
     final onPhone = _inv?.onPhone ?? const <String>{};
     final model = d.file!; // only offers have a Download button
-    final withModel = !onPhone.contains(model.name);
+    final withModel = d.identification ? _inv?.idModelFor(d) == null : !onPhone.contains(model.name);
     final files = [if (withModel) model, ?list?.file];
     final classList = list?.classList ?? false;
     final what = !d.identification
@@ -444,7 +468,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete $name?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Delete ${_breakable(name)}?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: SingleChildScrollView(child: Text(body)),
         actions: [
           TextButton(
@@ -562,6 +587,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   static String _nameOf(File f) => f.path.split('/').last;
 
+  /// A file name that may break after each "_" (an invisible space there),
+  /// so a long one wraps between its parts in a window's title, not inside
+  /// a word ("…tflit" / "e", seen beside the X).
+  static String _breakable(String name) => name.replaceAll('_', '_\u200B');
+
   /// 35260 → "35,260", as in the catalogue's titles.
   static String _count(Object? n) => '${n ?? '?'}'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 
@@ -613,13 +643,16 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Future<void> _showCard(IconData icon, String title, List<(String, String)> rows) => showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, size: 20)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(title, style: const TextStyle(fontSize: 17))),
-        ],
+      title: DialogTitle(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, size: 20)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(_breakable(title), style: const TextStyle(fontSize: 17))),
+          ],
+        ),
+        onClose: () => Navigator.of(ctx).pop(),
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -789,12 +822,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ],
   ];
 
-  Widget _offerTile(IconData? icon, String title, String details, VoidCallback? onInfo, VoidCallback onGet) => ListTile(
-    contentPadding: EdgeInsets.only(left: icon == null ? 40 : 0),
+  /// A file to download; its icon in the colour of its kind.
+  Widget _offerTile(IconData icon, String title, String details, VoidCallback? onInfo, VoidCallback onGet) => ListTile(
+    contentPadding: EdgeInsets.zero,
     dense: true,
-    leading: icon == null
-        ? null
-        : Icon(icon, color: icon == kIdentificationIcon ? kIdentificationColor : kDetectionColor),
+    leading: Icon(icon, color: icon == kDetectionIcon ? kDetectionColor : kIdentificationColor),
     minLeadingWidth: 24,
     title: Text(title),
     subtitle: Text(details, style: helperTextStyle),
@@ -818,10 +850,18 @@ class _ModelsScreenState extends State<ModelsScreen> {
     );
   }
 
-  /// A model and its name lists, or a warning that it has none (round 271).
+  /// A model and its name lists, or a warning that it has none (round 271),
+  /// then the lists of the app's list still to download for it (round 289).
   List<Widget> _idModelGroup(File f, ModelsInventory inv) {
     final lists = inv.listsOf(f);
     final wrong = inv.wrongKind[f.path];
+    final offer = inv.downloads.identificationOffers.where((d) => inv.idModelFor(d)?.path == f.path).firstOrNull;
+    final onPhone = inv.onPhone;
+    final more = [
+      if (offer != null && wrong == null)
+        for (final l in offer.nameLists)
+          if (!onPhone.contains(l.file.name)) l,
+    ];
     return [
       _tile(
         kIdentificationIcon,
@@ -832,13 +872,24 @@ class _ModelsScreenState extends State<ModelsScreen> {
       ),
       for (final l in lists) Padding(padding: const EdgeInsets.only(left: 32), child: _nameListRow(l, inv)),
       if (lists.isEmpty && wrong == null)
-        const Padding(
-          padding: EdgeInsets.only(left: 32, bottom: 8),
+        Padding(
+          padding: const EdgeInsets.only(left: 32, bottom: 8),
           child: Text(
-            '⚠ No name list: this model cannot identify. Download or import one.',
-            style: TextStyle(color: Colors.amber, fontSize: 13),
+            '⚠ No name list: this model cannot identify. ${more.isEmpty ? 'Download or import one.' : 'Download one below.'}',
+            style: const TextStyle(color: Colors.amber, fontSize: 13),
           ),
         ),
+      if (more.isNotEmpty) ...[
+        const Padding(
+          padding: EdgeInsets.only(left: 32, top: 4),
+          child: Text('Name lists to download for it', style: helperTextStyle),
+        ),
+        for (final l in more)
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: _offerTile(Icons.list_alt, l.title, formatBytes(l.file.bytes), null, () => _get(offer!, list: l)),
+          ),
+      ],
     ];
   }
 
@@ -860,14 +911,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ];
   }
 
-  /// Identification models and name lists not on the phone yet: one row per
-  /// missing name list, which brings the model along when it is missing too.
+  /// Identification models not on the phone yet (round 289: the name lists
+  /// of a model on the phone are offered under it): one row per name list,
+  /// which brings the model along.
   List<Widget> _identificationOffers(ModelsInventory inv) {
     final onPhone = inv.onPhone;
     final rows = <Widget>[];
     for (final d in _byTitle(inv.downloads.identificationOffers)) {
+      if (inv.idModelFor(d) != null) continue;
       final model = d.file!;
-      final hasModel = onPhone.contains(model.name);
       final missing = [for (final l in d.nameLists) if (!onPhone.contains(l.file.name)) l];
       if (missing.isEmpty) continue;
       if (d.nameLists.length == 1) {
@@ -877,7 +929,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
           _offerTile(
             kIdentificationIcon,
             d.title,
-            formatBytes((hasModel ? 0 : model.bytes) + l.file.bytes),
+            formatBytes(model.bytes + l.file.bytes),
             () => _offerCard(d),
             () => _get(d, list: l),
           ),
@@ -892,9 +944,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
           minLeadingWidth: 24,
           title: Text(d.title),
           subtitle: Text(
-            hasModel
-                ? 'Model on this phone; name lists below'
-                : 'Model ${formatBytes(model.bytes)}, downloaded with the first name list',
+            'Model ${formatBytes(model.bytes)}, downloaded with the first name list you choose:',
             style: helperTextStyle,
           ),
           trailing: _infoButton(() => _offerCard(d), tooltip: 'About this model'),
@@ -902,12 +952,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
       );
       for (final l in missing) {
         rows.add(
-          _offerTile(
-            null,
-            l.title,
-            hasModel ? formatBytes(l.file.bytes) : '${formatBytes(l.file.bytes)} plus the model',
-            null,
-            () => _get(d, list: l),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: _offerTile(
+              Icons.list_alt,
+              l.title,
+              '${formatBytes(l.file.bytes)} plus the model',
+              null,
+              () => _get(d, list: l),
+            ),
           ),
         );
       }
@@ -1013,13 +1066,16 @@ class _ModelsScreenState extends State<ModelsScreen> {
                       title: 'Identification models',
                       subtitle: 'Name what is inside each box',
                       children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Text(_namesHelp, style: helperTextStyle),
+                        ),
                         _subheading('On this phone'),
                         if (inv.idModels.isEmpty)
                           const Text(
                             'None yet: "Identify organisms" needs one.',
                             style: helperTextStyle,
                           ),
-                        if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
                         for (final f in inv.idModels) ..._idModelGroup(f, inv),
                         if (inv.orphanLists.isNotEmpty) ...[
                           _subheading('Name lists without their model'),

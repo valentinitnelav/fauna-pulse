@@ -36,6 +36,7 @@ import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/home_button.dart';
+import '../widgets/dialog_title.dart';
 import 'identification_choice_fields.dart';
 import 'identification_results_screen.dart';
 import 'models_screen.dart';
@@ -263,7 +264,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Crop settings changed'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Crop settings changed'), onClose: () => Navigator.of(ctx).pop(null)),
         content: Text(
           'The ${stored.records.length} stored crops of this session were cut '
           '${how(stored.squareCrops, stored.margin!)}; the settings are now '

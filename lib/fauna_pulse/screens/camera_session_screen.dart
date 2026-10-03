@@ -49,6 +49,7 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/roi_size_sheet.dart';
 import '../widgets/session_info_dialog.dart';
 import '../widgets/track_box_painter.dart';
+import '../widgets/dialog_title.dart';
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'settings_sheet.dart';
@@ -682,7 +683,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final answer = await showDialog<Object>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text(title), onClose: () => Navigator.of(ctx).pop()),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -703,7 +705,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Not now')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop('get'),
             child: const Text('Download & import models'),
@@ -1565,7 +1567,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final allow = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Keep recording alive?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Keep recording alive?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: const Text(
           'For long or unattended sessions (hours/days), Android — and especially '
           'some phone makers’ "battery managers" — can stop the app in the '
@@ -1579,7 +1582,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Not now'),
+            child: const Text('Close'),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -2117,7 +2120,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Start scheduled run?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Start scheduled run?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'Recording windows: $windows\n'
           'Days: $days\n\n'
@@ -2368,7 +2372,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Scheduled run complete'),
+          title: DialogTitle(const Text('Scheduled run complete'), onClose: () => Navigator.of(ctx).pop()),
           content: Text(
             '$recorded session${recorded == 1 ? '' : 's'} recorded. '
             'Each window is its own session — find them in the list on the '
@@ -2378,7 +2382,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
+              child: const Text('Close'),
             ),
           ],
         ),
@@ -2397,7 +2401,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Stop the scheduled run?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Stop the scheduled run?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           _recording
               ? 'The current window will be closed and its summary shown. '
@@ -2609,7 +2614,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Model failed to load'),
+          title: DialogTitle(const Text('Model failed to load'), onClose: () => Navigator.of(ctx).pop()),
           content: Text(
             '$failedName could not be loaded.\n\n'
             '$reason\n'
@@ -2619,7 +2624,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
+              child: const Text('Close'),
             ),
           ],
         ),
@@ -4332,7 +4337,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Problem detected'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Problem detected'), onClose: () => Navigator.of(ctx).pop()),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -4409,7 +4415,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Report saved'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Report saved'), onClose: () => Navigator.of(ctx).pop()),
         content: Text(
           'Saved a ${saved.humanSize} report to:\n\n${saved.file.path}\n\n'
           'You can send it now, or find it later over USB.',
@@ -4418,7 +4425,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Done'),
+            child: const Text('Close'),
           ),
           TextButton(
             onPressed: () {

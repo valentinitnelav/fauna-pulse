@@ -114,7 +114,8 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
 `video_review_player.dart`, `video_speed_chips.dart`, `temperature_gauge.dart`,
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
-`roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons),
+`roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons), `dialog_title.dart`
+(`DialogTitle`, the X of every window),
 `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
 `roi_size_sheet.dart`, `calibrating_banner.dart`, `home_button.dart` (`HomeButton`, `goHome`, `FitTitle`),
@@ -194,6 +195,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   screen that asks before closing (PopScope: a run, an import, a selection) stops the way there.
   New screens add `actions: const [HomeButton()]`; a long one-line title uses `FitTitle` (shrinks
   instead of being cut with a large system font size).
+- **Every window (AlertDialog) closes the same way**: `title: DialogTitle(Text(...), onClose:
+  <the Cancel/Close callback>)` puts an X at the top right that does what the bottom button does;
+  that button says "Cancel" when the window asks to confirm something, "Close" when it only informs
+  or offers something extra (no "Not now", "OK", "Done", "Got it"; "Keep running", "Stay" and "Keep
+  the one on the phone" stay, as "Cancel" could be misread there). Windows with 2+ buttons set
+  `actionsOverflowDirection: VerticalDirection.up` (stacked: main action on top, Cancel/Close at the
+  bottom right). Progress windows without buttons have no X; the support window's X is in its card.
 - **Selection mode** (Sessions, Download & import models): `selectionAppBar` (X "Stop selecting",
   "n selected", bar tinted like the selected rows). Back, the X, or unticking the last item ends
   it; a tap on empty space does not (not an Android convention).
@@ -454,7 +462,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   Deleting an identification model takes its name lists along unless another model still uses
   them; "Delete all …" per kind; press and hold selects several. Each kind sits in a
   `ModelKindPanel`: detection light blue, identification orange (faint fill, thick line on top,
-  framed-circle or microscope icon); the same panels split the watch pages' fold.
+  framed-circle or microscope icon); the same panels split the watch pages' fold. A listed
+  identification model counts as on the phone by its file name or, for BioCLIP (label packs), by
+  any file of the same model key (`idModelFor`): its lists still to download sit under that model
+  ("Name lists to download for it"), and "Available to download" holds only models not on the
+  phone, each with its lists (list icon, "plus the model"). The panel's first text says what a
+  name list is and why a short one gives better names.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
   optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home

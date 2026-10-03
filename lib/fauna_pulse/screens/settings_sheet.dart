@@ -44,6 +44,7 @@ import '../tracking/tracker.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/dialog_title.dart';
 import 'models_screen.dart';
 
 class SettingsSheet extends StatefulWidget {
@@ -1151,7 +1152,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Benchmark failed'),
+          title: DialogTitle(const Text('Benchmark failed'), onClose: () => Navigator.pop(ctx)),
           content: Text('$e'),
           actions: [
             TextButton(
@@ -1198,7 +1199,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final apply = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Engine benchmark'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Engine benchmark'), onClose: () => Navigator.pop(ctx, false)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

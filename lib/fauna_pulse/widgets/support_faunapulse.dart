@@ -19,6 +19,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
+import 'dialog_title.dart';
 import 'external_link.dart';
 
 /// True only in builds made with `--dart-define=DONATION_LINK=true`.
@@ -70,7 +71,21 @@ class SupportFaunaPulseCard extends StatelessWidget {
     required this.onReportProblem,
     this.donationLink = kDonationLink,
     this.framed = true,
+    this.onClose,
   });
+
+  /// In a window: its X at the right of the heading (round 289).
+  final VoidCallback? onClose;
+
+  static const _heading = Row(
+    children: [
+      Icon(Icons.volunteer_activism_outlined, size: 20, color: Colors.amber),
+      SizedBox(width: 8),
+      Flexible(
+        child: Text('Support FaunaPulse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) => Container(
@@ -81,15 +96,7 @@ class SupportFaunaPulseCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
-          children: [
-            Icon(Icons.volunteer_activism_outlined, size: 20, color: Colors.amber),
-            SizedBox(width: 8),
-            Flexible(
-              child: Text('Support FaunaPulse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
+        if (onClose case final close?) DialogTitle(_heading, onClose: close) else _heading,
         const SizedBox(height: 6),
         Text(supportText(donationLink: donationLink), style: const TextStyle(fontSize: 13, color: Colors.white70)),
         const SizedBox(height: 6),

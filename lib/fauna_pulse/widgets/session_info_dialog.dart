@@ -2,6 +2,7 @@
 // camera screen in round 73, review item B6d; behaviour unchanged).
 
 import 'package:flutter/material.dart';
+import 'dialog_title.dart';
 
 /// One-time setup reminder shown when the camera screen opens. It explains how
 /// to frame the shot (fix the flower, centre the ROI) and — importantly —
@@ -25,7 +26,7 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Setting up a session'),
+      title: DialogTitle(const Text('Setting up a session'), onClose: () => Navigator.of(context).pop(_dontShowAgain)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -79,7 +80,7 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(_dontShowAgain),
-              child: const Text('Got it'),
+              child: const Text('Close'),
             ),
           ],
         ),

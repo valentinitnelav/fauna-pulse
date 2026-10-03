@@ -9,6 +9,8 @@
 // layout with a bottom system bar. Round 279: "Delete all …" per kind,
 // pressing and holding to select several, and an identification model's
 // name lists deleted with it. Round 288: each kind in a panel of its colour.
+// Round 289: a name list counts any file of its model; the lists still to
+// download sit under that model.
 
 import 'dart:io';
 
@@ -42,7 +44,7 @@ final _downloads = ModelDownloads.parse('''
    {"id": "cls", "kind": "identification_model", "title": "insectDCT classifier", "purpose": "Flower visitors.",
     "file": {"name": "insectdct-cls-v7_eff2s_fp16.tflite", "bytes": 43853456},
     "name_lists": [{"kind": "class_list", "title": "Its 104 classes", "file": {"name": "insectdct-cls-v7_eff2s_fp16.fpack", "bytes": 13737}}]},
-   {"id": "b2", "kind": "identification_model", "title": "BioCLIP 2", "purpose": "Any organism.",
+   {"id": "bioclip-2", "kind": "identification_model", "title": "BioCLIP 2", "purpose": "Any organism.",
     "file": {"name": "bioclip-2_image_fp16_4d.tflite", "bytes": 609466720},
     "name_lists": [{"kind": "label_pack", "title": "Europe", "file": {"name": "bioclip2_pollinator_orders_europe_v1.fpack", "bytes": 57479207}},
               {"kind": "label_pack", "title": "32 families", "file": {"name": "bioclip2_flower_visitors_32fam_v1.fpack", "bytes": 62754369}}]}
@@ -264,7 +266,8 @@ void main() {
     expect(find.text('BioCLIP 2: Europe'), findsOneWidget);
     await _close(tester);
     await _show(tester, find.text('32 families'));
-    expect(find.textContaining("Model on this phone; name lists below"), findsOneWidget);
+    expect(find.text('Name lists to download for it'), findsOneWidget, reason: 'under the model (r289)');
+    expect(find.text('BioCLIP 2'), findsNothing, reason: 'the model is not offered again');
     await tester.tap(find.descendant(of: _tile('32 families'), matching: find.text('Download')));
     await tester.pumpAndSettle();
     expect(find.textContaining('The name list "32 families". In total 59.8 MB.'), findsOneWidget);
@@ -275,7 +278,8 @@ void main() {
     await _show(tester, find.text(_clsName));
     await tester.tap(find.descendant(of: _tile(_clsName), matching: find.byTooltip('Delete')));
     await tester.pumpAndSettle();
-    expect(find.text('Delete $_clsName?'), findsOneWidget);
+    // The title may break after each "_" (an invisible space there, r289).
+    expect(find.text('Delete ${_clsName.replaceAll('_', '_\u200B')}?'), findsOneWidget);
     expect(find.textContaining('Its class list insectdct-cls-v7_eff2s_fp16.fpack is deleted with it.'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
@@ -286,6 +290,30 @@ void main() {
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
     expect(find.textContaining('None yet: live detection'), findsOneWidget);
     await _show(tester, find.text('None yet: "Identify organisms" needs one.'));
+  });
+
+  testWidgets('BioCLIP 2 imported under another file name: its name lists under it, the model not offered again (r289)',
+      (tester) async {
+    final own = File('$_dir/models/bioclip-2_image_fp16.tflite'); // an older export, not the offered file
+    await _pump(tester, inventory: () => ModelsInventory(idModels: [own], downloads: _downloads));
+    await _show(tester, find.text('32 families'));
+    expect(find.text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
+    expect(find.text('Name lists to download for it'), findsOneWidget);
+    expect(find.text('BioCLIP 2'), findsNothing, reason: 'not under Available to download');
+    expect(find.textContaining('plus the model'), findsNothing);
+    await tester.tap(find.descendant(of: _tile('32 families'), matching: find.text('Download')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('The name list "32 families". In total 59.8 MB.'), findsOneWidget, reason: 'no 609 MB model');
+  });
+
+  testWidgets('a model not on the phone: its name lists under it, each bringing the model along (r289)', (tester) async {
+    await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
+    await _show(tester, find.text('32 families'));
+    expect(find.text('Model 581.2 MB, downloaded with the first name list you choose:'), findsOneWidget);
+    expect(find.text('59.8 MB plus the model'), findsOneWidget);
+    expect(find.descendant(of: _tile('32 families'), matching: find.byIcon(Icons.list_alt)), findsOneWidget);
+    // What a name list is, and why a short one gives better names.
+    expect(find.textContaining('A short list gives better names'), findsOneWidget);
   });
 
   testWidgets('a model without a name list is flagged; a list without its model is set apart (r271)', (tester) async {
@@ -303,7 +331,8 @@ void main() {
       ),
     );
     await _show(tester, find.text('bioclip-2_image_fp16_4d.tflite'));
-    expect(find.text('⚠ No name list: this model cannot identify. Download or import one.'), findsOneWidget);
+    expect(find.text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
+    expect(find.text('Name lists to download for it'), findsOneWidget, reason: 'its lists, under it (r289)');
     await _show(tester, find.text('Name lists without their model'));
     expect(find.text('Their model is not on this phone, so they cannot be used yet.'), findsOneWidget);
     expect(find.text('bioclip25_pollinator_orders_europe_v1.fpack'), findsOneWidget);
@@ -379,7 +408,7 @@ void main() {
     expect(find.text('Already on this phone, kept:'), findsOneWidget);
     expect(_inCard('my_bees_640.tflite'), findsOneWidget);
     expect(find.text('notes.tflite: not a model for pictures (its input is not a colour picture).'), findsOneWidget);
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     expect(_scans, 2, reason: 'the list is read again');
   });

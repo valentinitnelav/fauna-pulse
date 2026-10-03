@@ -45,6 +45,7 @@ import '../widgets/session_tile.dart' show sessionDate, sessionTime;
 import '../widgets/setting_help.dart';
 import '../widgets/video_review_player.dart';
 import '../widgets/home_button.dart';
+import '../widgets/dialog_title.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/post_detector.dart' show PostBox, PostDetector;
 import '../postprocess/video_detector.dart' show VideoDetector;
@@ -1877,7 +1878,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Copy $n ${n == 1 ? 'video' : 'videos'} to Gallery?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Copy $n ${n == 1 ? 'video' : 'videos'} to Gallery?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'Copies the video clips of this session into the phone\'s Gallery '
           'app, as the album "Movies/FaunaPulse/$album". The copies take about '
@@ -1923,7 +1925,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Copy ${files.length} photos to Gallery?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Copy ${files.length} photos to Gallery?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
           'Gallery app, as the album "Pictures/FaunaPulse/$album". '
@@ -3029,7 +3032,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Show all $_totalSavedPhotos photos?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Show all $_totalSavedPhotos photos?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: const Text(
           'This session has a lot of photos, so loading and swiping through '
           'all of them on the phone can be slow. For big sessions it is '
@@ -3119,7 +3123,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete photos without detections?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Delete photos without detections?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'This permanently deletes ${plan.deleteNames.length} photos '
           '(${formatBytes(plan.deleteBytes)}) — the ones marked with a red ✕. '

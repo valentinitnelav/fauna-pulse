@@ -183,7 +183,7 @@ The modified Ultralytics plugin is retained in [`packages/ultralytics_yolo/`](pa
 
 ### Detectors
 
-No detector comes inside the app. The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way.
+No detector comes inside the app. The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers, as downloads hosted with this repository's releases: [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*), flat-bug for insects and other arthropods, and the insectDCT detector for insects on flowers. Identification models (BioCLIP 2 and 2.5 with their name lists, the insectDCT classifier) are offered the same way. BioCLIP chooses each animal's name from a name list: choose the list for your region and the animals you watch, as a short list gives better names. A BioCLIP file imported under another name counts as that model, and its name lists are offered under it.
 
 Most of these models were made by other research teams; FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence; if you publish results, please cite the original model as its authors ask on its source page (linked in the app's ⓘ card of each model). See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
 

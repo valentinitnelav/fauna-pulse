@@ -57,9 +57,7 @@ void main() {
       while (watch.elapsed < wait && !seen) {
         await tester.pump(const Duration(milliseconds: 500));
         // The setup tips and other questions at the start: close them as is.
-        for (final b in ['Got it', 'Not now']) {
-          if (find.text(b).evaluate().isNotEmpty) await tester.tap(find.text(b).first);
-        }
+        if (find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).evaluate().isNotEmpty) await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).first);
         seen = find.byType(SlowPhoneBanner).evaluate().isNotEmpty;
       }
       _log('$label: ${seen ? 'HINT after ${watch.elapsed.inSeconds} s' : 'no hint in ${watch.elapsed.inSeconds} s'}');
@@ -96,8 +94,9 @@ void main() {
       final watch = Stopwatch()..start();
       while (watch.elapsed < Duration(milliseconds: 20000 + i * 400)) {
         await tester.pump(const Duration(milliseconds: 100));
-        for (final b in ['Got it', 'Not now', 'OK']) {
-          if (find.text(b).evaluate().isNotEmpty) await tester.tap(find.text(b).first);
+        // The windows' Close, and the slow-phone hint's OK.
+        for (final b in [find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')), find.text('OK')]) {
+          if (b.evaluate().isNotEmpty) await tester.tap(b.first);
         }
       }
       _log('C close ${i + 1} after ${watch.elapsed.inMilliseconds} ms');

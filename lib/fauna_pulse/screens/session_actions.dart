@@ -15,6 +15,7 @@ import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart';
 import '../logging/session_rename.dart';
 import '../widgets/session_tile.dart' show SessionAction;
+import '../widgets/dialog_title.dart';
 import 'analysis_screen.dart';
 import 'identification_screen.dart';
 import 'session_summary_screen.dart';
@@ -85,7 +86,8 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Rename session'),
+          actionsOverflowDirection: VerticalDirection.up,
+          title: DialogTitle(const Text('Rename session'), onClose: busy ? null : () => Navigator.of(ctx).pop(false)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +175,8 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Copy ${scan.files.length} photos to Gallery?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Copy ${scan.files.length} photos to Gallery?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'Copies every saved photo of this session into the phone\'s '
           'Gallery app, as the album "Pictures/FaunaPulse/$album". '
@@ -256,7 +259,8 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this session?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Delete this session?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'This permanently deletes "${s.name}"$size from the phone: the '
           'data log, all metadata and every saved photo. '
@@ -300,7 +304,8 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
         : await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: Text(n == 1 ? 'Delete 1 session?' : 'Delete $n sessions?'),
+              actionsOverflowDirection: VerticalDirection.up,
+              title: DialogTitle(Text(n == 1 ? 'Delete 1 session?' : 'Delete $n sessions?'), onClose: () => Navigator.of(ctx).pop(false)),
               content: Text(
                 'This permanently deletes ${n == 1 ? '"${chosen.single.name}"' : 'the $n selected sessions'} '
                 '(${formatBytes(bytes)}) from the phone: the data logs, all metadata and every '
@@ -406,7 +411,8 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
   Widget build(BuildContext context) {
     final armed = _typed.text.trim().toLowerCase() == 'delete';
     return AlertDialog(
-      title: const Text('Delete ALL sessions?'),
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Delete ALL sessions?'), onClose: () => _close(false)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

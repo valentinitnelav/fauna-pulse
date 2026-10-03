@@ -46,6 +46,7 @@ import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
+import '../widgets/dialog_title.dart';
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
 import 'models_screen.dart';
@@ -1321,7 +1322,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete photos without detections?'),
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Delete photos without detections?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'This permanently deletes ${plan.deleteNames.length} files '
           '(${formatBytes(plan.deleteBytes)}) from "${session.name}" — the '
