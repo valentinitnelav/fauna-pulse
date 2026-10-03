@@ -157,7 +157,9 @@ once you have one or more `.tflite` model files to test, add them in either way:
 - **HTTPS download:** open **Menu → Download & import models → Download from a link…** and paste a
   direct HTTPS link to a model file or name list.
 
-Added models appear in the app's **model dropdown** at the start of a session.
+Added models appear in the app's **model dropdown** at the start of a session, and on the *What do
+you want to watch?* pages under *Choose other models* → *Other models on this phone*, where they can
+be chosen like the suggestions (round 281; no entry in the download list is needed).
 They are copied into private app storage, so they are not directly browsable over USB.
 
 

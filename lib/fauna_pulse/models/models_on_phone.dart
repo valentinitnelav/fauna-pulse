@@ -11,6 +11,9 @@
 // for the user): currentModelChoice reads that choice back, by file name.
 // Round 280 (owner): "Not now" for naming clears Identify's choice, so the
 // home screen and Identify agree that nothing names the animals.
+// Round 281 (owner: models already on the phone, such as one's own trained
+// detector, could not be chosen on those pages): ModelFilesOnPhone lists the
+// files by kind, with each identification model's name lists by name.
 
 import 'dart:io';
 
@@ -49,18 +52,13 @@ class ModelsOnPhone {
     }
   }
 
-  /// How many of the identification [models] have a name list in [packs],
-  /// by file name only (no header read, unlike the Identify screen): a class
-  /// list by the model's own name, a label pack by the first part of the name
-  /// (the naming rule; older names such as bioclip2_… and bioclip-2_… alike).
-  /// A renamed list is not counted here but still works on Identify.
-  static int namersOf(List<File> models, List<File> packs) => models
-      .where(
-        (m) => packs.any(
-          (p) => stemOf(p.path) == stemOf(m.path) || modelKey(modelIdOf(p.path)) == modelKey(modelIdOf(m.path)),
-        ),
-      )
-      .length;
+  /// How many of the identification [models] have a name list in [packs]
+  /// ([namingPairs]).
+  static int namersOf(List<File> models, List<File> packs) =>
+      namingPairs(models.map((f) => f.path.split('/').last), packs.map((f) => f.path.split('/').last))
+          .map((p) => p.$1)
+          .toSet()
+          .length;
 
   /// "3 to find animals, 2 to name them".
   String get summary {
@@ -69,20 +67,54 @@ class ModelsOnPhone {
   }
 }
 
-/// The names of the model files on the phone (a file of the download list
-/// counts as present by its name, as on Download & import models).
-Future<Set<String>> modelFileNamesOnPhone() async {
-  try {
-    final dir = await ModelCatalog.modelsDir();
-    return {
-      for (final f in dir.listSync().whereType<File>())
-        if (isSupportedModelFileName(f.path)) f.path.split('/').last,
-      for (final f in [...await IdentificationAssets.listModels(), ...await IdentificationAssets.listPacks()])
-        f.path.split('/').last,
-    };
-  } catch (e) {
-    logSwallowed('model_names_on_phone', e);
-    return const {};
+/// The identification [models] each with every name list of [lists] that
+/// goes with it, as file names sorted by name, by file name only (no header
+/// read, unlike the Identify screen): a class list by the model's own name
+/// (and with no other model), a label pack by the first part of the name
+/// (the naming rule; older names such as bioclip2_… and bioclip-2_… alike).
+/// A renamed list is not found here but still works on Identify.
+List<(String, String)> namingPairs(Iterable<String> models, Iterable<String> lists) {
+  final ms = [...models]..sort();
+  final ls = [...lists]..sort();
+  final stems = {for (final m in ms) stemOf(m)};
+  return [
+    for (final m in ms)
+      for (final l in ls)
+        if (stemOf(l) == stemOf(m) || (!stems.contains(stemOf(l)) && modelKey(modelIdOf(l)) == modelKey(modelIdOf(m))))
+          (m, l),
+  ];
+}
+
+/// The model files on the phone by kind, as file names (a file of the
+/// download list counts as present by its name, as on Download & import
+/// models).
+class ModelFilesOnPhone {
+  final Set<String> detectors;
+  final Set<String> idModels;
+  final Set<String> nameLists;
+
+  const ModelFilesOnPhone({this.detectors = const {}, this.idModels = const {}, this.nameLists = const {}});
+
+  Set<String> get all => {...detectors, ...idModels, ...nameLists};
+
+  bool has(String name) => detectors.contains(name) || idModels.contains(name) || nameLists.contains(name);
+
+  /// Each identification model with each of its name lists ([namingPairs]).
+  List<(String, String)> get namings => namingPairs(idModels, nameLists);
+
+  static Future<ModelFilesOnPhone> load() async {
+    Set<String> names(Iterable<File> files) => {for (final f in files) f.path.split('/').last};
+    try {
+      final dir = await ModelCatalog.modelsDir();
+      return ModelFilesOnPhone(
+        detectors: names(dir.listSync().whereType<File>().where((f) => isSupportedModelFileName(f.path))),
+        idModels: names(await IdentificationAssets.listModels()),
+        nameLists: names(await IdentificationAssets.listPacks()),
+      );
+    } catch (e) {
+      logSwallowed('model_names_on_phone', e);
+      return const ModelFilesOnPhone();
+    }
   }
 }
 

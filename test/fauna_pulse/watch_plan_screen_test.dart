@@ -4,7 +4,8 @@
 // missing and saves the choice (no tick box since round 279), and the other
 // suggestions in a closed fold "Choose other models". Round 280: "Not now"
 // says what it means and clears Identify's choice; each answer has the phone
-// screen of its drawing alone (home step 2).
+// screen of its drawing alone (home step 2). Round 281: the fold also lists
+// the other models on the phone (one's own detector, for example).
 
 import 'dart:io';
 
@@ -27,7 +28,7 @@ class _Calls {
   Object? failWith;
 }
 
-Future<void> _pump(WidgetTester tester, WatchUse use, Set<String> onPhone, _Calls calls) async {
+Future<void> _pump(WidgetTester tester, WatchUse use, ModelFilesOnPhone onPhone, _Calls calls) async {
   tester.view.physicalSize = const Size(360, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -93,7 +94,7 @@ void main() {
 
   testWidgets('pollinators: chosen for the user by file name, one download, the choice saved', (tester) async {
     final calls = _Calls();
-    await _pump(tester, _use('pollinators'), {'insectdct-v8-s_640_fp16.tflite'}, calls);
+    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(detectors: {'insectdct-v8-s_640_fp16.tflite'}), calls);
     expect(find.byType(SetupPicture), findsOneWidget);
     expect(find.text('Chosen for you'), findsOneWidget);
     expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
@@ -121,7 +122,7 @@ void main() {
 
   testWidgets('another detector and no naming, from the fold: "Your choice", downloaded and saved', (tester) async {
     final calls = _Calls();
-    await _pump(tester, _use('pollinators'), const {}, calls);
+    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.text('Choose other models'));
     expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)'), findsOneWidget);
     expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsOneWidget);
@@ -144,7 +145,12 @@ void main() {
     final calls = _Calls();
     final use = _use('mammals_birds');
     final (model, list) = use.name.single;
-    await _pump(tester, use, {use.find.single.file!.name, model.file!.name, list.file.name}, calls);
+    await _pump(
+      tester,
+      use,
+      ModelFilesOnPhone(detectors: {use.find.single.file!.name}, idModels: {model.file!.name}, nameLists: {list.file.name}),
+      calls,
+    );
     expect(find.text('On this phone'), findsOneWidget);
     await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
@@ -152,7 +158,7 @@ void main() {
   });
 
   testWidgets('mammals and birds: the new name list and a large download', (tester) async {
-    await _pump(tester, _use('mammals_birds'), const {}, _Calls());
+    await _pump(tester, _use('mammals_birds'), const ModelFilesOnPhone(), _Calls());
     expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
     expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
     expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
@@ -164,11 +170,56 @@ void main() {
       ..failWith = Exception(
         'Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.',
       );
-    await _pump(tester, _use('mammals_birds'), const {}, calls);
+    await _pump(tester, _use('mammals_birds'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.textContaining('Download and use ('));
     await _tap(tester, _inDialog('Download'));
     expect(find.textContaining('The file may not be online yet'), findsOneWidget);
     expect(calls.saved, isEmpty);
+  });
+
+  testWidgets('models already on the phone can be chosen too, without a download', (tester) async {
+    final calls = _Calls();
+    await _pump(
+      tester,
+      _use('pollinators'),
+      const ModelFilesOnPhone(
+        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite', 'MDV6-yolov10-c_int8_256.tflite'},
+        idModels: {'my_moths_224_fp16.tflite', 'bioclip-2_image_fp16_4d.tflite'},
+        nameLists: {'my_moths_224_fp16.fpack', 'bioclip-2_mammals-birds-world_v1.fpack'},
+      ),
+      calls,
+    );
+    expect(find.text('my_bees_640_fp16.tflite'), findsNothing, reason: 'in the closed fold');
+    await _tap(tester, find.text('Choose other models'));
+    expect(find.text('Other models on this phone'), findsNWidgets(2), reason: 'detection and identification');
+    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget, reason: 'suggested for another answer');
+    expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
+    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsNWidgets(2), reason: 'box and suggestion, not again');
+    expect(tester.takeException(), isNull, reason: 'the longer fold fits 360 px');
+    await _tap(tester, find.text('my_bees_640_fp16.tflite'));
+    await _tap(tester, find.text('my_moths_224_fp16.tflite'));
+    await tester.drag(find.byType(ListView), const Offset(0, 3000)); // back to the box at the top
+    await tester.pumpAndSettle();
+    expect(find.text('Your choice'), findsOneWidget);
+    expect(find.text('my_bees_640_fp16.tflite'), findsNWidgets(2), reason: 'in the box and in the fold');
+    expect(find.textContaining('with my_moths'), findsNothing, reason: 'a class list has its model\'s name');
+    await _tap(tester, find.text('Use these'));
+    expect(calls.downloaded, isEmpty);
+    expect(calls.saved, [('my_bees_640_fp16.tflite', 'my_moths_224_fp16.tflite', 'my_moths_224_fp16.fpack')]);
+  });
+
+  test('namingPairs: a class list only with its own model, a label pack with each model of its name', () {
+    expect(
+      namingPairs(
+        ['insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2m_fp16.tflite', 'bioclip-2_image_fp16_4d.tflite', 'bioclip-2_224_fp16.tflite'],
+        ['insectdct-cls-v7_eff2s_fp16.fpack', 'bioclip2_pollinator_orders_europe_v1.fpack'],
+      ),
+      [
+        ('bioclip-2_224_fp16.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack'),
+        ('bioclip-2_image_fp16_4d.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack'),
+        ('insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack'),
+      ],
+    );
   });
 
   test('useModels: the Identify choice is saved under the keys Identify reads', () async {

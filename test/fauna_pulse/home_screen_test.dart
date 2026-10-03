@@ -50,7 +50,7 @@ Future<void> _pumpHome(
         scan: () async => _sessions,
         countModels: () async => models,
         loadDownloads: () async => _downloads,
-        modelNames: () async => const {},
+        modelFiles: () async => const ModelFilesOnPhone(),
         modelChoice: (_) async => choice,
       ),
     ),

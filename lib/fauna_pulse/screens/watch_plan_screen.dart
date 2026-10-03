@@ -19,6 +19,10 @@
 //   • no "Use them from now on" tick box: choosing is using.
 // Round 280 (owner): "Not now" for naming says what it means (the animals are
 // found and followed, not named) and clears Identify's choice.
+// Round 281 (owner): the fold also lists the other models already on the
+// phone ("Other models on this phone": the user's own, such as a detector
+// they trained, and those suggested for other answers), so they can be
+// chosen without a download or an entry in the list file.
 
 import 'package:flutter/material.dart';
 
@@ -26,6 +30,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_downloads.dart';
 import '../models/models_on_phone.dart';
+import '../identification/identification_store.dart' show stemOf;
 import '../widgets/download_files_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
@@ -37,15 +42,15 @@ typedef UseModels = Future<void> Function({String? detector, String? idModel, St
 class WatchPlanScreen extends StatefulWidget {
   final WatchUse use;
 
-  /// The model file names on the phone (tests give their own).
-  final Future<Set<String>> Function() onPhone;
+  /// The model files on the phone (tests give their own).
+  final Future<ModelFilesOnPhone> Function() onPhone;
   final CatalogueFileDownloader download;
   final UseModels saveChoice;
 
   const WatchPlanScreen({
     super.key,
     required this.use,
-    this.onPhone = modelFileNamesOnPhone,
+    this.onPhone = ModelFilesOnPhone.load,
     this.download = downloadCatalogueFileForReal,
     this.saveChoice = useModels,
   });
@@ -58,17 +63,22 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   /// Large enough to suggest Wi-Fi (as the download dialog).
   static const _largeBytes = 100 * 1024 * 1024;
 
-  Set<String>? _onPhone;
+  ModelFilesOnPhone? _onPhone;
 
-  /// The suggestion chosen for the user is the first of each list.
-  int _find = 0;
+  /// The chosen detection model file; the first suggestion is chosen for the
+  /// user.
+  late String _find = _defaultFind;
 
-  /// Index into the use's `name`; -1 = "Not now".
-  late int _name = _defaultName;
+  /// The chosen identification model and name list (file names); null =
+  /// "Not now". The first suggestion is chosen for the user.
+  late (String, String)? _name = _defaultName;
   bool _busy = false;
 
-  int get _defaultName => widget.use.name.isEmpty ? -1 : 0;
-  bool get _isDefault => _find == 0 && _name == _defaultName;
+  String get _defaultFind => widget.use.find.first.file!.name;
+  (String, String)? get _defaultName => widget.use.name.isEmpty ? null : _names(widget.use.name.first);
+  bool get _isDefault => _find == _defaultFind && _name == _defaultName;
+
+  static (String, String) _names(NamingDownload n) => (n.$1.file!.name, n.$2.file.name);
 
   @override
   void initState() {
@@ -81,16 +91,32 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     if (mounted) setState(() => _onPhone = names);
   }
 
-  bool _has(DownloadFile f) => _onPhone?.contains(f.name) ?? false;
+  bool _has(DownloadFile f) => _onPhone?.has(f.name) ?? false;
 
-  ModelDownload get _detector => widget.use.find[_find];
-  NamingDownload? get _naming => _name < 0 ? null : widget.use.name[_name];
+  /// The chosen suggestions; null for a file the phone had already.
+  ModelDownload? get _findOffer => widget.use.find.where((d) => d.file!.name == _find).firstOrNull;
+  NamingDownload? get _nameOffer => widget.use.name.where((n) => _names(n) == _name).firstOrNull;
+
+  /// The other files on the phone, to choose them too.
+  List<String> get _otherDetectors => [
+    for (final f in _onPhone!.detectors.toList()..sort())
+      if (!widget.use.find.any((d) => d.file!.name == f)) f,
+  ];
+  List<(String, String)> get _otherNamings => [
+    for (final p in _onPhone!.namings)
+      if (!widget.use.name.any((n) => _names(n) == p)) p,
+  ];
+
+  bool get _namingOffered => widget.use.name.isNotEmpty || _otherNamings.isNotEmpty;
+
+  /// The chosen file names.
+  List<String> get _chosen => [_find, if (_name case (final m, final l)?) ...[m, l]];
 
   /// The chosen files not on the phone yet, with whether each is an
   /// identification file.
   List<(DownloadFile, bool)> get _missing => [
-    if (!_has(_detector.file!)) (_detector.file!, false),
-    if (_naming case final n?) ...[
+    if (_findOffer case final d? when !_has(d.file!)) (d.file!, false),
+    if (_nameOffer case final n?) ...[
       if (!_has(n.$1.file!)) (n.$1.file!, true),
       if (!_has(n.$2.file)) (n.$2.file, true),
     ],
@@ -111,7 +137,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
             title: 'the chosen models',
             description:
                 '${missing.map((m) => m.$1.name).join(', ')}'
-                '${missing.length < _chosenFiles.length ? ' (the other chosen files are on this phone)' : ''}.',
+                '${missing.length < _chosen.length ? ' (the other chosen files are on this phone)' : ''}.',
             files: [for (final m in missing) m.$1],
             download: (f, onProgress, isCancelled) =>
                 widget.download(f, missing.firstWhere((m) => m.$1 == f).$2, onProgress, isCancelled),
@@ -123,8 +149,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
           return;
         }
       }
-      final n = _naming;
-      await widget.saveChoice(detector: _detector.file!.name, idModel: n?.$1.file!.name, nameList: n?.$2.file.name);
+      await widget.saveChoice(detector: _find, idModel: _name?.$1, nameList: _name?.$2);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       logSwallowed('watch_plan_use', e);
@@ -136,11 +161,6 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     }
   }
 
-  List<DownloadFile> get _chosenFiles => [
-    _detector.file!,
-    if (_naming case final n?) ...[n.$1.file!, n.$2.file],
-  ];
-
   Widget _heading(String text) => Padding(
     padding: const EdgeInsets.only(top: 16, bottom: 4),
     child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -149,15 +169,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   /// "On this phone", or what is still to download.
   Widget _sizeLine(List<DownloadFile> files) {
     final bytes = _bytesOf(files);
-    if (bytes == 0) {
-      return const Row(
-        children: [
-          Icon(Icons.check_circle, size: 16, color: Colors.lightGreen),
-          SizedBox(width: 6),
-          Flexible(child: Text('On this phone', style: TextStyle(color: Colors.lightGreen, fontSize: 13))),
-        ],
-      );
-    }
+    if (bytes == 0) return _onPhoneLine;
     final partly = files.any(_has);
     return Text(
       'Download ${formatBytes(bytes)}${partly ? ' (the rest is on this phone)' : ''}'
@@ -166,17 +178,26 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     );
   }
 
-  /// The name list's file, unless it is the class list of its model (same
+  static const _onPhoneLine = Row(
+    children: [
+      Icon(Icons.check_circle, size: 16, color: Colors.lightGreen),
+      SizedBox(width: 6),
+      Flexible(child: Text('On this phone', style: TextStyle(color: Colors.lightGreen, fontSize: 13))),
+    ],
+  );
+
+  /// The name list's file, unless it is the class list of its [model] (same
   /// name, nothing to choose).
-  static String? _listFile(NamingDownload n) => n.$2.classList ? null : n.$2.file.name;
+  static String? _listFile(String model, String list) => stemOf(list) == stemOf(model) ? null : list;
 
   /// Under the chosen files: "On this phone", or only what the button does
   /// not say (it shows the size).
-  Widget _boxNote(List<DownloadFile> files) {
-    final bytes = _bytesOf(files);
-    if (bytes == 0) return _sizeLine(files);
+  Widget _boxNote() {
+    final missing = _missing;
+    if (missing.isEmpty) return _onPhoneLine;
+    final bytes = missing.fold(0, (s, m) => s + m.$1.bytes);
     final notes = [
-      if (files.any(_has)) 'The rest is on this phone.',
+      if (missing.length < _chosen.length) 'The rest is on this phone.',
       if (bytes >= _largeBytes) 'A large download: use Wi-Fi.',
     ];
     return notes.isEmpty ? const SizedBox.shrink() : Text(notes.join(' '), style: helperTextStyle);
@@ -195,7 +216,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   );
 
   Widget _chosenBox() {
-    final n = _naming;
+    final n = _name;
     final color = Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -210,13 +231,13 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
             _isDefault ? 'Chosen for you' : 'Your choice',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
-          _chosenRow('To find the animals', [_detector.file!.name]),
-          if (widget.use.name.isNotEmpty)
+          _chosenRow('To find the animals', [_find]),
+          if (_namingOffered)
             n == null
                 ? _chosenRow('To name them', const ['None ($kNoNamingNote)'])
-                : _chosenRow('To name them', [n.$1.file!.name, if (_listFile(n) case final f?) 'with $f']),
+                : _chosenRow('To name them', [n.$1, if (_listFile(n.$1, n.$2) case final f?) 'with $f']),
           const SizedBox(height: 10),
-          _boxNote(_chosenFiles),
+          _boxNote(),
         ],
       ),
     );
@@ -259,9 +280,18 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     onTap: _busy ? null : onTap,
   );
 
-  /// Every suggestion of this answer, to choose another one.
+  /// Above the models of a kind that the phone has besides the suggestions.
+  Widget _otherOnPhone() => const Padding(
+    padding: EdgeInsets.only(top: 8),
+    child: Text('Other models on this phone', style: helperTextStyle),
+  );
+
+  /// Every suggestion of this answer and every other model on the phone, to
+  /// choose another one.
   Widget _otherModels() {
     final use = widget.use;
+    final otherDetectors = _otherDetectors;
+    final otherNamings = _otherNamings;
     return Theme(
       // No lines above and below the fold.
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -273,32 +303,46 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         subtitle: const Text('For example a larger, more accurate one', style: helperTextStyle),
         children: [
           _heading('To find the animals'),
-          for (final (i, d) in use.find.indexed)
+          for (final d in use.find)
             _choice(
-              chosen: i == _find,
+              chosen: d.file!.name == _find,
               title: d.file!.name,
               lines: [d.purpose],
               size: _sizeLine([d.file!]),
-              onTap: () => setState(() => _find = i),
+              onTap: () => setState(() => _find = d.file!.name),
             ),
-          if (use.name.isNotEmpty) ...[
+          if (otherDetectors.isNotEmpty) _otherOnPhone(),
+          for (final f in otherDetectors)
+            _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
+          if (_namingOffered) ...[
             _heading('To name them'),
-            for (final (i, n) in use.name.indexed)
+            for (final n in use.name)
               _choice(
-                chosen: i == _name,
+                chosen: _names(n) == _name,
                 title: n.$1.file!.name,
                 lines: [
-                  if (_listFile(n) case final f?) ...['with $f', n.$2.title] else n.$1.purpose,
+                  if (_listFile(n.$1.file!.name, n.$2.file.name) case final f?)
+                    ...['with $f', n.$2.title]
+                  else
+                    n.$1.purpose,
                 ],
                 size: _sizeLine([n.$1.file!, n.$2.file]),
-                onTap: () => setState(() => _name = i),
+                onTap: () => setState(() => _name = _names(n)),
               ),
             _choice(
-              chosen: _name < 0,
+              chosen: _name == null,
               title: 'Not now',
               lines: const ['Then $kNoNamingNote.'],
-              onTap: () => setState(() => _name = -1),
+              onTap: () => setState(() => _name = null),
             ),
+            if (otherNamings.isNotEmpty) _otherOnPhone(),
+            for (final (m, l) in otherNamings)
+              _choice(
+                chosen: (m, l) == _name,
+                title: m,
+                lines: [if (_listFile(m, l) case final f?) 'with $f'],
+                onTap: () => setState(() => _name = (m, l)),
+              ),
           ],
           const SizedBox(height: 4),
           Align(

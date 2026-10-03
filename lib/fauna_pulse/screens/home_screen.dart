@@ -79,9 +79,9 @@ class HomeScreen extends StatefulWidget {
   /// Reads the download list (its `uses`); tests give their own.
   final Future<ModelDownloads> Function() loadDownloads;
 
-  /// The model file names on the phone, for the "watch" pages; tests give
-  /// their own.
-  final Future<Set<String>> Function() modelNames;
+  /// The model files on the phone, for the "watch" pages; tests give their
+  /// own.
+  final Future<ModelFilesOnPhone> Function() modelFiles;
 
   /// Reads the chosen models back (step 1); tests give their own.
   final Future<ModelChoice> Function(Set<String> onPhone) modelChoice;
@@ -91,7 +91,7 @@ class HomeScreen extends StatefulWidget {
     this.scan = scanPastSessions,
     this.countModels = ModelsOnPhone.count,
     this.loadDownloads = ModelDownloads.load,
-    this.modelNames = modelFileNamesOnPhone,
+    this.modelFiles = ModelFilesOnPhone.load,
     this.modelChoice = currentModelChoice,
   });
 
@@ -140,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   Future<void> _reloadModels() async {
     final m = await widget.countModels();
-    final choice = await widget.modelChoice(await widget.modelNames());
+    final choice = await widget.modelChoice((await widget.modelFiles()).all);
     if (!mounted) return;
     setState(() {
       _models = m;
@@ -161,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   /// Opens the suggested models of [use]; back with them, the user is
   /// pointed at New session.
   Future<void> _openWatch(WatchUse use) async {
-    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => WatchPlanScreen(use: use, onPhone: widget.modelNames)));
+    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => WatchPlanScreen(use: use, onPhone: widget.modelFiles)));
     if (done == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(kHomeWatchUsePref, use.id);

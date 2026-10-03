@@ -90,7 +90,10 @@ In the code, "pack" means such a file of either kind.
   other models*). The page shows the drawing `assets/images/setup_<icon>.png` when there is one
   (the side view and the phone screen with the yellow square; the round icon otherwise), and
   the home screen's step 2 shows `assets/images/roi_<icon>.png` (that phone screen alone) for
-  the answer chosen last.
+  the answer chosen last. A model needs an entry here only to be offered for download or
+  suggested: every model already on the phone (imported, such as one's own trained detector, or
+  suggested for another answer) is listed on these pages under *Other models on this phone*
+  (round 281), its details read from the file itself.
   Only offered entries count;
   a suggestion that names a model that is not offered, or a list it does not have, is left out
   (logged), and an answer with no detection model left is skipped. Change the suggestions here,
