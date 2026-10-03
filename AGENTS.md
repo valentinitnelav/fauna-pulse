@@ -9,7 +9,8 @@ This project is an Android field application designed to detect flower-visiting 
 in real time and log every detection with its timestamp to compute visitation rates. 
 With swappable detection models and AI-free capture modes (motion-triggered, time-lapse), 
 it can monitor the activity of any organism at a fixed spot. 
-The application is built on top of the official Ultralytics YOLO Flutter plugin.
+The application is built on the Ultralytics YOLO Flutter plugin, using a modified copy (fork) in
+`packages/ultralytics_yolo/`; its `FAUNAPULSE_FORK.md` lists what FaunaPulse changed.
 
 The project owner is a pollination ecologist with statistical proficiency (R/Python) 
 but is not a professional mobile developer. Code comments and technical explanations should 
@@ -17,19 +18,17 @@ define complex mobile development terms in plain language upon first occurrence.
 
 ## Development Environment & Context
 
-The core application code resides in the `./fauna-pulse/` subdirectory of the repository root.
-
-Notes:
-On 2026-07-14 I have renamed the entire app and github repository. Pollinator Monitor became FaunaPulse.
-On 2026-07-13 I have renamed POLLINATOR_MONITOR.md to AGENT_CHANGELOG.md, and POLLINATOR_OVERVIEW.md to AGENT_CHANGELOG_OVERVIEW.md
+The app sits at the git repository root and paths below are relative to it.
 
 **Grounding order at the start of a session:** 
 
-1. Read `./fauna-pulse/docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, file maps, key invariants and pointers. 
-    Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants. 
-    Keep it short, as it acts as an overview for the coding agent (e.g. Claude Code, codex). 
-    In order to keep it short, please modify in place, even remove text if it is no longer relevant for the current development of the app.
-2. The very long, full, extra detailed history in `./fauna-pulse/docs/AGENT_CHANGELOG.md` 
+1. Read `docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, file maps, key invariants and pointers. 
+    Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants.
+    It is read at the start of every session, so each entry says only what is true 
+    now and where it lives: replace or remove text when it changes instead of adding to it.
+    Keep `AGENT_CHANGELOG_OVERVIEW.md` under 75000 characters.
+    The history of a change (which round, why) belongs in `AGENT_CHANGELOG.md`.
+2. The very long, extra detailed history in `docs/AGENT_CHANGELOG.md` 
     should never be read fully due to its size and therefore wasting tokens. Always ask for permission to read it 
     if explicit past rationale or a round-by-round change log is absolutely needed. 
     Just append summary changes to it without reading it entirely so that the full history is being tracked. 
@@ -69,7 +68,7 @@ After the first line in the git message, you can add a short summary of cahnges 
 those were needed.
 Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round brackets).
 
-## Initial Pipeline & Technical Specifications
+## Pipeline & Technical Specifications
 
 The development foundation relies on a clone of the Flutter-based `yolo-flutter-app` repository, 
 executing Dart application code over native Kotlin or Swift code. 
@@ -78,8 +77,9 @@ and real-time inference is handled via the YOLOView camera widget.
 
 ### Tracking & Region of Interest (ROI)
 
-* **Tracking:** To calculate accurate visitation rates, an object tracking system (such as ByteTrack) should process streaming outputs from the detector.
+* **Tracking:** To calculate accurate visitation rates, a tracker follows each detected animal across frames and gives it a track ID: ByteTrack by default, C-BIoU selectable (`lib/fauna_pulse/tracking/`).
 * **ROI:** To eliminate background noise, a draggable, square (1:1) Region of Interest overlay is placed on the camera preview. 
 This square matching also ensures cropping eliminates letterbox padding before sending data to the machine learning model.
-* **Triggers:** When an insect enters the ROI, the tracking pipeline activates. 
-Unique tracking IDs are assigned, and visual content is saved as JPEGs to a user-specified directory.
+* **Triggers:** When an organism enters the ROI, the tracking pipeline activates and assigns track IDs.
+Each session is saved in its own folder under the app's `files/sessions` folder (reachable over USB):
+photos (JPEG) or videos, and the session's log.

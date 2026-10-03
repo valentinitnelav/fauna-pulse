@@ -8882,7 +8882,6 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Phone checks (Xiaomi, unlocked by the owner; settings copied before and byte-identical after; normal debug app rebuilt and reinstalled):
   - `home_sessions_check_test.dart` (updated): passed. No model on the phone (the owner had deleted them): amber step 1 with "Tap one: FaunaPulse suggests which AI models to download"; each page shows its drawing, "Chosen for you", "Download and use (60.2 MB / 47.2 MB / 610.5 MB)" and the open fold. The first run stopped: after the shorter steps, "Import videos…" sat under the raised New session button and the check's tap opened the camera (preview only, nothing recorded; 26 sessions before and after); the check now scrolls it to the middle first.
   - New `models_delete_check_test.dart`: four small model files copied into the app's empty model folders with adb (two detection models, the insectDCT classifier and its class list); the check stops if it finds any other file. Home step 1 then read the phone's saved choices back: "Set up for: Pollinators on flowers", Find flatbug-n, Name the insectDCT classifier. "Delete all detection models…" listed both and said none is left (cancelled); press and hold, "2 selected", both deleted; the classifier deleted with its class list. Passed; the folders are empty again.
-- Suggested commit message: "Round 279: model pages choose for the user (file names, setup drawings), home step 1 says what is set up, delete several models at once"
 
 ## Round 280 (2026-10-03): the drawings show the FaunaPulse bee and live detection boxes, step 2 follows the chosen answer, "Name: none" and "Find: none" on home
 
@@ -8898,7 +8897,6 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Tests: no-naming and no-finding lines, the step 2 drawing per answer, `saveNamingChoice`, every answer has both drawings. `flutter analyze` clean; 841 passed, 2 skipped.
 - Phone check (Xiaomi; settings copied before and byte-identical after; normal debug app rebuilt and reinstalled): `home_sessions_check_test.dart` passed with the owner's newly imported models: "Set up for: Pollinators on flowers" (insectDCT detector and classifier), the new drawings on the three pages, the step 2 drawing.
 - The test phone's screen went off although `svc power stayon usb` was set: the Xiaomi reports the laptop's USB port as an AC charger (`AC powered: true`, `mPlugType=1`), so "stay on for USB" never applies; `svc power stayon true` covers every power source.
-- Suggested commit message (rounds 279 and 280 together): "Round 280: model pages choose for the user (file names, setup drawings with the FaunaPulse bee and detection boxes), home step 1 says what is set up or missing, delete several models at once (includes round 279)"
 
 ## Round 281 (2026-10-03): models already on the phone can be chosen on the "What do you want to watch?" pages
 
@@ -8910,5 +8908,14 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Docs: INSTALL (added models also appear under *Other models on this phone*), IDENTIFICATION, `tool/model_downloads/README.md`, overview Screens row.
 - Tests: `watch_plan_screen_test.dart` (own detector and own classifier chosen from the fold, saved without a download, a model of another answer listed, no duplicates; `namingPairs`), `home_screen_test.dart` (injected files).
 - `flutter analyze` clean; 843 passed, 2 skipped. No phone check this round (widget tests only).
-- Suggested commit message: "Round 281: the "What do you want to watch?" pages also list the models already on the phone (own models need no list entry)"
+
+## Round 282 (2026-10-03): AGENTS.md facts brought up to date (prompt audit)
+
+- A prompt audit of the repository's instruction files (`CLAUDE.md` = `@AGENTS.md`, and `AGENTS.md`; the app itself sends no text to an AI model) found no dated prompting style but several facts the repository contradicts. Applied at the owner's request:
+  - Paths are relative to the repository root (`docs/AGENT_CHANGELOG_OVERVIEW.md`, `docs/AGENT_CHANGELOG.md`); the app sits at the root, there is no `fauna-pulse/` subfolder (the old paths only resolved from the parent folder).
+  - The plugin is a modified copy (fork) in `packages/ultralytics_yolo/` (changes in its `FAUNAPULSE_FORK.md`), not the official one.
+  - Sessions are saved in their own folder under the app's `files/sessions` folder (photos or videos), not in a user-specified directory.
+  - Tracking is described as built: ByteTrack by default, C-BIoU selectable (`lib/fauna_pulse/tracking/`); heading "Pipeline & Technical Specifications" (no "Initial").
+  - The dated rename notes became a mapping of former names (Pollinator Monitor, `POLLINATOR_MONITOR.md`, `POLLINATOR_OVERVIEW.md`, `yolo-flutter-app/example/`), still used by older entries here.
+  - The overview rule says precisely what "short" means: each entry holds only what is true now and where it lives, replaced rather than added to; the history of a change belongs here. The overview itself (135 KB, 812 lines, lines up to about 16,000 characters) still needs trimming.
 
