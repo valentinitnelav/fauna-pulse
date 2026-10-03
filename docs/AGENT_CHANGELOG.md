@@ -8845,3 +8845,58 @@ Owner (after committing round 276): a citation field per model is too much to ma
     - A: flat-bug s 1024 on the main processor gave the hint (median 1.5 to 1.65 s per picture).
     - B: flat-bug n 640 on the graphics chip gave no hint in 45 s.
     - C: the screen closed 4 times during slow analysis. The new close path ran twice and the app survived; before the fix, one such close crashed it.
+
+## Round 279 (2026-10-03): model pages "Chosen for you" with setup drawings, home step 1 says what is set up, deleting several models at once
+
+- Owner feedback after round 278 (a general user tried the app on the owner's phone; the owner had deleted every model to see the empty home screen):
+  - Titles such as "flat-bug n (small)" confuse (n is the YOLO size, "(small)" meant the file): show the `.tflite` file names on the model pages for now.
+  - Step 1 lost its number when models were on the phone (a tick replaced it): no tick for any step, users can always add models.
+  - "Use them from now on" is redundant: choosing is using.
+  - Choose for the user (defaults per answer), and say clearly on the home screen that things were set up.
+  - Too much text; the tester asked for visual guides (a phone on a tripod above a flower).
+  - "Square" means nothing to a new user.
+  - Deleting models one by one was tedious: "Delete all" per kind, select several by pressing and holding, and an identification model's name lists deleted with it.
+  - Advice asked on two UI modes (general user and researcher): advised against (twice the screens and tests; people do not know which they are; the science lives in what each session saves, not in the menus); one app in layers, maybe a Menu switch "Show all settings" later. The owner agreed.
+  - Photo import (planned as this round) dropped by the owner: videos are more useful than random photos.
+- Model page (`screens/watch_plan_screen.dart`):
+  - A drawing on top (`SetupPicture` in `widgets/watch_tiles.dart`, `assets/images/setup_<icon>.png`): the side view of the setup and what the phone screen shows, with the yellow square; the round icon when an answer has no drawing.
+  - "Chosen for you": the first detection model and the first identification model (+ name list) of the answer, by file name, with "On this phone" or only the notes the button does not give ("The rest is on this phone.", "A large download: use Wi-Fi."); "Your choice" when the user picked others.
+  - One button kept at the bottom edge of the page (after the phone check: it was inside the box, out of view after choosing in the open fold): "Download and use (size)", or "Use these" when all is on the phone; it downloads what is missing and saves the choice (`useModels`).
+  - The other suggestions in a closed fold "Choose other models" (file names, the plain purpose or name list title, size), with "Not now" for naming and the link to Download & import models.
+  - The download dialog lists the files to download by name.
+  - Setup sentences in `assets/model_downloads.json` (`uses`) rewritten around "the yellow square on the camera screen" (the camera's ROI is yellow); pollinators: 15 to 20 cm above the flowers, so insects can fly in and out, closer if they look very small (owner's main use).
+- Drawings: simple SVG sketches made by a script kept outside the repository (`~/InsectDetectApp/generated_art/make_setup_sketches.py`, two styles; the soft colour style chosen), PNG 1050 px wide in `assets/images/` (pubspec `assets/images/`): pollinators (tripod above a flower, 15–20 cm), flat surface (looking down at a platform), mammals and birds (phone on a tree facing a bird feeder), and `roi_square.png` (the phone screen with a flower in the yellow square).
+- Home screen (`screens/home_screen.dart`):
+  - Step 1: before a choice, "Tap one: FaunaPulse suggests which AI models to download" (no model) or "... the AI models for it"; after a page saved its choice, "Set up for: <answer>" with "Find: <file>" and "Name: <file> [with <list>]" read back by `currentModelChoice` (`models/models_on_phone.dart`: the camera's `modelPath` and Identify's prefs, each only while its file is on the phone); "Chosen AI models" when the camera's model is not one of that answer's; the answer's tile is ringed.
+  - `home_watch_use` is now written only when the page saved its choice (not on opening it).
+  - `_Step` lost `done`: every step keeps its number.
+  - Step 2: "move the yellow square over the place to watch: FaunaPulse looks for animals only inside it", the small `roi_square.png`; the 5-pictures-per-second advice left to the camera's slow-phone hint (one short sentence remains). Steps 3 and 4 shortened.
+- Download & import models (`screens/models_screen.dart`):
+  - One `_delete(paths)` for every delete: confirm (title, file list when several, what stops working, as in round 271), then the injectable `deleteFiles` (default `deleteModelFiles`), snack, reload.
+  - `_withLists`: an identification model takes all its name lists along (round 271 only took a classifier's class list), except a list another model that stays can still use (for example a second BioCLIP 2 file).
+  - "Delete all detection models…" and "Delete all identification models…" (with the name lists) under lists of two files or more, with "Or press and hold a file to select several."
+  - Pressing and holding a file selects it (as on the Sessions screen): boxes replace the icons and buttons, app bar "n selected" with Select all and Delete; Back ends the selection.
+- Camera setup tip: "Centre the yellow square (the area FaunaPulse watches, also called ROI) on the target flower(s)".
+- Docs: README (step 3, the yellow square), INSTALL A3 (deleting), FIELD_GUIDE step 0, IDENTIFICATION, `tool/model_downloads/README.md` (`uses`: first = chosen, drawings).
+- Tests: `watch_plan_screen_test.dart` rewritten (file names, "Chosen for you", fold, no tick box, drawings exist, `currentModelChoice`); `home_screen_test.dart` (numbers kept, hints, "Set up for", label pack line, "Chosen AI models", nothing marked without a choice, the yellow square drawing); `models_screen_test.dart` (lists deleted with their model or kept for another model, both "Delete all", one file per kind shows none, press and hold, Back). `flutter analyze` clean; 839 passed, 2 skipped.
+- Phone checks (Xiaomi, unlocked by the owner; settings copied before and byte-identical after; normal debug app rebuilt and reinstalled):
+  - `home_sessions_check_test.dart` (updated): passed. No model on the phone (the owner had deleted them): amber step 1 with "Tap one: FaunaPulse suggests which AI models to download"; each page shows its drawing, "Chosen for you", "Download and use (60.2 MB / 47.2 MB / 610.5 MB)" and the open fold. The first run stopped: after the shorter steps, "Import videos…" sat under the raised New session button and the check's tap opened the camera (preview only, nothing recorded; 26 sessions before and after); the check now scrolls it to the middle first.
+  - New `models_delete_check_test.dart`: four small model files copied into the app's empty model folders with adb (two detection models, the insectDCT classifier and its class list); the check stops if it finds any other file. Home step 1 then read the phone's saved choices back: "Set up for: Pollinators on flowers", Find flatbug-n, Name the insectDCT classifier. "Delete all detection models…" listed both and said none is left (cancelled); press and hold, "2 selected", both deleted; the classifier deleted with its class list. Passed; the folders are empty again.
+- Suggested commit message: "Round 279: model pages choose for the user (file names, setup drawings), home step 1 says what is set up, delete several models at once"
+
+## Round 280 (2026-10-03): the drawings show the FaunaPulse bee and live detection boxes, step 2 follows the chosen answer, "Name: none" and "Find: none" on home
+
+- Owner feedback on round 279 (not committed yet):
+  - A choice other than the suggested one must be confirmed on the screen, also when no identification model is chosen (only finding and following) or, after a deletion, no detection model (naming then works only on sessions already analysed). Short and clear wording.
+  - Drawings: inside the yellow square, use the FaunaPulse bee (the bee of the app icon), centred on the flower, with a thin box in the colour of the live detection boxes; no leaves on the phone screen (less is more); the flat surface: the ladybird and the FaunaPulse bee on the platform, each with a box (no insect in the air); the bird smaller, with a box. Step 2 shows the phone screen of the chosen answer. The SVG sources stay editable in `~/InsectDetectApp/generated_art/`.
+- Drawings (`generated_art/make_setup_sketches.py`, outside the repository):
+  - The FaunaPulse bee redrawn as vector shapes from `android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png` (head, antennae, four blue wings, striped body), defined once per SVG (`<g id="fpBee">`, placed with `<use>`), with a light outline so its black parts show on the dark background.
+  - Boxes `#00E5FF`, the colour of `TrackBoxPainter`.
+  - New phone-screen-only drawings `roi_pollinators`, `roi_flat_surface`, `roi_mammals_birds` (the old `roi_square` removed); the soft versions copied to `assets/images/`.
+- Home (`screens/home_screen.dart`): step 1 shows the chosen models whenever a detection or an identification model is chosen: "Find: none (naming works only where animals were already found)", "Name: none (animals are found and followed, not named)" (`kNoNamingNote` in `models/models_on_phone.dart`, also on the model page). Step 2 shows `roiPicture(icon)` (`widgets/watch_tiles.dart`) of the answer chosen last (pollinators before any choice), 120 points high (96 was too small to see the boxes on the phone).
+- Model page: "Not now" now says "None (animals are found and followed, not named)" in the box and clears Identify's choice (`saveNamingChoice`; round 279 kept an older Identify choice, so home still named a model the user had just declined).
+- Tests: no-naming and no-finding lines, the step 2 drawing per answer, `saveNamingChoice`, every answer has both drawings. `flutter analyze` clean; 841 passed, 2 skipped.
+- Phone check (Xiaomi; settings copied before and byte-identical after; normal debug app rebuilt and reinstalled): `home_sessions_check_test.dart` passed with the owner's newly imported models: "Set up for: Pollinators on flowers" (insectDCT detector and classifier), the new drawings on the three pages, the step 2 drawing.
+- The test phone's screen went off although `svc power stayon usb` was set: the Xiaomi reports the laptop's USB port as an AC charger (`AC powered: true`, `mPlugType=1`), so "stay on for USB" never applies; `svc power stayon true` covers every power source.
+- Suggested commit message (rounds 279 and 280 together): "Round 280: model pages choose for the user (file names, setup drawings with the FaunaPulse bee and detection boxes), home step 1 says what is set up or missing, delete several models at once (includes round 279)"
+

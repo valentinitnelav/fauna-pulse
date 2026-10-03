@@ -2,7 +2,10 @@
 // New session | Dashboard, AI models), the page as numbered steps (1 AI
 // models with "What do you want to watch?", 2 Record, 3 Or use your own
 // videos, 4 Find and name the animals), the support box, the side menu and a
-// quiet scroll bar.
+// quiet scroll bar. Round 279: step 1 keeps its number and says what was set
+// up (the answer and the chosen file names); step 2 shows the yellow square.
+// Round 280: step 1 says what a choice lacks ("Name: none", "Find: none");
+// step 2 shows the phone screen of the answer chosen last.
 
 import 'dart:io';
 
@@ -33,7 +36,13 @@ final _downloads = ModelDownloads.parse(File('assets/model_downloads.json').read
 
 const _tiles = ['Pollinators on flowers', 'Insects on a flat surface', 'Mammals and birds', 'Other models'];
 
-Future<void> _pumpHome(WidgetTester tester, {ModelsOnPhone models = const ModelsOnPhone()}) async {
+const ModelChoice _noChoice = (detector: null, idModel: null, nameList: null);
+
+Future<void> _pumpHome(
+  WidgetTester tester, {
+  ModelsOnPhone models = const ModelsOnPhone(),
+  ModelChoice choice = _noChoice,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
@@ -42,11 +51,15 @@ Future<void> _pumpHome(WidgetTester tester, {ModelsOnPhone models = const Models
         countModels: () async => models,
         loadDownloads: () async => _downloads,
         modelNames: () async => const {},
+        modelChoice: (_) async => choice,
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+Finder _image(String asset) =>
+    find.byWidgetPredicate((w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == asset);
 
 void _phoneSize(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
@@ -89,12 +102,16 @@ void main() {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.byType(WatchIcon), findsNWidgets(4));
-    expect(find.byIcon(Icons.check), findsNothing, reason: 'step 1 not done');
+    expect(find.text('Tap one: FaunaPulse suggests which AI models to download.'), findsOneWidget);
+    for (final n in ['1', '2', '3', '4']) {
+      expect(find.text(n), findsOneWidget, reason: 'step $n keeps its number');
+    }
     double y(Finder f) => tester.getCenter(f).dy;
     expect(y(find.text('AI models').first), lessThan(y(find.text('Record'))));
     expect(y(find.text('Record')), lessThan(y(find.text('Import videos…'))));
     expect(y(find.text('Import videos…')), lessThan(y(find.text('Find animals in photos'))));
-    expect(find.textContaining('at least 5 pictures per second'), findsOneWidget);
+    expect(find.textContaining('move the yellow square over the place to watch'), findsOneWidget);
+    expect(_image(roiPicture('pollinators')), findsOneWidget, reason: 'no answer chosen yet: the main use');
     await tester.scrollUntilVisible(find.text('Support FaunaPulse'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Find animals in videos'), findsOneWidget);
     expect(find.text('Sponsor on GitHub'), findsNothing, reason: 'no money link unless built with DONATION_LINK');
@@ -102,11 +119,13 @@ void main() {
     expect(tester.takeException(), isNull, reason: 'nothing overflows at 360 px');
   });
 
-  testWidgets('with models: step 1 counts them and is ticked', (tester) async {
+  testWidgets('with models but none chosen: step 1 counts them and keeps its number', (tester) async {
     await _pumpHome(tester, models: const ModelsOnPhone(detectors: 3, namers: 2));
     expect(find.text('On this phone: 3 to find animals, 2 to name them.'), findsOneWidget);
     expect(find.textContaining('FaunaPulse needs AI models'), findsNothing);
-    expect(find.byIcon(Icons.check), findsOneWidget, reason: 'step 1 done');
+    expect(find.text('Tap one: FaunaPulse suggests the AI models for it.'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsNothing, reason: 'no tick for any step');
     expect(const ModelsOnPhone(detectors: 1).summary, 'On this phone: 1 to find animals, none to name them.');
   });
 
@@ -128,17 +147,81 @@ void main() {
     expect(ModelsOnPhone.namersOf(models, const []), 0);
   });
 
-  testWidgets('a tile opens its suggested models and is marked afterwards', (tester) async {
+  testWidgets('a tile opens its suggested models; back without choosing marks nothing', (tester) async {
     await _pumpHome(tester);
     await tester.tap(find.text('Mammals and birds'));
     await tester.pumpAndSettle();
     expect(find.byType(WatchPlanScreen), findsOneWidget);
-    expect(find.text('MegaDetector V6'), findsOneWidget);
-    expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), 'mammals_birds');
+    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), isNull);
     final icons = tester.widgetList<WatchIcon>(find.byType(WatchIcon)).toList();
-    expect([for (final i in icons) i.selected], [false, false, true, false]);
+    expect([for (final i in icons) i.selected], [false, false, false, false]);
+  });
+
+  testWidgets('set up: step 1 names the answer and the chosen files, its tile marked', (tester) async {
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'pollinators'});
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(detectors: 1, namers: 1),
+      choice: (
+        detector: 'insectdct-v8-s_640_fp16.tflite',
+        idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
+        nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+      ),
+    );
+    expect(find.text('Set up for: Pollinators on flowers'), findsOneWidget);
+    expect(find.text('Find: insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('Name: insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget, reason: 'its class list goes unsaid');
+    expect(find.textContaining('Tap one'), findsNothing);
+    expect(find.textContaining('On this phone:'), findsNothing);
+    expect(find.text('1'), findsOneWidget);
+    final icons = tester.widgetList<WatchIcon>(find.byType(WatchIcon)).toList();
+    expect([for (final i in icons) i.selected], [true, false, false, false]);
+  });
+
+  testWidgets('set up with a label pack; a camera model from elsewhere is just "Chosen AI models"', (tester) async {
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'mammals_birds'});
+    const bioclip = (
+      detector: 'MDV6-yolov10-c_int8_256.tflite',
+      idModel: 'bioclip-2_image_fp16_4d.tflite',
+      nameList: 'bioclip-2_mammals-birds-world_v1.fpack',
+    );
+    _phoneSize(tester, const Size(360, 1200));
+    await _pumpHome(tester, models: const ModelsOnPhone(detectors: 1, namers: 1), choice: bioclip);
+    expect(find.text('Set up for: Mammals and birds'), findsOneWidget);
+    expect(find.text('Name: bioclip-2_image_fp16_4d.tflite with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Record'), 200, scrollable: find.byType(Scrollable).first);
+    expect(_image(roiPicture('mammals_birds')), findsOneWidget, reason: 'step 2 shows the answer chosen last');
+    expect(tester.takeException(), isNull, reason: 'long file names wrap at 360 px');
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'pollinators'});
+    await tester.pumpWidget(const SizedBox());
+    await _pumpHome(tester, models: const ModelsOnPhone(detectors: 1, namers: 1), choice: bioclip);
+    expect(find.text('Chosen AI models'), findsOneWidget, reason: 'MegaDetector is not a pollinator suggestion');
+    final icons = tester.widgetList<WatchIcon>(find.byType(WatchIcon)).toList();
+    expect([for (final i in icons) i.selected], [false, false, false, false]);
+  });
+
+  testWidgets('a choice without naming, or without finding, says so in plain words', (tester) async {
+    SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'flat_surface'});
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(detectors: 1),
+      choice: (detector: 'flatbug-n_640_fp16.tflite', idModel: null, nameList: null),
+    );
+    expect(find.text('Set up for: Insects on a flat surface'), findsOneWidget);
+    expect(find.text('Name: none (animals are found and followed, not named)'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await _pumpHome(
+      tester,
+      models: const ModelsOnPhone(namers: 1),
+      choice: (detector: null, idModel: 'insectdct-cls-v7_eff2s_fp16.tflite', nameList: 'insectdct-cls-v7_eff2s_fp16.fpack'),
+    );
+    expect(find.text('Chosen AI models'), findsOneWidget);
+    expect(find.text('Find: none (naming works only where animals were already found)'), findsOneWidget);
+    expect(find.text('Name: insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
+    expect(find.textContaining('Tap one'), findsNothing);
   });
 
   testWidgets('the side menu: models first, About last; Support opens the box', (tester) async {

@@ -25,6 +25,17 @@
 // the bottom bar (Menu, Sessions | New session | Dashboard, AI models), so
 // they are one tap away without scrolling. A quiet scroll bar shows that the
 // page goes on below (widgets/scroll_hint.dart).
+//
+// Round 279 (owner, after a test user's first try on the owner's phone):
+//   • step 1 says what was set up ("Set up for: Pollinators on flowers" and
+//     the chosen file names, read back from the saved choices), and before a
+//     choice that FaunaPulse suggests the models to download; no step gets a
+//     tick any more (users can always add models);
+//   • shorter step texts, and a small drawing of the yellow square in step 2
+//     (the area FaunaPulse watches; "square" alone meant nothing to the user).
+// Round 280 (owner): step 1 also says what is missing from a choice ("Name:
+// none", or "Find: none" and what naming can still do), and step 2 shows the
+// phone screen of the answer chosen last (roi_<icon>.png).
 
 import 'dart:async';
 import 'dart:io';
@@ -34,6 +45,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../identification/identification_store.dart' show stemOf;
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
 import '../logging/past_sessions.dart';
@@ -53,7 +65,8 @@ import 'session_actions.dart';
 import 'sessions_screen.dart';
 import 'watch_plan_screen.dart';
 
-/// The last answer to "What do you want to watch?" (its tile is marked).
+/// The answer to "What do you want to watch?" whose models were chosen last
+/// (its tile is marked; written when its page saved the choice).
 const kHomeWatchUsePref = 'home_watch_use';
 
 class HomeScreen extends StatefulWidget {
@@ -70,12 +83,16 @@ class HomeScreen extends StatefulWidget {
   /// their own.
   final Future<Set<String>> Function() modelNames;
 
+  /// Reads the chosen models back (step 1); tests give their own.
+  final Future<ModelChoice> Function(Set<String> onPhone) modelChoice;
+
   const HomeScreen({
     super.key,
     this.scan = scanPastSessions,
     this.countModels = ModelsOnPhone.count,
     this.loadDownloads = ModelDownloads.load,
     this.modelNames = modelFileNamesOnPhone,
+    this.modelChoice = currentModelChoice,
   });
 
   @override
@@ -96,6 +113,9 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   /// Null while counting.
   ModelsOnPhone? _models;
+
+  /// The models chosen for new sessions and Identify (null while reading).
+  ModelChoice? _choice;
 
   /// The answers to "What do you want to watch?" (the download list's `uses`).
   List<WatchUse> _uses = const [];
@@ -120,7 +140,12 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   Future<void> _reloadModels() async {
     final m = await widget.countModels();
-    if (mounted) setState(() => _models = m);
+    final choice = await widget.modelChoice(await widget.modelNames());
+    if (!mounted) return;
+    setState(() {
+      _models = m;
+      _choice = choice;
+    });
   }
 
   Future<void> _loadUses() async {
@@ -136,11 +161,12 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   /// Opens the suggested models of [use]; back with them, the user is
   /// pointed at New session.
   Future<void> _openWatch(WatchUse use) async {
-    setState(() => _watchUse = use.id);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(kHomeWatchUsePref, use.id);
-    if (!mounted) return;
     final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => WatchPlanScreen(use: use, onPhone: widget.modelNames)));
+    if (done == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(kHomeWatchUsePref, use.id);
+      if (mounted) setState(() => _watchUse = use.id);
+    }
     await _reloadModels();
     if (done == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Done. Press New session to start.')));
@@ -431,10 +457,67 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     child: Text(text, style: const TextStyle(fontSize: 13, color: Colors.white70)),
   );
 
+  /// "Find: file" in step 1.
+  Widget _fileLine(String label, String file) => Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(text: '$label: ', style: const TextStyle(color: Colors.white60)),
+        TextSpan(text: file),
+      ],
+    ),
+    style: const TextStyle(fontSize: 13),
+  );
+
+  /// What step 1 shows once models are chosen: the answer they were set up
+  /// for (when the camera still uses one of its suggestions) and the files,
+  /// or what works without the missing kind (round 280).
+  Widget _chosenModels(WatchUse? use, ModelChoice c) {
+    final detector = c.detector, idModel = c.idModel, list = c.nameList;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            use == null ? 'Chosen AI models' : 'Set up for: ${use.title}',
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          _fileLine('Find', detector ?? 'none (naming works only where animals were already found)'),
+          _fileLine(
+            'Name',
+            idModel == null || list == null
+                ? 'none ($kNoNamingNote)'
+                // A class list has its model's name: nothing more to say.
+                : stemOf(list) == stemOf(idModel)
+                ? idModel
+                : '$idModel with $list',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The answer whose phone screen step 2 shows: the one chosen last, or
+  /// pollinators (the main use).
+  String get _stepTwoIcon {
+    for (final u in _uses) {
+      if (u.id == _watchUse) return u.icon;
+    }
+    return 'pollinators';
+  }
+
   /// Step 1: the models on the phone, and "What do you want to watch?".
   Widget _modelsStep() {
     final m = _models;
     final none = m != null && m.none;
+    final choice = _choice;
+    final detector = choice?.detector;
+    final chosen = detector != null || choice?.idModel != null;
+    WatchUse? setUpFor;
+    for (final u in _uses) {
+      if (detector != null && u.id == _watchUse && u.find.any((d) => d.file?.name == detector)) setUpFor = u;
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       decoration: BoxDecoration(
@@ -443,17 +526,29 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       ),
       child: _Step(
         number: 1,
-        done: m != null && m.detectors > 0,
         title: 'AI models',
         children: [
           if (m != null)
-            _sectionText(
-              none
-                  ? 'FaunaPulse needs AI models: files that teach it to find animals in the picture and to '
-                        'name them. They are free.'
-                  : m.summary,
-            ),
+            if (none)
+              _sectionText(
+                'FaunaPulse needs AI models: files that teach it to find animals in the picture and to '
+                'name them. They are free.',
+              )
+            else if (chosen)
+              _chosenModels(setUpFor, choice!)
+            else
+              _sectionText(m.summary),
           const Text('What do you want to watch?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          if (m != null && !chosen)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                none
+                    ? 'Tap one: FaunaPulse suggests which AI models to download.'
+                    : 'Tap one: FaunaPulse suggests the AI models for it.',
+                style: const TextStyle(fontSize: 12.5, color: Colors.white60),
+              ),
+            ),
           const SizedBox(height: 6),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,7 +558,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                   child: WatchTile(
                     icon: u.icon,
                     label: u.title,
-                    selected: u.id == _watchUse,
+                    selected: u == setUpFor,
                     onTap: () => _openWatch(u),
                   ),
                 ),
@@ -524,11 +619,24 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                       number: 2,
                       title: 'Record',
                       children: [
-                        _sectionText(
-                          'Press New session below. Fix the phone steady and put the square over the place '
-                          'to watch. Live detection works well when the phone checks at least 5 pictures per '
-                          'second ("det … fps" on the camera screen). On a slower phone, take time-lapse '
-                          'photos or videos instead and find the animals afterwards (step 4).',
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _sectionText(
+                                'Press New session below. Fix the phone steady and move the yellow square over '
+                                'the place to watch: FaunaPulse looks for animals only inside it. On a phone too '
+                                'slow for live detection, the camera suggests time-lapse instead.',
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Image.asset(
+                              roiPicture(_stepTwoIcon),
+                              height: 120,
+                              semanticLabel: roiDescription(_stepTwoIcon),
+                              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -537,7 +645,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                       number: 3,
                       title: 'Or use your own videos',
                       children: [
-                        _sectionText('Import videos from the phone to find, track and identify the animals in them.'),
+                        _sectionText('Import videos from the phone to find and name the animals in them.'),
                         OutlinedButton.icon(
                           onPressed: () => importVideos(),
                           icon: const Icon(Icons.video_library_outlined, size: 18),
@@ -551,8 +659,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
                       title: 'Find and name the animals',
                       children: [
                         _sectionText(
-                          'In photos and videos already in FaunaPulse (from time-lapse or motion sessions, or '
-                          'imported). With an identification model, finding can also name them.',
+                          'In photos and videos already in FaunaPulse. With an identification model, finding '
+                          'also names them.',
                         ),
                         // Round 135: a (bigger) detector over saved photos, no
                         // camera, no time limit.
@@ -582,19 +690,18 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   }
 }
 
-/// One numbered step of the home screen: the number in a circle (a tick
-/// when [done]), the title, then [children].
+/// One numbered step of the home screen: the number in a circle (always: a
+/// tick for step 1 confused, round 279), the title, then [children].
 class _Step extends StatelessWidget {
   final int number;
-  final bool done;
   final String title;
   final List<Widget> children;
 
-  const _Step({required this.number, required this.title, required this.children, this.done = false});
+  const _Step({required this.number, required this.title, required this.children});
 
   @override
   Widget build(BuildContext context) {
-    final color = done ? Colors.lightGreen : Theme.of(context).colorScheme.primary;
+    final color = Theme.of(context).colorScheme.primary;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -603,9 +710,7 @@ class _Step extends StatelessWidget {
           height: 26,
           alignment: Alignment.center,
           decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 1.5)),
-          child: done
-              ? Icon(Icons.check, size: 16, color: color, semanticLabel: 'done')
-              : Text('$number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+          child: Text('$number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
         ),
         const SizedBox(width: 12),
         Expanded(

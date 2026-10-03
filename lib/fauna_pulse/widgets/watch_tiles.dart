@@ -8,6 +8,17 @@
 //     a face at this size), brown;
 //   • other models: a plus, grey.
 // Which picture an answer gets is its `icon` in assets/model_downloads.json.
+//
+// Round 279 (owner, after a test user asked for pictures rather than text):
+// SetupPicture, a drawing of how to set up the phone for an answer (the side
+// view, and what the phone screen shows with the yellow square), found by the
+// same `icon`: assets/images/setup_<icon>.png. The drawings were made for
+// FaunaPulse as simple SVG sketches (the sources stay outside the repository,
+// with other versions); an answer without a drawing shows its round icon.
+// Round 280 (owner): the animals on the phone screen of the drawings are found,
+// with a thin box in the camera's live box colour, and the bee is the
+// FaunaPulse bee of the app icon; assets/images/roi_<icon>.png is that phone
+// screen alone, for the home screen's step 2.
 
 import 'dart:math' as math;
 
@@ -78,6 +89,52 @@ class WatchIcon extends StatelessWidget {
       child: picture,
     );
   }
+}
+
+/// The phone screen of the drawing of [icon] alone (home screen, step 2).
+String roiPicture(String icon) => 'assets/images/roi_$icon.png';
+
+/// What [roiPicture] shows, for screen readers.
+String roiDescription(String icon) => switch (icon) {
+  'flat_surface' => 'The phone screen: a ladybird and a bee on a platform, each in a detection box, inside the '
+      'yellow square.',
+  'mammals_birds' => 'The phone screen: a bird on a feeder, in a detection box, inside the yellow square.',
+  _ => 'The phone screen: a bee on a flower, in a detection box, inside the yellow square.',
+};
+
+/// What the drawing of [icon] shows, for screen readers.
+String? _setupDescription(String icon) => switch (icon) {
+  'pollinators' => 'A phone on a tripod, 15 to 20 cm above a flower. On its screen, a bee on the flower is '
+      'found (a box around it) inside the yellow square.',
+  'flat_surface' => 'A phone on a tripod, looking straight down at a flat platform with insects on it. On its '
+      'screen, each insect is found (a box around it) inside the yellow square.',
+  'mammals_birds' => 'A phone fixed to a tree, facing a bird feeder. On its screen, the bird is found (a box '
+      'around it) inside a large yellow square.',
+  _ => null,
+};
+
+/// The drawing of how to set up the phone for the answer [icon]; its round
+/// icon when there is no drawing.
+class SetupPicture extends StatelessWidget {
+  final String icon;
+
+  const SetupPicture({super.key, required this.icon});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: AspectRatio(
+        aspectRatio: 420 / 220,
+        child: Image.asset(
+          'assets/images/setup_$icon.png',
+          fit: BoxFit.contain,
+          semanticLabel: _setupDescription(icon),
+          errorBuilder: (context, error, stack) => Center(child: WatchIcon(icon: icon, size: 72)),
+        ),
+      ),
+    ),
+  );
 }
 
 /// A [WatchIcon] with its words under it, to tap.

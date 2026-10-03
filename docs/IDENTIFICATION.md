@@ -21,7 +21,8 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 | `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
 
 The simplest way (round 278): the home screen's step 1, *What do you want to watch?*. Each answer
-suggests an identification model with its name list (and a detection model), downloaded in one go:
+chooses an identification model with its name list (and a detection model) for you, downloaded and set
+up with one button (other suggestions under *Choose other models*):
 *Pollinators on flowers* and *Insects on a flat surface* the insectDCT classifier or BioCLIP 2 with
 one of its insect lists, *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
 (17,130 names, 28 MB, round 278). Every model is on **Download & import models** (home screen: *AI

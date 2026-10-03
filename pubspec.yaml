@@ -67,6 +67,8 @@ flutter:
   assets:
     # Round 268: the models users can download (AI models screen).
     - assets/model_downloads.json
+    # Round 279: setup drawings ("What do you want to watch?" pages, home step 2).
+    - assets/images/
     - assets/models/
     # Custom insect/flower detectors placed by the user. Flutter asset folder
     # entries are NOT recursive, so this subfolder must be listed on its own.

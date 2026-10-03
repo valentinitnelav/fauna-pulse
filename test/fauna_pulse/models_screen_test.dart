@@ -6,7 +6,9 @@
 // class list deleted with its classifier, what deleting the last detector or
 // name list warns about, the one import and link download for every kind
 // with the question before replacing a file (round 275), and the 360-px
-// layout with a bottom system bar.
+// layout with a bottom system bar. Round 279: "Delete all …" per kind,
+// pressing and holding to select several, and an identification model's
+// name lists deleted with it.
 
 import 'dart:io';
 
@@ -84,6 +86,7 @@ ModelsInventory _inventory() => ModelsInventory(
 final _downloaded = <String>[];
 var _scans = 0;
 final _linked = <String>[];
+final _deleted = <String>[];
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -93,6 +96,7 @@ Future<void> _pump(
 }) async {
   _downloaded.clear();
   _linked.clear();
+  _deleted.clear();
   _scans = 0;
   await tester.pumpWidget(
     MaterialApp(
@@ -110,6 +114,10 @@ Future<void> _pump(
           return (name, name.endsWith('.fpack') ? ModelFileKind.nameList : ModelFileKind.detection);
         },
         onPhoneAs: (name) async => onPhone,
+        deleteFiles: (paths) async {
+          _deleted.addAll(paths);
+          return [for (final p in paths) p.split('/').last];
+        },
       ),
     ),
   );
@@ -505,6 +513,112 @@ void main() {
     await tester.pumpAndSettle();
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
     expect(tester.takeException(), isNull);
+  });
+
+  group('deleting several files (r279)', () {
+    final b2 = File('$_dir/models/bioclip-2_image_fp16_4d.tflite');
+    final b2fp32 = File('$_dir/models/bioclip-2_224_fp32.tflite');
+    final europe = File('$_dir/packs/$_europeName');
+    final fam = File('$_dir/packs/bioclip2_flower_visitors_32fam_v1.fpack');
+    ModelsInventory bioclip({bool second = false}) => ModelsInventory(
+      idModels: [b2, if (second) b2fp32],
+      nameLists: [europe, fam],
+      headers: {
+        europe.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 6},
+        fam.path: {'model_id': 'bioclip-2', 'rows': 38576, 'sink_rows': 6},
+      },
+      downloads: _downloads,
+    );
+
+    Future<void> deleteTile(WidgetTester tester, String name) async {
+      await _show(tester, find.text(name));
+      await tester.tap(find.descendant(of: _tile(name), matching: find.byTooltip('Delete')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> confirm(WidgetTester tester) async {
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Delete')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an identification model takes its name lists along', (tester) async {
+      await _pump(tester, inventory: bioclip);
+      await deleteTile(tester, b2.path.split('/').last);
+      expect(
+        find.textContaining('Its name lists $_europeName, bioclip2_flower_visitors_32fam_v1.fpack are deleted with it'),
+        findsOneWidget,
+      );
+      await confirm(tester);
+      expect(_deleted, [b2.path, europe.path, fam.path]);
+    });
+
+    testWidgets('... but not a list another model on the phone can still use', (tester) async {
+      await _pump(tester, inventory: () => bioclip(second: true));
+      await deleteTile(tester, b2.path.split('/').last);
+      expect(find.textContaining('deleted with it'), findsNothing);
+      await confirm(tester);
+      expect(_deleted, [b2.path]);
+    });
+
+    testWidgets('"Delete all detection models…" lists them and says none is left', (tester) async {
+      await _pump(tester);
+      await _show(tester, find.text('Delete all detection models…'));
+      await tester.tap(find.text('Delete all detection models…'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete all detection models?'), findsOneWidget);
+      expect(find.textContaining('• my_bees_640.tflite'), findsOneWidget);
+      expect(find.textContaining('No detection model is left then.'), findsOneWidget);
+      await confirm(tester);
+      expect(_deleted, [for (final m in _inventory().detectors) m.id]);
+    });
+
+    testWidgets('"Delete all identification models…" takes the name lists too', (tester) async {
+      await _pump(tester, inventory: bioclip);
+      await _show(tester, find.text('Delete all identification models…'));
+      await tester.tap(find.text('Delete all identification models…'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete all identification models and name lists?'), findsOneWidget);
+      await confirm(tester);
+      expect(_deleted, [b2.path, europe.path, fam.path]);
+    });
+
+    testWidgets('one file per kind: no "Delete all"', (tester) async {
+      await _pump(tester, inventory: () => ModelsInventory(detectors: [_inventory().detectors.first], downloads: _downloads));
+      expect(find.text('Delete all detection models…'), findsNothing);
+      expect(find.text('Delete all identification models…'), findsNothing);
+    });
+
+    testWidgets('press and hold selects; several are deleted at once; Back ends the selection', (tester) async {
+      await _pump(tester);
+      await tester.longPress(find.text('my_bees_640.tflite'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(find.byTooltip('Delete'), findsNothing, reason: 'boxes replace the buttons');
+      await tester.tap(find.text(_mdv6));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+      await _show(tester, find.text(_clsName));
+      await tester.tap(find.text(_clsName));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete the selected files'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete 4 files?'), findsOneWidget, reason: 'the class list goes with its model');
+      expect(find.textContaining('Name lists are deleted with their model.'), findsOneWidget);
+      await confirm(tester);
+      expect(_deleted, [
+        '/data/app/files/models/MDV6-yolov10-c_int8_256.tflite',
+        '/data/app/files/models/my_bees_640.tflite',
+        _cls.path,
+        _classList.path,
+      ]);
+      expect(find.text('Download & import models'), findsOneWidget, reason: 'selecting ended');
+      await tester.longPress(find.text(_clsName));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Download & import models'), findsOneWidget, reason: 'Back ended the selection, the screen stays');
+    });
   });
 
   test('a classifier is deleted together with its class list only', () async {

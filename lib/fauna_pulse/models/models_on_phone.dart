@@ -3,9 +3,14 @@
 // inspecting every model or reading every name list header (megabytes of
 // names) would slow it down.
 //
-// Also "Use them from now on" of the "What do you want to watch?" page: the
-// downloaded files become the choice of the camera, of Find animals (photos
-// and videos) and of Identify, as if the user had chosen each on its screen.
+// Also the button of the "What do you want to watch?" page: the downloaded
+// files become the choice of the camera, of Find animals (photos and videos)
+// and of Identify, as if the user had chosen each on its screen.
+//
+// Round 279 (owner: make it clear on the home screen that things were set up
+// for the user): currentModelChoice reads that choice back, by file name.
+// Round 280 (owner): "Not now" for naming clears Identify's choice, so the
+// home screen and Identify agree that nothing names the animals.
 
 import 'dart:io';
 
@@ -81,9 +86,56 @@ Future<Set<String>> modelFileNamesOnPhone() async {
   }
 }
 
-/// Makes the detection model file [detector] the model of the camera and of
-/// Find animals, and the identification model [idModel] with its name list
-/// [nameList] the choice of Identify (file names; each when given).
+/// The models chosen for new sessions and for Identify, as file names.
+typedef ModelChoice = ({String? detector, String? idModel, String? nameList});
+
+/// The camera's detection model and Identify's model and name list, each
+/// null when none is chosen or its file is not on the phone ([onPhone], the
+/// file names) any more.
+Future<ModelChoice> currentModelChoice(Set<String> onPhone) async {
+  try {
+    String? present(String? path) {
+      final name = path?.split('/').last;
+      return name != null && onPhone.contains(name) ? name : null;
+    }
+
+    final config = await SessionConfig.load();
+    final prefs = await SharedPreferences.getInstance();
+    final idModel = present(prefs.getString(kIdentifyModelPref));
+    final nameList = present(prefs.getString(kIdentifyPackPref));
+    final both = idModel != null && nameList != null;
+    return (
+      detector: present(config.modelPath),
+      idModel: both ? idModel : null,
+      nameList: both ? nameList : null,
+    );
+  } catch (e) {
+    logSwallowed('model_choice', e);
+    return (detector: null, idModel: null, nameList: null);
+  }
+}
+
+/// Said wherever no identification model is chosen (home step 1, the
+/// "What do you want to watch?" pages).
+const kNoNamingNote = 'animals are found and followed, not named';
+
+/// Identify's choice: the identification model [idModel] with its name list
+/// [nameList] (file names), or none when either is null.
+Future<void> saveNamingChoice(String? idModel, String? nameList) async {
+  final prefs = await SharedPreferences.getInstance();
+  if (idModel != null && nameList != null) {
+    await prefs.setString(kIdentifyModelPref, idModel);
+    await prefs.setString(kIdentifyPackPref, nameList);
+  } else {
+    await prefs.remove(kIdentifyModelPref);
+    await prefs.remove(kIdentifyPackPref);
+  }
+}
+
+/// The choice of a "What do you want to watch?" page: makes the detection
+/// model file [detector] (when given) the model of the camera and of Find
+/// animals, and the identification model [idModel] with its name list
+/// [nameList] the choice of Identify, or no identification model ("Not now").
 Future<void> useModels({String? detector, String? idModel, String? nameList}) async {
   final prefs = await SharedPreferences.getInstance();
   if (detector != null) {
@@ -95,8 +147,5 @@ Future<void> useModels({String? detector, String? idModel, String? nameList}) as
     await prefs.setString(kAnalysisModelPref, entry.id);
     await prefs.setString(kVideoAnalysisModelPref, entry.id);
   }
-  if (idModel != null && nameList != null) {
-    await prefs.setString(kIdentifyModelPref, idModel);
-    await prefs.setString(kIdentifyPackPref, nameList);
-  }
+  await saveNamingChoice(idModel, nameList);
 }

@@ -39,8 +39,8 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
             const SizedBox(height: 12),
             _bullet(
               Icons.crop_square,
-              'Centre the yellow ROI box on the target flower(s) or '
-              'inflorescence(s).',
+              'Centre the yellow square (the area FaunaPulse watches, also '
+              'called ROI) on the target flower(s) or inflorescence(s).',
             ),
             const SizedBox(height: 12),
             _bullet(

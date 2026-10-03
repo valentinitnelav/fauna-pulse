@@ -141,7 +141,10 @@ manually re-download the `.apk` every time a new version comes out.
 The app lists no model until one is downloaded or imported (round 268). The quickest way is the home
 screen's step 1, *What do you want to watch?* (round 278): each answer (pollinators on flowers, insects on
 a flat surface, mammals and birds) suggests a detection model and an identification model with its name
-list, and downloads them in one go (use Wi-Fi: BioCLIP 2 is about 600 MB). The **Download & import
+list, chosen for you and shown by their file names (others under *Choose other models*), and one
+button downloads them and makes them the app's choice (use Wi-Fi: BioCLIP 2 is about 600 MB). To delete
+models: the bin next to a file, *Delete all …* under each list, or press and hold files to select
+several (round 279; an identification model takes its name lists along). The **Download & import
 models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers every model,
 MegaDetector V6 (common animals) and flat-bug and insectDCT (insects) among them. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:

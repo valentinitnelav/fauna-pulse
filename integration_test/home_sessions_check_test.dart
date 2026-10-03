@@ -3,6 +3,9 @@
 // Download & import models. Round 278: the home screen as steps, its scroll
 // bar, the page of each "What do you want to watch?" answer (the phone's own
 // files shown as on the phone; nothing downloaded) and the About text.
+// Round 279: the answer pages with their drawing, "Chosen for you" and the
+// fold "Choose other models"; step 1 without a tick, step 2 with the yellow
+// square.
 //
 // Nothing is deleted, imported, downloaded or saved: the check only opens
 // screens, opens and closes the filter panel and the menus, and selects one
@@ -82,9 +85,10 @@ void main() {
       watchUse == null ? await p.remove(kHomeWatchUsePref) : await p.setString(kHomeWatchUsePref, watchUse);
     });
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: const HomeScreen()));
-    await waitFor(find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs)')));
+    final step1 = find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs|Set up for|Chosen AI models)'));
+    await waitFor(step1);
     await settle();
-    _log('MODELS ${tester.widget<Text>(find.textContaining(RegExp(r'^(On this phone|FaunaPulse needs)'))).data}');
+    _log('MODELS ${tester.widget<Text>(step1).data}');
     await shot('home');
 
     // Each answer's page, then back (nothing downloaded).
@@ -94,15 +98,19 @@ void main() {
       ('Mammals and birds', 'watch_mammals_birds'),
     ]) {
       await tester.tap(find.text(tile));
-      await waitFor(find.text('To find the animals'));
+      await waitFor(find.text('Chosen for you'));
       await settle();
       final onPhone = find.text('On this phone').evaluate().length;
       await shot(name);
-      // The button is at the end of the page (built once in view).
+      final button = find.textContaining(RegExp(r'^(Download and use \(|Use these$)'));
+      _log('WATCH $tile: "On this phone" $onPhone times, button "${tester.widget<Text>(button).data}"');
+      await tester.tap(find.text('Choose other models'));
+      await settle();
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await settle();
+      await shot('${name}_other');
       await tester.drag(find.byType(ListView), const Offset(0, -3000));
       await settle();
-      final button = find.textContaining(RegExp(r'^(Download \(|Use them$)'));
-      _log('WATCH $tile: "On this phone" $onPhone times at the top, button "${tester.widget<Text>(button).data}"');
       await shot('${name}_end');
       await back();
       await waitFor(find.byType(HomeScreen));
@@ -134,6 +142,10 @@ void main() {
 
     // 3. Import videos: the photo picker opens (shots_back.sh then presses
     // Back); closing it leaves no message behind.
+    // In the middle of the screen: near the bottom, the raised New session
+    // button covers it (round 279: the shorter steps moved it there).
+    await Scrollable.ensureVisible(tester.element(find.text('Import videos…')), alignment: 0.4);
+    await settle();
     await tester.tap(find.text('Import videos…'));
     await tester.pump(const Duration(milliseconds: 300));
     _log('SHOT import_picker_back');

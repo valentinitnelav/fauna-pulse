@@ -1,7 +1,10 @@
-// Round 278: the page behind an answer to "What do you want to watch?": the
-// suggested models from the list file (`uses`), which are on the phone, the
-// size to download, one download for the chosen files, and "Use them from now
-// on" (the choice is saved only when ticked).
+// Rounds 278-279: the page behind an answer to "What do you want to watch?":
+// a drawing of the setup, the models chosen for the user from the list file
+// (`uses`), shown by their file names, with one button that downloads what is
+// missing and saves the choice (no tick box since round 279), and the other
+// suggestions in a closed fold "Choose other models". Round 280: "Not now"
+// says what it means and clears Identify's choice; each answer has the phone
+// screen of its drawing alone (home step 2).
 
 import 'dart:io';
 
@@ -10,6 +13,7 @@ import 'package:fauna_pulse/fauna_pulse/models/model_choice_keys.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/models_on_phone.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/watch_plan_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/watch_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,11 +27,10 @@ class _Calls {
   Object? failWith;
 }
 
-Future<bool?> _pump(WidgetTester tester, WatchUse use, Set<String> onPhone, _Calls calls) async {
+Future<void> _pump(WidgetTester tester, WatchUse use, Set<String> onPhone, _Calls calls) async {
   tester.view.physicalSize = const Size(360, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  bool? popped;
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
@@ -35,22 +38,19 @@ Future<bool?> _pump(WidgetTester tester, WatchUse use, Set<String> onPhone, _Cal
         builder: (context) => Scaffold(
           body: Center(
             child: ElevatedButton(
-              onPressed: () async {
-                popped = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => WatchPlanScreen(
-                      use: use,
-                      onPhone: () async => onPhone,
-                      download: (f, identification, onProgress, isCancelled) async {
-                        if (calls.failWith != null) throw calls.failWith!;
-                        calls.downloaded.add((f.name, identification));
-                      },
-                      saveChoice: ({detector, idModel, nameList}) async =>
-                          calls.saved.add((detector, idModel, nameList)),
-                    ),
+              onPressed: () => Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => WatchPlanScreen(
+                    use: use,
+                    onPhone: () async => onPhone,
+                    download: (f, identification, onProgress, isCancelled) async {
+                      if (calls.failWith != null) throw calls.failWith!;
+                      calls.downloaded.add((f.name, identification));
+                    },
+                    saveChoice: ({detector, idModel, nameList}) async => calls.saved.add((detector, idModel, nameList)),
                   ),
-                );
-              },
+                ),
+              ),
               child: const Text('open'),
             ),
           ),
@@ -60,13 +60,21 @@ Future<bool?> _pump(WidgetTester tester, WatchUse use, Set<String> onPhone, _Cal
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
-  return popped;
 }
+
+Future<void> _tap(WidgetTester tester, Finder f) async {
+  await tester.ensureVisible(f);
+  await tester.pumpAndSettle();
+  await tester.tap(f);
+  await tester.pumpAndSettle();
+}
+
+Finder _inDialog(String text) => find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('the shipped list has the three answers, each with offered models', () {
+  test('the shipped list has the three answers, each with offered models and a drawing', () {
     expect(_downloads.uses.map((u) => u.id), ['pollinators', 'flat_surface', 'mammals_birds']);
     expect(_use('pollinators').find.map((d) => d.id), ['insectdct-v8s', 'flatbug-n']);
     expect(_use('pollinators').name.map((n) => n.$1.id), ['insectdct-cls-v7-eff2s', 'bioclip-2', 'bioclip-2']);
@@ -77,90 +85,88 @@ void main() {
     expect(list.file.bytes, greaterThan(0));
     expect(list.file.sha256, matches(RegExp(r'^[0-9a-f]{64}$')));
     for (final u in _downloads.uses) {
-      expect(u.setup, isNotEmpty, reason: u.id);
+      expect(u.setup, contains('yellow square'), reason: u.id);
+      expect(File('assets/images/setup_${u.icon}.png').existsSync(), isTrue, reason: u.icon);
+      expect(File(roiPicture(u.icon)).existsSync(), isTrue, reason: u.icon);
     }
   });
 
-  testWidgets('pollinators: what is on the phone, the size, one download, the choice saved', (tester) async {
+  testWidgets('pollinators: chosen for the user by file name, one download, the choice saved', (tester) async {
     final calls = _Calls();
     await _pump(tester, _use('pollinators'), {'insectdct-v8-s_640_fp16.tflite'}, calls);
-    expect(find.text('To find the animals'), findsOneWidget);
-    expect(find.text('insectDCT detector'), findsOneWidget);
-    expect(find.text('flat-bug n (small)'), findsOneWidget);
-    expect(find.text('On this phone'), findsOneWidget, reason: 'only the insectDCT detector');
-    expect(find.text('To name them'), findsOneWidget);
-    expect(find.text('insectDCT classifier'), findsOneWidget);
-    expect(find.textContaining('Name list: Flies, bees and wasps'), findsOneWidget);
-    expect(find.text('Not now'), findsOneWidget);
+    expect(find.byType(SetupPicture), findsOneWidget);
+    expect(find.text('Chosen for you'), findsOneWidget);
+    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
+    expect(find.textContaining('with '), findsNothing, reason: 'a class list has its model\'s name');
+    expect(find.text('flatbug-n_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
+    expect(find.text('Choose other models'), findsOneWidget);
+    expect(find.text('Use them from now on'), findsNothing, reason: 'choosing is using');
     expect(tester.takeException(), isNull, reason: 'nothing overflows at 360 px');
-    // Preselected: the first of each; only the classifier and its class list
-    // are missing.
     final cls = _use('pollinators').name.first;
-    final bytes = cls.$1.file!.bytes + cls.$2.file.bytes;
-    await tester.ensureVisible(find.text('Download (${formatBytes(bytes)})'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Download (${formatBytes(bytes)})'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('The detection model insectDCT detector and the identification model insectDCT classifier with its class list'), findsOneWidget);
-    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Download')));
-    await tester.pumpAndSettle();
+    final button = 'Download and use (${formatBytes(cls.$1.file!.bytes + cls.$2.file.bytes)})';
+    expect(find.text('The rest is on this phone.'), findsOneWidget);
+    await _tap(tester, find.text(button));
+    expect(
+      find.textContaining(
+        'insectdct-cls-v7_eff2s_fp16.tflite, insectdct-cls-v7_eff2s_fp16.fpack (the other chosen files are on this phone).',
+      ),
+      findsOneWidget,
+    );
+    await _tap(tester, _inDialog('Download'));
     expect(calls.downloaded, [('insectdct-cls-v7_eff2s_fp16.tflite', true), ('insectdct-cls-v7_eff2s_fp16.fpack', true)]);
     expect(calls.saved, [('insectdct-v8-s_640_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack')]);
     expect(find.byType(WatchPlanScreen), findsNothing, reason: 'back on the home screen');
   });
 
-  testWidgets('another detector, no naming, not used: downloads only, saves nothing', (tester) async {
+  testWidgets('another detector and no naming, from the fold: "Your choice", downloaded and saved', (tester) async {
     final calls = _Calls();
     await _pump(tester, _use('pollinators'), const {}, calls);
-    await tester.tap(find.text('flat-bug n (small)'));
-    await tester.tap(find.text('Not now'));
-    await tester.ensureVisible(find.text('Use them from now on'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Use them from now on'));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Choose other models'));
+    expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)'), findsOneWidget);
+    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
+    await _tap(tester, find.text('flatbug-n_640_fp16.tflite'));
+    await _tap(tester, find.text('Not now'));
+    expect(find.text('Your choice'), findsOneWidget);
+    expect(find.text('Download and use (${formatBytes(_use('pollinators').find[1].file!.bytes)})').hitTestable(), findsOneWidget,
+        reason: 'the button stays in view below the open fold');
+    expect(find.text('None (animals are found and followed, not named)'), findsOneWidget, reason: 'in the box');
+    expect(find.text('Not now'), findsOneWidget, reason: 'in the fold');
     final flatbug = _use('pollinators').find[1].file!;
-    await tester.ensureVisible(find.text('Download (${formatBytes(flatbug.bytes)})'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Download (${formatBytes(flatbug.bytes)})'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Download')));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Download and use (${formatBytes(flatbug.bytes)})'));
+    await _tap(tester, _inDialog('Download'));
     expect(calls.downloaded, [(flatbug.name, false)]);
-    expect(calls.saved, isEmpty);
+    expect(calls.saved, [(flatbug.name, null, null)]);
   });
 
-  testWidgets('everything on the phone: "Use them", which needs the tick', (tester) async {
+  testWidgets('everything on the phone: "Use these" saves at once', (tester) async {
     final calls = _Calls();
     final use = _use('mammals_birds');
     final (model, list) = use.name.single;
     await _pump(tester, use, {use.find.single.file!.name, model.file!.name, list.file.name}, calls);
-    expect(find.text('On this phone'), findsNWidgets(2));
-    await tester.tap(find.text('Use them from now on'));
-    await tester.pumpAndSettle();
-    final button = find.widgetWithText(FilledButton, 'Use them');
-    expect(tester.widget<FilledButton>(button).onPressed, isNull, reason: 'nothing to do');
-    await tester.tap(find.text('Use them from now on'));
-    await tester.pumpAndSettle();
-    await tester.tap(button);
-    await tester.pumpAndSettle();
+    expect(find.text('On this phone'), findsOneWidget);
+    await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
     expect(calls.saved, [(use.find.single.file!.name, model.file!.name, list.file.name)]);
   });
 
   testWidgets('mammals and birds: the new name list and a large download', (tester) async {
     await _pump(tester, _use('mammals_birds'), const {}, _Calls());
-    expect(find.text('MegaDetector V6'), findsOneWidget);
-    expect(find.textContaining('Name list: Mammals and birds of the world'), findsOneWidget);
-    expect(find.textContaining('use Wi-Fi'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
+    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
+    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
+    expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
+    expect(find.text('A large download: use Wi-Fi.'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
   });
 
   testWidgets('a file not online yet: the plain message, nothing saved', (tester) async {
-    final calls = _Calls()..failWith = Exception('Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.');
+    final calls = _Calls()
+      ..failWith = Exception(
+        'Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.',
+      );
     await _pump(tester, _use('mammals_birds'), const {}, calls);
-    await tester.tap(find.textContaining('Download ('));
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Download')));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.textContaining('Download and use ('));
+    await _tap(tester, _inDialog('Download'));
     expect(find.textContaining('The file may not be online yet'), findsOneWidget);
     expect(calls.saved, isEmpty);
   });
@@ -171,5 +177,27 @@ void main() {
     expect(p.getString(kIdentifyModelPref), 'bioclip-2_image_fp16_4d.tflite');
     expect(p.getString(kIdentifyPackPref), 'bioclip-2_mammals-birds-world_v1.fpack');
     expect(p.getString(kAnalysisModelPref), isNull, reason: 'no detection model given');
+  });
+
+  test('"Not now" clears Identify\'s choice; a model with its list sets it', () async {
+    SharedPreferences.setMockInitialValues({kIdentifyModelPref: 'old.tflite', kIdentifyPackPref: 'old.fpack'});
+    await saveNamingChoice(null, null);
+    final p = await SharedPreferences.getInstance();
+    expect((p.getString(kIdentifyModelPref), p.getString(kIdentifyPackPref)), (null, null));
+    await saveNamingChoice('insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack');
+    expect(p.getString(kIdentifyModelPref), 'insectdct-cls-v7_eff2s_fp16.tflite');
+  });
+
+  test('currentModelChoice: the saved files, each only while it is on the phone', () async {
+    SharedPreferences.setMockInitialValues({
+      kIdentifyModelPref: 'bioclip-2_image_fp16_4d.tflite',
+      kIdentifyPackPref: 'bioclip-2_mammals-birds-world_v1.fpack',
+    });
+    var c = await currentModelChoice({'bioclip-2_image_fp16_4d.tflite', 'bioclip-2_mammals-birds-world_v1.fpack'});
+    expect(c.detector, isNull, reason: 'no camera model saved');
+    expect(c.idModel, 'bioclip-2_image_fp16_4d.tflite');
+    expect(c.nameList, 'bioclip-2_mammals-birds-world_v1.fpack');
+    c = await currentModelChoice({'bioclip-2_image_fp16_4d.tflite'});
+    expect((c.idModel, c.nameList), (null, null), reason: 'the list was deleted');
   });
 }

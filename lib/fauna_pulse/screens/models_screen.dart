@@ -42,6 +42,13 @@
 // that FaunaPulse only adapted them for phones, that each keeps its creators'
 // licence, and asks to cite the original model from its source (a link in the
 // card; the list has no citations, which change and which the authors keep).
+//
+// Round 279 (owner, after deleting every model one by one): "Delete all
+// detection models…" and "Delete all identification models…" under their
+// lists, pressing and holding a file selects several to delete at once (as on
+// the Sessions screen), and deleting an identification model deletes its
+// name lists too (not only a classifier's class list), except a list another
+// model on the phone can still use.
 
 import 'dart:io';
 
@@ -49,6 +56,7 @@ import 'package:file_picker/file_picker.dart' show FilePickerStatus;
 import 'package:flutter/material.dart';
 
 import '../identification/identification_assets.dart';
+import '../identification/identification_store.dart' show stemOf;
 import '../identification/label_pack.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
@@ -218,12 +226,18 @@ typedef ModelFilesImporter =
       void Function(FilePickerStatus)? onFileLoading,
     });
 
+/// Deletes model files by path and returns the names it removed (any kind:
+/// they are plain files in the app's folders).
+Future<List<String>> deleteModelFiles(List<String> paths) =>
+    IdentificationAssets.deleteFiles([for (final p in paths) File(p)]);
+
 class ModelsScreen extends StatefulWidget {
   final Future<ModelsInventory> Function() scan;
   final CatalogueFileDownloader download;
   final ModelFilesImporter importFiles;
   final LinkDownloader linkDownload;
   final Future<List<ModelFileKind>> Function(String name) onPhoneAs;
+  final Future<List<String>> Function(List<String> paths) deleteFiles;
 
   const ModelsScreen({
     super.key,
@@ -232,6 +246,7 @@ class ModelsScreen extends StatefulWidget {
     this.importFiles = ModelImport.pickAndImport,
     this.linkDownload = ModelImport.download,
     this.onPhoneAs = ModelImport.onPhoneAs,
+    this.deleteFiles = deleteModelFiles,
   });
 
   @override
@@ -269,6 +284,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// Shown while an import copies files; buttons are disabled meanwhile.
   String? _busy;
 
+  /// Paths of the files selected to delete; null when not selecting.
+  Set<String>? _selected;
+
   @override
   void initState() {
     super.initState();
@@ -277,7 +295,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   Future<void> _reload() async {
     final inv = await widget.scan();
-    if (mounted) setState(() => _inv = inv);
+    if (!mounted) return;
+    setState(() {
+      _inv = inv;
+      // Deleted files leave the selection.
+      final paths = _deletablePaths(inv).toSet();
+      _selected?.removeWhere((p) => !paths.contains(p));
+    });
   }
 
   void _snack(String text) {
@@ -417,7 +441,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete $name?'),
-        content: Text(body),
+        content: SingleChildScrollView(child: Text(body)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -433,54 +457,101 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return ok ?? false;
   }
 
-  Future<void> _deleteDetector(ModelEntry m) async {
-    final last = (_inv?.detectors.length ?? 0) <= 1;
-    if (!await _confirmDelete(
-      m.name,
-      'The file is removed from this phone. Sessions that used it keep their results.'
-      '${last ? '\n\nIt is the only detection model here. Without one, live detection and "Find '
-                'animals in photos / videos" cannot run, and identification has no boxes to name. '
-                'Time-lapse and motion capture still work.' : ''}',
-    )) {
-      return;
+  /// The files the user can delete: imported detection models, or
+  /// identification models and name lists, or both (null).
+  static List<String> _deletablePaths(ModelsInventory inv, {bool? identification}) => [
+    if (identification != true)
+      for (final m in inv.detectors)
+        if (m.source == ModelSource.imported) m.id,
+    if (identification != false)
+      for (final f in [...inv.idModels, ...inv.nameLists]) f.path,
+  ];
+
+  /// What deleting [paths] removes, in list order: each identification model
+  /// takes its name lists along (round 279), except a list another model
+  /// that stays can still use.
+  static List<String> _withLists(Set<String> paths, ModelsInventory inv) {
+    final gone = {...paths};
+    final staying = [
+      for (final m in inv.idModels)
+        if (!paths.contains(m.path)) m,
+    ];
+    for (final m in inv.idModels.where((m) => paths.contains(m.path))) {
+      for (final l in inv.listsOf(m)) {
+        if (!staying.any((s) => IdentificationAssets.listBelongsTo(l, inv.headers[l.path], s))) gone.add(l.path);
+      }
     }
-    await ModelCatalog.deleteImported(m.id);
-    if (!mounted) return;
-    _snack('Deleted ${m.name}.');
-    await _reload();
+    return [
+      for (final p in _deletablePaths(inv))
+        if (gone.contains(p)) p,
+    ];
   }
 
-  Future<void> _deleteIdentification(File f, {required bool isModel}) async {
-    final lists = isModel
-        ? IdentificationAssets.classListsOf(f, _inv?.nameLists ?? const [])
-        : const <File>[];
-    final also = lists.isEmpty
-        ? ''
-        : ' Its class list ${lists.map(_nameOf).join(', ')} is deleted with it.';
-    // A model left without any name list cannot identify (round 271).
+  /// Asks, then deletes [paths] with the name lists of the identification
+  /// models among them; says what stops working (round 271). True when
+  /// deleted.
+  Future<bool> _delete(Set<String> paths, {String? title}) async {
     final inv = _inv;
-    final orphaned = isModel || inv == null
-        ? const <File>[]
-        : [
-            for (final m in inv.idModels)
-              if (inv.listsOf(m).length == 1 && inv.listsOf(m).single.path == f.path) m,
-          ];
-    final warn = orphaned.isEmpty
-        ? ''
-        : '\n\nIt is the only name list of ${orphaned.map(_nameOf).join(', ')}, which then '
-              'cannot identify until another one is added.';
-    if (!await _confirmDelete(
-      _nameOf(f),
-      'The file is removed from this phone. Identification results already made keep their '
-      'answers.$also$warn',
-    )) {
-      return;
-    }
-    final deleted = await IdentificationAssets.deleteFiles([f, ...lists]);
-    if (!mounted) return;
-    _snack('Deleted ${deleted.join(', ')}.');
+    if (inv == null || paths.isEmpty) return false;
+    final all = _withLists(paths, inv);
+    final gone = all.toSet();
+    final names = [for (final p in all) _nameOfPath(p)];
+    final single = paths.length == 1;
+    final withModel = [
+      for (final p in all)
+        if (!paths.contains(p)) _nameOfPath(p),
+    ];
+    final detectorsGone = inv.detectors.where((m) => gone.contains(m.id)).length;
+    // A model left without any name list cannot identify (round 271).
+    final orphaned = [
+      for (final m in inv.idModels)
+        if (!gone.contains(m.path) && inv.listsOf(m).isNotEmpty && inv.listsOf(m).every((l) => gone.contains(l.path)))
+          _nameOf(m),
+    ];
+    String listed(List<String> n) =>
+        (n.length <= 8 ? n : [...n.take(7), 'and ${n.length - 7} more']).map((x) => '• $x').join('\n');
+    final body = [
+      '${names.length == 1 ? 'The file is' : 'These files are'} removed from this phone. Sessions and '
+          'identification results already made keep their results.',
+      if (!single) listed(names),
+      if (withModel.isNotEmpty)
+        single
+            ? withModel.every((l) => stemOf(l) == stemOf(names.first))
+                  ? 'Its class list ${withModel.join(', ')} is deleted with it.'
+                  : 'Its name ${withModel.length == 1 ? 'list ${withModel.single} is' : 'lists ${withModel.join(', ')} are'} '
+                        'deleted with it: they work only with this model.'
+            : 'Name lists are deleted with their model.',
+      if (detectorsGone > 0 && detectorsGone == inv.detectors.length)
+        '${detectorsGone == 1 ? 'It is the only detection model here.' : 'No detection model is left then.'} '
+            'Without one, live detection and "Find animals in photos / videos" cannot run, and identification '
+            'has no boxes to name. Time-lapse and motion capture still work.',
+      if (orphaned.isNotEmpty)
+        single
+            ? 'It is the only name list of ${orphaned.join(', ')}, which then cannot identify until another one '
+                  'is added.'
+            : '${orphaned.join(', ')} then ${orphaned.length == 1 ? 'has' : 'have'} no name list and cannot '
+                  'identify until another one is added.',
+    ].join('\n\n');
+    if (!await _confirmDelete(title ?? (single ? names.first : '${names.length} files'), body)) return false;
+    final deleted = await widget.deleteFiles(all);
+    if (!mounted) return true;
+    _snack(deleted.length == 1 ? 'Deleted ${deleted.single}.' : 'Deleted ${deleted.length} files.');
     await _reload();
+    return true;
   }
+
+  void _toggle(String path) => setState(() {
+    final sel = _selected ??= {};
+    if (!sel.remove(path)) sel.add(path);
+  });
+
+  void _endSelecting() => setState(() => _selected = null);
+
+  Future<void> _deleteSelected() async {
+    if (await _delete({...?_selected}) && mounted) _endSelecting();
+  }
+
+  static String _nameOfPath(String p) => p.split('/').last;
 
   static String _nameOf(File f) => f.path.split('/').last;
 
@@ -658,28 +729,58 @@ class _ModelsScreenState extends State<ModelsScreen> {
   ]);
 
   /// A file on the phone: its name (round 275, owner: the file name for
-  /// every file, no catalogue title), ⓘ and delete.
-  Widget _tile(IconData icon, String name, VoidCallback onInfo, VoidCallback? onDelete, {String? warning}) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    dense: true,
-    leading: Icon(icon, color: Colors.white70),
-    minLeadingWidth: 24,
-    title: Text(name),
-    subtitle: warning == null ? null : Text(warning, style: const TextStyle(color: Colors.amber, fontSize: 12.5)),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _infoButton(onInfo),
-        if (onDelete != null)
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 20),
-            tooltip: 'Delete',
-            visualDensity: VisualDensity.compact,
-            onPressed: _busy == null ? onDelete : null,
-          ),
-      ],
-    ),
-  );
+  /// every file, no catalogue title), ⓘ and delete. A file the user can
+  /// delete ([path]) is selected by pressing and holding it (round 279);
+  /// while selecting, a box replaces the icon and the buttons.
+  Widget _tile(IconData icon, String name, VoidCallback onInfo, {String? path, String? warning}) {
+    final sel = _selected;
+    final selecting = sel != null && path != null;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      selected: selecting && sel.contains(path),
+      selectedTileColor: Colors.lightBlueAccent.withValues(alpha: 0.12),
+      leading: selecting
+          ? Checkbox(value: sel.contains(path), onChanged: (_) => _toggle(path))
+          : Icon(icon, color: Colors.white70),
+      minLeadingWidth: 24,
+      title: Text(name, style: selecting ? const TextStyle(color: Colors.white) : null),
+      subtitle: warning == null ? null : Text(warning, style: const TextStyle(color: Colors.amber, fontSize: 12.5)),
+      onTap: selecting ? () => _toggle(path) : null,
+      onLongPress: path == null || _busy != null ? null : () => _toggle(path),
+      trailing: sel != null
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _infoButton(onInfo),
+                if (path != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    tooltip: 'Delete',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _busy == null ? () => _delete({path}) : null,
+                  ),
+              ],
+            ),
+    );
+  }
+
+  /// "Delete all …" under a list of two files or more, with how to select
+  /// some of them.
+  List<Widget> _deleteAll(String label, String title, List<String> paths) => [
+    if (paths.length >= 2 && _selected == null) ...[
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _busy == null ? () => _delete(paths.toSet(), title: title) : null,
+          icon: Icon(Icons.delete_sweep_outlined, size: 18, color: Colors.red.shade300),
+          label: Text(label, style: TextStyle(color: Colors.red.shade300)),
+        ),
+      ),
+      const Text('Or press and hold a file to select several.', style: helperTextStyle),
+    ],
+  ];
 
   Widget _offerTile(IconData? icon, String title, String details, VoidCallback? onInfo, VoidCallback onGet) => ListTile(
     contentPadding: EdgeInsets.only(left: icon == null ? 40 : 0),
@@ -703,7 +804,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       _detectionIcon,
       m.name,
       () => _detectorCard(m, inv),
-      m.source == ModelSource.imported ? () => _deleteDetector(m) : null,
+      path: m.source == ModelSource.imported ? m.id : null,
       warning: wrong == null ? null : _wrongKindText(wrong, ModelFileKind.detection),
     );
   }
@@ -717,7 +818,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         _identificationIcon,
         _nameOf(f),
         () => _idModelCard(f, inv),
-        () => _deleteIdentification(f, isModel: true),
+        path: f.path,
         warning: wrong == null ? null : _wrongKindText(wrong, ModelFileKind.identification),
       ),
       for (final l in lists) Padding(padding: const EdgeInsets.only(left: 32), child: _nameListRow(l, inv)),
@@ -733,7 +834,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   Widget _nameListRow(File f, ModelsInventory inv) =>
-      _tile(Icons.list_alt, _nameOf(f), () => _nameListCard(f, inv), () => _deleteIdentification(f, isModel: false));
+      _tile(Icons.list_alt, _nameOf(f), () => _nameListCard(f, inv), path: f.path);
 
   static List<ModelDownload> _byTitle(Iterable<ModelDownload> offers) =>
       offers.toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
@@ -805,94 +906,136 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return rows.isEmpty ? const [] : [_subheading('Available to download'), ...rows];
   }
 
+  /// While selecting: how many, Select all, Delete (as on the Sessions
+  /// screen).
+  PreferredSizeWidget _appBar(ModelsInventory? inv) {
+    final sel = _selected;
+    if (sel == null || inv == null) return AppBar(title: const Text('Download & import models'));
+    final all = _deletablePaths(inv);
+    final allSelected = all.isNotEmpty && all.every(sel.contains);
+    return AppBar(
+      leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Stop selecting', onPressed: _endSelecting),
+      title: Text('${sel.length} selected'),
+      actions: [
+        IconButton(
+          icon: Icon(allSelected ? Icons.deselect : Icons.select_all),
+          tooltip: allSelected ? 'Select none' : 'Select all',
+          onPressed: () => setState(() => allSelected ? sel.clear() : sel.addAll(all)),
+        ),
+        IconButton(
+          icon: Icon(Icons.delete_outline, color: sel.isEmpty ? null : Colors.red.shade300),
+          tooltip: 'Delete the selected files',
+          onPressed: sel.isEmpty || _busy != null ? null : _deleteSelected,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final inv = _inv;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Download & import models')),
-      body: SafeArea(
-        child: inv == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  const Text(
-                    _intro,
-                    style: TextStyle(fontSize: 13.5, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 10),
-                  const _CreditsNote(_credits),
-                  if (inv.storage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(inv.storage, style: helperTextStyle),
+    return PopScope(
+      // Back ends the selection first, as in other Android apps.
+      canPop: _selected == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _endSelecting();
+      },
+      child: Scaffold(
+        appBar: _appBar(inv),
+        body: SafeArea(
+          child: inv == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    const Text(
+                      _intro,
+                      style: TextStyle(fontSize: 13.5, color: Colors.white70),
                     ),
-                  if (_busy != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Row(
-                        children: [
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(child: Text(_busy!)),
-                        ],
+                    const SizedBox(height: 10),
+                    const _CreditsNote(_credits),
+                    if (inv.storage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(inv.storage, style: helperTextStyle),
                       ),
+                    if (_busy != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          children: [
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(_busy!)),
+                          ],
+                        ),
+                      ),
+                    _section(
+                      'Detection models',
+                      'Find animals and draw a box around each one',
                     ),
-                  _section(
-                    'Detection models',
-                    'Find animals and draw a box around each one',
-                  ),
-                  _subheading('On this phone'),
-                  if (inv.detectors.isEmpty)
-                    const Text(
-                      'None yet: live detection and "Find animals in photos / videos" need one.',
-                      style: helperTextStyle,
+                    _subheading('On this phone'),
+                    if (inv.detectors.isEmpty)
+                      const Text(
+                        'None yet: live detection and "Find animals in photos / videos" need one.',
+                        style: helperTextStyle,
+                      ),
+                    for (final m in inv.detectors) _detectorTile(m, inv),
+                    ..._deleteAll(
+                      'Delete all detection models…',
+                      'all detection models',
+                      _deletablePaths(inv, identification: false),
                     ),
-                  for (final m in inv.detectors) _detectorTile(m, inv),
-                  ..._detectorOffers(inv),
-                  _section(
-                    'Identification models',
-                    'Name what is inside each box',
-                  ),
-                  _subheading('On this phone'),
-                  if (inv.idModels.isEmpty)
-                    const Text(
-                      'None yet: "Identify organisms" needs one.',
-                      style: helperTextStyle,
+                    ..._detectorOffers(inv),
+                    _section(
+                      'Identification models',
+                      'Name what is inside each box',
                     ),
-                  if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
-                  for (final f in inv.idModels) ..._idModelGroup(f, inv),
-                  if (inv.orphanLists.isNotEmpty) ...[
-                    _subheading('Name lists without their model'),
-                    const Text(
-                      'Their model is not on this phone, so they cannot be used yet.',
-                      style: TextStyle(color: Colors.amber, fontSize: 13),
+                    _subheading('On this phone'),
+                    if (inv.idModels.isEmpty)
+                      const Text(
+                        'None yet: "Identify organisms" needs one.',
+                        style: helperTextStyle,
+                      ),
+                    if (inv.idModels.isNotEmpty) const Text(_namesHelp, style: helperTextStyle),
+                    for (final f in inv.idModels) ..._idModelGroup(f, inv),
+                    if (inv.orphanLists.isNotEmpty) ...[
+                      _subheading('Name lists without their model'),
+                      const Text(
+                        'Their model is not on this phone, so they cannot be used yet.',
+                        style: TextStyle(color: Colors.amber, fontSize: 13),
+                      ),
+                      for (final f in inv.orphanLists) _nameListRow(f, inv),
+                    ],
+                    ..._deleteAll(
+                      'Delete all identification models…',
+                      'all identification models and name lists',
+                      _deletablePaths(inv, identification: true),
                     ),
-                    for (final f in inv.orphanLists) _nameListRow(f, inv),
+                    ..._identificationOffers(inv),
+                    _section('Your own models', _ownHelp),
+                    const SizedBox(height: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: _busy == null ? _import : null,
+                      icon: const Icon(Icons.file_upload, size: 18),
+                      label: const Text('Import model files…'),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4, bottom: 12),
+                      child: Text(_selectAllHint, style: helperTextStyle),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: _busy == null ? _downloadLink : null,
+                      icon: const Icon(Icons.link, size: 18),
+                      label: const Text('Download from a link…'),
+                    ),
                   ],
-                  ..._identificationOffers(inv),
-                  _section('Your own models', _ownHelp),
-                  const SizedBox(height: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: _busy == null ? _import : null,
-                    icon: const Icon(Icons.file_upload, size: 18),
-                    label: const Text('Import model files…'),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4, bottom: 12),
-                    child: Text(_selectAllHint, style: helperTextStyle),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: _busy == null ? _downloadLink : null,
-                    icon: const Icon(Icons.link, size: 18),
-                    label: const Text('Download from a link…'),
-                  ),
-                ],
-              ),
+                ),
+        ),
       ),
     );
   }

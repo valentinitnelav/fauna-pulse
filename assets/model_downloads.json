@@ -193,7 +193,7 @@
       "id": "pollinators",
       "icon": "pollinators",
       "title": "Pollinators on flowers",
-      "setup": "Fix the phone on a tripod or a pole, close to one flower or a group of flowers, and put the square over them.",
+      "setup": "Fix the phone on a tripod, 15 to 20 cm above a flower or a group of flowers, so insects can fly in and out. On the camera screen, move the yellow square over the flowers: FaunaPulse looks for animals only inside it. If the insects look very small on the screen, bring the phone closer.",
       "find": [
         "insectdct-v8s",
         "flatbug-n"
@@ -216,7 +216,7 @@
       "id": "flat_surface",
       "icon": "flat_surface",
       "title": "Insects on a flat surface",
-      "setup": "Fix the phone above a flat surface where insects land or walk (for example a coloured platform), looking straight down.",
+      "setup": "Fix the phone on a tripod above a flat surface where insects land or walk (for example a coloured platform), looking straight down. On the camera screen, move the yellow square over the surface: FaunaPulse looks for animals only inside it.",
       "find": [
         "flatbug-n",
         "insectdct-v8s"
@@ -239,7 +239,7 @@
       "id": "mammals_birds",
       "icon": "mammals_birds",
       "title": "Mammals and birds",
-      "setup": "Point the phone at a feeding site, a path or a nest entrance, and make the square large.",
+      "setup": "Fix the phone (on a tripod or a tree) facing a feeding site, a path or a nest entrance. On the camera screen, make the yellow square large, over the place the animals visit: FaunaPulse looks for animals only inside it.",
       "find": [
         "mdv6-yolov10c"
       ],
