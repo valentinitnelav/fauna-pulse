@@ -3309,6 +3309,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (custom is Map)
         for (final e in custom.entries)
           if (e.key != 'Notes' && e.value != null) _stat('${e.key}', text(e.value as Object)),
+      // Round 302: the site photos moved into the session at Start.
+      if (f['site_photos'] case final List photos when photos.isNotEmpty)
+        _stat('Site photos', '${photos.length} (folder site_photos)'),
     ];
   }
 

@@ -347,7 +347,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Derived results stay out of `session.jsonl`:** post-hoc files (`post_detections.jsonl`,
   `video_detections.jsonl`, `post_tracks.jsonl`, identification files) join on file names and
   track IDs. Exceptions appended after the end: `session_renamed`, `video_cleanup`.
-- **Location:** one GPS fix per session (`LocationFixTracker`: done at ≤ 15 m or 60 s), or manual
+- **Location:** one GPS fix per session (`LocationFixTracker`: done at the user's goal, default
+  `kDefaultGpsGoalM` 10 m, 0 = whole time, or `kGpsMaxWaitMs` 3 min, r302), or manual
   / previous; `redactLocation` strips it (and `field.location`) from problem reports.
 - **Before you record (r298):** REC (start) shows `BeforeRecordSheet` while the pref is on
   (default): field notes + position, `planSentence`, phone tips; Change opens Field notes or
@@ -358,6 +359,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Field notes (r297):** the pin button opens `FieldNotesScreen` (position first, via the
   location dialog; fields saved as typed); the start record gets `field` (`FieldNotes.recordBlock`,
   phone maker/model filled from `device` in `SessionRecorder._withPhone`); summary Overview rows.
+  Site photos (r302, `session/site_photos.dart`): taken with the camera app into
+  `site_photos_waiting/`, listed in `field.site_photos` and moved into `<session>/site_photos/`
+  at Start; `site_photos_about` cleared after each Start.
 - **Problem reports** (Menu → Report a problem; built in `error_reports/`, the only folder the
   report FileProvider serves): one `.txt`, or one `report_<stamp>.zip` when
   screenshots or session samples ride along (sharing several files made WhatsApp drop all).

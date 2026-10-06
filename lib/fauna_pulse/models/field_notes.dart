@@ -38,6 +38,8 @@ const kFieldNoteSpecs = <FieldNoteSpec>[
   FieldNoteSpec('camera_height_m', 'Camera height (m)', 'above the ground', FieldNoteKind.number),
   FieldNoteSpec('detection_distance_m', 'Distance to the flower (m)', 'camera to flower', FieldNoteKind.number),
   FieldNoteSpec('notes', 'Notes', 'anything else worth knowing later', FieldNoteKind.notes),
+  // Round 302: shown with the site photos on the page; cleared after each Start (FaunaLapse).
+  FieldNoteSpec('site_photos_about', 'About the site photos', 'what they show'),
 ];
 
 /// Longest text (characters) for a one-line field and for the notes.
@@ -47,8 +49,8 @@ const kFieldNoteNotesMax = 5000;
 /// The largest distance or height accepted (m).
 const kFieldNoteMaxMeters = 100.0;
 
-/// FaunaPulse's GPS stops at this uncertainty ([LocationFixTracker]); recorded as the goal.
-const kFieldNoteGpsGoalM = 15.0;
+/// The GPS goal's range (m): 0 = search the whole time ([kGpsMaxWaitMs]).
+const kGpsGoalMaxM = 1000;
 
 /// Round 301: the user's own fields, with FaunaLapse's seven types and their record tags.
 enum CustomFieldType {
@@ -144,6 +146,23 @@ class FieldNotes {
 
   FieldNotes withCustom(List<CustomField> c) => FieldNotes(values, List.unmodifiable(c));
 
+  /// Round 302 (FaunaLapse): the GPS search stops at this uncertainty (m); 0 = whole time.
+  int get gpsGoalM => (values['gps_goal_m'] as num?)?.toInt() ?? kDefaultGpsGoalM;
+
+  /// A copy with the GPS goal from what the user typed; null when not a whole number in range.
+  FieldNotes? withGpsGoal(String text) {
+    final t = text.trim();
+    final next = Map<String, Object>.of(values);
+    if (t.isEmpty) {
+      next.remove('gps_goal_m');
+      return FieldNotes(next, custom);
+    }
+    final n = int.tryParse(t);
+    if (n == null || n < 0 || n > kGpsGoalMaxM) return null;
+    next['gps_goal_m'] = n;
+    return FieldNotes(next, custom);
+  }
+
   /// A copy with the value of the own field [name]; null when a number is not a number.
   FieldNotes? withCustomValue(String name, String? value) {
     final v = value?.trim();
@@ -200,7 +219,8 @@ class FieldNotes {
   /// A short line for summaries: the filled one-line fields, "Label: value".
   String get summary => [
     for (final s in kFieldNoteSpecs)
-      if (s.kind != FieldNoteKind.notes && values[s.key] != null) '${s.label}: ${textOf(s.key)}',
+      if (s.kind != FieldNoteKind.notes && s.key != 'site_photos_about' && values[s.key] != null)
+        '${s.label}: ${textOf(s.key)}',
     for (final f in custom)
       if (f.type != CustomFieldType.notes && f.recordValue != null) '${f.name}: ${f.value}',
   ].join(' · ');
@@ -221,6 +241,7 @@ class FieldNotes {
         out[s.key] = v;
       }
     }
+    if (j['gps_goal_m'] is num) out['gps_goal_m'] = (j['gps_goal_m'] as num).toInt();
     final custom = [
       for (final c in (j['custom_fields'] as List?) ?? const [])
         if (CustomField.fromJson(c) case final CustomField f) f,
@@ -248,12 +269,13 @@ class FieldNotes {
   }
 
   /// The start record's `field` block, with FaunaLapse's keys in its order. FaunaPulse has
-  /// no phone ID or site photos yet (null or empty). `custom` holds the user's own fields (round
+  /// no phone ID (null); [sitePhotos] are the names in the session's `site_photos/` (r302). `custom` holds the user's own fields (round
   /// 301), then the notes as "Notes", where a FaunaLapse user would add them as a custom field.
   Map<String, dynamic> recordBlock({
     String? phoneMaker,
     String? phoneModel,
     SessionLocation? location,
+    List<String> sitePhotos = const [],
   }) {
     final distance = values['detection_distance_m'];
     return {
@@ -265,18 +287,18 @@ class FieldNotes {
       'camera_height_m': values['camera_height_m'],
       'detection_distance_m': distance,
       'detection_distance_source': distance == null ? null : 'typed',
-      'site_photos_about': null,
+      'site_photos_about': values['site_photos_about'],
       'custom': {
         for (final f in custom) f.name: f.recordValue,
         if (values['notes'] != null) 'Notes': values['notes'],
       },
-      'location': location == null ? null : locationBlock(location),
-      'site_photos': const <String>[],
+      'location': location == null ? null : locationBlock(location, goalM: gpsGoalM),
+      'site_photos': sitePhotos,
     };
   }
 
   /// A session location in FaunaLapse's `field.location` form.
-  static Map<String, dynamic> locationBlock(SessionLocation l) => {
+  static Map<String, dynamic> locationBlock(SessionLocation l, {int goalM = kDefaultGpsGoalM}) => {
     'latitude': double.parse(l.latitude.toStringAsFixed(6)),
     'longitude': double.parse(l.longitude.toStringAsFixed(6)),
     'datum': 'WGS 84',
@@ -284,7 +306,7 @@ class FieldNotes {
     'source': l.source == 'manual' ? 'typed' : l.source,
     'coordinate_uncertainty_m': l.accuracyM == null ? null : double.parse(l.accuracyM!.toStringAsFixed(1)),
     'satellites_used': null,
-    'uncertainty_goal_m': l.source == 'gps' ? kFieldNoteGpsGoalM : null,
+    'uncertainty_goal_m': l.source == 'gps' ? goalM : null,
     'fix_time': l.source == 'manual' || l.fixTimeMs <= 0
         ? null
         : DateTime.fromMillisecondsSinceEpoch(l.fixTimeMs).toIso8601String(),

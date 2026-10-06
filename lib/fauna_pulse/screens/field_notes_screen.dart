@@ -6,12 +6,14 @@
 // typed and stay until the user changes them.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/field_notes.dart';
 import '../session/location_fix.dart';
+import '../session/site_photos.dart';
 import '../widgets/dialog_title.dart';
 import '../widgets/home_button.dart';
 import '../widgets/setting_help.dart';
@@ -22,6 +24,8 @@ class FieldNotesScreen extends StatefulWidget {
     required this.location,
     required this.searching,
     required this.onChangePosition,
+    this.loadSitePhotos = waitingSitePhotos,
+    this.takePhoto = takeSitePhoto,
   });
 
   /// The session position the camera screen holds (GPS, typed or previous).
@@ -30,6 +34,10 @@ class FieldNotesScreen extends StatefulWidget {
 
   /// Opens the position window (search again, type it, use the last one).
   final Future<void> Function() onChangePosition;
+
+  /// Round 302: the waiting site photos and the camera-app call (replaced in tests).
+  final Future<List<File>> Function({Directory? dir}) loadSitePhotos;
+  final Future<File?> Function() takePhoto;
 
   @override
   State<FieldNotesScreen> createState() => _FieldNotesScreenState();
@@ -43,6 +51,10 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
   // Round 301: the user's own fields (text, notes and number inputs), by name.
   final Map<String, TextEditingController> _customControllers = {};
   final Map<String, String?> _customErrors = {};
+  // Round 302: GPS goal input and the site photos waiting for the next Start.
+  late final TextEditingController _goal = TextEditingController();
+  String? _goalError;
+  List<File> _sitePhotos = const [];
 
   @override
   void initState() {
@@ -58,13 +70,25 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
         for (final f in n.custom) {
           _customControllers[f.name] = TextEditingController(text: f.value ?? '');
         }
+        _goal.text = '${n.gpsGoalM}';
       });
     });
+    _reloadSitePhotos();
+  }
+
+  Future<void> _reloadSitePhotos() async {
+    List<File> files;
+    try {
+      files = await widget.loadSitePhotos();
+    } catch (_) {
+      files = const [];
+    }
+    if (mounted) setState(() => _sitePhotos = files);
   }
 
   @override
   void dispose() {
-    for (final c in [..._controllers.values, ..._customControllers.values]) {
+    for (final c in [..._controllers.values, ..._customControllers.values, _goal]) {
       c.dispose();
     }
     super.dispose();
@@ -102,7 +126,10 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
                   const SizedBox(height: 12),
                   _positionSection(),
                   const Divider(height: 32, color: Colors.white24),
-                  for (final s in kFieldNoteSpecs) _field(s),
+                  for (final s in kFieldNoteSpecs)
+                    if (s.key != 'site_photos_about') _field(s),
+                  const Divider(height: 32, color: Colors.white24),
+                  ..._sitePhotoSection(),
                   const Divider(height: 32, color: Colors.white24),
                   ..._customSection(),
                 ],
@@ -143,6 +170,8 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
                   onPressed: widget.onChangePosition,
                 ),
               ),
+              const SizedBox(height: 12),
+              _goalField(),
             ],
           );
         },
@@ -352,6 +381,123 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
     final next = _notes.withCustom([..._notes.custom, f]);
     setState(() => _notes = next);
     unawaited(next.save());
+  }
+
+  // --- Round 302: GPS goal and site photos (ideas from FaunaLapse's card 2) ---
+
+  Widget _goalField() {
+    final goal = int.tryParse(_goal.text.trim());
+    final String? note;
+    if (goal == 0) {
+      note = '0 m: the search always runs the full 3 min and keeps the best position.';
+    } else if (goal != null && goal < 5) {
+      note = 'Under 5 m is often not reached: the search may then run the full 3 min and keep the best position.';
+    } else {
+      note = null;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _goal,
+          keyboardType: TextInputType.number,
+          onChanged: (t) {
+            final next = _notes.withGpsGoal(t);
+            setState(() => _goalError = next == null ? 'Use a whole number from 0 to $kGpsGoalMaxM m.' : null);
+            if (next == null) return;
+            _notes = next;
+            unawaited(next.save());
+          },
+          decoration: InputDecoration(
+            labelText: 'GPS search stops at (m)',
+            helperText: 'Default $kDefaultGpsGoalM m. The search for the position stops when its uncertainty '
+                'is this small, or after 3 min with the best one found.',
+            helperMaxLines: 3,
+            errorText: _goalError,
+            border: const OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        if (note != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(note, style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _sitePhotoSection() {
+    final about = kFieldNoteSpecs.firstWhere((s) => s.key == 'site_photos_about');
+    return [
+      const HelpLabel(
+        label: 'Site photos',
+        labelStyle: TextStyle(fontWeight: FontWeight.bold),
+        helperText:
+            'A few photos of the whole setup, taken with the phone\'s camera app: the plant, '
+            'the phone on its stand, the surroundings. They help to understand the session '
+            'later. They wait here and move into the session folder when you press Start.',
+      ),
+      const SizedBox(height: 8),
+      Text(
+        _sitePhotos.isEmpty
+            ? 'No site photos yet.'
+            : '${_sitePhotos.length} site photo${_sitePhotos.length == 1 ? '' : 's'}: they move into the session folder at Start.',
+        style: const TextStyle(fontSize: 13, color: Colors.white70),
+      ),
+      if (_sitePhotos.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final f in _sitePhotos)
+              InkWell(
+                onTap: () => _viewSitePhoto(f),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.file(f, width: 72, height: 72, fit: BoxFit.cover, cacheWidth: 216),
+                ),
+              ),
+          ],
+        ),
+      ],
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.photo_camera_outlined, size: 18),
+          label: const Text('Take a site photo'),
+          onPressed: () async {
+            final f = await widget.takePhoto();
+            if (f != null) await _reloadSitePhotos();
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
+      _field(about),
+    ];
+  }
+
+  Future<void> _viewSitePhoto(File f) async {
+    final name = f.uri.pathSegments.last;
+    final delete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Site photo $name', overflow: TextOverflow.ellipsis), onClose: () => Navigator.of(ctx).pop(false)),
+        content: Image.file(f, fit: BoxFit.contain, cacheWidth: 1080),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (delete != true) return;
+    try {
+      await f.delete();
+    } catch (_) {}
+    await _reloadSitePhotos();
   }
 }
 

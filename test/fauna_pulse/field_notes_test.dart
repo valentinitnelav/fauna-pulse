@@ -51,7 +51,7 @@ void main() {
     expect(loc['latitude'], 51.123457);
     expect(loc['datum'], 'WGS 84');
     expect(loc['coordinate_uncertainty_m'], 7.3);
-    expect(loc['uncertainty_goal_m'], kFieldNoteGpsGoalM);
+    expect(loc['uncertainty_goal_m'], kDefaultGpsGoalM);
     final typed = FieldNotes.locationBlock(
       const SessionLocation(latitude: 1, longitude: 2, fixTimeMs: 5, source: 'manual'),
     );

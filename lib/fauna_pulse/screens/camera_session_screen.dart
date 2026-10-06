@@ -41,6 +41,7 @@ import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/screen_idle.dart';
+import '../session/site_photos.dart';
 import '../session/plan_sentence.dart';
 import '../services/phone_settings.dart';
 import '../widgets/before_record_sheet.dart';
@@ -228,7 +229,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         previous: _previousLocation,
         onSearchAgain: () async {
           _locationManuallySet = false;
-          return await _locator?.start(requestPermission: true) ?? false;
+          return await _locator?.start(
+                requestPermission: true,
+                goalM: _fieldNotes.gpsGoalM.toDouble(),
+                maxWaitMs: kGpsMaxWaitMs,
+              ) ??
+              false;
         },
       ),
     );
@@ -651,14 +657,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // the location permission was granted before, so no surprise prompt; the
     // pin button's dialog is the prompting path. Also restore the previous
     // session's location as a one-tap default.
-    // Round 297: the saved field notes go into every start record.
-    FieldNotes.load().then((n) {
-      if (mounted) _fieldNotes = n;
-    });
+    // Round 297: the saved field notes go into every start record. Round 302:
+    // the silent GPS search starts once they are read, with their goal.
     _locator = SessionLocator(onUpdate: _onLocationUpdate);
-    _locator!.start().catchError((Object e) {
-      logSwallowed('gps_autostart', e);
-      return false;
+    FieldNotes.load().then((n) {
+      if (!mounted) return;
+      _fieldNotes = n;
+      _locator?.start(goalM: n.gpsGoalM.toDouble(), maxWaitMs: kGpsMaxWaitMs).catchError((Object e) {
+        logSwallowed('gps_autostart', e);
+        return false;
+      });
     });
     SharedPreferences.getInstance()
         .then((p) {
@@ -1776,6 +1784,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _logWriteError = null;
     // Round 298: the phone settings that matter in the field, for the record.
     final phoneState = await PhoneSettings.read();
+    // Round 302: the site photos waiting for this Start (moved in below).
+    List<String> siteNames;
+    try {
+      siteNames = [for (final f in await waitingSitePhotos()) f.uri.pathSegments.last];
+    } catch (e) {
+      logSwallowed('site_photos_list', e);
+      siteNames = const [];
+    }
     if (!mounted) return;
     await _recorder.start(
       folderName: scheduleSlot == null
@@ -1818,7 +1834,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         if (_locationVN.value != null) 'location': _locationVN.value!.toJson(),
         // Round 297: field notes in FaunaLapse's form (every key, null when
         // empty); phone maker and model are filled from `device`.
-        'field': _fieldNotes.recordBlock(location: _locationVN.value),
+        'field': _fieldNotes.recordBlock(location: _locationVN.value, sitePhotos: siteNames),
         // Round 298: airplane mode, radios, location, Stay awake, battery
         // limits (FaunaLapse's phone_state keys).
         'phone_state': phoneState.toJson(),
@@ -2069,6 +2085,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
     // Round 292: from now on the screen going off no longer stops the camera.
     _pushCameraHold();
+
+    // Round 302 (as in FaunaLapse): the site photos move into this session and
+    // the note about them starts empty for the next one.
+    final sessionDir = _recorder.sessionDir;
+    if (sessionDir != null && siteNames.isNotEmpty) {
+      unawaited(moveSitePhotosInto(sessionDir).catchError((Object e) {
+        logSwallowed('site_photos_move', e);
+        return const <String>[];
+      }));
+    }
+    if (_fieldNotes.values['site_photos_about'] != null) {
+      final cleared = _fieldNotes.withText('site_photos_about', '');
+      if (cleared != null) {
+        _fieldNotes = cleared;
+        unawaited(cleared.save());
+      }
+    }
 
     // The ROI just written into the start record is the debouncer's baseline:
     // a drag that ends back on this geometry logs no roi_update.

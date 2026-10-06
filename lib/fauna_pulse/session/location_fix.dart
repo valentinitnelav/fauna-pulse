@@ -76,6 +76,12 @@ class SessionLocation {
   }
 }
 
+/// Round 302 (FaunaLapse's "Get location"): the search stops once the position is this good
+/// (m, the user's goal on the Field notes page; 0 = use the whole time), or after
+/// [kGpsMaxWaitMs] with the best position found.
+const kDefaultGpsGoalM = 10;
+const kGpsMaxWaitMs = 180000;
+
 /// Pure stability logic for the one-shot acquisition, unit-testable without
 /// the geolocator plugin: feed position updates, it keeps the most accurate
 /// one and says when to stop — accuracy at or under [stableAccuracyM], or
@@ -137,7 +143,11 @@ class SessionLocator {
   /// user is never surprised by a prompt; the dialog's "Search" button passes
   /// true. Returns false when the location service is off or permission is
   /// missing/denied.
-  Future<bool> start({bool requestPermission = false}) async {
+  Future<bool> start({
+    bool requestPermission = false,
+    double goalM = 15,
+    int maxWaitMs = 60000,
+  }) async {
     if (_sub != null) return true;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return false;
@@ -151,6 +161,8 @@ class SessionLocator {
       }
       final tracker = LocationFixTracker(
         startMs: DateTime.now().millisecondsSinceEpoch,
+        stableAccuracyM: goalM,
+        maxWaitMs: maxWaitMs,
       );
       _tracker = tracker;
       _sub =

@@ -24,7 +24,10 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 - **Fill in the field notes** (camera screen, the pin with a pencil): the
   position, who set up, site, plant, camera height and distance, notes, and
   fields of your own (*Add a field*: text, notes, number, date, time, yes or no,
-  or a choice from your list). They are saved with every session until you
+  or a choice from your list), and site photos of the whole setup (*Take a site
+  photo*; they move into the session at Start). *GPS search stops at* sets how
+  accurate the position must be (default 10 m; the search stops after 3 min
+  with the best one). They are saved with every session until you
   change them, in the same form as the FaunaLapse app.
 
 ### Physical setup
