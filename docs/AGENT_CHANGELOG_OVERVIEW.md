@@ -91,7 +91,9 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 
 **perf/** `adaptive_inference_throttle.dart`, `slow_phone_hint.dart`.
 
-**postprocess/** photos: `post_detector.dart`, `photo_keep.dart` (`keepDecisions`), `sahi.dart`,
+**postprocess/** FaunaLapse photo-session import: `faunalapse_import.dart` (r300;
+`parseFaunaLapseLog`, `faunaLapseConfig`, `importFaunaLapseZips[InBackground]`, flow in
+`screens/faunalapse_import_flow.dart`, Sessions ⋮); photos: `post_detector.dart`, `photo_keep.dart` (`keepDecisions`), `sahi.dart`,
 `sahi_profile.dart`, `photo_tracker.dart`; videos: `video_import.dart`, `video_start_time.dart`,
 `video_detector.dart`, `video_tracker.dart`, `video_frame_keeper.dart`, `video_box_timeline.dart`,
 `video_run_samples.dart`, `clip_cleanup.dart`; `track_export.dart`.

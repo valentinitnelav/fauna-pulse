@@ -214,6 +214,12 @@ data up to that point is still valid (see [DATA_GUIDE.md](DATA_GUIDE.md)).
 
 ## 6. Where the files are, and getting them off the phone
 
+**Sessions from FaunaLapse.** The sister app FaunaLapse records time-lapse photos or video on
+any phone, without AI, and lasts long on a battery. To run FaunaPulse's AI on them afterwards,
+copy the zip that FaunaLapse's *Pack* button made of a photo session to this phone, then
+Sessions → ⋮ → *Import a FaunaLapse session…*; for a video session use *Import videos…*.
+
+
 Each session writes to:
 
 ```

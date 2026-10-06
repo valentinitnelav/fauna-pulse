@@ -17,6 +17,7 @@ import '../logging/session_rename.dart';
 import '../widgets/session_tile.dart' show SessionAction;
 import '../widgets/dialog_title.dart';
 import 'analysis_screen.dart';
+import 'faunalapse_import_flow.dart';
 import 'identification_screen.dart';
 import 'session_summary_screen.dart';
 import 'video_analysis_screen.dart';
@@ -52,6 +53,13 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
     final imported = await pickAndImportVideos(context);
     await reloadSessions();
     if (imported != null && mounted) await openVideoAnalysis(imported);
+  }
+
+  /// Round 300: a FaunaLapse photo session (its zips) becomes a session here.
+  Future<void> importFaunaLapse() async {
+    final imported = await pickAndImportFaunaLapse(context);
+    await reloadSessions();
+    if (imported != null && mounted) await openAnalysis(imported);
   }
 
   /// The ⋮ menu of a session row.

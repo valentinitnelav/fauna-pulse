@@ -964,6 +964,27 @@ table(tr$identified_rank)
 aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = length)
 ```
 
+## 8b. Sessions imported from FaunaLapse (round 300+)
+
+Sessions → ⋮ → *Import a FaunaLapse session…* turns the zip file(s) the sister app FaunaLapse's
+*Pack* button made of one photo session into a FaunaPulse time-lapse session:
+`roi_frames/roi_<token>_<date>_<time>.jpg` (the photos, renamed), `site_photos/` (unchanged),
+`faunalapse_session.jsonl` (FaunaLapse's own record, kept as it was) and `session.jsonl`:
+
+* `start_of_session` with `source: "faunalapse"`, `imported_at`, a `config` built from
+  FaunaLapse's settings (time-lapse photos, step, burst, break, saved side, run length), `device`
+  (maker and model from FaunaLapse's `field`), `location` (from `field.location`), FaunaLapse's
+  `field` and `phone_state` blocks unchanged, and `faunalapse` (`folder`, `app_version`,
+  `settings`, `camera_api`). Its `time_ms` is FaunaLapse's start time.
+* per photo a `timelapse_capture` (`jpeg`, `captured_at_ms`, `burst`, `original_name`) and a
+  `capture` (`path: "still"`, `saved_px`, `bytes`), stamped with the photo's own time. Photos
+  FaunaLapse logged with an `error`, or missing from the zips, are left out (`missing_photos`).
+* `end_of_session` at FaunaLapse's end time, `ended_normally` true when FaunaLapse wrote its end
+  record, `faunalapse_reason`, `imported_photos`.
+
+FaunaLapse video sessions are imported with *Import videos…* (§9): their file names
+(`yyyyMMdd_HHmmss_SSS.mp4`) give each clip's start time.
+
 ## 9. Imported videos (`videos/`, `video_detections.jsonl`), round 225+
 
 *Import videos…* (round 227; since round 277 a button on the home screen, also in the Sessions

@@ -24,7 +24,7 @@ import '../widgets/home_button.dart';
 import '../widgets/selection_app_bar.dart';
 import 'session_actions.dart';
 
-enum _MenuAction { select, importVideos, deleteAll }
+enum _MenuAction { select, importVideos, importFaunaLapse, deleteAll }
 
 class SessionsScreen extends StatefulWidget {
   /// Reads the sessions; tests give a temporary folder.
@@ -96,6 +96,8 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
         setState(() => _selected = {});
       case _MenuAction.importVideos:
         await importVideos();
+      case _MenuAction.importFaunaLapse:
+        await importFaunaLapse();
       case _MenuAction.deleteAll:
         await confirmDeleteSessions(List.of(_all ?? const []), total: _all?.length ?? 0);
     }
@@ -151,6 +153,11 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
             const PopupMenuItem(
               value: _MenuAction.importVideos,
               child: _MenuRow(Icons.video_library_outlined, 'Import videos…'),
+            ),
+            // Round 300: photo sessions from the sister app FaunaLapse.
+            const PopupMenuItem(
+              value: _MenuAction.importFaunaLapse,
+              child: _MenuRow(Icons.unarchive_outlined, 'Import a FaunaLapse session…'),
             ),
             const PopupMenuDivider(),
             PopupMenuItem(

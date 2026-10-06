@@ -173,11 +173,14 @@ void main() {
   });
 
   testWidgets('the ⋮ menu: select, import videos, delete all', (tester) async {
+    simulateBottomSystemBar(tester); // 360 px wide: the longest entry must fit
     await _pumpSessions(tester);
     await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
     expect(find.text('Select sessions'), findsOneWidget);
     expect(find.text('Import videos…'), findsOneWidget);
+    expect(find.text('Import a FaunaLapse session…'), findsOneWidget); // round 300
+    expect(tester.takeException(), isNull);
     expect(find.text('Delete all sessions…'), findsOneWidget);
     await tester.tap(find.text('Delete all sessions…'));
     await tester.pumpAndSettle();
