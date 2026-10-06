@@ -1259,6 +1259,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ? null
             : (screenOff is num && screenOff == 0 ? 'never' : '${_numStr(screenOff)} min'),
       );
+      // Round 296: clean stops.
+      final lowBattery = _setting('lowBatteryStopPercent');
+      add(
+        'Stop at battery level',
+        lowBattery == null ? null : (lowBattery is num && lowBattery == 0 ? 'never' : '${_numStr(lowBattery)} %'),
+      );
+      final reserve = _setting('storageReserveMb');
+      add(
+        'Keep free storage',
+        reserve == null ? null : (reserve is num && reserve == 0 ? 'never' : '${_numStr(reserve)} MB'),
+      );
       add('Auto-throttle', _setting('autoThrottle'), na: noAi);
       add(
         'Min inference rate',

@@ -1,5 +1,6 @@
 // Round 293: the Power tab's "Screen off by itself after" field at phone width (360 px):
-// shown at the top, its explanation opens without overflow, and a typed value is kept.
+// shown at the top, its explanation opens without overflow. Round 296: the two clean-stop
+// fields under it.
 
 import 'dart:io';
 
@@ -72,6 +73,21 @@ void main() {
     await tester.tap(find.descendant(of: field, matching: find.byIcon(Icons.info_outline)));
     await tester.pumpAndSettle();
     expect(find.textContaining('0 = never (the default)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Power tab: the clean-stop fields (round 296)', (tester) async {
+    await open(tester, const SessionConfig());
+    await tester.tap(find.text('Power'));
+    await tester.pumpAndSettle();
+    for (final label in ['Stop at battery level', 'Keep free storage']) {
+      expect(find.text(label), findsOneWidget);
+      final field = find.ancestor(of: find.text(label), matching: find.byType(NumericSettingField));
+      await tester.tap(find.descendant(of: field, matching: find.byIcon(Icons.info_outline)));
+      await tester.pumpAndSettle();
+    }
+    expect(find.textContaining('Default 15 %'), findsOneWidget);
+    expect(find.textContaining('Default 200 MB'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

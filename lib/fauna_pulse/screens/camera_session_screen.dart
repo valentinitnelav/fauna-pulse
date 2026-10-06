@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/gestures.dart' show GestureBinding;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,7 @@ import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/screen_idle.dart';
+import '../session/session_guards.dart';
 import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
 import '../tracking/tracker.dart';
@@ -844,6 +846,48 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // (plus free storage, so fill rate is visible in the session data).
     if (_recording) {
       _logger?.logThermal({...reading.toJson(), ...storage.toJson()});
+      await _checkGuards(reading, storage);
+    }
+  }
+
+  // Round 296 (idea from FaunaLapse): stop cleanly before the battery or the
+  // storage runs out (see guardStopReason).
+  bool _guardStopping = false;
+
+  Future<void> _checkGuards(ThermalReading reading, StorageReading storage) async {
+    if (_guardStopping) return;
+    int? level;
+    if (_config.lowBatteryStopPercent > 0 && reading.isPlugged != true && reading.isCharging != true) {
+      try {
+        level = await Battery().batteryLevel;
+      } catch (e) {
+        logSwallowed('guard_battery_level', e);
+      }
+    }
+    final why = guardStopReason(
+      batteryPercent: level,
+      isPlugged: reading.isPlugged,
+      isCharging: reading.isCharging,
+      freeBytes: storage.freeBytes,
+      lowBatteryPercent: _config.lowBatteryStopPercent,
+      storageReserveMb: _config.storageReserveMb,
+    );
+    if (why == null || !_recording || !mounted) return;
+    _guardStopping = true;
+    try {
+      _logger?.logGuardStop({
+        'reason': why,
+        'battery_percent': level,
+        'free_storage_bytes': storage.freeBytes,
+      });
+      _logger?.flushNow();
+      if (_schedule != null) {
+        await _abortSchedule();
+      } else {
+        await _stopAndShowSummary();
+      }
+    } finally {
+      _guardStopping = false;
     }
   }
 

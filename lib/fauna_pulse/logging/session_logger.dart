@@ -267,6 +267,13 @@ class SessionLogger {
   void logScreen(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('screen', payload, at: at);
 
+  /// The recording stopped by itself before the phone ran out of something
+  /// (round 296): `reason` (`low_battery` or `storage_low`), the
+  /// `battery_percent` and `free_storage_bytes` that triggered it. The usual
+  /// `end_of_session` follows.
+  void logGuardStop(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('guard_stop', payload, at: at);
+
   /// A time-lapse camera-parking transition (round 163, perf review E3):
   /// `state` (parked / warming / running / fallback_bound), `reason`
   /// (between_bursts / prewake / late_wake / fresh_frame / wake_timeout /

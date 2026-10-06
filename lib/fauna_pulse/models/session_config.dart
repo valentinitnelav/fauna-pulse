@@ -341,6 +341,17 @@ class SessionConfig {
   final int screenOffAfterMin;
   static const int maximumScreenOffAfterMin = 10;
 
+  /// Round 296 (idea from FaunaLapse): on the phone's own battery (not plugged
+  /// in, not charging) the recording stops cleanly at this battery level, so
+  /// the log and any open video are closed properly before the phone dies.
+  /// 0 = never. Default 15 %. Range 0 to 50.
+  final int lowBatteryStopPercent;
+
+  /// Round 296: the recording stops cleanly when free storage drops below this
+  /// many megabytes. 0 = never. Default 200 MB (room for the phone itself and
+  /// the last files). Range 0 to 5000.
+  final int storageReserveMb;
+
   /// When true (default), the app **automatically** adjusts the inference rate
   /// during a session to keep the CPU cool enough to hold a steady frame rate,
   /// instead of running flat-out and overheating into a ~3 fps collapse. When
@@ -677,6 +688,8 @@ class SessionConfig {
     this.cameraFpsCap =
         defaultCameraFpsCap, // 0 removes the camera hardware cap
     this.screenOffAfterMin = 0,
+    this.lowBatteryStopPercent = 15,
+    this.storageReserveMb = 200,
     this.autoThrottle = true,
     this.minInferenceFps = 3,
     this.throttleDutyTarget = 0.5,
@@ -803,6 +816,8 @@ class SessionConfig {
     int? inferenceFps,
     int? cameraFpsCap,
     int? screenOffAfterMin,
+    int? lowBatteryStopPercent,
+    int? storageReserveMb,
     bool? autoThrottle,
     int? minInferenceFps,
     double? throttleDutyTarget,
@@ -862,6 +877,8 @@ class SessionConfig {
     inferenceFps: inferenceFps ?? this.inferenceFps,
     cameraFpsCap: cameraFpsCap ?? this.cameraFpsCap,
     screenOffAfterMin: screenOffAfterMin ?? this.screenOffAfterMin,
+    lowBatteryStopPercent: lowBatteryStopPercent ?? this.lowBatteryStopPercent,
+    storageReserveMb: storageReserveMb ?? this.storageReserveMb,
     autoThrottle: autoThrottle ?? this.autoThrottle,
     minInferenceFps: minInferenceFps ?? this.minInferenceFps,
     throttleDutyTarget: throttleDutyTarget ?? this.throttleDutyTarget,
@@ -971,6 +988,8 @@ class SessionConfig {
     'inferenceFps': inferenceFps,
     'cameraFpsCap': cameraFpsCap,
     'screenOffAfterMin': screenOffAfterMin,
+    'lowBatteryStopPercent': lowBatteryStopPercent,
+    'storageReserveMb': storageReserveMb,
     'autoThrottle': autoThrottle,
     'minInferenceFps': minInferenceFps,
     'throttleDutyTarget': throttleDutyTarget,
@@ -1042,6 +1061,8 @@ class SessionConfig {
       0,
       maximumScreenOffAfterMin,
     ),
+    lowBatteryStopPercent: ((j['lowBatteryStopPercent'] as num?)?.round() ?? 15).clamp(0, 50),
+    storageReserveMb: ((j['storageReserveMb'] as num?)?.round() ?? 200).clamp(0, 5000),
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,

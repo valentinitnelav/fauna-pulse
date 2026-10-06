@@ -138,6 +138,7 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 | Inference FPS cap | 15 | 1–30 |
 | Camera FPS cap | 15 | 0 = no cap; max 30 |
 | Screen off by itself after | 0 min (never) | `screenOffAfterMin`, 0–10; Power tab |
+| Stop at battery level / keep free storage | 15 % / 200 MB | `lowBatteryStopPercent` (on own battery only), `storageReserveMb`; 0 = never; `session/session_guards.dart`, checked in `_sampleThermal` |
 | Auto-throttle | on | min 3 fps, duty target 0.5 |
 | Motion gate | off | pixel delta 25, area 0.5 %, wake 3 s, grid 48 (16–160), idle check 5 fps (1–30) |
 | Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
@@ -310,7 +311,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   track ID, `box_in_roi` 0..1, saved file names, `frame_ms`, `frame_sensor_ms`), `track_event`
   (`created`/`lost`/`recovered`/`removed`), `capture`/`motion_capture`/`timelapse_capture`/`timelapse_skipped`,
   `raw_detections` (opt-in), `fps`/`thermal`/`power` (with `is_plugged`), `motion_gate`,
-  `roi_update`, `blackout`, `screen`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
+  `roi_update`, `blackout`, `screen`, `guard_stop`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
   `video_skipped`, `app_error`, `end_of_session` (`ended_normally`). Record dictionary:
   `docs/DATA_GUIDE.md`. Parsers also accept the old per-track `detection` records.
 - `detections[].tracks[]` boxes are always detector-observed (unmatched tracks go `lost`).

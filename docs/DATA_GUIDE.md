@@ -274,6 +274,13 @@ another app in front) or `visible`. Logged on changes only. Since round 292 the 
 recording while the app is hidden (only the live preview stops), so these records explain
 why a session's screen was dark, not gaps in the data.
 
+### `guard_stop` — the recording stopped itself before running out (round 296+)
+
+`reason`: `low_battery` (on the phone's own battery at or below *Stop at battery level*) or
+`storage_low` (free storage below *Keep free storage*); `battery_percent` and
+`free_storage_bytes` at that moment. The normal `end_of_session` follows, so the session is
+complete up to that time.
+
 ### `timelapse_capture` — one per time-lapse photo (round 97+)
 
 Fields: `jpeg` (filename in `roi_frames/`), `captured_at_ms` (the trigger

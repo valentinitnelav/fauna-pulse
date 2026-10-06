@@ -1940,6 +1940,36 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'black.',
         onChanged: (v) => setState(() => _c = _c.copyWith(screenOffAfterMin: v.round())),
       ),
+      // Round 296 (idea from FaunaLapse): clean stops before the battery or
+      // the storage runs out.
+      NumericSettingField(
+        label: 'Stop at battery level',
+        value: _c.lowBatteryStopPercent.toDouble(),
+        min: 0,
+        max: 50,
+        isInt: true,
+        unitSuffix: '%',
+        helperText:
+            'When the phone runs on its own battery (not on a charger or '
+            'power bank), the recording stops at this level and its files '
+            'are closed properly, instead of the phone switching off in the '
+            'middle of a video. 0 = never. Default 15 %: enough left for '
+            'the phone to stay usable.',
+        onChanged: (v) => setState(() => _c = _c.copyWith(lowBatteryStopPercent: v.round())),
+      ),
+      NumericSettingField(
+        label: 'Keep free storage',
+        value: _c.storageReserveMb.toDouble(),
+        min: 0,
+        max: 5000,
+        isInt: true,
+        unitSuffix: 'MB',
+        helperText:
+            'The recording stops when the free storage drops below this, '
+            'with its files closed properly. 0 = never. Default 200 MB: '
+            'room for the phone itself and the last files.',
+        onChanged: (v) => setState(() => _c = _c.copyWith(storageReserveMb: v.round())),
+      ),
       // Locked out in the no-AI modes — there is no inference to throttle.
       // The saved preference is untouched and returns with the AI mode
       // (r147; the detail fields below are hidden entirely then).
