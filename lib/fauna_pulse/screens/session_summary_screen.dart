@@ -1251,6 +1251,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           'was running.',
         );
       }
+      // Round 293: when the recording let the screen go dark.
+      final screenOff = _setting('screenOffAfterMin');
+      add(
+        'Screen off by itself after',
+        screenOff == null
+            ? null
+            : (screenOff is num && screenOff == 0 ? 'never' : '${_numStr(screenOff)} min'),
+      );
       add('Auto-throttle', _setting('autoThrottle'), na: noAi);
       add(
         'Min inference rate',

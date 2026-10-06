@@ -10,6 +10,11 @@
 //     next burst while hidden; that burst's photos must all be taken.
 //  S. A scheduled run whose 2-minute window opens while the app is hidden: the window must
 //     record (the camera starts from the background) and end normally.
+//  O. "Screen off by itself after" 1 min (round 293): no touch for 75 s, then the black
+//     power-save screen must be up (about 60 s after the last touch) and the app must no
+//     longer hold the screen on; one tap brings it back. Prints SCREEN_IDLE_START and
+//     KEEP_CHECK, where the runner may read `adb shell dumpsys window windows` (no
+//     KEEP_SCREEN_ON flag on the FaunaPulse window after the let-go).
 //
 // Each part prints "HOME_NOW <part> <seconds>". Whoever runs the check then sends the app to
 // the background, which hides it the same way the power button does, and brings it back after
@@ -36,7 +41,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-const _parts = String.fromEnvironment('PARTS', defaultValue: 'TDPS');
+const _parts = String.fromEnvironment('PARTS', defaultValue: 'TDPSO');
 
 // ignore: avoid_print
 void _log(String s) => print(s);
@@ -325,6 +330,74 @@ void main() {
               'photos ${shots.length}, $whileHidden before the app came back');
           if (whileHidden < 5) problem('S', 'only $whileHidden photos while the app was hidden');
         }
+      }
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 2));
+    }
+
+    if (_parts.contains('O')) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: CameraSessionScreen(
+            initialConfig: base.copyWith(
+              captureTrigger: CaptureTrigger.timelapse,
+              timeLapseSaveAs: TimeLapseSaveAs.photos,
+              captureMode: RoiCaptureMode.fast,
+              stepSeconds: 2,
+              durationSeconds: 600,
+              timeLapseGapSeconds: 0,
+              timeLapseTorch: false,
+              screenOffAfterMin: 1,
+            ),
+          ),
+        ),
+      );
+      await pumpFor(const Duration(seconds: 3));
+      final before = sessionDirs();
+      Directory? dir;
+      for (var i = 0; i < 30 && dir == null; i++) {
+        if (closeButton.evaluate().isNotEmpty) await tester.tap(closeButton.first);
+        await tester.tap(recButton.first, warnIfMissed: false);
+        await tester.pump(const Duration(seconds: 1));
+        final added = sessionDirs().difference(before);
+        if (added.isNotEmpty) dir = Directory(added.single);
+      }
+      if (dir == null) {
+        problem('O', 'recording did not start');
+      } else {
+        final lastTouchMs = DateTime.now().millisecondsSinceEpoch;
+        _log('SCREEN_IDLE_START');
+        // No touch: plain pumps (pumpFor taps Close buttons, which would count as touches).
+        final until = DateTime.now().add(const Duration(seconds: 75));
+        while (DateTime.now().isBefore(until)) {
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+        _log('KEEP_CHECK');
+        await tester.pump(const Duration(seconds: 3));
+        // One tap anywhere wakes the screen (the black cover takes it), then stop.
+        await tester.tapAt(const Offset(180, 300));
+        await pumpFor(const Duration(seconds: 3));
+        await tester.tap(recButton.first, warnIfMissed: false);
+        final log = File('${dir.path}/session.jsonl');
+        for (var i = 0; i < 40 && !log.readAsStringSync().contains('"end_of_session"'); i++) {
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+        final recs = [
+          for (final l in log.readAsLinesSync())
+            if (l.trim().isNotEmpty) jsonDecode(l) as Map<String, dynamic>,
+        ];
+        final blackout = [for (final r in recs.where((r) => r['type'] == 'blackout')) '${r['on']}@${((r['time_ms'] as int) - lastTouchMs) ~/ 1000}s'];
+        _log('BLACKOUT O $blackout (seconds after the last touch)');
+        final on = recs.where((r) => r['type'] == 'blackout' && r['on'] == true).toList();
+        if (on.isEmpty) {
+          problem('O', 'the screen did not go black');
+        } else {
+          final afterS = ((on.first['time_ms'] as int) - lastTouchMs) / 1000;
+          if (afterS < 58 || afterS > 66) problem('O', 'black after ${afterS.toStringAsFixed(1)} s, expected about 60');
+        }
+        if (!recs.any((r) => r['type'] == 'blackout' && r['on'] == false)) problem('O', 'the tap did not bring the screen back');
+        if (!recs.any((r) => r['type'] == 'end_of_session' && r['ended_normally'] == true)) problem('O', 'no normal end_of_session');
       }
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 2));

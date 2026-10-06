@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show GestureBinding;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -38,6 +39,7 @@ import '../session/camera_diagnostics_controller.dart';
 import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
+import '../session/screen_idle.dart';
 import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
 import '../tracking/tracker.dart';
@@ -918,6 +920,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   @override
   void dispose() {
+    _stopScreenIdle();
     _sessionTimer?.cancel();
     _scheduleTimer?.cancel();
     _sleepStatusTimer?.cancel();
@@ -987,6 +990,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // while sleeping between windows (no recording, but the run must survive).
     if (state == AppLifecycleState.resumed &&
         (_recording || _schedule != null)) {
+      // Round 293: coming back on screen counts as a touch for the screen-off timer.
+      _touchScreenIdle();
       WakelockPlus.enable();
     }
     // A scheduled run reconciles against the plan immediately on resume: if
@@ -2703,7 +2708,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // so the whole screen is truly black. A swipe from an edge briefly reveals them
     // then they auto-hide; tapping to wake restores them in [_exitBlackout].
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    await WakelockPlus.enable();
+    // Round 293: not when the screen-off timer has let the screen go.
+    if (!(_screenIdle?.released ?? false)) await WakelockPlus.enable();
     // …then fades out over [_blackoutFade]: flip the flag on the next frame so
     // the AnimatedOpacity animates 1 → 0 from the start.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3001,6 +3007,58 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _controller
         .setCameraHold(hold)
         .catchError((Object e) => _logAsyncError('set_camera_hold', e));
+    _syncScreenIdle();
+  }
+
+  // Round 293: "Screen off by itself after" (idea from FaunaLapse). While the
+  // camera is held, the screen is held on only until N minutes after the last
+  // touch; then the app lets go and the phone's own timeout (or the power
+  // button) switches it off, with the black power-save cover meanwhile.
+  ScreenIdle? _screenIdle;
+  Timer? _screenIdleTimer;
+
+  void _syncScreenIdle() {
+    final active = _cameraHeld && _config.screenOffAfterMin > 0;
+    if (active && _screenIdle == null) {
+      _screenIdle = ScreenIdle(
+        afterMs: _config.screenOffAfterMin * 60000,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      _screenIdleTimer = Timer.periodic(const Duration(seconds: 1), (_) => _screenIdleTick());
+      GestureBinding.instance.pointerRouter.addGlobalRoute(_onAnyPointer);
+    } else if (!active) {
+      _stopScreenIdle();
+    } else if (_screenIdle!.released) {
+      // A window that starts while the screen is let go turns the hold back on
+      // (SessionRecorder.start); let go again.
+      unawaited(WakelockPlus.disable());
+    }
+  }
+
+  void _stopScreenIdle() {
+    if (_screenIdle == null) return;
+    _screenIdleTimer?.cancel();
+    _screenIdleTimer = null;
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onAnyPointer);
+    _screenIdle = null;
+  }
+
+  void _screenIdleTick() {
+    final idle = _screenIdle;
+    if (idle == null || !idle.tick(DateTime.now().millisecondsSinceEpoch)) return;
+    unawaited(WakelockPlus.disable());
+    if (mounted && !_blackout) unawaited(_enterBlackout());
+  }
+
+  /// Any touch on the screen, dialogs and sheets included.
+  void _onAnyPointer(PointerEvent event) {
+    if (event is PointerDownEvent) _touchScreenIdle();
+  }
+
+  void _touchScreenIdle() {
+    if (_screenIdle?.touch(DateTime.now().millisecondsSinceEpoch) ?? false) {
+      unawaited(WakelockPlus.enable());
+    }
   }
 
   /// Sends the motion-gate settings to the native pipeline. When enabled the

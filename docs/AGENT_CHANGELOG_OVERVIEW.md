@@ -137,6 +137,7 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 | Scheduled recording | off | 1–3 daily windows (06:00–10:00) × N days |
 | Inference FPS cap | 15 | 1–30 |
 | Camera FPS cap | 15 | 0 = no cap; max 30 |
+| Screen off by itself after | 0 min (never) | `screenOffAfterMin`, 0–10; Power tab |
 | Auto-throttle | on | min 3 fps, duty target 0.5 |
 | Motion gate | off | pixel delta 25, area 0.5 %, wake 3 s, grid 48 (16–160), idle check 5 fps (1–30) |
 | Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
@@ -237,6 +238,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   binds the preview while the camera is paused); a camera started while hidden never gets a
   surface provider. `RecordingService.running` stops a second (background) service start;
   the notification permission is asked only while visible. `screen` records mark hidden/visible.
+  Screen-off timer (r293, `session/screen_idle.dart` + `_syncScreenIdle` on every hold change):
+  with `screenOffAfterMin` > 0 the wakelock is let go N min after the last touch (global pointer
+  route; app resume counts as a touch) and blackout comes up without re-taking the wakelock.
 - **Blackout (power save) detaches only the Preview use case** (`setPreviewEnabled(false)`);
   analysis and ImageCapture stay bound, a recording continues. A timed session end calls
   `_exitBlackout()` before pushing the summary (brightness override is per Activity).

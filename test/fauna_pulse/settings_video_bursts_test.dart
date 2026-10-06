@@ -112,7 +112,7 @@ void main() {
     await tester.tap(find.text('Video (MP4), find animals later').last);
     await tester.pumpAndSettle();
     expect(find.text('Video frame rate'), findsOneWidget);
-    expect(find.textContaining('The camera is capped'), findsNothing, reason: 'default cap 15 = default video rate');
+    expect(find.textContaining('The camera is capped'), findsNothing, reason: 'the default video rate (5) is under the default cap (15)');
     expect(tester.takeException(), isNull);
   });
 

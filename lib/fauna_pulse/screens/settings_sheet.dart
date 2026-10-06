@@ -1914,10 +1914,32 @@ class _SettingsSheetState extends State<SettingsSheet> {
       const HelpLabel(
         label: 'Trade detection speed against phone heat and battery',
         helperText:
-            'The defaults suit long field sessions. The screen-off (moon) '
-            'button on the live camera screen saves the most power of all.',
+            'The defaults suit long field sessions. A dark screen saves the '
+            'most power of all: switch it off with the power button (the '
+            'recording goes on), or use the screen-off (moon) button on the '
+            'live camera screen.',
       ),
       const SizedBox(height: 4),
+      // Round 293 (idea from FaunaLapse): the screen goes dark by itself.
+      NumericSettingField(
+        label: 'Screen off by itself after',
+        value: _c.screenOffAfterMin.toDouble(),
+        min: 0,
+        max: SessionConfig.maximumScreenOffAfterMin.toDouble(),
+        isInt: true,
+        unitSuffix: 'min',
+        helperText:
+            'During a recording the screen stays on until this many minutes '
+            'after your last touch. Then the screen turns black and the '
+            "phone's own screen timeout switches it off; the recording goes "
+            'on with the screen off. A touch, or waking the phone, brings it '
+            'back. 0 = never (the default): the screen stays on for the '
+            'whole recording. For unattended runs, 3 minutes leaves time to '
+            'check the first photos. While the phone charges (a power bank '
+            'too), the "Stay awake" developer option keeps the screen on, '
+            'black.',
+        onChanged: (v) => setState(() => _c = _c.copyWith(screenOffAfterMin: v.round())),
+      ),
       // Locked out in the no-AI modes — there is no inference to throttle.
       // The saved preference is untouched and returns with the AI mode
       // (r147; the detail fields below are hidden entirely then).

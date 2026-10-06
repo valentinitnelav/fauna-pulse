@@ -157,7 +157,10 @@ camera frame-rate cap are re-applied automatically.
 button, or let the phone's own screen timeout do it, and the recording goes on
 with the screen off: detection, photos and video keep running, only the live
 preview stops. Wake the phone and open FaunaPulse to look or to stop. Blackout
-remains for when you want the app on screen but dark. Note: while a phone
+remains for when you want the app on screen but dark. To have the screen go dark
+by itself, set *Screen off by itself after* (Power tab, e.g. 3 minutes): the
+black screen comes up that long after your last touch, and the phone's own
+screen timeout then switches the screen off. Note: while a phone
 charges (a power bank counts), Android's "Stay awake" developer option keeps
 the screen on whatever its timeout says.
 

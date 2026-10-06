@@ -330,6 +330,17 @@ class SessionConfig {
   /// load on phones whose uncapped camera runs at ~30 FPS.
   final int cameraFpsCap;
 
+  /// Minutes after the last touch at which a recording lets the screen go
+  /// dark (round 293, idea from FaunaLapse): the app stops holding the screen
+  /// on, so the phone's own screen timeout (or the power button) switches it
+  /// off, and covers it with the black power-save screen meanwhile. The
+  /// camera keeps recording with the screen off (round 292). A touch brings
+  /// the screen back and restarts the count. 0 = never: the screen stays on
+  /// for the whole recording (as before round 293). Range 0 to
+  /// [maximumScreenOffAfterMin].
+  final int screenOffAfterMin;
+  static const int maximumScreenOffAfterMin = 10;
+
   /// When true (default), the app **automatically** adjusts the inference rate
   /// during a session to keep the CPU cool enough to hold a steady frame rate,
   /// instead of running flat-out and overheating into a ~3 fps collapse. When
@@ -665,6 +676,7 @@ class SessionConfig {
     // original; the stream-resolution setting can raise it for bigger fast crops.
     this.cameraFpsCap =
         defaultCameraFpsCap, // 0 removes the camera hardware cap
+    this.screenOffAfterMin = 0,
     this.autoThrottle = true,
     this.minInferenceFps = 3,
     this.throttleDutyTarget = 0.5,
@@ -790,6 +802,7 @@ class SessionConfig {
     int? cpuThreads,
     int? inferenceFps,
     int? cameraFpsCap,
+    int? screenOffAfterMin,
     bool? autoThrottle,
     int? minInferenceFps,
     double? throttleDutyTarget,
@@ -848,6 +861,7 @@ class SessionConfig {
     cpuThreads: cpuThreads ?? this.cpuThreads,
     inferenceFps: inferenceFps ?? this.inferenceFps,
     cameraFpsCap: cameraFpsCap ?? this.cameraFpsCap,
+    screenOffAfterMin: screenOffAfterMin ?? this.screenOffAfterMin,
     autoThrottle: autoThrottle ?? this.autoThrottle,
     minInferenceFps: minInferenceFps ?? this.minInferenceFps,
     throttleDutyTarget: throttleDutyTarget ?? this.throttleDutyTarget,
@@ -956,6 +970,7 @@ class SessionConfig {
     'cpuThreads': cpuThreads,
     'inferenceFps': inferenceFps,
     'cameraFpsCap': cameraFpsCap,
+    'screenOffAfterMin': screenOffAfterMin,
     'autoThrottle': autoThrottle,
     'minInferenceFps': minInferenceFps,
     'throttleDutyTarget': throttleDutyTarget,
@@ -1023,6 +1038,10 @@ class SessionConfig {
     cpuThreads: (j['cpuThreads'] as num?)?.toInt() ?? 0,
     inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? defaultInferenceFps,
     cameraFpsCap: (j['cameraFpsCap'] as num?)?.toInt() ?? defaultCameraFpsCap,
+    screenOffAfterMin: ((j['screenOffAfterMin'] as num?)?.round() ?? 0).clamp(
+      0,
+      maximumScreenOffAfterMin,
+    ),
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,
