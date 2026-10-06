@@ -33,6 +33,7 @@ import '../models/session_config.dart';
 import '../capture/crop_export.dart';
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import '../capture/roi_video.dart' show VideoClipTotals;
+import '../models/field_notes.dart';
 import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
@@ -1820,6 +1821,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           )
           case final SessionLocation loc)
         _stat('Location', '${loc.label} (${loc.source})'),
+      // Round 297: the field notes saved with the session.
+      ..._fieldNoteRows(),
       _stat('Session duration', _durationLabel),
       // Imported videos (round 229): the clips' total length. The session
       // runs from the first clip's start to the last one's end, gaps
@@ -3290,6 +3293,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   /// One label/value row. [dim] renders explicit "Not applicable" rows muted.
+  /// Round 297: one row per filled field note (the start record's `field`
+  /// block; the notes sit under `custom` as "Notes", as in FaunaLapse).
+  List<Widget> _fieldNoteRows() {
+    final f = _startRec?['field'];
+    if (f is! Map) return const [];
+    final custom = f['custom'];
+    return [
+      for (final spec in kFieldNoteSpecs)
+        if ((spec.kind == FieldNoteKind.notes ? (custom is Map ? custom['Notes'] : null) : f[spec.key])
+            case final Object v)
+          _stat(spec.label, v is num ? _numStr(v) : '$v'),
+    ];
+  }
+
   Widget _stat(String label, String value, {bool dim = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Row(

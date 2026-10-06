@@ -457,17 +457,20 @@ class ErrorReporter {
 }
 
 /// Replaces the `location` block of a start_of_session JSONL line with a
-/// `"location":"[redacted]"` marker (round 126). Lines without one — or that
-/// fail to parse — pass through unchanged; a redaction failure must never
-/// break a problem report.
+/// `"location":"[redacted]"` marker (round 126), and since round 297 also the
+/// one inside the `field` block. Lines without one — or that fail to parse —
+/// pass through unchanged; a redaction failure must never break a problem
+/// report.
 String redactLocation(String line) {
   if (!line.contains('"location"')) return line;
   try {
     final obj = jsonDecode(line);
-    if (obj is! Map<String, dynamic> || !obj.containsKey('location')) {
-      return line;
-    }
-    obj['location'] = '[redacted]';
+    if (obj is! Map<String, dynamic>) return line;
+    final field = obj['field'];
+    final inField = field is Map && field.containsKey('location');
+    if (!obj.containsKey('location') && !inField) return line;
+    if (obj.containsKey('location')) obj['location'] = '[redacted]';
+    if (inField) field['location'] = '[redacted]';
     return jsonEncode(obj);
   } catch (_) {
     return line;

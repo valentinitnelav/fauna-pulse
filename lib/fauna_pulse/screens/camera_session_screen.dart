@@ -41,6 +41,8 @@ import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/screen_idle.dart';
+import 'field_notes_screen.dart';
+import '../models/field_notes.dart';
 import '../session/session_guards.dart';
 import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
@@ -195,6 +197,23 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _locSearchingVN.value = searching;
     if (!_locationManuallySet && best != null) _locationVN.value = best;
     setState(() {}); // pin button color
+  }
+
+  // Round 297: the field notes saved with every session (FieldNotesScreen).
+  FieldNotes _fieldNotes = const FieldNotes();
+
+  Future<void> _openFieldNotes() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FieldNotesScreen(
+          location: _locationVN,
+          searching: _locSearchingVN,
+          onChangePosition: _openLocationDialog,
+        ),
+      ),
+    );
+    final notes = await FieldNotes.load();
+    if (mounted) setState(() => _fieldNotes = notes);
   }
 
   Future<void> _openLocationDialog() async {
@@ -629,6 +648,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // the location permission was granted before, so no surprise prompt; the
     // pin button's dialog is the prompting path. Also restore the previous
     // session's location as a one-tap default.
+    // Round 297: the saved field notes go into every start record.
+    FieldNotes.load().then((n) {
+      if (mounted) _fieldNotes = n;
+    });
     _locator = SessionLocator(onUpdate: _onLocationUpdate);
     _locator!.start().catchError((Object e) {
       logSwallowed('gps_autostart', e);
@@ -1739,6 +1762,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // Round 126: the session's single location fix ('source' says gps /
         // manual / previous). Stripped from problem-report log samples.
         if (_locationVN.value != null) 'location': _locationVN.value!.toJson(),
+        // Round 297: field notes in FaunaLapse's form (every key, null when
+        // empty); phone maker and model are filled from `device`.
+        'field': _fieldNotes.recordBlock(location: _locationVN.value),
         // Which rear lens was in use for this session. zoom factor 1.0 = the main
         // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
         // human-readable lens name shown on the switch button.
@@ -4187,11 +4213,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                 : _locSearchingVN.value
                                 ? Colors.amber
                                 : Colors.white24,
-                            icon: const Icon(Icons.location_on),
+                            // Round 297: opens the Field notes page; the
+                            // position is its first part.
+                            icon: const Icon(Icons.edit_location_alt),
                             tooltip:
-                                'Session location (saved to the log and '
-                                'exported crops)',
-                            onPressed: _recording ? null : _openLocationDialog,
+                                'Field notes and position (saved with the '
+                                'session)',
+                            onPressed: _recording ? null : _openFieldNotes,
                           ),
                         ],
                       ),

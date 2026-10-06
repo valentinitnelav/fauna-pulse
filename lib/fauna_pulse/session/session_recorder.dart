@@ -158,7 +158,7 @@ class SessionRecorder {
           : 'debug',
       'battery_percent': battery,
       ...startStorage.toJson(),
-      ...startMetadata(),
+      ..._withPhone(startMetadata(), device),
       'thermal': startReading.toJson(),
     });
 
@@ -419,6 +419,17 @@ class SessionRecorder {
   /// Time-lapse mode (round 97): a new burst cycle begins — re-arm the shared
   /// capture window so the burst's first photo fires immediately.
   void beginTimeLapseBurst() => _capture?.resetMotionWindow();
+
+  /// Round 297: the field notes block (FaunaLapse keys) names the phone too;
+  /// fill its maker and model from the start record's `device` block.
+  static Map<String, dynamic> _withPhone(Map<String, dynamic> meta, Object? device) {
+    final field = meta['field'];
+    if (field is Map<String, dynamic> && device is Map) {
+      field['phone_maker'] ??= device['manufacturer'];
+      field['phone_model'] ??= device['model'];
+    }
+    return meta;
+  }
 
   /// Time-lapse mode: one call per driving-timer tick while a burst is
   /// active. The scheduler's shared window (same one motion mode uses)

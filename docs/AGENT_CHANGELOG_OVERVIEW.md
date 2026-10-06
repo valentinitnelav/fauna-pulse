@@ -44,6 +44,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   tracker builder for camera and videos; `notApplicableConfigKeys(trigger, saveAs:)`).
 - `roi.dart` (`Roi`, ÷32 snapping `snapSideToGrid`/`copyClamped`, `boxInRoi`,
   `largestCentredSquare`, `largestSquareSidePx`), `track.dart`, `schedule_window.dart`.
+- `field_notes.dart`: `FieldNotes` (r297; `kFieldNoteSpecs`, prefs `field_notes`,
+  `recordBlock` = the start record's `field` block with FaunaLapse's 17 keys, `locationBlock`).
 - `model_catalog.dart`: detection models on the phone (`ModelCatalog.build`, `entryOf`,
   `modelsDir`; `isSupportedModelFileName` = the one format filter; `fileNameOrder`).
 - `model_file_kind.dart`: `modelFileKind` reads a `.tflite`'s tensor shapes from its FlatBuffer
@@ -103,7 +105,8 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `session_actions.dart` (`SessionActions` mixin, `DeleteAllSessionsDialog`);
 `dashboard_screen.dart`; `models_screen.dart` (Download & import models, `openModelsScreen`,
 `NoModelNotice`); `watch_plan_screen.dart` (the "What do you want to watch?" pages);
-`analysis_screen.dart` (Find animals in photos); `video_import_screen.dart`
+`analysis_screen.dart` (Find animals in photos); `field_notes_screen.dart` (Field notes, from the
+camera screen's pin button); `video_import_screen.dart`
 (`pickAndImportVideos`); `video_analysis_screen.dart` (Find animals in videos,
 `VideoSquareEditor`); `identification_screen.dart`, `identification_results_screen.dart`,
 `identification_choice_fields.dart` (`AlsoIdentify`); `problem_description_screen.dart`.
@@ -336,7 +339,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `video_detections.jsonl`, `post_tracks.jsonl`, identification files) join on file names and
   track IDs. Exceptions appended after the end: `session_renamed`, `video_cleanup`.
 - **Location:** one GPS fix per session (`LocationFixTracker`: done at ≤ 15 m or 60 s), or manual
-  / previous; `redactLocation` strips it from problem reports.
+  / previous; `redactLocation` strips it (and `field.location`) from problem reports.
+- **Field notes (r297):** the pin button opens `FieldNotesScreen` (position first, via the
+  location dialog; fields saved as typed); the start record gets `field` (`FieldNotes.recordBlock`,
+  phone maker/model filled from `device` in `SessionRecorder._withPhone`); summary Overview rows.
 - **Problem reports** (Menu → Report a problem; built in `error_reports/`, the only folder the
   report FileProvider serves): one `.txt`, or one `report_<stamp>.zip` when
   screenshots or session samples ride along (sharing several files made WhatsApp drop all).
