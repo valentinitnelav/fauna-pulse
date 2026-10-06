@@ -1,6 +1,14 @@
-# Lean QNN packaging (documented alternative, NOT implemented)
+# Lean QNN packaging (implemented in round 299)
 
-**Status:** design on record, deliberately not built (perf review E8, round 171).
+**Status (round 299):** built. The normal build leaves the QNN runtime out; `-P qnn=true`
+(`QNN=1 bash scripts/build_release_apks.sh`) builds the NPU edition with "-npu" in the APK
+names. Differences from the design below: `useLegacyPackaging` stays `true` in both editions
+(compressed libraries: arm64 APK about 94 MB → about 22 MB, estimated from the round-226 APK
+minus its 72 MB of QNN and ONNX Runtime; uncompressed would be about 39 MB to download), and
+there is no `isQnnRuntimeAvailable` query yet: a `*_qnn.onnx` model in the normal build fails
+to load with the existing recovery and a plain hint (`modelLoadHint`: "needs the Snapdragon NPU
+edition"). Whether the NPU edition is published at all is the owner's release decision.
+Sections 1 to 3 below are the original design (perf review E8, round 171).
 The accepted distribution policy remains ONE build that includes the QNN runtime
 (RELEASE_PLAN, Play phase: "keep `useLegacyPackaging` ... and accept the size
 cost"). This document exists so that, if the owner ever reopens that policy,

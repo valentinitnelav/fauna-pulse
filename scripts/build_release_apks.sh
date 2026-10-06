@@ -11,8 +11,13 @@
 # PREREQUISITES: the release keystore must exist (see
 # scripts/create_release_keystore.sh); the build fails by design without it.
 #
+# Round 299: the normal build leaves the Snapdragon NPU runtime (QNN, ~72 MB of
+# the arm64 APK) out. QNN=1 builds the NPU edition instead, with "-npu" in the
+# file names (docs/LEAN_QNN_PACKAGING.md).
+#
 # Usage, from the repo root:
 #   bash scripts/build_release_apks.sh
+#   QNN=1 bash scripts/build_release_apks.sh   # NPU edition
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -34,8 +39,14 @@ echo "Building per-ABI release APKs for v${version}..."
 # Play, so their "Support FaunaPulse" box links to GitHub Sponsors. The Play
 # bundle (security_release_gate.sh) must never get this flag: Google Play
 # allows donation links only for validated tax-exempt charities.
+qnn_args=()
+edition=""
+if [ "${QNN:-0}" = "1" ]; then
+  qnn_args=(-P qnn=true)
+  edition="-npu"
+fi
 flutter build apk --release --split-per-abi -P force-version-code-ignoring-abi=true \
-  --dart-define=DONATION_LINK=true
+  ${qnn_args[@]+"${qnn_args[@]}"} --dart-define=DONATION_LINK=true
 
 out="build/app/outputs/flutter-apk"
 mkdir -p dist
@@ -45,7 +56,7 @@ mkdir -p dist
 # is deliberately not shipped as a release asset.
 for abi in arm64-v8a armeabi-v7a; do
   src="${out}/app-${abi}-release.apk"
-  dst="dist/faunapulse-v${version}-${abi}.apk"
+  dst="dist/faunapulse-v${version}${edition}-${abi}.apk"
   if [ ! -f "$src" ]; then
     echo "ERROR: expected build output missing: $src" >&2
     exit 1

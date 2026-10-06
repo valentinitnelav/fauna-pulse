@@ -26,10 +26,10 @@ yet, no release keystore, docs written for researchers.
   sensitivity.
 - **Free distribution channel: GitHub Releases + Obtainium** (an Android app that installs
   and auto-updates apps directly from a project's GitHub releases; needs nothing from us
-  beyond tagged releases with stable APK file names). IzzyOnDroid is ruled out (approx.
-  30 MB APK limit vs our 116.5 MB universal release APK, round-160 measurement; the
-  QNN runtime alone is ~76 MB of that, see review E8). F-Droid main repo is an
-  optional later phase.
+  beyond tagged releases with stable APK file names). IzzyOnDroid (approx. 30 MB APK
+  limit) was ruled out at 116.5 MB (round 160, QNN runtime ~76 MB of it); since round 299
+  the normal build leaves QNN out (arm64 APK estimated ~22 MB), so it could be reconsidered
+  (LEAN_QNN_PACKAGING.md). F-Droid main repo is an optional later phase.
 - **Signing strategy (irreversible, do first):** generate and keep OUR own keystore (the
   key file that signs every APK; Android only installs an update if it is signed with the
   same key as the installed version). Upload that key to Play App Signing so a Play
@@ -451,10 +451,10 @@ do an on-device pass across all 3 capture modes (settings round-trip, greying, f
       requires; Play generates per-device APKs from it); targetSdk 36 and release
       lint are enforced; the camera
       uses-feature decision is done (round 193: camera required, autofocus not); keep
-      `useLegacyPackaging` (the QNN/NPU runtime needs real file paths) and accept the
-      size cost. (A lean two-artifact alternative is documented, not implemented, in
-      [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md) — review E8, round 171 — with the
-      reopen triggers; this bullet's decision stands until one fires.)
+      `useLegacyPackaging` (compressed libraries, smallest download). Since round 299 the
+      bundle leaves the QNN/NPU runtime out by default; an NPU edition is built only with
+      `-P qnn=true` and is the owner's choice to publish (see
+      [LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md)).
 - [x] Store listing: reuse the fastlane texts; feature graphic 1024x500; 2-8 phone
       screenshots (from Phase 2); the 512x512 Play icon is ready (round 193);
       (DONE 2026-09-11, submitted for Google review together with the Alpha release

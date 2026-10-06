@@ -198,6 +198,16 @@ void main() {
       expect(hint, contains('Snapdragon NPU'));
     });
 
+    test('the normal build without the NPU runtime names the edition (r299)', () {
+      final hint = modelLoadHint(
+        '/m/yolo26n_v73_qnn.onnx',
+        "IllegalStateException: QNN (*_qnn.onnx) models require the optional "
+            "'com.microsoft.onnxruntime:onnxruntime-android-qnn' dependency in your app's build.gradle",
+      );
+      expect(hint, contains('NPU edition'));
+      expect(hint, isNot(contains('different Snapdragon NPU generation')));
+    });
+
     test('other failures get no hint', () {
       expect(modelLoadHint('/m/x.tflite', 'file not found'), isEmpty);
       expect(

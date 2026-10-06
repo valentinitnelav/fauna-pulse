@@ -491,7 +491,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   and crop). Mini-table kit measures column widths; ids/names left, numbers right.
 
 ### Models and downloads
-- Formats: `.tflite` or `*_qnn.onnx` (Snapdragon NPU); plain `.onnx` refused
+- Formats: `.tflite` or `*_qnn.onnx` (Snapdragon NPU; its runtime only in the NPU edition,
+  `-P qnn=true`, r299; the normal build fails such a model with `modelLoadHint`'s edition
+  line); plain `.onnx` refused
   (`isSupportedModelFileName`). LiteRT `format=litert` NCHW exports run (detect only).
 - **Security:** models live in private app storage; intake is HTTPS-only, rejects unsafe names
   and traversal, streams through a temp file, checks the `TFL3` identifier; limits 30 MiB for
@@ -583,7 +585,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Release:** release builds fail without a keystore (`scripts/create_release_keystore.sh`);
   `scripts/security_release_gate.sh` = analyze, tests, native security tests, release lint,
   signed AAB. `scripts/build_release_apks.sh` gives per-ABI APKs the Play versionCode and sets
-  the donation define. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
+  the donation define; `QNN=1` builds the NPU edition (`-npu` names). QNN deps sit behind
+  `project.findProperty('qnn')` in `android/app/build.gradle`. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
   blocked.
 - **Versioning:** pubspec `version:` (now `0.8.0-alpha.1+13`) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,

@@ -168,7 +168,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [PLAY_STORE_LISTING_DRAFT.md](docs/PLAY_STORE_LISTING_DRAFT.md) | Maintainer | Draft answers for the Google Play Console forms (listing, data safety, content rating). |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | Maintainer | Review the prioritized performance and robustness roadmap. |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
-| [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | Documented-only design for a lean (no-QNN) default build + separate QNN artifact. |
+| [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | The lean (no-QNN) default build and the optional Snapdragon NPU edition (`-P qnn=true`). |
 | [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream; re-audit checklist. |
 | [AGENTS.md](./AGENTS.md) | Code agent | A coding agent will first read this file to build context. |
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |

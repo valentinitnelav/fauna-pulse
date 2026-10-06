@@ -357,6 +357,13 @@ ModelLoadRecovery? modelLoadRecovery({
 /// with an opaque ORT_INVALID_GRAPH / "Error code: 5005".
 String modelLoadHint(String failedPath, String reason) {
   final r = reason.toLowerCase();
+  // Round 299: the normal build leaves the NPU runtime out (Predictor.create
+  // then names the missing onnxruntime-android-qnn dependency).
+  if (isQnnModelPath(failedPath) && r.contains('onnxruntime-android-qnn')) {
+    return 'This *_qnn.onnx model needs the Snapdragon NPU edition of '
+        'FaunaPulse; this edition leaves the NPU runtime out to stay small. '
+        'Use a .tflite model instead.';
+  }
   if (isQnnModelPath(failedPath) &&
       (r.contains('ort') || r.contains('qnn') || r.contains('5005'))) {
     return 'This *_qnn.onnx model was built for a different Snapdragon NPU '
