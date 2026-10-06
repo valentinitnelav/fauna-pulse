@@ -709,7 +709,13 @@ class RoiCaptureScheduler {
         final bytes = await fastCaptureFn();
         grabSw.stop();
         grabMs = grabSw.elapsedMicroseconds / 1000.0;
-        if (bytes == null) return;
+        if (bytes == null) {
+          // Round 290: the native side refuses a cut when no frame is cached or
+          // the camera stopped delivering (the cache would be old). Leave a
+          // trace: a trigger record may already name this file.
+          onError?.call(pending.fileName, 'no recent camera frame');
+          return;
+        }
         finalBytes = bytes;
         // Fast-path bytes come already cropped AND capped to the target
         // natively (ImageUtils.cropRoiFromFrame), so just predict the size.

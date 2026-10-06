@@ -82,6 +82,13 @@ class YOLOView @JvmOverloads constructor(
         private const val GATE_WAKE_ROI = 2
         private const val GATE_WAKE_SETTINGS = 3
 
+        // Round 290: a photo cut from the cached frame needs the camera to be alive. After this
+        // long without any frame (camera taken by another app, camera failure) the cache is
+        // old, so the cut is refused instead of saving copies of one old frame. Frames come
+        // every 0.2 s or faster (lowest fps cap 5); a frame still being worked on (a slow
+        // detector) counts as alive ([analyzerBusy]).
+        private const val FRAME_STALE_NS = 1_500_000_000L
+
         // Line thickness and corner radius
         private const val BOX_LINE_WIDTH = 8f
         private const val BOX_CORNER_RADIUS = 12f
@@ -1110,6 +1117,7 @@ class YOLOView @JvmOverloads constructor(
         isStopped = true
         intentionallyPaused = true
         closeRoiVideoFromView("camera_paused")
+        forgetLastFrame()
         try {
             imageAnalysisUseCase?.clearAnalyzer()
             if (::cameraProviderFuture.isInitialized) {
@@ -1258,7 +1266,17 @@ class YOLOView @JvmOverloads constructor(
                             imageProxy.close()
                             return@setAnalyzer
                         }
-                        onFrame(imageProxy)
+                        // Stamped before AND after the frame's work, and marked busy during it,
+                        // so a slow detector run is never mistaken for a silent camera
+                        // ([frameIsFresh]).
+                        lastFrameSeenNs = System.nanoTime()
+                        analyzerBusy = true
+                        try {
+                            onFrame(imageProxy)
+                        } finally {
+                            analyzerBusy = false
+                            lastFrameSeenNs = System.nanoTime()
+                        }
                     }
 
                     val cameraSelector = buildCameraSelector(cameraProvider)
@@ -2471,7 +2489,10 @@ class YOLOView @JvmOverloads constructor(
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        // Camera will be automatically stopped by CameraX when lifecycle stops
+        // Camera will be automatically stopped by CameraX when lifecycle stops.
+        // Round 290: so the frame cache goes old now (power button, Home): drop it, so no
+        // photo is cut from it. The first frame after the restart fills it again.
+        forgetLastFrame()
     }
 
     // region onFrame (per frame inference)
@@ -2503,10 +2524,31 @@ class YOLOView @JvmOverloads constructor(
     @Volatile private var lastFrameIsFront: Boolean = false
     @Volatile private var lastFrameIsLandscape: Boolean = false
 
+    // Round 290: when the camera last handed the analyzer a frame (System.nanoTime, 0 = never),
+    // counted before any frame drop. The power button stops the camera without telling this
+    // view, so the frame cache alone cannot know it went old.
+    @Volatile private var lastFrameSeenNs: Long = 0L
+    @Volatile private var analyzerBusy = false
+
+    /** Round 290: drops the frame cache when the camera is paused or stopped on purpose, so
+     *  no photo can be cut from the frame taken before (it may be half an hour old by the
+     *  time a photo is asked for). The next delivered frame fills it again. */
+    private fun forgetLastFrame() {
+        lastFrameSeenNs = 0L
+        lastFrameBitmap = null
+    }
+
+    /** True while camera frames keep arriving (see [FRAME_STALE_NS]). */
+    private fun frameIsFresh(): Boolean {
+        val seen = lastFrameSeenNs
+        return seen != 0L && (analyzerBusy || System.nanoTime() - seen < FRAME_STALE_NS)
+    }
+
     /** Crops the given ROI from the most recent analysis frame and returns it as
      *  a JPEG. Fast (no `takePicture`), at the analysis-frame resolution. A
      *  [maxPx] > 0 downscales (never enlarges) larger crops to that side before
-     *  encoding. Returns null if no frame is available yet. */
+     *  encoding. Returns null if no frame is available yet, or if the camera
+     *  has stopped delivering frames (the cached one is old). */
     fun captureRoiFromFrame(
         cx: Double,
         cy: Double,
@@ -2514,6 +2556,10 @@ class YOLOView @JvmOverloads constructor(
         quality: Int,
         maxPx: Int = 0,
     ): ByteArray? {
+        if (!frameIsFresh()) {
+            Log.w(TAG, "ROI frame crop refused: no recent camera frame")
+            return null
+        }
         val bmp = lastFrameBitmap ?: return null
         return ImageUtils.cropRoiFromFrame(
             bitmap = bmp,
@@ -3821,6 +3867,12 @@ class YOLOView @JvmOverloads constructor(
     // This legacy fallback must synchronously draw the Android view before encoding.
     @android.annotation.SuppressLint("WrongThread")
     fun captureFrame(withOverlays: Boolean = true): ByteArray? {
+        // Round 290: while the preview is detached (power save) or the camera has stopped, the
+        // preview still holds its last picture; a snapshot would show the past, not now.
+        if (!previewEnabled || !frameIsFresh()) {
+            Log.w(TAG, "Preview snapshot refused: preview detached or no recent camera frame")
+            return null
+        }
         try {
             // Create bitmap to hold the captured frame
             val width = width
@@ -3896,6 +3948,7 @@ class YOLOView @JvmOverloads constructor(
         // Set stopped flag first to prevent new frames from being processed
         isStopped = true
         closeRoiVideoFromView("camera_stopped")
+        forgetLastFrame()
         // A full teardown is not an intentional pause; a later lifecycle restart should rebind normally.
         intentionallyPaused = false
 

@@ -48,7 +48,11 @@ The headline changes, with the round that introduced each (full rationale in
   recall), with the ROI pushed from Dart.
 - **Fast ROI capture** from the live analysis frame,
   `ImageUtils.cropRoiFromFrame` (no camera stall; asynchronous on the still
-  executor since r154, review D1).
+  executor since r154, review D1). Since r290 it (and the `captureFrame`
+  preview snapshot) refuses to cut when the camera delivered no frame for
+  1.5 s or the preview is detached, and `pauseCamera`/`stop`/`onStop` clear
+  the frame cache, so a stopped camera (power button) can never yield copies
+  of an old frame.
 - **Motion gate**, `MotionGate.kt` (fork-new, r58): native background-diff
   gate that sleeps the detector while the ROI is still, with pre-conversion
   frame drops while idle (r63/64), a motion-only capture mode that never runs

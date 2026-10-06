@@ -284,6 +284,14 @@ one's start); pre-174 sessions carry `timeLapseIntervalSeconds` instead
 (START-TO-START spacing) — convert via gap = interval − duration when
 comparing across the change.
 
+Photos are taken only while the camera delivers frames (round 290). While the app is not
+on screen (power button, Home: the camera stops with the screen), or when no camera event
+arrives for 5 s inside a burst (for example another app took the camera), photo times are
+skipped and one `timelapse_skipped` record marks the start of that gap: `reason`
+(`app_hidden` or `no_camera_frames`) and `silent_ms` (how long the camera had been silent).
+The next `timelapse_capture` shows when photos resumed. Reference photos (`gt_capture`)
+wait the same way.
+
 ### Time-lapse video bursts: `timelapse_video_start`, `video_clip`, `video_skipped` (round 238+)
 
 With *Save bursts as: Video* (start record `config.timeLapseSaveAs` = `"video"`) each
@@ -291,8 +299,10 @@ burst is saved as one MP4 clip of the ROI in `videos/` instead of photos, so
 `roi_frames/` stays empty and there are no `timelapse_capture` or `capture` records. The
 clip is the ROI square, upright, at the "Saved photo side" (smaller when the ROI covers
 fewer camera pixels, or when the phone's video encoder needs it), H.264 at
-`config.timeLapseVideoFps` frames per second, a key frame every second, about 0.25 bits
-per pixel per frame (≈ 4 Mbit/s for 1024 px at 15 fps). A continuous time-lapse
+`config.timeLapseVideoFps` frames per second (default 5 since round 290, 15 before), a key
+frame every second, about 0.25 bits per pixel per frame (≈ 1.3 Mbit/s for 1024 px at 5 fps,
+≈ 4 Mbit/s at 15 fps; some phones' encoders keep a minimum quality, so low rates may come
+out larger). A continuous time-lapse
 (`timeLapseGapSeconds` 0) starts a new clip every burst length. The clips are analysed
 afterwards like imported videos (§9).
 
@@ -309,7 +319,8 @@ afterwards like imported videos (§9).
   are the camera's true gaps. `frames_skipped` = frames the camera
   delivered on time but the encoder was still busy with the previous one (it should be
   0 or close to it). `burst`, `end_reason` (`burst_end`, `session_end`, `camera_paused`,
-  `camera_parked`, `camera_stopped`), `first_pts_us` (the camera's clock, time since the
+  `camera_parked`, `camera_stopped`, and since round 290 `app_hidden` (power button or
+  Home) or `no_camera_frames` (the camera stopped delivering for 5 s without being told), `first_pts_us` (the camera's clock, time since the
   phone was switched on; for diagnosis only), `bitrate`, `encoder`, `crop_ms_mean` (cutting the ROI out of a
   camera frame) and `draw_ms_mean` (handing it to the encoder), `flushed: false` when
   the encoder did not hand over its last frames within 2 s, `error` when something failed.
@@ -321,7 +332,8 @@ afterwards like imported videos (§9).
   time, `file` may be unreadable), `message`.
 
 While a burst's camera is paused (settings opened, a cool-down pause) the clip ends with
-`camera_paused` and a new clip starts for the same `burst` once the camera is back.
+`camera_paused` (or `app_hidden` / `no_camera_frames`, see above) and a new clip starts for the same
+`burst` once the camera is back.
 
 **Live detection + ROI video (round 240).** A live detection session with *Also record the ROI as
 video* (start record `config.liveAiVideo: true`, `config.liveAiVideoFps`) records the same

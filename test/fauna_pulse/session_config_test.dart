@@ -807,10 +807,10 @@ void main() {
   });
 
   group('time-lapse video bursts (round 238)', () {
-    test('defaults: photos at 15 fps; only time-lapse + video counts as video', () {
+    test('defaults: photos at 5 fps (round 290); only time-lapse + video counts as video', () {
       const c = SessionConfig();
       expect(c.timeLapseSaveAs, TimeLapseSaveAs.photos);
-      expect(c.timeLapseVideoFps, 15);
+      expect(c.timeLapseVideoFps, 5);
       expect(c.timeLapseVideo, isFalse);
       final v = c.copyWith(timeLapseSaveAs: TimeLapseSaveAs.video);
       expect(v.timeLapseVideo, isFalse, reason: 'the detector trigger ignores it');
@@ -835,7 +835,7 @@ void main() {
         ..remove('timeLapseVideoFps');
       final legacy = SessionConfig.fromJson(old);
       expect(legacy.timeLapseSaveAs, TimeLapseSaveAs.photos);
-      expect(legacy.timeLapseVideoFps, 15);
+      expect(legacy.timeLapseVideoFps, 5);
       expect(SessionConfig.fromJson({...j, 'timeLapseVideoFps': 99}).timeLapseVideoFps, 30);
     });
   });

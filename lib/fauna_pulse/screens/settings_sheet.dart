@@ -1715,13 +1715,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
           isInt: true,
           unitSuffix: 'FPS',
           helperText:
-              'Frames per second in each clip (1 to 30). Default 15: enough to '
-              'follow a bee from frame to frame, and the same as the camera '
-              'frame rate cap the app ships with (Power tab), so the camera '
-              'delivers every frame the clip needs. Higher rates need more '
-              'storage and a higher camera cap; lower rates save storage, but '
-              'a fast insect may move too far between two frames to be '
-              'recognised as the same one.',
+              'Frames per second in each clip (1 to 30). Default 5: the rate '
+              '"Find animals in videos" reads by default, so no stored frame '
+              'goes unused. Higher rates (up to the camera frame rate cap on '
+              'the Power tab) give smoother clips and help with very fast '
+              'insects, but need more storage; with fewer frames a fast insect '
+              'may move too far between two frames to be recognised as the '
+              'same one.',
           onChanged: (v) => setState(() => _c = _c.copyWith(timeLapseVideoFps: v.round())),
         ),
         if (cap > 0 && cap < _c.timeLapseVideoFps)

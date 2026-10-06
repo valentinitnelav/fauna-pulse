@@ -66,9 +66,11 @@ void main() {
   ).first;
 
   testWidgets('video bursts: frame rate, estimate, cap warning, photo step greyed', (tester) async {
+    // 15 fps against a cap of 10, so the cap warning shows (the default is 5).
     final config = const SessionConfig(sessionMinutes: 60, cameraFpsCap: 10).copyWith(
       captureTrigger: CaptureTrigger.timelapse,
       timeLapseSaveAs: TimeLapseSaveAs.video,
+      timeLapseVideoFps: 15,
       durationSeconds: 10,
       timeLapseGapSeconds: 30,
     );

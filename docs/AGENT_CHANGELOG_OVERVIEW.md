@@ -140,7 +140,7 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 | Auto-throttle | on | min 3 fps, duty target 0.5 |
 | Motion gate | off | pixel delta 25, area 0.5 %, wake 3 s, grid 48 (16–160), idle check 5 fps (1–30) |
 | Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
-| Save bursts as | photos | `timeLapseSaveAs`; `video`: one MP4 per burst at `timeLapseVideoFps` 15 |
+| Save bursts as | photos | `timeLapseSaveAs`; `video`: one MP4 per burst at `timeLapseVideoFps` 5 (the video analysis rate) |
 | Live AI video | off | `liveAiVideo`, 15 fps, 5-min segments |
 | Camera sleep between bursts | off | `timeLapseCameraSleep`; idle gap ≥ 30 s; wake lead 10 s (1–60) |
 | Time-lapse torch | off | `timeLapseTorch`; lead 5 s (1–60) |
@@ -233,6 +233,15 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   analysis and ImageCapture stay bound, a recording continues. A timed session end calls
   `_exitBlackout()` before pushing the summary (brightness override is per Activity).
 - **No YUV→RGB in Dart**: the native pipeline does it.
+- **Photos only from a live camera:** the fast cut (`captureRoiFromFrame`) and the preview
+  snapshot (`captureFrame`) return null when no frame arrived for 1.5 s (`FRAME_STALE_NS`;
+  a frame still in `onFrame` counts as alive) or the preview is detached;
+  `pauseCamera`/`stop`/lifecycle `onStop` clear the frame cache. Dart: time-lapse and
+  reference photos wait while the app is hidden or no stream event came for 5 s
+  (`_cameraFramesFresh`; `timelapse_skipped`, clip end `app_hidden`/`no_camera_frames`); a
+  refused cut logs `app_error`. Reason: the power button and Home stop CameraX silently.
+  When the camera learns to run with the screen off (plan idea 1), drop `_appHidden` and
+  the `onStop` cache clear for held sessions.
 - **Portrait only**, locked in the manifest and in `main()`; the crop/rotation math assumes an
   upright phone. Lift both locks only with a full orientation audit.
 - **Start-up calibration is one cycle and cached:** `_calibrating` (first analysis frame +
@@ -284,7 +293,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   start record (config, `app_version`, `app_build`, `build_mode`, `file_token`, `location`,
   `tracker_params`, `config_not_applicable`), one `detections` record per frame (`tracks[]` with
   track ID, `box_in_roi` 0..1, saved file names, `frame_ms`, `frame_sensor_ms`), `track_event`
-  (`created`/`lost`/`recovered`/`removed`), `capture`/`motion_capture`/`timelapse_capture`,
+  (`created`/`lost`/`recovered`/`removed`), `capture`/`motion_capture`/`timelapse_capture`/`timelapse_skipped`,
   `raw_detections` (opt-in), `fps`/`thermal`/`power` (with `is_plugged`), `motion_gate`,
   `roi_update`, `blackout`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
   `video_skipped`, `app_error`, `end_of_session` (`ended_normally`). Record dictionary:
@@ -604,7 +613,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   awake and unlocked at the start. Screenshots: checks print `SHOT <name>` lines. A side-by-side
   `com.faunapulse.app.check` copy (no risk to the installed app) is described in
   `test/README.md`.
-- Checks in `integration_test/`: app launch, camera modes, view recreate, slow-phone hint, CPU
+- Checks in `integration_test/`: app launch, camera modes, camera stop (Home mid time-lapse;
+  the runner presses Home on `HOME_NOW`), view recreate, slow-phone hint, CPU
   threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
   models screen, models delete, photo track IDs, video decode / import / convert / samples /
   default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+

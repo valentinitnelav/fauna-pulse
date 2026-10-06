@@ -75,10 +75,11 @@ void main() {
         timeLapseGapSeconds: 30,
       );
       final text = roiVideoStorageEstimate(c);
-      // 1024 px (the default saved side), 15 fps, plus 20 %: 2.0 GB (1024-based) per hour.
-      expect(text, contains('Up to about 2.0 GB per hour of video (1024px, 15 frames per second'));
-      // A quarter of 60 min is recorded: 15 min, about 506 MB.
-      expect(text, contains('scene). A 60 min session records about 15 min of video: about 506.3 MB.'));
+      // 1024 px (the default saved side), 5 fps (default since round 290),
+      // plus 20 %: about 675 MB (1024-based) per hour.
+      expect(text, contains('Up to about 675.0 MB per hour of video (1024px, 5 frames per second'));
+      // A quarter of 60 min is recorded: 15 min, about 169 MB.
+      expect(text, contains('scene). A 60 min session records about 15 min of video: about 168.8 MB.'));
     });
   });
 

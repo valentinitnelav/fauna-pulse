@@ -386,6 +386,25 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   int _lastStreamEventMs = 0;
   bool _cameraSilent = false;
   static const int _cameraSilentAfterMs = 10000;
+
+  // Round 290: clock-driven photos (time-lapse, reference photos) are cut
+  // from the newest camera frame. When the camera stops without being told
+  // (power button, another app, camera failure) that frame gets old, so these
+  // photos wait until stream events arrive again ([_cameraFramesFresh]).
+  static const int _framesFreshMs = 5000;
+  bool _timeLapseSkipLogged = false;
+  // The app is not on screen (Home, power button). The camera follows the
+  // screen, so it stops at that moment, before the stream goes quiet.
+  bool _appHidden = false;
+
+  /// Whether a clock-driven photo can be cut now: the app is on screen, the
+  /// camera is not paused on purpose and a stream event arrived within
+  /// [_framesFreshMs].
+  bool _cameraFramesFresh(int nowMs) =>
+      !_appHidden &&
+      !_paused &&
+      _lastStreamEventMs != 0 &&
+      nowMs - _lastStreamEventMs < _framesFreshMs;
   static const String _cameraSilentError =
       'The camera stopped delivering frames. Another app may have taken it '
       'over, or the camera service failed. Stop and restart the session '
@@ -949,6 +968,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Round 290: hidden = the camera has stopped (it follows the screen);
+    // inactive also comes on the way back, when the camera starts again.
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+      _appHidden = true;
+    } else if (state == AppLifecycleState.inactive || state == AppLifecycleState.resumed) {
+      _appHidden = false;
+    }
     // Returning to the foreground mid-session: re-assert the screen-on wakelock in
     // case it was cleared while away, so a long unattended recording keeps the
     // screen on (and the app foreground) reliably. A scheduled run needs it even
@@ -2016,7 +2042,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _flashCaptureCue();
       }
       _gtFrameTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (_recorder.recordGtFrame(DateTime.now().millisecondsSinceEpoch)) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (!_cameraFramesFresh(nowMs)) return;
+        if (_recorder.recordGtFrame(nowMs)) {
           _flashCaptureCue();
         }
       });
@@ -3065,18 +3093,42 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // fresh frames confirm); the plan math preserves the wall-clock grid, so
     // a late wake starts this burst's photos late without shifting the next.
     final video = _tlVideo;
+    // Round 290: the camera can also stop without being told (power button,
+    // Home, another app): a photo would then be cut from an old frame. Skip,
+    // and say so once per outage.
+    final framesFresh = _cameraFramesFresh(nowMs);
+    final cameraUp = cam == null || cam.framesUsable;
+    if (inBurst && cameraUp && !_paused && !framesFresh) {
+      if (!_timeLapseSkipLogged) {
+        _timeLapseSkipLogged = true;
+        _logger?.logTimeLapseSkipped({
+          'reason': _appHidden ? 'app_hidden' : 'no_camera_frames',
+          'silent_ms': _lastStreamEventMs == 0 ? null : nowMs - _lastStreamEventMs,
+        });
+      }
+    } else if (framesFresh) {
+      _timeLapseSkipLogged = false;
+    }
     if (video != null) {
       // Video bursts (round 238): one clip per burst (a continuous time-lapse
       // starts a new clip every burst length). No clip while the camera is
       // paused, parked or still warming up: its frames would be stale.
-      final cameraOn = !_paused && (cam == null || cam.framesUsable);
+      final cameraOn = !_paused && cameraUp && framesFresh;
+      final String endReason;
+      if (!inBurst || cameraOn) {
+        endReason = 'burst_end';
+      } else if (_paused || !cameraUp) {
+        endReason = 'camera_paused';
+      } else {
+        endReason = _appHidden ? 'app_hidden' : 'no_camera_frames';
+      }
       unawaited(
         video.sync(
           inBurst && cameraOn ? plan.cycleIndexAt(t) : null,
-          endReason: inBurst && !cameraOn ? 'camera_paused' : 'burst_end',
+          endReason: endReason,
         ),
       );
-    } else if (inBurst && (cam == null || cam.framesUsable)) {
+    } else if (inBurst && cameraUp && framesFresh) {
       final cycle = plan.cycleIndexAt(t);
       if (cycle != _tlLastCycle) {
         _tlLastCycle = cycle;

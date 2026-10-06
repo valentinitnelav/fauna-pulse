@@ -317,6 +317,33 @@ void main() {
     });
   });
 
+  group('refused fast cut (round 290)', () {
+    test('a null fast cut (no recent camera frame) reports an error and '
+        'writes no file', () async {
+      final dir = Directory.systemTemp.createTempSync('refused_cut_test');
+      final errors = <String>[];
+      final s = RoiCaptureScheduler(
+        framesDir: dir,
+        sessionToken: 'S',
+        stepMs: 1000,
+        durationMs: 5000,
+        mode: RoiCaptureMode.fast,
+        targetPx: 640,
+        fastCaptureFn: () async => null,
+        highResCaptureFn: () async => null,
+        roiProvider: () => Roi.defaultRoi,
+        streamDims: () => (1280, 960),
+        highResDims: () => (0, 0),
+        onError: (fileName, error) => errors.add(fileName),
+      );
+      final pending = s.evaluate([track(1)], 10000)!;
+      await s.capture(pending);
+      expect(errors, [pending.fileName]);
+      expect(File('${dir.path}/${pending.fileName}').existsSync(), isFalse);
+      dir.deleteSync(recursive: true);
+    });
+  });
+
   group('high-res sync companion (round 108)', () {
     // A real (tiny) JPEG so the Dart fallback crop can decode the "high-res"
     // (the native crop channel has no handler under flutter_test).

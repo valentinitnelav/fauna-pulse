@@ -252,6 +252,14 @@ class SessionLogger {
   void logTimeLapseCapture(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('timelapse_capture', payload, at: at);
 
+  /// Time-lapse photos are being skipped (round 290): `reason` (`app_hidden`:
+  /// power button or Home, the camera stops with the screen;
+  /// `no_camera_frames`: the camera went quiet for 5 s, for example another
+  /// app took it) and `silent_ms` (how long no camera event arrived).
+  /// Once per outage; the next `timelapse_capture` shows when photos resumed.
+  void logTimeLapseSkipped(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('timelapse_skipped', payload, at: at);
+
   /// A time-lapse camera-parking transition (round 163, perf review E3):
   /// `state` (parked / warming / running / fallback_bound), `reason`
   /// (between_bursts / prewake / late_wake / fresh_frame / wake_timeout /

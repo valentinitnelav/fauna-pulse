@@ -480,7 +480,10 @@ class SessionConfig {
 
   /// Frames per second of time-lapse video clips (round 238, 1 to 30). The
   /// camera must deliver at least this many, so a positive [cameraFpsCap]
-  /// below it limits the clip to the cap (the settings warn).
+  /// below it limits the clip to the cap (the settings warn). Default 5
+  /// since round 290: the rate Find animals in videos reads by default
+  /// (`kDefaultVideoAnalysisFps`), so a 15 fps clip stored and encoded three
+  /// times what the analysis used (idea from FaunaLapse, which records 5).
   final int timeLapseVideoFps;
 
   /// Requested camera analysis-stream resolution (4:3). The device delivers the
@@ -676,7 +679,7 @@ class SessionConfig {
     this.timeLapseTorch = false,
     this.timeLapseTorchLeadSeconds = 5.0,
     this.timeLapseSaveAs = TimeLapseSaveAs.photos,
-    this.timeLapseVideoFps = 15,
+    this.timeLapseVideoFps = 5,
     this.streamWidth = 640,
     this.streamHeight = 480,
     this.streamResolutionExplicit = false,
@@ -1041,7 +1044,7 @@ class SessionConfig {
       (v) => v.name == j['timeLapseSaveAs'],
       orElse: () => TimeLapseSaveAs.photos,
     ),
-    timeLapseVideoFps: ((j['timeLapseVideoFps'] as num?)?.round() ?? 15).clamp(
+    timeLapseVideoFps: ((j['timeLapseVideoFps'] as num?)?.round() ?? 5).clamp(
       1,
       30,
     ),
