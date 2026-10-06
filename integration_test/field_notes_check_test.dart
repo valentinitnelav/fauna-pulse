@@ -44,6 +44,15 @@ void main() {
         await prefs.setString(FieldNotes.prefsKey, notesBefore);
       }
     });
+    // Round 301: start with own fields of several types (restored afterwards).
+    await prefs.setString(
+      FieldNotes.prefsKey,
+      '{"custom_fields":[{"name":"Observer","type":"text","value":"Check"},'
+      '{"name":"Rain","type":"yes_no","value":"no"},'
+      '{"name":"Flower stage","type":"choice","value":"Open","choices":["Bud","Open","Wilting"]},'
+      '{"name":"Survey day","type":"date","value":"2026-10-06"},'
+      '{"name":"Start time","type":"time","value":"06:30"}]}',
+    );
     final sessions = Directory('${(await getExternalStorageDirectory())!.path}/sessions')..createSync(recursive: true);
     final problems = <String>[];
     void problem(String what) {
@@ -96,6 +105,9 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(0, -2000));
     await pumpFor(const Duration(seconds: 1));
     await shot('field_notes_bottom');
+    await tester.drag(find.byType(ListView).first, const Offset(0, -2000));
+    await pumpFor(const Duration(seconds: 1));
+    await shot('field_notes_own');
     await tester.pageBack();
     await pumpFor(const Duration(seconds: 2));
 
@@ -124,6 +136,10 @@ void main() {
       if (field['site'] != 'Check meadow' || field['plant'] != 'Knautia arvensis') problem('typed values missing');
       if (field['phone_maker'] == null || field['phone_model'] == null) problem('phone maker or model missing');
       if (field.keys.length != 17) problem('${field.keys.length} keys, expected 17');
+      final custom = field['custom'];
+      if (custom is! Map || custom['Rain'] != false || custom['Flower stage'] != 'Open' || custom['Start time'] != '06:30') {
+        problem('own fields missing in custom: $custom');
+      }
     }
     await shot('summary');
     await tester.pumpWidget(const SizedBox());

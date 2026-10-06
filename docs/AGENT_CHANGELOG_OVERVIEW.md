@@ -47,7 +47,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - `phone_state.dart`: `PhoneState` (r298; FaunaLapse's `phone_state` keys, `tips` with their
   settings page). Native `MainActivity.readPhoneState`/`openPhoneSettings` on the keepalive
   channel; Dart `services/phone_settings.dart`.
-- `field_notes.dart`: `FieldNotes` (r297; `kFieldNoteSpecs`, prefs `field_notes`,
+- `field_notes.dart`: `FieldNotes` (r297; `kFieldNoteSpecs`, prefs `field_notes`, own fields
+  `CustomField`/`CustomFieldType` with FaunaLapse's 7 types and rules (r301, `custom_fields`),
   `recordBlock` = the start record's `field` block with FaunaLapse's 17 keys, `locationBlock`).
 - `model_catalog.dart`: detection models on the phone (`ModelCatalog.build`, `entryOf`,
   `modelsDir`; `isSupportedModelFileName` = the one format filter; `fileNameOrder`).

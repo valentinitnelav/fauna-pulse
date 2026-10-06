@@ -50,11 +50,114 @@ const kFieldNoteMaxMeters = 100.0;
 /// FaunaPulse's GPS stops at this uncertainty ([LocationFixTracker]); recorded as the goal.
 const kFieldNoteGpsGoalM = 15.0;
 
+/// Round 301: the user's own fields, with FaunaLapse's seven types and their record tags.
+enum CustomFieldType {
+  text('text', 'Text (up to 100 characters)'),
+  notes('notes', 'Notes (several lines, up to 5000 characters)'),
+  number('number', 'Number'),
+  date('date', 'Date'),
+  time('time', 'Time'),
+  yesNo('yes_no', 'Yes or no'),
+  choice('choice', 'Choice from a list that you write');
+
+  const CustomFieldType(this.tag, this.label);
+  final String tag;
+  final String label;
+}
+
+/// One field of the user's own (FaunaLapse's custom fields): its name, type, value and, for a
+/// choice, the choices. The value is kept as text (`yyyy-MM-dd`, `HH:mm`, `yes`/`no`, a number).
+class CustomField {
+  const CustomField(this.name, this.type, {this.value, this.choices = const []});
+  final String name;
+  final CustomFieldType type;
+  final String? value;
+  final List<String> choices;
+
+  CustomField withValue(String? v) => CustomField(name, type, value: v, choices: choices);
+
+  /// The value in the record: a number, true/false, text, or null when empty.
+  Object? get recordValue {
+    final v = value;
+    if (v == null || v.isEmpty) return null;
+    return switch (type) {
+      CustomFieldType.number => num.tryParse(v),
+      CustomFieldType.yesNo => v == 'yes',
+      _ => v,
+    };
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'type': type.tag,
+    'value': value,
+    if (type == CustomFieldType.choice) 'choices': choices,
+  };
+
+  static CustomField? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final name = j['name'];
+    final type = CustomFieldType.values.where((t) => t.tag == j['type']).firstOrNull;
+    if (name is! String || type == null) return null;
+    return CustomField(
+      name,
+      type,
+      value: j['value'] as String?,
+      choices: [for (final c in (j['choices'] as List?) ?? const []) '$c'],
+    );
+  }
+}
+
+/// Longest name of a field of one's own, and the number of choices allowed.
+const kCustomFieldNameMax = 40;
+const kCustomChoicesMin = 2;
+const kCustomChoicesMax = 30;
+
+/// Why [name] cannot name a new field (plain language), or null.
+String? customFieldNameProblem(String name, List<CustomField> existing) {
+  final n = name.trim();
+  if (n.isEmpty) return 'Write a name.';
+  if (n.length > kCustomFieldNameMax) return 'At most $kCustomFieldNameMax characters.';
+  if (n.toLowerCase() == 'notes') return '"Notes" is the notes field above; choose another name.';
+  if (existing.any((f) => f.name.toLowerCase() == n.toLowerCase())) return 'There is already a field with this name.';
+  return null;
+}
+
+/// The choices written one per line, or a plain-language problem.
+(List<String>?, String?) parseCustomChoices(String text) {
+  final list = [for (final l in text.split('\n')) if (l.trim().isNotEmpty) l.trim()];
+  if (list.length < kCustomChoicesMin) return (null, 'Write at least $kCustomChoicesMin choices, one per line.');
+  if (list.length > kCustomChoicesMax) return (null, 'At most $kCustomChoicesMax choices.');
+  if (list.any((c) => c.length > kCustomFieldNameMax)) return (null, 'Each choice at most $kCustomFieldNameMax characters.');
+  if (list.map((c) => c.toLowerCase()).toSet().length != list.length) return (null, 'A choice is written twice.');
+  return (list, null);
+}
+
 class FieldNotes {
-  const FieldNotes([this.values = const {}]);
+  const FieldNotes([this.values = const {}, this.custom = const []]);
 
   /// Filled values by record key: trimmed text, or a number for number fields.
   final Map<String, Object> values;
+
+  /// Round 301: the user's own fields, in the order they were added.
+  final List<CustomField> custom;
+
+  FieldNotes withCustom(List<CustomField> c) => FieldNotes(values, List.unmodifiable(c));
+
+  /// A copy with the value of the own field [name]; null when a number is not a number.
+  FieldNotes? withCustomValue(String name, String? value) {
+    final v = value?.trim();
+    final i = custom.indexWhere((f) => f.name == name);
+    if (i < 0) return this;
+    final f = custom[i];
+    if (f.type == CustomFieldType.number && v != null && v.isNotEmpty && num.tryParse(v.replaceAll(',', '.')) == null) {
+      return null;
+    }
+    final stored = f.type == CustomFieldType.number ? v?.replaceAll(',', '.') : v;
+    final max = f.type == CustomFieldType.notes ? kFieldNoteNotesMax : kFieldNoteTextMax;
+    final cut = stored != null && stored.length > max ? stored.substring(0, max) : stored;
+    return withCustom([...custom]..[i] = f.withValue(cut == null || cut.isEmpty ? null : cut));
+  }
 
   static const prefsKey = 'field_notes';
 
@@ -77,7 +180,7 @@ class FieldNotes {
     final next = Map<String, Object>.of(values);
     if (t.isEmpty) {
       next.remove(key);
-      return FieldNotes(next);
+      return FieldNotes(next, custom);
     }
     if (spec.kind == FieldNoteKind.number) {
       final n = double.tryParse(t.replaceAll(',', '.'));
@@ -87,7 +190,7 @@ class FieldNotes {
       final max = spec.kind == FieldNoteKind.notes ? kFieldNoteNotesMax : kFieldNoteTextMax;
       next[key] = t.length > max ? t.substring(0, max) : t;
     }
-    return FieldNotes(next);
+    return FieldNotes(next, custom);
   }
 
   /// The message for a number field that [withText] refused.
@@ -98,9 +201,14 @@ class FieldNotes {
   String get summary => [
     for (final s in kFieldNoteSpecs)
       if (s.kind != FieldNoteKind.notes && values[s.key] != null) '${s.label}: ${textOf(s.key)}',
+    for (final f in custom)
+      if (f.type != CustomFieldType.notes && f.recordValue != null) '${f.name}: ${f.value}',
   ].join(' · ');
 
-  Map<String, dynamic> toJson() => Map<String, dynamic>.of(values);
+  Map<String, dynamic> toJson() => {
+    ...values,
+    if (custom.isNotEmpty) 'custom_fields': [for (final f in custom) f.toJson()],
+  };
 
   static FieldNotes fromJson(Map<String, dynamic> j) {
     final out = <String, Object>{};
@@ -113,7 +221,11 @@ class FieldNotes {
         out[s.key] = v;
       }
     }
-    return FieldNotes(out);
+    final custom = [
+      for (final c in (j['custom_fields'] as List?) ?? const [])
+        if (CustomField.fromJson(c) case final CustomField f) f,
+    ];
+    return FieldNotes(out, custom);
   }
 
   static Future<FieldNotes> load() async {
@@ -136,8 +248,8 @@ class FieldNotes {
   }
 
   /// The start record's `field` block, with FaunaLapse's keys in its order. FaunaPulse has
-  /// no phone ID, site photos or custom fields yet (null or empty); the notes go under
-  /// `custom` as "Notes", where a FaunaLapse user would add them as a custom field.
+  /// no phone ID or site photos yet (null or empty). `custom` holds the user's own fields (round
+  /// 301), then the notes as "Notes", where a FaunaLapse user would add them as a custom field.
   Map<String, dynamic> recordBlock({
     String? phoneMaker,
     String? phoneModel,
@@ -154,7 +266,10 @@ class FieldNotes {
       'detection_distance_m': distance,
       'detection_distance_source': distance == null ? null : 'typed',
       'site_photos_about': null,
-      'custom': {if (values['notes'] != null) 'Notes': values['notes']},
+      'custom': {
+        for (final f in custom) f.name: f.recordValue,
+        if (values['notes'] != null) 'Notes': values['notes'],
+      },
       'location': location == null ? null : locationBlock(location),
       'site_photos': const <String>[],
     };

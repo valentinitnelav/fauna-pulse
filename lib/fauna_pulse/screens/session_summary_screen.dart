@@ -3299,11 +3299,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final f = _startRec?['field'];
     if (f is! Map) return const [];
     final custom = f['custom'];
+    String text(Object v) => v is num ? _numStr(v) : (v is bool ? (v ? 'Yes' : 'No') : '$v');
     return [
       for (final spec in kFieldNoteSpecs)
         if ((spec.kind == FieldNoteKind.notes ? (custom is Map ? custom['Notes'] : null) : f[spec.key])
             case final Object v)
-          _stat(spec.label, v is num ? _numStr(v) : '$v'),
+          _stat(spec.label, text(v)),
+      // Round 301: the user's own fields (also those of imported FaunaLapse sessions).
+      if (custom is Map)
+        for (final e in custom.entries)
+          if (e.key != 'Notes' && e.value != null) _stat('${e.key}', text(e.value as Object)),
     ];
   }
 

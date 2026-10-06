@@ -22,9 +22,10 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 - **Pick your model and settings ahead of time** so you're not fiddling in the
   sun. Settings persist between sessions, so last-used values reappear.
 - **Fill in the field notes** (camera screen, the pin with a pencil): the
-  position, who set up, site, plant, camera height and distance, notes. They are
-  saved with every session until you change them, in the same form as the
-  FaunaLapse app.
+  position, who set up, site, plant, camera height and distance, notes, and
+  fields of your own (*Add a field*: text, notes, number, date, time, yes or no,
+  or a choice from your list). They are saved with every session until you
+  change them, in the same form as the FaunaLapse app.
 
 ### Physical setup
 

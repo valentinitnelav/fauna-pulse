@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../models/field_notes.dart';
 import '../session/location_fix.dart';
+import '../widgets/dialog_title.dart';
 import '../widgets/home_button.dart';
 import '../widgets/setting_help.dart';
 
@@ -39,6 +40,9 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
   bool _loaded = false;
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, String?> _errors = {};
+  // Round 301: the user's own fields (text, notes and number inputs), by name.
+  final Map<String, TextEditingController> _customControllers = {};
+  final Map<String, String?> _customErrors = {};
 
   @override
   void initState() {
@@ -51,13 +55,16 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
         for (final s in kFieldNoteSpecs) {
           _controllers[s.key] = TextEditingController(text: n.textOf(s.key));
         }
+        for (final f in n.custom) {
+          _customControllers[f.name] = TextEditingController(text: f.value ?? '');
+        }
       });
     });
   }
 
   @override
   void dispose() {
-    for (final c in _controllers.values) {
+    for (final c in [..._controllers.values, ..._customControllers.values]) {
       c.dispose();
     }
     super.dispose();
@@ -96,6 +103,8 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
                   _positionSection(),
                   const Divider(height: 32, color: Colors.white24),
                   for (final s in kFieldNoteSpecs) _field(s),
+                  const Divider(height: 32, color: Colors.white24),
+                  ..._customSection(),
                 ],
               ),
       ),
@@ -167,6 +176,271 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
           isDense: true,
         ),
       ),
+    );
+  }
+
+  // --- Round 301: the user's own fields (idea and types from FaunaLapse) -----
+
+  void _setCustom(CustomField f, String? value) {
+    final next = _notes.withCustomValue(f.name, value);
+    setState(() => _customErrors[f.name] = next == null ? 'Write a number, for example 21.5' : null);
+    if (next == null) return;
+    setState(() => _notes = next);
+    unawaited(next.save());
+  }
+
+  List<Widget> _customSection() => [
+    const HelpLabel(
+      label: 'Your own fields',
+      labelStyle: TextStyle(fontWeight: FontWeight.bold),
+      helperText:
+          'Add fields of your own, for example Observer, Weather or Flower stage. Each '
+          'has a type: text, notes, a number, a date, a time, yes or no, or a choice '
+          'from a list you write. They are saved with every session, as in the '
+          'FaunaLapse app.',
+    ),
+    const SizedBox(height: 8),
+    for (final f in _notes.custom) _customField(f),
+    Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('Add a field'),
+        onPressed: _addField,
+      ),
+    ),
+  ];
+
+  Widget _customField(CustomField f) {
+    final Widget input;
+    switch (f.type) {
+      case CustomFieldType.text:
+      case CustomFieldType.notes:
+      case CustomFieldType.number:
+        final notes = f.type == CustomFieldType.notes;
+        input = TextField(
+          controller: _customControllers.putIfAbsent(f.name, () => TextEditingController(text: f.value ?? '')),
+          maxLines: notes ? 5 : 1,
+          minLines: notes ? 3 : 1,
+          maxLength: notes ? kFieldNoteNotesMax : kFieldNoteTextMax,
+          keyboardType: f.type == CustomFieldType.number
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : (notes ? TextInputType.multiline : TextInputType.text),
+          onChanged: (t) => _setCustom(f, t),
+          decoration: InputDecoration(
+            labelText: f.name,
+            errorText: _customErrors[f.name],
+            counterText: notes ? null : '',
+            border: const OutlineInputBorder(),
+            isDense: true,
+          ),
+        );
+      case CustomFieldType.date:
+      case CustomFieldType.time:
+        input = InkWell(
+          onTap: () => _pickDateOrTime(f),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: f.name,
+              border: const OutlineInputBorder(),
+              isDense: true,
+              suffixIcon: f.value == null
+                  ? Icon(f.type == CustomFieldType.date ? Icons.calendar_today : Icons.schedule, size: 18)
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      tooltip: 'Clear',
+                      onPressed: () => _setCustom(f, null),
+                    ),
+            ),
+            child: Text(f.value ?? 'Not set', style: TextStyle(color: f.value == null ? Colors.white38 : null)),
+          ),
+        );
+      case CustomFieldType.yesNo:
+      case CustomFieldType.choice:
+        final options = f.type == CustomFieldType.yesNo ? const ['yes', 'no'] : f.choices;
+        input = DropdownButtonFormField<String?>(
+          initialValue: options.contains(f.value) ? f.value : null,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: f.name, border: const OutlineInputBorder(), isDense: true),
+          items: [
+            const DropdownMenuItem<String?>(value: null, child: Text('Not set', style: TextStyle(color: Colors.white38))),
+            for (final o in options)
+              DropdownMenuItem<String?>(
+                value: o,
+                child: Text(
+                  f.type == CustomFieldType.yesNo ? (o == 'yes' ? 'Yes' : 'No') : o,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: (v) => _setCustom(f, v),
+        );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: input),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Remove the field',
+            onPressed: () => _removeField(f),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickDateOrTime(CustomField f) async {
+    String? v;
+    if (f.type == CustomFieldType.date) {
+      final now = DateTime.now();
+      final d = await showDatePicker(
+        context: context,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+        initialDate: DateTime.tryParse(f.value ?? '') ?? now,
+      );
+      if (d != null) {
+        v = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      }
+    } else {
+      final parts = (f.value ?? '').split(':');
+      final t = await showTimePicker(
+        context: context,
+        initialTime: parts.length == 2
+            ? TimeOfDay(hour: int.tryParse(parts[0]) ?? 12, minute: int.tryParse(parts[1]) ?? 0)
+            : TimeOfDay.now(),
+        builder: (ctx, child) =>
+            MediaQuery(data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true), child: child!),
+      );
+      if (t != null) v = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    }
+    if (v != null && mounted) _setCustom(f, v);
+  }
+
+  Future<void> _removeField(CustomField f) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(Text('Remove the field ${f.name}?'), onClose: () => Navigator.of(ctx).pop(false)),
+        content: const Text(
+          'Its value goes too. You can add the field again later.',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final next = _notes.withCustom([for (final c in _notes.custom) if (c.name != f.name) c]);
+    _customControllers.remove(f.name)?.dispose();
+    setState(() => _notes = next);
+    unawaited(next.save());
+  }
+
+  Future<void> _addField() async {
+    final f = await showDialog<CustomField>(
+      context: context,
+      builder: (_) => _AddFieldDialog(existing: _notes.custom),
+    );
+    if (f == null || !mounted) return;
+    final next = _notes.withCustom([..._notes.custom, f]);
+    setState(() => _notes = next);
+    unawaited(next.save());
+  }
+}
+
+/// The "Add a field" window: name, type and, for a choice, the choices one per line.
+class _AddFieldDialog extends StatefulWidget {
+  const _AddFieldDialog({required this.existing});
+  final List<CustomField> existing;
+
+  @override
+  State<_AddFieldDialog> createState() => _AddFieldDialogState();
+}
+
+class _AddFieldDialogState extends State<_AddFieldDialog> {
+  final _name = TextEditingController();
+  final _choices = TextEditingController();
+  CustomFieldType _type = CustomFieldType.text;
+  String? _nameError;
+  String? _choicesError;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _choices.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final nameError = customFieldNameProblem(_name.text, widget.existing);
+    final (choices, choicesError) =
+        _type == CustomFieldType.choice ? parseCustomChoices(_choices.text) : (const <String>[], null);
+    setState(() {
+      _nameError = nameError;
+      _choicesError = choicesError;
+    });
+    if (nameError != null || choicesError != null) return;
+    Navigator.of(context).pop(CustomField(_name.text.trim(), _type, choices: choices ?? const []));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Add a field'), onClose: () => Navigator.of(context).pop()),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _name,
+              maxLength: kCustomFieldNameMax,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                hintText: 'for example Observer or Weather',
+                errorText: _nameError,
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<CustomFieldType>(
+              initialValue: _type,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Type'),
+              items: [
+                for (final t in CustomFieldType.values)
+                  DropdownMenuItem(value: t, child: Text(t.label, overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (t) => setState(() => _type = t ?? CustomFieldType.text),
+            ),
+            if (_type == CustomFieldType.choice) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _choices,
+                minLines: 3,
+                maxLines: 6,
+                keyboardType: TextInputType.multiline,
+                decoration: InputDecoration(
+                  labelText: 'Choices, one per line',
+                  helperText: '$kCustomChoicesMin to $kCustomChoicesMax choices',
+                  errorText: _choicesError,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: _add, child: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold))),
+      ],
     );
   }
 }

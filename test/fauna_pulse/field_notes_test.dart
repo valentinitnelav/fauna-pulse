@@ -70,4 +70,36 @@ void main() {
     expect((out['field'] as Map)['location'], '[redacted]');
     expect((out['field'] as Map)['site'], 'A');
   });
+
+  group('own fields (round 301)', () {
+    test('names and choices follow FaunaLapse\'s rules', () {
+      const existing = [CustomField('Observer', CustomFieldType.text)];
+      expect(customFieldNameProblem('', existing), isNotNull);
+      expect(customFieldNameProblem('observer', existing), contains('already'));
+      expect(customFieldNameProblem('Notes', existing), contains('Notes'));
+      expect(customFieldNameProblem('x' * 41, existing), contains('40'));
+      expect(customFieldNameProblem('Weather', existing), isNull);
+      expect(parseCustomChoices('only one').$2, isNotNull);
+      expect(parseCustomChoices('Sunny\nCloudy\nsunny').$2, contains('twice'));
+      expect(parseCustomChoices(' Sunny \n\nCloudy').$1, ['Sunny', 'Cloudy']);
+    });
+
+    test('values: numbers checked, yes/no as true/false, saved and in the record', () {
+      var n = const FieldNotes().withText('notes', 'Windy')!.withCustom(const [
+        CustomField('Count', CustomFieldType.number),
+        CustomField('Rain', CustomFieldType.yesNo),
+        CustomField('Stage', CustomFieldType.choice, choices: ['Bud', 'Open']),
+        CustomField('Day', CustomFieldType.date),
+      ]);
+      expect(n.withCustomValue('Count', 'many'), isNull);
+      n = n.withCustomValue('Count', '2,5')!.withCustomValue('Rain', 'no')!.withCustomValue('Stage', 'Open')!;
+      final back = FieldNotes.fromJson(jsonDecode(jsonEncode(n.toJson())) as Map<String, dynamic>);
+      expect(back.custom.map((f) => f.name), ['Count', 'Rain', 'Stage', 'Day']);
+      expect(back.custom[2].choices, ['Bud', 'Open']);
+      final custom = back.recordBlock()['custom'] as Map;
+      expect(custom, {'Count': 2.5, 'Rain': false, 'Stage': 'Open', 'Day': null, 'Notes': 'Windy'});
+      expect(back.summary, contains('Count: 2.5'));
+      expect(back.withText('site', 'A')!.custom, hasLength(4), reason: 'typing keeps the own fields');
+    });
+  });
 }

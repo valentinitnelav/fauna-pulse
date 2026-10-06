@@ -46,6 +46,55 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -3000));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expectAboveBottomInset(tester, find.widgetWithText(TextField, 'Notes'), label: 'notes field');
+    expectAboveBottomInset(tester, find.text('Add a field'), label: 'Add a field button');
+  });
+
+  testWidgets('own fields: add a choice through the window, set values, all saved (round 301)', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      FieldNotes.prefsKey: '{"custom_fields":[{"name":"Survey day","type":"date","value":"2026-10-06"},'
+          '{"name":"Rain","type":"yes_no","value":null}]}',
+    });
+    simulateBottomSystemBar(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: FieldNotesScreen(
+          location: ValueNotifier<SessionLocation?>(null),
+          searching: ValueNotifier(false),
+          onChangePosition: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    expect(find.text('2026-10-06'), findsOneWidget);
+    await tester.tap(find.text('Add a field'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Flower stage with a fairly long name');
+    await tester.tap(find.byType(DropdownButtonFormField<CustomFieldType>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(CustomFieldType.choice.label).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('at least 2 choices'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Choices, one per line'), 'Bud\nOpen\nWilting');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((w) => w is DropdownButtonFormField<String?>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open').last);
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    final saved = await tester.runAsync(FieldNotes.load);
+    expect(saved!.custom.map((f) => f.name), ['Survey day', 'Rain', 'Flower stage with a fairly long name']);
+    expect(saved.custom.last.value, 'Open');
+    expect(saved.recordBlock()['custom'], {'Survey day': '2026-10-06', 'Rain': null, 'Flower stage with a fairly long name': 'Open'});
+    expect(tester.takeException(), isNull);
+    expectAboveBottomInset(tester, find.text('Add a field'), label: 'Add a field button');
   });
 }
