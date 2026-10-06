@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -66,8 +67,28 @@ class YOLOView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs), DefaultLifecycleObserver {
 
-    // Lifecycle owner for camera
+    // Lifecycle owner for camera. Since round 292 this is always [cameraLifecycle] once the
+    // Activity is known (null before that), never the Activity itself.
     private var lifecycleOwner: LifecycleOwner? = null
+
+    /** Round 292 (idea from FaunaLapse, whose camera lives in its foreground service): the
+     *  camera's own lifecycle. CameraX binds to it instead of the Activity, so a recording can
+     *  keep the camera running when the screen goes off (power button, the phone's screen
+     *  timeout) or the app is sent to the background. It follows the Activity (started =
+     *  RESUMED, stopped = CREATED) unless Dart holds the camera ([setCameraHold]). The camera
+     *  may run from the background because the recording's foreground service has the camera
+     *  type and was started while the app was on screen. Main thread only. */
+    private class CameraLifecycle : LifecycleOwner {
+        val registry = LifecycleRegistry(this)
+        override val lifecycle: Lifecycle get() = registry
+    }
+    private val cameraLifecycle = CameraLifecycle()
+    // The Activity whose lifecycle this view observes.
+    private var activityOwner: LifecycleOwner? = null
+    // Whether that Activity is started (on screen, or about to be).
+    private var activityStarted = false
+    // Dart's hold: a recording or scheduled run is active, so the camera stays on when hidden.
+    private var holdCamera = false
 
     companion object {
         private const val REQUEST_CODE_PERMISSIONS = 10
@@ -1087,8 +1108,13 @@ class YOLOView @JvmOverloads constructor(
     fun onLifecycleOwnerAvailable(owner: LifecycleOwner) {
         // Detach from any previous owner before re-registering so a re-attach (or owner change) can't leave a stale
         // observer wired to this view, and so disposal can fully release it.
-        this.lifecycleOwner?.lifecycle?.removeObserver(this)
-        this.lifecycleOwner = owner
+        activityOwner?.lifecycle?.removeObserver(this)
+        activityOwner = owner
+        // Round 292: the camera binds to its own lifecycle, which follows this Activity
+        // (addObserver below replays onStart/onResume when the Activity is already running).
+        activityStarted = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        this.lifecycleOwner = cameraLifecycle
+        syncCameraLifecycle()
         owner.lifecycle.addObserver(this)
 
         if (allPermissionsGranted() && (camera == null || isStopped)) {
@@ -1101,8 +1127,36 @@ class YOLOView @JvmOverloads constructor(
      * strong reference to this (now-dead) view — otherwise a later onStart/onResume would invoke startCamera() on it.
      */
     fun detachLifecycle() {
-        lifecycleOwner?.lifecycle?.removeObserver(this)
+        activityOwner?.lifecycle?.removeObserver(this)
+        activityOwner = null
+        // Round 292: no hold survives the view; the camera stops with it.
+        holdCamera = false
+        activityStarted = false
+        syncCameraLifecycle()
         lifecycleOwner = null
+    }
+
+    /** Round 292: moves the camera's lifecycle to where the Activity and the hold say. */
+    private fun syncCameraLifecycle() {
+        val target = if (activityStarted || holdCamera) Lifecycle.State.RESUMED else Lifecycle.State.CREATED
+        if (cameraLifecycle.registry.currentState != target) {
+            cameraLifecycle.registry.currentState = target
+        }
+    }
+
+    /**
+     * Round 292: keeps the camera running while the app is hidden (screen off, Home). Dart sets
+     * it while a recording or a scheduled run is active and clears it at the end. While hidden
+     * and held, only the preview is detached (nobody can see it, and a preview without a
+     * visible surface could stall the camera); analysis and photos go on. Clearing it while
+     * hidden stops the camera as the Activity would have.
+     */
+    fun setCameraHold(hold: Boolean) {
+        if (holdCamera == hold) return
+        holdCamera = hold
+        Log.i(TAG, "Camera hold ${if (hold) "on" else "off"} (screen ${if (activityStarted) "on" else "off"})")
+        if (!hold && !activityStarted) forgetLastFrame()
+        syncCameraLifecycle()
     }
 
     /**
@@ -1354,7 +1408,13 @@ class YOLOView @JvmOverloads constructor(
                         currentZoomRatio = 1.0f
                         onZoomChanged?.invoke(currentZoomRatio)
 
-                        previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
+                        // Round 292: the preview gets its surface only when it stays attached
+                        // (not in power save, screen on); a camera started while the screen is
+                        // off (a time-lapse wake, a scheduled window) never asks the hidden
+                        // view for a surface.
+                        if (previewShouldAttach()) {
+                            previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
+                        }
 
                         // Round 82: remember what was bound (setPreviewEnabled needs it), honor
                         // an active power-save preview-off across rebinds (lens switch/resume),
@@ -1362,7 +1422,7 @@ class YOLOView @JvmOverloads constructor(
                         // capture session, which would otherwise drop the focus lock / fps cap.
                         boundCameraProvider = cameraProvider
                         boundCameraSelector = cameraSelector
-                        if (!previewEnabled) {
+                        if (!previewShouldAttach()) {
                             previewUseCase?.let { p ->
                                 try {
                                     if (cameraProvider.isBound(p)) cameraProvider.unbind(p)
@@ -2185,14 +2245,28 @@ class YOLOView @JvmOverloads constructor(
      */
     fun setPreviewEnabled(enabled: Boolean) {
         previewEnabled = enabled
+        applyPreviewAttachment()
+    }
+
+    /** Round 292: the preview is attached only when wanted ([previewEnabled], off in power
+     *  save) AND the screen shows the app. */
+    private fun previewShouldAttach() = previewEnabled && activityStarted
+
+    /** Attaches or detaches the preview use case to match [previewShouldAttach]. Never binds
+     *  it while the camera is paused or stopped: the preview alone would start the camera. */
+    private fun applyPreviewAttachment() {
         val provider = boundCameraProvider ?: return
         val preview = previewUseCase ?: return
         val owner = lifecycleOwner ?: return
         val selector = boundCameraSelector ?: return
+        if (camera == null || isStopped) return
+        val attach = previewShouldAttach()
         try {
-            if (!enabled) {
-                if (provider.isBound(preview)) provider.unbind(preview)
-                Log.i(TAG, "Preview use case detached (power save)")
+            if (!attach) {
+                if (provider.isBound(preview)) {
+                    provider.unbind(preview)
+                    Log.i(TAG, "Preview use case detached (${if (previewEnabled) "screen off" else "power save"})")
+                }
             } else if (!provider.isBound(preview)) {
                 camera = provider.bindToLifecycle(owner, selector, preview)
                 preview.setSurfaceProvider(previewView.surfaceProvider)
@@ -2202,7 +2276,7 @@ class YOLOView @JvmOverloads constructor(
                 Log.i(TAG, "Preview use case reattached")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "setPreviewEnabled($enabled) failed", e)
+            Log.e(TAG, "Preview attach($attach) failed", e)
         }
     }
 
@@ -2470,6 +2544,11 @@ class YOLOView @JvmOverloads constructor(
     
     // Lifecycle methods from DefaultLifecycleObserver
     override fun onStart(owner: LifecycleOwner) {
+        // Round 292: the screen shows the app again: the camera lifecycle follows, and a held
+        // camera gets its preview back (unless power save keeps it off).
+        activityStarted = true
+        syncCameraLifecycle()
+        applyPreviewAttachment()
         if (allPermissionsGranted()) {
             // Restart the camera on start if it was stopped by a lifecycle event (e.g. navigating back), but NOT if the
             // Dart layer intentionally paused it — that pause must hold until an explicit resume.
@@ -2489,9 +2568,16 @@ class YOLOView @JvmOverloads constructor(
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        // Camera will be automatically stopped by CameraX when lifecycle stops.
-        // Round 290: so the frame cache goes old now (power button, Home): drop it, so no
-        // photo is cut from it. The first frame after the restart fills it again.
+        activityStarted = false
+        if (holdCamera) {
+            // Round 292: a recording holds the camera: it keeps running with the screen off;
+            // only the preview goes (no visible surface to draw into).
+            applyPreviewAttachment()
+            return
+        }
+        // The camera stops with its lifecycle. Round 290: so the frame cache goes old now:
+        // drop it, so no photo is cut from it. The first frame after the restart fills it.
+        syncCameraLifecycle()
         forgetLastFrame()
     }
 

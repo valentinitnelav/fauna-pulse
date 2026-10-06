@@ -229,6 +229,14 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   (`onInitialModelLoadFailed` → `onModelError` → `_onModelLoadError`) reverts via
   `modelLoadRecovery()` (still-loaded model, else none) + dialog. `migrateModelPath` maps old ids
   to ''.
+- **Camera lifecycle hold (r292):** CameraX binds to `YOLOView`'s own `CameraLifecycle`, which
+  follows the Activity (started = RESUMED, stopped = CREATED) unless Dart holds it
+  (`setCameraHold`, sent by `_pushCameraHold` while `_recording || _schedule != null`, also in
+  `_startUpOnce`). Held + hidden: the camera runs, the preview is detached
+  (`previewShouldAttach` = `previewEnabled && activityStarted`; `applyPreviewAttachment` never
+  binds the preview while the camera is paused); a camera started while hidden never gets a
+  surface provider. `RecordingService.running` stops a second (background) service start;
+  the notification permission is asked only while visible. `screen` records mark hidden/visible.
 - **Blackout (power save) detaches only the Preview use case** (`setPreviewEnabled(false)`);
   analysis and ImageCapture stay bound, a recording continues. A timed session end calls
   `_exitBlackout()` before pushing the summary (brightness override is per Activity).
@@ -239,9 +247,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `pauseCamera`/`stop`/lifecycle `onStop` clear the frame cache. Dart: time-lapse and
   reference photos wait while the app is hidden or no stream event came for 5 s
   (`_cameraFramesFresh`; `timelapse_skipped`, clip end `app_hidden`/`no_camera_frames`); a
-  refused cut logs `app_error`. Reason: the power button and Home stop CameraX silently.
-  When the camera learns to run with the screen off (plan idea 1), drop `_appHidden` and
-  the `onStop` cache clear for held sessions.
+  refused cut logs `app_error`. Reason: without the camera hold (r292) the power button and
+  Home stop CameraX silently; with it (every recording) `_appHidden` no longer counts.
 - **Portrait only**, locked in the manifest and in `main()`; the crop/rotation math assumes an
   upright phone. Lift both locks only with a full orientation audit.
 - **Start-up calibration is one cycle and cached:** `_calibrating` (first analysis frame +
@@ -295,7 +302,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   track ID, `box_in_roi` 0..1, saved file names, `frame_ms`, `frame_sensor_ms`), `track_event`
   (`created`/`lost`/`recovered`/`removed`), `capture`/`motion_capture`/`timelapse_capture`/`timelapse_skipped`,
   `raw_detections` (opt-in), `fps`/`thermal`/`power` (with `is_plugged`), `motion_gate`,
-  `roi_update`, `blackout`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
+  `roi_update`, `blackout`, `screen`, `focus_change`, `camera_sleep`, `torch`, `video_clip`,
   `video_skipped`, `app_error`, `end_of_session` (`ended_normally`). Record dictionary:
   `docs/DATA_GUIDE.md`. Parsers also accept the old per-track `detection` records.
 - `detections[].tracks[]` boxes are always detector-observed (unmatched tracks go `lost`).
@@ -613,8 +620,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   awake and unlocked at the start. Screenshots: checks print `SHOT <name>` lines. A side-by-side
   `com.faunapulse.app.check` copy (no risk to the installed app) is described in
   `test/README.md`.
-- Checks in `integration_test/`: app launch, camera modes, camera stop (Home mid time-lapse;
-  the runner presses Home on `HOME_NOW`), view recreate, slow-phone hint, CPU
+- Checks in `integration_test/`: app launch, camera modes, screen off (`screen_off_check`:
+  Home during time-lapse, live detection, a camera wake and a scheduled window; the runner
+  presses Home on `HOME_NOW <part> <s>` and brings the app back after that time), view recreate, slow-phone hint, CPU
   threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
   models screen, models delete, photo track IDs, video decode / import / convert / samples /
   default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+

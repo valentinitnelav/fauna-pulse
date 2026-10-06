@@ -682,6 +682,11 @@ class YOLOPlatformView(
                     yoloView.setPreviewEnabled(call.argument<Boolean>("enabled") ?: true)
                     result.success(null)
                 }
+                "setCameraHold" -> {
+                    // FaunaPulse (round 292): a recording keeps the camera while the screen is off.
+                    yoloView.setCameraHold(call.argument<Boolean>("hold") ?: false)
+                    result.success(null)
+                }
                 "getStreamResolutions" -> {
                     result.success(yoloView.supportedStreamResolutions())
                 }

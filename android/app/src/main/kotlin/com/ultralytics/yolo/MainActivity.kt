@@ -277,9 +277,13 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startService" -> {
-                        ContextCompat.startForegroundService(
-                            this, Intent(this, RecordingService::class.java),
-                        )
+                        // Round 292: already running (a scheduled run keeps it between
+                        // windows): never start it again, possibly from the background.
+                        if (!RecordingService.running) {
+                            ContextCompat.startForegroundService(
+                                this, Intent(this, RecordingService::class.java),
+                            )
+                        }
                         result.success(true)
                     }
                     "stopService" -> {

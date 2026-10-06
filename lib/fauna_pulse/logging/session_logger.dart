@@ -260,6 +260,13 @@ class SessionLogger {
   void logTimeLapseSkipped(Map<String, dynamic> payload, {DateTime? at}) =>
       _append('timelapse_skipped', payload, at: at);
 
+  /// The app left or came back to the screen during the recording (round
+  /// 292): `state` `hidden` (screen off, power button, Home, another app in
+  /// front) or `visible`. Since round 292 the camera keeps recording while
+  /// hidden; only the preview stops. Logged on changes only.
+  void logScreen(Map<String, dynamic> payload, {DateTime? at}) =>
+      _append('screen', payload, at: at);
+
   /// A time-lapse camera-parking transition (round 163, perf review E3):
   /// `state` (parked / warming / running / fallback_bound), `reason`
   /// (between_bursts / prewake / late_wake / fresh_frame / wake_timeout /

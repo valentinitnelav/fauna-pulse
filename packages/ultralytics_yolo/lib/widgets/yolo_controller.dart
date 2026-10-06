@@ -455,6 +455,14 @@ class YOLOViewController {
   Future<void> setPreviewEnabled(bool enabled) =>
       _invoke<void>('setPreviewEnabled', {'enabled': enabled});
 
+  /// Keeps the camera running while the app is hidden (FaunaPulse, round
+  /// 292): with [hold] true, the screen going off (power button, screen
+  /// timeout) or Home no longer stops the camera; only the preview detaches.
+  /// Set while a recording or scheduled run is active, cleared after it.
+  /// Android only; a no-op where unimplemented.
+  Future<void> setCameraHold(bool hold) =>
+      _invoke<void>('setCameraHold', {'hold': hold});
+
   Future<void> switchModel(
     String modelPath, [
     YOLOTask? task,

@@ -15,6 +15,7 @@ import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -174,8 +175,12 @@ class SessionRecorder {
     // Keep the OS from sleeping/killing this long session: a foreground
     // service (with an ongoing notification) protects the process. Ask for
     // the notification permission first (Android 13+) so the notification can
-    // show; the service still runs either way.
-    await Permission.notification.request();
+    // show; the service still runs either way. Round 292: only while the app
+    // is on screen; a scheduled window can start with the screen off, where
+    // the system dialog cannot appear and the request would never return.
+    if (SchedulerBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      await Permission.notification.request();
+    }
     await RecordingKeepAlive.start();
 
     _sessionDir = dir;

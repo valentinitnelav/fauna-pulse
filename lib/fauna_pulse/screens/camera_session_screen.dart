@@ -393,15 +393,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // photos wait until stream events arrive again ([_cameraFramesFresh]).
   static const int _framesFreshMs = 5000;
   bool _timeLapseSkipLogged = false;
-  // The app is not on screen (Home, power button). The camera follows the
-  // screen, so it stops at that moment, before the stream goes quiet.
+  // The app is not on screen (Home, power button). Without the hold
+  // ([_cameraHeld], round 292) the camera follows the screen, so it stops at
+  // that moment, before the stream goes quiet.
   bool _appHidden = false;
+  bool _cameraHeld = false;
 
   /// Whether a clock-driven photo can be cut now: the app is on screen, the
   /// camera is not paused on purpose and a stream event arrived within
   /// [_framesFreshMs].
   bool _cameraFramesFresh(int nowMs) =>
-      !_appHidden &&
+      (!_appHidden || _cameraHeld) &&
       !_paused &&
       _lastStreamEventMs != 0 &&
       nowMs - _lastStreamEventMs < _framesFreshMs;
@@ -970,10 +972,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Round 290: hidden = the camera has stopped (it follows the screen);
     // inactive also comes on the way back, when the camera starts again.
+    final wasHidden = _appHidden;
     if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
       _appHidden = true;
     } else if (state == AppLifecycleState.inactive || state == AppLifecycleState.resumed) {
       _appHidden = false;
+    }
+    if (_recording && _appHidden != wasHidden) {
+      _logger?.logScreen({'state': _appHidden ? 'hidden' : 'visible'});
     }
     // Returning to the foreground mid-session: re-assert the screen-on wakelock in
     // case it was cleared while away, so a long unattended recording keeps the
@@ -1296,6 +1302,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _pushMotionGate();
     _pushCameraFpsCap();
     _pushTimeLapse();
+    _pushCameraHold();
     _probes.begin(
       analysisDims: () => (_imageWidth, _imageHeight),
       preferredLensZoom: _config.selectedLensZoom,
@@ -1927,6 +1934,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             ),
     );
 
+    // Round 292: from now on the screen going off no longer stops the camera.
+    _pushCameraHold();
+
     // The ROI just written into the start record is the debouncer's baseline:
     // a drag that ends back on this geometry logs no roi_update.
     _roiLogDebounce.seed(_roi);
@@ -2124,6 +2134,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       uniqueTrackCount: _tracker.totalConfirmed,
       retainKeepAlive: retainKeepAlive,
     );
+    _pushCameraHold();
     if (mounted) setState(() {});
   }
 
@@ -2202,6 +2213,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _schedule = plan;
       _scheduleSessionsDone = 0;
     });
+    _pushCameraHold();
     // Protect the WHOLE run up front (not just each window): the foreground
     // service + wakelock must already be up if the run starts with a sleep
     // phase (e.g. started at 22:00 for a 06:00 window). Both are idempotent,
@@ -2391,6 +2403,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Clear the run BEFORE exiting blackout so its wakelock guard
       // (`_schedule == null`) really drops the wakelock.
       setState(() => _schedule = null);
+      _pushCameraHold();
       await _exitBlackout();
       if (_paused && mounted) {
         _paused = false;
@@ -2473,6 +2486,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       final wasSleeping = _scheduleSleeping;
       _scheduleSleeping = false;
       setState(() => _schedule = null);
+      _pushCameraHold();
       if (_recording) {
         await _stopAndShowSummary();
       } else if (wasSleeping) {
@@ -2977,6 +2991,18 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         .catchError((Object e) => _logAsyncError('set_camera_fps_cap', e));
   }
 
+  /// Round 292: while a recording or scheduled run is active the camera keeps
+  /// running when the screen goes off (power button, screen timeout) or the
+  /// app is sent to the background; only the preview detaches. Sent at every
+  /// change and in the start-up sequence of each new native view.
+  void _pushCameraHold() {
+    final hold = _recording || _schedule != null;
+    _cameraHeld = hold;
+    _controller
+        .setCameraHold(hold)
+        .catchError((Object e) => _logAsyncError('set_camera_hold', e));
+  }
+
   /// Sends the motion-gate settings to the native pipeline. When enabled the
   /// detector sleeps while nothing moves inside the ROI (heat/battery saver);
   /// the native side always starts the gate awake so the user sees it working.
@@ -3102,7 +3128,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (!_timeLapseSkipLogged) {
         _timeLapseSkipLogged = true;
         _logger?.logTimeLapseSkipped({
-          'reason': _appHidden ? 'app_hidden' : 'no_camera_frames',
+          'reason': _appHidden && !_cameraHeld ? 'app_hidden' : 'no_camera_frames',
           'silent_ms': _lastStreamEventMs == 0 ? null : nowMs - _lastStreamEventMs,
         });
       }
@@ -3120,7 +3146,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       } else if (_paused || !cameraUp) {
         endReason = 'camera_paused';
       } else {
-        endReason = _appHidden ? 'app_hidden' : 'no_camera_frames';
+        endReason = _appHidden && !_cameraHeld ? 'app_hidden' : 'no_camera_frames';
       }
       unawaited(
         video.sync(

@@ -64,6 +64,10 @@ The headline changes, with the round that introduced each (full rationale in
   (r166, review E4).
 - **Preview detach**, `setPreviewEnabled()` (r82): unbinds only the preview
   use case for the app's blackout power-save mode.
+- **Camera lifecycle hold** (r292): CameraX binds to the view's own
+  `CameraLifecycle` (a `LifecycleRegistry`) that follows the Activity unless
+  Dart holds it (`setCameraHold`), so a recording keeps the camera with the
+  screen off; the preview is attached only while the screen shows the app.
 - **Inference deadline scheduler** (r129, review C1): the FPS cap advances a
   deadline per allowed start, so cap 10 on a 15 fps camera really runs ~10
   (an elapsed-time check beat against the camera cadence at 7.5).

@@ -153,8 +153,13 @@ roughly in half during quiet (motion-gated) periods. Waking takes about a
 fifth of a second while the preview reattaches; the locked focus and the
 camera frame-rate cap are re-applied automatically.
 
-(Recording only runs while the app is open — blackout is *not* the same as
-locking the phone. Don't press the hardware lock button; use blackout.)
+**Switching the screen off is fine too** (since round 292): press the power
+button, or let the phone's own screen timeout do it, and the recording goes on
+with the screen off: detection, photos and video keep running, only the live
+preview stops. Wake the phone and open FaunaPulse to look or to stop. Blackout
+remains for when you want the app on screen but dark. Note: while a phone
+charges (a power bank counts), Android's "Stay awake" developer option keeps
+the screen on whatever its timeout says.
 
 Blackout is also the app's biggest built-in *cooling* measure — see §8 on
 heat. Since round 132 every blackout on/off toggle is written to the session

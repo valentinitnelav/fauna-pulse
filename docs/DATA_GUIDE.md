@@ -267,6 +267,13 @@ Screen state at any moment = the last `blackout` record before it (before the
 first one: `blackout_at_start` in the start record, absent = screen on).
 Sessions recorded before round 132 carry no screen-state information.
 
+### `screen` — the app went off or back on screen during the recording (round 292+)
+
+`state`: `hidden` (screen off by the power button or the phone's screen timeout, Home, or
+another app in front) or `visible`. Logged on changes only. Since round 292 the camera keeps
+recording while the app is hidden (only the live preview stops), so these records explain
+why a session's screen was dark, not gaps in the data.
+
 ### `timelapse_capture` — one per time-lapse photo (round 97+)
 
 Fields: `jpeg` (filename in `roi_frames/`), `captured_at_ms` (the trigger
@@ -285,7 +292,8 @@ one's start); pre-174 sessions carry `timeLapseIntervalSeconds` instead
 comparing across the change.
 
 Photos are taken only while the camera delivers frames (round 290). While the app is not
-on screen (power button, Home: the camera stops with the screen), or when no camera event
+on screen without a running recording to keep the camera (`app_hidden`; since round 292 a
+recording always keeps it, so this is rare), or when no camera event
 arrives for 5 s inside a burst (for example another app took the camera), photo times are
 skipped and one `timelapse_skipped` record marks the start of that gap: `reason`
 (`app_hidden` or `no_camera_frames`) and `silent_ms` (how long the camera had been silent).
