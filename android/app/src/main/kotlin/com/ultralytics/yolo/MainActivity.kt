@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Color
 import android.graphics.Matrix
@@ -421,11 +422,21 @@ class MainActivity : FlutterFragmentActivity() {
             // un-mirror its X before mapping into raw coordinates.
             if (isFront) x = w - px - x
             val rr = rawRectForUprightRect(rot, rawW, rawH, x, y, x + px, y + px)
-            var region: Bitmap = decoder.decodeRegion(rr, null)
             // Apply the user's target-side cap BEFORE rotating — cheaper to
             // rotate the smaller square (mirrors Dart capSavedSidePx).
             val savedCap = if (maxPx > 0) maxOf(32, (maxPx / 32) * 32) else 0
+            // Round 295 (idea from FaunaLapse's PhotoSaver): when the square is at least twice
+            // the saved side, decode it at a reduced size (the largest power of 2 that still
+            // leaves at least the saved side): a 3000 px square for a 1024 px photo decodes
+            // 1500 px instead of 3000 px. The scale below brings it to the exact side.
+            val opts = BitmapFactory.Options()
             if (savedCap in 1 until px) {
+                var sample = 1
+                while (px / (sample * 2) >= savedCap) sample *= 2
+                opts.inSampleSize = sample
+            }
+            var region: Bitmap = decoder.decodeRegion(rr, opts)
+            if (savedCap in 1 until px && (region.width != savedCap || region.height != savedCap)) {
                 val scaled = Bitmap.createScaledBitmap(region, savedCap, savedCap, true)
                 if (scaled !== region) region.recycle()
                 region = scaled

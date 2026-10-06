@@ -9028,3 +9028,11 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Checked: `flutter analyze` clean; 866 tests pass; `camera_modes_check_test.dart` MODES=AE on the Xiaomi: A 15 of 15 time-lapse photos, camera parked and woke in about 1.0 s; E live detection ran (nothing to detect on the desk, no problems). Settings identical afterwards; normal debug app reinstalled. Docs: overview, SETTINGS_REFERENCE (photo source row), FAUNAPULSE_FORK, perf review E9.
 - Open: heat and battery effect over a long run (off the charger); the Samsung (whether it supports ZSL at all is unknown); E9's other two experiments.
 
+## Round 295 (2026-10-06): high-res cut decodes fewer pixels; native file path measured and dropped
+
+- Asked: plan idea 7: cut high-res photos where they arrive (as FaunaLapse does) instead of sending the full 3 to 5 MB JPEG to Dart and back to the app's crop channel.
+- Tried: a plugin call that took the photo, cut the ROI and wrote the file natively (crop code moved into the plugin's `ImageUtils`), with the old path as fallback. Measured on the Xiaomi with the new `integration_test/high_res_photos_check_test.dart` (time-lapse, photo source High-res, 2 s step, 24 s, 1024 px): native path median 774 ms per photo (photo, cut and write), old path 762 ms (grab 675 ms + cut); content lag 364 vs 354 ms. No gain: the photo itself is the cost, not moving the JPEG. Reverted to keep the code simple ("less is more"); recorded here so it is not tried again.
+- Kept: `MainActivity.cropRoiJpeg` decodes the square at a reduced size (`inSampleSize`, the largest power of 2 that still leaves the saved side) when the square is at least twice the saved side (idea from FaunaLapse's PhotoSaver), then scales to the exact side as before. Fewer pixels decoded and held in memory for big squares; output unchanged in size.
+- Checked: `flutter analyze` clean; 866 tests pass; high-res check on the Xiaomi at 1024 px (13 of 13 photos high-res, 1024 squares, median 762 ms) and at 512 px (`--dart-define=TARGET=512`, 13 of 13, 512 squares, median 525 ms, so the reduced decode runs). Settings identical afterwards; normal debug app reinstalled.
+- Open: low-memory phones (the Samsung) could still profit from the native path; re-measure there before reopening it.
+
