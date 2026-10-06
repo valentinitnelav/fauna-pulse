@@ -463,6 +463,12 @@ class YOLOViewController {
   Future<void> setCameraHold(bool hold) =>
       _invoke<void>('setCameraHold', {'hold': hold});
 
+  /// Whether the full-resolution photo use case may use zero-shutter-lag
+  /// (FaunaPulse, round 294; see `YOLOView.stillZeroShutterLag`). Takes
+  /// effect at the next camera start (resume, lens switch). Android only.
+  Future<void> setStillZsl(bool enabled) =>
+      _invoke<void>('setStillZsl', {'enabled': enabled});
+
   Future<void> switchModel(
     String modelPath, [
     YOLOTask? task,

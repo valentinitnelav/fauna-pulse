@@ -1308,6 +1308,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _pushCameraFpsCap();
     _pushTimeLapse();
     _pushCameraHold();
+    _pushStillZsl(_config);
     _probes.begin(
       analysisDims: () => (_imageWidth, _imageHeight),
       preferredLensZoom: _config.selectedLensZoom,
@@ -2806,6 +2807,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         cameraDiagnostics: _cameraDiagnostics,
       ),
     );
+    // Round 294: before the resume below, which starts the camera again.
+    if (updated != null) _pushStillZsl(updated);
     if (mounted && _paused) {
       _paused = false;
       await _controller.resume();
@@ -2995,6 +2998,18 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _controller
         .setCameraFpsCap(_config.cameraFpsCap)
         .catchError((Object e) => _logAsyncError('set_camera_fps_cap', e));
+  }
+
+  /// Round 294: the zero-shutter-lag photo buffer only when high-res photos
+  /// can be taken (photo source Auto or High-res). With "fast" every photo is
+  /// cut from the live stream, so the buffer would only keep the camera
+  /// hardware making full-size frames for nothing.
+  static bool _stillZslFor(SessionConfig c) => c.captureMode != RoiCaptureMode.fast;
+
+  void _pushStillZsl(SessionConfig c) {
+    _controller
+        .setStillZsl(_stillZslFor(c))
+        .catchError((Object e) => _logAsyncError('set_still_zsl', e));
   }
 
   /// Round 292: while a recording or scheduled run is active the camera keeps
@@ -3644,6 +3659,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
             controller: _controller,
             useGpu: _config.useGpu,
             cpuThreads: _config.cpuThreads,
+            stillZeroShutterLag: _stillZslFor(_config),
             confidenceThreshold: _config.confidenceThreshold,
             iouThreshold: _config.iouThreshold,
             // Cap how often the model runs (camera preview is unaffected). This

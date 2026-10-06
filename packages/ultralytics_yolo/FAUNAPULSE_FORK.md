@@ -64,6 +64,9 @@ The headline changes, with the round that introduced each (full rationale in
   (r166, review E4).
 - **Preview detach**, `setPreviewEnabled()` (r82): unbinds only the preview
   use case for the app's blackout power-save mode.
+- **Zero-shutter-lag only when wanted** (r294): `stillZsl` creation param
+  and `setStillZsl`; `startCamera` binds ImageCapture with ZSL only when
+  wanted (upstream always used it where supported).
 - **Camera lifecycle hold** (r292): CameraX binds to the view's own
   `CameraLifecycle` (a `LifecycleRegistry`) that follows the Activity unless
   Dart holds it (`setCameraHold`), so a recording keeps the camera with the

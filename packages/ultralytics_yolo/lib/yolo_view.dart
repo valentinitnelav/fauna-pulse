@@ -67,6 +67,12 @@ class YOLOView extends StatefulWidget {
   final int cpuThreads;
   final LensFacing lensFacing;
 
+  /// FaunaPulse (round 294): whether the full-resolution photo use case may
+  /// keep a zero-shutter-lag ring buffer (the camera then makes full-size
+  /// frames all the time). False when only live-frame crops are taken; a
+  /// later change goes through [YOLOViewController.setStillZsl].
+  final bool stillZeroShutterLag;
+
   const YOLOView({
     super.key,
     required this.modelPath,
@@ -86,6 +92,7 @@ class YOLOView extends StatefulWidget {
     this.useGpu = true,
     this.cpuThreads = 0,
     this.lensFacing = LensFacing.back,
+    this.stillZeroShutterLag = true,
   });
 
   @override
@@ -501,6 +508,7 @@ class _YOLOViewState extends State<YOLOView> {
       'useGpu': widget.useGpu,
       'cpuThreads': widget.cpuThreads,
       'lensFacing': widget.lensFacing.name,
+      'stillZsl': widget.stillZeroShutterLag,
     };
 
     if (widget.streamingConfig != null) {

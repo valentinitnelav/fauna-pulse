@@ -1437,6 +1437,14 @@ single-artifact policy stands until the owner reopens it.
   tradeoff.
 - Cost: 0.5-2 days each.
 
+**First experiment done (round 294), kept as a default rather than an A/B build:** with photo
+source `fast` the ImageCapture use case is bound with MINIMIZE_LATENCY instead of ZERO_SHUTTER_LAG
+(it stays bound: the start-up photo-size probe and the companion paths need it). On the Xiaomi
+(`camera_streams_check_test.dart`, camera screen open, live detection, 12 samples each) the ZSL
+bind added a 4000x3000 PRIVATE input and output stream; without it the camera provider fell from
+about 121 % to 32 % of one core, the app from 91 % to 48 %, cameraserver from 13 % to 5 %. The
+PreviewView PERFORMANCE mode and predictor cache experiments remain open.
+
 ### E10. [x] Documentation truth pass (round 169)
 
 - Add `packages/ultralytics_yolo/FAUNAPULSE_FORK.md`: upstream base (commit

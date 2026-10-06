@@ -286,6 +286,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   0.13–1.5 s and show the scene after the detection; the `_live` companion is the trigger-moment
   crop. Records log `path`, `saved_px`, `content_lag_ms`, `live_*`. True zero-shutter-lag never
   engages on the Xiaomi (~0.17 s is the floor): don't chase it in software.
+- **ZSL buffer only for Auto/High-res (r294):** `ImageCapture` uses ZERO_SHUTTER_LAG only when
+  the photo source is not `fast` (`_stillZslFor`; creation param `stillZsl` + `setStillZsl`,
+  pushed in `_startUpOnce` and before the settings-close resume; read at each `startCamera`).
+  ZSL adds two 4000×3000 streams the camera fills all the time (`dumpsys media.camera`).
 - **High-res photos are processed off the main thread and never full-frame rotated:**
   `capturePhotoRaw` returns the unrotated JPEG; ROI mapped by `rawRectForUprightRect` (Dart, with
   a Kotlin mirror in `MainActivity.kt`: keep in sync); probe dims go through
@@ -626,7 +630,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `test/README.md`.
 - Checks in `integration_test/`: app launch, camera modes, screen off (`screen_off_check`:
   Home during time-lapse, live detection, a camera wake and a scheduled window; the runner
-  presses Home on `HOME_NOW <part> <s>` and brings the app back after that time), view recreate, slow-phone hint, CPU
+  presses Home on `HOME_NOW <part> <s>` and brings the app back after that time), camera streams
+  (`MEASURE_NOW fast|auto`: read `dumpsys media.camera` and `top`), view recreate, slow-phone hint, CPU
   threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
   models screen, models delete, photo track IDs, video decode / import / convert / samples /
   default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+

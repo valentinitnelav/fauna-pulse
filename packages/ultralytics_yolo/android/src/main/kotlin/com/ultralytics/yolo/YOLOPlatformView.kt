@@ -90,6 +90,8 @@ class YOLOPlatformView(
 
         // Set lens facing before initializing camera
         yoloView.setLensFacing(lensFacing, preferWideBackCamera)
+        // FaunaPulse (round 294): before the first camera start, so it binds the right way.
+        yoloView.setStillZsl(creationParams?.get("stillZsl") as? Boolean ?: true)
 
         // Configure YOLOView streaming functionality
         setupYOLOViewStreaming(creationParams)
@@ -680,6 +682,10 @@ class YOLOPlatformView(
                     // FaunaPulse (round 82): detach/reattach only the preview stream while
                     // detection + capture keep running (real power-save behind the black cover).
                     yoloView.setPreviewEnabled(call.argument<Boolean>("enabled") ?: true)
+                    result.success(null)
+                }
+                "setStillZsl" -> {
+                    yoloView.setStillZsl(call.argument<Boolean>("enabled") ?: true)
                     result.success(null)
                 }
                 "setCameraHold" -> {

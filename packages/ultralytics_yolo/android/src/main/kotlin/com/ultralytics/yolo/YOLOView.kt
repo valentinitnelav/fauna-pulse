@@ -384,6 +384,19 @@ class YOLOView @JvmOverloads constructor(
     // Optional ImageCapture use-case (bound alongside Preview+Analysis when supported)
     private var imageCaptureUseCase: ImageCapture? = null
 
+    // FaunaPulse (round 294): whether ImageCapture may use zero-shutter-lag. ZSL keeps the camera
+    // hardware making full-resolution frames into a ring buffer all the time; the app turns it
+    // off when it only cuts photos from the live stream (photo source "fast", the default),
+    // which never uses that buffer. Read at each camera start.
+    @Volatile private var stillZslWanted = true
+
+    /** Round 294: see [stillZslWanted]; takes effect at the next camera start. */
+    fun setStillZsl(wanted: Boolean) {
+        if (stillZslWanted == wanted) return
+        stillZslWanted = wanted
+        Log.i(TAG, "Still ZSL ${if (wanted) "allowed" else "off"} (next camera start)")
+    }
+
     // Round 82 (FaunaPulse): the camera provider + selector actually bound, kept so
     // setPreviewEnabled() can detach/reattach ONLY the preview use case without a full rebind.
     private var boundCameraProvider: ProcessCameraProvider? = null
@@ -1368,8 +1381,13 @@ class YOLOView @JvmOverloads constructor(
                             .setTargetAspectRatio(AspectRatio.RATIO_4_3)
                             .setTargetRotation(targetRotation)
                             .build()
-                        imageCaptureUseCase = buildImageCapture(zslSupported)
-                        Log.i(TAG, "ImageCapture mode: ${if (zslSupported) "ZERO_SHUTTER_LAG" else "MINIMIZE_LATENCY"}")
+                        val useZsl = zslSupported && stillZslWanted
+                        imageCaptureUseCase = buildImageCapture(useZsl)
+                        Log.i(
+                            TAG,
+                            "ImageCapture mode: ${if (useZsl) "ZERO_SHUTTER_LAG" else "MINIMIZE_LATENCY"} " +
+                                "(ZSL supported=$zslSupported, wanted=$stillZslWanted)",
+                        )
 
                         camera = try {
                             cameraProvider.bindToLifecycle(
