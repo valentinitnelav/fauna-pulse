@@ -560,15 +560,19 @@ void main() {
   });
 
   test(
-    'time-lapse camera sleep (r163, E3): default off, survives the round-trip',
+    'time-lapse camera sleep (r163, E3): default on (r291), survives the round-trip',
     () {
-      expect(const SessionConfig().timeLapseCameraSleep, false);
+      expect(const SessionConfig().timeLapseCameraSleep, true);
       final restored = SessionConfig.fromJson(
         const SessionConfig().copyWith(timeLapseCameraSleep: true).toJson(),
       );
       expect(restored.timeLapseCameraSleep, true);
-      // Configs saved before the key existed fall back to off.
-      expect(SessionConfig.fromJson(const {}).timeLapseCameraSleep, false);
+      final off = SessionConfig.fromJson(
+        const SessionConfig().copyWith(timeLapseCameraSleep: false).toJson(),
+      );
+      expect(off.timeLapseCameraSleep, false);
+      // Configs saved before the key existed get the default.
+      expect(SessionConfig.fromJson(const {}).timeLapseCameraSleep, true);
     },
   );
 

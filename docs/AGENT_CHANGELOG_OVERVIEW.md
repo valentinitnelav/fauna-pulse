@@ -142,7 +142,7 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 | Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
 | Save bursts as | photos | `timeLapseSaveAs`; `video`: one MP4 per burst at `timeLapseVideoFps` 5 (the video analysis rate) |
 | Live AI video | off | `liveAiVideo`, 15 fps, 5-min segments |
-| Camera sleep between bursts | off | `timeLapseCameraSleep`; idle gap ≥ 30 s; wake lead 10 s (1–60) |
+| Camera sleep between bursts | on | `timeLapseCameraSleep`; idle gap ≥ 30 s; wake lead 10 s (1–60) |
 | Time-lapse torch | off | `timeLapseTorch`; lead 5 s (1–60) |
 | Stream resolution | auto | smallest probed size whose short side ≥ saved photo side; a manual pick sets `streamResolutionExplicit` |
 | Photo source | `fast` | `auto`, `highRes` (wire name `still`) |

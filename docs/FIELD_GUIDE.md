@@ -265,7 +265,7 @@ little; it never needs to reach the camera's full rate because time-lapse
 photos come on a clock, not from every frame.
 
 **Frozen preview + "camera off" in the chip (time-lapse).** With "Turn camera
-off between bursts" enabled (round 163), the camera hardware is fully turned
+off between bursts" on (the default since round 291), the camera hardware is fully turned
 off between bursts — the preview freezes on its last frame and the chip reads
 "NEXT BURST in mm:ss · camera off". That is the power saver working, not a
 crash. The camera turns back on shortly before each burst (the "Camera wake

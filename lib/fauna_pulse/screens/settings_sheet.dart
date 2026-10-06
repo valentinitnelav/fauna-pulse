@@ -449,8 +449,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'preview freezes while it is off; that is normal, not a '
               'crash. Needs at least 30 s between bursts. If the camera '
               'ever fails to come back in time, it stays on for the rest '
-              'of the session and the failure is logged. Combines with the '
-              'screen-off (moon) button; use both for unattended runs.',
+              'of the session and the failure is logged. On by default: '
+              'while it waits, the camera is the phone\'s biggest source of '
+              'heat and battery use. Combines with the screen-off (moon) '
+              'button; use both for unattended runs.',
           statusText: _c.timeLapseGapSeconds < 30
               ? 'Your "Time between bursts" is under 30 s, so the camera '
                     'will stay on.'

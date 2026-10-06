@@ -437,7 +437,9 @@ class SessionConfig {
   /// frozen preview and a small wake risk. Only takes effect when the bursts
   /// leave ≥ 30 s of idle time between them; a failed wake disables parking
   /// for the rest of the session (camera stays on — reliability first).
-  /// Off by default: turning the camera hardware off/on is the riskier path.
+  /// On by default since round 291: with the default 30 min break the camera
+  /// is on about 1 % of the time instead of all of it; the wake path has its
+  /// fallback, and FaunaLapse closes the camera in every break by default.
   final bool timeLapseCameraSleep;
 
   /// Time-lapse camera sleep only (round 164): how many seconds BEFORE the
@@ -674,7 +676,7 @@ class SessionConfig {
     this.motionGateIdleFps = 5,
     this.captureTrigger = CaptureTrigger.detector,
     this.timeLapseGapSeconds = 1800.0, // 30 min break between bursts
-    this.timeLapseCameraSleep = false,
+    this.timeLapseCameraSleep = true,
     this.timeLapseWakeLeadSeconds = 10.0,
     this.timeLapseTorch = false,
     this.timeLapseTorchLeadSeconds = 5.0,
@@ -1034,7 +1036,7 @@ class SessionConfig {
     motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
     captureTrigger: _captureTriggerFromJson(j),
     timeLapseGapSeconds: _timeLapseGapFromJson(j),
-    timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? false,
+    timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? true,
     timeLapseWakeLeadSeconds:
         (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 10.0,
     timeLapseTorch: j['timeLapseTorch'] as bool? ?? false,
