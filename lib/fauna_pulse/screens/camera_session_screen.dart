@@ -41,6 +41,9 @@ import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
 import '../session/screen_idle.dart';
+import '../session/plan_sentence.dart';
+import '../services/phone_settings.dart';
+import '../widgets/before_record_sheet.dart';
 import 'field_notes_screen.dart';
 import '../models/field_notes.dart';
 import '../session/session_guards.dart';
@@ -1610,6 +1613,22 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (!_recording) unawaited(_persistSessionLocation());
     if (_recording) {
       await _stopAndShowSummary();
+    } else if (await beforeRecordSheetEnabled()) {
+      // Round 298: one "Before you record" sheet (field notes, what and when,
+      // phone for the field) replaces the battery nudge and the schedule
+      // confirmation; switched off, the older pop-ups below remain.
+      if (!await _showBeforeRecord() || !mounted) return;
+      if (_config.scheduleEnabled) {
+        if (!_config.isScheduleValid) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('The schedule is invalid (check the windows in Settings).')),
+          );
+          return;
+        }
+        await _startSchedule(batteryNudge: false);
+      } else {
+        await _startRecording(focusMode: _focusModeForLog());
+      }
     } else if (_config.scheduleEnabled) {
       // Scheduled mode: the record button launches the whole windows×days run
       // (after a confirm dialog spelling out what will happen) instead of a
@@ -1623,6 +1642,38 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Recording starts in a single tap; the focus state (manual/auto/fixed) is
       // whatever the user set via the focus button, and is logged for the record.
       await _startRecording(focusMode: _focusModeForLog());
+    }
+  }
+
+  /// Round 298: the "Before you record" sheet; "Change" opens the field notes
+  /// or the settings and shows the sheet again. True when Start was pressed.
+  Future<bool> _showBeforeRecord() async {
+    while (true) {
+      if (!mounted) return false;
+      final loc = _locationVN.value;
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: const Color(0xFF141414),
+        builder: (_) => BeforeRecordSheet(
+          positionLine: loc == null ? 'No position yet.' : 'Position: ${loc.label}',
+          fieldSummary: _fieldNotes.summary,
+          plan: planSentence(_config),
+          scheduled: _config.scheduleEnabled,
+        ),
+      );
+      if (!mounted) return false;
+      switch (action) {
+        case 'notes':
+          await _openFieldNotes();
+        case 'settings':
+          await _openSettings();
+        case 'start':
+          return true;
+        default:
+          return false;
+      }
     }
   }
 
@@ -1723,6 +1774,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // B6b); this method supplies the screen-state pieces: the start-record
     // metadata, the capture wiring, and the log-write-failure banner.
     _logWriteError = null;
+    // Round 298: the phone settings that matter in the field, for the record.
+    final phoneState = await PhoneSettings.read();
+    if (!mounted) return;
     await _recorder.start(
       folderName: scheduleSlot == null
           ? _config.folderName
@@ -1765,6 +1819,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         // Round 297: field notes in FaunaLapse's form (every key, null when
         // empty); phone maker and model are filled from `device`.
         'field': _fieldNotes.recordBlock(location: _locationVN.value),
+        // Round 298: airplane mode, radios, location, Stay awake, battery
+        // limits (FaunaLapse's phone_state keys).
+        'phone_state': phoneState.toJson(),
         // Which rear lens was in use for this session. zoom factor 1.0 = the main
         // wide lens; 0.5 = ultra-wide; 2.0/3.0 = telephoto. The label is the
         // human-readable lens name shown on the switch button.
@@ -2241,9 +2298,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           'Recording windows: $windows\n'
           'Days: $days\n\n'
           'Each window is saved as its own session. Between windows the '
-          'screen goes dark and the camera turns off to save power — the app '
-          'must stay open (and on power) the whole time. Tap the dark screen '
-          'to see the status; the record button stops the run.',
+          'screen goes dark and the camera turns off to save power. The screen '
+          'may also be switched off; keep the app running (do not close it) '
+          'and the phone on power. Tap the dark screen to see the status; the '
+          'record button stops the run.',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -2264,7 +2322,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (ok == true && mounted) await _startSchedule();
   }
 
-  Future<void> _startSchedule() async {
+  Future<void> _startSchedule({bool batteryNudge = true}) async {
     final plan = SchedulePlan(
       windows: _config.scheduleWindows,
       days: _config.scheduleDays,
@@ -2283,7 +2341,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     }
     // Same one-time battery-optimization nudge as a manual session — even
     // more important here, where the app may sleep unattended overnight.
-    await _ensureUnrestricted();
+    // Round 298: not after the "Before you record" sheet, which shows it.
+    if (batteryNudge) await _ensureUnrestricted();
     if (!mounted) return;
     setState(() {
       _schedule = plan;

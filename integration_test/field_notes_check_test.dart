@@ -20,6 +20,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'skip_before_record_sheet.dart';
+
 // ignore: avoid_print
 void _log(String s) => print(s);
 
@@ -32,6 +34,7 @@ void main() {
     addTearDown(WakelockPlus.disable);
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
+    await skipBeforeRecordSheet(); // round 298
     final prefs = await SharedPreferences.getInstance();
     final notesBefore = prefs.getString(FieldNotes.prefsKey);
     addTearDown(() async {

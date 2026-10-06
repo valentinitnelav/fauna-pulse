@@ -35,6 +35,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'skip_before_record_sheet.dart';
+
 const _folder = 'video_burst_check';
 
 // ignore: avoid_print
@@ -50,6 +52,7 @@ void main() {
 
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
+    await skipBeforeRecordSheet(); // round 298
     final config = saved.copyWith(
       captureTrigger: CaptureTrigger.timelapse,
       timeLapseSaveAs: TimeLapseSaveAs.video,

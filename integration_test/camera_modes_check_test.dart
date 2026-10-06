@@ -43,6 +43,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'skip_before_record_sheet.dart';
+
 const _folder = 'modes_check';
 const _modes = String.fromEnvironment('MODES', defaultValue: 'ABCDEF');
 const _eSubject = bool.fromEnvironment('E_SUBJECT');
@@ -59,6 +61,7 @@ void main() {
     addTearDown(WakelockPlus.disable);
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
+    await skipBeforeRecordSheet(); // round 298
     final sessions = Directory('${(await getExternalStorageDirectory())!.path}/sessions');
     sessions.createSync(recursive: true); // a fresh install has none yet
     final problems = <String>[];

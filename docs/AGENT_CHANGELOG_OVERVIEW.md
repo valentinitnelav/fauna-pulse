@@ -44,6 +44,9 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   tracker builder for camera and videos; `notApplicableConfigKeys(trigger, saveAs:)`).
 - `roi.dart` (`Roi`, ÷32 snapping `snapSideToGrid`/`copyClamped`, `boxInRoi`,
   `largestCentredSquare`, `largestSquareSidePx`), `track.dart`, `schedule_window.dart`.
+- `phone_state.dart`: `PhoneState` (r298; FaunaLapse's `phone_state` keys, `tips` with their
+  settings page). Native `MainActivity.readPhoneState`/`openPhoneSettings` on the keepalive
+  channel; Dart `services/phone_settings.dart`.
 - `field_notes.dart`: `FieldNotes` (r297; `kFieldNoteSpecs`, prefs `field_notes`,
   `recordBlock` = the start record's `field` block with FaunaLapse's 17 keys, `locationBlock`).
 - `model_catalog.dart`: detection models on the phone (`ModelCatalog.build`, `entryOf`,
@@ -122,7 +125,10 @@ camera screen's pin button); `video_import_screen.dart`
 `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
 `roi_size_sheet.dart`, `calibrating_banner.dart`, `home_button.dart` (`HomeButton`, `goHome`, `FitTitle`),
-`selection_app_bar.dart`.
+`selection_app_bar.dart`, `before_record_sheet.dart` (r298, `BeforeRecordSheet`, pref
+`before_record_sheet`).
+**session/** also `plan_sentence.dart` (r298, `planSentence`), `screen_idle.dart` (r293),
+`session_guards.dart` (r296).
 
 **services/** `recording_keepalive.dart` (foreground service + wake-lock).
 
@@ -340,6 +346,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   track IDs. Exceptions appended after the end: `session_renamed`, `video_cleanup`.
 - **Location:** one GPS fix per session (`LocationFixTracker`: done at ≤ 15 m or 60 s), or manual
   / previous; `redactLocation` strips it (and `field.location`) from problem reports.
+- **Before you record (r298):** REC (start) shows `BeforeRecordSheet` while the pref is on
+  (default): field notes + position, `planSentence`, phone tips; Change opens Field notes or
+  Settings and the sheet comes back; Start → `_startRecording` or `_startSchedule(batteryNudge:
+  false)`. Pref off → the older battery nudge and schedule confirmation. The start record gets
+  `phone_state`. Device checks that tap REC call `skipBeforeRecordSheet()`
+  (`integration_test/skip_before_record_sheet.dart`).
 - **Field notes (r297):** the pin button opens `FieldNotesScreen` (position first, via the
   location dialog; fields saved as typed); the start record gets `field` (`FieldNotes.recordBlock`,
   phone maker/model filled from `device` in `SessionRecorder._withPhone`); summary Overview rows.

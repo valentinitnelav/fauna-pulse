@@ -27,6 +27,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'skip_before_record_sheet.dart';
+
 const _folder = 'view_recreate_check';
 const _startStream = String.fromEnvironment('START_STREAM', defaultValue: '640x480');
 // --dart-define=START_LENS=0.6: a saved non-main lens; logcat "setLens" must show it applied on
@@ -46,6 +48,7 @@ void main() {
     addTearDown(WakelockPlus.disable);
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
+    await skipBeforeRecordSheet(); // round 298
     final sessions = Directory('${(await getExternalStorageDirectory())!.path}/sessions');
     sessions.createSync(recursive: true); // a fresh install has none yet
     final wh = _startStream.split('x').map(int.parse).toList();

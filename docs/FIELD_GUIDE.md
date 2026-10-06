@@ -91,9 +91,14 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 5. **Open Settings** (gear/tune icon) if you want to change the model, target
    plant folder name, confidence, capture timing, etc. See
    [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
-6. **Press Record.** A red REC banner and an elapsed-time clock appear. The
-   session auto-stops after the configured session length, or when you press
-   stop.
+6. **Press Record.** First a *Before you record* sheet sums up the session: the
+   field notes and position, what and when will be recorded (one sentence), and
+   the phone settings that matter in the field (airplane mode, Wi-Fi, Bluetooth,
+   location, Stay awake, battery limits), each with a button to its settings
+   page. *Change* opens the field notes or the settings; *Start* starts. Untick
+   *Show this before each start* to skip it next time. Then a red REC banner and
+   an elapsed-time clock appear. The session auto-stops after the configured
+   session length, or when you press stop.
 
 ## 3. Reading the live screen while recording
 

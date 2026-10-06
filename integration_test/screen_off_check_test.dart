@@ -41,6 +41,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'skip_before_record_sheet.dart';
+
 const _parts = String.fromEnvironment('PARTS', defaultValue: 'TDPSO');
 
 // ignore: avoid_print
@@ -55,6 +57,7 @@ void main() {
     addTearDown(WakelockPlus.disable);
     final saved = await SessionConfig.load();
     addTearDown(saved.save);
+    await skipBeforeRecordSheet(); // round 298
     final sessions = Directory('${(await getExternalStorageDirectory())!.path}/sessions');
     sessions.createSync(recursive: true);
     final problems = <String>[];

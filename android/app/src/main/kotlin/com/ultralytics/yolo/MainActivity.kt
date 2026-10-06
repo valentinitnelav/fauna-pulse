@@ -295,6 +295,11 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(isIgnoringBatteryOptimizations())
                     "requestIgnoreBatteryOptimizations" ->
                         result.success(requestIgnoreBatteryOptimizations())
+                    // Round 298 (idea from FaunaLapse's PhoneCheck): phone settings that
+                    // matter for a field session, read only, and their settings pages.
+                    "phoneState" -> result.success(readPhoneState())
+                    "openPhoneSettings" ->
+                        result.success(openPhoneSettings(call.argument<String>("page") ?: ""))
                     else -> result.notImplemented()
                 }
             }
@@ -313,6 +318,63 @@ class MainActivity : FlutterFragmentActivity() {
     /// unrestricted operation there, without FaunaPulse requesting the privileged
     /// direct-exemption permission that Google Play restricts. Returns whether the
     /// settings screen could be launched.
+    /// Round 298: phone settings that matter when a phone works as a camera trap (idea from
+    /// FaunaLapse's PhoneCheck, rewritten). Apps may only read them; the Dart side shows
+    /// tips with buttons to the settings pages. Keys as in FaunaLapse's `phone_state`.
+    private fun readPhoneState(): Map<String, Any?> {
+        val r = contentResolver
+        val airplane = Settings.Global.getInt(r, Settings.Global.AIRPLANE_MODE_ON, 0) != 0
+        // Wi-Fi 2 = switched on again in airplane mode; 3 = off because of airplane mode.
+        val wifi = Settings.Global.getInt(r, Settings.Global.WIFI_ON, 0)
+        // Bluetooth 2 = off while in airplane mode.
+        val bluetooth = Settings.Global.getInt(r, Settings.Global.BLUETOOTH_ON, 0)
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val locationOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            (getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager).isLocationEnabled
+        } else {
+            @Suppress("DEPRECATION")
+            Settings.Secure.getInt(r, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) !=
+                Settings.Secure.LOCATION_MODE_OFF
+        }
+        return mapOf(
+            "airplane_mode" to airplane,
+            "wifi_on" to (wifi == 1 || wifi == 2),
+            "bluetooth_on" to (bluetooth == 1 || (bluetooth == 2 && !airplane)),
+            "location_on" to locationOn,
+            "stay_awake_while_charging" to (Settings.Global.getInt(r, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, 0) != 0),
+            "battery_optimisation_on" to !isIgnoringBatteryOptimizations(),
+            "background_restricted" to (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isBackgroundRestricted),
+            "battery_saver_on" to pm.isPowerSaveMode,
+        )
+    }
+
+    /// Round 298: opens the settings page for one phone tip; Android's main Settings when the
+    /// phone has no such page. Returns whether a page opened.
+    private fun openPhoneSettings(page: String): Boolean {
+        val action = when (page) {
+            "airplane" -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
+            "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+            "developer" -> Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+            "battery" -> return requestIgnoreBatteryOptimizations()
+            "app" -> Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+            else -> Settings.ACTION_SETTINGS
+        }
+        val intent = Intent(action)
+        if (page == "app") intent.data = android.net.Uri.fromParts("package", packageName, null)
+        return try {
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+                true
+            } catch (e2: Exception) {
+                false
+            }
+        }
+    }
+
     private fun requestIgnoreBatteryOptimizations(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
         return try {
