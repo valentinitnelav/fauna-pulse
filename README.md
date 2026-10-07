@@ -174,9 +174,9 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 </details>
 
-## Models
+## AI Models
 
-> Ai detectors and classifiers (`tflite` files) will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets or other free storage services from where they can be downloaded on the phone. Links will be provided soon with the next releases.
+> AI detectors and classifiers (`tflite` files) will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets or other free storage services from where they can be downloaded on the phone. Links will be provided soon with the next releases.
 
 <details>
 	<summary>Expand:</summary>
@@ -216,7 +216,7 @@ Classifiers like [BioCLIP 2][bioclip2] are currently under experimental implemen
 
 BioCLIP chooses each animal's name from a name list. Such lists are prepared per region (e.g. Europe) and taxonomic categories (e.g. common orders of pollinators) for the animals you watch. Narrowing the scope of the large name lists can help with more realistic identification results. For example, there is no need to allow a model to think that zebras can be found within the wildlife of Europe or act as pollinators. At least not in this universe...
 
-### Models' licenses
+### AI Models' licenses
 
 These models were made by other research teams. FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence. If you publish results, please cite the original model as its authors ask on its source page (also often linked in the app's ⓘ card of each model).
 
