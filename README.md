@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  On-device AI · Real-time tracking · Custom AI models · Works offline
+  Mobile sensing · On-device AI · Real-time detection & tracking · Custom AI models · Works offline
 </p>
 
 <p align="center">
@@ -50,9 +50,11 @@
 
 ## Overview
 
-**FaunaPulse is an open-source smartphone app for wildlife monitoring that allows you to integrate your custom AI-based object detection and classification models directly on your smartphone (no AI in the cloud, your data stays yours).**
+**FaunaPulse** is an open-source smartphone app for wildlife monitoring that **allows you to integrate your custom AI-based object detection and classification models directly on your smartphone** (no AI in the cloud, your data stays yours).
 
-**Think of FaunaPulse as the chassis of a car where you can drop in your own engine: it provides the platform to run custom AI models, on-device, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).**
+Think of **FaunaPulse** as the chassis of a car where you can drop in your own engine: it **provides the platform to run custom AI models, on-device**, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).
+
+> **Detection, tracking, and classification quality will vary based on the custom AI models used. With our documentation and Python tools, you can also train and export models tailored to your specific imagery and use case.**
 
 The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
