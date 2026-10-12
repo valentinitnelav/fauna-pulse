@@ -125,15 +125,11 @@ Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Only Android OS is currently supported. iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` object-detection model. FaunaPulse was designed with the goal that end-users can add their own models.
-- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (0.3 to 1.3 GB) and a label / name pack prepared on a PC, and classification results will vary significantly with image quality.
-- Track ID counts may include missed, duplicated, split or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions.
-- Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
-- Android OS is currently supported; iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md), also in [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
-- Visit counts may include missed, duplicated, split (fragmented) or merged tracks depending on AI model (including the generalisability of the training dataset), smartphone performance, handling, etc. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
-- The quality of results depend on many factors, including AI model, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
-- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large file!) and a label pack prepared on a PC, cannot run in real-time and classification results will vary significantly with image quality.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack prepared on a PC, cannot run in real-time, and classification results will vary significantly with image quality.
+- Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
+- Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
+- The quality of results depend on many factors, including AI model, its generalisability, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
 - Smartphones are not usually designed to endure under the scorching sun or rained on, so I strongly advise to use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advise and creative solutions are very much welcomed as long as they are safe to use.
 - **Device temperature** can vary substantially between phone models and with ambient temperature. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly (especially over 40°C). Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the phone hardware, operating system, operation conditions and handling and cannot be guaranteed for every smartphone. Some phone models can also overheat faster while charging. **If your device becomes excessively hot (e.g. over 40-45°C) or displays a thermal warning (even when using cooling options / thermal casing), stop it's usage and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
 
@@ -256,11 +252,11 @@ branch names and the dependency-update workflow.
 If you want to contribute to this project, here are some main ideas where help is appreciated:
 
 - [ ] discussions about optimal workflows for **aggregation of classification outputs per track ID**. See already a discussion started here [#25]
-- [ ] **iOS** development. The ultralytics plugin supports this, but adapting will require significant amount of work. I am also not sure if expensive iOS phones will be used as research tools in field conditions. SO I have park this idea for now.
+- [ ] **iOS** development. The ultralytics plugin supports this, but adapting will require significant amount of work. I am also not sure if expensive iOS phones will be used as research tools in field conditions. I have parked this idea for now.
 
 [#25]: https://github.com/valentinitnelav/fauna-pulse/issues/25
 
-<details>
+</details>
 
 ## Why I built FaunaPulse
 
