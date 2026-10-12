@@ -34,6 +34,8 @@
   <strong>Transform your smartphone into an AI-powered wildlife camera</strong>
 </p>
 
+https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
+
 <p align="center">
   Detect, track and identify fauna using on-device artificial intelligence, motion-trigger, time-lapse image capture (including night mode) or scheduled video recordings.
 </p>
@@ -58,6 +60,8 @@ Think of **FaunaPulse** as the chassis of a car where you can drop in your own e
 
 The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
+
+For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse](https://github.com/valentinitnelav/fauna-lapse), is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
 
 ### Further details
 
