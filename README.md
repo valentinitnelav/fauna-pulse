@@ -61,9 +61,11 @@ With suitable object-detection and classification models, it can be configured f
 
 For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse](https://github.com/valentinitnelav/fauna-lapse), is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
 
-<p align="center">
-  https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
-</p>
+<div align="center">
+
+https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
+
+</div>
 
 ### Further details
 
