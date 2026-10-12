@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use FaunaPulse in your research, please cite the software using the metadata provided below."
+message: "If you use FaunaPulse in your research, please cite the software using the metadata provided below. Source code and documentation at https://github.com/valentinitnelav/fauna-pulse"
 title: "FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals"
 abstract: >-
   FaunaPulse is an offline smartphone application for monitoring animal activity
@@ -13,6 +13,7 @@ abstract: >-
   list of candidate taxa and reporting a confidence per taxonomic rank. By
   performing inference directly on the smartphone, FaunaPulse enables portable and
   low-cost ecological monitoring without requiring an internet connection.
+  Source code and documentation at https://github.com/valentinitnelav/fauna-pulse
 type: software
 license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
