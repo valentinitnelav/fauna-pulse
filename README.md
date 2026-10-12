@@ -48,6 +48,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
 </p>
 
+## Demo
+
+<div align="center">
+
+https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
+
+</div>
+
 ## Overview
 
 **FaunaPulse** is an open-source smartphone app for wildlife monitoring that **allows you to integrate your custom AI-based object detection and classification models directly on your smartphone** (no AI in the cloud, your data stays yours).
@@ -60,12 +68,6 @@ The first and primary scientific use case of FaunaPulse is estimating **visitati
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
 
 For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse](https://github.com/valentinitnelav/fauna-lapse), is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
-
-<div align="center">
-
-https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
-
-</div>
 
 ### Further details
 
