@@ -14,6 +14,13 @@
   />
   &nbsp;&nbsp;
   <img
+    src="https://github.com/user-attachments/assets/2f6ced65-be59-455c-be68-231fdb002ae0"
+    alt="Video demo"
+    height="200"
+    align="middle"
+  />
+  &nbsp;&nbsp;
+  <img
     src="https://github.com/user-attachments/assets/178e2b09-df9c-4c1b-b8f9-db6c357ed9d5"
     alt="Pollinator detection & tracking"
     height="200"
