@@ -2661,8 +2661,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ),
       const SizedBox(height: 4),
       const Text(
-        'When this session\'s track IDs started (first sightings per hour, local '
-        'time) — the same chart the Dashboard shows across all sessions.',
+        'When this session\'s track IDs began, per hour of the day (local time). '
+        'The Dashboard pools this chart over all sessions, without videos whose filming time is only a guess.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2964,7 +2964,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           'file and a name list, imported once on the next screen. '
           'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
           'Results land in the session folder as CSV and JSON. '
-          'And when ready, a "View results" button will also appear here '
+          'And when ready, a "View results" button will also appear here. '
           'Please treat the results as suggestions. ' 
           'Misidentifications are possible, especially for taxa that are not in the name list.',
     ),

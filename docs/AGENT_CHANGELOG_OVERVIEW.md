@@ -481,7 +481,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Score per track ID: "Average Logit" (Dussert et al. 2025): crops' unit embeddings averaged with
   certainty weights
   (top-1 p), crops below max weight / `drop_factor` (10) left out, scored once, rolled up the
-  taxonomy; ladder tau 0.7. Columns Conf. / Agree; suspect flags (short, few detections, weak
+  taxonomy; ladder tau 0.6 (prefs `identify_tau`). Columns Conf. / Agree; suspect flags (short, few detections, weak
   ID; defaults from insect-detect-post's `filter_tracks`, Sittinger 2026, Zenodo
   10.5281/zenodo.21822140: credit the idea's source and the implementer separately). Optional merge of consecutive track IDs (off). `reproduce_track_conf.py` reproduces the
   numbers on a PC. Defaults are not validated on pollinators (IDENTIFICATION.md).
@@ -574,8 +574,19 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   export cuts from the original JPEG. Gallery copy → `Pictures/FaunaPulse/<session>`
   (paths, chunks of 25, idempotent, channel `faunapulse/crop` in `MainActivity`; videos →
   `Movies/FaunaPulse/`).
-- **Dashboard:** totals and activity over AI sessions (`aggregateDashboard`), per-session cache
-  `<session>/dashboard_stats.json` (`DashboardStatsCache`, key: log size + mtime).
+- **Dashboard** (`dashboard_screen.dart`; `logging/dashboard_stats.dart`, `aggregateDashboard`):
+  big number = track IDs in the period (default All time; 7/30 days are calendar days, as the
+  Sessions filter) with an (i) that a track ID is not an animal count; tiles watched | track IDs
+  per hour watched (only from `kRateMinWatchMs` 10 min) | typical (median) | longest track length,
+  each as tall as its text; charts by time of day and by day (every day of a fixed period),
+  busiest hour / record day in their subtitles only with a clear winner; "Track IDs by name":
+  each session's newest identification (as View results), `aggregateTracks` per rank, suspects
+  and outdated results left out, chips only for ranks reached, family first, "Named: X of Y".
+  Imported videos with a guessed filming time (`video_clip.start_time_weak` or a guessed source)
+  count but stay out of the time charts. Cache `<session>/dashboard_stats.json` v2, key = size +
+  mtime of session.jsonl, post_tracks.jsonl and the newest identification summary (a new
+  identification re-reads only the names); a crashed session ends at its last logged record.
+  `DashboardScreen(sessionsDir:, now:)` for tests.
 - **Slow-phone hint** (camera, live detection): median work per picture > 200 ms after 15 s →
   banner suggesting time-lapse video + Find animals afterwards; "Don't show again" pref
   `faunapulse_hide_slow_phone_hint`.

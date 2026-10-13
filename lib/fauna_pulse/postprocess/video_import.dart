@@ -246,6 +246,9 @@ Future<Directory> importVideos({
       'start_epoch_ms': c.startMs,
       'start_time_source': c.source,
       if (c.source != c.guess.source) 'start_time_guess_source': c.guess.source,
+      // Round 304: a guess the user did not change (also a file name that
+      // disagrees with the time stored in the file, logged as file_name).
+      if (c.guess.weak && c.source != 'user') 'start_time_weak': true,
       if (shiftMs != 0) 'start_time_shift_ms': shiftMs,
       'duration_ms': info.durationMs,
       'size_bytes': sizeOf(c.index),

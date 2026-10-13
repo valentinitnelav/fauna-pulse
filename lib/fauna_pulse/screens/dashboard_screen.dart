@@ -1,16 +1,23 @@
 // FaunaPulse — cross-session dashboard (round 186).
 //
 // Reached from the home screen's "Dashboard" button. Answers
-// the citizen scientist's "what have I seen so far?": total insect visits
-// across every AI-mode session, watch time, visit lengths, and two activity
-// bar charts (by hour of day, by day/week). Motion and time-lapse sessions
-// carry no track ids, so they are only mentioned in a note, never mixed
-// into the numbers.
+// the citizen scientist's "what have I seen so far?": how many track IDs
+// were found (the big number), how long the phone watched, track lengths,
+// two activity bar charts (by hour of day, by day/week) and, round 304, the
+// names the identification gave them per order, family, genus or species.
+// Sessions without track IDs are only mentioned in a note, never mixed into
+// the numbers.
 //
 // Per-session stats come from DashboardStatsCache (dashboard_stats.dart):
-// the first visit scans each log once (progress bar), afterwards the cached
-// JSON makes opening instant. Aggregation is pure and synchronous, so the
-// period selector re-renders without touching the disk.
+// the first opening scans each log once (progress bar), afterwards the
+// cached JSON makes opening instant. Aggregation is pure and synchronous, so
+// the period selector re-renders without touching the disk.
+//
+// Round 304 (owner): the number tiles had a fixed height and overflowed at
+// phone width; they now take the height of their text. The rate per hour
+// needs 10 minutes of watching (a few seconds of video gave "597.6 per
+// hour"); the default period is "All time" (the main message is the
+// overall count); the highlights moved into the chart subtitles.
 //
 // Chart style: see widgets/mini_bar_chart.dart (extracted round 187 so the
 // per-session summary shares the same bars).
@@ -19,14 +26,23 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../identification/taxa_table.dart' show TaxonRow;
 import '../logging/app_error_hooks.dart';
 import '../logging/dashboard_stats.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
-import '../widgets/mini_bar_chart.dart';
+import '../postprocess/photo_tracker.dart' show PhotoTracker;
 import '../widgets/home_button.dart';
+import '../widgets/mini_bar_chart.dart';
+import '../widgets/setting_help.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  /// The folder holding the session folders (tests pass their own).
+  final Future<Directory> Function() sessionsDir;
+
+  /// The clock for the periods (tests pass a fixed day).
+  final DateTime Function() now;
+
+  const DashboardScreen({super.key, this.sessionsDir = sessionsRoot, this.now = DateTime.now});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -37,8 +53,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _done = 0, _total = 0;
   List<SessionDashboardStats> _stats = const [];
 
-  /// Selected period in days back from now; null = all time.
-  int? _periodDays = 7;
+  /// Selected period in calendar days up to today; null = all time.
+  int? _periodDays;
+
+  /// The rank the names card shows (null = the default, see [_namesCard]),
+  /// and whether it lists every taxon.
+  String? _rank;
+  bool _allTaxa = false;
 
   @override
   void initState() {
@@ -49,7 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _load() async {
     final collected = <SessionDashboardStats>[];
     try {
-      final root = await sessionsRoot();
+      final root = await widget.sessionsDir();
       final dirs = <Directory>[];
       if (await root.exists()) {
         for (final entity in root.listSync()) {
@@ -74,74 +95,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  int get _sinceMs => _periodDays == null
-      ? 0
-      : DateTime.now()
-            .subtract(Duration(days: _periodDays!))
-            .millisecondsSinceEpoch;
-
   @override
   Widget build(BuildContext context) {
-    final agg = aggregateDashboard(_stats, sinceMs: _sinceMs);
+    final agg = aggregateDashboard(_stats, periodDays: _periodDays, now: widget.now());
+    final timed = agg.totalVisits - agg.visitsWithoutClock;
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard'), actions: const [HomeButton()]),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             Center(
               child: SegmentedButton<int?>(
+                // Without the tick, "30 days" still fits its third of the
+                // width with a large system font.
+                showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(value: 7, label: Text('7 days')),
                   ButtonSegment(value: 30, label: Text('30 days')),
                   ButtonSegment(value: null, label: Text('All time')),
                 ],
                 selected: {_periodDays},
-                onSelectionChanged: (s) =>
-                    setState(() => _periodDays = s.first),
+                onSelectionChanged: (s) => setState(() => _periodDays = s.first),
               ),
             ),
             const SizedBox(height: 16),
             if (_loading) ...[
-              LinearProgressIndicator(
-                value: _total == 0 ? null : _done / _total,
-              ),
+              LinearProgressIndicator(value: _total == 0 ? null : _done / _total),
               const SizedBox(height: 6),
               Text(
-                'Reading session $_done of $_total… (only the first track ID '
-                'scans the logs; afterwards this opens instantly)',
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                'Reading session $_done of $_total… The first time takes a moment; '
+                'afterwards the Dashboard opens at once.',
+                style: helperTextStyle,
               ),
-              const SizedBox(height: 16),
-            ],
-            if (!_loading && agg.aiSessions == 0)
+            ] else if (agg.aiSessions == 0)
               _emptyState(agg)
             else ...[
-              _tileGrid(agg),
+              _hero(agg),
               const SizedBox(height: 8),
-              if (agg.busiestHour != null || agg.recordDay != null)
-                _highlights(agg),
-              const SizedBox(height: 8),
-              _chartCard(
-                title: 'Track IDs by time of day',
-                subtitle: 'When track IDs started (their first sighting)',
-                child: MiniBarChart(
-                  values: agg.visitsByHour,
-                  xLabelFor: (i) => switch (i) {
-                    0 || 6 || 12 || 18 => '$i h',
-                    _ => null,
-                  },
-                ),
-              ),
+              _tiles(agg),
               const SizedBox(height: 12),
-              if (agg.activity.isNotEmpty)
+              // The activity charts pooled over the sessions. Without any
+              // known time the card stays and says why (owner: hidden
+              // charts looked removed).
+              if (agg.totalVisits == 0)
+                _chartCard(title: 'Track IDs by time of day and by day', subtitle: 'No track IDs in this period yet.')
+              else if (timed == 0)
                 _chartCard(
-                  title: agg.weeklyBuckets
-                      ? 'Track IDs by week'
-                      : 'Track IDs by day',
-                  subtitle: agg.weeklyBuckets
-                      ? 'Long period — each bar is one week'
-                      : null,
+                  title: 'Track IDs by time of day and by day',
+                  subtitle: 'No times to show: ${agg.totalVisits == 1 ? 'this track ID comes' : 'these track IDs come'} '
+                      'from videos that do not say when they were filmed (the time can be set while importing '
+                      'them).',
+                )
+              else ...[
+                _chartCard(
+                  title: 'Track IDs by time of day',
+                  subtitle: [
+                    if (agg.busiestHour case final h?) 'Most at ${_two(h)}:00–${_two((h + 1) % 24)}:00.',
+                    'Hours you watched longer show more.',
+                  ].join(' '),
+                  child: MiniBarChart(
+                    values: agg.visitsByHour,
+                    xLabelFor: (i) => switch (i) {
+                      0 || 6 || 12 || 18 => '$i h',
+                      _ => null,
+                    },
+                  ),
+                ),
+              ],
+              if (timed > 0 && agg.activity.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _chartCard(
+                  title: agg.weeklyBuckets ? 'Track IDs by week' : 'Track IDs by day',
+                  subtitle: [
+                    if (agg.recordDay case final d?)
+                      'Record day: ${_dateShort(d)} (${_count(agg.recordDayCount, 'track ID')}).',
+                    if (agg.weeklyBuckets) 'Each bar is one week.',
+                  ].join(' '),
                   child: MiniBarChart(
                     values: [for (final b in agg.activity) b.count],
                     xLabelFor: (i) {
@@ -154,18 +184,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     },
                   ),
                 ),
-              if (agg.otherSessions > 0) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '${agg.otherSessions} '
-                  'session${agg.otherSessions == 1 ? '' : 's'} in this '
-                  'period ${agg.otherSessions == 1 ? 'is' : 'are'} not '
-                  'counted: motion or time-lapse mode has no track IDs to '
-                  'sum, and imported videos count once "Find track IDs" has '
-                  'run on the "Find animals in videos" screen.',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
               ],
+              if (agg.totalVisits > 0) ...[
+                const SizedBox(height: 12),
+                _namesCard(agg),
+              ],
+              ..._notes(agg),
             ],
           ],
         ),
@@ -181,14 +205,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         Text(
           agg.otherSessions > 0
-              ? 'No sessions with track IDs in this period. The dashboard '
-                    'counts track IDs, which exist when live '
-                    'detection records a session, or after "Find track IDs" on '
-                    'imported videos. The ${agg.otherSessions} '
-                    'session${agg.otherSessions == 1 ? '' : 's'} here '
-                    'ha${agg.otherSessions == 1 ? 's' : 've'} none.'
-              : 'No sessions in this period yet. Record a session with the '
-                    'live detection and its track IDs will show up here.',
+              ? 'No track IDs in this period: ${_count(agg.otherSessions, 'session')} here '
+                    '${agg.otherSessions == 1 ? 'has' : 'have'} none. $_sources'
+              : 'No sessions in this period yet. Record a session with live detection, or search photos or '
+                    'videos with "Find animals", and the track IDs will show up here.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white54, fontSize: 13),
         ),
@@ -196,119 +216,299 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ),
   );
 
-  /// The headline numbers as a 2-column tile grid. The visit total is the
-  /// hero (amber); everything else stays in plain ink.
-  Widget _tileGrid(DashboardAggregate agg) {
-    Widget tile(String label, String value, {bool hero = false}) => Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white10,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: hero ? 28 : 20,
-              fontWeight: FontWeight.bold,
-              color: hero ? Colors.amber : Colors.white,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-        ],
-      ),
-    );
+  /// Where track IDs come from ("Find animals in photos" follows an animal
+  /// only in photos taken close enough together).
+  static final _sources =
+      'Track IDs come from live detection, from "Find animals in videos", or from "Find animals in photos" '
+      'when the photos were taken at most ${PhotoTracker.maxStepSeconds} s apart.';
 
-    final tiles = <Widget>[
-      tile('track IDs', '${agg.totalVisits}', hero: true),
-      tile('watch time', _hoursLabel(agg.totalRecordedMs)),
-      tile(
-        'track IDs per hour watched',
-        agg.totalRecordedMs > 0 ? agg.visitsPerHour.toStringAsFixed(1) : '—',
-      ),
-      tile('Live detection sessions', '${agg.aiSessions}'),
-      tile('average track length', _secondsLabel(agg.meanVisitMs.round())),
-      tile('longest track', _secondsLabel(agg.longestVisitMs)),
-    ];
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 2.4,
-      children: tiles,
-    );
-  }
+  static const _card = BoxDecoration(
+    color: Colors.white10,
+    borderRadius: BorderRadius.all(Radius.circular(8)),
+  );
 
-  /// "Busiest hour" / "record day" one-liners — the entertaining bit.
-  Widget _highlights(DashboardAggregate agg) {
-    final lines = <String>[
-      if (agg.busiestHour case final h?)
-        '🏆 Busiest hour: ${_two(h)}:00–${_two((h + 1) % 24)}:00',
-      if (agg.recordDay case final d?)
-        '📅 Record day: ${_dateShort(d)} (${agg.recordDayCount} '
-            'track ID${agg.recordDayCount == 1 ? '' : 's'})',
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final l in lines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text(
-                l,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _chartCard({
-    required String title,
-    String? subtitle,
-    required Widget child,
-  }) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white10,
-      borderRadius: BorderRadius.circular(8),
-    ),
+  /// The main message: how many track IDs, in how many sessions.
+  Widget _hero(DashboardAggregate agg) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+    decoration: _card,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
-        if (subtitle != null)
-          Text(
-            subtitle,
-            style: const TextStyle(color: Colors.white38, fontSize: 11),
-          ),
-        const SizedBox(height: 10),
-        SizedBox(height: 120, width: double.infinity, child: child),
+        Text(
+          '${agg.totalVisits}',
+          key: const ValueKey('dashboard_total'),
+          style: const TextStyle(fontSize: 44, fontWeight: FontWeight.bold, color: Colors.amber, height: 1.1),
+        ),
+        HelpLabel(
+          label:
+              '${agg.totalVisits == 1 ? 'track ID' : 'track IDs'} in ${_count(agg.aiSessions, 'session')}',
+          labelStyle: const TextStyle(color: Colors.white70, fontSize: 14),
+          helperText:
+              'A track ID is one animal followed while it stays in the yellow square. If it leaves and comes '
+              'back, or is lost for a moment, it gets a new track ID, so this is not the number of different '
+              'animals, and a few track IDs can be false detections. Counted: sessions recorded with live '
+              'detection, and photos or videos searched afterwards with "Find animals".',
+        ),
       ],
     ),
   );
 
+  /// Watch time, rate and track lengths: two rows of two tiles, each tile as
+  /// tall as its text (a fixed height overflowed with a large font).
+  Widget _tiles(DashboardAggregate agg) {
+    final rate = agg.visitsPerHour;
+    final none = agg.totalVisits == 0;
+    return Column(
+      children: [
+        _tileRow(
+          _tile(_watchLabel(agg.totalRecordedMs), 'watched'),
+          _tile(
+            // Below 1, two digits that matter: 1 track ID in 25 h is 0.040,
+            // not "0.0".
+            rate == null
+                ? '–'
+                : rate >= 1
+                ? rate.toStringAsFixed(1)
+                : rate.toStringAsPrecision(2),
+            'track IDs per hour watched',
+            note: rate == null ? 'shown from ${kRateMinWatchMs ~/ Duration.millisecondsPerMinute} min watched' : null,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _tileRow(
+          _tile(none ? '–' : _secondsLabel(agg.medianVisitMs), 'typical track length (median)'),
+          _tile(none ? '–' : _secondsLabel(agg.longestVisitMs), 'longest track'),
+        ),
+      ],
+    );
+  }
+
+  static Widget _tileRow(Widget a, Widget b) => IntrinsicHeight(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [Expanded(child: a), const SizedBox(width: 8), Expanded(child: b)],
+    ),
+  );
+
+  static Widget _tile(String value, String label, {String? note}) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: _card,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          // One line, scaled down when too wide (so the row's measured
+          // height is one line too).
+          child: Text(
+            value,
+            maxLines: 1,
+            softWrap: false,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        if (note != null) Text(note, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+      ],
+    ),
+  );
+
+  /// A chart under its title; with no [child], only the title and the
+  /// subtitle (which then says why there is no chart).
+  Widget _chartCard({required String title, required String subtitle, Widget? child}) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: _card,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
+        if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        if (child != null) ...[
+          const SizedBox(height: 10),
+          SizedBox(height: 120, width: double.infinity, child: child),
+        ],
+      ],
+    ),
+  );
+
+  /// Taxon rows shown before "Show all".
+  static const _firstTaxa = 6;
+
+  /// "Track IDs by name": the identification's names counted at one rank,
+  /// as bars. The rank chips double as a count of the different taxa.
+  Widget _namesCard(DashboardAggregate agg) {
+    const title = 'Track IDs by name';
+    if (agg.taxa.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: _card,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(title, style: TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 4),
+            Text(
+              // Identified, but every track ID was suspect: the summary
+              // line says so; otherwise nothing was identified yet.
+              agg.identifiedSessions > 0
+                  ? _namedLine(agg)
+                  : 'No names yet. Open a session and tap "Identify organisms" to see here which animals were '
+                        'found.',
+              style: helperTextStyle,
+            ),
+          ],
+        ),
+      );
+    }
+    // Only ranks some name list reached (a list of genera has no species);
+    // family by default, the rank identification aims for by default.
+    final shown = [for (final t in agg.taxa) if (t.distinct > 0) t];
+    final ranks = shown.isEmpty ? [agg.taxa.first] : shown;
+    final current = ranks.firstWhere(
+      (t) => t.rank == _rank,
+      orElse: () => ranks.firstWhere((t) => t.rank == 'family', orElse: () => ranks.first),
+    );
+    final taxa = [for (final r in current.rows) if (!r.isBucket) r];
+    final buckets = [for (final r in current.rows) if (r.isBucket) r];
+    final visible = [...(_allTaxa ? taxa : taxa.take(_firstTaxa)), ...buckets];
+    final maxCount = current.rows.fold<int>(1, (m, r) => r.visits > m ? r.visits : m);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: _card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const HelpLabel(
+            label: title,
+            labelStyle: TextStyle(color: Colors.white, fontSize: 14),
+            helperText:
+                'Names are suggestions from each session\'s last identification: mistakes are possible, '
+                'especially for animals that are not in the name list. Sessions named with different name '
+                'lists are added together. A track ID named only at a higher rank is counted under "not '
+                'resolved to …". As on the results screen, suspect track IDs (likely false detections) are '
+                'left out, and track IDs joined into one count once.',
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final t in ranks)
+                ChoiceChip(
+                  label: Text('${t.rank[0].toUpperCase()}${t.rank.substring(1)} (${t.distinct})'),
+                  selected: t == current,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() {
+                    _rank = t.rank;
+                    _allTaxa = false;
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final r in visible) _taxonBar(r, maxCount),
+          if (taxa.length > _firstTaxa)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _allTaxa = !_allTaxa),
+                child: Text(_allTaxa ? 'Show fewer' : 'Show all ${taxa.length}'),
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(_namedLine(agg), style: helperTextStyle),
+        ],
+      ),
+    );
+  }
+
+  /// How many track IDs got a name, and why the others or the bars differ.
+  static String _namedLine(DashboardAggregate agg) => [
+    'Named: ${agg.namedVisits} of ${_count(agg.totalVisits, 'track ID')}.',
+    if (agg.suspectVisits > 0)
+      '${_count(agg.suspectVisits, 'suspect track ID')} (likely false detections) left out, as on the results '
+          'screen.',
+    if (agg.joinedEntries > 0)
+      'Joined by the identification, ${agg.joinedVisits} track IDs count as ${agg.joinedEntries} in the bars.',
+    if (agg.unnamedSessions > 0)
+      '${_count(agg.unnamedSessions, 'session')} ${agg.unnamedSessions == 1 ? 'has' : 'have'} no current names: '
+          'open ${agg.unnamedSessions == 1 ? 'it' : 'them'} and tap "Identify organisms".',
+  ].join(' ');
+
+  /// One taxon: its name and count, a bar under them (long names keep the
+  /// full width on a narrow phone). "not resolved to …" and the other
+  /// grouping rows are dim, as on the results screen.
+  static Widget _taxonBar(TaxonRow row, int maxCount) {
+    final bucket = row.isBucket;
+    final count = row.visits;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  row.taxon,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: bucket ? Colors.white54 : Colors.white, fontSize: 13),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('$count', style: TextStyle(color: bucket ? Colors.white54 : Colors.white70, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 3),
+          FractionallySizedBox(
+            widthFactor: (count / maxCount).clamp(0.02, 1.0),
+            child: Container(
+              height: 6,
+              decoration: BoxDecoration(
+                color: bucket ? Colors.white24 : Colors.amber,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// What the numbers leave out, in one place at the bottom.
+  List<Widget> _notes(DashboardAggregate agg) => [
+    for (final note in [
+      if (agg.visitsWithoutClock > 0 && agg.visitsWithoutClock < agg.totalVisits)
+        'Not in the charts by time: ${_count(agg.visitsWithoutClock, 'track ID')} from videos that do not say '
+            'when they were filmed (the time can be set while importing them).',
+      if (agg.otherSessions > 0) 'Not counted: ${_count(agg.otherSessions, 'session')} without track IDs. $_sources',
+    ]) ...[
+      const SizedBox(height: 12),
+      Text(note, style: helperTextStyle),
+    ],
+  ];
+
+  static String _count(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
+
   static String _two(int v) => v.toString().padLeft(2, '0');
 
-  static String _dateShort(DateTime d) =>
-      '${d.year}-${_two(d.month)}-${_two(d.day)}';
+  static String _dateShort(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
 
-  static String _hoursLabel(int ms) {
-    final h = ms / Duration.millisecondsPerHour;
-    if (h >= 10) return '${h.round()} h';
-    if (h >= 1) return '${h.toStringAsFixed(1)} h';
-    return '${(ms / Duration.millisecondsPerMinute).round()} min';
+  /// "6 s", "12 min", "3.5 h", "40 h": watch time from a few seconds of
+  /// video to a season.
+  /// Rounded down, so it never shows the 10 min the rate needs before
+  /// they are reached.
+  static String _watchLabel(int ms) {
+    if (ms < Duration.millisecondsPerMinute) return '${ms ~/ 1000} s';
+    if (ms < Duration.millisecondsPerHour) return '${ms ~/ Duration.millisecondsPerMinute} min';
+    final tenths = ms ~/ (Duration.millisecondsPerHour ~/ 10);
+    return tenths >= 100 ? '${tenths ~/ 10} h' : '${(tenths / 10).toStringAsFixed(1)} h';
   }
 
   static String _secondsLabel(int ms) {
@@ -319,4 +519,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return '${(ms / 1000).toStringAsFixed(1)} s';
   }
 }
-

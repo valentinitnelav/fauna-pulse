@@ -836,12 +836,18 @@ analysis boxes for photos without a track ID.
 ## 7. Derived cache files (safe to ignore)
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
-home screen's cross-session Dashboard: the session's start/end, whether the
-live detection ran, and each track ID's first/last timestamp — all re-derivable
-from `session.jsonl`. It is keyed to the log's size and mtime, so deleting it
-is always safe (the app just recomputes it on the next Dashboard track ID). It
-is NOT part of the scientific record; analysis workflows should read
-`session.jsonl` (and `post_detections.jsonl`) only.
+home screen's cross-session Dashboard: the session's start/end, whether it has
+track IDs, each track ID's first/last timestamp, the filmed time of track IDs
+found afterwards and, since round 304, `guessed_clips` (start and end ms of
+imported clips whose filming time was only guessed: track IDs that begin in
+one stay out of the charts by time) and `taxa`: the names of the newest
+identification's track IDs (suspect ones left out and counted in `suspect`),
+cut to the identified rank. Everything is
+re-derivable from the session's files. It is keyed to the size and mtime of
+`session.jsonl`, `post_tracks.jsonl` and the newest identification summary, so
+deleting it is always safe (the app recomputes it the next time the Dashboard
+opens). It is NOT part of the scientific record; analysis workflows should read
+`session.jsonl` and the other files described above.
 
 ## 8. Identification output (`identification/`, round 208+)
 
@@ -1007,6 +1013,7 @@ logged). `session.jsonl` then only records where the clips came from: the start 
 | `start_time_source` | Where that start came from (table below). |
 | `start_time_guess_source` | Only when the clip's own guess was replaced (`after_previous` or `user`): what that guess was. |
 | `start_time_shift_ms` | Only when the user corrected the start; every clip moves by the same amount. |
+| `start_time_weak` | Round 304, only `true`: the start is a guess the user did not correct (a copy's time, only a day, a clip placed after the previous one, or a file name that disagrees with the time stored in the file). The Dashboard leaves the track IDs of such a session out of its charts by time. |
 | `duration_ms`, `size_bytes` | Length and file size. Since round 252 the length comes from the frames' time stamps when the file's header holds none (fragmented MP4s; before that such clips logged `0`). |
 | `rewritten_from`, `original_size_bytes`, `rewrite_ms`, `rewrite_max_time_error_us`, `rewrite_dropped_tracks` | Round 252, only for a clip that was a **fragmented MP4** (as YouTube downloaders save them): `fragmented_mp4`, the picked file's size, how long the rewrite took, the largest shift of a frame's time by the phone's MP4 writer (rounding, e.g. up to 439 µs on the Xiaomi; the rewrite is refused above a quarter of the shortest frame gap, at most 2 ms), and any sound track the MP4 writer could not take. The app copied every frame and sound sample unchanged into a plain MP4 (no re-compression, same frame times), because the phone's video player cannot jump inside a fragmented one. `size_bytes` is the rewritten file's size. |
 | `width`, `height`, `rotation` | Picture size as seen upright, and the turn (degrees) stored in the file. |

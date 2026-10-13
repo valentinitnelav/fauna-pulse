@@ -9093,3 +9093,37 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Checked: `flutter analyze` clean; 894 tests pass (new `site_photos_test.dart`: names, order, move, goal rules, record values; page test: goal notes and error, site photo section, at 360 px). Device check `field_notes_check_test.dart` on the Xiaomi with one waiting photo and a note: the photo was named in `field.site_photos` and found in the session's `site_photos/`, the note recorded and then cleared, the waiting folder empty; screenshot of the section looked right. Settings and notes restored; normal debug app reinstalled.
 - Open: the camera-app round trip with a real tap; the GPS goal outdoors.
 
+## Round 304 (2026-10-13): Dashboard numbers fixed, track IDs by name
+
+**Asked:** the Track IDs card overflowed; "track IDs per hour watched" was far too high for the
+one 6 s video on the phone; check every number; add the identification results (order, family,
+genus, species) without overloading the screen; keep the main message on the track ID count.
+
+**Changed** (`screens/dashboard_screen.dart`, `logging/dashboard_stats.dart`): a big number with
+"track IDs in N sessions" and an (i) (a track ID is not an animal count); 2x2 tiles that take
+their text's height (watched | per hour watched | typical (median) | longest track length); the
+two activity charts pooled over sessions, busiest hour and record day in their subtitles only
+with a clear winner; new "Track IDs by name" card (each session's newest identification counted
+with the results screen's `aggregateTracks`; rank chips with the number of taxa, only ranks
+reached, family first; "Named: X of Y", suspect and joined track IDs explained); one footnote for
+what is not counted. Default period All time; 7/30 days are calendar days. Cache v3. Imported
+clips log `start_time_weak` (`video_import.dart`). Small fixes: "suspect track ID" capital,
+"no organism" label without a rank, a missing full stop, summary chart text, overview tau 0.6.
+
+**Why:** the overflow came from a fixed tile aspect ratio. 597.6 per hour was 1 track ID in 6 s:
+the rate now needs 10 min watched. Other bugs found: "0 min" for 6 s; "Live detection sessions"
+counted imported videos; zeros flashed while loading; crashed sessions ended at their last track
+(too short, rate too high), now at their last record; a day dropped across the spring clock
+change; imported videos whose filming time is a guess (the phone's: copy time 22:12) drew false
+hours (now left out per clip, with a note; the chart card stays and says why, after the owner
+asked whether the charts were removed); texts said motion/time-lapse photos get no track IDs.
+
+**Checked:** 3 readers, a 3-lens design critique, a 5-lens review with 3 skeptics per finding
+(9 upheld, all fixed). 923 unit tests pass (new `dashboard_screen_test.dart` at 393 px, 360 px
+with font 1.3 and bottom bar, 320 px with font 1.5); `flutter analyze` clean. Device check
+`integration_test/dashboard_check_test.dart` on the Xiaomi: the phone's session and a made-up
+season in a temp folder; screenshots looked right. Prefs unchanged; normal debug app reinstalled.
+
+**Open (owner's choice):** track lengths in the summary and Dashboard start at confirmation, not
+at the tracker's first sighting as in `track_ids.csv` (4.3 s against 5.1 s on the phone).
+

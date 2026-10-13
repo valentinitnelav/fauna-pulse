@@ -784,7 +784,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             _showSuspect = v;
             _recompute();
           }),
-          title: Text('Include ${_plural(_suspectCount, 'suspect track id')}', style: const TextStyle(color: Colors.white)),
+          title: Text('Include ${_plural(_suspectCount, 'suspect track ID')}', style: const TextStyle(color: Colors.white)),
           subtitle: const Text(
             'Short-lived AND weakly supported (low detector confidence, weak identification or "no organism"); '
             'likely false detections. Thresholds under Advanced settings; the CSV keeps them with a "suspect" flag.',

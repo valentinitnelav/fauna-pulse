@@ -820,8 +820,11 @@ class TrackIdentity {
   const TrackIdentity({required this.headline, this.rank, this.p, this.suspect = false});
 
   /// "Bombus (genus, 87 %)", "no organism", "unidentified", "… · suspect".
+  /// "no organism" keeps a rank when its threshold is set below 0.5 (round
+  /// 304: it then read "no organism (kingdom, 60 %)").
   String get label =>
-      (rank == null ? headline : '$headline ($rank, ${((p ?? 0) * 100).round()} %)') + (suspect ? ' · suspect' : '');
+      (rank == null || headline == 'no organism' ? headline : '$headline ($rank, ${((p ?? 0) * 100).round()} %)') +
+      (suspect ? ' · suspect' : '');
 }
 
 class LatestIdentification {
