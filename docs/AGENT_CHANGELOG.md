@@ -9093,6 +9093,46 @@ Owner (after committing round 276): a citation field per model is too much to ma
 - Checked: `flutter analyze` clean; 894 tests pass (new `site_photos_test.dart`: names, order, move, goal rules, record values; page test: goal notes and error, site photo section, at 360 px). Device check `field_notes_check_test.dart` on the Xiaomi with one waiting photo and a note: the photo was named in `field.site_photos` and found in the session's `site_photos/`, the note recorded and then cleared, the waiting folder empty; screenshot of the section looked right. Settings and notes restored; normal debug app reinstalled.
 - Open: the camera-app round trip with a real tap; the GPS goal outdoors.
 
+## Round 303 (2026-10-12): "Cite FaunaPulse" with the installed version, in the app
+
+**Asked:** the side menu's "Support FaunaPulse" only repeated "Share FaunaPulse" and "Report a
+problem"; replace it with a way to cite the app. Keep the home screen's Support box, but make its
+"How to cite" more specific (the installed version, read from the app). The "How to cite" link
+seemed broken; show the citation as FaunaLapse does, with the version if possible.
+
+**Changed:** menu item "Cite FaunaPulse" (quote icon) instead of "Support FaunaPulse"; the menu's
+support window and the card's `framed`/`onClose` parameters are gone. The box button "How to
+cite" is now "Cite this version". Both open `CitationDialog` (`widgets/support_faunapulse.dart`,
+`showCitation`): title "Cite FaunaPulse" with "Version <x>, installed on this phone"; the citation
+from the README with "(Version <PackageInfo.version>)" before "[Software]" (selectable); a note
+that the concept DOI opens the newest version on Zenodo, whose page lists every version with its
+own DOI and citation export; the DOI as a link; Close and Copy (Copy turns into "Copied"). The
+whole window scrolls (`AlertDialog(scrollable: true)`). The on-phone check
+`integration_test/home_sessions_check_test.dart` now opens Cite (shot `home_cite`).
+
+**Why:** the old button opened `<repo>#citation` in the browser, which needs internet and did not
+reliably land on the heading on a phone; the text in the app works offline and can be copied.
+Concept DOI plus an explicit version (as FaunaLapse): the version DOI is minted by Zenodo only
+after the GitHub release, so the APK cannot know it. The version is the version name only
+(`0.8.0-alpha.1`, as in CITATION.cff), not the build number. Naming follows the existing pattern:
+the menu says "<verb> FaunaPulse" (Share, Cite, About), the box says the shorter "Cite this
+version" under its "Support FaunaPulse" heading. In donation builds the Sponsor button is now only
+in the home box. Copy confirms in the button instead of a SnackBar: Android 13 and newer show
+their own copy notice, and a SnackBar would sit behind the window.
+
+**Checked:** a 4-angle review (correctness, conventions, citation, tests) with a skeptic per
+angle found: the on-phone check still tapped the old item; Copy/Close in the wrong order for
+stacked buttons; my first note wrongly said the DOI opens "all versions"; a 40 px overflow at
+320x480 with font size 1.5. All fixed. New tests: menu order and the window with a mocked version,
+the box button, Copy to the clipboard, Close below Copy and no overflow at 320x480 with font 1.5
+(fails without `scrollable`), the citation without a version, and the citation against
+CITATION.cff (title, year of `date-released`, authors, concept DOI). `flutter analyze` clean, all
+unit tests pass. Not run on a phone yet.
+
+**Open:** the year (2026) in `citationText` must move with CITATION.cff at a release in a new
+year (the test fails until it does). FaunaLapse's cite note has the same "opens all versions"
+wording (not changed; FaunaLapse is read-only from here).
+
 ## Round 304 (2026-10-13): Dashboard numbers fixed, track IDs by name
 
 **Asked:** the Track IDs card overflowed; "track IDs per hour watched" was far too high for the

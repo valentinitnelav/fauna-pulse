@@ -215,7 +215,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   or offers something extra (no "Not now", "OK", "Done", "Got it"; "Keep running", "Stay" and "Keep
   the one on the phone" stay, as "Cancel" could be misread there). Windows with 2+ buttons set
   `actionsOverflowDirection: VerticalDirection.up` (stacked: main action on top, Cancel/Close at the
-  bottom right). Progress windows without buttons have no X; the support window's X is in its card.
+  bottom right). Progress windows without buttons have no X.
 - **Selection mode** (Sessions, Download & import models): `selectionAppBar` (X "Stop selecting",
   "n selected", bar tinted like the selected rows). Back, the X, or unticking the last item ends
   it; a tap on empty space does not (not an Android convention).
@@ -556,7 +556,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   Record (the answer's phone-screen drawing `roiPicture(icon)`), 3 Import videos…, 4 the two Find
   buttons; Support box last. Steps keep their numbers (no ticks). Bottom bar Menu, Sessions |
   New session | Dashboard, AI models. Menu (drawer): Download & import models, Show setup tips
-  at session start, Report a problem, Share, Support, About. `ScrollHint` scroll bar. Donation
+  at session start, Report a problem, Share, Cite, About (Support is only the home box). Menu
+  "Cite FaunaPulse" and the box's "Cite this version" open `CitationDialog`
+  (`support_faunapulse.dart`): `citationText(version)` = the README citation plus "(Version
+  <PackageInfo.version>)", concept DOI, Copy; works offline. `ScrollHint` scroll bar. Donation
   link only with `--dart-define=DONATION_LINK=true` (GitHub APKs), never in the Play build. About
   is the custom `AboutFaunaPulseDialog` (AGPL-3.0 line; the licences button pushes the generated
   LicensePage, needed for store compliance). Home top, Menu and About show `AppIcon`
@@ -609,7 +612,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Versioning:** pubspec `version:` (now `0.8.0-alpha.1+13`) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,
   CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
-  never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`. Licence
+  never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`, the year in
+  `citationText` (a home-screen test compares it, the title, authors and DOI with CITATION.cff). Licence
   `AGPL-3.0-only`. Pubspec `description` == CITATION.cff `title`; never retitle an archived
   version.
 

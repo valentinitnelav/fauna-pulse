@@ -23,7 +23,9 @@ import 'package:fauna_pulse/fauna_pulse/widgets/session_tile.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/support_faunapulse.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/watch_tiles.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'past_sessions_test.dart' show session;
@@ -76,6 +78,14 @@ void _phoneSize(WidgetTester tester, Size size) {
   addTearDown(tester.view.reset);
 }
 
+void _mockVersion() => PackageInfo.setMockInitialValues(
+  appName: 'FaunaPulse',
+  packageName: 'com.faunapulse.app',
+  version: '0.8.0-alpha.1',
+  buildNumber: '13',
+  buildSignature: '',
+);
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -124,7 +134,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('Support FaunaPulse'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Find animals in videos'), findsOneWidget);
     expect(find.text('Sponsor on GitHub'), findsNothing, reason: 'no money link unless built with DONATION_LINK');
-    expect(find.text('How to cite'), findsOneWidget);
+    expect(find.text('Cite this version'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'nothing overflows at 360 px');
   });
 
@@ -353,7 +363,8 @@ void main() {
     expect(find.textContaining('Tap one'), findsNothing);
   });
 
-  testWidgets('the side menu: models first, About last; Support opens the box', (tester) async {
+  testWidgets('the side menu: models first, About last; Cite opens the citation', (tester) async {
+    _mockVersion();
     await _pumpHome(tester);
     await tester.tap(find.text('Menu'));
     await tester.pumpAndSettle();
@@ -366,14 +377,70 @@ void main() {
       'Show setup tips at session start',
       'Report a problem',
       'Share FaunaPulse',
-      'Support FaunaPulse',
+      'Cite FaunaPulse',
       'About FaunaPulse',
     ]);
-    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Support FaunaPulse')));
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Cite FaunaPulse')));
     await tester.pumpAndSettle();
     expect(find.byType(Drawer), findsNothing, reason: 'the menu closes');
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('stays free for science')), findsOneWidget);
+    expect(find.byType(CitationDialog), findsOneWidget);
+    expect(find.text('Version 0.8.0-alpha.1, installed on this phone'), findsOneWidget);
+    expect(find.textContaining('(Version 0.8.0-alpha.1) [Software]'), findsOneWidget);
+  });
+
+  testWidgets('the support box opens the same citation window', (tester) async {
+    _mockVersion();
+    _phoneSize(tester, const Size(360, 1600));
+    await _pumpHome(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cite this version'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CitationDialog), findsOneWidget);
+  });
+
+  testWidgets('the citation window: Copy puts the citation on the clipboard; fits a small phone', (tester) async {
+    _phoneSize(tester, const Size(320, 480));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: const Scaffold(body: CitationDialog(version: '0.8.0-alpha.1')),
+      ),
+    );
+    expect(tester.takeException(), isNull, reason: 'nothing overflows at 320 px with a large font');
+    expect(tester.getCenter(find.text('Close')).dy, greaterThan(tester.getCenter(find.text('Copy')).dy),
+        reason: 'stacked: Copy on top, Close at the bottom');
+    await tester.tap(find.text('Copy'));
+    await tester.pump();
+    expect(copied, citationText('0.8.0-alpha.1'));
+    expect(find.text('Copied'), findsOneWidget);
+    expect(find.text('Close'), findsOneWidget);
+    expect(find.byTooltip('Close'), findsOneWidget, reason: 'the X at the top right');
+  });
+
+  test('the citation: no version line when the version cannot be read', () {
+    expect(citationText(null), contains('identification of animals [Software]'));
+    expect(citationText('1.0.0'), contains('identification of animals (Version 1.0.0) [Software]'));
+  });
+
+  test('the citation matches CITATION.cff (title, year, authors, concept DOI)', () {
+    final cff = File('CITATION.cff').readAsStringSync();
+    String field(String name) => RegExp('^$name: "?([^"\n]+)"?\$', multiLine: true).firstMatch(cff)!.group(1)!;
+    final citation = citationText(null);
+    expect(citation, contains(field('title')));
+    expect(citation, contains('(${field('date-released').substring(0, 4)})'));
+    expect(citation, contains('https://doi.org/${field('doi')}'));
+    for (final name in RegExp(r'family-names: "([^"]+)"').allMatches(cff).map((m) => m.group(1)!)) {
+      expect(citation, contains(name));
+    }
   });
 
   testWidgets('turning the setup tips on brings back the slow-phone hint', (tester) async {

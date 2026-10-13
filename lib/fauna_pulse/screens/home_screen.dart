@@ -401,25 +401,6 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     );
   }
 
-  /// The menu's "Support FaunaPulse": the home screen's box in a dialog.
-  Future<void> _showSupport() => showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      contentPadding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
-      content: SingleChildScrollView(
-        child: SupportFaunaPulseCard(
-          framed: false,
-          onClose: () => Navigator.of(ctx).pop(),
-          onReportProblem: () {
-            Navigator.of(ctx).pop();
-            _reportProblem();
-          },
-        ),
-      ),
-      actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
-    ),
-  );
-
   Future<void> _openSessions() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
     await reloadSessions();
@@ -475,7 +456,9 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
             item(Icons.bug_report_outlined, 'Report a problem', _reportProblem),
             const Divider(height: 1),
             item(Icons.share_outlined, 'Share FaunaPulse', shareFaunaPulse),
-            item(Icons.volunteer_activism_outlined, 'Support FaunaPulse', _showSupport),
+            // Round 303 (owner): "Support FaunaPulse" only repeated Share and
+            // Report a problem here; its box stays on the home screen.
+            item(Icons.format_quote_outlined, 'Cite FaunaPulse', () => showCitation(context)),
             item(Icons.info_outline, 'About FaunaPulse', _showAbout),
           ],
         ),

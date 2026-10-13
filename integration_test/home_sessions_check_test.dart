@@ -6,7 +6,9 @@
 // Round 279: the answer pages with their drawing, "Chosen for you" and the
 // fold "Choose other models"; step 1 without a tick, step 2 with the yellow
 // square. Round 284: the box is "Suggested AI models", or "Your choice" on
-// the page of the answer used last when other models are in use.
+// the page of the answer used last when other models are in use. Round 303:
+// the menu's "Cite FaunaPulse" window (it replaced the menu's "Support
+// FaunaPulse").
 //
 // Nothing is deleted, imported, downloaded or saved: the check only opens
 // screens, opens and closes the filter panel and the menus, and selects one
@@ -25,6 +27,7 @@ import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/watch_plan_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/session_tile.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/support_faunapulse.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -149,10 +152,10 @@ void main() {
     await settle();
     await tester.tap(find.text('Menu'));
     await settle();
-    // The menu's item (the box of the same name can be visible behind it).
-    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Support FaunaPulse')));
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Cite FaunaPulse')));
+    await waitFor(find.byType(CitationDialog));
     await settle();
-    await shot('home_support');
+    await shot('home_cite');
     await tester.tap(find.text('Close'));
     await settle();
     await tester.drag(find.byType(ListView), const Offset(0, -1500));
