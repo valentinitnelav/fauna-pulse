@@ -26,7 +26,7 @@
 //    stored crops are outdated: re-scoring refuses and the Video tab shows
 //    no answers but a note (SHOT, round 235); the next run starts over under
 //    the new visit numbers;
-//  - the summary's Video tab: ticks under the time bar at the kept frames,
+//  - the summary's Video tab: white marks on the time bar at the kept frames,
 //    the kept frames under the player with their answers, "Show in video"
 //    moves the player to the frame and brings its controls on screen (SHOT).
 // The session stays in video_keep_frames_check/ for `adb pull`.
@@ -48,6 +48,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_timeline_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -336,8 +337,8 @@ void main() {
     // 6. The Video tab.
     kept = await VideoTracker.readKeptFrames(dir);
     final list = await openSummary();
-    // Round 235: white ticks under the time bar at the kept frames.
-    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsOneWidget);
+    // Round 235: white marks at the kept frames (round 307: on the time bar itself).
+    expect(tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'))).keptMs, isNotEmpty);
     await tester.scrollUntilVisible(find.text('Kept frames'), 300, scrollable: list);
     await waitFor(find.text('Show in video'));
     if (identified) {

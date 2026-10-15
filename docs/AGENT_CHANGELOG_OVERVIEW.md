@@ -121,7 +121,8 @@ camera screen's pin button); `video_import_screen.dart`
 `0xFF00E5FF`; ROI yellow `0xFFFFEB3B`), `preview_transform.dart`, `setting_help.dart`
 (`HelpLabel`, `HelpSwitchTile`, `HelpRow`, `FoldSection`, `helperTextStyle`),
 `numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
-`video_review_player.dart`, `video_speed_chips.dart`, `temperature_gauge.dart`,
+`video_review_player.dart`, `video_timeline_bar.dart` (`VideoTimelineBar`, the one time bar of
+every video player), `video_speed_chips.dart`, `temperature_gauge.dart`,
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
 `roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons), `dialog_title.dart`
 (`DialogTitle`, the X of every window),
@@ -459,8 +460,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   its last area. `VideoSquareEditor` plays clips muted at 4×.
 - Video tab (`VideoReviewPlayer`, ExoPlayer via `video_player`, over `VideoBoxTimeline`): play
   state on a `ValueNotifier`, not the controller (rebuilding at 10 Hz made playback stutter);
-  boxes hidden while the player fetches the picture after a jump; wake-lock while playing. Live
-  AI video sessions can switch "Live AI | AI afterwards".
+  boxes hidden while the player fetches the picture after a jump; wake-lock while playing. One
+  time bar that is also the slider (`VideoTimelineBar`, also in `VideoSquareEditor`): grey, cyan
+  `ClipBoxes.trackSpans` (green `rawSpans` in All boxes), white kept-frame marks, marker from
+  `_posMs`; tap/drag seeks go through `_seekTo` (drag pauses, max one seek per 150 ms); the line
+  under it gives the share of the clip with track IDs. Live AI video sessions can switch
+  "Live AI | AI afterwards".
 - Track IDs (`VideoTracker.run` via `replayTracker`): one tracker across clips only when the gap
   ≤ occlusion; writes `post_tracks.jsonl` (`post_track_start`, live-shaped `detections` +
   `track_event`, `post_track_end`; tmp + rename), `track_ids.csv`, `mot/<clip>.txt`.

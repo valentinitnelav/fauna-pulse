@@ -66,6 +66,7 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/video_speed_chips.dart';
+import '../widgets/video_timeline_bar.dart';
 import '../widgets/home_button.dart';
 import '../widgets/dialog_title.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
@@ -1785,6 +1786,9 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
   String? _playError;
   bool _awake = false;
 
+  /// The position the time bar's marker shows (ms).
+  final _posMs = ValueNotifier<int>(0);
+
   /// Counts clip openings: a slow one that finishes after the next started
   /// is dropped.
   int _opening = 0;
@@ -1809,6 +1813,7 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
     _video?.removeListener(_onValue);
     _video?.dispose();
     _keepAwake(false);
+    _posMs.dispose();
     super.dispose();
   }
 
@@ -1850,8 +1855,13 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
   }
 
   /// The screen stays on while the clip plays (the Android player does not
-  /// keep it on by itself), as in the session's Video tab.
-  void _onValue() => _keepAwake(_video?.value.isPlaying ?? false);
+  /// keep it on by itself), as in the session's Video tab; the time bar's
+  /// marker follows the position.
+  void _onValue() {
+    final v = _video?.value;
+    _keepAwake(v?.isPlaying ?? false);
+    _posMs.value = v?.position.inMilliseconds ?? 0;
+  }
 
   void _keepAwake(bool on) {
     if (on == _awake) return;
@@ -1902,8 +1912,13 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
                 icon: Icon(v.isPlaying ? Icons.pause : Icons.play_arrow),
               ),
             ),
+            // Round 307: the Video tab's time bar, without stretches or marks (grey, with the marker).
             Expanded(
-              child: VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.symmetric(vertical: 10)),
+              child: VideoTimelineBar(
+                controller: c,
+                positionMs: _posMs,
+                onSeek: (ms) => c.seekTo(Duration(milliseconds: ms)),
+              ),
             ),
           ],
         ),

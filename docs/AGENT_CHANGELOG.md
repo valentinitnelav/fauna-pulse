@@ -9239,3 +9239,38 @@ time, name follows the day, a typed name stays) and the notes for name, stored a
 
 **Open:** a session name cleared to empty no longer follows the day.
 
+## Round 307 (2026-10-15): one time bar under the video, also the slider
+
+**Asked:** the owner saw "two types of colours" on the bars under the video and expected one
+colour that marks where the video has track IDs and where not (no colour per track ID, there can
+be hundreds), to know where to drag and to see roughly how much of the clip has track IDs. Asked
+by question: the kept-frame ticks stay, as small marks on the same bar.
+
+**Changed:** new `widgets/video_timeline_bar.dart` (`VideoTimelineBar`, key `track_id_timeline`)
+replaces `VideoProgressIndicator`, the cyan track ID strip, the green "All boxes" strip and the
+white tick row in `VideoReviewPlayer`: a 10-px grey bar in a 36-px touch area, cyan stretches
+from `ClipBoxes.trackSpans` (track IDs' spans merged, at least 2 px), green `rawSpans` in All
+boxes or before Find track IDs (each analysed frame with a box until the next, as `rawAt`),
+white 2x6-px kept-frame marks, a white line with a knob from `_posMs`. Tap seeks; a drag pauses,
+seeks at most every 150 ms and once where the finger lifts, then plays on; all seeks go through
+`_seekTo`, so the boxes wait for the new picture. The bar's horizontal drag wins over the
+summary's tab swipe. A new line under the time text: "Track IDs in 23 % of this clip (2:14 of
+9:40).", tenths under 100 s, "less than 1 %", 99 % unless the whole clip, "No track ID in this
+clip.", "Boxes on N % of the analysed frames." One legend line replaces the tick legend and the
+strip sentence. `VideoSquareEditor` gets the same bar (grey, marker only). Old painters and the
+keys `raw_box_strip`/`kept_frame_ticks` removed. Docs: DATA_GUIDE §9, VIDEO_ANALYSIS step 3.
+
+**Why:** the "two colours" were the standard bar's red played part, grey rest and faint buffered
+part, plus the separate cyan strip and white ticks; a colour per track ID never existed. One bar
+that is also the slider puts the map where the finger goes. Sound stays: removing it would save
+about 11 lines, and some users may want it.
+
+**Checked:** analyze clean; 946 tests pass (2 skipped); new tests for merged spans, raw spans,
+tap and throttled drag (pause, 2 to 5 seeks, play, no tab swipe), the share line on short clips,
+the square editor's bar. Integration tests `video_review_check_test` (spans per clip, a 1-s
+scrub, shot `0_scrubbed`) and `video_keep_frames_check_test` updated. Two reviewers: 5 findings,
+4 fixed in code, 1 in this overview. No phone check yet.
+
+**Open:** feel of the 36-px touch area and ExoPlayer seeks while scrubbing on a phone; the square
+editor's marker moves at the controller's 10 Hz.
+

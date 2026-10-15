@@ -1244,7 +1244,8 @@ track ID was first seen. Track IDs in the same frame share one picture. So a ses
   whose video is no longer in `videos/`, since it could not be made again.
 * The summary's Video tab shows them under the player as *Kept frames*; *Show in video*
   moves the player to the frame's moment and scrolls it, with its controls, to the top of
-  the tab. White ticks under the player's time bar mark the saved kept frames (round 235).
+  the tab. Small white marks on the player's time bar mark the saved kept frames (round 235;
+  on the bar itself since round 307).
   The *Find animals in videos* screen shows how many are saved and the storage they take.
 
 ### Freeing storage: deleting the videos (round 236+)
@@ -1321,9 +1322,10 @@ what the detector found and whether the analysed square was well placed. The tab
   including those *Find track IDs* did not count (a track ID shorter than the minimum length,
   the frames before a track was confirmed, see above, or an insect never seen with at
   least the tracker's *New-track confidence*, `highThresh` in `post_track_start.tracker`:
-  weaker boxes only continue a track, round 247); the strip under the time bar then marks
-  the frames with at least one box. Before *Find track IDs*, and when
-  the videos were analysed again after it (the track IDs' `detections_run_ms` no longer
+  weaker boxes only continue a track, round 247); the time bar is then green where a box
+  shows (each analysed frame with a box until the next analysed frame), and the line under it
+  gives the share of the analysed frames with at least one box (round 307). Before *Find track
+  IDs*, and when the videos were analysed again after it (the track IDs' `detections_run_ms` no longer
   matches the analysis run), only the detector boxes are shown, with a note.
 * **Whole frame or what the detector saw.** When a square was analysed, *Whole frame* draws it
   and darkens the part left out; *What the detector saw* zooms onto the square. The square comes
@@ -1335,5 +1337,14 @@ what the detector found and whether the analysed square was well placed. The tab
   track ID (each starts 1 s before the track ID's first sighting; its boxes appear from
   confirmation on); speed 0.5×, 1×, 2×, 4×, 5× or 10× (5× and
   10× since round 273, for an overview; the player may skip pictures); sound is off until
-  switched on. The coloured bars under the time bar mark the track IDs, and tapping a track ID in
-  the list below the player jumps to it.
+  switched on. Tapping a track ID in the list below the player jumps to it.
+* **Time bar (round 307).** One bar under the video is both the slider and a map of the clip:
+  cyan where the clip has at least one track ID (each track ID from its start to its last box,
+  joined where they overlap, at least 2 px wide), grey where there is none, with small white
+  marks at the saved kept frames. All track IDs share the one colour, since a clip can have
+  hundreds. A tap jumps there; a drag pauses the clip, moves the video with the finger (at
+  most one jump every 150 ms) and plays on afterwards if it played. The boxes wait for the new
+  picture after each jump, as after the buttons. The line under the bar gives the share of
+  the clip's length with track IDs, e.g. *Track IDs in 23 % of this clip (2:14 of 9:40).*, or
+  *No track ID in this clip.* In *All boxes*, and before *Find track IDs*, the bar is green
+  where boxes show instead. A clip not analysed yet shows the grey bar only.

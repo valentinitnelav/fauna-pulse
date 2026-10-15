@@ -22,12 +22,14 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart' show VideoSquareEditor;
 import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_timeline_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
+import 'package:video_player/video_player.dart' show VideoProgressIndicator;
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
@@ -157,8 +159,15 @@ Future<Directory> _importedSession(WidgetTester tester, List<String> names) asyn
 String _rec(String type, Map<String, dynamic> m) => jsonEncode({'type': type, 'time_ms': 111, ...m});
 
 /// video_detections.jsonl for [clip]: a frame every 100 ms up to 4 s, a bee
-/// from 1 to 3 s.
-void _writeDetections(Directory dir, String clip, {List<double>? roi, List<int>? roiPx}) {
+/// from 1 to 3 s (none without [bee]).
+void _writeDetections(
+  Directory dir,
+  String clip, {
+  List<double>? roi,
+  List<int>? roiPx,
+  bool bee = true,
+  int beeToMs = 3000,
+}) {
   File('${dir.path}/${VideoDetector.outputFileName}').writeAsStringSync(
     '${[
       _rec('video_run_start', {
@@ -173,7 +182,7 @@ void _writeDetections(Directory dir, String clip, {List<double>? roi, List<int>?
           'pts_us': t * 1000,
           'frame': t * 30 ~/ 1000,
           'boxes': [
-            if (t >= 1000 && t <= 3000) [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+            if (bee && t >= 1000 && t <= beeToMs) [0.4, 0.4, 0.45, 0.48, 0.9, 0],
           ],
         }),
       _rec('video_clip_done', {
@@ -284,7 +293,13 @@ void main() {
     expect(find.text('Photos'), findsNothing);
     expect(player.calls, containsAllInOrder(['create $clip', 'volume 0.0']));
     expect(find.textContaining('No track IDs yet'), findsNothing);
-    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsNothing); // none kept
+    // Round 307: one time bar, cyan over the track ID, no kept frames here; the line under it
+    // says how much of the 10-s clip has track IDs.
+    final bar = tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline')));
+    expect(bar.spans, [(visit.startMs, visit.endMs)]);
+    expect(bar.spanColor, VideoReviewPlayer.visitColor);
+    expect(bar.keptMs, isEmpty);
+    expect(find.text('Track IDs in 20 % of this clip (0:02.0 of 0:10.0).'), findsOneWidget);
     expect(tester.takeException(), isNull);
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
 
@@ -318,9 +333,13 @@ void main() {
     await tester.tap(find.text('All boxes'));
     await tester.pump();
     expect(find.textContaining('every box the detector found'), findsOneWidget);
-    // Round 247: the frames with a box are marked under the time bar, and the note explains
-    // what starts a track ID.
-    expect(find.byKey(const ValueKey('raw_box_strip'), skipOffstage: false), findsOneWidget);
+    // Round 247: the frames with a box are marked on the time bar (round 307: in the boxes' green,
+    // each until the next analysed frame), and the note explains what starts a track ID.
+    final rawBar = tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false));
+    expect(rawBar.spans, [(1000, 3100)]);
+    expect(rawBar.spanColor, VideoReviewPlayer.rawColor);
+    expect(find.text('Boxes on 51 % of the analysed frames.', skipOffstage: false), findsOneWidget); // 21 of 41
+    expect(find.textContaining('green on the frames with at least one box', skipOffstage: false), findsOneWidget);
     expect(find.textContaining('A new track ID starts only from a box the detector is at least 0.50 sure of', skipOffstage: false),
         findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -330,7 +349,7 @@ void main() {
     expect(find.textContaining('can be false detections', skipOffstage: false), findsOneWidget);
     expect(find.text('#${visit.trackId}', skipOffstage: false), findsNothing);
     await _openTrackList(tester, 1, scrollable);
-    expect(find.textContaining('a white tick under the time bar'), findsNothing); // none kept
+    expect(find.textContaining('Small white marks', skipOffstage: false), findsNothing); // none kept
     await tester.scrollUntilVisible(find.text('#${visit.trackId}'), 200, scrollable: scrollable);
     await tester.tap(find.text('#${visit.trackId}'));
     await tester.pump();
@@ -415,13 +434,15 @@ void main() {
   testWidgets('kept frames show under the player; "Show in video" moves it there (r234)', (tester) async {
     simulateBottomSystemBar(tester);
     final (dir, kept) = await keptSession(tester, identifiedRunOffset: 0);
-    // Round 235: white ticks under the time bar mark the kept frames.
+    // Round 235: white marks on the time bar (round 307: on the bar itself) at the kept frames.
     await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
     await _pumpUntil(tester, find.byTooltip('Play'));
-    expect(find.byKey(const ValueKey('kept_frame_ticks')), findsOneWidget);
+    expect(tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'))).keptMs, [
+      for (final k in kept) k.ptsUs ~/ 1000,
+    ]);
     // The tab's own list (the photo viewer inside it scrolls too).
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
-    await tester.scrollUntilVisible(find.textContaining('a white tick under the time bar'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.textContaining('Small white marks: frames kept for a track ID'), 200, scrollable: scrollable);
     await tester.scrollUntilVisible(find.text('Kept frames'), 200, scrollable: scrollable);
     await _pumpUntil(tester, find.text('Show in video'));
     expect(find.text('Showing 2 of 2 kept frames this session.'), findsOneWidget);
@@ -484,6 +505,77 @@ void main() {
     await tester.pump();
   });
 
+  // Round 307: whole seconds would read "6 % of this clip (0:00 of 0:10)" here.
+  testWidgets('a short track ID in a short clip: the line under the bar gives tenths (r307)', (tester) async {
+    const clip = 'VID_20260924_155954.mp4';
+    final dir = await _importedSession(tester, [clip]);
+    _writeDetections(dir, clip, beeToMs: 1600);
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.text('Track IDs in 6 % of this clip (0:00.6 of 0:10.0).'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  });
+
+  // Round 307: the time bar is also the slider. Its jumps go through the player's own, so the
+  // boxes wait for the new picture there too (round 252), and a drag on it must not swipe the
+  // summary's tabs.
+  testWidgets('a clip without track IDs: grey time bar; a tap jumps, a drag pauses, jumps, plays on (r307)', (
+    tester,
+  ) async {
+    simulateBottomSystemBar(tester);
+    const clip = 'VID_20260924_155954.mp4';
+    final dir = await _importedSession(tester, [clip]);
+    _writeDetections(dir, clip, bee: false);
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.text('No track ID in this clip.'), findsOneWidget);
+    final bar = find.byKey(const ValueKey('track_id_timeline'));
+    expect(tester.widget<VideoTimelineBar>(bar).spans, isEmpty);
+    final state = tester.state<VideoReviewPlayerState>(find.byType(VideoReviewPlayer));
+    await tester.ensureVisible(bar);
+    await tester.pump();
+    final r = tester.getRect(bar);
+    Offset at(double share) => Offset(r.left + r.width * share, r.center.dy);
+
+    // A tap a quarter along the 10-s clip.
+    await tester.tapAt(at(0.25));
+    await tester.pump();
+    expect(player.calls.last, 'seek 2500');
+    expect(state.waitingForPicture, isTrue);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    // A drag while playing: paused, a few jumps on the way (at most one per 150 ms), the last
+    // where the finger left the bar, then it plays on.
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pump();
+    player.calls.clear();
+    final g = await tester.startGesture(at(0.25));
+    for (var i = 1; i <= 10; i++) {
+      await g.moveTo(at(0.25 + 0.05 * i));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await g.up();
+    await tester.pump();
+    final seeks = player.calls.where((c) => c.startsWith('seek')).toList();
+    expect(player.calls.first, 'pause');
+    expect(seeks, hasLength(inInclusiveRange(2, 5)), reason: '10 moves in 0.5 s: $seeks');
+    expect(player.calls, containsAllInOrder(['pause', 'seek 7500', 'play']));
+    expect(seeks.last, 'seek 7500');
+    expect(find.byTooltip('Pause').hitTestable(), findsOneWidget, reason: 'still on the Video tab, playing');
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  });
+
   testWidgets('an identification of track IDs found before is not shown on the frames (r235)', (tester) async {
     simulateBottomSystemBar(tester);
     final (dir, _) = await keptSession(tester, identifiedRunOffset: -1);
@@ -521,8 +613,9 @@ void main() {
     expect(player.calls.where((c) => c.startsWith('create')), isEmpty);
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
     await tester.scrollUntilVisible(find.text('Track IDs in this clip (1)'), 200, scrollable: scrollable);
-    // No time bar, so no ticks explained; nothing left to analyse again.
-    expect(find.textContaining('a white tick under the time bar'), findsNothing);
+    // No time bar, so nothing about it explained; nothing left to analyse again.
+    expect(find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false), findsNothing);
+    expect(find.textContaining('Tap or drag the bar', skipOffstage: false), findsNothing);
     expect(find.text('Square in the wrong place?'), findsNothing);
     expect(find.text('Other track ID settings?'), findsOneWidget);
     expect(find.text('Find animals in videos'), findsOneWidget);
@@ -558,11 +651,16 @@ void main() {
 
     // The second clip was not analysed.
     await tester.scrollUntilVisible(find.text(a), -200, scrollable: scrollable);
+    await tester.drag(scrollable, const Offset(0, 300)); // to the top, clear of the tab bar
+    await tester.pump();
     await tester.tap(find.text(a));
     await tester.pumpAndSettle();
     await tester.tap(find.text('$b · not analysed').last);
     await _pumpUntil(tester, find.textContaining('This clip was not analysed yet'));
     expect(player.calls.where((c) => c.startsWith('create')), ['create $a', 'create $b']);
+    // Round 307: the grey time bar with the marker only, and no share under it.
+    expect(tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'))).spans, isEmpty);
+    expect(find.textContaining('% of'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
@@ -588,9 +686,9 @@ void main() {
     expect(find.text('Photos'), findsNothing);
     await _pumpUntil(tester, find.text('2 clips · 20.0 s filmed · 2.3 MB'));
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
-    await tester.scrollUntilVisible(find.text('Not analysed yet'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Find animals in videos'), 200, scrollable: scrollable);
+    expect(find.text('Not analysed yet'), findsOneWidget);
     expect(find.text('Square in the wrong place?'), findsNothing);
-    expect(find.text('Find animals in videos'), findsOneWidget);
 
     // Copy videos: one clip per call, then the counts.
     await tester.scrollUntilVisible(find.text('Copy videos'), 200, scrollable: scrollable);
@@ -797,6 +895,14 @@ void main() {
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '4×')).selected, isTrue);
     expect(find.text('5×'), findsOneWidget);
     expect(wake.on, isTrue);
+    // Round 307: the same time bar as the Video tab, without stretches; a tap jumps.
+    expect(find.byType(VideoProgressIndicator), findsNothing);
+    final bar = find.byType(VideoTimelineBar);
+    expect(tester.widget<VideoTimelineBar>(bar).spans, isEmpty);
+    final r = tester.getRect(bar);
+    await tester.tapAt(Offset(r.left + r.width / 2, r.center.dy));
+    await tester.pump();
+    expect(player.calls.last, 'seek 5000');
     await tester.tap(find.text('10×'));
     await tester.pump();
     expect(player.calls.last, 'speed 10.0');

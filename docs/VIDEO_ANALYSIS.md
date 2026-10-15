@@ -71,6 +71,10 @@ Terms used below:
    organisms* says how many track IDs still have no saved frame, with a button back to
    this screen. Finding the track IDs again numbers them
    anew, so identification results made before say to run identification again.
+   On the summary's Video tab the time bar under the video, which is also its slider, is
+   cyan where the clip has at least one track ID and grey where it has none, with small
+   white marks at the kept frames; the line under it gives the share of the clip with track
+   IDs (round 307), so a fast drag finds the insects quickly.
    *Free storage* (round 236) below it deletes the clips without any track ID, or all clips
    once the frames are saved; the boxes, track IDs and kept frames stay, so Find track IDs can
    still run again (DATA_GUIDE §9). Copy the clips to a computer first if you may want to

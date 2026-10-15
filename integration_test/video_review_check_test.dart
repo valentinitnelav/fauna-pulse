@@ -20,6 +20,8 @@
 //    centred square and finds the visits;
 //  - opens the real summary: the Video tab plays each clip; paused inside a
 //    visit, in both views (SHOT: the boxes must sit on the insect);
+//  - round 307: the time bar shows the clip's track IDs, and a drag along it
+//    moves the video there (SHOT: the boxes on the new picture);
 //  - 4× playback: how long Flutter's frames take while the boxes move;
 //  - battery temperature before and after REVIEW_SOAK_MIN minutes of playback;
 //  - "Change square and analyse again": while "Run AI on videos" is open the
@@ -41,6 +43,7 @@ import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_timeline_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -228,10 +231,16 @@ void main() {
         await view('What the detector saw');
         await shot('${i}_ai');
         await view('Whole frame');
+        // Back up to the player: the switch is below the player's block (time bar, speed buttons),
+        // and once that block is above the screen the finders below no longer see it.
+        await scrollTo(find.byType(VideoPlayer), -300);
       }
+      // Round 307: the time bar shows the track IDs.
+      final bar = find.byKey(const ValueKey('track_id_timeline'));
+      expect(tester.widget<VideoTimelineBar>(bar).spans, boxes.tracked ? boxes.trackSpans : boxes.rawSpans);
       if (i == 0 && boxes.tracked) {
-        // Round 247: "All AI boxes" with the strip of frames that have a box, the note on what
-        // starts a track ID, and the folded track list.
+        // Round 247: "All AI boxes" with the frames that have a box marked on the time bar (round
+        // 307: in their green), the note on what starts a track ID, and the folded track list.
         await view('All boxes');
         await shot('${i}_all_boxes');
         await scrollTo(find.textContaining('A new track ID starts only'), 200);
@@ -246,6 +255,22 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         // Back up to the player: the speed buttons below are above this point.
         await scrollTo(find.byType(VideoPlayer), -300);
+      }
+      // Round 307: a drag along the bar (paused) moves the video to where the finger left it.
+      // After "All boxes", so that shot is still paused inside the first track ID.
+      if (i == 0) {
+        await scrollTo(bar, 200);
+        final r = tester.getRect(bar);
+        await tester.timedDragFrom(
+          Offset(r.left + r.width * 0.1, r.center.dy),
+          Offset(r.width * 0.5, 0),
+          const Duration(seconds: 1),
+        );
+        await tester.pump(const Duration(milliseconds: 800));
+        final want = v.duration.inMilliseconds * 0.6;
+        _log('SCRUB $name at ${player().position.inMilliseconds} ms, finger left at ${want.round()} ms');
+        expect((player().position.inMilliseconds - want).abs(), lessThan(1000));
+        await shot('${i}_scrubbed');
       }
 
       // 4× playback: Flutter frame times while the boxes move.

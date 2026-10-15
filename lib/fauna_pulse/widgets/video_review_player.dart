@@ -19,7 +19,10 @@
 // clip deleted to free storage says when; its boxes and visits still list.
 // Round 252: after a jump the player reports the new position at once but
 // shows the old picture until it has decoded the new one (up to 2.7 s on the
-// Samsung, measured); the boxes wait for the picture.
+// Samsung, measured); the boxes wait for the picture. Round 307: one time
+// bar, also the slider (video_timeline_bar.dart), shows where the track IDs
+// are, with the kept frames as white marks on it, and the line under it how
+// much of the clip has track IDs.
 
 import 'dart:async';
 import 'dart:io';
@@ -38,6 +41,7 @@ import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import 'setting_help.dart';
 import 'video_speed_chips.dart';
+import 'video_timeline_bar.dart';
 
 class VideoReviewPlayer extends StatefulWidget {
   final Directory sessionDir;
@@ -560,19 +564,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
           ],
           if (boxes != null) ..._legend(visits),
-          // The ticks sit under the time bar, which a deleted clip lacks.
-          if (c != null && (_keptMs[name]?.isNotEmpty ?? false)) ...[
-            const SizedBox(height: 4),
-            const Text.rich(
-              TextSpan(
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-                children: [
-                  TextSpan(text: '| ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  TextSpan(text: 'a white tick under the time bar: a frame kept for a track ID (see Kept frames below).'),
-                ],
-              ),
-            ),
-          ],
+          // A deleted clip has no time bar.
+          if (c != null && boxes != null) ..._barLegend(visits, kept: _keptMs[name]?.isNotEmpty ?? false),
           // Live view (rounds 240, 241): compare with the AI afterwards.
           if (_timeline.live) ...[
             const SizedBox(height: 12),
@@ -795,30 +788,25 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   List<Widget> _controls(VideoPlayerController c, ClipBoxes? boxes, {required bool visitsShown}) {
     final hasVisits = boxes != null && boxes.tracked && boxes.visits.isNotEmpty;
+    final coverage = _coverage(c, boxes, visitsShown: visitsShown);
     return [
-      VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.only(top: 10, bottom: 4)),
-      if (hasVisits && visitsShown)
-        SizedBox(
-          height: 6,
-          width: double.infinity,
-          child: CustomPaint(painter: _VisitStripPainter(boxes.visits, c.value.duration.inMilliseconds)),
-        )
-      // All AI boxes, or not tracked yet: the frames with at least one box (round 247).
-      else if (boxes != null && !visitsShown && boxes.rawBoxMs.isNotEmpty)
-        SizedBox(
-          key: const ValueKey('raw_box_strip'),
-          height: 6,
-          width: double.infinity,
-          child: CustomPaint(painter: _RawStripPainter(boxes.rawBoxMs, c.value.duration.inMilliseconds)),
-        ),
-      if (_keptMs[_clips[_clip]] case final kept? when kept.isNotEmpty)
-        SizedBox(
-          key: const ValueKey('kept_frame_ticks'),
-          height: 6,
-          width: double.infinity,
-          child: CustomPaint(painter: _KeptTickPainter(kept, c.value.duration.inMilliseconds)),
-        ),
       const SizedBox(height: 4),
+      // Round 307: one bar for the position and where the track IDs are (All boxes, or not
+      // tracked yet: the frames with at least one box), in the colour of the boxes on the video.
+      // Its jumps go through _seekTo, so the boxes wait for the new picture there too.
+      VideoTimelineBar(
+        key: const ValueKey('track_id_timeline'),
+        controller: c,
+        positionMs: _posMs,
+        onSeek: _seekTo,
+        spans: boxes == null
+            ? const []
+            : visitsShown
+            ? boxes.trackSpans
+            : boxes.rawSpans,
+        spanColor: visitsShown ? VideoReviewPlayer.visitColor : VideoReviewPlayer.rawColor,
+        keptMs: _keptMs[_clips[_clip]] ?? const [],
+      ),
       RepaintBoundary(
         child: ValueListenableBuilder<int>(
           valueListenable: _posMs,
@@ -828,6 +816,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           ),
         ),
       ),
+      if (coverage != null) Text(coverage, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ValueListenableBuilder<bool>(
         valueListenable: _playing,
         builder: (_, playing, _) => Row(
@@ -870,6 +859,29 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     ];
   }
 
+  /// Round 307: how much of the clip the time bar's coloured stretches cover, or null when
+  /// there is nothing to measure (not analysed).
+  String? _coverage(VideoPlayerController c, ClipBoxes? boxes, {required bool visitsShown}) {
+    if (boxes == null) return null;
+    if (!visitsShown) {
+      final frames = boxes.analysedFrames, withBox = boxes.rawBoxMs.length;
+      if (frames == 0) return null;
+      final share = withBox > 0 && withBox * 100 < frames ? 'less than 1' : '${(100 * withBox / frames).round()}';
+      return 'Boxes on $share % of the analysed frames.';
+    }
+    if (boxes.visits.isEmpty) return 'No track ID in this clip.';
+    final clipMs = c.value.duration.inMilliseconds;
+    if (clipMs <= 0) return null;
+    final ms = min(boxes.trackedMs, clipMs);
+    if (ms * 100 < clipMs) return 'Track IDs in less than 1 % of this clip.';
+    // 100 % only for the whole clip. Under 100 s whole seconds are coarser than 1 % of the clip,
+    // so tenths there, and no times at all when they would read 0 (no "6 % (0:00 of 0:10)").
+    final share = min((100 * ms / clipMs).round(), ms < clipMs ? 99 : 100);
+    final tenths = clipMs < 100000;
+    return 'Track IDs in $share % of this clip'
+        '${ms < 100 ? '' : ' (${_time(ms, tenths: tenths)} of ${_time(clipMs, tenths: tenths)})'}.';
+  }
+
   List<Widget> _legend(bool visits) => [
     const SizedBox(height: 6),
     Text.rich(
@@ -889,9 +901,32 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 TextSpan(
                   text: 'every box the detector found, with its class and confidence, also the ones no track ID '
                       'was made from (for example an insect seen too briefly, or never sure enough to '
-                      'start one). The strip under the time bar marks the frames with at least one box.',
+                      'start one).',
                 ),
               ],
+      ),
+    ),
+  ];
+
+  /// Round 307: what the time bar under the video shows, in one place.
+  List<Widget> _barLegend(bool visits, {required bool kept}) => [
+    const SizedBox(height: 4),
+    Text.rich(
+      TextSpan(
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+        children: [
+          TextSpan(
+            text: '▬ ',
+            style: TextStyle(color: visits ? VideoReviewPlayer.visitColor : VideoReviewPlayer.rawColor),
+          ),
+          TextSpan(
+            text: visits
+                ? 'the bar under the video: cyan where the video has at least one track ID, grey where it has none. '
+                : 'the bar under the video: green on the frames with at least one box, grey where there is none. ',
+          ),
+          if (kept) const TextSpan(text: 'Small white marks: frames kept for a track ID (see Kept frames below). '),
+          const TextSpan(text: 'Tap or drag the bar to move through the video.'),
+        ],
       ),
     ),
   ];
@@ -947,12 +982,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
         ),
   ];
 
-  /// m:ss.s, or h:mm:ss for an hour or more.
-  static String _time(int ms) {
+  /// m:ss.s (m:ss without [tenths]), or h:mm:ss for an hour or more.
+  static String _time(int ms, {bool tenths = true}) {
     final s = ms ~/ 1000;
     String two(int n) => n.toString().padLeft(2, '0');
     if (s >= 3600) return '${s ~/ 3600}:${two(s ~/ 60 % 60)}:${two(s % 60)}';
-    return '${s ~/ 60}:${two(s % 60)}.${ms % 1000 ~/ 100}';
+    return '${s ~/ 60}:${two(s % 60)}${tenths ? '.${ms % 1000 ~/ 100}' : ''}';
   }
 }
 
@@ -1035,70 +1070,4 @@ class _OverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _OverlayPainter old) =>
       old.view != view || old.area != area || old.visits != visits || old.boxesAt != boxesAt;
-}
-
-/// The visits of the clip as bars under the scrubber.
-/// White 2-px ticks at the kept frames of a clip (round 235), scaled like
-/// [_VisitStripPainter].
-class _KeptTickPainter extends CustomPainter {
-  final List<int> keptMs;
-  final int durationMs;
-  _KeptTickPainter(this.keptMs, this.durationMs);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (durationMs <= 0) return;
-    final paint = Paint()..color = Colors.white;
-    for (final ms in keptMs) {
-      final x = (ms / durationMs * size.width).clamp(0.0, size.width - 2);
-      canvas.drawRect(Rect.fromLTWH(x, 0, 2, size.height), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _KeptTickPainter old) => old.keptMs != keptMs || old.durationMs != durationMs;
-}
-
-/// 2-px ticks in the raw box colour at the analysed frames with at least one box, under the
-/// time bar in "All AI boxes" (round 247); scaled like [_VisitStripPainter].
-class _RawStripPainter extends CustomPainter {
-  final List<int> frameMs;
-  final int durationMs;
-  _RawStripPainter(this.frameMs, this.durationMs);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white10);
-    if (durationMs <= 0) return;
-    final paint = Paint()..color = VideoReviewPlayer.rawColor;
-    for (final ms in frameMs) {
-      final x = (ms / durationMs * size.width).clamp(0.0, size.width - 2);
-      canvas.drawRect(Rect.fromLTWH(x, 0, 2, size.height), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RawStripPainter old) => old.frameMs != frameMs || old.durationMs != durationMs;
-}
-
-class _VisitStripPainter extends CustomPainter {
-  final List<TimelineVisit> visits;
-  final int durationMs;
-  _VisitStripPainter(this.visits, this.durationMs);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white10);
-    if (durationMs <= 0) return;
-    final paint = Paint()..color = VideoReviewPlayer.visitColor;
-    for (final v in visits) {
-      final l = v.startMs / durationMs * size.width;
-      // At least 2 px, so a short visit in a long clip still shows.
-      final r = max(v.endMs / durationMs * size.width, l + 2);
-      canvas.drawRect(Rect.fromLTRB(l, 0, min(r, size.width), size.height), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _VisitStripPainter old) => old.visits != visits || old.durationMs != durationMs;
 }

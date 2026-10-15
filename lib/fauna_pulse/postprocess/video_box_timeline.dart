@@ -93,12 +93,38 @@ class ClipBoxes {
 
   final List<TimelineVisit> visits;
 
-  /// Positions (ms) of the analysed frames with at least one box, for the strip under the
-  /// time bar in "All AI boxes" (round 247).
+  /// Positions (ms) of the analysed frames with at least one box (round 247).
   late final List<int> rawBoxMs = [
     for (var i = 0; i < _pos.length; i++)
       if (_raw[i].isNotEmpty) _pos[i],
   ];
+
+  /// Round 307: the stretches (start, end in ms) with at least one track ID, for the time bar:
+  /// the visits' spans, merged where they overlap.
+  late final List<(int, int)> trackSpans = _merge([for (final v in visits) (v.startMs, v.endMs)]);
+
+  /// How long the clip has at least one track ID (ms).
+  late final int trackedMs = trackSpans.fold(0, (sum, s) => sum + s.$2 - s.$1);
+
+  /// Round 307: the stretches (ms) in which "All boxes" draws a box: each analysed frame with
+  /// one, until the next analysed frame (at most [holdMs], as [rawAt]).
+  late final List<(int, int)> rawSpans = _merge([
+    for (var i = 0; i < _pos.length; i++)
+      if (_raw[i].isNotEmpty) (_pos[i], i + 1 < _pos.length ? min(_pos[i + 1], _pos[i] + holdMs) : _pos[i] + holdMs),
+  ]);
+
+  /// [spans] sorted by start, with those that overlap or touch joined into one.
+  static List<(int, int)> _merge(List<(int, int)> spans) {
+    final out = <(int, int)>[];
+    for (final (start, end) in spans..sort((a, b) => a.$1.compareTo(b.$1))) {
+      if (out.isNotEmpty && start <= out.last.$2) {
+        out.last = (out.last.$1, max(out.last.$2, end));
+      } else {
+        out.add((start, end));
+      }
+    }
+    return out;
+  }
 
   /// How long a frame's boxes stay on screen at most.
   final int holdMs;

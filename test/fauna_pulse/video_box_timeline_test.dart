@@ -216,6 +216,52 @@ void main() {
     expect([for (final v in visits) (v.trackId, v.startMs, v.endMs)], [(2, 0, 900), (1, 1600, 2500)]);
   });
 
+  test('round 307: the time bar joins overlapping and nested track IDs, and measures them', () {
+    final tmp = Directory.systemTemp.createTempSync('track_spans');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    const t0 = 1790000000000;
+    Map<String, dynamic> det(int ms, int id) => {
+      'type': 'detections',
+      'time_ms': t0 + ms + 40,
+      'frame_sensor_ms': t0 + ms,
+      'tracks': [
+        {
+          'track_id': id,
+          'class_name': 'bee',
+          'confidence': 0.8,
+          'box_in_roi': {'left': 0.1, 'top': 0.2, 'right': 0.3, 'bottom': 0.4},
+        },
+      ],
+    };
+    File('${tmp.path}/session.jsonl').writeAsStringSync(
+      '${[
+        {'type': 'video_clip', 'file': 'videos/a.mp4', 'start_epoch_ms': t0, 'duration_ms': 10000},
+        // #1 from 1 to 5 s, #2 inside it (2 to 3 s), #3 past its end (4.5 to 6 s), #4 one frame at 8 s.
+        det(1000, 1), det(2000, 2), det(3000, 2), det(4500, 3), det(5000, 1), det(6000, 3), det(8000, 4),
+      ].map(jsonEncode).join('\n')}\n',
+    );
+    final c = VideoBoxTimeline.readLiveSync(tmp.path).clips['a.mp4']!;
+    expect(c.visits, hasLength(4));
+    expect(c.trackSpans, [(1000, 6000), (8000, 8000)]);
+    expect(c.trackedMs, 5000);
+  });
+
+  test('round 307: in All boxes the time bar covers each frame with a box until the next frame', () {
+    final c = VideoBoxTimeline.parse([
+      _runStart(),
+      ..._clip(
+        'a.mp4',
+        times: _every100(0, 2000),
+        boxAt: (t) => (t >= 500 && t <= 1000) || t == 1500 || t == 2000 ? _box(0.4) : null,
+      ),
+    ], const []).clips['a.mp4']!;
+    expect(c.rawBoxMs, hasLength(8));
+    // The last frame's boxes stay 1.5 steps (150 ms), as on the video.
+    expect(c.rawSpans, [(500, 1100), (1500, 1600), (2000, 2150)]);
+    expect(c.trackSpans, isEmpty);
+    expect(c.trackedMs, 0);
+  });
+
   test('track IDs found on an earlier analysis are not shown', () async {
     final lines = [
       _runStart(),
