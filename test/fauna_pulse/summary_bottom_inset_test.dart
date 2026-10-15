@@ -146,8 +146,12 @@ void main() {
           matching: find.byType(Scrollable),
         ),
       );
-      scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
-      await tester.pump();
+      // The lazy list only estimates its length until the rows near the end
+      // are built, so jump again until the end stays put.
+      for (var i = 0; i < 5; i++) {
+        scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+        await tester.pump();
+      }
       expectAboveBottomInset(
         tester,
         find.textContaining('Extra graphs'),

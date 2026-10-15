@@ -564,9 +564,11 @@ class IdentificationJob {
     // only the record types the index keeps; done synchronously here because
     // we are already on a worker isolate). Round 229: visits found afterwards
     // in a session's videos come from post_tracks.jsonl instead (never both);
-    // the start record always comes from session.jsonl.
-    final spans = <int, (int, int)>{};
-    final detCounts = <int, int>{};
+    // the start record always comes from session.jsonl. Round 305: spans and
+    // frame counts follow the summary's rule (TrackSpans): from the first
+    // sighting, as in track_ids.csv.
+    final trackSpans = TrackSpans();
+    int? sessionStartMs;
     final log = File('${sessionDir.path}/session.jsonl');
     final tracksFile = tracksFileOf(sessionDir);
     String deviceId = '';
@@ -594,8 +596,8 @@ class IdentificationJob {
         } catch (_) {
           continue;
         }
-        final t = (rec['time_ms'] as num?)?.toInt();
         if (rec['type'] == 'start_of_session') {
+          sessionStartMs ??= (rec['time_ms'] as num?)?.toInt();
           final d = rec['device'];
           if (d is Map && d['model'] != null) deviceId = '${d['model']}';
           if (deviceId.isEmpty && rec['device_model'] != null) deviceId = '${rec['device_model']}';
@@ -609,25 +611,11 @@ class IdentificationJob {
           visitsRunId = (rec['run_id'] as num?)?.toInt();
           keep = KeepFramesSettings.fromJson(rec['keep_frames']);
         }
-        void extend(int? id) {
-          if (id == null || t == null) return;
-          detCounts[id] = (detCounts[id] ?? 0) + 1;
-          final s = spans[id];
-          spans[id] = s == null ? (t, t) : (s.$1 < t ? s.$1 : t, s.$2 > t ? s.$2 : t);
-        }
-        if (!readTracks) continue;
-        if (rec['type'] == 'detections') {
-          final tracks = rec['tracks'];
-          if (tracks is List) {
-            for (final e in tracks) {
-              if (e is Map) extend((e['track_id'] as num?)?.toInt());
-            }
-          }
-        } else if (rec['type'] == 'detection') {
-          extend((rec['track_id'] as num?)?.toInt());
-        }
+        if (readTracks) trackSpans.add(rec);
       }
     }
+    final spans = trackSpans.spans(notBeforeMs: sessionStartMs);
+    final detCounts = trackSpans.frameCounts;
 
     // Round 235: crops cut for visits that were found again since carry the
     // old numbers; scoring them against the new visits would mismatch both.

@@ -1174,7 +1174,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           decimals: 1,
           unitSuffix: 's',
           onChanged: (v) => _edit(() => prefs.flagMinDurationS = v),
-          helperText: 'From the first to the last detection of the track ID. 0 = never short by duration.',
+          helperText: 'From the first to the last frame the tracker saw the track ID in. 0 = never short by duration.',
         ),
         NumericSettingField(
           label: 'Short: detections below',
@@ -1183,7 +1183,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           max: 100,
           isInt: true,
           onChanged: (v) => _edit(() => prefs.flagMinDetections = v.round()),
-          helperText: 'Detector frames the track ID appeared in. 0 = never short by count.',
+          helperText:
+              'Detector frames the track ID appeared in, from the first sighting (also the frames before it was '
+              'confirmed as a track ID). 0 = never short by count.',
         ),
         NumericSettingField(
           label: 'Weak: detector confidence below',

@@ -16,10 +16,15 @@
 // the same clock the player reports. A box stays on screen until the next
 // analysed frame, and at most 1.5 analysed-frame steps: gaps, a stopped
 // analysis and the unanalysed end of a clip never show old boxes.
+//
+// Round 305: a track ID starts at the tracker's first sighting, as in
+// track_ids.csv: its `created` event says how long before its first box
+// (logged only from confirmation on) the tracker first saw the animal.
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 import 'dart:ui';
 
 import '../logging/track_source.dart' show postTracksFileName;
@@ -47,7 +52,8 @@ class TimelineBox {
   });
 }
 
-/// One visit as seen in one clip: player positions of its first and last
+/// One visit as seen in one clip: player positions of its start (the first
+/// sighting in the clip it began in, else its first tracked box) and its last
 /// tracked box.
 class TimelineVisit {
   final int trackId;
@@ -205,6 +211,7 @@ class VideoBoxTimeline {
       if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
     }
     final c = {for (final (name, _, _) in spans) name: _ClipAcc()..done = true};
+    final leads = _leads(recs);
     for (final rec in recs) {
       if (rec['type'] != 'detections') continue;
       final t = ((rec['frame_sensor_ms'] ?? rec['frame_ms']) as num?)?.toInt();
@@ -214,6 +221,7 @@ class VideoBoxTimeline {
         if (t < start || t > start + dur) continue;
         final ms = t - start;
         final a = c[name]!;
+        a.addLeads(rec, tracks, leads);
         a.raw[ms] = const [];
         a.tracked[ms] = [
           for (final tr in tracks)
@@ -243,7 +251,7 @@ class VideoBoxTimeline {
             pos: a.raw.keys.toList()..sort(),
             raw: [for (final _ in a.raw.keys) const <TimelineBox>[]],
             trackedBoxes: a.tracked,
-            visits: _visits(a.tracked),
+            visits: _visits(a.tracked, a.leadMs),
             holdMs: _holdMs(a.raw.keys.toList()..sort()),
           ),
       },
@@ -318,6 +326,7 @@ class VideoBoxTimeline {
       if (!stale) trackedClips = {for (final n in (start['clips'] as List? ?? const [])) '$n'};
     }
     if (trackedClips.isNotEmpty) {
+      final leads = _leads(trackRecs);
       for (final rec in trackRecs) {
         final name = rec['clip'] as String?;
         final pts = (rec['pts_us'] as num?)?.toInt();
@@ -325,6 +334,7 @@ class VideoBoxTimeline {
         if (rec['type'] != 'detections' || name == null || pts == null || tracks is! List) continue;
         final a = c[name];
         if (a == null || !trackedClips.contains(name)) continue;
+        a.addLeads(rec, tracks, leads);
         final area = a.area ?? const Rect.fromLTWH(0, 0, 1, 1);
         final ms = (pts / 1000).round();
         a.tracked[ms] = [
@@ -362,7 +372,7 @@ class VideoBoxTimeline {
             ],
         ],
         trackedBoxes: a.tracked,
-        visits: _visits(a.tracked),
+        visits: _visits(a.tracked, a.leadMs),
         holdMs: _holdMs(pos),
       );
     }
@@ -400,9 +410,20 @@ class VideoBoxTimeline {
     return steps.isEmpty ? 100 : (steps[steps.length ~/ 2] * 1.5).round();
   }
 
+  /// Per track ID, from its `created` event: the frame it was confirmed on
+  /// (`frame_ms`) and how long after the first sighting that was (ms).
+  static Map<int, (int, int)> _leads(Iterable<Map<String, dynamic>> recs) => {
+    for (final r in recs)
+      if (r['type'] == 'track_event' && r['event'] == 'created')
+        if ((r['track_id'] as num?)?.toInt() case final id?)
+          if (((r['frame_ms'] ?? r['time_ms']) as num?)?.toInt() case final at?)
+            if ((r['first_seen_ms'] as num?)?.toInt() case final first?) id: (at, max(0, at - first)),
+  };
+
   /// Each visit's span in the clip, and the class seen on most of its
-  /// detected (not coasted) boxes.
-  static List<TimelineVisit> _visits(Map<int, List<TimelineBox>> tracked) {
+  /// detected (not coasted) boxes. [leadMs] moves a start back to the first
+  /// sighting, never before the clip's start.
+  static List<TimelineVisit> _visits(Map<int, List<TimelineBox>> tracked, Map<int, int> leadMs) {
     final start = <int, int>{}, end = <int, int>{};
     final classes = <int, Map<String, int>>{};
     for (final ms in tracked.keys.toList()..sort()) {
@@ -425,7 +446,12 @@ class VideoBoxTimeline {
 
     return [
       for (final id in start.keys)
-        TimelineVisit(trackId: id, startMs: start[id]!, endMs: end[id]!, className: mostFrequent(classes[id])),
+        TimelineVisit(
+          trackId: id,
+          startMs: max(0, start[id]! - (leadMs[id] ?? 0)),
+          endMs: end[id]!,
+          className: mostFrequent(classes[id]),
+        ),
     ]..sort((a, b) => a.startMs != b.startMs ? a.startMs.compareTo(b.startMs) : a.trackId.compareTo(b.trackId));
   }
 }
@@ -441,4 +467,19 @@ class _ClipAcc {
   /// keeps its last record.
   final raw = <int, List<(Rect, double, int)>>{};
   final tracked = <int, List<TimelineBox>>{};
+
+  /// Per track ID confirmed in this clip: ms from its first sighting to its
+  /// first box here.
+  final leadMs = <int, int>{};
+
+  /// Notes the lead of each track ID whose `created` event fell on the
+  /// frame of [rec] (its first box).
+  void addLeads(Map<String, dynamic> rec, List<dynamic> tracks, Map<int, (int, int)> leads) {
+    final at = ((rec['frame_ms'] ?? rec['time_ms']) as num?)?.toInt();
+    for (final t in tracks) {
+      final id = t is Map ? (t['track_id'] as num?)?.toInt() : null;
+      final lead = leads[id];
+      if (id != null && lead != null && lead.$1 == at) leadMs[id] = lead.$2;
+    }
+  }
 }

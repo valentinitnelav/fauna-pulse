@@ -1,22 +1,26 @@
 // FaunaPulse (round 228): the exports of offline tracking of videos
 // (video_tracker.dart), written next to the session's other files.
 //
-//  * visits.csv: one row per visit (a confirmed track id), for spreadsheets
-//    and R. start_s / end_s are seconds from the start of the clip the visit
-//    began in (the position a video player shows), so every row can be
-//    found in the video; start_time is the wall-clock time. A visit that
-//    runs on into the next clip (clips recorded back to back) keeps the
-//    first clip's clock, so its end_s can exceed that clip's length.
+//  * track_ids.csv (visits.csv before round 248): one row per track ID (a
+//    confirmed track), for spreadsheets and R. start_s / end_s are seconds
+//    from the start of the clip the track ID began in (the position a video
+//    player shows), so every row can be found in the video; start_time is
+//    the wall-clock time. A track ID that runs on into the next clip (clips
+//    recorded back to back) keeps the first clip's clock, so its end_s can
+//    exceed that clip's length.
 //  * mot/<clip>.txt: every tracked box in the MOTChallenge text format,
 //    `frame,id,x,y,w,h,conf,-1,-1,-1`: frames counted from 1 in display
 //    order, box left/top/width/height in video pixels. Tracking benchmarks
 //    read it as is; tool/video_eval/mot_to_cvat.py converts it for CVAT.
 //
 // As in live sessions, a track shows up only once confirmed (after the
-// minimum visit length, 0.2 s by default), so the MOT files lack each
-// visit's first frames. visits.csv starts a visit at the tracker's first
-// sighting, before confirmation; its n_frames counts the boxes in the MOT
-// file (from confirmation on).
+// minimum track length), so the MOT files lack each track ID's first frames.
+// track_ids.csv starts a track ID at the tracker's first sighting, before
+// confirmation; its n_frames counts the boxes in the MOT file (from
+// confirmation on). Round 305: the app's summary, Dashboard, Video tab and
+// identification start a track ID there too (TrackSpans in
+// session_log_index.dart reads it from the `created` event's
+// `first_seen_ms`), so their lengths match duration_s.
 
 import 'dart:io';
 
@@ -116,7 +120,7 @@ class TrackExport {
     return {for (final c in clips) c: '${stems[stem(c)]! > 1 ? c : stem(c)}.txt'};
   }
 
-  /// Writes visits.csv and one MOT file per tracked clip (clips without a
+  /// Writes track_ids.csv and one MOT file per tracked clip (clips without a
   /// box get an empty file), replacing the previous run's files.
   static Future<void> write(
     Directory sessionDir, {

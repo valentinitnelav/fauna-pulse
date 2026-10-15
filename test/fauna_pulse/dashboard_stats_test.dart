@@ -139,19 +139,33 @@ void main() {
       expect(agg.activity.map((b) => b.count), [1, 0, 1]);
     }, skip: short.isEmpty ? 'this time zone has no clock change (run with TZ=Europe/Berlin)' : false);
 
-    test('no rate per hour below 10 minutes of watching', () {
+    test('no rate per hour below 1 hour of watching (round 305)', () {
       final short = session(
         startMs: localMs(2026, 7, 1, 9),
         endMs: localMs(2026, 7, 1, 9) + 6000,
         visits: [(localMs(2026, 7, 1, 9), localMs(2026, 7, 1, 9) + 5000)],
       );
       expect(aggregateDashboard([short]).visitsPerHour, isNull);
-      final tenMinutes = session(
-        startMs: localMs(2026, 7, 1, 9),
-        endMs: localMs(2026, 7, 1, 9, 10),
-        visits: [(localMs(2026, 7, 1, 9, 1), localMs(2026, 7, 1, 9, 2))],
-      );
-      expect(aggregateDashboard([tenMinutes]).visitsPerHour, closeTo(6, 1e-9));
+      final visit = [(localMs(2026, 7, 1, 9, 1), localMs(2026, 7, 1, 9, 2))];
+      final almost = session(startMs: localMs(2026, 7, 1, 9), endMs: localMs(2026, 7, 1, 9, 59), visits: visit);
+      expect(aggregateDashboard([almost]).visitsPerHour, isNull);
+      final oneHour = session(startMs: localMs(2026, 7, 1, 9), endMs: localMs(2026, 7, 1, 10), visits: visit);
+      expect(aggregateDashboard([oneHour]).visitsPerHour, closeTo(1, 1e-9));
+    });
+
+    test('without track IDs the day chart still has its days, at zero (round 305)', () {
+      final now = DateTime(2026, 7, 25, 15);
+      final noAnimals = session(startMs: localMs(2026, 7, 24, 9));
+      final week = aggregateDashboard([noAnimals], periodDays: 7, now: now);
+      expect(week.activity.map((b) => b.day), [for (var d = 19; d <= 25; d++) DateTime(2026, 7, d)]);
+      expect(week.activity.every((b) => b.count == 0), isTrue);
+      final month = aggregateDashboard(const [], periodDays: 30, now: now);
+      expect(month.activity, hasLength(30));
+      expect(month.weeklyBuckets, isFalse);
+      // All time without a known time: the last 7 days.
+      final all = aggregateDashboard([noAnimals], now: now);
+      expect(all.activity.map((b) => b.day), week.activity.map((b) => b.day));
+      expect(all.visitsByHour.every((n) => n == 0), isTrue);
     });
 
     test('busiest hour and record day need something to compare', () {
@@ -293,11 +307,13 @@ void main() {
     });
 
     test('empty input yields safe zero/null values', () {
-      final agg = aggregateDashboard(const []);
+      final agg = aggregateDashboard(const [], now: DateTime(2026, 7, 25, 15));
       expect(agg.totalVisits, 0);
       expect(agg.busiestHour, isNull);
       expect(agg.recordDay, isNull);
-      expect(agg.activity, isEmpty);
+      // Round 305: the chart's days stay (the last 7, all at zero).
+      expect(agg.activity.map((b) => b.count), List.filled(7, 0));
+      expect(agg.activity.last.day, DateTime(2026, 7, 25));
       expect(agg.visitsPerHour, isNull);
       expect(agg.medianVisitMs, 0);
       expect(agg.taxa, isEmpty);
@@ -394,6 +410,27 @@ void main() {
       writeLog(tmp, [start(1000, trigger: 'timelapse'), end(9000)]);
       final stats = await DashboardStatsCache.forSession(tmp);
       expect(stats.aiMode, isFalse);
+    });
+
+    test('a track length starts at the first sighting, as track_ids.csv (round 305)', () async {
+      writeLog(tmp, [
+        start(1000),
+        detections(2000, [1]),
+        jsonEncode({
+          'type': 'track_event',
+          'time_ms': 2010,
+          'event': 'created',
+          'track_id': 1,
+          'frame_ms': 2000,
+          'first_seen_ms': 1200,
+          'hits': 5,
+        }),
+        detections(3000, [1]),
+        end(9000),
+      ]);
+      final stats = await DashboardStatsCache.forSession(tmp);
+      expect(stats.visits, [(1200, 3000)]);
+      expect(aggregateDashboard([stats]).longestVisitMs, 1800);
     });
 
     test('a crashed session (no end record) uses the last track activity',

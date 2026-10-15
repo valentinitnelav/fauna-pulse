@@ -190,6 +190,13 @@ void main() {
     expect(photo.boxes.single.left, closeTo(0.4, 1e-9));
     expect(index.trackSpans, hasLength(1));
     expect(index.photos, hasLength(100));
+    // Round 305: the same span as track_ids.csv, from the first sighting.
+    final row = File('${dir.path}/${TrackExport.visitsFileName}').readAsLinesSync()[1].split(',');
+    final span = index.trackSpans.values.single;
+    expect([((span.$1 - s0) / 1000).toStringAsFixed(3), ((span.$2 - s0) / 1000).toStringAsFixed(3)], [
+      row[3],
+      row[4],
+    ]);
   });
 
   test('identification plans crops per track ID from the photos', () async {

@@ -26,12 +26,17 @@
 //    headline numbers must appear before this full parse finishes.
 //  * Round 229: visits found afterwards from a session's videos live in
 //    post_tracks.jsonl (track_source.dart). Then the track records
-//    (`detection`, `detections`, `capture`) are read from that file ONLY and
-//    everything else from session.jsonl: the two are never mixed.
+//    (`detection`, `detections`, `track_event`, `capture`) are read from that
+//    file ONLY and everything else from session.jsonl: the two are never
+//    mixed.
+//  * Round 305: a track ID's span follows [TrackSpans], the rule the
+//    identification scoring shares (first sighting to last frame, as in
+//    track_ids.csv).
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import 'photo_box_matcher.dart';
@@ -169,6 +174,66 @@ typedef RoiHistoryEntry = ({
   String? source,
 });
 
+/// Round 305: the one rule for where a track ID starts and ends, shared by
+/// [SessionLogIndex] (summary, Dashboard) and the identification scoring so
+/// the two cannot drift. A track ID runs from the tracker's first sighting to
+/// its last logged frame, the same as track_ids.csv:
+///  * end: the last frame that lists it;
+///  * start: the earlier of its first listed frame and the `first_seen_ms` of
+///    its `created` event. The tracker follows an animal for a few frames
+///    before it confirms it as a track ID, and only confirmed frames are
+///    logged with a box. Other event kinds, and logs without events (before
+///    round 116), keep the first listed frame.
+/// A frame's time is `frame_ms` (the camera frame's own moment, the clock of
+/// `first_seen_ms`); `time_ms` of a live `detections` line is the later
+/// moment it was queued for writing, the fallback for older logs.
+class TrackSpans {
+  final Map<int, (int, int)> _frames = {};
+  final Map<int, int> _firstSeen = {};
+
+  /// Per track ID: the frames the detector saw it in from the first
+  /// sighting (the listed frames plus the earlier ones its `created` event
+  /// counts in `hits`).
+  final Map<int, int> frameCounts = {};
+
+  /// Reads one decoded record of the tracks file; other types are ignored.
+  void add(Map<String, dynamic> rec) {
+    final ms = ((rec['frame_ms'] ?? rec['time_ms']) as num?)?.toInt();
+    switch (rec['type']) {
+      case 'detection':
+        _frame((rec['track_id'] as num?)?.toInt(), ms);
+      case 'detections':
+        final tracks = rec['tracks'];
+        if (tracks is! List) return;
+        for (final e in tracks) {
+          if (e is Map) _frame((e['track_id'] as num?)?.toInt(), ms);
+        }
+      case 'track_event' when rec['event'] == 'created':
+        final id = (rec['track_id'] as num?)?.toInt();
+        final first = (rec['first_seen_ms'] as num?)?.toInt();
+        if (id == null || first == null) return;
+        _firstSeen[id] = min(first, _firstSeen[id] ?? first);
+        final hits = (rec['hits'] as num?)?.toInt() ?? 1;
+        if (hits > 1) frameCounts[id] = (frameCounts[id] ?? 0) + hits - 1;
+    }
+  }
+
+  void _frame(int? id, int? ms) {
+    if (id == null || ms == null) return;
+    frameCounts[id] = (frameCounts[id] ?? 0) + 1;
+    final cur = _frames[id];
+    _frames[id] = cur == null ? (ms, ms) : (min(cur.$1, ms), max(cur.$2, ms));
+  }
+
+  /// (start ms, end ms) per track ID with at least one listed frame. With
+  /// [notBeforeMs] (the session start) no span starts earlier: a first
+  /// sighting a few frames before recording began.
+  Map<int, (int, int)> spans({int? notBeforeMs}) => {
+    for (final MapEntry(key: id, value: (first, last)) in _frames.entries)
+      id: (min(last, max(min(first, _firstSeen[id] ?? first), notBeforeMs ?? 0)), last),
+  };
+}
+
 /// The one-parse aggregate every summary tab reads. Internal to the app —
 /// never serialized; it must keep reading every existing session schema
 /// without migration.
@@ -178,7 +243,8 @@ class SessionLogIndex {
   /// the primary source; this is the parse-time copy for derived values.
   final Map<String, dynamic>? startRecord;
 
-  /// Per track id: (first seen ms, last seen ms) — the visit timeline lanes.
+  /// Per track id: (first seen ms, last seen ms) — the visit timeline lanes
+  /// ([TrackSpans] rule).
   final Map<int, (int, int)> trackSpans;
 
   // Diagnostic series ((time_ms, value) points, in log order).
@@ -338,7 +404,7 @@ class _PhotoAcc {
 
 class _IndexBuilder {
   Map<String, dynamic>? startRecord;
-  final Map<int, (int, int)> spans = {};
+  final TrackSpans spans = TrackSpans();
   final List<(int, double)> temps = [];
   final List<(int, double)> headroom = [];
   final List<(int, double)> fps = [];
@@ -360,7 +426,9 @@ class _IndexBuilder {
   /// `capture` records describe photos wherever they are, so they are read
   /// from both files: session.jsonl holds a photo session's own photos (size,
   /// `_live` companion), post_tracks.jsonl the frames kept from videos.
-  static const _trackTypes = {'detection', 'detections'};
+  /// Round 305: `track_event` too, so a `created` first sighting comes from
+  /// the same file as the track's frames.
+  static const _trackTypes = {'detection', 'detections', 'track_event'};
 
   /// Per high-res photo: its content moment — the pass-2 work list.
   final Map<String, int> contentMsByFile = {};
@@ -368,14 +436,6 @@ class _IndexBuilder {
   // ROI pixel size carried forward from the start record / roi_update
   // records, so each photo gets the size in effect when it was captured.
   int? _curRoiW, _curRoiH;
-
-  void _extendSpan(int? t, int? id) {
-    if (id == null || t == null) return;
-    final cur = spans[id];
-    spans[id] = cur == null
-        ? (t, t)
-        : (cur.$1 < t ? cur.$1 : t, cur.$2 > t ? cur.$2 : t);
-  }
 
   _PhotoAcc _photo(String name) {
     final existing = photos[name];
@@ -414,9 +474,10 @@ class _IndexBuilder {
       // 'detection': one line per track (sessions ≤ round 68).
       // 'detections': one line per frame with a `tracks` array (round 69+).
       case 'detection':
-        _extendSpan(t, (rec['track_id'] as num?)?.toInt());
+        spans.add(rec);
         _addPhotoEntry(rec, t ?? 0);
       case 'detections':
+        spans.add(rec);
         final tracks = rec['tracks'];
         if (tracks is List) {
           // The frame's shared photo filename (one photo per frame at
@@ -431,11 +492,13 @@ class _IndexBuilder {
           }
           for (final e in tracks) {
             if (e is Map<String, dynamic>) {
-              _extendSpan(t, (e['track_id'] as num?)?.toInt());
               _addPhotoEntry(e, t ?? 0, frameJpeg: frameJpeg);
             }
           }
         }
+      // A `created` event's first sighting moves its track's start back.
+      case 'track_event':
+        spans.add(rec);
       case 'thermal':
         if (t == null) break;
         final temp = (rec['battery_temp_c'] as num?)?.toDouble();
@@ -661,7 +724,9 @@ class _IndexBuilder {
 
   SessionLogIndex result() => SessionLogIndex(
     startRecord: startRecord,
-    trackSpans: spans,
+    trackSpans: spans.spans(
+      notBeforeMs: (startRecord?['time_ms'] as num?)?.toInt(),
+    ),
     temps: temps,
     headroom: headroom,
     fps: fps,

@@ -179,7 +179,7 @@ Fields on every `track_event` line:
 | `frame_ms` | The transition's frame timestamp (ms since epoch). For `gate_expired` removals it is the **last processed frame before the gate slept**; the line's own `time_ms` carries the wake moment. |
 | `box_in_roi` | The track's box at the transition, ROI-relative 0..1 like in `detections`. For `lost` it is the last box that was actually observed. |
 | `hits` | Total matched frames for this track so far. |
-| `first_seen_ms` | When the track's very first detection was seen — the **real track ID start** (it precedes `created` by the confirmation lag, default 0.2 s). |
+| `first_seen_ms` | When the track's very first detection was seen — the **real track ID start**. It precedes `created` by the frames the tracker needs before it confirms a track ID: for example, a minimum track length of 1 s at 5 frames per second needs 5 frames, so `first_seen_ms` is 4 frame steps (0.8 s) earlier. The app and `track_ids.csv` start a track ID here (§4). |
 | `last_seen_ms` | The last real observation. On a `recovered` line this is the pre-gap moment, so `frame_ms − last_seen_ms` = the gap the id survived. |
 | `frames_missed` | Unmatched frames at the transition (only written when > 0). |
 | `reason` | Removals only: `aged_out` / `gate_expired`. |
@@ -188,8 +188,10 @@ How to use them:
 
 * **Track ID boundaries without per-frame grouping:** a track ID runs from
   `first_seen_ms` (on its `created` line) to `last_seen_ms` (on its `removed`
-  line). The §4 snippets that group `detections` frames still work and give
-  the same answer — these lines are just the direct route.
+  line). The §4 snippets group the `detections` frames and take the start
+  from the `created` line, because `detections` lists a track only from its
+  confirmation on. A track ID still open when the session ended has no
+  `removed` line; its last `detections` frame is its end.
 * **Temporary loss vs analysis pause:** a `lost` → `recovered` pair brackets a
   real tracking gap; a hole in `detections` timestamps with **no** `lost`
   line in it is an analysis pause (photo grab, throttle), not a lost insect.
@@ -553,16 +555,23 @@ rename, so several can accumulate).
 
 ## 4. Computing visitation rate
 
-A **track ID** = a run of `detection` records sharing one `track_id`. Its start and
-end are the first and last `time_ms` for that id; its duration is the
-difference. The tracker already enforces the minimum-track-length and
-occlusion-tolerance settings, so each `track_id` is one confirmed track ID — you
-don't re-filter noise.
+A **track ID** = a run of `detections` entries (or legacy `detection` records) sharing
+one `track_id`. Its end is the last frame time for that id: `frame_ms` (the camera
+frame's own time; a live line's `time_ms` is the later moment it was queued for
+writing), or `time_ms` on logs without `frame_ms`. Its start is the tracker's first
+sighting: `first_seen_ms` on its `created` `track_event` line (round 116+), or its
+first frame time on older logs. `detections` lists a track only from its
+confirmation on (the minimum track length), so the first frames are known only from
+`first_seen_ms`. A first sighting before `start_of_session` counts from the session
+start. The duration is end − start. The app (summary, Dashboard, Video tab,
+identification) and `track_ids.csv` use this same rule (round 305). The tracker
+already enforces the minimum-track-length and occlusion-tolerance settings, so each
+`track_id` is one confirmed track ID — you don't re-filter noise.
 
 Two common metrics:
 
 - **Visitation rate** = number of distinct `track_id`s ÷ observation time.
-- **Mean track ID duration** = mean of (last − first `time_ms`) per `track_id`.
+- **Mean track ID duration** = mean of (end − start) per `track_id`.
 
 Observation time is the span from `start_of_session` to `end_of_session`
 (`time_ms`), minus any `motion_gate` idle periods if you want *active* watch
@@ -581,22 +590,34 @@ obs_hours <- (end_ms - start_ms) / 3.6e6
 
 # Flatten to one row per tracked insect per frame, accepting both formats:
 # "detections" (round 69+: tracks[] array) and legacy per-track "detection".
-new <- rows[rows$type == "detections", c("time_ms", "tracks")]
+# A frame's time: frame_ms (round 114+), else time_ms.
+new <- rows[rows$type == "detections", ]
+frame_t <- if ("frame_ms" %in% names(new))
+  ifelse(is.na(new$frame_ms), new$time_ms, new$frame_ms) else new$time_ms
 det_new <- if (nrow(new)) do.call(rbind, lapply(seq_len(nrow(new)), function(i) {
-  data.frame(time_ms = new$time_ms[i], track_id = new$tracks[[i]]$track_id)
+  data.frame(time_ms = frame_t[i], track_id = new$tracks[[i]]$track_id)
 })) else NULL
 det_old <- if ("track_id" %in% names(rows))
   rows[rows$type == "detection", c("time_ms", "track_id")] else NULL
 det <- rbind(det_new, det_old)
 
-track IDs <- aggregate(time_ms ~ track_id, det,
+tracks <- aggregate(time_ms ~ track_id, det,
                     FUN = function(t) c(start = min(t), end = max(t)))
-track IDs <- do.call(data.frame, track IDs)
-track IDs$duration_s <- (track IDs$time_ms.end - track IDs$time_ms.start) / 1000
+tracks <- do.call(data.frame, tracks)
+# Start at the tracker's first sighting (created lines, round 116+),
+# never before the session start.
+if (all(c("event", "first_seen_ms") %in% names(rows))) {
+  cr <- rows[rows$type == "track_event" & rows$event %in% "created" &
+             !is.na(rows$first_seen_ms), c("track_id", "first_seen_ms")]
+  first <- cr$first_seen_ms[match(tracks$track_id, cr$track_id)]
+  tracks$time_ms.start <- pmin(tracks$time_ms.start, first, na.rm = TRUE)
+}
+tracks$time_ms.start <- pmax(tracks$time_ms.start, start_ms)
+tracks$duration_s <- (tracks$time_ms.end - tracks$time_ms.start) / 1000
 
-n_visits             <- nrow(track IDs)
+n_visits             <- nrow(tracks)
 visitation_rate_hr   <- n_visits / obs_hours
-mean_visit_duration  <- mean(track IDs$duration_s)
+mean_visit_duration  <- mean(tracks$duration_s)
 
 cat(sprintf("track IDs=%d  rate=%.1f/hr  mean duration=%.1fs\n",
             n_visits, visitation_rate_hr, mean_visit_duration))
@@ -616,20 +637,29 @@ obs_hours = (end_ms - start_ms) / 3.6e6
 
 # Flatten to one row per tracked insect per frame, accepting both formats:
 # "detections" (round 69+: tracks[] array) and legacy per-track "detection".
+# A frame's time: frame_ms (round 114+), else time_ms.
 new = rows[rows.type == "detections"].explode("tracks")
+frame_t = new["frame_ms"].fillna(new["time_ms"]) if "frame_ms" in new else new["time_ms"]
 new = pd.concat(
-    [new[["time_ms"]].reset_index(drop=True),
+    [frame_t.rename("time_ms").reset_index(drop=True),
      pd.json_normalize(new.tracks)], axis=1)
 old_cols = [c for c in ("time_ms", "track_id") if c in rows.columns]
 old = rows.loc[rows.type == "detection", old_cols]
 det = pd.concat([new, old], ignore_index=True)
 
-track IDs = det.groupby("track_id")["time_ms"].agg(["min", "max"])
-track IDs["duration_s"] = (track IDs["max"] - track IDs["min"]) / 1000
+tracks = det.groupby("track_id")["time_ms"].agg(["min", "max"])
+# Start at the tracker's first sighting (created lines, round 116+),
+# never before the session start.
+if "first_seen_ms" in rows:
+    cr = rows[(rows.type == "track_event") & (rows.event == "created")].dropna(subset=["first_seen_ms"])
+    first = cr.groupby(cr.track_id.astype(int))["first_seen_ms"].min()
+    tracks["min"] = pd.concat([tracks["min"], first.reindex(tracks.index)], axis=1).min(axis=1)
+tracks["min"] = tracks["min"].clip(lower=start_ms)
+tracks["duration_s"] = (tracks["max"] - tracks["min"]) / 1000
 
-n_visits = len(track IDs)
+n_visits = len(tracks)
 visitation_rate_hr = n_visits / obs_hours
-mean_visit_duration = track IDs["duration_s"].mean()
+mean_visit_duration = tracks["duration_s"].mean()
 
 print(f"track IDs={n_visits}  rate={visitation_rate_hr:.1f}/hr  "
       f"mean duration={mean_visit_duration:.1f}s")
@@ -837,7 +867,8 @@ analysis boxes for photos without a track ID.
 
 `<session>/dashboard_stats.json` (round 186+) is an app-derived cache for the
 home screen's cross-session Dashboard: the session's start/end, whether it has
-track IDs, each track ID's first/last timestamp, the filmed time of track IDs
+track IDs, each track ID's first/last timestamp (from the first sighting, §4; cache
+version 4 since round 305), the filmed time of track IDs
 found afterwards and, since round 304, `guessed_clips` (start and end ms of
 imported clips whose filming time was only guessed: track IDs that begin in
 one stay out of the charts by time) and `taxa`: the names of the newest
@@ -891,7 +922,7 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `track_imgs` | crops used |
 | `pred`, `pred_prob_weighted` | the taxon at the chosen target rank (default family) and the track ID's Conf. for it (round 219: the counted crops' embeddings averaged with each crop's top-1 probability as weight, scored once, species summed; see IDENTIFICATION.md) |
 | `pred_imgs`, `pred_prob_mean` | crops whose own top species falls under that taxon, and the plain (unweighted) mean of the crops' own Conf. under it. Same column names as insect-detect-post, different formulas (there: mean over the voting images times the vote share) |
-| `start_time`, `end_time`, `duration_s` | the track's first/last detection (ISO local time) |
+| `start_time`, `end_time`, `duration_s` | the track ID's first sighting and last frame (ISO local time; the §4 rule, as `track_ids.csv`) and the seconds between them |
 | `det_conf_mean` | mean detector confidence of the crops |
 | `bioclip_kingdom` … `bioclip_species` | the taxon chosen at each rank on a consistent top-down path (species as "Genus epithet") |
 | `p_kingdom` … `p_species` | Conf. of that taxon from the pooled answer (round 219); can exceed every crop's own value when the crops agree |
@@ -903,7 +934,7 @@ boxes of no-AI sessions) get one row each with an empty `track_id`.
 | `flags` | `no_organism` (round 221, was `none`: the "none of these" entries took more than the "No organism" threshold; headline `no organism`), `unidentified` (no rank reached `tau`, not even kingdom), `path_conflict` (at some rank a taxon outside the ladder's path has more Conf. than the ladder's pick; the ladder itself stays one consistent path, see `rival_*`), `single_crop`, plus `merged`, `short`, `low_det`, `weak_id`, `suspect` |
 | `model_id`, `pack_id` | provenance |
 | `merged_track_ids` | round 210, trailing column: every track ID joined into this row, semicolon-separated (one id unless "Merge consecutive track IDs" was on; `flags` then also holds `merged`) |
-| `n_detections`, `suspect` | round 212: detector frames the track ID(s) appeared in; 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
+| `n_detections`, `suspect` | round 212: detector frames the track ID(s) appeared in, from the first sighting: the track ID's `detections` entries plus the frames before it was confirmed (`hits` − 1 on its `created` line, round 305); 0/1 verdict of the suspect rule (short AND weakly supported; `flags` carries the parts: `short`, `low_det`, `weak_id`, `suspect`). Nothing is removed from the file |
 | `rival_rank`, `rival_taxon`, `rival_p` | round 221, trailing: for a `path_conflict` track ID, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5 |
 | `model_class`, `model_class_p` | round 266, trailing, fixed-class classifiers only (empty for BioCLIP): the model's own class with the highest combined probability (e.g. insectDCT's `Apoidea small` or `Bombus`; some of its groups have no rank) and that probability |
 
@@ -1172,7 +1203,11 @@ Worth knowing when comparing with a hand count:
 
 * As in live sessions, a track shows up only once confirmed (after the minimum track
   length), so `mot/` and `detections` lack each track ID's first frames. `start_s` is the
-  tracker's first sighting, before confirmation; `n_frames` counts from confirmation.
+  tracker's first sighting, before confirmation (`first_seen_ms` of its `created` line);
+  `n_frames` counts from confirmation. The app's summary, Dashboard, Video tab and
+  identification start a track ID there too, so their lengths match `duration_s`
+  (round 305). Even so, the shortest track ID can be one frame step shorter than the
+  minimum track length (5 frames at 5 per second span 0.8 s).
 * Only clips whose analysis finished are tracked (`clips_left_out` lists the others).
 * One tracker follows an insect from one clip into the next only when the next clip's
   first analysed frame comes after the previous clip's last one, within the occlusion
@@ -1296,7 +1331,8 @@ what the detector found and whether the analysed square was well placed. The tab
   should move: *Change square and analyse again* opens *Find animals in videos* for the session,
   and the tab reloads on return.
 * **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
-  track ID (each starts 1 s before the track ID); speed 0.5×, 1×, 2×, 4×, 5× or 10× (5× and
+  track ID (each starts 1 s before the track ID's first sighting; its boxes appear from
+  confirmation on); speed 0.5×, 1×, 2×, 4×, 5× or 10× (5× and
   10× since round 273, for an overview; the player may skip pictures); sound is off until
   switched on. The coloured bars under the time bar mark the track IDs, and tapping a track ID in
   the list below the player jumps to it.

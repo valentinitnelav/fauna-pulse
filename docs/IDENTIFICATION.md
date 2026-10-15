@@ -239,8 +239,9 @@ species (vestalis 30 %, cingulatus 17 %, dahlbomii 12 %, ...) are each that crop
 best name.
 
 **Why a short track ID can have several photos and a long one only seven.** Time is the span
-from the first to the last detector frame of the track ID (the detector runs several frames
-per second, so a 35-s track ID had 152 frames). Photos are saved on the photo schedule, by
+from the tracker's first sighting to the last frame of the track ID, measured as in
+`track_ids.csv` (round 305). The detector runs several frames per second, so a 35-s track ID
+had 152 frames. Photos are saved on the photo schedule, by
 default one per second during the first 10 s of a track ID, and every photo that another insect
 triggered while this one was in view also yields a crop for it. So a 1.7-s track in a
 crowded scene got four crops from other insects' photos, and a 35-s bumblebee got seven

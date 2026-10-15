@@ -160,6 +160,62 @@ void main() {
     expect(c.rawAt(2000).single.trackId, isNull);
   });
 
+  test('round 305: a track ID starts at the first sighting, its boxes at confirmation', () async {
+    final dir = _session([
+      _runStart(),
+      ..._clip('a.mp4', times: _every100(0, 4000), boxAt: (t) => t >= 1000 && t <= 3000 ? _box(0.4) : null),
+    ]);
+    // 1 s at 10 fps: confirmed on the 10th frame (0.9 s after the first sighting).
+    await VideoTracker.run(dir, const SessionConfig().copyWith(minHitsSeconds: 1.0));
+    final c = VideoBoxTimeline.readSync(dir.path).clips['a.mp4']!;
+    expect((c.visits.single.startMs, c.visits.single.endMs), (1000, 3000));
+    expect(c.trackedAt(1500), isEmpty, reason: 'no box is logged before confirmation');
+    expect(c.trackedAt(1900), hasLength(1));
+  });
+
+  test('round 305: live track IDs start at the first sighting, never before the clip', () {
+    final tmp = Directory.systemTemp.createTempSync('live_first_seen');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    const t0 = 1790000000000;
+    Map<String, dynamic> det(int t, int id) => {
+      'type': 'detections',
+      'time_ms': t + 40,
+      'frame_ms': t + 30,
+      'frame_sensor_ms': t,
+      'tracks': [
+        {
+          'track_id': id,
+          'class_name': 'bee',
+          'confidence': 0.8,
+          'box_in_roi': {'left': 0.1, 'top': 0.2, 'right': 0.3, 'bottom': 0.4},
+        },
+      ],
+    };
+    // The created event carries the frame's time (frame_ms) and the first sighting on the same clock.
+    Map<String, dynamic> created(int frameMs, int id, int firstSeenMs) => {
+      'type': 'track_event',
+      'event': 'created',
+      'track_id': id,
+      'frame_ms': frameMs,
+      'hits': 3,
+      'first_seen_ms': firstSeenMs,
+    };
+    File('${tmp.path}/session.jsonl').writeAsStringSync(
+      '${[
+        {'type': 'start_of_session', 'time_ms': t0, 'config': {'liveAiVideo': true}},
+        {'type': 'video_clip', 'file': 'videos/a.mp4', 'start_epoch_ms': t0, 'duration_ms': 10000},
+        det(t0 + 2000, 1),
+        created(t0 + 2030, 1, t0 + 1630),
+        det(t0 + 2500, 1),
+        det(t0 + 300, 2),
+        created(t0 + 330, 2, t0 - 500),
+        det(t0 + 900, 2),
+      ].map(jsonEncode).join('\n')}\n',
+    );
+    final visits = VideoBoxTimeline.readLiveSync(tmp.path).clips['a.mp4']!.visits;
+    expect([for (final v in visits) (v.trackId, v.startMs, v.endMs)], [(2, 0, 900), (1, 1600, 2500)]);
+  });
+
   test('track IDs found on an earlier analysis are not shown', () async {
     final lines = [
       _runStart(),

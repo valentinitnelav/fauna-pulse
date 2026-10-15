@@ -195,6 +195,56 @@ void main() {
     expect(index.roiHistory.single.savesPx, null);
   });
 
+  group('round 305: track spans from the first sighting', () {
+    test('a created event moves the start back to its first_seen_ms', () async {
+      final path = await writeLog([
+        start,
+        // Live lines: time_ms is the later moment the line was queued,
+        // frame_ms the camera frame's own time (the first_seen_ms clock).
+        '{"type":"detections","time_ms":2040,"frame_ms":2000,"tracks":[{"track_id":1}]}',
+        '{"type":"track_event","time_ms":2041,"event":"created","track_id":1,'
+            '"frame_ms":2000,"hits":3,"first_seen_ms":1800,"last_seen_ms":2000}',
+        '{"type":"detections","time_ms":2550,"frame_ms":2500,"tracks":[{"track_id":1},{"track_id":2}]}',
+        // Other event kinds, and a created event without its fields, change
+        // nothing (older sessions keep their first listed frame).
+        '{"type":"track_event","time_ms":2551,"event":"lost","track_id":2,"first_seen_ms":1100}',
+        '{"type":"track_event","time_ms":2552,"event":"created","track_id":2}',
+      ]);
+      final index = await SessionLogIndex.parseFile(path);
+      expect(index.trackSpans, {1: (1800, 2500), 2: (2500, 2500)});
+    });
+
+    test('a first sighting before the session start begins at the session start', () async {
+      final path = await writeLog([
+        start, // time_ms 1000
+        '{"type":"detections","time_ms":1100,"frame_ms":1100,"tracks":[{"track_id":4}]}',
+        '{"type":"track_event","time_ms":1100,"event":"created","track_id":4,'
+            '"frame_ms":1100,"hits":3,"first_seen_ms":900}',
+        '{"type":"detections","time_ms":1500,"frame_ms":1500,"tracks":[{"track_id":4}]}',
+      ]);
+      expect((await SessionLogIndex.parseFile(path)).trackSpans, {4: (1000, 1500)});
+    });
+
+    test('frame counts include the frames before confirmation', () {
+      final spans = TrackSpans()
+        ..add({
+          'type': 'detections',
+          'frame_ms': 2000,
+          'tracks': [
+            {'track_id': 1},
+          ],
+        })
+        ..add({'type': 'track_event', 'event': 'created', 'track_id': 1, 'hits': 5, 'first_seen_ms': 1200})
+        ..add({
+          'type': 'detection',
+          'time_ms': 2200,
+          'track_id': 1,
+        });
+      expect(spans.frameCounts, {1: 6});
+      expect(spans.spans(), {1: (1200, 2200)});
+    });
+  });
+
   group('pass 2: high-res box time-matching', () {
     test('interpolates between the bracketing frames', () async {
       final path = await writeLog([

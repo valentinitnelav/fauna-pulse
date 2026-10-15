@@ -741,7 +741,11 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             ('Taxon', 'the taxon of the row.'),
             ('Rank', 'its taxonomic rank; the Rank filter above keeps only rows of one rank.'),
             ('Track IDs', 'how many track IDs the row holds.'),
-            ('Time', 'the durations of those track IDs added up (first to last detector frame of each).'),
+            (
+              'Time',
+              'the durations of those track IDs added up (each from the first to the last frame the '
+                  'tracker saw it in).',
+            ),
             (
               'Med. Conf.',
               'the median of the model\'s confidence for this taxon across the row\'s track IDs, rounded '
@@ -1061,7 +1065,7 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                   if (widget.showTaxon) ('Taxon', 'the taxon it was identified to.'),
                   if (widget.showTaxon) ('Rank', 'the rank of that taxon; "–" when nothing was identified.'),
                   ('Crops', 'how many of its photos were classified.'),
-                  ('Time', 'first to last detector frame.'),
+                  ('Time', 'from the first to the last frame the tracker saw the track ID in.'),
                   (
                     'Conf.',
                     'the model\'s confidence that this track ID belongs to $taxonWord: its crops\' own values '
@@ -1397,8 +1401,8 @@ class _TrackSheetState extends State<_TrackSheet> {
         if (t['model_class'] case {'name': final String name, 'p': final num p})
           Text("Model's own class: $name (${_pct(p)})", style: const TextStyle(color: Colors.white70)),
         Text(
-          'Time = first to last detector frame of the track ID. Detector frames = every frame the live '
-          'detector saw it in (several per second). Photos = the frames saved on the photo schedule '
+          'Time = from the first to the last frame the tracker saw the track ID in. Detector frames = every '
+          'frame the detector saw it in (several per second). Photos = the frames saved on the photo schedule '
           '($schedule) plus frames another organism triggered while this one was in view; each saved '
           'photo gives one crop. Mean detector conf. = the live detector\'s mean confidence over the photos '
           '(each photo\'s own value: "Detector conf." column in the Crops table). '

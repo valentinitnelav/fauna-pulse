@@ -879,7 +879,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ? [
                 const TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
-                  text: 'a track ID: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in visits.csv'}), '
+                  text: 'a track ID: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in track_ids.csv'}), '
                       "the insect class and the detector's confidence. A faded box: the detector missed the insect "
                       'on this frame and the tracker kept its place.',
                 ),

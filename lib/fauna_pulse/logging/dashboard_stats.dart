@@ -28,6 +28,10 @@
 // out of the charts by time, periods are calendar days (as the Sessions
 // filter), and day buckets count calendar days (a 23-hour spring day no
 // longer drops a bar).
+//
+// Round 305: track lengths start at the tracker's first sighting (the
+// shared TrackSpans rule, as track_ids.csv); the rate per hour needs 1 h of
+// watching; the day chart always has its days, at zero without data.
 
 import 'dart:convert';
 import 'dart:io';
@@ -42,10 +46,9 @@ import 'app_error_hooks.dart';
 import 'session_log_index.dart';
 import 'track_source.dart';
 
-/// Below this much watching, a "per hour" rate would scale a few seconds or
-/// minutes up to an hour and mostly show chance, so the Dashboard shows no
-/// rate. Pollinator watches are usually 10 to 15 minutes long.
-const kRateMinWatchMs = 10 * Duration.millisecondsPerMinute;
+/// Below this much watching, a "per hour" rate would scale a few minutes up
+/// to an hour and mostly show chance, so the Dashboard shows no rate.
+const kRateMinWatchMs = Duration.millisecondsPerHour;
 
 /// The ranks the Dashboard counts taxa at (the results screen's chips).
 const kDashboardRanks = ['order', 'family', 'genus', 'species'];
@@ -197,8 +200,9 @@ class DashboardStatsCache {
   static const String fileName = 'dashboard_stats.json';
 
   /// 3 (round 304): end of crashed sessions, guessed_clips, taxa with the
-  /// suspect count (2 was a test build of the same round).
-  static const int _version = 3;
+  /// suspect count (2 was a test build of the same round). 4 (round 305):
+  /// track spans start at the first sighting, so cached lengths are redone.
+  static const int _version = 4;
 
   /// Cache-or-compute. Never throws: an unreadable session yields an empty
   /// non-AI stats object (excluded from every aggregate).
@@ -510,7 +514,8 @@ class DashboardAggregate {
 
   /// Daily (or weekly, see [weeklyBuckets]) visit counts: every day of a
   /// fixed period, or from the first to the last active day for all time.
-  /// Empty when there are no visits with a known time.
+  /// Never empty (round 305): without visits with a known time, a fixed
+  /// period still has its days and all time the last 7 days, all at zero.
   final List<DayBucket> activity;
 
   /// True when the activity span exceeded ~2 months and [activity] was
@@ -669,34 +674,29 @@ DashboardAggregate aggregateDashboard(
   final recordDay = _uniqueMax(byDay);
 
   // Daily buckets over the whole fixed period, or first–last active day for
-  // all time; weekly when that would need more than ~2 months of bars.
-  var activity = <DayBucket>[];
-  var weekly = false;
-  final int? first, last;
-  if (periodDays != null) {
-    first = _dayNumber(periodStart(periodDays, today));
-    last = _dayNumber(today);
-  } else if (byDay.isNotEmpty) {
+  // all time (the last 7 days when none has a known time, so the empty chart
+  // keeps its days); weekly when that would need more than ~2 months of bars.
+  final int first, last;
+  if (periodDays == null && byDay.isNotEmpty) {
     final days = byDay.keys.toList()..sort();
     first = days.first;
     last = days.last;
   } else {
-    first = last = null;
+    first = _dayNumber(periodStart(periodDays ?? 7, today));
+    last = _dayNumber(today);
   }
-  if (first != null && last != null && byDay.isNotEmpty) {
-    final spanDays = last - first + 1;
-    weekly = spanDays > 62;
-    final step = weekly ? 7 : 1;
-    final counts = List<int>.filled((spanDays + step - 1) ~/ step, 0);
-    for (final e in byDay.entries) {
-      final i = (e.key - first) ~/ step;
-      if (e.key >= first && i < counts.length) counts[i] += e.value;
-    }
-    activity = [
-      for (var i = 0; i < counts.length; i++)
-        (day: _dateOf(first + i * step), count: counts[i]),
-    ];
+  final spanDays = last - first + 1;
+  final weekly = spanDays > 62;
+  final step = weekly ? 7 : 1;
+  final counts = List<int>.filled((spanDays + step - 1) ~/ step, 0);
+  for (final e in byDay.entries) {
+    final i = (e.key - first) ~/ step;
+    if (e.key >= first && i < counts.length) counts[i] += e.value;
   }
+  final activity = [
+    for (var i = 0; i < counts.length; i++)
+      (day: _dateOf(first + i * step), count: counts[i]),
+  ];
 
   // Taxa (round 304): the sessions with a current identification.
   final identified = [

@@ -757,7 +757,7 @@ tracks_<name list>.csv columns
   pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the
                                       plain mean of the crops' own Conf. under it (names as in
                                       insect-detect-post, formulas differ)
-  start_time, end_time, duration_s    from the session log's track span
+  start_time, end_time, duration_s    from the session log's track span (first sighting to last frame)
   det_conf_mean                       mean detector confidence of the crops
   bioclip_<rank>                      the taxon chosen at each rank on a consistent top-down path
   p_<rank>                            Conf. of that taxon (see above; calibrated only if the pack
@@ -774,7 +774,7 @@ tracks_<name list>.csv columns
                                       photo the model is surest about on its own); that species and p
   flags                               no_organism | unidentified | path_conflict | single_crop | merged | short | low_det | weak_id | suspect
   model_id, pack_id                   provenance
-  merged_track_ids, n_detections, suspect   joined ids; detector frames; suspect verdict (0/1)
+  merged_track_ids, n_detections, suspect   joined ids; detector frames from the first sighting; suspect verdict (0/1)
   rival_rank, rival_taxon, rival_p    path_conflict only: the highest rank where a taxon outside the
                                       ladder's path had more Conf. than the ladder's pick; that taxon
                                       and its Conf.

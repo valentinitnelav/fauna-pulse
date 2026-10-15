@@ -2,7 +2,9 @@
 // height of their text (they overflowed at phone width), no rate per hour
 // from a few seconds of video, videos without a known filming time stay out
 // of the charts by time, and the names card counts the identification per
-// rank. Sessions are real folders in a temp directory (fixture IO is SYNC,
+// rank. Round 305: the rate from 1 h as a rough estimate with its (i), the
+// two activity charts always there, track lengths from the first sighting.
+// Sessions are real folders in a temp directory (fixture IO is SYNC,
 // frames are pumped outside short runAsync waits: see
 // summary_bottom_inset_test.dart).
 
@@ -63,7 +65,8 @@ void _identify(Directory session, List<Map<String, dynamic>> tracks, {int? runId
 }
 
 /// The phone's session: a 6 s imported video whose filming time is the
-/// copy's time, one track ID, identified as Bombus (genus).
+/// copy's time, one track ID, identified as Bombus (genus). The tracker
+/// first saw it at 0.0 s and confirmed it at 0.8 s (5 frames at 5 fps).
 void _shortVideo(Directory root) {
   final dir = Directory('${root.path}/video_20261012')..createSync();
   final t0 = _ms(DateTime(2026, 10, 12, 22, 12, 32));
@@ -93,6 +96,17 @@ void _shortVideo(Directory root) {
         'min_hits_seconds': 1.0,
       }),
       _detections(t0 + 800, [1]),
+      jsonEncode({
+        'type': 'track_event',
+        'time_ms': t0 + 800,
+        'event': 'created',
+        'track_id': 1,
+        'frame_ms': t0 + 800,
+        'clip': 'bumblebee.mp4',
+        'hits': 5,
+        'first_seen_ms': t0,
+        'last_seen_ms': t0 + 800,
+      }),
       _detections(t0 + 5100, [1]),
       jsonEncode({'type': 'post_track_end', 'time_ms': t0 + 9000, 'run_id': 7, 'track_ids': 1}),
     ].join('\n'),
@@ -156,6 +170,16 @@ void _motionSession(Directory root) {
   );
 }
 
+/// Both charts' line when there is nothing to count.
+const _noTrackIds = 'No track IDs in this period yet: the bars appear once track IDs are recorded.';
+
+/// The Xiaomi: 1080 px wide at 440 dpi = 393 logical pixels.
+void _phone(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 1080 / 393;
+  addTearDown(tester.view.reset);
+}
+
 /// The big number.
 String? _total() => (find.byKey(const ValueKey('dashboard_total')).evaluate().single.widget as Text).data;
 
@@ -186,10 +210,7 @@ Future<void> _pump(WidgetTester tester, Directory root) async {
 
 void main() {
   testWidgets('the phone\'s case: one track ID in 6 s of video, at phone width', (tester) async {
-    // The Xiaomi: 1080 px wide at 440 dpi = 393 logical pixels.
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1080 / 393;
-    addTearDown(tester.view.reset);
+    _phone(tester);
     final root = _root();
     _shortVideo(root);
     await _pump(tester, root);
@@ -199,14 +220,18 @@ void main() {
     expect(find.text('track ID in 1 session'), findsOneWidget);
     expect(find.text('6 s'), findsOneWidget, reason: 'watch time in seconds, not "0 min"');
     expect(find.text('–'), findsOneWidget, reason: 'no rate from 6 s');
-    expect(find.text('shown from 10 min watched'), findsOneWidget);
-    // The filming time is a guess: the chart card stays and says why.
-    expect(find.text('Track IDs by time of day'), findsNothing);
-    expect(find.text('Track IDs by time of day and by day'), findsOneWidget);
-    expect(find.textContaining('No times to show: this track ID comes from videos'), findsOneWidget);
-    expect(find.byType(MiniBarChart), findsNothing);
+    expect(find.text('shown from 1 h watched'), findsOneWidget);
+    // From the first sighting, as track_ids.csv (0.0 to 5.1 s), not from
+    // the first box (0.8 s).
+    expect(find.text('5.1 s'), findsNWidgets(2), reason: 'typical and longest track');
+    // The filming time is a guess: both chart cards stay, empty, and say why.
+    expect(find.text('Track IDs by time of day'), findsOneWidget);
+    expect(find.text('Track IDs by day'), findsOneWidget);
+    expect(find.textContaining('No times to show: this track ID comes from videos'), findsNWidgets(2));
+    expect(find.byType(MiniBarChart), findsNWidgets(2));
     expect(find.text('Live detection sessions'), findsNothing);
     // Names: no species chip (identified to genus), family first.
+    await tester.scrollUntilVisible(find.text('Named: 1 of 1 track ID.'), 200);
     expect(find.text('Order (1)'), findsOneWidget);
     expect(find.text('Family (1)'), findsOneWidget);
     expect(find.text('Genus (1)'), findsOneWidget);
@@ -274,26 +299,84 @@ void main() {
     expect(find.textContaining('Not counted: 1 session'), findsOneWidget, reason: 'scrolled to the end');
   });
 
-  testWidgets('a live session without animals: no lengths, no names card', (tester) async {
+  testWidgets('320 px with font size 1.5: the rate (i) opens under the tiles, which keep their height', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final root = _root();
+    _liveSession(root);
+    await _pump(tester, root);
+    final label = find.text('track IDs per hour watched');
+    await tester.scrollUntilVisible(label, 100);
+    await tester.pumpAndSettle();
+    final watchedTile = find.ancestor(of: find.text('watched'), matching: find.byType(Container)).first;
+    final rateTile = find.ancestor(of: label, matching: find.byType(Container)).first;
+    final before = tester.getSize(watchedTile);
+    await tester.tap(label);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final help = find.textContaining('divided by the hours those sessions watched');
+    expect(help, findsOneWidget);
+    expect(tester.getSize(watchedTile), before, reason: 'the open help does not stretch the row');
+    expect(tester.getSize(help).width, greaterThan(tester.getSize(rateTile).width), reason: 'full width');
+    expect(tester.getTopLeft(label).dy, tester.getTopLeft(find.text('watched')).dy, reason: 'labels line up');
+    await tester.tap(label);
+    await tester.pumpAndSettle();
+    expect(help, findsNothing);
+  });
+
+  testWidgets('a live session without animals: no lengths, no names card, empty charts', (tester) async {
+    _phone(tester);
     final root = _root();
     final dir = Directory('${root.path}/live_empty')..createSync();
     final t0 = _ms(DateTime(2026, 10, 12, 9));
     File('${dir.path}/session.jsonl').writeAsStringSync(
       [
         jsonEncode({'type': 'start_of_session', 'time_ms': t0, 'config': {'captureTrigger': 'detector'}}),
-        jsonEncode({'type': 'end_of_session', 'time_ms': t0 + 20 * 60000}),
+        jsonEncode({'type': 'end_of_session', 'time_ms': t0 + 70 * 60000}),
       ].join('\n'),
     );
     await _pump(tester, root);
     expect(_total(), '0');
-    expect(find.text('20 min'), findsOneWidget);
+    expect(find.text('1.1 h'), findsOneWidget);
     expect(find.text('0.0 s'), findsNothing);
     expect(find.text('–'), findsNWidgets(2), reason: 'both track length tiles');
-    expect(find.text('0.0'), findsOneWidget, reason: 'the rate: no track ID in 20 min');
+    expect(find.text('0.0'), findsOneWidget, reason: 'the rate: no track ID in 70 min');
+    expect(find.text('rough estimate'), findsOneWidget);
     expect(find.text('Track IDs by name'), findsNothing);
     expect(find.textContaining('Identify organisms'), findsNothing);
     expect(find.textContaining('No times to show'), findsNothing);
-    expect(find.text('No track IDs in this period yet.'), findsOneWidget);
+    expect(find.text('Track IDs by time of day'), findsOneWidget);
+    expect(find.text('Track IDs by day'), findsOneWidget);
+    expect(find.byType(MiniBarChart), findsNWidgets(2));
+    expect(find.text(_noTrackIds), findsNWidgets(2));
+  });
+
+  testWidgets('below 1 h the rate tile shows a dash; its (i) explains the estimate', (tester) async {
+    final root = _root();
+    final dir = Directory('${root.path}/live_short')..createSync();
+    final t0 = _ms(DateTime(2026, 10, 12, 9));
+    File('${dir.path}/session.jsonl').writeAsStringSync(
+      [
+        jsonEncode({'type': 'start_of_session', 'time_ms': t0, 'config': {'captureTrigger': 'detector'}}),
+        _detections(t0 + 60000, [1]),
+        jsonEncode({'type': 'end_of_session', 'time_ms': t0 + 59 * 60000}),
+      ].join('\n'),
+    );
+    await _pump(tester, root);
+    expect(find.text('59 min'), findsOneWidget);
+    expect(find.text('shown from 1 h watched'), findsOneWidget);
+    expect(find.text('rough estimate'), findsNothing);
+    final help = find.textContaining('divided by the hours those sessions watched');
+    expect(help, findsNothing);
+    await tester.tap(find.text('track IDs per hour watched'));
+    await tester.pumpAndSettle();
+    expect(help, findsOneWidget);
+    expect(find.textContaining('a few minutes scaled up to an hour mostly show chance'), findsOneWidget);
   });
 
   testWidgets('an identification whose track IDs were all suspect says so', (tester) async {
@@ -303,11 +386,27 @@ void main() {
       _named(1, const ['Hymenoptera', 'Apidae', 'Bombus'], suspect: true),
     ], runId: 7);
     await _pump(tester, root);
+    await tester.scrollUntilVisible(find.text('Track IDs by name'), 200);
     expect(find.textContaining('No names yet'), findsNothing);
     expect(
       find.textContaining('Named: 0 of 1 track ID. 1 suspect track ID (likely false detections) left out'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('7 days with no session: the empty state and both charts with 7 empty days', (tester) async {
+    _phone(tester);
+    final root = _root();
+    _liveSession(root);
+    await _pump(tester, root);
+    await tester.tap(find.text('7 days'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No sessions in this period yet'), findsOneWidget);
+    expect(find.byType(MiniBarChart), findsNWidgets(2));
+    final days = tester.widgetList<MiniBarChart>(find.byType(MiniBarChart)).last;
+    expect(days.values, List.filled(7, 0));
+    expect([days.xLabelFor(0), days.xLabelFor(6)], ['2026-10-06', '2026-10-12']);
+    expect(find.text(_noTrackIds), findsNWidgets(2));
   });
 
   testWidgets('the period counts calendar days, and the default is all time', (tester) async {
@@ -337,9 +436,20 @@ void main() {
     await _pump(tester, root);
   });
 
-  testWidgets('no sessions: a plain empty state', (tester) async {
+  testWidgets('no sessions: the empty state with both charts, empty, above the bottom bar', (tester) async {
+    simulateBottomSystemBar(tester);
     await _pump(tester, _root());
     expect(find.textContaining('No sessions in this period yet'), findsOneWidget);
     expect(find.text('watched'), findsNothing);
+    expect(find.byKey(const ValueKey('dashboard_total')), findsNothing);
+    expect(find.text('Track IDs by time of day'), findsOneWidget);
+    expect(find.byType(MiniBarChart), findsNWidgets(2));
+    expect(find.text(_noTrackIds), findsNWidgets(2));
+    final dayChart = find.text('Track IDs by day');
+    await tester.scrollUntilVisible(dayChart, 200);
+    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expectAboveBottomInset(tester, find.byType(MiniBarChart).last, label: 'the day chart');
+    expect(tester.takeException(), isNull);
   });
 }

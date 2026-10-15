@@ -348,8 +348,8 @@ the crops are counted (not with 0 crops) and opens the results when the run ends
 | Largest gap between joined track IDs | 3 s | End of one track ID to the start of the next (same as the tracker's occlusion buffer). |
 | Appearance similarity needed | 0.85 | Cosine similarity of the two track IDs' combined image embeddings (1 = identical). |
 | Box size may differ by up to | 50 % | Mean box side relative to the ROI, as a percentage of the larger one; 100 % disables the guard. |
-| Short: duration below | 2 s | r212 suspect flags. `short` when duration is below this OR detections below the next row. |
-| Short: detections below | 3 | Detector frames the track ID appeared in. |
+| Short: duration below | 2 s | r212 suspect flags. `short` when duration is below this OR detections below the next row. The duration runs from the tracker's first sighting to its last frame, as in `track_ids.csv` (round 305). |
+| Short: detections below | 3 | Detector frames the track ID appeared in, from the first sighting (since round 305 this includes the frames before the tracker confirmed it as a track ID). |
 | Weak: detector confidence below | 0.20 | `low_det` when the mean live-detector confidence is below this (same default as the `insect-detect-post` software's track filter, Sittinger 2026, doi:10.5281/zenodo.21822140). |
 | Weak: order probability below | 0.50 | `weak_id` when the identification's ORDER-rank probability is below this. `suspect` = short AND (low_det OR weak_id OR no organism); flags only, nothing deleted. |
 | CSV file only: rank of the "pred" columns | family | Changes nothing in the app (the results on screen show every rank). Which rank fills `pred`, `pred_prob_weighted`, `pred_prob_mean` and `pred_imgs` in `tracks_<pack>.csv`, the columns named as in insect-detect-post so files of both tools can be compared (the other ranks are in their own columns anyway). Label before round 247: "Rank for the CSV "pred" columns". |

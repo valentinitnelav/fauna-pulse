@@ -122,6 +122,42 @@ void main() {
       expect(index.postTrackStart?['tracker'], {'algorithm': 'bytetrack'});
     });
 
+    // Round 305: a created event's first sighting counts only from the file
+    // that holds the track IDs.
+    String created(int id, int firstSeenMs) =>
+        _rec('track_event', {'time_ms': 2000, 'event': 'created', 'track_id': id, 'first_seen_ms': firstSeenMs});
+
+    test('first sightings come from the same file as the track IDs', () async {
+      writeLog([
+        _start(),
+        // A stray live event in session.jsonl must not move a track found afterwards.
+        created(1, 1100),
+        _rec('end_of_session', {'time_ms': 20000, 'ended_normally': true}),
+      ]);
+      writePost([
+        _rec('post_track_start', {'time_ms': 1000}),
+        _detections(2000, [1, 2]),
+        created(2, 1500),
+        _detections(3000, [1, 2]),
+      ]);
+      final index = await SessionLogIndex.build(File('${tmp.path}/session.jsonl'));
+      expect(index.trackSpans, {1: (2000, 3000), 2: (1500, 3000)});
+    });
+
+    test('a live session ignores the post file\'s first sightings', () async {
+      writeLog([
+        _start(config: {'captureTrigger': 'detector'}),
+        _detections(1500, [9]),
+        created(9, 1300),
+      ]);
+      writePost([
+        _rec('post_track_start', {'time_ms': 1000}),
+        created(9, 1050),
+      ]);
+      final index = await SessionLogIndex.build(File('${tmp.path}/session.jsonl'));
+      expect(index.trackSpans, {9: (1300, 1500)});
+    });
+
     test('a live detection session reads session.jsonl and ignores the post file', () async {
       writeLog([
         _start(config: {'captureTrigger': 'detector'}),

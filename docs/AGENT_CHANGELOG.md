@@ -9167,3 +9167,42 @@ season in a temp folder; screenshots looked right. Prefs unchanged; normal debug
 **Open (owner's choice):** track lengths in the summary and Dashboard start at confirmation, not
 at the tracker's first sighting as in `track_ids.csv` (4.3 s against 5.1 s on the phone).
 
+## Round 305 (2026-10-15): track lengths from the first sighting; Dashboard rate from 1 h; charts always shown
+
+**Asked:** the owner chose "start at the first sighting everywhere" (round 304's open point: the
+app said 4.3 s where `track_ids.csv` said 5.1 s for the same bumblebee), so the app matches the
+reporting. On the Dashboard: "track IDs per hour watched" only from one hour of observation, stated
+as a rough estimate; the charts by time of day and by day shown even with zero data, with a note
+that they fill once track IDs are recorded.
+
+**Changed:** one span rule, `TrackSpans` (`logging/session_log_index.dart`), used by
+`SessionLogIndex` (summary Graphs, Dashboard) and `IdentificationJob.scoreSessionSync`: end = last
+logged frame, start = the `created` track event's `first_seen_ms` when present (else the first
+logged frame), frame time `frame_ms ?? time_ms`, clamped to the session start. `track_event` now
+counts only from the file that holds the tracks (session.jsonl live, post_tracks.jsonl
+afterwards). Identification's detector-frame count adds `hits - 1` from `created`, so "Short"
+flags see the tentative frames too. The Video tab (`video_box_timeline.dart`) moves each track
+ID's start back by the same lead (list times, strip, Previous/Next jumps). Dashboard:
+`kRateMinWatchMs` 1 h, tile note "shown from 1 h watched" / "rough estimate" with an (i) opening
+at full width under the tile row; `_activityCharts` always renders both cards (also under the
+empty state), `aggregateDashboard.activity` never empty (period days, else last 7 days at zero);
+cache v4. Help texts on the summary and results screens say "from the first to the last frame the
+tracker saw it in"; the `track_ids.csv` remark only for sessions whose track IDs were found
+afterwards. Docs: DATA_GUIDE §4 rule and its R/Python snippets (they also had a broken variable
+name `track IDs` from an old rename), IDENTIFICATION, SETTINGS_REFERENCE.
+
+**Why:** the CSV already used the tracker's `firstSeenMs`; the app used the confirmation frame, so
+every length was short by (N-1) frame steps (0.8 s at 5 fps and 1 s minimum). `frame_ms` is the
+clock of `first_seen_ms` (both `System.currentTimeMillis()` of the frame); a live line's
+`time_ms` is the later queue time. Rejected: hiding the rate tile below 1 h (a hidden tile reads as
+a removed feature); the (i) inside the half-width tile (it stretched both tiles to over 1,000 px at
+320 px).
+
+**Checked:** analyze clean; 937 tests pass (2 skipped); new tests for the span rule, routing,
+clamp, CSV parity (video and photo track IDs), identification start/count, Video tab lead, rate
+threshold and help, empty charts (no sessions, no animals, 7 days without sessions, guessed time).
+Two reviewers (correctness, UI rules): 7 findings, all fixed. No phone check.
+
+**Open:** saved identification results keep their old lengths until scored again; even from the
+first sighting the shortest counted track lasts (N-1) frame steps (0.8 s for "1 s" at 5 fps).
+

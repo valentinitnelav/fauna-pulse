@@ -181,7 +181,11 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 
 ### Words and screens
 - **"Track ID", not "visit"**, in every text, file and record name (`track_ids.csv`,
-  `post_track_end.track_ids`, …); durations say "track length". "Visit" only for the ecological
+  `post_track_end.track_ids`, …); durations say "track length". **A track length runs from the
+  tracker's first sighting to its last frame everywhere** (summary, Dashboard, identification,
+  Video tab = `track_ids.csv`): one rule, `TrackSpans` in `session_log_index.dart` (start =
+  `created` event's `first_seen_ms` when logged, frame time `frame_ms ?? time_ms`, clamped to the
+  session start); `video_box_timeline.dart` applies the same lead. "Visit" only for the ecological
   quantity (hand counts, visitation rate). Readers accept older names; saved-settings keys and
   Dart identifiers kept old names on purpose.
 - Screen names in the UI: "Download & import models", "Find animals in photos / videos",
@@ -580,13 +584,17 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Dashboard** (`dashboard_screen.dart`; `logging/dashboard_stats.dart`, `aggregateDashboard`):
   big number = track IDs in the period (default All time; 7/30 days are calendar days, as the
   Sessions filter) with an (i) that a track ID is not an animal count; tiles watched | track IDs
-  per hour watched (only from `kRateMinWatchMs` 10 min) | typical (median) | longest track length,
-  each as tall as its text; charts by time of day and by day (every day of a fixed period),
-  busiest hour / record day in their subtitles only with a clear winner; "Track IDs by name":
+  per hour watched (a number only from `kRateMinWatchMs` 1 h, else "–" and "shown from 1 h
+  watched"; note "rough estimate", its (i) opens at full width under the tile row) | typical
+  (median) | longest track length, each as tall as its text; the two charts by time of day and by
+  day are always shown once loading ends, also with no sessions (under the empty-state text) or no
+  track IDs (zero bars + a line why; `activity` is never empty: every day of a fixed period, else
+  the last 7 days without timed data), busiest hour / record day in their subtitles only with a
+  clear winner; "Track IDs by name":
   each session's newest identification (as View results), `aggregateTracks` per rank, suspects
   and outdated results left out, chips only for ranks reached, family first, "Named: X of Y".
   Imported videos with a guessed filming time (`video_clip.start_time_weak` or a guessed source)
-  count but stay out of the time charts. Cache `<session>/dashboard_stats.json` v2, key = size +
+  count but stay out of the time charts. Cache `<session>/dashboard_stats.json` v4, key = size +
   mtime of session.jsonl, post_tracks.jsonl and the newest identification summary (a new
   identification re-reads only the names); a crashed session ends at its last logged record.
   `DashboardScreen(sessionsDir:, now:)` for tests.

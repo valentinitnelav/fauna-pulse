@@ -71,6 +71,35 @@ void main() {
     minCropPx: 16,
   );
 
+  test('round 305: a track ID starts at its first sighting and counts its first frames', () async {
+    final session = makeSession('first_seen');
+    // Track 1 was first seen 0.4 s before its first box, in 3 earlier frames.
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      _log.replaceFirst(
+        '{"type":"end_of_session"',
+        '{"type":"track_event","time_ms":2000,"event":"created","track_id":1,"frame_ms":2000,"hits":4,'
+            '"first_seen_ms":1600}\n{"type":"end_of_session"',
+      ),
+    );
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r.error, isNull);
+    final tracks = (jsonDecode(IdentificationPaths(session).tracksJson('tiny_pack').readAsStringSync())['tracks'] as List)
+        .cast<Map<String, dynamic>>();
+    expect([tracks[0]['start_ms'], tracks[0]['end_ms'], tracks[0]['duration_s'], tracks[0]['detections']], [
+      1600,
+      2500,
+      0.9,
+      5,
+    ]);
+    // Without a created event: the first logged frame, as before.
+    expect([tracks[1]['start_ms'], tracks[1]['detections']], [3000, 1]);
+  });
+
   test('reports the model\'s own time apart from the whole run (round 250)', () async {
     final session = makeSession('timed');
     final job = IdentificationJob(

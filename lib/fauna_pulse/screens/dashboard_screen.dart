@@ -15,9 +15,13 @@
 //
 // Round 304 (owner): the number tiles had a fixed height and overflowed at
 // phone width; they now take the height of their text. The rate per hour
-// needs 10 minutes of watching (a few seconds of video gave "597.6 per
+// needs a minimum watch time (a few seconds of video gave "597.6 per
 // hour"); the default period is "All time" (the main message is the
 // overall count); the highlights moved into the chart subtitles.
+//
+// Round 305 (owner): the rate needs 1 h of watching and says it is a rough
+// estimate; the two activity charts are always shown once reading is done,
+// with zero bars and a line saying why when there is nothing to count.
 //
 // Chart style: see widgets/mini_bar_chart.dart (extracted round 187 so the
 // per-session summary shares the same bars).
@@ -61,6 +65,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _rank;
   bool _allTaxa = false;
 
+  /// Whether the rate tile's (i) explanation is open. It opens at full
+  /// width under the tile row: inside the half-width tile it made both
+  /// tiles of the row very tall.
+  bool _rateHelpOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -98,7 +107,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final agg = aggregateDashboard(_stats, periodDays: _periodDays, now: widget.now());
-    final timed = agg.totalVisits - agg.visitsWithoutClock;
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard'), actions: const [HomeButton()]),
       body: SafeArea(
@@ -128,63 +136,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 'afterwards the Dashboard opens at once.',
                 style: helperTextStyle,
               ),
-            ] else if (agg.aiSessions == 0)
-              _emptyState(agg)
-            else ...[
+            ] else if (agg.aiSessions == 0) ...[
+              _emptyState(agg),
+              const SizedBox(height: 24),
+              ..._activityCharts(agg),
+            ] else ...[
               _hero(agg),
               const SizedBox(height: 8),
               _tiles(agg),
               const SizedBox(height: 12),
-              // The activity charts pooled over the sessions. Without any
-              // known time the card stays and says why (owner: hidden
-              // charts looked removed).
-              if (agg.totalVisits == 0)
-                _chartCard(title: 'Track IDs by time of day and by day', subtitle: 'No track IDs in this period yet.')
-              else if (timed == 0)
-                _chartCard(
-                  title: 'Track IDs by time of day and by day',
-                  subtitle: 'No times to show: ${agg.totalVisits == 1 ? 'this track ID comes' : 'these track IDs come'} '
-                      'from videos that do not say when they were filmed (the time can be set while importing '
-                      'them).',
-                )
-              else ...[
-                _chartCard(
-                  title: 'Track IDs by time of day',
-                  subtitle: [
-                    if (agg.busiestHour case final h?) 'Most at ${_two(h)}:00–${_two((h + 1) % 24)}:00.',
-                    'Hours you watched longer show more.',
-                  ].join(' '),
-                  child: MiniBarChart(
-                    values: agg.visitsByHour,
-                    xLabelFor: (i) => switch (i) {
-                      0 || 6 || 12 || 18 => '$i h',
-                      _ => null,
-                    },
-                  ),
-                ),
-              ],
-              if (timed > 0 && agg.activity.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _chartCard(
-                  title: agg.weeklyBuckets ? 'Track IDs by week' : 'Track IDs by day',
-                  subtitle: [
-                    if (agg.recordDay case final d?)
-                      'Record day: ${_dateShort(d)} (${_count(agg.recordDayCount, 'track ID')}).',
-                    if (agg.weeklyBuckets) 'Each bar is one week.',
-                  ].join(' '),
-                  child: MiniBarChart(
-                    values: [for (final b in agg.activity) b.count],
-                    xLabelFor: (i) {
-                      // First, last, and (when room) the middle bucket.
-                      final n = agg.activity.length;
-                      if (i == 0 || i == n - 1 || (n > 8 && i == n ~/ 2)) {
-                        return _dateShort(agg.activity[i].day);
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-              ],
+              ..._activityCharts(agg),
               if (agg.totalVisits > 0) ...[
                 const SizedBox(height: 12),
                 _namesCard(agg),
@@ -215,6 +176,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     ),
   );
+
+  /// The activity charts pooled over the sessions, always both (owner:
+  /// hidden charts looked removed). Without a track ID with a known time the
+  /// bars stay at zero and both subtitles say why.
+  List<Widget> _activityCharts(DashboardAggregate agg) {
+    final timed = agg.totalVisits - agg.visitsWithoutClock;
+    final why = agg.totalVisits == 0
+        ? 'No track IDs in this period yet: the bars appear once track IDs are recorded.'
+        : timed == 0
+        ? 'No times to show: ${agg.totalVisits == 1 ? 'this track ID comes' : 'these track IDs come'} from videos '
+              'that do not say when they were filmed (the time can be set while importing them).'
+        : null;
+    return [
+      _chartCard(
+        title: 'Track IDs by time of day',
+        subtitle:
+            why ??
+            [
+              if (agg.busiestHour case final h?) 'Most at ${_two(h)}:00–${_two((h + 1) % 24)}:00.',
+              'Hours you watched longer show more.',
+            ].join(' '),
+        child: MiniBarChart(
+          values: agg.visitsByHour,
+          xLabelFor: (i) => switch (i) {
+            0 || 6 || 12 || 18 => '$i h',
+            _ => null,
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
+      _chartCard(
+        title: agg.weeklyBuckets ? 'Track IDs by week' : 'Track IDs by day',
+        subtitle:
+            why ??
+            [
+              if (agg.recordDay case final d?)
+                'Record day: ${_dateShort(d)} (${_count(agg.recordDayCount, 'track ID')}).',
+              if (agg.weeklyBuckets) 'Each bar is one week.',
+            ].join(' '),
+        child: MiniBarChart(
+          values: [for (final b in agg.activity) b.count],
+          xLabelFor: (i) {
+            // First, last, and (when room) the middle bucket.
+            final n = agg.activity.length;
+            if (i == 0 || i == n - 1 || (n > 8 && i == n ~/ 2)) {
+              return _dateShort(agg.activity[i].day);
+            }
+            return null;
+          },
+        ),
+      ),
+    ];
+  }
 
   /// Where track IDs come from ("Find animals in photos" follows an animal
   /// only in photos taken close enough together).
@@ -260,6 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final rate = agg.visitsPerHour;
     final none = agg.totalVisits == 0;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _tileRow(
           _tile(_watchLabel(agg.totalRecordedMs), 'watched'),
@@ -272,9 +287,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? rate.toStringAsFixed(1)
                 : rate.toStringAsPrecision(2),
             'track IDs per hour watched',
-            note: rate == null ? 'shown from ${kRateMinWatchMs ~/ Duration.millisecondsPerMinute} min watched' : null,
+            note: rate == null
+                ? 'shown from ${kRateMinWatchMs ~/ Duration.millisecondsPerHour} h watched'
+                : 'rough estimate',
+            open: _rateHelpOpen,
+            onHelp: () => setState(() => _rateHelpOpen = !_rateHelpOpen),
           ),
         ),
+        if (_rateHelpOpen)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Track IDs per hour watched: all track IDs of the sessions in this period divided by the hours '
+              'those sessions watched (for videos, the filmed time). Rough, because a track ID is not always '
+              'one animal and sessions differ in place, weather and time of day. Shown from '
+              '${kRateMinWatchMs ~/ Duration.millisecondsPerHour} h, because a few minutes scaled up to an '
+              'hour mostly show chance.',
+              style: helperTextStyle,
+            ),
+          ),
         const SizedBox(height: 8),
         _tileRow(
           _tile(none ? '–' : _secondsLabel(agg.medianVisitMs), 'typical track length (median)'),
@@ -291,7 +322,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ),
   );
 
-  static Widget _tile(String value, String label, {String? note}) => Container(
+  /// [onHelp] puts an (i) on the label ([open]: filled); tapping the label
+  /// calls it (the explanation opens under the tile row, see [_rateHelpOpen]).
+  static Widget _tile(String value, String label, {String? note, bool open = false, VoidCallback? onHelp}) => Container(
     padding: const EdgeInsets.all(12),
     decoration: _card,
     child: Column(
@@ -310,15 +343,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        if (onHelp == null)
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12))
+        else
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onHelp,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Flexible(child: Text(label, style: helperTextStyle)),
+                const SizedBox(width: 4),
+                Icon(open ? Icons.info : Icons.info_outline, size: 16, color: Colors.white38),
+              ],
+            ),
+          ),
         if (note != null) Text(note, style: const TextStyle(color: Colors.white38, fontSize: 11)),
       ],
     ),
   );
 
-  /// A chart under its title; with no [child], only the title and the
-  /// subtitle (which then says why there is no chart).
-  Widget _chartCard({required String title, required String subtitle, Widget? child}) => Container(
+  /// A chart under its title and subtitle (left out when empty).
+  Widget _chartCard({required String title, required String subtitle, required Widget child}) => Container(
     width: double.infinity,
     padding: const EdgeInsets.all(12),
     decoration: _card,
@@ -327,10 +373,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
         if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        if (child != null) ...[
-          const SizedBox(height: 10),
-          SizedBox(height: 120, width: double.infinity, child: child),
-        ],
+        const SizedBox(height: 10),
+        SizedBox(height: 120, width: double.infinity, child: child),
       ],
     ),
   );
@@ -502,8 +546,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// "6 s", "12 min", "3.5 h", "40 h": watch time from a few seconds of
   /// video to a season.
-  /// Rounded down, so it never shows the 10 min the rate needs before
-  /// they are reached.
+  /// Rounded down, so it never shows the 1 h the rate needs before it is
+  /// reached ("59 min", then "1.0 h").
   static String _watchLabel(int ms) {
     if (ms < Duration.millisecondsPerMinute) return '${ms ~/ 1000} s';
     if (ms < Duration.millisecondsPerHour) return '${ms ~/ Duration.millisecondsPerMinute} min';

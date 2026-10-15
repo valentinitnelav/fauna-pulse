@@ -7,7 +7,9 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/session_log_index.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/session_logger.dart' show isoWithOffset;
+import 'package:fauna_pulse/fauna_pulse/logging/track_source.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/track_export.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
@@ -162,6 +164,33 @@ void main() {
       expect(summary.occlusionSeconds, 3.0);
       expect(summary.minHitsSeconds, 0.2);
       expect(summary.algorithm, config.trackerAlgorithm.name);
+    });
+
+    test('round 305: the summary index gives the same span as track_ids.csv', () async {
+      final dir = _session([
+        _runStart(),
+        ..._clip('a.mp4', startMs: s0, boxAt: (t) => t >= 2000 && t <= 5000 ? _box(0.40) : null),
+      ]);
+      File('${dir.path}/session.jsonl').writeAsStringSync(
+        '${jsonEncode({'type': 'start_of_session', 'time_ms': s0, 'source': 'imported_video'})}\n',
+      );
+      // 1 s at 10 fps: confirmed on the 10th frame, 0.9 s after the first sighting.
+      await VideoTracker.run(dir, config.copyWith(minHitsSeconds: 1.0));
+      final row = _visits(dir).single;
+      expect([row[3], row[4]], ['2.000', '5.000']);
+      final firstBox = _records(dir).firstWhere((r) => r['type'] == 'detections')['frame_ms'] as int;
+      expect(firstBox, s0 + 2900);
+
+      expect(trackSourceOf(dir), TrackSource.afterwards);
+      final index = await SessionLogIndex.parseFile(
+        '${dir.path}/session.jsonl',
+        tracksPath: '${dir.path}/${VideoTracker.outputFileName}',
+      );
+      final span = index.trackSpans.values.single;
+      expect([((span.$1 - s0) / 1000).toStringAsFixed(3), ((span.$2 - s0) / 1000).toStringAsFixed(3)], [
+        row[3],
+        row[4],
+      ]);
     });
 
     test('a gap longer than the occlusion tolerance makes two track IDs', () async {

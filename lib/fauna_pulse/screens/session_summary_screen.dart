@@ -2223,7 +2223,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     const SizedBox(height: 4),
     const Text(
       'Time runs left → right across the session. A bar shows when an object was '
-      'within the ROI; overlapping bars were on it at the same time. Next to each bar: '
+      'within the ROI, from the first to the last frame the tracker saw it in; overlapping bars '
+      'were in the ROI at the same time. Next to each bar: '
       'its start and end, counted from the session start like the axis below. In pollination '
       'ecology a track ID usually stands for one visit; some can be false detections, or one '
       'insect split into two track IDs.',
@@ -2234,7 +2235,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       Text(
         'Found afterwards in the ${_visitsFromPhotos ? 'photos' : 'videos'} with "Find track IDs" (occlusion '
         'tolerance ${_numStr(_post('occlusion_seconds'))} s, minimum track '
-        'length ${_numStr(_post('min_hits_seconds'))} s). '
+        'length ${_numStr(_post('min_hits_seconds'))} s). The file track_ids.csv lists the same track IDs '
+        'and lengths. '
         '${_visitsFromPhotos ? (_timeLapseSession ? 'Time between bursts was not photographed.' : '') : 'Time between clips was not filmed.'}',
         style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
@@ -2604,11 +2606,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
-      const Text(
-        'How long the track IDs lasted: each bar counts the track IDs whose length '
-        'falls in that time bin — so you can see at a glance whether track IDs '
-        'cluster around one typical length or spread out.',
-        style: TextStyle(color: Colors.white70, fontSize: 12),
+      Text(
+        'How long the track IDs lasted, each from the first to the last frame the tracker '
+        'saw the animal in${_visitsAfterwards ? ' (the same length as in track_ids.csv)' : ''}. '
+        'Each bar counts the track IDs whose length falls in that time bin, so you can see at a '
+        'glance whether track IDs cluster around one typical length or spread out.',
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 4),
       Row(
@@ -5054,14 +5057,17 @@ class _GanttPainter extends CustomPainter {
 
     for (var i = 0; i < ids.length; i++) {
       final id = ids[i];
-      final span = spans[id]!;
+      // Round 305: never left of the session start (the index already clamps
+      // a first sighting from just before recording began).
+      final first = max(spans[id]!.$1, startMs);
+      final last = max(spans[id]!.$2, first);
       final yCenter = i * laneHeight + laneHeight / 2;
       if (showLabels) {
         _text(canvas, '#$id', Offset(4, yCenter - 7), Colors.white70, 11);
       }
       final barHalf = (laneHeight * 0.35).clamp(1.5, 5.0);
-      final x1 = xForMs(span.$1);
-      final x2 = xForMs(span.$2);
+      final x1 = xForMs(first);
+      final x2 = xForMs(last);
       final barRect = Rect.fromLTRB(
         x1,
         yCenter - barHalf,
@@ -5079,7 +5085,7 @@ class _GanttPainter extends CustomPainter {
         // bar, or left of it when the bar runs to the edge, or left out when neither fits.
         final label = TextPainter(
           text: TextSpan(
-            text: '${ganttTime(span.$1 - startMs)}–${ganttTime(span.$2 - startMs)}',
+            text: '${ganttTime(first - startMs)}–${ganttTime(last - startMs)}',
             style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
           textDirection: TextDirection.ltr,
