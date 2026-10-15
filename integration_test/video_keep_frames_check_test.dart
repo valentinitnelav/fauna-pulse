@@ -293,7 +293,7 @@ void main() {
         _log('  #${t['track_id']} ${t['headline']} (${t['identified_rank']}) p=${t['p']} crops=${t['n_crops']}');
       }
       expect(res.embedded, greaterThan(0));
-      expect((summary['capture'] as Map)['visits_run_id'], runId);
+      expect((summary['capture'] as Map)['track_ids_run_id'], runId);
       expect((summary['capture'] as Map)['photo_step_s'], 2.0);
 
       track = await VideoTracker.run(dir, const SessionConfig(), keep: every1);
@@ -328,7 +328,7 @@ void main() {
       (res, summary) = await identify();
       _log('IDENTIFY AFTER FINDING AGAIN: ${res.resumedDone} continued, ${res.embedded} embedded');
       expect(res.resumedDone, 0);
-      expect((summary['capture'] as Map)['visits_run_id'], (await VideoTracker.readSummary(dir))!.runId);
+      expect((summary['capture'] as Map)['track_ids_run_id'], (await VideoTracker.readSummary(dir))!.runId);
       expect(await IdentificationJob.cropsOutdated(dir, name), isFalse);
       await ImageEmbedder.close();
       identified = true;

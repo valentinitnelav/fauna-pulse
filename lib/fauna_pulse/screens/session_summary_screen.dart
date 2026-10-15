@@ -2716,7 +2716,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const SizedBox(height: 4),
         const Text(
           'Pictures of each track ID, kept from the videos when the track IDs were found (set under '
-          '"Find animals in videos" → Track IDs). A random sample of $_randomSampleCount is shown; pick more '
+          '"Find animals in videos" → "Detection, track ID and identification settings", Track IDs card). '
+          'A random sample of $_randomSampleCount is shown; pick more '
           'below. Swipe or use the arrows to step through them in time order. "Show in video" moves '
           'the player above to that moment.',
           style: TextStyle(color: Colors.white70, fontSize: 12),

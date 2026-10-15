@@ -32,6 +32,7 @@
 //    square; back on the tab, the new square and visits show (SHOT).
 // The import stays in video_review_check/ for `adb pull`.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
@@ -337,13 +338,31 @@ void main() {
     await tester.tap(find.text('Change square and analyse again'));
     await waitFor(find.byType(VideoAnalysisScreen));
     await tester.pump(const Duration(seconds: 1)); // the route transition: the tab is hidden then
-    // Round 309: the videos play on that screen too, under the track ID results.
-    final screen = find.byType(Scrollable).first;
+    // Round 309: the videos play on that screen too, under the track ID results. The test session
+    // is outside the app's sessions folder, so the screen just opened cannot list it: a second one
+    // over it reads the test's sessions folder (popped again below).
+    unawaited(
+      Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).push(
+        MaterialPageRoute<void>(
+          builder: (_) => VideoAnalysisScreen(initialSessionPath: dir.path, sessionsDir: dir.parent),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    // Its list appears only once the screen has read the sessions (a spinner before).
+    final screen = find.descendant(of: find.byType(VideoAnalysisScreen), matching: find.byType(Scrollable)).first;
+    await waitFor(screen);
     final screenPlayer = find.descendant(
       of: find.byType(VideoAnalysisScreen, skipOffstage: false),
       matching: find.byType(VideoPlayer, skipOffstage: false),
     );
     bool screenPlaying() => tester.widget<VideoPlayer>(screenPlayer).controller.value.isPlaying;
+    // Scrolled until built, then fully on screen (not under the app bar), as scrollTo for the tab.
+    Future<void> onScreen(Finder f, double delta) async {
+      await tester.scrollUntilVisible(f, delta, scrollable: screen);
+      await tester.ensureVisible(f);
+      await tester.pump(const Duration(milliseconds: 300));
+    }
     Future<void> playOnScreen() async {
       await tester.scrollUntilVisible(find.text('Watch the results'), 300, scrollable: screen);
       await waitFor(find.byTooltip('Play'));
@@ -362,7 +381,7 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
     // Another screen over it pauses the video.
     final settings = find.text('Detection, track ID and identification settings');
-    await tester.scrollUntilVisible(settings, -300, scrollable: screen);
+    await onScreen(settings, -300);
     await tester.tap(settings);
     await waitFor(find.text('Detection'));
     await tester.pump(const Duration(seconds: 1));
@@ -373,11 +392,11 @@ void main() {
     // A run started right after watching: the paused (then closed) player must not switch the
     // screen-on off that the run holds.
     await playOnScreen();
-    await tester.scrollUntilVisible(find.text('Whole picture'), -300, scrollable: screen);
+    await onScreen(find.text('Whole picture'), -300);
     await tester.tap(find.text('Whole picture'));
     await tester.pump(const Duration(milliseconds: 300));
     final again = find.text('Analyze again with these settings');
-    await tester.scrollUntilVisible(again, 200, scrollable: screen);
+    await onScreen(again, 200);
     await tester.tap(again);
     await waitFor(find.text('Replace and start'));
     await tester.tap(find.text('Replace and start'));
@@ -393,6 +412,8 @@ void main() {
     await _analyse(dir, const [0.45, 0.4, 0.5], startOver: true);
     timeline = VideoBoxTimeline.readSync(dir.path);
     Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop();
+    await tester.pump(const Duration(seconds: 1));
+    Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop(); // the one the button opened
     // The list is still scrolled down to the button: the picture may not be built (a lazy
     // list builds only what is near the screen), so scroll up to it.
     await tester.pump(const Duration(seconds: 2));

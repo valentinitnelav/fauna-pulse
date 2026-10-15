@@ -9349,3 +9349,32 @@ Integration tests `video_review_check_test` (watch, pause, run right after) and
 **Open:** placement after Free storage (vs. between Share and Free storage) to confirm with the
 owner; three decoders at once in `video_review_check` step 4 (summary, Find screen, detector).
 
+## Round 310 (2026-10-15): phone check of rounds 307-309 on the Xiaomi, test fixes
+
+**Asked:** the owner left the Xiaomi 11T Pro connected for tests of rounds 307 to 309.
+
+**Changed:** `integration_test/video_review_check_test.dart`: step 4 waits for the Find screen's
+list (a spinner shows while it reads the sessions), opens a second `VideoAnalysisScreen` with
+`sessionsDir` set to the test's sessions folder (the screen opened by "Change square and analyse
+again" scans the app's sessions folder, so it cannot list a test session kept outside it), pops
+both afterwards, and brings each tile fully on screen before tapping (`scrollUntilVisible` stopped
+with the settings tile under the app bar). `integration_test/video_keep_frames_check_test.dart`:
+the summary key `track_ids_run_id` (the test still read `visits_run_id`, renamed in round 248).
+`session_summary_screen.dart`: the Kept frames help names the new place of the settings
+("Detection, track ID and identification settings", Track IDs card).
+
+**Why:** the integration tests of rounds 307-309 were written without a phone; the first runs
+failed on test code only, not on app behaviour.
+
+**Checked:** on the Xiaomi (debug, `--no-uninstall`, prefs backed up and restored, `cmp` equal),
+with two of the owner's bumblebee clips copied to `video_check/videos/`:
+`video_review_check_test` (REVIEW_SOAK_MIN=0) passes: time bar spans equal the track IDs, a scrub
+lands at 3606 ms for 3606 ms, the Find screen's player plays with the screen on, pauses under the
+settings screen, and a run right after keeps the screen on with the player left out;
+`video_cleanup_check_test` passes; `video_keep_frames_check_test` passes (kept-frame marks, Show in
+video at 1.8 s). Analyze clean, 959 tests pass. Not checked: the Samsung (busy with another app).
+
+**Open:** the Find animals in photos screen gets the same design later (owner's choice); the
+bumblebee clip has gaps where the detector finds nothing although a track ID spans them (bee
+partly outside the square).
+
