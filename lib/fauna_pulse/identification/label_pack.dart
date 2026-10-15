@@ -2,7 +2,7 @@
 //
 // A "label pack" is one file holding, for every candidate name the model may
 // choose from, its text embedding (a unit-length vector produced once on a PC
-// by tool/bioclip_export/build_label_pack.py from the TreeOfLife-200M name
+// by build_label_pack.py (fauna-pulse-models, bioclip_export/) from the TreeOfLife-200M name
 // embeddings published by Imageomics) plus its taxonomy (kingdom .. species
 // epithet, common name). This is pybioclip's label-subset idea (`--subset` /
 // `apply_filter` over precomputed name embeddings) in a phone-friendly file.
@@ -13,9 +13,10 @@
 //   8..8+H      UTF-8 JSON header (pack_id, model_id, dim, rows, dtype f16|f32,
 //               logit_scale, temperature, ranks, sink_rows, labels[rows][8], ...)
 //   then        rows x dim numbers, row-major, f16 or f32
-// The Python writer (fpack.py) and this reader are tested against one fixture.
+// The Python writer (fauna-pulse-models, bioclip_export/fpack.py) and this reader are
+// tested against the same fixtures (test/fauna_pulse/fixtures/*.fpack): change both together.
 //
-// Round 266, class lists: a fixed-class classifier (insectDCT, tool/classifier_export)
+// Round 266, class lists: a fixed-class classifier (insectDCT, fauna-pulse-models classifier_export/)
 // scores its own classes, so its "pack" has no vectors (dtype none, header kind
 // "classes"): rows = its finest classes with their taxonomy, "classes" = the
 // model's own class names, "heads" = the model's output layers one after another

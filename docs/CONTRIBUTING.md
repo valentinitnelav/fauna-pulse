@@ -132,8 +132,9 @@ Claude-facing overview):
 - **Adding a custom model:** accepted formats are `.tflite` (including the
   official `format=litert` exports) and `*_qnn.onnx` Snapdragon-NPU context
   binaries; plain `.onnx` is rejected everywhere. Model files are git-ignored
-  (large, and some are collaborators'). The full export/conversion guide is
-  [MODEL_CONVERSION.md](MODEL_CONVERSION.md); INSTALL.md covers how users
+  (large, and some are collaborators'). The accepted formats are in
+  [MODEL_CONVERSION.md](MODEL_CONVERSION.md), the export tools in the separate repository
+  [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models); INSTALL.md covers how users
   import models. Note the engine implication: whether a model runs on GPU or
   CPU is decided by whether the GPU backend can compile the model's op graph,
   **not** simply by int8 vs fp16.

@@ -1,5 +1,5 @@
 // Tests for the label-pack reader (round 208): the cross-language fixture
-// written by tool/bioclip_export/fpack.py, half-float decoding, taxonomy keys;
+// written by fpack.py (fauna-pulse-models, bioclip_export/), half-float decoding, taxonomy keys;
 // round 266: class lists of fixed-class classifiers (tiny_classes.fpack).
 
 import 'dart:convert';

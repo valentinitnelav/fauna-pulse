@@ -472,7 +472,7 @@ as in §3, are the realistic source. Useful public material:
 
 **Mammals and birds**: the app's default detector, MegaDetector V6 (MDV6), finds
 animals, people and vehicles. For names, build a BioCLIP label pack of the expected
-mammals or birds with `tool/bioclip_export/` ([IDENTIFICATION.md](IDENTIFICATION.md)).
+mammals or birds with `bioclip_export/` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) ([IDENTIFICATION.md](IDENTIFICATION.md)).
 The occlusion tolerance and minimum track length then need values that suit larger,
 slower animals.
 

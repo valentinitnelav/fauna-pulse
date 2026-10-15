@@ -957,7 +957,7 @@ mean of `p_<rank>` equals `p_mean_<rank>`, the maximum equals `p_max_<rank>`, th
 rows whose top species is under the taxon equals `p_agree_<rank>`, and the count of
 `agrees == 1` equals `agree_<rank>` × crops at the identified rank. The track's own
 `p_<rank>` is NOT a function of these columns (it comes from the averaged embeddings);
-recompute it with `tool/bioclip_export/reproduce_track_conf.py`.
+recompute it with `bioclip_export/reproduce_track_conf.py` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
 
 To align identifications with the recording: join on `track_id` (the same id as in the
 `detections` records of `session.jsonl`; a merged track ID lists every member id in

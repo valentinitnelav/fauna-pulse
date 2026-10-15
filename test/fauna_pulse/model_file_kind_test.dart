@@ -133,15 +133,18 @@ void main() {
 
   // The rule on real exports (laptop only): YOLO detectors, MegaDetector V6
   // (end-to-end), flat-bug and insectDCT detectors; insectDCT classifiers and
-  // the BioCLIP image tower.
+  // the BioCLIP image tower. The export tools and their out/ folders live in the
+  // fauna-pulse-models repository (round 311): set FAUNAPULSE_MODELS_REPO to a
+  // clone of it to include them (test/README.md).
   final root = Directory.current.path;
+  final models = Platform.environment['FAUNAPULSE_MODELS_REPO'];
   final detectors = [
-    for (final d in ['$root/../weights', '$root/tool/detector_export/out'])
+    for (final d in ['$root/../weights', if (models != null) '$models/detector_export/out'])
       if (Directory(d).existsSync())
         ...Directory(d).listSync().whereType<File>().where((f) => f.path.endsWith('.tflite')),
   ];
   final identifiers = [
-    for (final d in ['$root/tool/classifier_export/out', '$root/tool/bioclip_export/out'])
+    for (final d in [if (models != null) ...['$models/classifier_export/out', '$models/bioclip_export/out']])
       if (Directory(d).existsSync())
         ...Directory(d).listSync().whereType<File>().where((f) => f.path.endsWith('.tflite')),
   ];

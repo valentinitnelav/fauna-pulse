@@ -57,6 +57,21 @@ Skipped when the define is missing. Judge results against a hand count from
 the session's `gt_frames/` photos (rounds 105/108 workflow), not against MOT
 benchmarks.
 
+## Files made in fauna-pulse-models (round 311)
+
+The PC export tools live in the separate repository
+[fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). Its `bioclip_export/fpack.py` writes the
+`.fpack` fixtures (`fixtures/tiny_pack.fpack`, `tiny_classes.fpack`) that
+`label_pack_test.dart` and `track_fusion_test.dart` read; after a format change,
+regenerate them there (command in its README, "Keep in sync with the app").
+`model_file_kind_test.dart` also checks real exported files when
+`FAUNAPULSE_MODELS_REPO` points at a clone of that repository (its `*_export/out/`
+folders), besides `../weights`:
+
+```bash
+FAUNAPULSE_MODELS_REPO=~/fauna-pulse-models flutter test test/fauna_pulse/model_file_kind_test.dart
+```
+
 ## Video frame-rate sweep (round 230)
 
 Re-runs *Find track IDs* on an analysed video session at lower frame rates (the

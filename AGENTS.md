@@ -19,6 +19,9 @@ define complex mobile development terms in plain language upon first occurrence.
 ## Development Environment & Context
 
 The app sits at the git repository root and paths below are relative to it.
+The PC tools that convert and publish models (detectors, classifiers, BioCLIP, `.fpack` name lists)
+live in the separate repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) (usually `~/fauna-pulse-models`);
+its `docs/AGENT_OVERVIEW.md` lists the rules both repositories share.
 
 **Grounding order at the start of a session:** 
 

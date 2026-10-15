@@ -1,7 +1,7 @@
 // FaunaPulse (round 208): identification files (embedding models, label
 // packs) in private storage, plus the job's persisted settings.
 //
-// Both file kinds are produced on a PC (tool/bioclip_export/) and brought to
+// Both file kinds are produced on a PC (fauna-pulse-models, bioclip_export/) and brought to
 // the phone by the user, or downloaded from the catalogue. Since round 275
 // one import for every model file (models/model_import.dart) checks what a
 // file is and copies it here, with the same streamed checks as detector
@@ -283,6 +283,6 @@ class IdentifyPrefs {
 /// layers use tensors the phone's GPU cannot run).
 String gpuNoteText(String note) => note.contains('Failed to compile')
     ? '$note. The usual cause is a BioCLIP file whose attention layers use 5-dimensional '
-          'tensors, which phone GPUs cannot run; export the model again with tool/bioclip_export '
+          'tensors, which phone GPUs cannot run; export the model again with bioclip_export of fauna-pulse-models '
           '(4-dimensional attention, see IDENTIFICATION.md)'
     : note;

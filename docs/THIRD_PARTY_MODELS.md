@@ -31,7 +31,7 @@ The FaunaPulse application is subject to the project's main LICENSE file.
 
 FaunaPulse's "Identify organisms" feature runs the image tower of [BioCLIP 2][bioclip2]
 (Imageomics, ViT-L/14 trained on TreeOfLife-200M) on the phone, converted with
-`tool/bioclip_export/export_image_tower.py` to TFLite (fp16, int8 or fp32). The label
+`bioclip_export/export_image_tower.py` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) to TFLite (fp16, int8 or fp32). The label
 packs derive from the TreeOfLife-200M species text embeddings published by the same team.
 
 - Model card: https://huggingface.co/imageomics/bioclip-2 — **MIT license**.
@@ -51,7 +51,7 @@ the BioCLIP 2.5 text embeddings in the same TreeOfLife-200M dataset (CC0-1.0).
 
 ## flat-bug and insectDCT (optional detectors, converted on request)
 
-`tool/detector_export/export_detector.py` converts these for the phone (round 264); they are
+`detector_export/export_detector.py` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) converts these for the phone (round 264); they are
 not bundled with the app. Weights as packaged by the InsectAI Model Zoo (Markoff and InsectAI
 COST Action CA22129 contributors, 2026, https://github.com/InsectAI-COST-Action/insect-model-zoo).
 
@@ -78,7 +78,7 @@ provided or endorsed by the authors.
 **insectDCT hierarchical classifier V7** (`insectdct-cls-v7`; ConvNeXt-Base, EfficientNetV2-S
 and ResNet50 versions; 104 classes on three levels): same authors, paper and licence (GPL-3.0)
 as insectDCT above; weights as packaged by the InsectAI Model Zoo. Converted for the phone
-with `tool/classifier_export/` (round 265); the Identify screen runs it since round 266
+with `classifier_export/` of fauna-pulse-models (round 265); the Identify screen runs it since round 266
 (EfficientNetV2-S version recommended). No converted file is bundled: users import the model
 and its class list. The class list's taxonomy uses the TreeOfLife names that come with
 BioCLIP 2.5 (Imageomics). The choice between its three networks follows the authors'

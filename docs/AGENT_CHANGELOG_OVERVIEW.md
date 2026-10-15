@@ -24,7 +24,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - **App = repository root:** `lib/main.dart` → `lib/fauna_pulse/` (all app code);
   `test/fauna_pulse/` (unit + widget tests); `integration_test/` (device checks); `assets/`
   (`model_downloads.json`, `images/` setup drawings, `models/` local weights for debug device
-  checks only); `docs/`; `tool/` (PC scripts); `scripts/` (release builds).
+  checks only); `docs/`; `tool/` (PC scripts; the model export tools are in the separate repository
+  `fauna-pulse-models`, see *PC tools*); `scripts/` (release builds).
 - **Plugin:** `packages/ultralytics_yolo/`, a modified copy (fork) of the Ultralytics YOLO Flutter
   plugin (from `ultralytics/yolo-flutter-app`), used as a path dependency. Dart `YOLOView`/`YOLO`/`YOLOViewController` + Kotlin (CameraX,
   LiteRT, ROI crops, motion gate, video decode/encode, embedder; `YOLOPlugin.kt` holds
@@ -689,10 +690,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `sam3`), `PLAY_STORE_LISTING_DRAFT.md`. `PERF_AND_ROBUSTNESS_REVIEW.md`: all parts closed except
   E9 (build-time camera A/B experiments); owed field checks: heap/thread plateau after E2, paired
   camera-sleep run (E3), paired cap 12 vs 15 on the Xiaomi.
-- **PC tools:** `tool/model_downloads/` (download list, naming rule), `tool/detector_export/`
-  (.pt → fp16 `.tflite`, agreement check), `tool/classifier_export/` (insectDCT classifier +
-  class list), `tool/bioclip_export/` (image tower, label packs, quantisation), `tool/video_eval/`,
-  `tool/perf_summary.dart`.
+- **PC tools:** `tool/model_downloads/` (download list, naming rule), `tool/video_eval/`,
+  `tool/perf_summary.dart`. The model export tools (`detector_export/` .pt → fp16 `.tflite` +
+  agreement check, `classifier_export/` insectDCT classifier + class list, `bioclip_export/` image
+  tower, label packs, quantisation, the `.fpack` writer that also writes the test fixtures) live
+  in the separate repository `fauna-pulse-models` (GitHub `valentinitnelav/fauna-pulse-models`,
+  usually `~/fauna-pulse-models`; round 311). Its `docs/AGENT_OVERVIEW.md` maps it and lists the
+  rules both repositories share; `FAUNAPULSE_MODELS_REPO` lets `model_file_kind_test` see its files.
 - **Outside git:** design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
   sources `~/InsectDetectApp/generated_art/` (`make_setup_sketches.py`); test videos and the hand
   count set `~/InsectDetectApp/test_videos/` (feature references only; check pictures

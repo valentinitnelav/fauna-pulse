@@ -9378,3 +9378,42 @@ video at 1.8 s). Analyze clean, 959 tests pass. Not checked: the Samsung (busy w
 bumblebee clip has gaps where the detector finds nothing although a track ID spans them (bee
 partly outside the square).
 
+
+## Round 311 (2026-10-15): PC model tools moved to the fauna-pulse-models repository
+
+**Asked:** keep the app repository about the app: move the PC-side Python that prepares
+models for the phone (export, quantisation, label packs) into its own repository, without
+breaking code or workflows, before publishing the converted models on Hugging Face.
+
+**Changed:** `tool/bioclip_export/`, `tool/classifier_export/` and `tool/detector_export/` are
+removed here and live in `valentinitnelav/fauna-pulse-models` (usually `~/fauna-pulse-models`),
+imported unchanged from commit c4c367d (plain copy; their history stays in this repository),
+then adapted there (absolute links back to the app, one shared Python environment, the
+first YOLO export scripts kept under `legacy/`). Their git-ignored `out/` folders (4.5 GB of
+exported files) were moved there with `mv`. `docs/MODEL_CONVERSION.md` keeps the format facts
+(why no plain ONNX, QNN) and points to the models repository for converting. The user-visible
+GPU note (`identification_assets.dart`) now names `bioclip_export` of fauna-pulse-models and
+still says "export the model again" (`bioclip_gpu_test`). `model_file_kind_test` reads real
+exports from `$FAUNAPULSE_MODELS_REPO/*_export/out` (documented in `test/README.md`); without
+the variable it still checks `../weights`. Comments, README tree, IDENTIFICATION, THIRD_PARTY_MODELS,
+DATA_GUIDE, VIDEO_ANALYSIS, CONTRIBUTING, `tool/model_downloads/README.md` and AGENTS.md updated;
+ARCHITECTURE section 4 lists the pairs that now span two repositories (`fpack.py` with
+`label_pack.dart` and the fixtures, `class_probabilities` with `track_fusion.dart`,
+`APP_MAX_BYTES` with `kMaxTfliteModelBytes`, the naming rule with the export scripts' names).
+
+**Why:** the tools have no build or test dependency on the app (no Dart or CI step runs
+Python; checked by grep), so the split only needed text changes. Kept here on purpose:
+`tool/video_eval/` (scores the app's tracking output), `tool/perf_summary.dart` (imported by
+`perf_summary_test`), `tool/model_downloads/` (edits the bundled catalogue; holds the naming
+rule) and the `.fpack` fixtures. Rejected: `git filter-repo` (the app's round-numbered history
+would only confuse the new repository).
+
+**Checked:** the import is byte-identical to c4c367d (19 files); the moved `fpack.py` writes the
+same bytes as the original (and `tiny_pack.fpack` byte-identical to the committed fixture);
+`out/` listings identical before and after the move (62 files); the new environment's pip
+freeze equals the old one's. Here: analyze clean; `flutter test test/fauna_pulse` 958 pass, 2 skipped (REPLAY_SESSION and SWEEP_SESSION not defined, as usual); `model_file_kind_test` with `FAUNAPULSE_MODELS_REPO` set recognises every moved export; `git grep tool/(bioclip|classifier|detector)_export` only finds the kept `.gitignore` lines (and the changelog history).
+
+**Open:** `.gitignore` lines 84-89 stay until the old `tool/bioclip_export/.venv` and the
+`__pycache__` leftovers are deleted (owner's approval). The committed `tiny_classes.fpack`
+predates round 276 (`"kind": "classes"`); regenerating it would change it (the reader accepts
+both). Branch `sam3` was left untouched. Round 312 switches the download links to Hugging Face.

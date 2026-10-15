@@ -22,7 +22,7 @@
 // "detection_model" / "identification_model", and for the name lists of an
 // identification model ("name_lists") "class_list" (a classifier's fixed
 // classes) / "label_pack" (BioCLIP's names). Both name lists are .fpack files
-// (FaunaPulse pack, tool/bioclip_export/fpack.py). A file on the phone finds its entry by the
+// (FaunaPulse pack, fpack.py in fauna-pulse-models). A file on the phone finds its entry by the
 // naming rule (tool/model_downloads/README.md): the part before its first
 // "_" is the entry's `id` (`flatbug-s_1024_fp16.tflite` → `flatbug-s`), or
 // by the exact name of the offered file.

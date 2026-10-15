@@ -3,11 +3,11 @@
 // An "embedder" turns one image into a fixed-length vector (an "embedding", e.g. 768
 // numbers for BioCLIP 2). Unlike the detectors, it returns no boxes and no classes: the
 // Dart side compares the vector against a label pack of name embeddings. The model file
-// is a TFLite export made by tool/bioclip_export/export_image_tower.py, which bakes the
+// is a TFLite export made by export_image_tower.py (fauna-pulse-models, bioclip_export/), which bakes the
 // colour normalisation into the graph, so this class feeds plain RGB in 0..1 and only
 // has to (a) lay the pixels out the way the model wants (HWC or CHW, see
 // InferenceModel.inputUsesNchw) and (b) L2-normalise the output defensively.
-// Round 266: a fixed-class classifier (e.g. insectDCT, tool/classifier_export) is loaded with
+// Round 266: a fixed-class classifier (e.g. insectDCT, fauna-pulse-models classifier_export/) is loaded with
 // normalize = false: its output is one raw score per class, and scaling it to length 1 would
 // change the probabilities the Dart side computes from it.
 //

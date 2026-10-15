@@ -1,5 +1,5 @@
 // FaunaPulse (round 264): on-device speed of detector files made by
-// tool/detector_export/export_detector.py, next to the bundled live detector.
+// detector_export/export_detector.py (fauna-pulse-models repository), next to the bundled live detector.
 //
 // Times every .tflite in the app's files/detector_check/ folder (copy them there with
 //   adb push X.tflite /data/local/tmp/ && adb shell run-as com.faunapulse.app cp /data/local/tmp/X.tflite files/detector_check/)

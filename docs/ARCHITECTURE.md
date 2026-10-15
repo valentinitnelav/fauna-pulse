@@ -105,6 +105,14 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
   on-screen size readout, resize snapping, and inference ROI all use the
   analysis frame; the high-res source only feeds the separate "saves N×N" label.
   See the invariants in AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
+- **Across repositories (round 311): the PC export tools.** The model files are made in
+  [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models), whose `docs/AGENT_OVERVIEW.md`
+  lists every shared rule. The main pairs: the `.fpack` writer `bioclip_export/fpack.py` and
+  `identification/label_pack.dart` (plus the fixtures in `test/fauna_pulse/fixtures/`);
+  `fpack.class_probabilities` and `identification/track_fusion.dart`; `APP_MAX_BYTES` in
+  `detector_export/export_detector.py` and `kMaxTfliteModelBytes`
+  (`models/model_file_security.dart`); the naming rule (`tool/model_downloads/README.md`) and
+  the file names the export scripts write.
 
 ## 5. What the plugin fork changed vs upstream
 

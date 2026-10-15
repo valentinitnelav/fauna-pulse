@@ -30,7 +30,7 @@
 //     scores the mean of its classes' log-probabilities over the heads, so it
 //     only scores high when every level agrees and K heads are not K
 //     independent votes; one softmax over the rows (fpack.py
-//     class_probabilities, the same formula, checked by a shared fixture).
+//     class_probabilities in fauna-pulse-models, the same formula, checked by a shared fixture).
 //     The crops' raw scores are averaged like BioCLIP's vectors (per head the
 //     "Average Logit"); everything after that is unchanged.
 

@@ -32,8 +32,8 @@ known".
   A label pack belongs to every model file with the same first part.
 - About 40 characters at most (without the extension).
 
-The export tools write names by this rule (`tool/detector_export`, `tool/classifier_export`,
-`tool/bioclip_export`). To check names: `python update_catalogue.py --names <files…>` lists
+The export tools write names by this rule (`detector_export`, `classifier_export`,
+`bioclip_export` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)). To check names: `python update_catalogue.py --names <files…>` lists
 the files that do not follow the rule, or whose `<model>` is not an `id` in the list.
 
 The app compares the `<model>` part loosely (upper and lower case, "-" and "." alike), so files
@@ -58,7 +58,7 @@ models (separate files plus a list of what belongs together).
 | label pack | `label_pack` | `.fpack`, `<model>_<list>_v<n>` | names with their embeddings, for BioCLIP |
 
 `.fpack` stands for **FaunaPulse pack**, the file format of both kinds of name list
-(`tool/bioclip_export/fpack.py`); its header says `"kind": "class_list"` or `"label_pack"`
+(`bioclip_export/fpack.py` of fauna-pulse-models); its header says `"kind": "class_list"` or `"label_pack"`
 (files written before round 276: `"classes"`, or nothing for a label pack; the app reads both).
 In the code, "pack" means such a file of either kind.
 
@@ -112,16 +112,16 @@ In the code, "pack" means such a file of either kind.
 
 ## Files offered since round 268 (release `v0.8.0-alpha.1`, names from before the naming rule)
 
-| Catalogue name | Local file to upload |
+| Catalogue name | Local file to upload (in fauna-pulse-models since round 311) |
 |---|---|
 | `MDV6-yolov10-c_int8_256.tflite` | `assets/models/custom/` (already uploaded) |
-| `flatbug-n_640_fp16.tflite` | `tool/detector_export/out/` |
-| `insectdct-v8-s_640_fp16.tflite` | `tool/detector_export/out/` |
-| `insectdct-cls-v7_eff2s_fp16.tflite`, `.fpack` | `tool/classifier_export/out/` |
-| `bioclip-2_image_fp16_4d.tflite` | `tool/bioclip_export/out/gpu4d/bioclip-2_image_fp16.tflite` (**rename**: the GPU export) |
-| `bioclip2_pollinator_orders_europe_v1.fpack`, `bioclip2_flower_visitors_32fam_v1.fpack` | `tool/bioclip_export/out/` |
-| `bioclip-25_image_fp16.tflite`, `bioclip25_*_v1.fpack` | `tool/bioclip_export/out/bioclip25/` |
-| `bioclip-2_mammals-birds-world_v1.fpack` (round 278, named by the rule) | `tool/bioclip_export/out/` |
+| `flatbug-n_640_fp16.tflite` | `detector_export/out/` |
+| `insectdct-v8-s_640_fp16.tflite` | `detector_export/out/` |
+| `insectdct-cls-v7_eff2s_fp16.tflite`, `.fpack` | `classifier_export/out/` |
+| `bioclip-2_image_fp16_4d.tflite` | `bioclip_export/out/gpu4d/bioclip-2_image_fp16.tflite` (**rename**: the GPU export) |
+| `bioclip2_pollinator_orders_europe_v1.fpack`, `bioclip2_flower_visitors_32fam_v1.fpack` | `bioclip_export/out/` |
+| `bioclip-25_image_fp16.tflite`, `bioclip25_*_v1.fpack` | `bioclip_export/out/bioclip25/` |
+| `bioclip-2_mammals-birds-world_v1.fpack` (round 278, named by the rule) | `bioclip_export/out/` |
 
 On 2026-10-02 only the MegaDetector file was online; the others answer "not found" (HTTP 404),
 which the app shows in plain words, until they are uploaded.

@@ -1,7 +1,7 @@
 // FaunaPulse (round 208): Dart side of the identification embedder.
 //
 // Loads a TFLite image-embedding model (the BioCLIP image tower exported by
-// tool/bioclip_export/export_image_tower.py) in the native plugin and embeds
+// export_image_tower.py of fauna-pulse-models) in the native plugin and embeds
 // batches of pre-cropped RGB images. One embedder is loaded at a time; every
 // call is awaited by the caller, so the native single-thread executor never
 // sees overlapping work. See Embedder.kt for the native counterpart.

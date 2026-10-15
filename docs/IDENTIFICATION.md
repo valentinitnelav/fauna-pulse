@@ -15,10 +15,10 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 
 | File | What it is | Size | Made with |
 |---|---|---|---|
-| `bioclip2_image_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `tool/bioclip_export/export_image_tower.py` |
+| `bioclip2_image_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `bioclip_export/export_image_tower.py` ([fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)) |
 | `bioclip-25_image_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
-| `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `tool/bioclip_export/build_label_pack.py` |
-| `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `tool/classifier_export/export_insectdct_cls.py` |
+| `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `bioclip_export/build_label_pack.py` |
+| `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `classifier_export/export_insectdct_cls.py` |
 
 The simplest way (round 278): the home screen's step 1, *What do you want to watch?*. Each answer
 chooses an identification model with its name list (and a detection model) for you, downloaded and set
@@ -46,7 +46,7 @@ belongs to every model file whose name starts the same way, by the naming rule o
 `bioclip-2_224_fp16.tflite` and `bioclip-2_224_fp32.tflite`. A pack also names its model in its
 header (`model_id`), so a renamed pack still finds a model whose name starts with that id
 (upper and lower case, "-" and "." alike: `bioclip-2.5` for `bioclip-25_image_fp16.tflite`).
-Your own files are built once on a PC (`tool/bioclip_export/README.md` has the commands; a
+Your own files are built once on a PC (`bioclip_export/README.md` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
 In the app: home screen Menu → **Download & import models** → *Import model files…* (also reached with
 *Download & import models…* on the Identify screen), or *Download from a link…*. Since round 275 one
@@ -191,7 +191,7 @@ probabilities, was systematically underconfident, which is what FaunaPulse did i
 can exceed every single photo's value; photos that disagree pull the average apart and lower
 every Conf.; a photo the model is far less sure about than its best photo carries no usable
 information and is left out (marked "left out" in the crops table). Every number can be
-recomputed off the phone with `tool/bioclip_export/reproduce_track_conf.py` from the stored
+recomputed off the phone with `bioclip_export/reproduce_track_conf.py` (fauna-pulse-models) from the stored
 embeddings and the label pack.
 
 **Validation status (honest).** The rule and its defaults have NOT been tested on
@@ -304,7 +304,7 @@ the model for the phone's GPU, the same path the live detector uses. BioCLIP fil
 before round 242 cannot run on any GPU: their attention layers use 5-dimensional tensors,
 which the phone's GPU engine rejects, so the app fell back to the CPU ("Failed to compile
 model"; the screen now adds that a newer export is needed). Files exported since then
-(`tool/bioclip_export`, `--attention 4d`, the default) run entirely on the GPU with the
+(fauna-pulse-models `bioclip_export`, `--attention 4d`, the default) run entirely on the GPU with the
 same weights and maths. Measured on the Xiaomi test phone (plugged in): 0.27 s per crop on
 the GPU instead of 2.6 s on the CPU; identifying a session of 11 crops took 9.9 s instead
 of 35 s, with the same answer for each track ID.
@@ -384,7 +384,7 @@ threshold, tables and files. Differences:
   taxonomy (*Model's own class* on the track ID's sheet, `model_class` in the files), because
   it can say more (a bee, not just Hymenoptera).
 - Its 104 classes are fixed: the flower visitors of insectDCT's camera-trap training data (list:
-  `tool/classifier_export/taxa/insectdct-cls-v7.csv`); anything else is forced into the nearest
+  `classifier_export/taxa/insectdct-cls-v7.csv` in fauna-pulse-models); anything else is forced into the nearest
   class or "Vegetation" ("no organism").
 - Speed on the Xiaomi test phone: 0.02 s per crop on the GPU (0.15 s on its CPU), more than
   ten times faster than BioCLIP 2 on the GPU.
@@ -394,7 +394,7 @@ test results (version 6) rank ConvNeXt-Base first, EfficientNetV2-S second, ResN
 (F1 averaged over classes at level 3: 0.76, 0.73, 0.69). ConvNeXt-Base runs only on the
 Xiaomi's CPU (0.7 s per crop; its GPU results are wrong there), so EfficientNetV2-S is the
 best one the GPU runs. The other two files and their class lists are made the same way
-(`tool/classifier_export/README.md`) and should work the same way (ResNet50 on the GPU,
+(`classifier_export/README.md` of fauna-pulse-models) and should work the same way (ResNet50 on the GPU,
 ConvNeXt-Base on the CPU; not tried in the app). Whether insectDCT or BioCLIP names this
 project's pollinators better has not been tested yet.
 

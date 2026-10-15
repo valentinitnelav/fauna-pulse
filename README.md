@@ -172,7 +172,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | Developer | Understand why a small ROI can still yield sharp photographs. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
-| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Export detectors to run inside FaunaPulse app. |
+| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
 | [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / tester | `.tflite` exports of published detectors, e.g. MegaDetector V6. |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
 | [RELEASE_PLAN.md](docs/RELEASE_PLAN.md) | Maintainer | Phased checklist for public release. |
@@ -214,7 +214,7 @@ Custom AI detectors can be added:
 
 - **Download from a link…** on the Download & import models screen (home screen: *AI models* in the bottom bar), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place), or
-- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md). For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect - Model training][maxs_train].
+- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect - Model training][maxs_train].
 
 See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
 
@@ -357,8 +357,12 @@ fauna-pulse/
 |   └── ultralytics_yolo/    # Modified Ultralytics YOLO Flutter plugin
 ├── ...
 └── tool/
-    └── bioclip_export       # Classification with BioCLIP
+    ├── model_downloads      # The app's download list and the naming rule of model files
+    └── video_eval           # Scoring track IDs against hand counts
 ```
+
+The PC tools that convert models for the phone (detectors, classifiers, BioCLIP) live in a
+separate repository, [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
 
 The application now sits at the repository root. The older path `/yolo-flutter-app/example/` may still appear in the historical development logs.
 
