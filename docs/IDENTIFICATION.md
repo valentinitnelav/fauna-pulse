@@ -69,8 +69,10 @@ Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS
 **One Start (round 274):** on *Find animals in photos* or *Find animals in videos*, switch on
 **Also identify them** and choose the model and name list under it. Start then finds the
 animals and their track IDs, opens *Identify organisms*, which starts by itself, and ends on
-the results. The steps below are the same, only without the taps. Live detection sessions
-already have their track IDs: use the steps below.
+the results. The steps below are the same, only without the taps. On *Find animals in
+videos* the settings of *Identify organisms* are also on the Identification card of
+*Detection, track ID and identification settings* (round 308; the same values). Live
+detection sessions already have their track IDs: use the steps below.
 
 1. Open a session's ⋮ menu (Sessions screen) or its summary → Photos tab → **Identify organisms**.
 2. Pick the model and the label pack. The screen shows how many crops will be processed

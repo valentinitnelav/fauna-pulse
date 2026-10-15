@@ -557,9 +557,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
               'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
               'the confidence threshold, before any tracking. An insect with boxes here but no '
-              'track ID was probably never that sure: lower "New-track confidence" (camera Settings → '
-              'Detection → Tracking → Advanced) and run "Find track IDs" again. The detector does not need to '
-              'run again for that.',
+              'track ID was probably never that sure: lower "New-track confidence" (Find animals in videos → '
+              '"Detection, track ID and identification settings", Track IDs card) and find the track IDs again. '
+              'The detector does not need to run again for that.',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],

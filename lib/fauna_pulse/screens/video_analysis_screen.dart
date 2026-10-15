@@ -30,6 +30,13 @@
 // visit, or all clips, can be deleted (postprocess/clip_cleanup.dart). The
 // session stays on this screen: "Find visits" still runs from the saved
 // boxes, only analyzing a deleted clip again is not possible.
+//
+// Round 308 (owner): every number to tune (detection, track IDs, and the
+// identification when "Also identify them" is on) sits on its own screen,
+// "Detection, track ID and identification settings" (video_tuning_screen.dart),
+// reachable before the first run; the tracker settings there are the
+// videos' own, apart from the camera's. One main button does what is due:
+// analyze, else find the track IDs again, else identify.
 
 import 'dart:convert';
 import 'dart:io';
@@ -58,13 +65,15 @@ import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_detector.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
+import '../tracking/byte_track.dart';
+import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
-import '../widgets/numeric_setting_field.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
+import '../widgets/tracker_tuning_fields.dart';
 import '../widgets/video_speed_chips.dart';
 import '../widgets/video_timeline_bar.dart';
 import '../widgets/home_button.dart';
@@ -74,6 +83,7 @@ import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
 import 'models_screen.dart';
 import 'video_import_screen.dart' show pickAndImportVideos;
+import 'video_tuning_screen.dart';
 
 /// Persisted settings of the video analysis (shared_preferences
 /// `video_analysis_*`, like `analysis_*` for photos; not SessionConfig,
@@ -88,11 +98,17 @@ class VideoAnalysisPrefs {
 
   /// Visit tracking (round 228): the live camera's two seconds-based
   /// settings, kept apart so trying other values on videos never changes
-  /// the camera. Algorithm and fine-tuning are the camera's. Minimum track
-  /// length 1 s since round 256 (was the camera's 0.2 s, which at 5 frames
-  /// per second is a single detection).
+  /// the camera. Minimum track length 1 s since round 256 (was the camera's
+  /// 0.2 s, which at 5 frames per second is a single detection).
   double occlusionSeconds;
   double minVisitSeconds;
+
+  /// Round 308 (owner): the tracker itself is the videos' own too: the
+  /// algorithm and both algorithms' values (stored as their JSON), starting
+  /// from the app's defaults, not from the camera's values.
+  TrackerAlgorithm trackerAlgorithm;
+  ByteTrackParams trackerParams;
+  CBiouParams cbiouParams;
 
   /// How often the phone's temperature, power and speed are logged during a
   /// run (round 232), seconds.
@@ -118,11 +134,36 @@ class VideoAnalysisPrefs {
     this.keepFrames = true,
     this.keepStepSeconds = 1.0,
     this.keepDurationSeconds = 10.0,
+    this.trackerAlgorithm = TrackerAlgorithm.bytetrack,
+    this.trackerParams = const ByteTrackParams(),
+    this.cbiouParams = const CBiouParams(),
   });
 
   /// The rule "Find visits" keeps frames by, or null when off.
   KeepFramesSettings? get keep =>
       keepFrames ? KeepFramesSettings(stepSeconds: keepStepSeconds, durationSeconds: keepDurationSeconds) : null;
+
+  /// [base] (the app's other settings) with the tracker "Find track IDs" uses
+  /// on videos; "New-track confidence" is never below the floor of [confidence],
+  /// as on the camera.
+  SessionConfig trackerConfig(SessionConfig base) {
+    final (p, cp) = raiseNewTrackFloor(trackerParams, cbiouParams, confidence);
+    return base.copyWith(
+      occlusionSeconds: occlusionSeconds,
+      minHitsSeconds: minVisitSeconds,
+      trackerAlgorithm: trackerAlgorithm,
+      trackerParams: p,
+      cbiouParams: cp,
+    );
+  }
+
+  /// The chosen algorithm's values as "Find track IDs" logs them.
+  Map<String, dynamic> get trackerJson {
+    final c = trackerConfig(const SessionConfig());
+    return trackerAlgorithm == TrackerAlgorithm.cbiou ? c.cbiouParams.toJson() : c.trackerParams.toJson();
+  }
+
+  double get newTrackConfidence => (trackerJson['highThresh'] as num).toDouble();
 
   static const _kModel = kVideoAnalysisModelPref;
   static const _kConf = 'video_analysis_confidence';
@@ -135,9 +176,20 @@ class VideoAnalysisPrefs {
   static const _kKeep = 'video_analysis_keep_frames';
   static const _kKeepStep = 'video_analysis_keep_step_s';
   static const _kKeepDuration = 'video_analysis_keep_duration_s';
+  static const _kTracker = 'video_analysis_tracker';
+  static const _kByteTrack = 'video_analysis_bytetrack';
+  static const _kCbiou = 'video_analysis_cbiou';
 
   static Future<VideoAnalysisPrefs> load() async {
     final p = await SharedPreferences.getInstance();
+    Map<String, dynamic> json(String key) {
+      try {
+        return (jsonDecode(p.getString(key) ?? '{}') as Map).cast<String, dynamic>();
+      } catch (_) {
+        return const {};
+      }
+    }
+
     return VideoAnalysisPrefs(
       modelId: p.getString(_kModel),
       confidence: p.getDouble(_kConf) ?? 0.25,
@@ -150,6 +202,9 @@ class VideoAnalysisPrefs {
       keepFrames: p.getBool(_kKeep) ?? true,
       keepStepSeconds: p.getDouble(_kKeepStep) ?? 1.0,
       keepDurationSeconds: p.getDouble(_kKeepDuration) ?? 10.0,
+      trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[p.getString(_kTracker)] ?? TrackerAlgorithm.bytetrack,
+      trackerParams: ByteTrackParams.fromJson(json(_kByteTrack)),
+      cbiouParams: CBiouParams.fromJson(json(_kCbiou)),
     );
   }
 
@@ -170,6 +225,9 @@ class VideoAnalysisPrefs {
     await p.setBool(_kKeep, keepFrames);
     await p.setDouble(_kKeepStep, keepStepSeconds);
     await p.setDouble(_kKeepDuration, keepDurationSeconds);
+    await p.setString(_kTracker, trackerAlgorithm.name);
+    await p.setString(_kByteTrack, jsonEncode(trackerParams.toJson()));
+    await p.setString(_kCbiou, jsonEncode(cbiouParams.toJson()));
   }
 }
 
@@ -307,11 +365,6 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   ClipCleanupPlan? _withoutVisits;
   bool _deleting = false;
 
-  /// The camera's tracking algorithm, which "Find visits" uses too.
-  TrackerAlgorithm _algorithm = TrackerAlgorithm.bytetrack;
-
-  /// The tracker's new-track confidence from the camera Settings (round 247).
-  double _newTrackConf = 0.5;
   VideoProgress? _progress;
 
   /// Lengths (ms) of the clips this run walks, in its order: the progress
@@ -355,10 +408,6 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _idChoice = idChoice;
       _alsoIdentify = alsoIdentify;
       _useGpu = appConfig.useGpu;
-      _algorithm = appConfig.trackerAlgorithm;
-      _newTrackConf = appConfig.trackerAlgorithm == TrackerAlgorithm.cbiou
-          ? appConfig.cbiouParams.highThresh
-          : appConfig.trackerParams.highThresh;
       _sessions = sessions;
       _model = models.where((m) => m.id == prefs.modelId).firstOrNull ?? models.firstOrNull;
       _loading = false;
@@ -671,15 +720,23 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               '${result.thermalPauses > 0 ? ', ${result.thermalPauses} heat pauses' : ''}'
               '${result.clipsFailed > 0 ? '. ${result.clipsFailed} could not be read; Continue tries them again' : ''}.';
     // Boxes alone are not visits yet: link them right away (seconds).
+    var found = false;
     if (failure == null && !result!.cancelled && result.clipsDone > 0) {
-      message = '$message ${await _findVisits(session)}';
+      final r = await _findVisits(session);
+      message = '$message ${r.message}';
+      found = r.ok;
       if (!mounted) return;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     await _refresh(session);
-    // Round 274: one Start from the boxes to the names, once the kept frames
-    // (what identification names) are all saved.
-    if (_identify && failure == null && !result!.cancelled && result.clipsDone > 0 && _kept.remaining == 0 && mounted) {
+    if (found) await _identifyAfter();
+  }
+
+  /// Round 274: one Start from the boxes to the names, once the kept frames
+  /// (what identification names) are all saved; round 308: also after
+  /// finding the track IDs again.
+  Future<void> _identifyAfter() async {
+    if (_identify && _kept.remaining == 0 && mounted) {
       if (_session case final s?) await _openIdentify(s);
     }
   }
@@ -721,7 +778,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             },
       blockedReason: _prefs.keepFrames
           ? null
-          : 'Needs "Keep frames of each track ID" (Track ID settings): identification names the saved frames.',
+          : 'Needs "Keep frames of each track ID" (in "Detection, track ID and identification settings" below): '
+                'identification names the saved frames.',
       choice: _idChoice,
       onChoiceChanged: (_) => setState(() {}),
       onManage: _busy ? null : _manageModels,
@@ -742,19 +800,19 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   /// Links the analyzed boxes of [session] into visits, off the screen's
   /// thread so it stays responsive, then saves the frames kept for them.
-  /// Returns the outcome in words.
-  Future<String> _findVisits(_VideoSession session) async {
+  /// Returns the outcome in words, and whether the track IDs were found.
+  Future<({String message, bool ok})> _findVisits(_VideoSession session) async {
     setState(() => _tracking = true);
     await _prefs.save();
     String message;
     var keptFrames = 0;
+    var ok = false;
     try {
-      final config = (await SessionConfig.load()).copyWith(
-        occlusionSeconds: _prefs.occlusionSeconds,
-        minHitsSeconds: _prefs.minVisitSeconds,
-      );
+      // Round 308: the videos' own tracker settings on the app's other ones.
+      final config = _prefs.trackerConfig(await SessionConfig.load());
       final r = await _trackInBackground(session.dir.path, config, _keepFor(session));
       keptFrames = r.keptFrames;
+      ok = true;
       message =
           'Found ${r.visits} ${r.visits == 1 ? 'track ID' : 'track IDs'} in ${r.clipsTracked} '
           '${r.clipsTracked == 1 ? 'clip' : 'clips'}.';
@@ -764,21 +822,26 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     }
     // Round 256: show the new track IDs, and under them the saving progress
     // with its Stop button, before the frames are saved; a first run showed
-    // neither until every frame was saved, so the screen looked idle.
-    if (keptFrames > 0 && mounted) await _refresh(session);
-    if (!mounted) return message;
+    // neither until every frame was saved, so the screen looked idle. Round
+    // 308: also without kept frames, so the main button never offers the
+    // track IDs just found as still to find.
+    if (ok && mounted) await _refresh(session);
+    if (!mounted) return (message: message, ok: ok);
     setState(() => _tracking = false);
     if (keptFrames > 0) message = '$message ${await _saveKeptFrames(session)}';
-    return message;
+    return (message: message, ok: ok);
   }
 
-  Future<void> _onFindVisits() async {
+  /// [identify]: then "Also identify them" too; not for the clips analyzed
+  /// so far while others are left.
+  Future<void> _onFindVisits({bool identify = true}) async {
     final s = _session;
     if (s == null || _busy) return;
-    final message = await _findVisits(s);
+    final r = await _findVisits(s);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
     await _refresh(s);
+    if (r.ok && identify) await _identifyAfter();
   }
 
   /// Saves the kept frames of [session] that are not saved yet, from the
@@ -951,95 +1014,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                   _modelPicker(),
                   const SizedBox(height: 12),
                   // Round 273: the proposed square stays in view, to accept
-                  // or change; every number to tune is one tap away below.
+                  // or change; every number to tune is one tap away below
+                  // (round 308: on its own screen).
                   _areaSection(),
                   const SizedBox(height: 8),
                   _alsoIdentifySection(),
-                  FoldSection(
-                    title: 'Advanced settings',
-                    subtitle: _advancedSummary(),
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _slider(
-                            label: 'Confidence threshold: ${_prefs.confidence.toStringAsFixed(2)}',
-                            help: 'Minimum score for a detection to count. 0.25 is the live camera\'s default.',
-                            value: _prefs.confidence,
-                            min: 0.05,
-                            max: 0.95,
-                            divisions: 18,
-                            onChanged: (v) => setState(() => _prefs.confidence = double.parse(v.toStringAsFixed(2))),
-                          ),
-                          _slider(
-                            label: 'Frames analyzed per second: ${_prefs.analysisFps.round()}',
-                            help:
-                                'How many pictures of each second of the video the detector looks at; the pictures in '
-                                'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
-                                'stay on a flower for a second or more, and a run takes less than half the time 15 '
-                                'would (not a third: the phone still has to unpack every picture). More pictures '
-                                'follow fast flying insects better (fewer missed or counted twice) but take longer; '
-                                '15 is what the live camera analyzes. This counts seconds of the video, not of the '
-                                'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
-                                'phone videos have 30 pictures per second; asking for more than the video has '
-                                'changes nothing.',
-                            value: _prefs.analysisFps,
-                            min: 1,
-                            max: 30,
-                            divisions: 29,
-                            onChanged: (v) => setState(() => _prefs.analysisFps = v.roundToDouble()),
-                          ),
-                          if (_session case final s? when s.totalMs > 0)
-                            Text(
-                              'About ${(s.totalMs / 1000 * min(_prefs.analysisFps, 30)).round()} frames for this session.',
-                              style: helperTextStyle,
-                            ),
-                          const SizedBox(height: 12),
-                          _slider(
-                            label: 'IoU threshold: ${_prefs.iou.toStringAsFixed(2)}',
-                            help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
-                            value: _prefs.iou,
-                            min: 0.05,
-                            max: 0.95,
-                            divisions: 18,
-                            onChanged: (v) => setState(() => _prefs.iou = double.parse(v.toStringAsFixed(2))),
-                          ),
-                          NumericSettingField(
-                            label: 'Pause above battery temperature',
-                            value: _prefs.thermalLimitC,
-                            min: 35,
-                            max: 45,
-                            decimals: 0,
-                            unitSuffix: '°C',
-                            onChanged: (v) {
-                              setState(() => _prefs.thermalLimitC = v);
-                              _prefs.save();
-                            },
-                            helperText:
-                                'The run pauses when the battery reaches this and resumes 3 °C lower. A hot battery '
-                                'ages faster, and a hot phone slows itself down anyway.',
-                          ),
-                          NumericSettingField(
-                            label: 'Measure the phone every',
-                            value: _prefs.sampleSeconds,
-                            min: 5,
-                            max: 60,
-                            decimals: 0,
-                            unitSuffix: 's',
-                            onChanged: (v) {
-                              setState(() => _prefs.sampleSeconds = v);
-                              _prefs.save();
-                            },
-                            helperText:
-                                'How often the battery temperature, power use and analysis speed are written down '
-                                'during a run, also while it pauses to cool down. They make the session\'s Graphs '
-                                'and the file phone_during_analysis.csv. 10 s, as on the live camera, shows how '
-                                'the phone warms up; shorter shows quick changes but gives a longer file.',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  const SizedBox(height: 8),
+                  _tuningEntry(),
                   const SizedBox(height: 16),
                   if (_running) _progressPanel() else _startButton(),
                   const SizedBox(height: 12),
@@ -1150,24 +1131,6 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     });
   }
 
-  Widget _slider({
-    required String label,
-    required String help,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required ValueChanged<double> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        HelpLabel(label: label, labelStyle: const TextStyle(color: Colors.white), helperText: help),
-        Slider(value: value.clamp(min, max), min: min, max: max, divisions: divisions, onChanged: _running ? null : onChanged),
-      ],
-    );
-  }
-
   /// Width in pixels of the selected session's picture: from the loaded
   /// first frame, else from its first clip's log record; null when unknown.
   int? get _pictureWidth {
@@ -1187,10 +1150,89 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     return 'square $px × $px px';
   }
 
-  /// The closed Advanced fold's one line: what a run uses now (round 273).
-  String _advancedSummary() =>
-      'Confidence ${_prefs.confidence.toStringAsFixed(2)}, ${_prefs.analysisFps.round()} frames per second, '
-      'IoU ${_prefs.iou.toStringAsFixed(2)}';
+  /// Round 308: what a run uses now, one line per card of the settings
+  /// screen, so the values stay in view while their controls are a tap away.
+  List<String> _tuningSummary() {
+    final p = _prefs;
+    final live = _session?.liveAi ?? false;
+    final model = _idChoice.model?.path.split('/').last;
+    final list = _idChoice.pack?.path.split('/').last;
+    return [
+      'Detection: confidence ${p.confidence.toStringAsFixed(2)}, ${p.analysisFps.round()} frames per second, '
+          'IoU ${p.iou.toStringAsFixed(2)}',
+      'Track IDs: ${p.trackerAlgorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, new-track confidence '
+          '${p.newTrackConfidence.toStringAsFixed(2)}, occlusion ${p.occlusionSeconds.toStringAsFixed(1)} s, minimum '
+          '${p.minVisitSeconds.toStringAsFixed(1)} s${live ? '' : ', keep frames ${p.keepFrames ? 'on' : 'off'}'}',
+      live
+          ? 'Identification: from the session\'s ⋮ menu (a live detection session)'
+          : !p.keepFrames
+          ? 'Identification: off, needs "Keep frames of each track ID"'
+          : !_alsoIdentify
+          ? 'Identification: off'
+          : !_idChoice.ready
+          ? 'Identification: on, but no model with a name list chosen'
+          : 'Identification: on, $model with $list',
+    ];
+  }
+
+  /// The way to the settings screen, with the values in use (round 308).
+  Widget _tuningEntry() {
+    final busy = _busy;
+    return Material(
+      color: Colors.white10,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: busy ? null : _openTuning,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            children: [
+              Icon(Icons.tune, color: busy ? Colors.white38 : Colors.white70),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Detection, track ID and identification settings',
+                      style: TextStyle(color: busy ? Colors.white38 : Colors.white, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 2),
+                    for (final line in _tuningSummary()) Text(line, style: helperTextStyle),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: busy ? Colors.white24 : Colors.white54),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTuning() async {
+    final s = _session;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoTuningScreen(
+          prefs: _prefs,
+          totalMs: s?.totalMs ?? 0,
+          // With the videos still there, a changed rate means a new analysis
+          // at it; without them, the track IDs keep the last run's rate.
+          analysedFps: s != null && s.clips.isEmpty ? (s.lastSettings?['analysis_fps'] as num?)?.toDouble() : null,
+          liveAi: s?.liveAi ?? false,
+          // Frames of deleted videos are never removed.
+          keptSaved: s != null && s.clips.isNotEmpty ? _kept.saved : 0,
+          alsoIdentify: _alsoIdentify,
+          identifyModel: _idChoice.ready ? _idChoice.model?.path.split('/').last : null,
+          identifyList: _idChoice.ready ? _idChoice.pack?.path.split('/').last : null,
+        ),
+      ),
+    );
+    // The settings were changed in place and saved there.
+    if (mounted) setState(() {});
+  }
 
   Widget _areaSection() {
     final roi = _roi;
@@ -1268,47 +1310,93 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
+  /// Round 308: one main button for what is due next. Clips to analyze
+  /// (pending, or analyzed with other detection settings) come first; then
+  /// track IDs that are missing, out of date or found with other settings;
+  /// then, with "Also identify them", the names (round 274: also after the
+  /// videos were deleted, from the kept frames).
   Widget _startButton() {
     final s = _session;
     final config = _config;
     final changed = s == null || config == null ? const <String>[] : _changedSettings(s, config);
     final pending = s == null ? 0 : s.clips.where((c) => !s.doneClips.contains(c)).length;
-    final allDone = s != null && pending == 0 && changed.isEmpty;
-    // Round 274: nothing (more) to analyze, so Start only names the animals
-    // found; also after the videos were deleted, from the kept frames.
-    final identifyOnly = _identify && s != null && s.doneClips.isNotEmpty && (allDone || s.clips.isEmpty);
+    final analyze = s != null && s.clips.isNotEmpty && (pending > 0 || changed.isNotEmpty);
+    final due = s != null && s.doneClips.isNotEmpty && (s.visits == null || _stale(s) || _trackChanged(s));
+    final track = !analyze && due;
+    // With clips left (a stopped run, or a clip that cannot be read), the
+    // clips analyzed so far still get their track IDs, e.g. to free storage
+    // during a long run in several parts.
+    final trackSoFar = pending > 0 && due;
+    final identifyOnly = !analyze && !track && _identify && s != null && s.doneClips.isNotEmpty;
+    final and = _identify ? ' and identify' : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: identifyOnly
-              ? (_busy ? null : () => _openIdentify(s))
-              : s == null || config == null || allDone || _busy || s.clips.isEmpty
+          onPressed: _busy || s == null
               ? null
-              : _start,
-          icon: Icon(identifyOnly ? Icons.biotech : Icons.play_arrow),
+              : analyze
+              ? (config == null ? null : _start)
+              : track
+              ? _onFindVisits
+              : identifyOnly
+              ? () => _openIdentify(s)
+              : null,
+          icon: Icon(
+            track || _tracking
+                ? Icons.timeline
+                : identifyOnly
+                ? Icons.biotech
+                : Icons.play_arrow,
+          ),
           label: Text(
             s == null
                 ? 'Pick a session to analyze'
+                : _tracking
+                ? 'Finding track IDs…'
+                : analyze
+                ? (changed.isNotEmpty
+                      ? 'Analyze again with these settings'
+                      : s.doneClips.isNotEmpty
+                      ? 'Continue ($pending of ${s.clips.length} clips left)'
+                      : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}$and')
+                : track
+                ? (s.visits == null ? 'Find track IDs$and' : 'Find track IDs again with these settings$and')
                 : identifyOnly
                 ? 'Identify the animals found'
                 : s.clips.isEmpty
                 ? (s.cutOff.isNotEmpty && s.doneClips.isEmpty ? 'No clip can be read' : 'The videos were deleted')
-                : allDone
-                ? 'All clips analyzed with these settings'
-                : changed.isNotEmpty
-                ? 'Analyze again with these settings'
-                : s.doneClips.isNotEmpty
-                ? 'Continue ($pending of ${s.clips.length} clips left)'
-                : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}${_identify ? ' and identify' : ''}',
+                : 'All clips analyzed with these settings',
           ),
         ),
-        if (_identify && !identifyOnly && s != null && s.clips.isNotEmpty && !allDone)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
+        if (_identify && (analyze || track))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'Then the track IDs are found, their frames saved, the animals identified and the results opened.',
+              analyze
+                  ? 'Then the track IDs are found, their frames saved, the animals identified and the results opened.'
+                  : 'Then their frames are saved, the animals identified and the results opened.',
               style: helperTextStyle,
+            ),
+          ),
+        if (trackSoFar)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _busy ? null : () => _onFindVisits(identify: false),
+              icon: const Icon(Icons.timeline, size: 18),
+              label: const Text('Find track IDs for the clips analyzed so far'),
+            ),
+          ),
+        // The Track IDs card's warning, also here where the buttons that do
+        // it are (frames of deleted videos stay).
+        if (s != null && due && !s.liveAi && !_prefs.keepFrames && _kept.saved > 0 && s.clips.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'With "Keep frames of each track ID" off, finding the track IDs again removes the ${_kept.saved} '
+              'frames saved before; they can be saved again from the videos later.',
+              style: const TextStyle(color: Colors.amber, fontSize: 13),
             ),
           ),
         if (s != null && s.cutOff.isNotEmpty) ...[
@@ -1335,7 +1423,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           Text(
             'The boxes found are saved in the session folder (video_detections.jsonl).'
             '${s.clips.isEmpty ? ' The videos were deleted to free storage, so they cannot be analyzed '
-                      'again; "Find track IDs" below still works from the saved boxes.' : ''}',
+                      'again; the track IDs can still be found again from the saved boxes.' : ''}',
             style: helperTextStyle,
           ),
         ],
@@ -1343,37 +1431,45 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
-  /// "Visits": tracking settings, Find visits, the last result and Share.
-  /// Shown once at least one clip is analyzed.
-  /// The rate this session's frames were analysed at (the last run's, else
-  /// the current setting): what "Find track IDs" turns seconds into frames
-  /// with (round 256; a video with fewer frames per second needs fewer).
-  double _trackFps(_VideoSession s) =>
-      (s.lastSettings?['analysis_fps'] as num?)?.toDouble() ?? _prefs.analysisFps;
-
-  int _minTrackDetections(_VideoSession s) =>
-      SessionConfig(minHitsSeconds: _prefs.minVisitSeconds).minHitsFramesFor(_trackFps(s));
-
-  static String _fmtFps(double fps) => fps == fps.roundToDouble() ? '${fps.round()}' : fps.toStringAsFixed(1);
-
-  Widget _visitsSection() {
-    final s = _session;
-    if (s == null || s.doneClips.isEmpty) return const SizedBox.shrink();
+  /// The analysis went further or was done again since the track IDs were
+  /// found, so they leave some of it out.
+  static bool _stale(_VideoSession s) {
     final v = s.visits;
-    final busy = _busy;
-    final kept = _kept;
-    final stale = v != null &&
+    return v != null &&
         (v.detectionsRunMs != s.detectionsRunMs ||
             v.clips.length != s.doneClips.length ||
             !v.clips.every(s.doneClips.contains));
-    final changed = v != null &&
-        (v.occlusionSeconds != _prefs.occlusionSeconds ||
-            v.minHitsSeconds != _prefs.minVisitSeconds ||
-            v.algorithm != _algorithm.name ||
-            // Round 247; older runs did not log it.
-            (v.newTrackConfidence != null && v.newTrackConfidence != _newTrackConf) ||
-            v.keep != _keepFor(s));
+  }
+
+  /// The track ID settings differ from those the track IDs were found with.
+  bool _trackChanged(_VideoSession s) {
+    final v = s.visits;
+    if (v == null) return false;
+    final logged = v.trackerValues;
+    return v.occlusionSeconds != _prefs.occlusionSeconds ||
+        v.minHitsSeconds != _prefs.minVisitSeconds ||
+        v.algorithm != _prefs.trackerAlgorithm.name ||
+        // Round 308: "New-track confidence" and the fine-tuning, the videos'
+        // own since then; a value an older run did not log does not count.
+        trackerUserValues(_prefs.trackerJson).entries.any((e) => logged.containsKey(e.key) && logged[e.key] != e.value) ||
+        v.keep != _keepFor(s);
+  }
+
+  /// "Track IDs": the last result, the kept frames, Share and Free storage
+  /// (round 308: the settings and the button to find them are above).
+  Widget _visitsSection() {
+    final s = _session;
+    final v = s?.visits;
+    if (s == null || s.doneClips.isEmpty || v == null) return const SizedBox.shrink();
+    final busy = _busy;
+    final kept = _kept;
+    final stale = _stale(s);
     const amber = TextStyle(color: Colors.amber, fontSize: 13);
+    // With clips left, the main button continues the analysis; the one under
+    // it finds the track IDs.
+    final again = s.clips.any((c) => !s.doneClips.contains(c))
+        ? '"Find track IDs for the clips analyzed so far" above'
+        : 'the button above';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1396,166 +1492,33 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               style: helperTextStyle,
             ),
           ),
-        const SizedBox(height: 4),
-        // Round 273: the numbers to tune are folded; the button and the
-        // results below stay in view.
-        FoldSection(
-          title: 'Track ID settings',
-          subtitle:
-              'Occlusion tolerance ${_prefs.occlusionSeconds.toStringAsFixed(1)} s, minimum track '
-              '${_prefs.minVisitSeconds.toStringAsFixed(1)} s'
-              '${s.liveAi ? '' : ', keep frames ${_prefs.keepFrames ? 'on' : 'off'}'}',
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                NumericSettingField(
-                  label: 'Occlusion tolerance',
-                  value: _prefs.occlusionSeconds,
-                  min: 0.2,
-                  max: 10,
-                  decimals: 1,
-                  unitSuffix: 's',
-                  helperText:
-                      'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
-                      'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
-                      'time between two analyzed frames. Default 3 s, as on the live camera.',
-                  onChanged: (x) {
-                    setState(() => _prefs.occlusionSeconds = x);
-                    _prefs.save();
-                  },
-                ),
-                NumericSettingField(
-                  label: 'Minimum track length',
-                  value: _prefs.minVisitSeconds,
-                  min: 0,
-                  max: 2,
-                  decimals: 1,
-                  unitSuffix: 's',
-                  helperText:
-                      'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-                      'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
-                      'below), so an insect it sees only on and off is dropped too when the value is high. '
-                      'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
-                      '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
-                      'other values with "Find track IDs" again.',
-                  onChanged: (x) {
-                    setState(() => _prefs.minVisitSeconds = x);
-                    _prefs.save();
-                  },
-                ),
-                Text(
-                  '= ${_minTrackDetections(s)} ${_minTrackDetections(s) == 1 ? 'detection' : 'detections'} in a row '
-                  'at ${_fmtFps(_trackFps(s))} frames per second.',
-                  style: helperTextStyle,
-                ),
-                Text(
-                  'Tracking method: ${_algorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, chosen under '
-                  'camera Settings → Detection → Tracking → Advanced. A new track ID starts only from a box the detector '
-                  'is at least ${_newTrackConf.toStringAsFixed(2)} sure of ("New-track confidence", same place); '
-                  'weaker boxes only continue one. A changed value needs only "Find track IDs" again, not a new analysis.',
-                  style: helperTextStyle,
-                ),
-                const SizedBox(height: 4),
-                if (s.liveAi)
-                  const Text(
-                    'No frames are kept for these track IDs: live detection\'s own photos stay the session\'s pictures.',
-                    style: helperTextStyle,
-                  )
-                else ...[
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Keep frames of each track ID'),
-                    subtitle: const Text(
-                      'Saves pictures of every track ID from the videos, like the photos the live camera takes, so '
-                      'you can look at the insects and identify them. Uses some storage: one picture is about '
-                      'as big as a live photo.',
-                      style: helperTextStyle,
-                    ),
-                    value: _prefs.keepFrames,
-                    onChanged: busy
-                        ? null
-                        : (x) {
-                            setState(() => _prefs.keepFrames = x);
-                            _prefs.save();
-                          },
-                  ),
-                  if (!_prefs.keepFrames && kept.saved > 0)
-                    Text(
-                      'Finding track IDs again with this off removes the ${kept.saved} frames saved before; '
-                      'they can be saved again from the videos later.',
-                      style: const TextStyle(color: Colors.amber, fontSize: 13),
-                    ),
-                  if (_prefs.keepFrames) ...[
-                    NumericSettingField(
-                      label: 'Keep a frame every',
-                      value: _prefs.keepStepSeconds,
-                      min: 0.1,
-                      max: 10,
-                      decimals: 1,
-                      unitSuffix: 's',
-                      helperText:
-                          'The first frame of a track ID is always kept, then one after each such step. Default 1 s, '
-                          'as the live camera\'s photo step. Shorter catches more poses but fills more storage.',
-                      onChanged: (x) {
-                        setState(() => _prefs.keepStepSeconds = x);
-                        _prefs.save();
-                      },
-                    ),
-                    NumericSettingField(
-                      label: 'For up to',
-                      value: _prefs.keepDurationSeconds,
-                      min: 1,
-                      max: 300,
-                      decimals: 0,
-                      unitSuffix: 's',
-                      helperText:
-                          'How long into a track ID frames keep being saved; a long track ID gives no more after this. '
-                          'Default 10 s, as the live camera\'s photo duration. With these two settings a track ID '
-                          'gives up to about ${1 + (_prefs.keepDurationSeconds / _prefs.keepStepSeconds).floor()} frames.',
-                      onChanged: (x) {
-                        setState(() => _prefs.keepDurationSeconds = x);
-                        _prefs.save();
-                      },
-                    ),
-                  ],
-                ],
-              ],
-            ),
-          ],
-        ),
         const SizedBox(height: 8),
-        FilledButton.tonalIcon(
-          onPressed: busy ? null : _onFindVisits,
-          icon: const Icon(Icons.timeline),
-          label: Text(_tracking ? 'Finding track IDs…' : v == null ? 'Find track IDs' : 'Find track IDs again'),
+        Text(
+          '${v.visits} ${v.visits == 1 ? 'track ID' : 'track IDs'} in ${v.clips.length} of ${s.allClipCount} clips '
+          '(occlusion tolerance ${v.occlusionSeconds.toStringAsFixed(1)} s, minimum track '
+          '${v.minHitsSeconds.toStringAsFixed(1)} s).',
         ),
-        if (v != null) ...[
-          const SizedBox(height: 8),
+        if (stale)
           Text(
-            '${v.visits} ${v.visits == 1 ? 'track ID' : 'track IDs'} in ${v.clips.length} of ${s.allClipCount} clips '
-            '(occlusion tolerance ${v.occlusionSeconds.toStringAsFixed(1)} s, minimum track '
-            '${v.minHitsSeconds.toStringAsFixed(1)} s).',
-          ),
-          if (stale)
-            const Text('The videos were analyzed further or again since: find track IDs again to include that.', style: amber)
-          else if (changed)
-            const Text('Settings changed: find track IDs again to use them.', style: amber),
-          ..._keptFramesStatus(kept),
-          const SizedBox(height: 4),
-          Text(
-            'Saved in the session folder: track_ids.csv (one row per track ID), mot/ (every box, for annotation '
-            'tools)${kept.total > 0 ? ', roi_frames/ (the kept frames)' : ''} and post_tracks.jsonl.',
-            style: helperTextStyle,
-          ),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(
-            onPressed: busy ? null : () => _shareResults(s),
-            icon: const Icon(Icons.share),
-            label: const Text('Share results'),
-          ),
-          ..._freeStorage(s, stale: stale),
-        ],
+            'The videos were analyzed further or again since: $again finds the track IDs again to include that.',
+            style: amber,
+          )
+        else if (_trackChanged(s))
+          Text('Settings changed: $again finds the track IDs again with them.', style: amber),
+        ..._keptFramesStatus(kept),
+        const SizedBox(height: 4),
+        Text(
+          'Saved in the session folder: track_ids.csv (one row per track ID), mot/ (every box, for annotation '
+          'tools)${kept.total > 0 ? ', roi_frames/ (the kept frames)' : ''} and post_tracks.jsonl.',
+          style: helperTextStyle,
+        ),
+        const SizedBox(height: 6),
+        OutlinedButton.icon(
+          onPressed: busy ? null : () => _shareResults(s),
+          icon: const Icon(Icons.share),
+          label: const Text('Share results'),
+        ),
+        ..._freeStorage(s, stale: stale),
       ],
     );
   }
@@ -1566,10 +1529,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final busy = _busy;
     final none = _withoutVisits;
     final pending = s.clips.where((c) => !s.doneClips.contains(c)).length;
-    final String? allBlocked = stale
-        ? 'Find track IDs again first: the track IDs do not include the latest analysis yet.'
-        : pending > 0
+    // Clips left first: finding the track IDs again does not lift that.
+    final String? allBlocked = pending > 0
         ? 'Analyze every clip first ($pending left).'
+        : stale
+        ? 'Find track IDs again first: the track IDs do not include the latest analysis yet.'
         : _kept.remaining > 0
         ? 'Save the remaining kept frames first: they cannot be saved without the videos.'
         : null;
@@ -1733,7 +1697,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           ),
           if (p.note.isNotEmpty) Text('Paused: ${p.note}', style: const TextStyle(color: Colors.amber, fontSize: 13)),
           if (p.tempC != null)
-            ...temperatureGauge(p.tempC!, _prefs.thermalLimitC, paused: p.note.isNotEmpty, limitWhere: 'under Advanced settings'),
+            ...temperatureGauge(
+              p.tempC!,
+              _prefs.thermalLimitC,
+              paused: p.note.isNotEmpty,
+              limitWhere: 'in "Detection, track ID and identification settings"',
+            ),
         ],
         const SizedBox(height: 8),
         OutlinedButton.icon(

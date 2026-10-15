@@ -4,9 +4,11 @@
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart' show IdentifyPrefs;
 import 'package:fauna_pulse/fauna_pulse/identification/identification_choice.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/identification_choice_fields.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/identification_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/numeric_setting_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,6 +130,47 @@ void main() {
       expect(find.text('Model (.tflite)'), findsOneWidget, reason: 'the shared fields');
       expect(find.text('Name list (.fpack)'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing, reason: 'not started');
+      expect(tester.takeException(), isNull);
+    });
+
+    // Round 308: the settings are shared with the video settings screen.
+    testWidgets('Advanced settings show and save as they change', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final models = Directory('${tmp.path}/identification/models')..createSync(recursive: true);
+      final packs = Directory('${tmp.path}/identification/packs')..createSync(recursive: true);
+      File('${models.path}/insectdct-eff2s_cls.tflite').writeAsBytesSync([0]);
+      File('${packs.path}/insectdct-eff2s_cls.fpack').writeAsBytesSync([0]);
+      final session = Directory('${tmp.path}/sessions/empty')..createSync(recursive: true);
+      File('${session.path}/session.jsonl').writeAsStringSync(
+        '{"type":"start_of_session","time_ms":1000,"config":{"captureTrigger":"timelapse"}}\n',
+      );
+      await tester.pumpWidget(MaterialApp(home: IdentificationScreen(sessionDir: session)));
+      final why = find.textContaining('No crops to identify');
+      for (var i = 0; i < 250 && why.evaluate().isEmpty; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      final list = find.byType(Scrollable).first;
+      final fold = find.text('Advanced settings');
+      await tester.scrollUntilVisible(fold, 200, scrollable: list);
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+      final field = find.text('Crops per track ID (0 = all)');
+      await tester.scrollUntilVisible(field, 200, scrollable: list);
+      await tester.pump();
+      await tester.enterText(
+        find.descendant(of: find.ancestor(of: field, matching: find.byType(NumericSettingField)), matching: find.byType(TextField)),
+        '5',
+      );
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      final saved = await IdentifyPrefs.load();
+      expect(saved.maxCropsPerTrack, 5);
+      expect(saved.modelName, 'insectdct-eff2s_cls.tflite', reason: 'the screen saves its choice with them');
+      await tester.scrollUntilVisible(find.textContaining('Changes nothing in the app'), 200, scrollable: list);
       expect(tester.takeException(), isNull);
     });
   });

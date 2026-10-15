@@ -114,17 +114,23 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `analysis_screen.dart` (Find animals in photos); `field_notes_screen.dart` (Field notes, from the
 camera screen's pin button); `video_import_screen.dart`
 (`pickAndImportVideos`); `video_analysis_screen.dart` (Find animals in videos,
-`VideoSquareEditor`); `identification_screen.dart`, `identification_results_screen.dart`,
+`VideoSquareEditor`, `VideoAnalysisPrefs`); `video_tuning_screen.dart` (its "Detection, track ID
+and identification settings" cards); `identify_settings_fields.dart` (`IdentifySettingsFields`,
+shared by Identify organisms and the video cards); `identification_screen.dart`, `identification_results_screen.dart`,
 `identification_choice_fields.dart` (`AlsoIdentify`); `problem_description_screen.dart`.
 
 **widgets/** `roi_overlay.dart`, `roi_mask.dart`, `track_box_painter.dart` (live boxes cyan
 `0xFF00E5FF`; ROI yellow `0xFFFFEB3B`), `preview_transform.dart`, `setting_help.dart`
-(`HelpLabel`, `HelpSwitchTile`, `HelpRow`, `FoldSection`, `helperTextStyle`),
+(`HelpLabel`, `HelpSwitchTile`, `HelpRow`, `FoldSection`, `helperTextStyle`, `NotApplicable`: greyed,
+not editable, with the reason),
 `numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
 `video_review_player.dart`, `video_timeline_bar.dart` (`VideoTimelineBar`, the one time bar of
 every video player), `video_speed_chips.dart`, `temperature_gauge.dart`,
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
-`roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons), `dialog_title.dart`
+`roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons; optional
+`color`/`icon`, `kTrackingColor` light green + `Icons.timeline` for track ID cards),
+`tracker_tuning_fields.dart` (`TrackerTuning`, `newTrackFloor`/`raiseNewTrackFloor`, shared by
+camera Settings and the video Track IDs card), `dialog_title.dart`
 (`DialogTitle`, the X of every window),
 `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
@@ -173,8 +179,9 @@ every video player), `video_speed_chips.dart`, `temperature_gauge.dart`,
 | Crop 1:1 lock | off | |
 
 Outside `SessionConfig` (shared_preferences): focus (manual close-up preset, screen state);
-Find animals in photos `analysis_*`; Find animals in videos `video_analysis_*` (5 fps, occlusion 3
-s, min track 1 s); Identify `identify_*`; thermal pause 43 °C (resume 3 °C lower) for video
+Find animals in photos `analysis_*` (tracker = camera's); Find animals in videos `video_analysis_*`
+(5 fps, occlusion 3 s, min track 1 s, own tracker `video_analysis_tracker`/`_bytetrack`/`_cbiou`
+from the class defaults: ByteTrack, New-track 0.50, never touching the camera's); Identify `identify_*`; thermal pause 43 °C (resume 3 °C lower) for video
 analysis and identification; chosen models `analysis_model`, `video_analysis_model`,
 `identify_model`, `identify_pack`; `home_watch_use`, `watch_choice_<answer id>` (the models used last per answer).
 
@@ -413,7 +420,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Two pure-Dart trackers behind `InsectTracker`: ByteTrack-style (default; distance fallback
   against ID fragmentation) and C-BIoU-style (buffered IoU). Shared seconds-based settings
   (frame counts re-derived live; videos use one fixed rate per run). New track IDs start only at
-  "New-track confidence" (`highThresh` 0.5). The camera swaps the tracker only when settings
+  "New-track confidence" (`highThresh` 0.5; Find animals in videos keeps its own tracker values in
+  `VideoAnalysisPrefs`). The camera swaps the tracker only when settings
   close (settings are locked while recording). The start record's
   `tracker_params.algorithm` names it.
 - Replay: `flutter test test/fauna_pulse/tracker_replay_test.dart
@@ -458,6 +466,17 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Area: a session never analysed proposes the largest centred square of its first clip
   (`largestSquareSidePx`, one rule for camera, editor and default); a session run before keeps
   its last area. `VideoSquareEditor` plays clips muted at 4×.
+- Settings: one tile "Detection, track ID and identification settings" (three summary lines,
+  disabled while busy) opens `VideoTuningScreen`, also before any run: `ModelKindPanel` cards
+  Detection (confidence, fps, IoU, pause temperature, sample interval), Track IDs (`TrackerTuning`
+  on `VideoAnalysisPrefs.trackerConfig`, New-track ≥ confidence + `kNewTrackBuffer` 0.10,
+  occlusion, minimum length, keep frames, fine-tuning fold, reset) and Identification
+  (`IdentifySettingsFields` in `NotApplicable` when live AI, keep frames off or Also identify
+  off). Prefs are edited in place and saved on change.
+- One main button for what is due: analyze (pending clips or changed detection settings) >
+  find track IDs (missing, `_stale`, or `_trackChanged` vs `post_track_start` incl.
+  `trackerUserValues`) > "Identify the animals found"; with clips left, a text button "Find
+  track IDs for the clips analyzed so far". Results section only once track IDs exist.
 - Video tab (`VideoReviewPlayer`, ExoPlayer via `video_player`, over `VideoBoxTimeline`): play
   state on a `ValueNotifier`, not the controller (rebuilding at 10 Hz made playback stutter);
   boxes hidden while the player fetches the picture after a jump; wake-lock while playing. One

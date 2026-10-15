@@ -1169,10 +1169,13 @@ The file holds boxes and these samples only; the next files turn the boxes into 
 
 ### Track IDs: `post_tracks.jsonl`, `track_ids.csv`, `mot/` (round 228+)
 
-*Find track IDs* (under the analysis on the "Find animals in videos" screen, and automatically
-after each finished analysis) runs the boxes through the same tracker a live session
-uses (ByteTrack or C-BIoU, chosen under camera Settings, with the screen's own
-**occlusion tolerance** and **minimum track length**). It follows each insect from frame
+*Find track IDs* (the main button of the "Find animals in videos" screen when only the
+track IDs are due, *Find track IDs for the clips analyzed so far* under it while clips are
+left, and automatically after each finished analysis) runs the boxes through
+the same tracker a live session uses, with the videos' own settings (round 308: the
+algorithm, ByteTrack or C-BIoU, its "New-track confidence" and fine-tuning, the
+**occlusion tolerance** and the **minimum track length**, all on the Track IDs card of
+"Detection, track ID and identification settings", apart from the camera's). It follows each insect from frame
 to frame, so one insect seen in many frames counts as one track ID. It takes seconds and
 never re-runs the detector, so it can be repeated with other settings; each run
 **replaces** these three outputs (each is written under a temporary name and renamed when

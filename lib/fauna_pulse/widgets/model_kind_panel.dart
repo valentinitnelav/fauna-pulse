@@ -3,7 +3,8 @@
 // (identification) each sit in a panel of their own colour, with a thick line
 // in that colour on top, so the two kinds are told apart at a glance: on the
 // "What do you want to watch?" pages (Choose other models) and on Download &
-// import models.
+// import models. Round 308: the same cards hold the settings of "Find animals
+// in videos", with a third colour and icon for the track IDs.
 import 'package:flutter/material.dart';
 
 import 'setting_help.dart' show helperTextStyle;
@@ -19,15 +20,26 @@ const kIdentificationColor = Colors.orange;
 const kDetectionIcon = Icons.center_focus_strong_outlined;
 const kIdentificationIcon = Icons.biotech_outlined;
 
+/// Round 308: green and the "Find track IDs" button's icon for the cards of
+/// the tracker settings, clearly apart from the two kinds of model.
+const kTrackingColor = Colors.lightGreen;
+const kTrackingIcon = Icons.timeline;
+
 class ModelKindPanel extends StatelessWidget {
   final bool identification;
+
+  /// Another colour and icon than [identification]'s (round 308).
+  final Color? color;
+  final IconData? icon;
   final String title;
   final String? subtitle;
   final List<Widget> children;
 
   const ModelKindPanel({
     super.key,
-    required this.identification,
+    this.identification = false,
+    this.color,
+    this.icon,
     required this.title,
     this.subtitle,
     required this.children,
@@ -35,7 +47,7 @@ class ModelKindPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = identification ? kIdentificationColor : kDetectionColor;
+    final color = this.color ?? (identification ? kIdentificationColor : kDetectionColor);
     final subtitle = this.subtitle;
     // A Material (not a plain coloured box), so the ripple of a tap on a row
     // shows on the fill.
@@ -52,7 +64,7 @@ class ModelKindPanel extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(identification ? kIdentificationIcon : kDetectionIcon, size: 22, color: color),
+                  Icon(icon ?? (identification ? kIdentificationIcon : kDetectionIcon), size: 22, color: color),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

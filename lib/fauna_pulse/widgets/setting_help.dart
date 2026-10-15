@@ -288,3 +288,40 @@ class _FoldSectionState extends State<FoldSection> {
     );
   }
 }
+
+/// [child] as usual when [applies]; otherwise greyed and not editable, with
+/// [note] saying why (the stored values are kept for later). Round 308:
+/// moved out of the settings sheet for the video settings' Identification
+/// card; [noteFirst] puts the note above a long block, whose end may be off
+/// the screen.
+class NotApplicable extends StatelessWidget {
+  final bool applies;
+  final String note;
+  final Widget child;
+  final bool noteFirst;
+
+  const NotApplicable({
+    super.key,
+    required this.applies,
+    required this.note,
+    required this.child,
+    this.noteFirst = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (applies) return child;
+    final text = Padding(
+      padding: EdgeInsets.only(bottom: 8, top: noteFirst ? 4 : 0),
+      child: Text(note, style: helperTextStyle),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (noteFirst) text,
+        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
+        if (!noteFirst) text,
+      ],
+    );
+  }
+}

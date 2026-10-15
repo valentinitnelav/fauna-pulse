@@ -1,5 +1,6 @@
 // Round 227 screens for imported videos: the import screen, "Run AI on
-// videos" (with its Visits section, r228) and its square editor. Each gets the 360-px layout check (no
+// videos" (with its Visits section, r228), its settings screen (round 308)
+// and its square editor. Each gets the 360-px layout check (no
 // overflow, last control above a 48-px navigation bar); the import screen
 // also runs a real import into a temp folder, and the summary must name the
 // imported session's mode instead of guessing a camera mode.
@@ -11,17 +12,25 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart' show IdentifyPrefs;
 import 'package:fauna_pulse/fauna_pulse/identification/identification_choice.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/models/roi.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_detector.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_frame_keeper.dart';
-import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart' show KeepFramesSettings;
+import 'package:fauna_pulse/fauna_pulse/postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_start_time.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/session_summary_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_import_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/video_tuning_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
+import 'package:fauna_pulse/fauna_pulse/tracking/tracker.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/model_kind_panel.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/numeric_setting_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,17 +51,55 @@ Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   expect(ready, findsWidgets, reason: 'content never appeared: $ready');
 }
 
-/// Opens the fold titled [title] (round 273: the settings of the Find
-/// screens sit in closed folds).
-Future<void> _openFold(WidgetTester tester, String title) async {
-  final fold = find.text(title);
-  await tester.scrollUntilVisible(fold, 200, scrollable: find.byType(Scrollable).first);
-  await tester.pump();
-  await tester.tap(fold);
+Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
 }
+
+/// Round 308: opens "Detection, track ID and identification settings" from
+/// the video screen, and closes it with Back.
+Future<void> _openTuning(WidgetTester tester) async {
+  final entry = find.text('Detection, track ID and identification settings');
+  await tester.scrollUntilVisible(entry, 200, scrollable: find.byType(Scrollable).first);
+  await tester.pump();
+  await tester.tap(entry);
+  await _pumpUntil(tester, find.text('Detection')); // the first card's title
+  await _settle(tester);
+}
+
+Future<void> _closeTuning(WidgetTester tester) async {
+  await tester.pageBack();
+  await _settle(tester);
+}
+
+/// Scrolls the settings screen to [finder].
+Future<void> _scrollTo(WidgetTester tester, Finder finder, [double delta = 200]) async {
+  await tester.scrollUntilVisible(finder, delta, scrollable: find.byType(Scrollable).first);
+  await tester.pump();
+}
+
+/// The number box of the NumericSettingField labelled [label].
+Finder _numberBox(String label) => find.descendant(
+  of: find.ancestor(of: find.text(label), matching: find.byType(NumericSettingField)),
+  matching: find.byType(TextField),
+);
+
+/// A post_tracks.jsonl of "Find track IDs" on [clips] with the app's default
+/// video settings (round 308), so a test session has up-to-date track IDs.
+String postTracks(List<String> clips, {bool keepFrames = true, int trackIds = 0}) => [
+  jsonEncode({
+    'type': 'post_track_start',
+    'time_ms': 1,
+    'run_id': 1,
+    'occlusion_seconds': 3.0,
+    'min_hits_seconds': 1.0,
+    'tracker': {'algorithm': 'bytetrack', ...const ByteTrackParams().toJson()},
+    'clips': clips,
+    'keep_frames': keepFrames ? const KeepFramesSettings(stepSeconds: 1, durationSeconds: 10).toJson() : null,
+  }),
+  jsonEncode({'type': 'post_track_end', 'time_ms': 2, 'track_ids': trackIds}),
+].join('\n');
 
 /// Round 274: an insectDCT classifier with its class list, as files (the
 /// fields show their sizes), for the "Also identify them" switch.
@@ -62,6 +109,45 @@ IdentificationChoice idChoice(Directory dir) {
   return IdentificationChoice.fromFiles([model], [list], {
     list.path: {'model_id': 'insectdct-eff2s_cls', 'kind': 'classes', 'rows': 104, 'sink_rows': 1, 'heads': [0, 1]},
   });
+}
+
+/// A session whose only clip, a, was analysed at 10 frames per second: one
+/// insect rests in it for 3 s.
+Directory _oneTrackSession(Directory tmp) {
+  final session = Directory('${tmp.path}/Meadow');
+  Directory('${session.path}/videos').createSync(recursive: true);
+  File('${session.path}/videos/a.mp4').writeAsStringSync('video');
+  File('${session.path}/session.jsonl').writeAsStringSync(
+    '{"type":"start_of_session","time_ms":1000,"source":"imported_video"}\n',
+  );
+  final settings = const VideoRunConfig(
+    modelPath: 'test_model',
+    modelName: 'test_model.tflite',
+    confidence: 0.25,
+    iou: 0.7,
+    analysisFps: 10,
+    useGpu: true,
+  ).identity;
+  File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+    [
+      jsonEncode({'type': 'video_run_start', 'time_ms': 111, 'settings': settings}),
+      '{"type":"video_clip_start","clip":"a.mp4","start_epoch_ms":1000000,"width":1920,"height":1080}',
+      for (var t = 0; t <= 3000; t += 100)
+        jsonEncode({
+          'type': 'raw_detections',
+          'frame_ms': 1000000 + t,
+          'clip': 'a.mp4',
+          'pts_us': t * 1000,
+          'frame': t * 30 ~/ 1000,
+          'boxes': [
+            [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+          ],
+        }),
+      '{"type":"video_clip_done","clip":"a.mp4","frame_width":1920,"frame_height":1080,'
+          '"roi_px":[0,0,1920,1080],"class_names":["bee"]}',
+    ].join('\n'),
+  );
+  return session;
 }
 
 Directory _tempDir(String name) {
@@ -132,7 +218,8 @@ class _GatedFrameSaver extends _FakeFrameSaver {
 
 void main() {
   testWidgets('leaving while the kept frames are saved asks first (r256)', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    // The rate the clip was analysed at, so only the track IDs are due.
+    SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
     // Tall, so the whole list is built without scrolling.
     tester.view.physicalSize = const Size(360, 4000);
     tester.view.devicePixelRatio = 1;
@@ -417,34 +504,41 @@ void main() {
     );
     await _pumpUntil(tester, find.textContaining('1 analyzed)'));
     expect(tester.takeException(), isNull);
-    // Round 273: the last run was on the whole picture, so that stays; the
-    // numbers sit in the closed Advanced fold, whose line says them.
+    // Round 273: the last run was on the whole picture, so that stays. Round
+    // 308: the numbers are on their own screen; its entry says them.
     final whole = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
     expect(whole.selected, {false}, reason: 'whole picture, as the last run');
     expect(find.byType(Slider), findsNothing);
-    expect(find.text('Confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
-    await _openFold(tester, 'Advanced settings');
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Detection: confidence 0.25, 5 frames per second, IoU 0.70'), 200, scrollable: list);
+    expect(
+      find.text('Track IDs: ByteTrack, new-track confidence 0.50, occlusion 3.0 s, minimum 1.0 s, keep frames on'),
+      findsOneWidget,
+    );
+    expect(find.text('Identification: off'), findsOneWidget);
+    await _openTuning(tester);
     // 60 s of video at the default 5 frames per second (round 254; was 15).
     expect(find.text('About 300 frames for this session.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _closeTuning(tester);
 
-    final list = find.byType(Scrollable).first;
+    // Clip b is left, so analyzing comes first; no track IDs yet, so the
+    // note on long runs is the last row.
     await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
-    // Clip a is done, so the Visits section follows; its button is the last row.
-    final findVisits = find.text('Find track IDs');
-    await tester.scrollUntilVisible(findVisits, 200, scrollable: list);
+    final last = find.textContaining('Long runs: keep the phone charging');
+    await tester.scrollUntilVisible(last, 200, scrollable: list);
     await tester.pump();
-    expectAboveBottomInset(tester, findVisits);
+    expectAboveBottomInset(tester, last);
+    expect(find.text('Track IDs'), findsNothing);
   });
 
   testWidgets('Find track IDs tracks the finished clips and offers the results (r228)', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
     simulateBottomSystemBar(tester);
     final tmp = _tempDir('video_visits_screen');
     final session = Directory('${tmp.path}/Meadow plot 7 near the old oak tree second visit');
     Directory('${session.path}/videos').createSync(recursive: true);
-    for (final c in ['a.mp4', 'b.mp4']) {
-      File('${session.path}/videos/$c').writeAsStringSync('video');
-    }
+    File('${session.path}/videos/a.mp4').writeAsStringSync('video');
     File('${session.path}/session.jsonl').writeAsStringSync(
       '{"type":"start_of_session","time_ms":1000,"source":"imported_video"}\n'
       '{"type":"end_of_session","time_ms":61000,"ended_normally":true}\n',
@@ -457,7 +551,7 @@ void main() {
       analysisFps: 10, // the frames below are 100 ms apart
       useGpu: true,
     ).identity;
-    // Clip a analysed at 10 fps with one insect resting for 3 s; b not yet.
+    // Clip a analysed at 10 fps with one insect resting for 3 s.
     File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
       [
         jsonEncode({'type': 'video_run_start', 'time_ms': 111, 'settings': settings}),
@@ -491,20 +585,23 @@ void main() {
     );
     await _pumpUntil(tester, find.textContaining('1 analyzed)'));
     final list = find.byType(Scrollable).first;
-    await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
-    await tester.pump();
-    // Round 273: the track ID settings sit in a closed fold, its line says them.
+    // Round 308: the track ID settings are on the settings screen, also
+    // before any track ID is found.
     expect(find.text('Keep frames of each track ID'), findsNothing);
-    expect(find.text('Occlusion tolerance 3.0 s, minimum track 1.0 s, keep frames on'), findsOneWidget);
-    await _openFold(tester, 'Track ID settings');
+    await _openTuning(tester);
+    await _scrollTo(tester, find.text('For up to'));
     // Round 234: frames kept of each visit (on by default) are saved right
     // after, here by a fake decoder.
     expect(find.text('Keep frames of each track ID'), findsOneWidget);
     expect(find.text('Keep a frame every'), findsOneWidget);
-    expect(find.text('For up to'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
+    // Round 256: the minimum track length as detections in a row, at the analysed rate.
+    expect(find.text('= 10 detections in a row at 10 frames per second.'), findsOneWidget);
+    await _closeTuning(tester);
+    // Every clip is analyzed with these settings, so the main button finds them.
+    final findIds = find.text('Find track IDs');
+    await tester.scrollUntilVisible(findIds, 200, scrollable: list);
     await tester.pump();
-    await tester.tap(find.text('Find track IDs'));
+    await tester.tap(findIds);
     await _pumpUntil(tester, find.text('Share results'));
     // Round 256: the track IDs show while the frames are saved, then the count.
     await _pumpUntil(tester, find.text('Kept frames saved: 3 of 3 (12 B).'));
@@ -514,31 +611,31 @@ void main() {
     expect(find.text('Kept frames saved: 3 of 3 (12 B).'), findsOneWidget); // 4-byte fake files
     expect(decoder.saved, hasLength(3));
     expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
-    expect(find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
-    // Round 256: the minimum track length as detections in a row, at the analysed rate.
-    expect(find.text('= 10 detections in a row at 10 frames per second.'), findsOneWidget);
-    expect(find.text('Find track IDs again'), findsOneWidget);
+    expect(find.text('1 track ID in 1 of 1 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
     expect(File('${session.path}/track_ids.csv').existsSync(), isTrue);
     expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
+    expect(find.text('Every analyzed clip has at least one track ID.', skipOffstage: false), findsOneWidget);
+    // Nothing is due any more.
+    await tester.scrollUntilVisible(find.text('All clips analyzed with these settings'), -200, scrollable: list);
 
-    // Off: the step rows go, and a note says what finding again would do.
+    // Keep frames off: the step rows go, a note says what finding again
+    // would do, and the main button offers it.
+    await _openTuning(tester);
     final keep = find.text('Keep frames of each track ID');
-    await tester.scrollUntilVisible(keep, -200, scrollable: list);
-    await tester.pump();
+    await _scrollTo(tester, keep);
     await tester.tap(keep);
     await tester.pump();
     expect(find.text('Keep a frame every'), findsNothing);
     expect(find.textContaining('Finding track IDs again with this off removes the 3 frames saved before'), findsOneWidget);
-    expect(find.textContaining('Kept frames per track ID'), findsNothing);
     expect(tester.takeException(), isNull);
-
-    // Round 236: b is not analyzed yet, so only a can be judged, and
-    // deleting all clips waits for b.
-    await tester.scrollUntilVisible(find.text('Analyze every clip first (1 left).'), 200, scrollable: list);
-    expect(find.text('Every analyzed clip has at least one track ID.'), findsOneWidget);
+    await _closeTuning(tester);
+    expect(find.text('Find track IDs again with these settings'), findsOneWidget);
+    // The warning is under that button too.
+    expect(find.textContaining('finding the track IDs again removes the 3 frames saved before'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Settings changed: the button above finds the track IDs again with them.'), 200, scrollable: list);
 
     final share = find.text('Share results');
-    await tester.scrollUntilVisible(share, -200, scrollable: list);
+    await tester.scrollUntilVisible(share, 200, scrollable: list);
     await tester.pump();
     expectAboveBottomInset(tester, share);
   });
@@ -634,9 +731,8 @@ void main() {
     await _pumpUntil(tester, find.text('All 2 videos were deleted.'));
     expect(VideoDetector.clipsOf(session), isEmpty);
     await tester.scrollUntilVisible(find.textContaining('1 track ID in 2 of 2 clips'), -200, scrollable: list);
-    await tester.scrollUntilVisible(find.text('Find track IDs again'), -200, scrollable: list);
     await tester.scrollUntilVisible(find.text('The videos were deleted'), -200, scrollable: list); // the start button
-    expect(find.textContaining('they cannot be analyzed again; "Find track IDs" below still works'), findsOneWidget);
+    expect(find.textContaining('they cannot be analyzed again; the track IDs can still be found again'), findsOneWidget);
     final records = [
       for (final l in File('${session.path}/session.jsonl').readAsLinesSync())
         if (l.contains('"video_cleanup"')) (jsonDecode(l) as Map)['mode'],
@@ -705,19 +801,27 @@ void main() {
         ),
       ),
     );
-    await _pumpUntil(tester, find.text('Analyze 1 clip'));
-    // The proposed square is in view, to accept or change; the numbers are folded.
+    await _pumpUntil(tester, find.text('Square 480 × 480 px.'));
+    // The proposed square is in view, to accept or change; the numbers are on
+    // their own screen (round 308).
     final area = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
     expect(area.selected, {true}, reason: 'a square');
-    expect(find.text('Square 480 × 480 px.'), findsOneWidget);
     expect(find.text('Change…'), findsOneWidget);
     expect(find.byType(Slider), findsNothing);
-    expect(find.text('Confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
     // The whole picture is one tap away.
     await tester.tap(find.text('Whole picture'));
     await tester.pump();
     expect(find.text('Square 480 × 480 px.'), findsNothing);
     expect(tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first).selected, {false});
+    await tester.scrollUntilVisible(find.text('Analyze 1 clip'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Detection: confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
+    // Round 308: the track ID settings before the first run.
+    await _openTuning(tester);
+    for (final label in ['Tracking algorithm', 'New-track confidence', 'Occlusion tolerance', 'Minimum track length']) {
+      await _scrollTo(tester, find.text(label));
+    }
+    expect(find.text('= 5 detections in a row at 5 frames per second.'), findsOneWidget);
+    await _scrollTo(tester, find.text('Keep frames of each track ID'));
     expect(tester.takeException(), isNull);
   });
 
@@ -823,6 +927,8 @@ void main() {
         tmp,
         detections: [jsonEncode({'type': 'video_run_start', 'settings': settings}), '{"type":"video_clip_done","clip":"a.mp4"}'],
       );
+      // Round 308: the track IDs are up to date too, else finding them comes first.
+      File('${dir.path}/post_tracks.jsonl').writeAsStringSync(postTracks(['a.mp4']));
       await open(tester, tmp, dir, find.text('Identify the animals found'));
       final start = tester.widget<FilledButton>(find.ancestor(of: find.text('Identify the animals found'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
       expect(start.onPressed, isNotNull);
@@ -923,6 +1029,8 @@ void main() {
         '{"type":"video_clip_done","clip":"a.mp4"}',
       ].join('\n'),
     );
+    // Track IDs found before, without kept frames (none for live sessions).
+    File('${session.path}/post_tracks.jsonl').writeAsStringSync(postTracks(['a.mp4'], keepFrames: false));
     await tester.pumpWidget(
       MaterialApp(
         home: VideoAnalysisScreen(
@@ -935,12 +1043,264 @@ void main() {
     await _pumpUntil(tester, find.text('Area to analyze'));
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.textContaining('The track IDs found here are for comparison'), 200, scrollable: list);
-    // No keep-frames switch, so the fold's line does not mention it.
-    expect(find.text('Occlusion tolerance 3.0 s, minimum track 1.0 s'), findsOneWidget);
-    await _openFold(tester, 'Track ID settings');
-    await tester.scrollUntilVisible(find.textContaining('No frames are kept for these track IDs'), 200, scrollable: list);
+    expect(find.text('All clips analyzed with these settings'), findsOneWidget);
+    // No keep-frames switch, so the summary does not mention it.
+    await tester.scrollUntilVisible(
+      find.text('Track IDs: ByteTrack, new-track confidence 0.50, occlusion 3.0 s, minimum 1.0 s'),
+      -200,
+      scrollable: list,
+    );
+    expect(find.text('Identification: from the session\'s ⋮ menu (a live detection session)'), findsOneWidget);
+    await _openTuning(tester);
+    await _scrollTo(tester, find.textContaining('No frames are kept for these track IDs'));
     expect(find.text('Keep frames of each track ID'), findsNothing);
+    await _scrollTo(tester, find.textContaining('Not used for this session: it was recorded with live detection'));
     expect(tester.takeException(), isNull);
+  });
+
+  group('Detection, track ID and identification settings (r308)', () {
+    const models = [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)];
+
+    Future<void> showTuning(WidgetTester tester, VideoTuningScreen screen) async {
+      await tester.pumpWidget(MaterialApp(key: UniqueKey(), theme: ThemeData.dark(useMaterial3: true), home: screen));
+      await _pumpUntil(tester, find.text('Detection'));
+    }
+
+    testWidgets('fits 360 px: the three cards, the last row above the bar', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      await showTuning(tester, VideoTuningScreen(prefs: VideoAnalysisPrefs(), totalMs: 60000));
+      expect(find.text('Detection, track IDs, identification'), findsOneWidget);
+      expect(find.text('About 300 frames for this session.'), findsOneWidget);
+      await _scrollTo(tester, find.text('Track IDs'));
+      // The track IDs card in its own colour.
+      final track = tester.widget<ModelKindPanel>(find.ancestor(of: find.text('Track IDs'), matching: find.byType(ModelKindPanel)));
+      expect(track.color, kTrackingColor);
+      expect({kDetectionColor, kIdentificationColor, kTrackingColor}, hasLength(3));
+      await _scrollTo(tester, find.text('Identification'));
+      final last = find.textContaining('Changes nothing in the app');
+      await _scrollTo(tester, last);
+      await tester.drag(find.byType(ListView), const Offset(0, -3000));
+      await tester.pump();
+      expectAboveBottomInset(tester, last, label: 'last row');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('identification: greyed with the reason, editable when it will run', (tester) async {
+      SharedPreferences.setMockInitialValues({'identify_model': 'chosen.tflite', 'identify_pack': 'chosen.fpack'});
+      simulateBottomSystemBar(tester);
+      final greyed = find.ancestor(
+        of: find.text('Crop margin'),
+        matching: find.byWidgetPredicate((w) => w is Opacity && w.opacity == 0.4),
+      );
+      for (final (screen, why) in [
+        (VideoTuningScreen(prefs: VideoAnalysisPrefs()), 'Used only when "Also identify them" is on (on the previous screen).'),
+        (
+          VideoTuningScreen(prefs: VideoAnalysisPrefs(keepFrames: false), alsoIdentify: true),
+          'Needs "Keep frames of each track ID" (Track IDs card above): identification names the saved frames.',
+        ),
+        (
+          VideoTuningScreen(prefs: VideoAnalysisPrefs(), alsoIdentify: true, liveAi: true),
+          'Not used for this session: it was recorded with live detection, so its track IDs are named from the '
+              'session\'s ⋮ menu (Identify organisms), which has these settings too.',
+        ),
+      ]) {
+        await showTuning(tester, screen);
+        await _scrollTo(tester, find.text('Crop margin'));
+        expect(greyed, findsOneWidget, reason: why);
+        await _scrollTo(tester, find.text(why), -200);
+      }
+
+      final prefs = VideoAnalysisPrefs();
+      await showTuning(
+        tester,
+        VideoTuningScreen(prefs: prefs, alsoIdentify: true, identifyModel: 'm.tflite', identifyList: 'm.fpack'),
+      );
+      await _scrollTo(tester, find.text('Crop margin'));
+      expect(greyed, findsNothing);
+      expect(
+        find.text('Model m.tflite with the name list m.fpack (chosen under "Also identify them" on the previous screen).'),
+        findsOneWidget,
+      );
+      await _scrollTo(tester, find.text('CPU threads (0 = automatic)'), -200);
+      await tester.enterText(_numberBox('CPU threads (0 = automatic)'), '4');
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      final saved = await IdentifyPrefs.load();
+      expect(saved.cpuThreads, 4);
+      expect([saved.modelName, saved.packName], ['chosen.tflite', 'chosen.fpack'], reason: 'kept as stored');
+      // Kept frames switched off here grey it at once.
+      final keep = find.text('Keep frames of each track ID');
+      await _scrollTo(tester, keep, -200);
+      await tester.tap(keep);
+      await tester.pump();
+      expect(prefs.keepFrames, isFalse);
+      await _scrollTo(tester, find.textContaining('(Track IDs card above)'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('"New-track confidence" stays 0.10 above the video confidence', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = VideoAnalysisPrefs();
+      await showTuning(tester, VideoTuningScreen(prefs: prefs));
+      final slider = tester.widget<Slider>(find.byType(Slider).first);
+      slider.onChanged!(0.6);
+      slider.onChangeEnd!(0.6);
+      await tester.pump();
+      expect(find.text('Confidence threshold: 0.60'), findsOneWidget);
+      expect([prefs.trackerParams.highThresh, prefs.cbiouParams.highThresh], [closeTo(0.7, 1e-9), closeTo(0.7, 1e-9)]);
+      await _scrollTo(tester, find.text('New-track confidence'));
+      expect(tester.widget<TextField>(_numberBox('New-track confidence')).controller!.text, '0.70');
+      // Typed lower, it stays at the floor.
+      await tester.enterText(_numberBox('New-track confidence'), '0.5');
+      await tester.pump();
+      expect(prefs.trackerParams.highThresh, closeTo(0.7, 1e-9));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      expect((await VideoAnalysisPrefs.load()).trackerParams.highThresh, closeTo(0.7, 1e-9), reason: 'saved');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the videos\' own tracker: used by Find track IDs, the camera\'s unchanged', (tester) async {
+      SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
+      simulateBottomSystemBar(tester);
+      await const SessionConfig(confidenceThreshold: 0.3).save();
+      final camera = jsonEncode((await SessionConfig.load()).toJson());
+      final tmp = _tempDir('video_own_tracker');
+      final session = _oneTrackSession(tmp);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoAnalysisScreen(
+            initialSessionPath: session.path,
+            sessionsDir: tmp,
+            models: models,
+            frameSaveBackend: _FakeFrameSaver(),
+          ),
+        ),
+      );
+      await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+      await _openTuning(tester);
+      final algorithm = find.byType(DropdownButton<TrackerAlgorithm>);
+      await _scrollTo(tester, algorithm);
+      await tester.tap(algorithm);
+      await _settle(tester);
+      await tester.tap(find.text('C-BIoU').last);
+      await _settle(tester);
+      await tester.enterText(_numberBox('New-track confidence'), '0.6');
+      await tester.pump();
+      await _scrollTo(tester, find.text('Fine-tuning (C-BIoU)'));
+      expect(find.text('Search margins 0.30 and 0.50'), findsOneWidget);
+      await _closeTuning(tester);
+      final list = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.text('Track IDs: C-BIoU, new-track confidence 0.60, occlusion 3.0 s, minimum 1.0 s, keep frames on'),
+        200,
+        scrollable: list,
+      );
+      final findIds = find.text('Find track IDs');
+      await tester.scrollUntilVisible(findIds, 200, scrollable: list);
+      await tester.tap(findIds);
+      await _pumpUntil(tester, find.text('Share results'));
+      final start = jsonDecode(File('${session.path}/post_tracks.jsonl').readAsLinesSync().first) as Map;
+      expect([start['tracker']['algorithm'], start['tracker']['highThresh']], ['cbiou', 0.6]);
+      expect(jsonEncode((await SessionConfig.load()).toJson()), camera, reason: 'the camera keeps its own');
+      await _pumpUntil(tester, find.textContaining('Kept frames saved: 3 of 3'));
+      await tester.scrollUntilVisible(find.text('All clips analyzed with these settings'), -200, scrollable: list);
+
+      // Only a tracker value changed: the main button finds the track IDs again.
+      await _openTuning(tester);
+      await _scrollTo(tester, find.text('New-track confidence'));
+      await tester.enterText(_numberBox('New-track confidence'), '0.7');
+      await tester.pump();
+      await _closeTuning(tester);
+      expect(find.text('Find track IDs again with these settings'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Settings changed: the button above finds the track IDs again with them.'),
+        200,
+        scrollable: list,
+      );
+      expect(jsonEncode((await SessionConfig.load()).toJson()), camera);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the main button: clips left come before track IDs found already', (tester) async {
+      SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('video_main_button');
+      final session = _oneTrackSession(tmp);
+      File('${session.path}/videos/b.mp4').writeAsStringSync('video');
+      final prefs = VideoAnalysisPrefs(analysisFps: 10);
+      await tester.runAsync(() => VideoTracker.run(session, prefs.trackerConfig(const SessionConfig()), keep: prefs.keep));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoAnalysisScreen(initialSessionPath: session.path, sessionsDir: tmp, models: models),
+        ),
+      );
+      await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+      final list = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
+      await tester.scrollUntilVisible(
+        find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'),
+        200,
+        scrollable: list,
+      );
+      expect(find.textContaining('Settings changed'), findsNothing);
+      expect(find.text('Find track IDs for the clips analyzed so far'), findsNothing, reason: 'up to date');
+      await tester.scrollUntilVisible(find.text('Analyze every clip first (1 left).'), 200, scrollable: list);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('clips left: the analyzed ones still get their track IDs (a clip that cannot be read)', (tester) async {
+      SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('video_track_so_far');
+      final session = _oneTrackSession(tmp);
+      // Clip b fails at every run (no video_clip_done), so it stays to analyze.
+      File('${session.path}/videos/b.mp4').writeAsStringSync('video');
+      File('${session.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+        '\n{"type":"video_clip_error","clip":"b.mp4","error":"cannot decode"}',
+        mode: FileMode.append,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoAnalysisScreen(
+            initialSessionPath: session.path,
+            sessionsDir: tmp,
+            models: models,
+            frameSaveBackend: _FakeFrameSaver(),
+          ),
+        ),
+      );
+      await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+      final list = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
+      final soFar = find.text('Find track IDs for the clips analyzed so far');
+      await tester.scrollUntilVisible(soFar, 200, scrollable: list);
+      await tester.pump();
+      await tester.tap(soFar);
+      await _pumpUntil(tester, find.textContaining('Kept frames saved: 3 of 3'));
+      expect(find.text('1 track ID in 1 of 2 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
+      expect(soFar, findsNothing);
+      expect(find.text('Continue (1 of 2 clips left)'), findsOneWidget);
+      // Round 236: only a can be judged, and deleting all clips waits for b.
+      await tester.scrollUntilVisible(find.text('Analyze every clip first (1 left).'), 200, scrollable: list);
+      expect(find.text('Every analyzed clip has at least one track ID.'), findsOneWidget);
+
+      // A track ID setting changed: the button is back, the notes name it.
+      await _openTuning(tester);
+      final keep = find.text('Keep frames of each track ID');
+      await _scrollTo(tester, keep);
+      await tester.tap(keep);
+      await tester.pump();
+      await _closeTuning(tester);
+      await tester.scrollUntilVisible(soFar, -200, scrollable: list);
+      expect(find.textContaining('finding the track IDs again removes the 3 frames saved before'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Settings changed: "Find track IDs for the clips analyzed so far" above finds the track IDs again with them.'),
+        200,
+        scrollable: list,
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('square editor fits 360 px and returns a side on the 32-pixel grid', (tester) async {
@@ -986,6 +1346,9 @@ void main() {
       keepFrames: false,
       keepStepSeconds: 0.5,
       keepDurationSeconds: 30,
+      trackerAlgorithm: TrackerAlgorithm.cbiou,
+      trackerParams: const ByteTrackParams(matchThresh: 0.2, velocitySmoothing: 0.3),
+      cbiouParams: const CBiouParams(bufferScale1: 0.4, bufferScale2: 0.8, highThresh: 0.6),
     ).save();
     final p = await VideoAnalysisPrefs.load();
     expect(
@@ -995,11 +1358,26 @@ void main() {
     // Round 234: the kept-frames rule; off gives no rule to "Find visits".
     expect([p.keepFrames, p.keepStepSeconds, p.keepDurationSeconds, p.keep], [false, 0.5, 30.0, null]);
     expect((p..keepFrames = true).keep, const KeepFramesSettings(stepSeconds: 0.5, durationSeconds: 30));
+    // Round 308: the videos' own tracker.
+    expect(p.trackerAlgorithm, TrackerAlgorithm.cbiou);
+    expect([p.trackerParams.matchThresh, p.trackerParams.velocitySmoothing], [0.2, 0.3]);
+    expect([p.cbiouParams.bufferScale1, p.cbiouParams.bufferScale2, p.cbiouParams.highThresh], [0.4, 0.8, 0.6]);
+    expect(p.newTrackConfidence, 0.6);
+    final config = p.trackerConfig(const SessionConfig(confidenceThreshold: 0.33));
+    expect(config.trackerAlgorithm, TrackerAlgorithm.cbiou);
+    expect([config.occlusionSeconds, config.minHitsSeconds, config.cbiouParams.bufferScale2], [5.0, 0.5, 0.8]);
+    expect(config.confidenceThreshold, 0.33, reason: 'the app\'s other settings stay');
     SharedPreferences.setMockInitialValues({});
     final defaults = await VideoAnalysisPrefs.load();
     expect(defaults.sampleSeconds, 10);
     expect(defaults.minVisitSeconds, 1.0); // round 256 (was 0.2)
     expect(defaults.keep, const KeepFramesSettings(stepSeconds: 1, durationSeconds: 10));
+    // The app's defaults, not the camera's values.
+    expect(defaults.trackerAlgorithm, TrackerAlgorithm.bytetrack);
+    expect(defaults.trackerParams.toJson(), const ByteTrackParams().toJson());
+    expect(defaults.cbiouParams.toJson(), const CBiouParams().toJson());
+    // "New-track confidence" stays 0.10 above a raised confidence.
+    expect((defaults..confidence = 0.6).newTrackConfidence, closeTo(0.7, 1e-9));
 
     await (p..modelId = null).save();
     expect((await VideoAnalysisPrefs.load()).modelId, isNull);

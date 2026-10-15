@@ -9274,3 +9274,42 @@ scrub, shot `0_scrubbed`) and `video_keep_frames_check_test` updated. Two review
 **Open:** feel of the 36-px touch area and ExoPlayer seeks while scrubbing on a phone; the square
 editor's marker moves at the controller's 10 Hz.
 
+## Round 308 (2026-10-15): Find animals in videos: settings screen with cards, video-only tracker
+
+**Asked:** the owner wanted the "Advanced settings" of Find animals in videos on a separate
+screen with every detector, tracker and (when "Also identify them" is on) classifier setting, in
+cards with dim fills like Download & import models, a clearer name, identification greyed when it
+will not run, and the track ID settings reachable before any run. By question: all tracker
+settings as the videos' own copy, from the defaults (not the camera's).
+
+**Changed:** new `screens/video_tuning_screen.dart` ("Detection, track IDs, identification"),
+opened from a tile "Detection, track ID and identification settings" under "Also identify them"
+with one summary line per card. Cards (`ModelKindPanel`, now with optional `color`/`icon`):
+Detection (blue), Track IDs (`kTrackingColor` light green, `Icons.timeline`), Identification
+(orange, greyed by the new public `NotApplicable` with its reason: live session, keep frames off,
+Also identify off). Shared code: `widgets/tracker_tuning_fields.dart` (`TrackerTuning`, floor
+helpers; also used by camera Settings) and `screens/identify_settings_fields.dart` (also used by
+Identify organisms). `VideoAnalysisPrefs` gains `trackerAlgorithm`, `trackerParams`,
+`cbiouParams` (`video_analysis_tracker`, `_bytetrack`, `_cbiou`, JSON) and `trackerConfig()`;
+`PostTrackSummary.trackerValues` + `trackerUserValues()` let "Settings changed" see a changed
+New-track confidence or fine-tuning. One main button: analyze > "Find track IDs (again with
+these settings)[ and identify]" > "Identify the animals found"; the results section's own
+button is gone; with clips left a text button "Find track IDs for the clips analyzed so far";
+an amber note under the button when finding again would remove kept frames. Texts: em dashes
+removed from shared tracker labels ("Search margin, pass 1"), "id" wording fixed. Docs:
+VIDEO_ANALYSIS, SETTINGS_REFERENCE, DATA_GUIDE, IDENTIFICATION.
+
+**Why:** one screen with all numbers keeps the main screen short and lets the user tune before
+the first run; a video copy of the tracker means trying values on videos never changes the
+camera. One main button removes the question of which button to press. The text button covers
+a stopped run and a clip that can never be read (reviewer finding: the user was stuck).
+
+**Checked:** analyze clean; 955 tests pass (2 skipped); new tests for the 360-px layout, the
+three greyed reasons, the tracker floor, saving, the camera prefs left untouched, the button
+order, the clip-error case. Two reviewers: 9 findings, all fixed. Integration tests
+`live_video_after_check_test`, `video_cleanup_check_test` updated. No phone check yet.
+
+**Open:** saved video tracker values start at the defaults (New-track 0.50, ByteTrack), so a
+phone whose camera uses other values shows "Settings changed" for older video sessions; the
+same design for Find animals in photos is planned later.
+

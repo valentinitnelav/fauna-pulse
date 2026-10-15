@@ -40,10 +40,10 @@ import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
-import '../tracking/tracker.dart';
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
+import '../widgets/tracker_tuning_fields.dart';
 import '../widgets/dialog_title.dart';
 import 'models_screen.dart';
 
@@ -90,18 +90,6 @@ class SettingsSheet extends StatefulWidget {
 class _SettingsSheetState extends State<SettingsSheet> {
   late SessionConfig _c;
   late final TextEditingController _folder;
-
-  /// The High-score threshold is always kept at least this far above the
-  /// detector Confidence threshold, so there is always a band of "faint"
-  /// detections (between Confidence and High-score) that can keep an existing
-  /// insect's track id alive without being strong enough to spawn a new id.
-  /// Raising Confidence pushes High-score up automatically to preserve it.
-  static const double _highScoreBuffer = 0.10;
-
-  /// The lowest the High-score threshold is allowed to sit given the current
-  /// Confidence threshold (Confidence + [_highScoreBuffer], capped at 0.95).
-  double get _minHighScore =>
-      (_c.confidenceThreshold + _highScoreBuffer).clamp(0.30, 0.95);
 
   /// Session-length input: a typed number plus a Minutes/Hours unit toggle. The
   /// underlying config always stores minutes ([SessionConfig.sessionMinutes]);
@@ -391,10 +379,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ..._sessionLengthFields(),
       const SizedBox(height: 8),
 
-      _applicableIf(
-        !_c.timeLapseVideo,
-        'Not used for video bursts: a clip keeps every frame.',
-        NumericSettingField(
+      NotApplicable(
+        applies: !_c.timeLapseVideo,
+        note: 'Not used for video bursts: a clip keeps every frame.',
+        child: NumericSettingField(
           label: 'Photo step',
           value: _c.stepSeconds,
           min: 0.1,
@@ -970,22 +958,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'raises the tracker\'s "New-track confidence" below, so a band of '
             'faint detections is always kept for that purpose.',
         onChanged: (v) => setState(() {
-          // Keep the High-score threshold at least _highScoreBuffer above the
+          // Keep "New-track confidence" at least kNewTrackBuffer above the
           // new Confidence, so the "faint detection" band is never squeezed
           // shut when the user raises Confidence. Both trackers carry their
           // own high threshold; the floor applies to each.
-          final p = _c.trackerParams;
-          final cp = _c.cbiouParams;
-          final minHigh = (v + _highScoreBuffer).clamp(0.30, 0.95);
-          _c = _c.copyWith(
-            confidenceThreshold: v,
-            trackerParams: p.highThresh < minHigh
-                ? p.copyWith(highThresh: minHigh)
-                : p,
-            cbiouParams: cp.highThresh < minHigh
-                ? cp.copyWith(highThresh: minHigh)
-                : cp,
-          );
+          final (p, cp) = raiseNewTrackFloor(_c.trackerParams, _c.cbiouParams, v);
+          _c = _c.copyWith(confidenceThreshold: v, trackerParams: p, cbiouParams: cp);
         }),
       ),
       // IoU, engine and benchmark sit folded (round 159): all have good
@@ -1282,13 +1260,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   Widget _trackerFields() {
-    final p = _c.trackerParams;
-    void update(ByteTrackParams np) =>
-        setState(() => _c = _c.copyWith(trackerParams: np));
-    final cp = _c.cbiouParams;
-    void updateC(CBiouParams np) =>
-        setState(() => _c = _c.copyWith(cbiouParams: np));
-    final isCbiou = _c.trackerAlgorithm == TrackerAlgorithm.cbiou;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1331,7 +1302,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'FPS (0–2 s; default 0.2).',
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
-        ..._advancedTrackerSection(isCbiou, p, update, cp, updateC),
+        ..._advancedTrackerSection(),
       ],
     );
   }
@@ -1397,228 +1368,57 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// a research task, not day-to-day setup), the selected algorithm's own
   /// tuning knobs (only the active algorithm's are shown, so citizen-science
   /// users are never faced with both sets at once), a reset button, and the
-  /// raw-detections evaluation toggle.
-  List<Widget> _advancedTrackerSection(
-    bool isCbiou,
-    ByteTrackParams p,
-    void Function(ByteTrackParams) update,
-    CBiouParams cp,
-    void Function(CBiouParams) updateC,
-  ) => [
-    FoldSection(
-      title: 'Advanced (${isCbiou ? 'C-BIoU' : 'ByteTrack'} tuning)',
-      subtitle: 'Algorithm choice and frame-to-frame matching fine-tuning.',
-      helperText:
-          'The defaults suit insects on a flower; most sessions never need '
-          'these.',
-      children: [
-        const HelpLabel(
-          label: 'Tracking algorithm',
-          helperText:
-              'How detections are linked frame to frame. ByteTrack predicts '
-              'where each insect went and matches by box overlap; C-BIoU '
-              'enlarges the boxes before comparing them. Both count track IDs '
-              'the same way, so results stay comparable across sessions.',
-        ),
-        DropdownButton<TrackerAlgorithm>(
-          value: _c.trackerAlgorithm,
-          isExpanded: true,
-          dropdownColor: Colors.black87,
-          items: const [
-            // Names only (owner, 2026-07-15): no "default"/"experimental"
-            // qualifiers while the two are still being compared in the field.
-            DropdownMenuItem(
-              value: TrackerAlgorithm.bytetrack,
-              child: Text(
-                'ByteTrack',
-                style: TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-            DropdownMenuItem(
-              value: TrackerAlgorithm.cbiou,
-              child: Text(
-                'C-BIoU',
-                style: TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-          ],
-          onChanged: (a) =>
-              setState(() => _c = _c.copyWith(trackerAlgorithm: a)),
-        ),
-        if (isCbiou)
-          ..._cbiouFields(cp, updateC)
-        else
-          ..._byteFields(p, update),
-        HelpRow(
-          helperText:
-              'Puts every tracking setting above back to its default (the '
-              'algorithm choice itself is kept).',
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _resetTrackingDefaults,
-              icon: const Icon(Icons.restart_alt, size: 18),
-              label: const Text('Reset tracking to defaults'),
+  /// raw-detections evaluation toggle. Round 308: the controls are shared
+  /// with the video settings' Track IDs card (widgets/tracker_tuning_fields.dart).
+  List<Widget> _advancedTrackerSection() {
+    final t = TrackerTuning(
+      algorithm: _c.trackerAlgorithm,
+      byteTrack: _c.trackerParams,
+      cbiou: _c.cbiouParams,
+      confidence: _c.confidenceThreshold,
+      onAlgorithm: (a) => setState(() => _c = _c.copyWith(trackerAlgorithm: a)),
+      onByteTrack: (p) => setState(() => _c = _c.copyWith(trackerParams: p)),
+      onCbiou: (p) => setState(() => _c = _c.copyWith(cbiouParams: p)),
+    );
+    return [
+      FoldSection(
+        title: 'Advanced (${t.algorithmName} tuning)',
+        subtitle: 'Algorithm choice and frame-to-frame matching fine-tuning.',
+        helperText:
+            'The defaults suit insects on a flower; most sessions never need '
+            'these.',
+        children: [
+          ...t.algorithmPicker(),
+          ...t.fineTuning(
+            newTrack: t.newTrackField(
+              extraHelp:
+                  ' Used by live detection and by "Find animals in photos"; "Find animals in videos" '
+                  'has its own value.',
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        HelpSwitchTile(
-          title: 'Log raw detections (evaluation)',
-          helperText:
-              'Also writes the detector\'s unprocessed boxes for every '
-              'frame into the session file, so a recorded session can be '
-              'replayed through either tracker on a computer to compare '
-              'them. Leave off for normal use; it grows the session file '
-              'by roughly 1–2 MB per hour.',
-          value: _c.logRawDetections,
-          onChanged: (v) =>
-              setState(() => _c = _c.copyWith(logRawDetections: v)),
-        ),
-      ],
-    ),
-  ];
-
-  /// C-BIoU's own knobs (round 105). The buffer scales are THE tuning lever
-  /// of this algorithm: how far a box is enlarged before the overlap test.
-  List<Widget> _cbiouFields(
-    CBiouParams cp,
-    void Function(CBiouParams) updateC,
-  ) => [
-    NumericSettingField(
-      label: 'Search margin — pass 1',
-      value: cp.bufferScale1,
-      min: 0.05,
-      max: 1.0,
-      decimals: 2,
-      helperText:
-          'Before comparing, every box is enlarged by this fraction of its '
-          'own size on each side (0.3 = a 10-px box is matched as 16 px). '
-          'Bigger tolerates faster movement between frames but risks mixing '
-          'up two insects sitting close together. Raising it above pass 2 '
-          'raises pass 2 with it. (0.05–1.0; default 0.30.)',
-      onChanged: (v) => updateC(
-        cp.copyWith(
-          bufferScale1: v,
-          bufferScale2: v > cp.bufferScale2 ? v : cp.bufferScale2,
-        ),
+          TrackerTuning.resetButton(
+            helperText:
+                'Puts every tracking setting above back to its default (the '
+                'algorithm choice itself is kept).',
+            onPressed: _resetTrackingDefaults,
+          ),
+          const SizedBox(height: 4),
+          HelpSwitchTile(
+            title: 'Log raw detections (evaluation)',
+            helperText:
+                'Also writes the detector\'s unprocessed boxes for every '
+                'frame into the session file, so a recorded session can be '
+                'replayed through either tracker on a computer to compare '
+                'them. Leave off for normal use; it grows the session file '
+                'by roughly 1–2 MB per hour.',
+            value: _c.logRawDetections,
+            onChanged: (v) =>
+                setState(() => _c = _c.copyWith(logRawDetections: v)),
+          ),
+        ],
       ),
-    ),
-    NumericSettingField(
-      label: 'Search margin — pass 2',
-      value: cp.bufferScale2,
-      min: 0.05,
-      max: 2.0,
-      decimals: 2,
-      helperText:
-          'A second, wider matching pass for whatever pass 1 could not '
-          'pair — this is what catches the big between-frame jumps. Always '
-          'at least as large as pass 1. (up to 2.0; default 0.50.)',
-      onChanged: (v) => updateC(
-        cp.copyWith(bufferScale2: v < cp.bufferScale1 ? cp.bufferScale1 : v),
-      ),
-    ),
-    NumericSettingField(
-      label: 'New-track confidence',
-      // Same Confidence-coupled floor as ByteTrack's high threshold, so the
-      // "faint detection" band always exists regardless of algorithm.
-      value: cp.highThresh < _minHighScore ? _minHighScore : cp.highThresh,
-      min: _minHighScore,
-      max: 0.95,
-      decimals: 2,
-      helperText:
-          'A detection at or above this score may START a new track ID; a '
-          'fainter one (still above the Confidence threshold) may only keep '
-          'an existing insect\'s ID alive — e.g. while it is half-hidden '
-          'under a petal. Automatically kept above Confidence so that faint '
-          'band never closes. If "All boxes" on a video\'s Video tab shows '
-          'an insect that never gets a track ID, it was probably never this '
-          'sure: lower this and run "Find track IDs" again (the detector does not need '
-          'to run again). Default 0.50.',
-      onChanged: (v) => updateC(cp.copyWith(highThresh: v)),
-    ),
-  ];
-
-  /// ByteTrack's own knobs — the pre-round-105 fields, unchanged.
-  List<Widget> _byteFields(
-    ByteTrackParams p,
-    void Function(ByteTrackParams) update,
-  ) => [
-    NumericSettingField(
-      label: 'Match overlap (IoU)',
-      value: p.matchThresh,
-      min: 0.05,
-      max: 0.9,
-      decimals: 2,
-      helperText:
-          'How much a new detection box must overlap a track\'s predicted '
-          'box to be treated as the same insect. This is your "movement '
-          'tolerance", inverted: LOWER tolerates faster motion (a bee that '
-          'jumped across the frame still matches); HIGHER is stricter. For '
-          'small fast insects keep it low (0.1–0.2). The range stops at '
-          '0.05–0.90 on purpose: 0 would match unrelated boxes anywhere on '
-          'screen (id chaos), and 1.0 would demand pixel-identical boxes so '
-          'every frame would mint a new id.',
-      onChanged: (v) => update(p.copyWith(matchThresh: v)),
-    ),
-    NumericSettingField(
-      label: 'Low-score association',
-      value: p.lowMatchThresh,
-      min: 0.02,
-      max: 0.8,
-      decimals: 2,
-      helperText:
-          'A second, looser overlap test used to re-link faint detections '
-          '(a half-hidden or blurred insect that briefly drops in '
-          'confidence) so it keeps its track ID. Normally set at or below '
-          'Match overlap. The 0.02 floor stops a real track grabbing a '
-          'random noise box; set it too high and faint insects are no '
-          'longer recovered (0.02–0.80).',
-      onChanged: (v) => update(p.copyWith(lowMatchThresh: v)),
-    ),
-    NumericSettingField(
-      label: 'New-track confidence',
-      // Floor follows the Confidence threshold so a "faint detection" band
-      // always exists; the value never displays below that floor.
-      value: p.highThresh < _minHighScore ? _minHighScore : p.highThresh,
-      min: _minHighScore,
-      max: 0.95,
-      decimals: 2,
-      helperText:
-          'The score that separates a "strong" detection from a "faint" '
-          'one. A box at or above this is a clear sighting and may START a '
-          'new track ID. A box below it — but still above the Confidence '
-          'threshold — is a faint sighting that may ONLY keep an '
-          'already-existing insect\'s ID alive, never start a new one. That '
-          'faint band (between Confidence and this) is exactly what '
-          'holds onto a bee whose score dips while it is half-hidden under a '
-          'petal, so it is not counted twice. Higher = more cautious about '
-          'starting new IDs (fewer false track IDs); lower = quicker to '
-          'start a new track ID. If "All boxes" on a video\'s Video tab '
-          'shows an insect that never gets a track ID, it was probably never '
-          'this sure: lower this and run "Find track IDs" again (the detector does not '
-          'need to run again). It is automatically kept at least '
-          '${_highScoreBuffer.toStringAsFixed(2)} above Confidence (and '
-          'rises with it) so the faint band never closes. Default 0.50.',
-      onChanged: (v) => update(p.copyWith(highThresh: v)),
-    ),
-    NumericSettingField(
-      label: 'Velocity smoothing',
-      value: p.velocitySmoothing,
-      min: 0.0,
-      max: 1.0,
-      decimals: 2,
-      helperText:
-          'While an insect is briefly hidden, the tracker guesses where it '
-          'went by continuing its recent motion. This sets how much it '
-          'trusts the very latest movement. Low (≈0.2) = "assume it barely '
-          'moved" — steadier, best for insects that land and sit still '
-          '(the usual case here). High (≈0.8) = follow the latest motion '
-          'closely — better for fast, darting insects but jumpier. '
-          '(0–1; default 0.5.)',
-      onChanged: (v) => update(p.copyWith(velocitySmoothing: v)),
-    ),
-  ];
+    ];
+  }
 
   /// Resets every Visit-tracking setting to its default: the shared
   /// seconds-based controls and BOTH algorithms' advanced knobs (a knob you
@@ -1626,19 +1426,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// choice itself is deliberately kept. The high-score defaults respect the
   /// Confidence-coupled floor so the reset can never close the faint band.
   void _resetTrackingDefaults() {
-    const bp = ByteTrackParams();
-    const cbp = CBiouParams();
-    final minHigh = _minHighScore;
+    final (bp, cbp) = raiseNewTrackFloor(const ByteTrackParams(), const CBiouParams(), _c.confidenceThreshold);
     setState(() {
       _c = _c.copyWith(
         occlusionSeconds: 3.0,
         minHitsSeconds: 0.2,
-        trackerParams: bp.copyWith(
-          highThresh: bp.highThresh < minHigh ? minHigh : bp.highThresh,
-        ),
-        cbiouParams: cbp.copyWith(
-          highThresh: cbp.highThresh < minHigh ? minHigh : cbp.highThresh,
-        ),
+        trackerParams: bp,
+        cbiouParams: cbp,
         logRawDetections: false,
         // Reference photos are deliberately NOT reset here: their control
         // moved to the Setup tab, and a tracking reset must not silently
@@ -1648,22 +1442,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   // --- Tab 3: Photos — what saved photos look like ------------------------
-
-  /// [child] as usual when [applies]; otherwise greyed and not editable,
-  /// with [note] saying why (the stored value is kept for later).
-  Widget _applicableIf(bool applies, String note, Widget child) {
-    if (applies) return child;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(note, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        ),
-      ],
-    );
-  }
 
   /// Time-lapse only (round 238): photos or one video clip per burst, the
   /// clip frame rate, a storage estimate and the camera-cap warning.
@@ -1797,11 +1575,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       const SizedBox(height: 16),
 
-      _applicableIf(
-        !_c.timeLapseVideo,
-        'Not used for time-lapse video bursts: the clips are cut from the '
-        'live frames, like fast photos.',
-        Column(
+      NotApplicable(
+        applies: !_c.timeLapseVideo,
+        note:
+            'Not used for time-lapse video bursts: the clips are cut from the '
+            'live frames, like fast photos.',
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             HelpLabel(

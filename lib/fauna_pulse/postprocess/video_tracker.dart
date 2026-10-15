@@ -184,6 +184,10 @@ class PostTrackSummary {
   /// below it only continue a track (round 247). Null when the run did not log it.
   final double? newTrackConfidence;
 
+  /// The tracker values a user sets, as this run logged them (round 308, see
+  /// [trackerUserValues]); a value the run did not log is missing.
+  final Map<String, double> trackerValues;
+
   const PostTrackSummary({
     required this.visits,
     required this.clips,
@@ -195,8 +199,17 @@ class PostTrackSummary {
     this.keep,
     this.keptFrames = 0,
     this.newTrackConfidence,
+    this.trackerValues = const {},
   });
 }
+
+/// The values a user sets in a tracker's logged settings (`effectiveParamsJson`, or a params
+/// `toJson`): "New-track confidence" and the fine-tuning, without the algorithm's name and the
+/// frame budgets, which come from the seconds settings and the frame rate (round 308).
+Map<String, double> trackerUserValues(Map? tracker) => {
+  for (final MapEntry(:key, :value) in (tracker ?? const {}).entries)
+    if (value is num && key != 'trackBuffer' && key != 'minHitsToConfirm') '$key': value.toDouble(),
+};
 
 /// One analysed clip, gathered from video_detections.jsonl.
 class _Clip {
@@ -658,6 +671,7 @@ class VideoTracker {
         minHitsSeconds: (first['min_hits_seconds'] as num).toDouble(),
         algorithm: '${(first['tracker'] as Map?)?['algorithm'] ?? ''}',
         newTrackConfidence: ((first['tracker'] as Map?)?['highThresh'] as num?)?.toDouble(),
+        trackerValues: trackerUserValues(first['tracker'] as Map?),
         runId: (first['run_id'] as num?)?.toInt(),
         keep: KeepFramesSettings.fromJson(first['keep_frames']),
         keptFrames: (last['kept_frames'] as num?)?.toInt() ?? 0,

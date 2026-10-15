@@ -12,8 +12,8 @@
 //
 // Steps:
 //  - the Video tab in live view: "Compare with the AI afterwards" (SHOT);
-//  - its button opens "Run AI on videos": the comparison note, no kept frames
-//    (SHOT); "Analyze 1 clip", then "Find visits" by itself;
+//  - its button opens "Run AI on videos": "Analyze 1 clip", then "Find visits"
+//    by itself (SHOT); its settings screen: no kept frames (SHOT, round 308);
 //  - back on the Video tab: "Live AI | AI afterwards", both views (SHOT);
 //  - Graphs: the afterwards count next to the live one (SHOT);
 //  - roi_frames/ (the live photos) is unchanged.
@@ -98,9 +98,17 @@ void main() {
     await waitFor(find.text('All clips analyzed with these settings'), seconds: 600);
     final analysedS = DateTime.now().difference(runStart).inMilliseconds / 1000;
     await waitFor(find.textContaining('(occlusion tolerance', skipOffstage: false), seconds: 60);
+    await shot('live_analysis_screen');
+    // Round 308: the track ID settings are on their own screen.
+    final settings = find.text('Detection, track ID and identification settings');
+    await scrollTo(settings, -200);
+    await tester.tap(settings);
+    await waitFor(find.text('Detection'));
     await scrollTo(find.textContaining('No frames are kept for these track IDs'), 200);
     expect(find.text('Keep frames of each track ID'), findsNothing);
-    await shot('live_analysis_screen');
+    await shot('live_analysis_settings');
+    await tester.pageBack();
+    await tester.pump(const Duration(seconds: 1));
     final summary = await VideoTracker.readSummary(dir);
     _log('ANALYSED 1 clip in $analysedS s; afterwards track IDs ${summary?.visits}, kept ${summary?.keptFrames}');
     expect(summary?.keep, isNull);

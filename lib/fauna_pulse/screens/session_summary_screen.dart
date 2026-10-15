@@ -1682,8 +1682,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (isCbiou) {
       final cbp = _cbiouParams;
       if (cbp != null) {
-        add('Search margin — pass 1', cbp['bufferScale1'], na: trackNa);
-        add('Search margin — pass 2', cbp['bufferScale2'], na: trackNa);
+        add('Search margin, pass 1', cbp['bufferScale1'], na: trackNa);
+        add('Search margin, pass 2', cbp['bufferScale2'], na: trackNa);
         add('New-track confidence', cbp['highThresh'], na: trackNa);
       }
     } else if (tp != null) {

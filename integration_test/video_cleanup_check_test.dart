@@ -105,8 +105,13 @@ void main() {
     );
     await yolo.dispose();
     expect(run.clipsFailed, 0);
-    const keep = KeepFramesSettings(stepSeconds: 1, durationSeconds: 10);
-    final before = await VideoTracker.run(dir, const SessionConfig(), keep: keep);
+    // Round 308: with the video screen's own tracker settings, so its main
+    // button does not offer to find the track IDs again.
+    final prefs = await VideoAnalysisPrefs.load();
+    expect(prefs.keep, isNotNull, reason: 'switch on "Keep frames of each track ID" in the app first');
+    final tracker = prefs.trackerConfig(await SessionConfig.load());
+    final keep = prefs.keep!;
+    final before = await VideoTracker.run(dir, tracker, keep: keep);
     final saved = await const VideoFrameKeeper().run(dir);
     final kept = await VideoTracker.readKeptFrames(dir);
     final framesDir = VideoFrameKeeper.framesDirOf(dir).path;
@@ -163,7 +168,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // 3. Find visits again from the saved boxes.
-    final after = await VideoTracker.run(dir, const SessionConfig(), keep: keep);
+    final after = await VideoTracker.run(dir, tracker, keep: keep);
     final status = await VideoFrameKeeper.status(dir);
     _log('FIND VISITS AGAIN ${after.visits} track IDs, kept ${after.keptFrames}; frames saved ${status.saved} of '
         '${status.total}, no video ${status.noVideo}');

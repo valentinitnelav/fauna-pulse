@@ -46,21 +46,38 @@ Terms used below:
    same way, for comparison with what live detection found: its Video tab then switches between
    *Live detection* and *Detection afterwards* on the same clips (round 241), which shows, for example,
    track IDs live detection missed while the phone was hot or the motion gate slept.
-2. **Find animals in videos** (home screen): session, model, the proposed area, Start. The
-   confidence threshold and *Frames analyzed per second* (default 5 since round 254; live
-   detection analyses 15) sit under *Advanced settings* (round 273). This is the slow step
-   (it can be paused and continued). It finds boxes only. With *Also identify them* on
-   (round 274), the same Start goes on through step 3 and the identification (*Identify
-   organisms* starts by itself on the kept frames) and ends on the results.
+2. **Find animals in videos** (home screen): session, model, the proposed area, Start. Every
+   number to tune sits on its own screen, *Detection, track ID and identification settings*
+   (round 308; the entry under *Also identify them*, whose lines show the values in use, opens
+   it, also before the first run). It has three cards: **Detection** (the confidence
+   threshold, *Frames analyzed per second*, default 5 since round 254 while live detection
+   analyses 15, the IoU threshold, the pause temperature and how often the phone is
+   measured), **Track IDs** (step 3) and **Identification** (the settings of *Identify
+   organisms*, greyed with the reason while the automatic identification will not run:
+   *Also identify them* off, *Keep frames of each track ID* off, or a live detection
+   session). Everything there is saved as it changes. The main button then does what is
+   due, in this order: analyze clips not done yet or analyzed with other detection
+   settings (*Analyze…*, *Continue…*, *Analyze again with these settings*); else find the
+   track IDs when they are missing, out of date or found with other track ID settings
+   (*Find track IDs again with these settings*); else, with *Also identify them*,
+   *Identify the animals found*. While clips are left (a stopped run, or a clip that cannot
+   be read), *Find track IDs for the clips analyzed so far* under it finds the track IDs of
+   the finished clips, for example to free storage during a long run in several parts.
+   Analyzing is the slow step (it can be paused and continued). It finds boxes only. With *Also identify them* on (round 274), the same
+   button goes on through step 3 and the identification (*Identify organisms* starts by
+   itself on the kept frames) and ends on the results.
 3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
-   boxes into tracks with the tracker chosen under the camera Settings (ByteTrack or
-   C-BIoU), using the screen's *Occlusion tolerance* and *Minimum track length* (under
-   *Track ID settings*). It
-   takes seconds and can be run again with other settings. A new track ID starts only
-   from a box the detector is at least *New-track confidence* sure of (0.50, camera Settings →
-   AI → Tracking → Advanced); weaker boxes, down to the confidence threshold, only
+   boxes into tracks with the videos' own tracker settings, the **Track IDs** card (round
+   308: kept apart from the camera's, so trying values on videos never changes live
+   detection; they start from the app's defaults): *Tracking algorithm* (ByteTrack or
+   C-BIoU), *New-track confidence*, *Occlusion tolerance*, *Minimum track length*, *Keep
+   frames of each track ID* and, folded under *Fine-tuning*, the algorithm's own values. It
+   takes seconds and can be run again with other settings: after a change the main button
+   reads *Find track IDs again with these settings*. A new track ID starts only
+   from a box the detector is at least *New-track confidence* sure of (0.50, kept at least
+   0.10 above the confidence threshold); weaker boxes, down to the confidence threshold, only
    continue a track. If the Video tab's *All boxes* shows an insect that never gets a
-   track ID, lower it and run *Find track IDs* again: no new AI run is needed (round 247). With *Keep frames of each
+   track ID, lower it and find the track IDs again: no new AI run is needed (round 247). With *Keep frames of each
    track ID* on (the default, round 234) it then saves pictures of every track ID from the
    clips, by the live photo rule: the first frame, then one every *Keep a frame every*
    (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show

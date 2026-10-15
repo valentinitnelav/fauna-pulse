@@ -131,7 +131,7 @@ void main() {
     final wideText = _squareText(wide.width, wide.height);
     await waitFor(find.text(wideText));
     await tester.pump(const Duration(seconds: 2)); // the first frame loads
-    expect(find.byType(Slider), findsNothing, reason: 'the numbers sit in the closed fold');
+    expect(find.byType(Slider), findsNothing, reason: 'the numbers sit on their own screen (round 308)');
     final area = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first);
     expect(area.selected, {true}, reason: 'a square by default');
     _log('LANDSCAPE proposed: $wideText');
