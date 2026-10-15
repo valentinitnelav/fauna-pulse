@@ -1056,18 +1056,19 @@ logged). `session.jsonl` then only records where the clips came from: the start 
 | Value | Meaning |
 |---|---|
 | `session_log` | Read back from the `video_clip` record (what the analysis pass uses). |
-| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it. |
+| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it; since round 306 also a date and time joined by " at " (`Screen Recording 2026-09-24 at 15.59.54.mov`, dots or colons in the time). A 12-hour time (`… at 11.59.54 PM.mov`) is not read: such names give only the day. |
 | `metadata` | The time stored in the file **minus the clip length**: Android phones store when recording *stopped* (checked on a Xiaomi clip, round 226). |
 | `file_name_date` | Only the day is in the name (WhatsApp: `VID-20260924-WA0005.mp4`); noon is assumed. Uncertain. |
 | `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file picker copies every file it hands over. |
 | `after_previous` | A clip with an uncertain time that would overlap the clip before it, placed right after that clip (so several WhatsApp clips from one day play one after the other instead of all at noon). Clips with a reliable time never move, so a real overlap (two cameras) stays visible. |
-| `user` | The user set the start on the import screen. |
+| `user` | The user set the start on the import screen. Since round 306 the first clip then starts at second 0 (the time picker has no seconds); before, it kept the seconds of the guess. |
 | `camera` | Recorded by the app (time-lapse video bursts, round 238): the camera's time of the first frame. |
 | `clock` | Recorded by the app, but the camera gave no usable time: the phone's clock when the clip opened. |
 
 When the file name's time and the stored time differ by more than 2 minutes, the name wins
 but the import screen marks the time as uncertain. Messengers such as WhatsApp remove the
-stored time; video editors reset it to the export time.
+stored time; video editors reset it to the export time. Under the first clip's start, the
+import screen says what the file name and the stored time gave (round 306).
 
 ### `video_detections.jsonl` — "Find animals in videos" (round 225+)
 

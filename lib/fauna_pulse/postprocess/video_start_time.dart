@@ -15,6 +15,11 @@
 //     copy or download resets it (imports are copies, so this is usually
 //     the import time).
 // Weak guesses are flagged so the import screen asks the user to check.
+//
+// Round 306: each guess's note says what the file name and the stored time
+// gave, so the import screen shows what was tried before any change; names
+// like "Screen Recording 2026-09-24 at 15.59.54.mov" (date " at " time) are
+// read with their time.
 
 /// A clip start time and where it came from.
 class VideoStartGuess {
@@ -28,7 +33,8 @@ class VideoStartGuess {
   /// or two sources that disagree): the user should check it.
   final bool weak;
 
-  /// One plain-language sentence for the import screen.
+  /// One or two plain-language sentences for the import screen: what the
+  /// file name and the stored time gave (round 306).
   final String note;
 
   const VideoStartGuess(this.epochMs, this.source, {this.weak = false, this.note = ''});
@@ -39,8 +45,13 @@ class VideoStartGuess {
 const kStartSourcesAgreeMs = 2 * 60 * 1000;
 
 // Date and time with optional separators: 20260924_155954, 20260924155954,
-// 2026-09-24-15-59-54, 2026-09-24 15.59.54. Not preceded by another digit.
-final _dateTime = RegExp(r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)[-_ T]?(\d\d)[-_.]?(\d\d)[-_.]?(\d\d)');
+// 2026-09-24-15-59-54, 2026-09-24 15.59.54, 2026-09-24 at 15:59:54. Not
+// preceded by another digit. Not followed by AM/PM: a 12-hour time (macOS
+// "at 11.59.54 PM") would be read 12 hours off, so such names give only the
+// day.
+final _dateTime = RegExp(
+  r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)(?:[-_ T]| at )?(\d\d)[-_.:]?(\d\d)[-_.:]?(\d\d)(?!\s?[AaPp]\.?[Mm]\b)',
+);
 final _dateOnly = RegExp(r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)(?!\d)');
 
 /// The start time a file name spells out, or null when it has none.
@@ -87,31 +98,48 @@ VideoStartGuess guessClipStart({
         ms,
         'file_name',
         weak: true,
-        note: 'The file name and the time stored in the file differ by '
-            '${_gap(fromStored - ms)}. Check the time (another time zone?).',
+        note: 'From the file name: ${_stamp(ms)}. The time stored in the video gives ${_stamp(fromStored)}, '
+            '${_gap(fromStored - ms)} apart. Check the time (another time zone?).',
       );
     }
-    return VideoStartGuess(ms, 'file_name', note: 'From the file name.');
+    final agrees = fromStored == null ? '' : ' The time stored in the video agrees.';
+    return VideoStartGuess(ms, 'file_name', note: 'From the file name: ${_stamp(ms)}.$agrees');
   }
   if (fromStored != null) {
-    return VideoStartGuess(fromStored, 'metadata', note: 'From the time stored in the file.');
+    return VideoStartGuess(
+      fromStored,
+      'metadata',
+      note: '${_nameGave(fileName, fromName)}. From the time stored in the video (${_stamp(storedMs!)}, when '
+          'filming stopped) minus the clip length.',
+    );
   }
   if (fromName != null) {
     return VideoStartGuess(
       fromName.time.millisecondsSinceEpoch,
       'file_name_date',
       weak: true,
-      note: 'Only the day is known (messengers such as WhatsApp keep the day '
-          'the video was sent). Please set the time it was filmed.',
+      note: 'Only the day is read from the file name (messengers such as WhatsApp keep the day the video was sent) '
+          'and the video stores no time, so noon is shown. Please set the time it was filmed.',
     );
   }
   return VideoStartGuess(
     (fileModifiedMs ?? (now ?? DateTime.now()).millisecondsSinceEpoch) - length,
     'file_time',
     weak: true,
-    note: 'The file does not say when it was filmed; this is when it was '
-        'last saved or copied. Please set the time it was filmed.',
+    note: '${_nameGave(fileName, null)}; the video stores no time either, so this is when the file was '
+        'copied. Please set the time it was filmed.',
   );
+}
+
+/// What the file name gave when it gave no full time, for the notes (no
+/// final full stop).
+String _nameGave(String fileName, ({DateTime time, bool dateOnly})? fromName) {
+  if (fromName != null) return 'Only the day is read from the file name';
+  final name = fileName.split('/').last;
+  // A date the checks threw out, e.g. from a camera clock set wrong.
+  return _dateTime.hasMatch(name) || _dateOnly.hasMatch(name)
+      ? 'The date in the file name is impossible or in the future'
+      : 'The file name holds no date';
 }
 
 /// One clip for [layOutClips]: its name, length and start guess; [index]
@@ -154,6 +182,13 @@ List<ClipStart> layOutClips(List<ClipStart> clips) {
     }
   }
   return out;
+}
+
+/// Local "2026-09-24 15:59:54", as the import screen shows times.
+String _stamp(int ms) {
+  final t = DateTime.fromMillisecondsSinceEpoch(ms);
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
 }
 
 String _gap(int ms) {

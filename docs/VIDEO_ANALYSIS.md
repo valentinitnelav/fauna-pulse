@@ -32,8 +32,12 @@ Terms used below:
    time, and go straight to step 2 (their session summary opens on the Video tab with a
    *Find animals in videos* button). For imported clips: one session per site and day works
    best. Check the start time on the import sheet: track IDs per hour and the dashboard use
-   it. *Find animals in videos* proposes the largest square in the middle of the video
-   (round 273; a video that is already square is used whole); under *Area to analyze* you
+   it. The line under it says what the file name and the time stored in the video gave
+   (round 306); *Change…* sets the day, hour and minute; the seconds become 0 (the time
+   picker has no seconds). *Back to the time read from the file* (with several clips: *Back
+   to the times read from the files*) undoes that. *Find animals in videos* proposes the
+   largest square in the middle of the video (round 273; a video that is already square is
+   used whole); under *Area to analyze* you
    can choose the whole picture, or *Change…* the square while the video plays fast (4×, up
    to 10×) to see whether the camera or the flowers move. The analysed area is scaled down
    to the model's input size, so a small insect in a whole 4K frame shrinks to a few

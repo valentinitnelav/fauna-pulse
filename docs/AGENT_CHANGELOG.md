@@ -9206,3 +9206,36 @@ Two reviewers (correctness, UI rules): 7 findings, all fixed. No phone check.
 **Open:** saved identification results keep their old lengths until scored again; even from the
 first sighting the shortest counted track lasts (N-1) frame steps (0.8 s for "1 s" at 5 fps).
 
+## Round 306 (2026-10-15): video import time, seconds 0 when set by hand, source always shown
+
+**Asked:** on Import videos, the owner thought an option "infer from the file name" was hidden
+until "Change…" was tapped, and noticed that "Change…" could not set seconds while the seconds
+silently came from somewhere; seconds should be 0 when the time is set by hand.
+
+**Changed:** `postprocess/video_start_time.dart`: each guess's note now says, before any change,
+what the file name and the time stored in the video gave ("From the file name: <time>. The time
+stored in the video agrees.", "The file name holds no date; the video stores no time either, so
+this is when the file was copied. Please set the time it was filmed.", "Only the day is read from
+the file name ...", "The date in the file name is impossible or in the future ..."). Names like
+"Screen Recording 2026-09-24 at 15.59.54.mov" are read with their time (" at " separator, colons
+allowed); a 12-hour name ("at 11.59.54 PM") gives only the day instead of a time 12 hours off.
+`screens/video_import_screen.dart`: Change… composes the date and HH:MM with seconds 0, uses the
+24-hour picker (as Field notes) and checks `mounted`; the undo is renamed "Back to the time read
+from the file" ("times ... files" for several clips); the suggested session name follows a
+changed day until the user types a name. Docs: VIDEO_ANALYSIS step 1, DATA_GUIDE §9.
+
+**Why:** the "option" was the undo button, shown only after a change because the automatic time
+(file name, else stored time, else copy time) is already in use before; the owner's
+`*_EIV_video*.mp4` names hold no date and carry no stored time, so only the copy time was left.
+Showing what was tried removes the guesswork. The old code took the seconds from the previous
+guess (`current.second`). Seconds are not editable: the Material time picker has none, and the
+owner asked for 0. Not done: per-clip times, one-tap choice between name and stored time (helps
+only when they disagree), reading AM/PM names.
+
+**Checked:** analyze clean; 942 tests pass (2 skipped); new tests drive Change… through both
+pickers (start ends in ":00", 24-hour picker, "Set by you" note, the undo brings back the read
+time, name follows the day, a typed name stays) and the notes for name, stored and copy times,
+" at " names, AM/PM, impossible dates. Reviewers: 6 findings, all fixed. No phone check.
+
+**Open:** a session name cleared to empty no longer follows the day.
+

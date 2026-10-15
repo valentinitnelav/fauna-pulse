@@ -440,7 +440,11 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Import (`video_import.dart`): files moved into `<session>/videos/`; `session.jsonl` = start
   (`source: imported_video`) + `video_clip` per clip + end. Clip start time: `video_clip` record
   > file name > MP4 time minus duration (Android stores the stop time) > day-only name > mtime
-  (DATA_GUIDE §9). Fragmented MP4s (top-level `moof`) are rewritten at import by native
+  (DATA_GUIDE §9; names "date at time" read, 12-hour AM/PM names only the day). Import screen:
+  the note under the start says what the file name and the stored time gave before any change;
+  Change… sets day, hour and minute with seconds 0 (24-h picker), one shift for every clip,
+  "Back to the time(s) read from the file(s)" undoes it; the suggested name follows the day.
+  Fragmented MP4s (top-level `moof`) are rewritten at import by native
   `VideoFrameSource.remux` (`isFragmentedMp4`) and checked (same frames, times within rounding),
   else `ImportRewriteFailed` with a ready ffmpeg command; 10-bit/HDR refused.
 - Detection (`VideoDetector`): MediaCodec decode → ROI-only YUV→RGB (banded thread pool) →

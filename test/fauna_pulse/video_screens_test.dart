@@ -280,6 +280,100 @@ void main() {
     expect(popped, dir.path); // home opens the analysis screen on it
   });
 
+  /// Round 306: the import screen for one picked file.
+  Widget importScreen(Directory tmp, String name, {int? storedMs}) {
+    final file = File('${tmp.path}/$name')..writeAsStringSync('video');
+    Future<VideoInfo> info(String path) async =>
+        VideoInfo(durationMs: 30000, width: 1920, height: 1080, mime: 'video/avc', creationEpochMs: storedMs);
+    return MaterialApp(
+      key: ValueKey(name),
+      home: VideoImportScreen(
+        files: [PickedVideo(file.path, name, 1000)],
+        infoFn: info,
+        sessionsDir: Directory('${tmp.path}/sessions'),
+      ),
+    );
+  }
+
+  testWidgets('import screen says where the start came from before any change (round 306)', (tester) async {
+    final tmp = _tempDir('video_import_source');
+    final stop = DateTime(2026, 9, 24, 16, 0, 24).millisecondsSinceEpoch;
+    for (final (name, storedMs, note, unsure) in [
+      ('VID_20260924_155954.mp4', null, 'From the file name: 2026-09-24 15:59:54.', false),
+      (
+        'IMG_1234.mp4',
+        stop,
+        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24, when filming '
+            'stopped) minus the clip length.',
+        false,
+      ),
+      (
+        'clip.mp4',
+        null,
+        'The file name holds no date; the video stores no time either, so this is when the file was copied. '
+            'Please set the time it was filmed.',
+        true,
+      ),
+    ]) {
+      await tester.pumpWidget(importScreen(tmp, name, storedMs: storedMs));
+      await _pumpUntil(tester, find.text('Change…'));
+      final shown = tester.widget<Text>(find.text(note));
+      expect(shown.style?.color, unsure ? Colors.amber : Colors.white54, reason: name);
+      expect(find.text('Back to the time read from the file'), findsNothing, reason: name);
+    }
+  });
+
+  testWidgets('import screen: a start set by hand ends at second 0, the read time comes back (round 306)', (
+    tester,
+  ) async {
+    final tmp = _tempDir('video_import_change');
+    await tester.pumpWidget(importScreen(tmp, 'VID_20260924_155954.mp4'));
+    await _pumpUntil(tester, find.text('Change…'));
+    String sessionName() => tester.widget<TextField>(find.byType(TextField)).controller!.text;
+    expect(find.text('Filming started: 2026-09-24 15:59:54'), findsOneWidget);
+    expect(find.text('From the file name: 2026-09-24 15:59:54.'), findsOneWidget);
+    expect(sessionName(), 'video_20260924');
+
+    Future<void> settle() async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    // Change… to the next day, keeping the time the pickers offer.
+    Future<void> changeToThe25th() async {
+      await tester.tap(find.text('Change…'));
+      await settle();
+      await tester.tap(find.text('25')); // the date picker's calendar
+      await tester.pump();
+      await tester.tap(find.text('OK'));
+      await settle();
+      expect(find.text('Time the first clip started'), findsOneWidget);
+      expect(find.text('PM'), findsNothing, reason: 'the time picker counts 24 hours');
+      await tester.tap(find.text('OK'));
+      await settle();
+    }
+
+    await changeToThe25th();
+    expect(find.text('Filming started: 2026-09-25 15:59:00'), findsOneWidget);
+    expect(find.text('Set by you; every clip moves by the same amount.'), findsOneWidget);
+    expect(sessionName(), 'video_20260925', reason: 'the suggested name follows the day');
+
+    await tester.tap(find.text('Back to the time read from the file'));
+    await tester.pump();
+    expect(find.text('Filming started: 2026-09-24 15:59:54'), findsOneWidget);
+    expect(find.text('From the file name: 2026-09-24 15:59:54.'), findsOneWidget);
+    expect(find.text('Back to the time read from the file'), findsNothing);
+    expect(sessionName(), 'video_20260924');
+
+    // A name the user typed stays.
+    await tester.enterText(find.byType(TextField), 'Meadow 7');
+    await changeToThe25th();
+    expect(find.text('Filming started: 2026-09-25 15:59:00'), findsOneWidget);
+    expect(sessionName(), 'Meadow 7');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('video analysis screen fits 360 px and offers to continue a half-done session', (tester) async {
     SharedPreferences.setMockInitialValues({});
     simulateBottomSystemBar(tester);

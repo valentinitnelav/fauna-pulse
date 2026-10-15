@@ -20,6 +20,40 @@ void main() {
       }
     });
 
+    test('reads "date at time" names, with dots or colons in the time (round 306)', () {
+      for (final name in [
+        'Screen Recording 2026-09-24 at 15.59.54.mov', // macOS
+        'clip 2026-09-24 at 15:59:54.mp4',
+        'clip 2026-09-24 15:59:54.mp4',
+        'VID_20260924_155954 Ammophila.mp4', // a word after the time, not AM/PM
+      ]) {
+        final r = startFromFileName(name, now: now);
+        expect(r?.time, local, reason: name);
+        expect(r?.dateOnly, isFalse, reason: name);
+      }
+      // A valid day with an impossible or future time gives the day only.
+      for (final (name, day) in [
+        ('Screen Recording 2026-09-24 at 25.00.00.mov', 24), // hour 25
+        ('Screen Recording 2026-09-25 at 20.00.00.mov', 25), // after now plus one day
+      ]) {
+        final r = startFromFileName(name, now: now);
+        expect(r?.time, DateTime(2026, 9, day, 12), reason: name);
+        expect(r?.dateOnly, isTrue, reason: name);
+      }
+    });
+
+    test('12-hour times (AM/PM) are not read: the day only', () {
+      for (final name in [
+        'Screen Recording 2026-09-24 at 11.59.54 PM.mov',
+        'Screen Recording 2026-09-24 at 11.59.54\u202fPM.mov', // macOS puts a narrow space before PM
+        'Screen Recording 2026-09-24 at 12.30.00 AM.mov',
+      ]) {
+        final r = startFromFileName(name, now: now);
+        expect(r?.time, DateTime(2026, 9, 24, 12), reason: name);
+        expect(r?.dateOnly, isTrue, reason: name);
+      }
+    });
+
     test('Pixel names are UTC', () {
       final r = startFromFileName('PXL_20260924_135954123.mp4', now: now)!;
       expect(r.time, DateTime.utc(2026, 9, 24, 13, 59, 54));
@@ -62,7 +96,53 @@ void main() {
       );
       expect(g.source, 'file_name');
       expect(g.weak, isTrue);
-      expect(g.note, contains('2.0 h'));
+      expect(
+        g.note,
+        'From the file name: 2026-09-24 15:59:54. The time stored in the video gives 2026-09-24 17:59:54, '
+        '2.0 h apart. Check the time (another time zone?).',
+      );
+    });
+
+    test('the note says what the file name and the stored time gave (round 306)', () {
+      String note(String name, {int? storedMs}) =>
+          guessClipStart(fileName: name, storedMs: storedMs, durationMs: 30000, fileModifiedMs: 9, now: now).note;
+      final stop = DateTime(2026, 9, 24, 16, 0, 24).millisecondsSinceEpoch;
+      expect(note('VID_20260924_155954.mp4'), 'From the file name: 2026-09-24 15:59:54.');
+      expect(
+        note('VID_20260924_155954.mp4', storedMs: stop),
+        'From the file name: 2026-09-24 15:59:54. The time stored in the video agrees.',
+      );
+      expect(
+        note('IMG_1234.mp4', storedMs: stop),
+        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24, when filming '
+        'stopped) minus the clip length.',
+      );
+      expect(
+        note('VID-20260924-WA0005.mp4', storedMs: stop),
+        startsWith('Only the day is read from the file name. From'),
+      );
+      expect(
+        note('Screen Recording 2026-09-24 at 11.59.54 PM.mov', storedMs: stop),
+        startsWith('Only the day is read from the file name. From'),
+      );
+      expect(
+        note('VID-20260924-WA0005.mp4'),
+        allOf(startsWith('Only the day is read from the file name ('), contains('noon')),
+      );
+      expect(
+        note('clip.mp4'),
+        'The file name holds no date; the video stores no time either, so this is when the file was copied. '
+        'Please set the time it was filmed.',
+      );
+      // A date the checks threw out (a camera clock set wrong) is not "no date".
+      expect(
+        note('VID_20270101_120000.mp4'),
+        startsWith('The date in the file name is impossible or in the future; the video stores no time either'),
+      );
+      expect(
+        note('Screen Recording 2026-02-30 at 12.00.00.mov', storedMs: stop),
+        startsWith('The date in the file name is impossible or in the future. From the time stored'),
+      );
     });
 
     test('no date in the name: stored stop time minus the clip length', () {

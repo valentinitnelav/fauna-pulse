@@ -16,6 +16,11 @@
 // own ⋮ menu browses the phone's folders (the file picker and its round 233
 // hint are gone); a note on this screen says the videos are copies that take
 // storage twice.
+//
+// Round 306 (owner): the line under the start says, before any change, what
+// the file name and the time stored in the video gave; a time set by hand
+// starts at second 0 (the time picker has no seconds); the undo button says
+// what it restores; the suggested session name follows a changed day.
 
 import 'dart:io';
 import 'dart:math';
@@ -112,6 +117,10 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
   /// Files left out, with the reason in plain language.
   List<(String, String)> _rejected = const [];
   final _name = TextEditingController();
+
+  /// The session name this screen suggested last (`video_` plus the first
+  /// clip's day); it follows a changed day until the user types their own.
+  String _suggestedName = '';
   Directory? _sessionsDir;
   int? _freeBytes;
 
@@ -208,7 +217,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       _rejected = rejected;
       _sessionsDir = sessionsDir;
       _freeBytes = free;
-      if (clips.isNotEmpty) _name.text = defaultImportName(planImport(clips).first.startMs);
+      if (clips.isNotEmpty) _name.text = _suggestedName = defaultImportName(planImport(clips).first.startMs);
       _loading = false;
     });
   }
@@ -238,11 +247,23 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
       helpText: 'Time the first clip started',
+      // 24 hours, as the start line shows it.
+      builder: (ctx, child) =>
+          MediaQuery(data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true), child: child!),
     );
-    if (time == null) return;
-    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute, current.second);
-    setState(() => _shiftMs += picked.millisecondsSinceEpoch - plan.first.startMs);
+    if (time == null || !mounted) return;
+    // Round 306 (owner): the picker has no seconds, so a time set by hand
+    // starts at second 0.
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    _setShift(_shiftMs + picked.millisecondsSinceEpoch - plan.first.startMs);
   }
+
+  /// Applies the user's correction to every clip; the suggested session name
+  /// follows the first clip's day while the user has not typed their own.
+  void _setShift(int shiftMs) => setState(() {
+    _shiftMs = shiftMs;
+    if (_name.text == _suggestedName) _name.text = _suggestedName = defaultImportName(_plan.first.startMs);
+  });
 
   Future<void> _import() async {
     final sessionsDir = _sessionsDir;
@@ -357,7 +378,8 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         helperText:
             'Track IDs are placed on the clock from this time, so graphs and exports show when '
             'insects came. The app reads it from the file name or from the time stored in the '
-            'video; files sent through messengers often lose it.',
+            'video; files sent through messengers often lose it. Change… sets the day, hour and '
+            'minute; the seconds become 0 (the time picker has no seconds).',
       ),
       const SizedBox(height: 4),
       Text(
@@ -374,8 +396,10 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
           ),
           if (_shiftMs != 0)
             TextButton(
-              onPressed: _importing ? null : () => setState(() => _shiftMs = 0),
-              child: const Text('Use the file\'s time'),
+              onPressed: _importing ? null : () => _setShift(0),
+              child: Text(
+                plan.length == 1 ? 'Back to the time read from the file' : 'Back to the times read from the files',
+              ),
             ),
         ],
       ),
