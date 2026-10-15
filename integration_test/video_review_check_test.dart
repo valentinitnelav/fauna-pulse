@@ -24,9 +24,12 @@
 //    moves the video there (SHOT: the boxes on the new picture);
 //  - 4× playback: how long Flutter's frames take while the boxes move;
 //  - battery temperature before and after REVIEW_SOAK_MIN minutes of playback;
-//  - "Change square and analyse again": while "Run AI on videos" is open the
-//    clips are analysed again with another square; back on the tab, the new
-//    square and visits show (SHOT).
+//  - "Change square and analyse again" opens "Find animals in videos": round
+//    309, the same videos play there under the results (SHOT); opening its
+//    settings screen pauses them; a run started right after watching keeps
+//    the screen on (stopped after a few seconds);
+//  - while that screen is open the clips are analysed again with another
+//    square; back on the tab, the new square and visits show (SHOT).
 // The import stays in video_review_check/ for `adb pull`.
 
 import 'dart:io';
@@ -51,6 +54,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:video_player/video_player.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _soakMin = int.fromEnvironment('REVIEW_SOAK_MIN', defaultValue: 5);
 const _model = String.fromEnvironment('REVIEW_MODEL', defaultValue: 'arthropod_yolov11_float16.tflite');
@@ -332,6 +336,60 @@ void main() {
     await scrollTo(find.text('Change square and analyse again'), 200);
     await tester.tap(find.text('Change square and analyse again'));
     await waitFor(find.byType(VideoAnalysisScreen));
+    await tester.pump(const Duration(seconds: 1)); // the route transition: the tab is hidden then
+    // Round 309: the videos play on that screen too, under the track ID results.
+    final screen = find.byType(Scrollable).first;
+    final screenPlayer = find.descendant(
+      of: find.byType(VideoAnalysisScreen, skipOffstage: false),
+      matching: find.byType(VideoPlayer, skipOffstage: false),
+    );
+    bool screenPlaying() => tester.widget<VideoPlayer>(screenPlayer).controller.value.isPlaying;
+    Future<void> playOnScreen() async {
+      await tester.scrollUntilVisible(find.text('Watch the results'), 300, scrollable: screen);
+      await waitFor(find.byTooltip('Play'));
+      await tester.scrollUntilVisible(find.byTooltip('Play'), 200, scrollable: screen);
+      await tester.ensureVisible(find.byTooltip('Play'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byTooltip('Play'));
+      await tester.pump(const Duration(seconds: 3));
+    }
+
+    await playOnScreen();
+    _log('FIND SCREEN playing ${screenPlaying()}, screen on ${await WakelockPlus.enabled}');
+    expect(screenPlaying(), isTrue);
+    expect(await WakelockPlus.enabled, isTrue);
+    _log('SHOT find_screen_player');
+    await tester.pump(const Duration(seconds: 4));
+    // Another screen over it pauses the video.
+    final settings = find.text('Detection, track ID and identification settings');
+    await tester.scrollUntilVisible(settings, -300, scrollable: screen);
+    await tester.tap(settings);
+    await waitFor(find.text('Detection'));
+    await tester.pump(const Duration(seconds: 1));
+    _log('FIND SCREEN under its settings: playing ${screenPlaying()}');
+    expect(screenPlaying(), isFalse);
+    await tester.pageBack();
+    await tester.pump(const Duration(seconds: 1));
+    // A run started right after watching: the paused (then closed) player must not switch the
+    // screen-on off that the run holds.
+    await playOnScreen();
+    await tester.scrollUntilVisible(find.text('Whole picture'), -300, scrollable: screen);
+    await tester.tap(find.text('Whole picture'));
+    await tester.pump(const Duration(milliseconds: 300));
+    final again = find.text('Analyze again with these settings');
+    await tester.scrollUntilVisible(again, 200, scrollable: screen);
+    await tester.tap(again);
+    await waitFor(find.text('Replace and start'));
+    await tester.tap(find.text('Replace and start'));
+    await waitFor(find.text('Stop'), seconds: 60);
+    await tester.pump(const Duration(seconds: 3));
+    final screenOn = await WakelockPlus.enabled;
+    _log('RUN right after watching: screen on $screenOn, player shown ${screenPlayer.evaluate().isNotEmpty}');
+    expect(screenOn, isTrue);
+    expect(screenPlayer, findsNothing, reason: 'no player while the detector runs');
+    await tester.tap(find.text('Stop'));
+    await waitFor(find.textContaining('Stopped after'), seconds: 120);
+    await tester.pump(const Duration(seconds: 1));
     await _analyse(dir, const [0.45, 0.4, 0.5], startOver: true);
     timeline = VideoBoxTimeline.readSync(dir.path);
     Navigator.of(tester.element(find.byType(VideoAnalysisScreen))).pop();

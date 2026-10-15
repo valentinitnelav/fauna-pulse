@@ -22,7 +22,10 @@
 // Samsung, measured); the boxes wait for the picture. Round 307: one time
 // bar, also the slider (video_timeline_bar.dart), shows where the track IDs
 // are, with the kept frames as white marks on it, and the line under it how
-// much of the clip has track IDs.
+// much of the clip has track IDs. Round 309: the same player sits on "Find
+// animals in videos" under the track ID results ([VideoReviewPlayer.embedded],
+// no [VideoReviewPlayer.onOpenAnalysis]), so a run's results can be watched
+// before changing the settings and running again.
 
 import 'dart:async';
 import 'dart:io';
@@ -32,26 +35,30 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:video_player/video_player.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_box_timeline.dart';
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_tracker.dart' show VideoTracker;
+import 'screen_on.dart';
 import 'setting_help.dart';
 import 'video_speed_chips.dart';
 import 'video_timeline_bar.dart';
 
+/// The open clip, its position (ms) and how the player shows it (round 309).
+typedef VideoReviewView = ({String clip, int ms, bool allBoxes, bool aiView, double speed});
+
 class VideoReviewPlayer extends StatefulWidget {
   final Directory sessionDir;
 
-  /// The tab's list padding (bottom system inset included).
+  /// The tab's list padding (bottom system inset included); not used when [embedded].
   final EdgeInsets padding;
 
   /// Opens "Run AI on videos" for this session; the boxes are read again
-  /// when it closes.
-  final Future<void> Function() onOpenAnalysis;
+  /// when it closes. Null on "Find animals in videos" itself (round 309): no
+  /// button to open it, and the notes point to its main button above.
+  final Future<void> Function()? onOpenAnalysis;
 
   /// Shown below the player (the summary's kept frames and "Identify
   /// organisms").
@@ -68,15 +75,26 @@ class VideoReviewPlayer extends StatefulWidget {
   /// drag pans the picture instead of scrolling the page away.
   final bool scrollLocked;
 
+  /// Round 309: part of another screen's list ("Find animals in videos"),
+  /// which scrolls and gives the heading: a column, not a list of its own.
+  final bool embedded;
+
+  /// Round 309: where the player before this one was ([VideoReviewPlayerState.view]). "Find animals
+  /// in videos" builds a new player after each run; it starts on the same clip, moment and view, so
+  /// the new boxes can be compared with the ones before.
+  final VideoReviewView? startAt;
+
   const VideoReviewPlayer({
     super.key,
     required this.sessionDir,
-    required this.padding,
-    required this.onOpenAnalysis,
+    this.padding = EdgeInsets.zero,
+    this.onOpenAnalysis,
     this.footer = const [],
     this.header = const [],
     this.live = false,
     this.scrollLocked = false,
+    this.embedded = false,
+    this.startAt,
   });
 
   /// Same colours as the summary's photo viewer: tracked objects cyan,
@@ -95,9 +113,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   /// The boxes of "Run AI on videos", and in a live session (round 240) the
   /// live AI's; [_showAfter] picks which one a live session shows (round 241).
+  /// On "Find animals in videos" its own boxes come first (round 309).
   VideoBoxTimeline _afterTimeline = VideoBoxTimeline.empty;
   VideoBoxTimeline _liveTimeline = VideoBoxTimeline.empty;
-  bool _showAfter = false;
+  late bool _showAfter = _onFindScreen;
   VideoBoxTimeline get _timeline => widget.live && !_showAfter ? _liveTimeline : _afterTimeline;
 
   /// A live session whose clips were also analysed afterwards.
@@ -158,9 +177,6 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   Duration _reportedAt = Duration.zero;
   Duration _tickerNow = Duration.zero;
 
-  /// Whether this tab holds the wakelock (see [_keepAwake]).
-  bool _awake = false;
-
   final _scroll = ScrollController();
 
   /// The clip picker, player and controls: "Show in video" scrolls it to
@@ -173,9 +189,17 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   @override
   bool get wantKeepAlive => true;
 
+  /// On "Find animals in videos" itself (round 309): its main button is above.
+  bool get _onFindScreen => widget.onOpenAnalysis == null;
+
   @override
   void initState() {
     super.initState();
+    if (widget.startAt case final v?) {
+      _allBoxes = v.allBoxes;
+      _aiView = v.aiView;
+      _speed = v.speed;
+    }
     _load();
   }
 
@@ -186,14 +210,14 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     // would otherwise play on unseen.
     final tabs = DefaultTabController.maybeOf(context);
     if (tabs != _tabs) {
-      _tabs?.removeListener(_pause);
-      _tabs = tabs?..addListener(_pause);
+      _tabs?.removeListener(pause);
+      _tabs = tabs?..addListener(pause);
     }
   }
 
   @override
   void dispose() {
-    _tabs?.removeListener(_pause);
+    _tabs?.removeListener(pause);
     _keepAwake(false);
     _ticker.dispose();
     _jumpGuard?.cancel();
@@ -205,6 +229,15 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     _scroll.dispose();
     super.dispose();
   }
+
+  /// Reads the boxes, clips and kept frames again (round 309: after "Find animals in videos"
+  /// changed them while this player stayed on screen).
+  Future<void> reload() => _load();
+
+  /// Where the player is and how it shows it, for [VideoReviewPlayer.startAt] (round 309).
+  VideoReviewView? get view => _clips.isEmpty
+      ? null
+      : (clip: _clips[_clip], ms: _posMs.value, allBoxes: _allBoxes, aiView: _aiView, speed: _speed);
 
   Future<void> _load() async {
     var after = VideoBoxTimeline.empty, live = VideoBoxTimeline.empty;
@@ -224,7 +257,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       if (File('$framesDir/${k.file}').existsSync()) (keptMs[k.clip] ??= []).add(k.ptsUs ~/ 1000);
     }
     if (!mounted) return;
-    final before = _clips.isEmpty ? null : _clips[_clip];
+    final first = _clips.isEmpty;
+    final before = first ? widget.startAt?.clip : _clips[_clip];
     final clips = {...files, ...after.clips.keys, ...live.clips.keys}.toList()..sort();
     setState(() {
       _afterTimeline = after;
@@ -238,12 +272,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       _newTrackConf = newTrackConf;
       _loading = false;
     });
-    // Reloaded after a new analysis: the same clip keeps playing.
+    // Reloaded after a new analysis: the same clip keeps playing, unless its video was deleted
+    // meanwhile (round 309): then its player is closed and the clip says so.
     final keep = before == null ? -1 : clips.indexOf(before);
-    if (keep >= 0 && _controller != null) {
+    if (keep >= 0 && _controller != null && files.contains(before)) {
       setState(() => _clip = keep);
     } else if (clips.isNotEmpty) {
       await _openClip(max(keep, 0));
+      // A new player after a run (round 309) goes back to the moment the one before showed.
+      final at = widget.startAt;
+      if (first && at != null && at.ms > 0 && keep >= 0 && mounted && _clip == keep && _controller != null) {
+        _seekTo(at.ms);
+      }
     }
   }
 
@@ -261,6 +301,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     _posMs.value = 0;
     _playing.value = false;
     await old?.dispose();
+    // Round 309: not for a player already gone (left out for a run) or a clip already replaced.
+    if (!mounted || opening != _opening) return;
     final name = _clips[index];
     if (!_files.contains(name)) return;
     final c = VideoPlayerController.file(
@@ -323,14 +365,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// The Android player does not keep the screen on by itself (its
   /// preventsDisplaySleep setting is a no-op there): the screen stays on
   /// while a clip plays, so watching without touching the phone does not end
-  /// in a dark screen.
-  void _keepAwake(bool on) {
-    if (on == _awake) return;
-    _awake = on;
-    WakelockPlus.toggle(enable: on).catchError((Object e) => logSwallowed('video_review_wakelock', e));
-  }
+  /// in a dark screen. Round 309: a hold of its own ([ScreenOn]), so pausing
+  /// never switches off the screen-on a run of "Find animals in videos" needs.
+  void _keepAwake(bool on) => on ? ScreenOn.hold(this) : ScreenOn.release(this);
 
-  void _pause() {
+  /// Pauses the clip (another tab or screen opens over the player).
+  void pause() {
     if (_controller?.value.isPlaying ?? false) _controller!.pause();
   }
 
@@ -398,10 +438,18 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   Future<void> showMoment(String clip, int ms) async {
     final index = _clips.indexOf(clip);
     if (index < 0) return;
-    _pause();
+    pause();
     if (index != _clip || _controller == null) await _openClip(index);
     if (!mounted) return;
     _seekTo(ms);
+    // Round 309: inside another screen's list, that list scrolls.
+    if (widget.embedded) {
+      final block = _playerBlock.currentContext;
+      if (block != null && block.mounted) {
+        await Scrollable.ensureVisible(block, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+      return;
+    }
     if (!_scroll.hasClients) return;
     // Far down the list the block is not built: back to the top first.
     var block = _playerBlock.currentContext?.findRenderObject();
@@ -424,8 +472,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   }
 
   Future<void> _openAnalysis() async {
-    _pause();
-    await widget.onOpenAnalysis();
+    pause();
+    await widget.onOpenAnalysis?.call();
     if (mounted) await _load();
   }
 
@@ -439,30 +487,32 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     final frameAspect = c?.value.aspectRatio ?? 1;
     final area = c == null ? null : boxes?.areaFor(frameAspect);
     final aiView = _aiView && area != null;
-    return ListView(
-      controller: _scroll,
-      padding: widget.padding,
-      physics: widget.scrollLocked ? const NeverScrollableScrollPhysics() : null,
+    final here = _onFindScreen;
+    return _list(
       children: [
-        Text(
-          widget.live ? "Videos with live detection's boxes" : "Videos with the detector's boxes",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          widget.live
-              ? 'Plays the ROI videos recorded during this session with the boxes live detection '
-                    'found at that moment, so you can see what it caught and what it missed. Tap '
-                    'the video to pause or play. Boxes show only on the frames live detection logged '
-                    'with an insect. Sound is off unless you switch it on.'
-              : 'Plays the videos of this session with the boxes the detector found. Tap the video to '
-                    'pause or play. Boxes are shown only on the frames the detector analysed, so at '
-                    'higher speeds they can trail a fast insect a little. Sound is off unless you '
-                    'switch it on.',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
+        // Embedded, the host screen gives the heading and says what the player shows (round 309).
+        if (!widget.embedded) ...[
+          Text(
+            widget.live ? "Videos with live detection's boxes" : "Videos with the detector's boxes",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.live
+                ? 'Plays the ROI videos recorded during this session with the boxes live detection '
+                      'found at that moment, so you can see what it caught and what it missed. Tap '
+                      'the video to pause or play. Boxes show only on the frames live detection logged '
+                      'with an insect. Sound is off unless you switch it on.'
+                : 'Plays the videos of this session with the boxes the detector found. Tap the video to '
+                      'pause or play. Boxes are shown only on the frames the detector analysed, so at '
+                      'higher speeds they can trail a fast insect a little. Sound is off unless you '
+                      'switch it on.',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
         ...widget.header,
-        if (_cutOff > 0) ...[
+        // "Find animals in videos" says so itself, above its button that deletes them.
+        if (_cutOff > 0 && !here) ...[
           const SizedBox(height: 6),
           Text(
             '$_cutOff ${_cutOff == 1 ? 'clip was' : 'clips were'} cut off: the app stopped while recording, so '
@@ -512,11 +562,11 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               }),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Live detection: the boxes found while recording (the session\'s track IDs). Detection afterwards: '
-              '"Find animals in videos" on these clips, with its own track ID numbers. Switch at any moment '
-              'to compare the same frames.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+              '${here ? 'the boxes found on this screen, with their' : '"Find animals in videos" on these clips, with its'} '
+              'own track ID numbers. Switch at any moment to compare the same frames.',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
           if (area != null) ...[
@@ -531,11 +581,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               onSelectionChanged: (s) => setState(() => _aiView = s.first),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Whole frame: the square is the area the detector analysed; the darker part was left out. '
-              'What the detector saw: zoomed onto that square. If insects sit outside the square or on its '
-              'edge, change it and analyse again (button below).',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
+            Text(
+              'Whole frame: the square is the area the detector ${here ? 'analyzed' : 'analysed'}; the darker part '
+              'was left out. What the detector saw: zoomed onto that square. If insects sit outside the square or '
+              'on its edge, change it '
+              '${here ? 'under "Area to analyze" above and analyze again' : 'and analyse again (button below)'}.',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
           // The live log holds tracked boxes only (round 240).
@@ -557,17 +608,19 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
               'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
               'the confidence threshold, before any tracking. An insect with boxes here but no '
-              'track ID was probably never that sure: lower "New-track confidence" (Find animals in videos → '
-              '"Detection, track ID and identification settings", Track IDs card) and find the track IDs again. '
-              'The detector does not need to run again for that.',
+              'track ID was probably never that sure: lower "New-track confidence" ('
+              '${here ? '"Detection, track ID and identification settings" above' : 'Find animals in videos → '
+                        '"Detection, track ID and identification settings"'}, Track IDs card) and find the track IDs '
+              'again. The detector does not need to run again for that.',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
           if (boxes != null) ..._legend(visits),
           // A deleted clip has no time bar.
           if (c != null && boxes != null) ..._barLegend(visits, kept: _keptMs[name]?.isNotEmpty ?? false),
-          // Live view (rounds 240, 241): compare with the AI afterwards.
-          if (_timeline.live) ...[
+          // Live view (rounds 240, 241): compare with the AI afterwards. Round 309: on "Find animals
+          // in videos" itself there is nothing to open, and its main button is above.
+          if (_timeline.live && !here) ...[
             const SizedBox(height: 12),
             const HelpLabel(
               label: 'Compare with detection afterwards',
@@ -587,7 +640,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 label: Text(_afterTimeline.clips.isEmpty ? 'Find animals in videos' : 'Find animals in videos again'),
               ),
             ),
-          ] else ...[
+          ] else if (!here) ...[
             const SizedBox(height: 12),
             // With every video deleted (round 236) nothing can be analysed
             // again; "Find visits" there still works.
@@ -640,6 +693,16 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     );
   }
 
+  /// The tab's own list, or (embedded, round 309) a column in the host screen's list.
+  Widget _list({required List<Widget> children}) => widget.embedded
+      ? Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
+      : ListView(
+          controller: _scroll,
+          padding: widget.padding,
+          physics: widget.scrollLocked ? const NeverScrollableScrollPhysics() : null,
+          children: children,
+        );
+
   Widget _clipPicker() => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: DropdownButton<int>(
@@ -673,7 +736,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 
+  /// Round 309: on "Find animals in videos" itself the notes point to its main button above.
   List<Widget> _notes(String name, ClipBoxes? boxes) {
+    final here = _onFindScreen;
     String? note;
     if (!_files.contains(name)) {
       final at = _deleted[name];
@@ -684,18 +749,29 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     } else if (_timeline.live) {
       if (boxes == null || boxes.visits.isEmpty) note = 'Live detection found no insect during this clip.';
     } else if (boxes == null) {
-      note = 'This clip was not analysed yet, so there are no boxes. "Find animals in videos" '
-          '(button below) finds the insects in it.';
+      note = here
+          ? 'This clip was not analyzed yet, so there are no boxes. The main button above analyzes it.'
+          : 'This clip was not analysed yet, so there are no boxes. "Find animals in videos" '
+                '(button below) finds the insects in it.';
     } else if (!boxes.done) {
       final last = boxes.lastAnalysedMs;
       note = 'The analysis of this clip stopped${last == null ? '' : ' at ${_time(last)}'}; '
-          'boxes end there. "Find animals in videos" continues it.';
+          'boxes end there. ${here ? 'The main button above' : '"Find animals in videos"'} continues it.';
     } else if (_timeline.visitsStale) {
-      note = 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
-          'The button below opens "Find animals in videos", where "Find track IDs" updates them. Until '
-          'then all boxes are shown.';
+      note = here
+          ? 'The videos were analyzed again after "Find track IDs", so the track IDs no longer match. '
+                'Finding the track IDs again (button above) updates them. Until then all boxes are shown.'
+          : 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
+                'The button below opens "Find animals in videos", where "Find track IDs" updates them. Until '
+                'then all boxes are shown.';
     } else if (!boxes.tracked) {
-      note = _timeline.hasVisits
+      note = here
+          ? _timeline.hasVisits
+                ? '"Find track IDs" ran before this clip was analyzed. Finding the track IDs again (button '
+                      'above) adds this clip\'s track IDs. Until then all boxes are shown.'
+                : 'No track IDs yet: "Find track IDs" (button above) links the boxes of each insect into '
+                      'track IDs. Until then all boxes are shown.'
+          : _timeline.hasVisits
           ? '"Find track IDs" ran before this clip was analysed. The button below opens "Find animals in '
                 'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all boxes '
                 'are shown.'
@@ -924,7 +1000,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 ? 'the bar under the video: cyan where the video has at least one track ID, grey where it has none. '
                 : 'the bar under the video: green on the frames with at least one box, grey where there is none. ',
           ),
-          if (kept) const TextSpan(text: 'Small white marks: frames kept for a track ID (see Kept frames below). '),
+          // Round 309: "Find animals in videos" shows no kept frames below the player.
+          if (kept)
+            TextSpan(text: 'Small white marks: frames kept for a track ID${_onFindScreen ? '' : ' (see Kept frames below)'}. '),
           const TextSpan(text: 'Tap or drag the bar to move through the video.'),
         ],
       ),

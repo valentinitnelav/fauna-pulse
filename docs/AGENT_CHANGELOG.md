@@ -9313,3 +9313,39 @@ order, the clip-error case. Two reviewers: 9 findings, all fixed. Integration te
 phone whose camera uses other values shows "Settings changed" for older video sessions; the
 same design for Find animals in photos is planned later.
 
+## Round 309 (2026-10-15): watch the results on Find animals in videos
+
+**Asked:** after a run, play the videos with their boxes and track IDs (as on the session's Video
+tab) next to the track ID results, so the owner can decide to change the detector or settings and
+run again. By question: on the same screen, below the track ID results, hidden while the detector
+runs.
+
+**Changed:** `screens/video_analysis_screen.dart`: new last section "Watch the results" (heading,
+(i) help, one visible line) with the embedded `VideoReviewPlayer`, shown once a clip is analysed
+and a video exists, left out while the screen is busy (run, track IDs, frame saving, deleting).
+It pauses before every push or dialog (square editor, settings, Identify, models, import, share,
+delete); after a change it reloads, or the player built after the busy phase starts at the old
+clip, moment, view and speed (`startAt` from `view`). `widgets/video_review_player.dart`:
+`embedded` (a Column in the host list; `showMoment` uses `Scrollable.ensureVisible`), nullable
+`onOpenAnalysis` (no buttons to the Find screen; notes point to "the main button above", US
+spelling as on that screen), public `reload()` and `pause()`; a reload closes a clip whose video
+was deleted (also on the summary); a live session opens on "Detection afterwards" on the Find
+screen. New `widgets/screen_on.dart` (`ScreenOn`): the player, the square editor and the video
+runs hold the screen on by owner instead of toggling the one global wake-lock. Test fakes moved
+to `test/fauna_pulse/video_test_fakes.dart`. Docs: VIDEO_ANALYSIS, DATA_GUIDE §9.
+
+**Why:** the player is the last item so its height changes (loading, left out while busy) never
+move the buttons above it. Leaving it out while busy frees its decoder before the detector opens
+one. The global wake-lock toggle let a paused player switch the screen off during a run.
+Rejected: a separate results screen (the owner chose the same screen); `RouteAware` pausing (no
+route observer in the app; explicit pauses are simpler).
+
+**Checked:** analyze clean; 959 tests pass (2 skipped); new tests for `ScreenOn`, the embedded
+player (no own list or buttons, reworded notes, pause, delete then reload), the Find screen
+(player shown, absent while saving frames, pause on push, same moment after a new run, 360 px).
+Integration tests `video_review_check_test` (watch, pause, run right after) and
+`video_cleanup_check_test` (scroll) updated. Reviewers: 7 findings, all fixed. No phone check yet.
+
+**Open:** placement after Free storage (vs. between Share and Free storage) to confirm with the
+owner; three decoders at once in `video_review_check` step 4 (summary, Find screen, detector).
+

@@ -1,8 +1,8 @@
 // The summary's Video tab (round 231): imported sessions get a player with
 // the AI's boxes instead of the photo browser. A fake VideoPlayerPlatform
 // stands in for ExoPlayer and records what the controls ask of it; a fake
-// wakelock shows whether the screen is kept on. Each
-// case runs at 360 px with a 48-px navigation bar.
+// wakelock shows whether the screen is kept on (both in video_test_fakes.dart,
+// round 309). Each case runs at 360 px with a 48-px navigation bar.
 //
 // Follows summary_bottom_inset_test.dart's async recipe (sync fixture IO,
 // runAsync/pump interleave; see that file's header for why).
@@ -32,92 +32,10 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoInfo;
 import 'package:video_player/video_player.dart' show VideoProgressIndicator;
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar, writeSessionFixture;
 import 'summary_tabs_test.dart' show expectSummaryRowValue;
-
-/// Plays nothing; remembers every call as a short string.
-class _FakePlayer extends VideoPlayerPlatform {
-  final calls = <String>[];
-  final _events = <int, StreamController<VideoEvent>>{};
-  var _nextId = 1;
-  Duration position = Duration.zero;
-
-  @override
-  Future<void> init() async {}
-
-  @override
-  Future<int?> createWithOptions(VideoCreationOptions options) async {
-    final id = _nextId++;
-    calls.add('create ${options.dataSource.uri?.split('/').last}');
-    _events[id] = StreamController<VideoEvent>()
-      ..add(
-        VideoEvent(
-          eventType: VideoEventType.initialized,
-          size: const Size(1920, 1080),
-          duration: const Duration(seconds: 10),
-        ),
-      );
-    return id;
-  }
-
-  @override
-  Stream<VideoEvent> videoEventsFor(int playerId) => _events[playerId]!.stream;
-
-  @override
-  Future<void> dispose(int playerId) async {
-    calls.add('dispose');
-    await _events.remove(playerId)?.close();
-  }
-
-  @override
-  Future<void> setLooping(int playerId, bool looping) async {}
-
-  @override
-  Future<void> play(int playerId) async => calls.add('play');
-
-  @override
-  Future<void> pause(int playerId) async => calls.add('pause');
-
-  @override
-  Future<void> setVolume(int playerId, double volume) async => calls.add('volume $volume');
-
-  /// Sends [e] as the newest player's event (round 252: buffering).
-  void emit(VideoEvent e) => _events.values.last.add(e);
-
-  @override
-  Future<void> seekTo(int playerId, Duration to) async {
-    calls.add('seek ${to.inMilliseconds}');
-    position = to;
-  }
-
-  @override
-  Future<void> setPlaybackSpeed(int playerId, double speed) async => calls.add('speed $speed');
-
-  @override
-  Future<Duration> getPosition(int playerId) async => position;
-
-  @override
-  Widget buildViewWithOptions(VideoViewOptions options) => const ColoredBox(color: Colors.black);
-
-  @override
-  Future<void> setMixWithOthers(bool mixWithOthers) async {}
-
-  @override
-  Future<void> setPreventsDisplaySleepDuringVideoPlayback(int playerId, bool prevent) async {}
-}
-
-/// Keeps the wakelock state the tab asks for.
-class _FakeWakelock extends WakelockPlusPlatformInterface {
-  bool on = false;
-
-  @override
-  Future<void> toggle({required bool enable}) async => on = enable;
-
-  @override
-  Future<bool> get enabled async => on;
-}
+import 'video_test_fakes.dart';
 
 Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   for (var i = 0; i < 250; i++) {
@@ -269,13 +187,13 @@ Future<void> _openTrackList(WidgetTester tester, int n, Finder scrollable) async
 }
 
 void main() {
-  late _FakePlayer player;
-  late _FakeWakelock wake;
+  late FakeVideoPlayer player;
+  late FakeWakelock wake;
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    player = _FakePlayer();
+    player = FakeVideoPlayer();
     VideoPlayerPlatform.instance = player;
-    wake = _FakeWakelock();
+    wake = FakeWakelock();
     wakelockPlusPlatformInstance = wake;
   });
 
@@ -342,6 +260,8 @@ void main() {
     expect(find.textContaining('green on the frames with at least one box', skipOffstage: false), findsOneWidget);
     expect(find.textContaining('A new track ID starts only from a box the detector is at least 0.50 sure of', skipOffstage: false),
         findsOneWidget);
+    // Round 309: the Video tab keeps its way to "Find animals in videos" (the player there has none).
+    expect(find.text('Change square and analyse again', skipOffstage: false), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     // Folded: the count and the note, no rows until tapped.
@@ -632,6 +552,71 @@ void main() {
     await tester.pump();
   });
 
+  // Round 309: the same player on "Find animals in videos" itself, in that screen's list.
+  testWidgets('embedded on Find animals in videos: no button to it, notes point above; pause, reload (r309)', (
+    tester,
+  ) async {
+    simulateBottomSystemBar(tester);
+    const clip = 'VID_20260924_155954.mp4';
+    final dir = await _importedSession(tester, [clip]);
+    _writeDetections(dir, clip, roi: [0.5, 0.5, 0.5625], roiPx: [420, 0, 1080, 1080]);
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    final key = GlobalKey<VideoReviewPlayerState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [VideoReviewPlayer(key: key, sessionDir: dir, embedded: true)]),
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    // One list, the host's, which also gives the heading.
+    expect(find.byType(ListView), findsOneWidget);
+    expect(find.text("Videos with the detector's boxes"), findsNothing);
+    expect(find.byKey(const ValueKey('track_id_timeline')), findsOneWidget);
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Track IDs in this clip (1)'), 200, scrollable: list);
+    for (final t in ['Square in the wrong place?', 'Change square and analyse again', 'Find animals in videos']) {
+      expect(find.text(t, skipOffstage: false), findsNothing, reason: t);
+    }
+    expect(find.textContaining('change it under "Area to analyze" above and analyze again', skipOffstage: false), findsOneWidget);
+    expect(
+      find.textContaining('("Detection, track ID and identification settings" above, Track IDs card)', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    // The host pauses it before another screen opens.
+    await tester.scrollUntilVisible(find.byTooltip('Play'), -200, scrollable: list);
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pump();
+    expect(wake.on, isTrue);
+    key.currentState!.pause();
+    await tester.pump();
+    expect(player.calls.last, 'pause');
+    expect(wake.on, isFalse);
+
+    // The video deleted to free storage while it plays: read again, the clip is closed and says so.
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pump();
+    expect(wake.on, isTrue);
+    await tester.runAsync(() async => ClipCleanup.run(dir, await ClipCleanup.planAll(dir)));
+    unawaited(key.currentState!.reload());
+    await _pumpUntil(tester, find.textContaining('This clip was deleted on '));
+    for (var i = 0; i < 20 && player.calls.last != 'dispose'; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect(player.calls.last, 'dispose');
+    expect(wake.on, isFalse);
+    expect(find.byKey(const ValueKey('track_id_timeline')), findsNothing);
+    expect(find.text('Other track ID settings?', skipOffstage: false), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets('without a square, track IDs or analysis: no view switch, notes say why', (tester) async {
     simulateBottomSystemBar(tester);
     const a = 'VID_20260924_155954.mp4', b = 'VID_20260924_160512.mp4';
@@ -852,6 +837,22 @@ void main() {
     await tester.tap(find.text('Graphs'));
     await _pumpUntil(tester, find.text('1 (for comparison; Video tab)'));
     expect(find.text('Track IDs found afterwards in the videos'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    // Round 309: on "Find animals in videos" its own boxes come first.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [VideoReviewPlayer(sessionDir: dir, live: true, embedded: true)]),
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.text('Detection afterwards', skipOffstage: false));
+    final compare = find.ancestor(of: find.text('Detection afterwards'), matching: find.byType(SegmentedButton<bool>));
+    expect(tester.widget<SegmentedButton<bool>>(compare).selected, {true});
+    expect(find.textContaining('Detection afterwards: the boxes found on this screen', skipOffstage: false), findsOneWidget);
+    expect(find.text('Compare with detection afterwards', skipOffstage: false), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

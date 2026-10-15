@@ -124,8 +124,10 @@ shared by Identify organisms and the video cards); `identification_screen.dart`,
 (`HelpLabel`, `HelpSwitchTile`, `HelpRow`, `FoldSection`, `helperTextStyle`, `NotApplicable`: greyed,
 not editable, with the reason),
 `numeric_setting_field.dart`, `duration_setting_field.dart`, `session_tile.dart`,
-`video_review_player.dart`, `video_timeline_bar.dart` (`VideoTimelineBar`, the one time bar of
-every video player), `video_speed_chips.dart`, `temperature_gauge.dart`,
+`video_review_player.dart` (`VideoReviewPlayer`; `embedded` + null `onOpenAnalysis` on the Find
+screen, `reload()`, `pause()`, `view`/`startAt`), `video_timeline_bar.dart` (`VideoTimelineBar`, the
+one time bar of every video player), `screen_on.dart` (`ScreenOn.hold/release`: ref-counted
+screen-on for the video players and video runs; never call WakelockPlus directly there), `video_speed_chips.dart`, `temperature_gauge.dart`,
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
 `roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons; optional
 `color`/`icon`, `kTrackingColor` light green + `Icons.timeline` for track ID cards),
@@ -477,6 +479,11 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   find track IDs (missing, `_stale`, or `_trackChanged` vs `post_track_start` incl.
   `trackerUserValues`) > "Identify the animals found"; with clips left, a text button "Find
   track IDs for the clips analyzed so far". Results section only once track IDs exist.
+- "Watch the results" (last item, `_watchSection`): the embedded `VideoReviewPlayer` once a clip is
+  analysed and a video exists; left out of the tree while `_busy` (one native video reader at a
+  time; `endOfFrame` wait before the run and frame saving), paused before every push/dialog,
+  `reload()` after changes when it stayed, a new player starts at the old `view`; `GlobalKey`
+  per session.
 - Video tab (`VideoReviewPlayer`, ExoPlayer via `video_player`, over `VideoBoxTimeline`): play
   state on a `ValueNotifier`, not the controller (rebuilding at 10 Hz made playback stutter);
   boxes hidden while the player fetches the picture after a jump; wake-lock while playing. One

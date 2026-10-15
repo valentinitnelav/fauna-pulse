@@ -148,7 +148,8 @@ void main() {
     final list = find.byType(Scrollable).first;
     final deleteAll = find.textContaining(', keep the saved frames');
     await tester.scrollUntilVisible(deleteAll, 300, scrollable: list);
-    await tester.drag(list, const Offset(0, -600));
+    // Round 309: the player under it follows; the shot shows the section above the button.
+    await Scrollable.ensureVisible(tester.element(deleteAll), alignment: 1);
     await tester.pump(const Duration(milliseconds: 300));
     await shot('cleanup_before');
     await tester.scrollUntilVisible(deleteAll, 300, scrollable: list);

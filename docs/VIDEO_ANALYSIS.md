@@ -76,8 +76,9 @@ Terms used below:
    reads *Find track IDs again with these settings*. A new track ID starts only
    from a box the detector is at least *New-track confidence* sure of (0.50, kept at least
    0.10 above the confidence threshold); weaker boxes, down to the confidence threshold, only
-   continue a track. If the Video tab's *All boxes* shows an insect that never gets a
-   track ID, lower it and find the track IDs again: no new AI run is needed (round 247). With *Keep frames of each
+   continue a track. If *All boxes* (on the Video tab or under *Watch the results*) shows an
+   insect that never gets a track ID, lower it and find the track IDs again: no new AI run is
+   needed (round 247). With *Keep frames of each
    track ID* on (the default, round 234) it then saves pictures of every track ID from the
    clips, by the live photo rule: the first frame, then one every *Keep a frame every*
    (1 s) for up to *For up to* (10 s). They land in `roi_frames/` like live photos, show
@@ -96,6 +97,14 @@ Terms used below:
    once the frames are saved; the boxes, track IDs and kept frames stay, so Find track IDs can
    still run again (DATA_GUIDE §9). Copy the clips to a computer first if you may want to
    analyse them again.
+   **Watch the results** (round 309), at the end of the same screen once clips are analysed:
+   the player of the summary's Video tab (boxes, track IDs, the time bar, the track ID list),
+   so a run is judged where its settings are. If insects are missed, or one insect gets
+   several track IDs, change the settings above and run again, then watch again: the player
+   comes back on the same clip and moment, with the same view and speed, to compare. It is
+   hidden while the detector runs, the track IDs are found, frames are saved or clips are
+   deleted (the phone reads one video at a time), and it pauses when another screen opens
+   over it. For a live detection session it shows *Detection afterwards* first.
 4. **Share results**: one zip with `track_ids.csv` (one row per track ID), `mot/` (every
    tracked box), `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`.
    Unzip it on the computer and keep the files together: the scripts below need them.

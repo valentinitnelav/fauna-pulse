@@ -1309,7 +1309,10 @@ For an imported video session the summary's first tab is **Video** (live session
 *Photos*). It plays the session's clips with the detector's boxes drawn on them, so you can see
 what the detector found and whether the analysed square was well placed. The tab only reads
 `video_detections.jsonl`, `post_tracks.jsonl` and the kept frames in `roi_frames/` (round
-234, shown under the player); it writes nothing.
+234, shown under the player); it writes nothing. Since round 309 the same player also sits at
+the end of *Find animals in videos* (*Watch the results*), without its button to that screen
+and without the kept frames below it; the boxes, switches, controls and time bar below work
+the same there.
 
 * **Which boxes show at a moment.** The player's position counts from the clip's first
   frame, the same clock as `start_s`/`end_s` in `track_ids.csv`. It shows the boxes of the

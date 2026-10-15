@@ -3,7 +3,8 @@
 // and its square editor. Each gets the 360-px layout check (no
 // overflow, last control above a 48-px navigation bar); the import screen
 // also runs a real import into a temp folder, and the summary must name the
-// imported session's mode instead of guessing a camera mode.
+// imported session's mode instead of guessing a camera mode. Round 309: the
+// player under the results plays through the fakes of video_test_fakes.dart.
 //
 // Follows summary_bottom_inset_test.dart's async recipe (sync fixture IO,
 // runAsync/pump interleave; see that file's header for why).
@@ -31,14 +32,19 @@ import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/model_kind_panel.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/numeric_setting_field.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_review_player.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/video_timeline_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show SavedFramesChunk, SavedVideoFrame, VideoInfo;
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 import 'summary_tabs_test.dart' show expectSummaryRowValue;
 import 'video_cut_off_test.dart' show box;
+import 'video_test_fakes.dart';
 
 Future<void> _pumpUntil(WidgetTester tester, Finder ready) async {
   for (var i = 0; i < 250; i++) {
@@ -61,12 +67,22 @@ Future<void> _settle(WidgetTester tester) async {
 /// the video screen, and closes it with Back.
 Future<void> _openTuning(WidgetTester tester) async {
   final entry = find.text('Detection, track ID and identification settings');
-  await tester.scrollUntilVisible(entry, 200, scrollable: find.byType(Scrollable).first);
+  // Round 309: from the top, as the player under the results makes the list long and the entry
+  // may be far above.
+  final list = find.byType(Scrollable).first;
+  tester.state<ScrollableState>(list).position.jumpTo(0);
+  await tester.pump();
+  await tester.scrollUntilVisible(entry, 200, scrollable: list);
   await tester.pump();
   await tester.tap(entry);
   await _pumpUntil(tester, find.text('Detection')); // the first card's title
   await _settle(tester);
 }
+
+/// Round 309: waits until the player under the results has loaded its clip (its time bar shows).
+/// Until then it shows a spinner, which pumpAndSettle would wait for forever.
+Future<void> _playerReady(WidgetTester tester) =>
+    _pumpUntil(tester, find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false));
 
 Future<void> _closeTuning(WidgetTester tester) async {
   await tester.pageBack();
@@ -217,6 +233,14 @@ class _GatedFrameSaver extends _FakeFrameSaver {
 }
 
 void main() {
+  // Round 309: "Find animals in videos" plays the analysed videos too.
+  late FakeVideoPlayer player;
+  late FakeWakelock wake;
+  setUp(() {
+    VideoPlayerPlatform.instance = player = FakeVideoPlayer();
+    wakelockPlusPlatformInstance = wake = FakeWakelock();
+  });
+
   testWidgets('leaving while the kept frames are saved asks first (r256)', (tester) async {
     // The rate the clip was analysed at, so only the track IDs are due.
     SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
@@ -523,13 +547,18 @@ void main() {
     await _closeTuning(tester);
 
     // Clip b is left, so analyzing comes first; no track IDs yet, so the
-    // note on long runs is the last row.
+    // note on long runs comes before the player (round 309), which shows the
+    // boxes of clip a and says how to get its track IDs.
     await tester.scrollUntilVisible(find.text('Continue (1 of 2 clips left)'), 200, scrollable: list);
-    final last = find.textContaining('Long runs: keep the phone charging');
-    await tester.scrollUntilVisible(last, 200, scrollable: list);
+    final note = find.textContaining('Long runs: keep the phone charging');
+    await tester.scrollUntilVisible(note, 200, scrollable: list);
     await tester.pump();
-    expectAboveBottomInset(tester, last);
+    expectAboveBottomInset(tester, note);
     expect(find.text('Track IDs'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Watch the results'), 200, scrollable: list);
+    await _playerReady(tester);
+    expect(find.textContaining('No track IDs yet: "Find track IDs" (button above)', skipOffstage: false), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Find track IDs tracks the finished clips and offers the results (r228)', (tester) async {
@@ -701,10 +730,10 @@ void main() {
     await tester.tap(find.text('Find track IDs'));
     await _pumpUntil(tester, find.textContaining('Kept frames saved: 3 of 3'));
 
-    // One clip without a visit.
+    // One clip without a visit. Round 309: the player under it loads first.
     final withoutVisits = find.textContaining('Delete 1 clip without any track ID (2 KB)');
     await tester.scrollUntilVisible(withoutVisits, 200, scrollable: list);
-    await tester.pump();
+    await _playerReady(tester);
     expect(find.text('Videos: 2 clips, 5 KB.'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(withoutVisits);
@@ -716,6 +745,10 @@ void main() {
     expect(File('${session.path}/videos/a.mp4').existsSync(), isTrue);
     await _pumpUntil(tester, find.text('Every analyzed clip has at least one track ID.'));
     expect(find.text('Videos: 1 clip, 3 KB (1 deleted before).'), findsOneWidget);
+    // Round 309: the player under it plays clip a and lists the deleted one.
+    await _playerReady(tester);
+    expect(find.text('a.mp4 · 1 track ID', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('b.mp4 · ', skipOffstage: false), findsOneWidget);
 
     // Then all: the session stays, the visits too.
     final all = find.textContaining('Delete the only clip, keep the saved frames');
@@ -730,6 +763,10 @@ void main() {
     await tester.tap(find.text('Delete 1'));
     await _pumpUntil(tester, find.text('All 2 videos were deleted.'));
     expect(VideoDetector.clipsOf(session), isEmpty);
+    // Round 309: nothing left to play, so no player; its last clip was closed.
+    expect(find.byType(VideoReviewPlayer, skipOffstage: false), findsNothing);
+    expect(find.text('Watch the results', skipOffstage: false), findsNothing);
+    expect(player.calls.last, 'dispose');
     await tester.scrollUntilVisible(find.textContaining('1 track ID in 2 of 2 clips'), -200, scrollable: list);
     await tester.scrollUntilVisible(find.text('The videos were deleted'), -200, scrollable: list); // the start button
     expect(find.textContaining('they cannot be analyzed again; the track IDs can still be found again'), findsOneWidget);
@@ -743,6 +780,105 @@ void main() {
     await tester.drag(list, const Offset(0, -3000));
     await tester.pump();
     expectAboveBottomInset(tester, find.text('All 2 videos were deleted.'));
+    expect(tester.takeException(), isNull);
+  });
+
+  // Round 309 (owner): after a run the videos play on this screen, under the track ID results, to
+  // judge them before changing the settings and running again.
+  testWidgets('the videos play under the track IDs: not while busy, paused under other screens, 360 px (r309)', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'video_analysis_fps': 10.0});
+    simulateBottomSystemBar(tester);
+    final tmp = _tempDir('video_watch_results');
+    final session = _oneTrackSession(tmp);
+    final saver = _GatedFrameSaver();
+    addTearDown(() {
+      if (!saver.gate.isCompleted) saver.gate.complete();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoAnalysisScreen(
+          initialSessionPath: session.path,
+          sessionsDir: tmp,
+          models: const [ModelEntry(id: 'test_model', name: 'test_model.tflite', source: ModelSource.bundled)],
+          frameSaveBackend: saver,
+        ),
+      ),
+    );
+    await _pumpUntil(tester, find.textContaining('1 analyzed)'));
+    final list = find.byType(Scrollable).first;
+    final watch = find.text('Watch the results');
+    await tester.scrollUntilVisible(watch, 200, scrollable: list);
+    await _playerReady(tester);
+    // A moment to come back to after the run.
+    final moved = tester.state<VideoReviewPlayerState>(find.byType(VideoReviewPlayer)).showMoment('a.mp4', 2000);
+    await _settle(tester);
+    await moved;
+
+    // Finding the track IDs saves frames from the video: the player is gone meanwhile, and the
+    // screen stays on for the saving.
+    final findIds = find.text('Find track IDs');
+    await tester.scrollUntilVisible(findIds, -200, scrollable: list);
+    await tester.pump();
+    await tester.tap(findIds);
+    await _pumpUntil(tester, find.textContaining('Saving the kept frames'));
+    await tester.scrollUntilVisible(find.text('Free storage'), 200, scrollable: list);
+    expect(find.byType(VideoReviewPlayer, skipOffstage: false), findsNothing);
+    expect(watch, findsNothing);
+    expect(wake.on, isTrue);
+    saver.gate.complete();
+    await _pumpUntil(tester, find.text('Kept frames saved: 3 of 3 (12 B).'));
+    expect(wake.on, isFalse);
+
+    // Back under the results, on the same clip and moment as before: the time bar over the track
+    // ID, the share under it, the list.
+    await tester.scrollUntilVisible(watch, 200, scrollable: list);
+    await _playerReady(tester);
+    await _settle(tester);
+    expect(player.calls.sublist(player.calls.lastIndexOf('create a.mp4')), contains('seek 2000'));
+    expect(tester.state<VideoReviewPlayerState>(find.byType(VideoReviewPlayer, skipOffstage: false)).view?.ms, 2000);
+    final bar = tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false));
+    expect(bar.spans, hasLength(1));
+    expect(bar.keptMs, hasLength(3));
+    expect(find.textContaining(RegExp(r'^Track IDs in \d+ % of this clip'), skipOffstage: false), findsOneWidget);
+    // Nothing that would open this screen again; the notes point to the controls above.
+    expect(find.widgetWithText(FilledButton, 'Find animals in videos', skipOffstage: false), findsNothing);
+    expect(find.text('Change square and analyse again', skipOffstage: false), findsNothing);
+    expect(find.text('Square in the wrong place?', skipOffstage: false), findsNothing);
+    expect(find.textContaining('(see Kept frames below)', skipOffstage: false), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // Playing keeps the screen on; another screen opening over it pauses the clip.
+    final play = find.byTooltip('Play');
+    await tester.scrollUntilVisible(play, 200, scrollable: list);
+    await tester.pump();
+    await tester.tap(play);
+    await tester.pump();
+    expect(player.calls, contains('play'));
+    expect(wake.on, isTrue);
+    await _openTuning(tester);
+    expect(player.calls.last, 'pause');
+    expect(wake.on, isFalse);
+    await _closeTuning(tester);
+
+    // A track ID of the list, the screen's last row, moves the video there and stays above the bar.
+    final toggle = find.byKey(const ValueKey('track_list_toggle'));
+    await tester.scrollUntilVisible(toggle, 200, scrollable: list);
+    await tester.pump();
+    await tester.tap(toggle);
+    await tester.pump();
+    final row = find.byType(ListTile);
+    await tester.scrollUntilVisible(row, 200, scrollable: list);
+    await tester.drag(list, const Offset(0, -3000));
+    await tester.pump();
+    expectAboveBottomInset(tester, row, label: 'last row');
+    // The "Found 1 track ID" snack bar covers the end of the list for 4 s.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pump();
+    expect(player.calls.last, startsWith('seek '));
     expect(tester.takeException(), isNull);
   });
 
@@ -815,6 +951,8 @@ void main() {
     expect(tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>).first).selected, {false});
     await tester.scrollUntilVisible(find.text('Analyze 1 clip'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Detection: confidence 0.25, 5 frames per second, IoU 0.70'), findsOneWidget);
+    // Round 309: nothing analysed, so nothing to watch yet.
+    expect(find.byType(VideoReviewPlayer, skipOffstage: false), findsNothing);
     // Round 308: the track ID settings before the first run.
     await _openTuning(tester);
     for (final label in ['Tracking algorithm', 'New-track confidence', 'Occlusion tolerance', 'Minimum track length']) {

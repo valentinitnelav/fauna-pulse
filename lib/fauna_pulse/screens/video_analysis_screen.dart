@@ -37,6 +37,12 @@
 // reachable before the first run; the tracker settings there are the
 // videos' own, apart from the camera's. One main button does what is due:
 // analyze, else find the track IDs again, else identify.
+//
+// Round 309 (owner): under the track ID results the videos play with their
+// boxes and track IDs (widgets/video_review_player.dart, as on the session's
+// Video tab), to judge a run before changing the settings and running again.
+// The player is left out while the screen is busy, so it never plays while
+// the detector or the frame saving reads the videos.
 
 import 'dart:convert';
 import 'dart:io';
@@ -51,7 +57,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:video_player/video_player.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
@@ -71,9 +76,11 @@ import '../tracking/tracker.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
 import '../widgets/roi_overlay.dart';
+import '../widgets/screen_on.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
 import '../widgets/tracker_tuning_fields.dart';
+import '../widgets/video_review_player.dart';
 import '../widgets/video_speed_chips.dart';
 import '../widgets/video_timeline_bar.dart';
 import '../widgets/home_button.dart';
@@ -371,6 +378,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// bar and time estimate weigh clips by length.
   List<int> _runLengthsMs = const [];
 
+  /// The player under the results (round 309); a new key for each session
+  /// gives another session a player of its own.
+  var _playerKey = GlobalKey<VideoReviewPlayerState>();
+
+  /// Where that player was before the screen went busy: the one built afterwards starts there.
+  VideoReviewView? _playerView;
+
   @override
   void initState() {
     super.initState();
@@ -381,18 +395,20 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   void dispose() {
     // A popped screen can't show progress; stop the run too.
     _cancelRequested = true;
-    if (_running || _keeping) _keepAwake(false);
+    ScreenOn.release(this);
     super.dispose();
   }
 
-  /// Keeps the screen on during a run. Best effort: a run goes on (and its
-  /// flags are cleared) even if the phone refuses.
-  static Future<void> _keepAwake(bool on) async {
-    try {
-      await WakelockPlus.toggle(enable: on);
-    } catch (e) {
-      logSwallowed('video_analysis_wakelock', e);
-    }
+  /// Round 309: no clip of the player under the results plays on behind
+  /// another screen, a question or a run.
+  void _pausePlayer() => _playerKey.currentState?.pause();
+
+  /// Round 309: the player before a change of the session's data, for [_refresh]. It is left out
+  /// while the screen is busy, so where it was is kept for the player built after it.
+  VideoReviewPlayerState? _playerBeforeChange() {
+    final p = _playerKey.currentState;
+    _playerView = p?.view ?? _playerView;
+    return p;
   }
 
   Future<void> _load() async {
@@ -496,6 +512,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       if (_session?.dir.path != s.dir.path) {
         _kept = KeptFramesStatus.none;
         _withoutVisits = null;
+        _playerKey = GlobalKey();
+        _playerView = null;
       }
       _session = s;
       _roi = s.lastSettings == null
@@ -567,6 +585,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   Future<void> _editSquare() async {
+    _pausePlayer();
     final s = _session;
     final frame = await _loadFrame();
     if (s == null || frame == null || !mounted) return;
@@ -645,6 +664,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final session = _session;
     final config = _config;
     if (session == null || config == null || _busy) return;
+    _pausePlayer();
+    final player = _playerBeforeChange();
     final changed = _changedSettings(session, config);
     if (!startOver && changed.isNotEmpty) {
       if (!await _confirmStartOver(session, changed)) return;
@@ -662,7 +683,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           if (startOver || !session.doneClips.contains(c)) session.lengthsMs[c] ?? 0,
       ];
     });
-    await _keepAwake(true);
+    ScreenOn.hold(this);
+    // Round 309: the player under the results closes its video first (it is left out while busy).
+    if (_playerKey.currentState != null) await WidgetsBinding.instance.endOfFrame;
 
     VideoRunResult? result;
     String? failure;
@@ -701,7 +724,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       } catch (e) {
         logSwallowed('video_analysis_yolo_dispose', e);
       }
-      await _keepAwake(false);
+      ScreenOn.release(this);
     }
 
     if (!mounted) return;
@@ -728,15 +751,16 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       if (!mounted) return;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    await _refresh(session);
-    if (found) await _identifyAfter();
+    await _refresh(session, player);
+    if (found) await _identifyAfter(session);
   }
 
   /// Round 274: one Start from the boxes to the names, once the kept frames
   /// (what identification names) are all saved; round 308: also after
   /// finding the track IDs again.
-  Future<void> _identifyAfter() async {
-    if (_identify && _kept.remaining == 0 && mounted) {
+  Future<void> _identifyAfter(_VideoSession ran) async {
+    // Round 309: not when another session was picked meanwhile.
+    if (_identify && _kept.remaining == 0 && mounted && _session?.dir.path == ran.dir.path) {
       if (_session case final s?) await _openIdentify(s);
     }
   }
@@ -750,6 +774,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// Opens Identify organisms on [s], which starts by itself and ends on the
   /// results; the model and name list chosen here are remembered for it.
   Future<void> _openIdentify(_VideoSession s) async {
+    _pausePlayer();
     await _idChoice.save();
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -786,14 +811,23 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
-  Future<void> _refresh(_VideoSession session) async {
+  /// Reads [session] again after a change. Round 309: so does the player under
+  /// the results, when it is still [player], the one from before the change
+  /// (it stops a clip whose video was deleted); a player built anew meanwhile
+  /// (it is left out while the screen is busy) has read the change already.
+  Future<void> _refresh(_VideoSession session, [VideoReviewPlayerState? player]) async {
     final sessions = await _scanSessions();
     if (!mounted) return;
+    // Round 309: the session selected now, as the list is usable again while this reads: another
+    // session picked there meanwhile stays picked (with its own player).
+    final path = _session?.dir.path ?? session.dir.path;
     setState(() {
       _sessions = sessions;
-      _session = sessions.where((s) => s.dir.path == session.dir.path).firstOrNull;
+      _session = sessions.where((s) => s.dir.path == path).firstOrNull;
     });
     await _loadSelected();
+    final now = _playerKey.currentState;
+    if (now != null && identical(now, player)) await now.reload();
   }
 
   bool get _busy => _running || _tracking || _keeping || _deleting;
@@ -837,11 +871,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _onFindVisits({bool identify = true}) async {
     final s = _session;
     if (s == null || _busy) return;
+    final player = _playerBeforeChange();
     final r = await _findVisits(s);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
-    await _refresh(s);
-    if (r.ok && identify) await _identifyAfter();
+    await _refresh(s, player);
+    if (r.ok && identify) await _identifyAfter(s);
   }
 
   /// Saves the kept frames of [session] that are not saved yet, from the
@@ -853,7 +888,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       _cancelRequested = false;
       _keepProgress = null;
     });
-    await _keepAwake(true);
+    ScreenOn.hold(this);
+    // Round 309: the player under the results closes its video before the frames are read from it.
+    if (_playerKey.currentState != null) await WidgetsBinding.instance.endOfFrame;
     String message;
     try {
       final r = await VideoFrameKeeper(backend: widget.frameSaveBackend ?? const NativeFrameSaveBackend()).run(
@@ -873,7 +910,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       logSwallowed('video_keep_frames_run', e);
       message = 'Saving the frames failed: $e';
     } finally {
-      await _keepAwake(false);
+      ScreenOn.release(this);
     }
     if (mounted) {
       setState(() {
@@ -887,13 +924,15 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _onSaveKeptFrames() async {
     final s = _session;
     if (s == null || _busy) return;
+    final player = _playerBeforeChange();
     final message = await _saveKeptFrames(s);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    await _refresh(s);
+    await _refresh(s, player);
   }
 
   Future<void> _shareResults(_VideoSession s) async {
+    _pausePlayer();
     final tmp = await getTemporaryDirectory();
     final path = await _zipInBackground(s.dir.path, '${tmp.path}/${s.name}_video_results.zip');
     if (!mounted) return;
@@ -1030,6 +1069,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   _visitsSection(),
+                  // Round 309: last, so its height changing (loading, left out while busy) never
+                  // moves what is above it.
+                  _watchSection(),
                 ],
               ),
       ),
@@ -1039,6 +1081,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// Round 277: videos are imported here too (also with the home screen's
   /// "Import videos…"); the new session is chosen once the import is done.
   Future<void> _importVideos() async {
+    _pausePlayer();
     final before = {for (final s in _sessions) s.dir.path};
     final imported = await pickAndImportVideos(context);
     final sessions = await _scanSessions();
@@ -1121,6 +1164,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   /// Round 267: models are added and deleted on the AI models screen;
   /// re-reads the list on return and keeps the choice when it still exists.
   Future<void> _manageModels() async {
+    _pausePlayer();
     await openModelsScreen(context);
     final models = widget.models ?? await ModelCatalog.build();
     if (widget.identificationChoice == null) await AlsoIdentify.reload(_idChoice);
@@ -1212,6 +1256,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   }
 
   Future<void> _openTuning() async {
+    _pausePlayer();
     final s = _session;
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1523,6 +1568,41 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
+  /// "Watch the results" (round 309, owner): the analysed videos with their
+  /// boxes and track IDs, under the track ID results and Free storage. Left
+  /// out while the screen is busy: its video is closed before the detector or
+  /// the frame saving opens one (one video read at a time), and a clip being
+  /// deleted never plays.
+  Widget _watchSection() {
+    final s = _session;
+    if (s == null || s.doneClips.isEmpty || s.clips.isEmpty || _busy) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        const HelpLabel(
+          label: 'Watch the results',
+          labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          helperText:
+              'Plays the analyzed videos with the boxes the detector found and their track IDs, as on the '
+              'session\'s Video tab, so you can see what the detector found and decide whether to change the '
+              'settings and run again. After a new run the player opens on the same clip and moment, to '
+              'compare. Tap the video to pause or play. Boxes are shown only on the frames the detector '
+              'analyzed, so at higher speeds they can trail a fast insect a little. Sound is off unless you '
+              'switch it on. The player is hidden while the screen is busy (analyzing, finding track IDs, '
+              'saving frames or deleting videos), so the phone works on one video at a time.',
+        ),
+        const Text(
+          'The videos with the boxes and track IDs found. If insects are missed or counted twice, change the '
+          'settings above and run again.',
+          style: helperTextStyle,
+        ),
+        const SizedBox(height: 8),
+        VideoReviewPlayer(key: _playerKey, sessionDir: s.dir, live: s.liveAi, embedded: true, startAt: _playerView),
+      ],
+    );
+  }
+
   /// "Free storage" (round 236): deleting the clips without any visit, or
   /// all clips, once the visits are found.
   List<Widget> _freeStorage(_VideoSession s, {required bool stale}) {
@@ -1590,6 +1670,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   Future<void> _confirmDeleteClips(_VideoSession s, ClipCleanupPlan plan) async {
     if (plan.isEmpty) return;
+    _pausePlayer();
+    final player = _playerBeforeChange();
     final n = plan.deleteNames.length;
     final all = plan.mode == ClipCleanup.modeAll;
     final cut = plan.mode == ClipCleanup.modeCutOff;
@@ -1630,14 +1712,14 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     setState(() => _deleting = true);
     final deleted = await ClipCleanup.run(s.dir, plan);
     if (!mounted) return;
-    setState(() {
-      _deleting = false;
-      _withoutVisits = null; // read again below
-    });
+    setState(() => _withoutVisits = null); // read again below
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Deleted $deleted ${deleted == 1 ? 'video' : 'videos'}, ${formatBytes(plan.deleteBytes)} freed.')),
     );
-    await _refresh(s);
+    // Round 309: busy until the session is read again, or the player under the results would come
+    // back for a moment with the clips just deleted.
+    await _refresh(s, player);
+    if (mounted) setState(() => _deleting = false);
   }
 
   /// "Frames saved: X of Y", the saving progress and Stop, or the button
@@ -1753,7 +1835,6 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
   int _clip = 0;
   double _speed = 4;
   String? _playError;
-  bool _awake = false;
 
   /// The position the time bar's marker shows (ms).
   final _posMs = ValueNotifier<int>(0);
@@ -1832,11 +1913,8 @@ class _VideoSquareEditorState extends State<VideoSquareEditor> {
     _posMs.value = v?.position.inMilliseconds ?? 0;
   }
 
-  void _keepAwake(bool on) {
-    if (on == _awake) return;
-    _awake = on;
-    WakelockPlus.toggle(enable: on).catchError((Object e) => logSwallowed('video_square_wakelock', e));
-  }
+  /// Round 309: a hold of its own ([ScreenOn]), so it never switches off one a run needs.
+  void _keepAwake(bool on) => on ? ScreenOn.hold(this) : ScreenOn.release(this);
 
   void _togglePlay() {
     final c = _video;
