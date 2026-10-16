@@ -129,10 +129,12 @@ class WatchUse {
   /// One sentence on where to put the phone.
   final String setup;
 
-  /// Suggested detection models, the best first.
+  /// Suggested detection models, in the order to suggest them (the first
+  /// is the page's suggestion).
   final List<ModelDownload> find;
 
-  /// Suggested identification models with their name list, the best first.
+  /// Suggested identification models with their name list, in the order to
+  /// suggest them (the first is the page's suggestion).
   final List<NamingDownload> name;
 
   const WatchUse({
@@ -325,34 +327,25 @@ class ModelDownloads {
 }
 
 /// Downloads one catalogue file into the folder its kind lives in, with the
-/// same checks as an import (structure, size cap) plus its checksum.
+/// same checks as an import (structure, size limit) plus its checksum.
 Future<File> downloadCatalogueFile(
   DownloadFile f, {
   required bool identification,
   void Function(int receivedBytes, int? totalBytes)? onProgress,
   bool Function()? isCancelled,
 }) async {
+  final File target;
   if (!identification) {
-    final dir = await ModelCatalog.modelsDir();
-    return downloadToFile(
-      f.url,
-      safeModelTarget(dir, f.name),
-      maxBytes: maxModelBytesForName(f.name),
-      tooLargeMessage: modelSizeLimitMessage(f.name),
-      validate: (part) => validateModelFile(part, f.name),
-      expectedSha256: f.sha256,
-      onProgress: onProgress,
-      isCancelled: isCancelled,
-    );
+    target = safeModelTarget(await ModelCatalog.modelsDir(), f.name);
+  } else {
+    final dir = f.isNameList ? await IdentificationAssets.packsDir() : await IdentificationAssets.modelsDir();
+    target = File('${dir.path}/${f.name}');
   }
-  final dir = f.isNameList ? await IdentificationAssets.packsDir() : await IdentificationAssets.modelsDir();
   return downloadToFile(
     f.url,
-    File('${dir.path}/${f.name}'),
-    maxBytes: kMaxIdentificationFileBytes,
-    tooLargeMessage: sizeLimitMessage(kMaxIdentificationFileBytes),
+    target,
     validate: (part) async {
-      await validateModelFile(part, f.name, maxBytes: kMaxIdentificationFileBytes);
+      await validateModelFile(part, f.name);
       if (f.isNameList) await LabelPack.readHeader(part);
     },
     expectedSha256: f.sha256,

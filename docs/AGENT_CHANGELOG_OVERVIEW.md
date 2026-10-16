@@ -56,9 +56,10 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - `model_file_kind.dart`: `modelFileKind` reads a `.tflite`'s tensor shapes from its FlatBuffer
   (first output 3-D = detection, all outputs 2-D = identification, input must be a 4-D colour
   picture); `.fpack` by header; `*_qnn.onnx` = detection.
-- `model_file_security.dart` (intake checks, size limits), `model_import.dart`
+- `model_file_security.dart` (intake checks, `kMaxModelFileBytes`), `model_import.dart`
   (`ModelImport.importFiles`/`pickAndImport`/`download`/`onPhoneAs`, `ReplaceQuestion`),
-  `file_download.dart` (shared HTTPS download), `bundled_models.dart`.
+  `file_download.dart` (shared HTTPS download, `downloadStatusMessage`, `directFileUri`),
+  `bundled_models.dart`.
 - `model_downloads.dart`: reader of `assets/model_downloads.json` (`ModelDownloads`,
   `ModelDownload`, `NameListDownload`, `NamingDownload`, `WatchUse`, `downloadCatalogueFile`,
   `modelFor`).
@@ -549,7 +550,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   ID; defaults from insect-detect-post's `filter_tracks`, Sittinger 2026, Zenodo
   10.5281/zenodo.21822140: credit the idea's source and the implementer separately). Optional merge of consecutive track IDs (off). `reproduce_track_conf.py` reproduces the
   numbers on a PC. Defaults are not validated on pollinators (IDENTIFICATION.md).
-- Class lists: a classifier (`insectdct-cls-v7_eff2s_fp16.tflite`, raw scores) pairs with the
+- Class lists: a classifier (`insectdct-cls-v7-eff2s_224_fp16.tflite`, raw scores) pairs with the
   `.fpack` of the same name (`LabelPack.isClassList`, `ImageEmbedder.load(normalize: false)`).
   Label packs pair by the first part of the name (`listBelongsTo`, else header `model_id`).
   Identify needs a matching list; a dimension mismatch is refused before embedding.
@@ -567,9 +568,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   line); plain `.onnx` refused
   (`isSupportedModelFileName`). LiteRT `format=litert` NCHW exports run (detect only).
 - **Security:** models live in private app storage; intake is HTTPS-only, rejects unsafe names
-  and traversal, streams through a temp file, checks the `TFL3` identifier; limits 30 MiB for
-  detection `.tflite` (`kMaxTfliteModelBytes`), 256 MiB for QNN, 2 GiB for identification files
-  (`kMaxIdentificationFileBytes`). These checks run only at intake, never in the camera path.
+  and traversal, streams through a temp file, checks the `TFL3` identifier; one size limit of
+  2 GiB for every model file and name list, detectors included (`kMaxModelFileBytes`; the
+  plugin's Kotlin label reader maps the whole file, which Java allows only up to 2 GiB). A web
+  page answer (`text/html`) is refused before its body downloads; 401/403/404 get plain
+  words (`downloadStatusMessage`); a pasted Hugging Face `/blob/` link becomes `/resolve/`
+  (`directFileUri`, link downloads only). These checks run only at intake, never in the
+  camera path.
 - **No bundled models:** `assets/models/bundled_models.txt` is empty; the camera picker lists only
   imported/downloaded files. Debug builds still pack local weights for device checks.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and
@@ -582,20 +587,37 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   identification model counts as on the phone by its file name or, for BioCLIP (label packs), by
   any file of the same model key (`idModelFor`): its lists still to download sit under that model
   ("Name lists to download for it"), and "Available to download" holds only models not on the
-  phone, each with its lists (list icon, "plus the model"). The panel's first text says what a
-  name list is and why a short one gives better names.
+  phone, each with its lists (list icon; title, then "<file>, <size> plus the model"). The ⓘ card
+  of a model to download does not repeat its label packs (only their shared licence and source);
+  the card of a model on the phone does not list its name lists (they sit under it). A line
+  under the credits note links the Hugging Face collection (`kModelsCollectionUrl`), to
+  download on a computer and import. The panel's first text says what a name list is and why a
+  short one gives better names.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
   optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home
-  answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; the first of each is
+  answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; insect answers find
+  flat-bug n, then flat-bug s, then insectDCT (flat-bug = default demo, owner); the first of each is
   "Suggested AI models"; naming is BioCLIP 2 first in every answer: the Europe 5-order list for
   pollinators and flat surface, the world list for mammals and birds). Presence on the phone = file name only; `sha256` only verifies a download.
+  Files kept under the names used before the Hugging Face move get the new names at app start
+  (`former_model_names.dart`, `renameFormerModelFiles` in `main()`: old name + same size, new name
+  free), and the saved choices that name them follow (`faunapulse_session_config`,
+  `analysis_model`, `video_analysis_model`, `identify_model`/`identify_pack`, `watch_choice_*`);
+  the old insectDCT class list (it names the old model file inside) is deleted once its model is
+  renamed. Sessions keep the old names: `VideoResume.parse` maps the stored model through
+  `currentModelPath` (a stopped run can be continued), and `IdentificationPaths` renames
+  `embeddings_<old stem>.*` to the new stem when looked for. A future rename of a published file
+  needs a line in `kFormerModelNames`.
   `update_catalogue.py` refreshes sizes and checksums; `--urls <published.json>` takes the
   published names and Hugging Face links pinned to a commit (from fauna-pulse-models'
-  `publish/published.json`, matched by SHA-256; renames the `uses` lists too). Files are not
-  online yet except MegaDetector (base_url = release v0.8.0-alpha.1).
+  `publish/published.json`, matched by SHA-256; renames the `uses` lists too). Every offered file has its own Hugging Face link pinned to an upload commit (account
+  `Valen-Peregrine`, one repository per model family, public since 2026-10-16); `base_url`
+  (GitHub release v0.8.0-alpha.1) is used by no file now. Device check of the whole list:
+  `integration_test/catalogue_download_check_test.dart` (side-by-side `.check` copy, `MAX_MB`).
 - **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Suggested AI
-  models" / "Your choice" by file name; the answer in use (`home_watch_use`) opens with
+  models" / "Your choice" by file name, each file with a green tick (on the phone) or the
+  download icon and its size; the answer in use (`home_watch_use`) opens with
   `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
   these"; it pops the `ModelChoice`); the fold "Choose other models" lists the other suggestions plus "Other models on this
   phone" (every other detector and identification model + name list pair, `namingPairs`), in two `ModelKindPanel`s
@@ -679,7 +701,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the donation define; `QNN=1` builds the NPU edition (`-npu` names). QNN deps sit behind
   `project.findProperty('qnn')` in `android/app/build.gradle`. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
   blocked.
-- **Versioning:** pubspec `version:` (now `0.9.0-alpha.1+14`, not released yet; recipe in RELEASE_PLAN.md) is the single source; bump the
+- **Versioning:** pubspec `version:` (now `0.9.0-beta.1+14`, not released yet; recipe in RELEASE_PLAN.md; beta since 0.9.0, so an update keeps older sessions and saved settings readable) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,
   CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
   never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`, the year in
@@ -695,8 +717,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   auto-throttle holds ~6 fps; MIUI `thermal_status` always "none". Lowest forced camera rate 12
   (AE range [12,12]). Battery voltage is 2-cell series: the summary halves it,
   `tool/perf_summary.dart` does not. Only the main lens is offered. Often tethers the laptop's
-  internet over USB: avoid big downloads. GPU speeds: flat-bug n/s and insectDCT v8-s detectors
-  34 ms at 640 px (s at 1024: ~75 ms); BioCLIP 2 0.27 s/crop (CPU 2.6 s); BioCLIP 2.5 CPU only,
+  internet over USB: avoid big downloads. GPU speeds at 640 px: flat-bug n 19 ms, flat-bug s
+  and insectDCT v8-s 34 ms (insectDCT at 1024: ~75 ms); BioCLIP 2 0.27 s/crop (CPU 2.6 s); BioCLIP 2.5 CPU only,
   5.5 s/crop; insectDCT classifier eff2s 0.02 s/crop (the cnb variant gives wrong GPU output).
 - **Samsung `RF8T403A3AT`** (Galaxy M12-class, Exynos 850, Mali-G52, 3.9 GB, Android 13):
   secondary; since round 312 it runs release-signed APKs (the update test from 0.7.0), so no
@@ -756,7 +778,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   (`MEASURE_NOW fast|auto`: read `dumpsys media.camera` and `top`), high-res photos
   (`TARGET=` saved side), view recreate, slow-phone hint, CPU
   threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
-  models screen, models delete, photo track IDs, video decode / import / convert / samples /
+  models screen, models delete, catalogue downloads, photo track IDs, video decode / import / convert / samples /
   default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+
   after), live video (+ after), QNN smoke / benchmark; shared session builder
   `check_sessions.dart`.

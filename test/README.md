@@ -117,6 +117,7 @@ flutter test integration_test/qnn_benchmark_test.dart -d <device> --no-uninstall
   --dart-define=RUN_BENCH=true   # optional: --dart-define=RUN_SOAK=true
 flutter test integration_test/video_decode_check_test.dart -d <device> --no-uninstall  # video pass (r225; header: clips to push)
 flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-uninstall   # CPU thread timing (r226)
+flutter test integration_test/catalogue_download_check_test.dart -d <device> --no-uninstall --dart-define=MAX_MB=100 # every file of the download list up to MAX_MB: download, kind, loads (r314; best in the side-by-side .check copy below, Wi-Fi)
 flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)
 flutter test integration_test/video_review_check_test.dart -d <device> --no-uninstall # Video tab: boxes, 4x frame times, soak, re-analysis (r231; header: model, screenshots)
 flutter test integration_test/video_samples_check_test.dart -d <device> --no-uninstall # phone samples during Find animals in videos: stop, forced cooling pause, continue, graphs, CSV (r232)

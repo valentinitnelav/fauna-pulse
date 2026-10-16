@@ -16,7 +16,7 @@ known".
 ## Naming rule (round 276)
 
 `<model>_<input px>_<precision>[_<extra>].<ext>`, for example `flatbug-n_640_fp16.tflite`,
-`mdv6-yolov10c_256_int8.tflite`, `insectdct-cls-v7-eff2s_224_fp16.tflite`.
+`mdv6-yolov10c_256_w8a32.tflite`, `insectdct-cls-v7-eff2s_224_fp16.tflite`.
 
 - Lower case. "-" joins words inside a part, "_" separates the parts. A dot only inside a
   version number (`bioclip-2.5`).
@@ -64,8 +64,8 @@ In the code, "pack" means such a file of either kind.
 
 ## The list file (format 3)
 
-- `base_url`: where the files are; a file's link is `base_url` + its name. A file can carry
-  its own `"url"` instead (for example a Hugging Face link, or a file in another release).
+- `base_url`: a file without its own `"url"` is at `base_url` + its name. Today every offered
+  file carries its own `"url"` (a Hugging Face link pinned to one upload), so no file uses it.
 - `models`: one entry per model, with `id` (the `<model>` part of its file names, unique),
   `kind` (`detection_model` or `identification_model`), `title`, `purpose`, optional `note`,
   `licence` and `source` (the authors' page: a repository or a Hugging Face page).
@@ -83,8 +83,8 @@ In the code, "pack" means such a file of either kind.
 - `uses` (round 278): the answers to the home screen's *What do you want to watch?*, in the
   order of the tiles. Each has `id`, `icon` (which drawing the tile shows: `pollinators`,
   `flat_surface`, `mammals_birds`; `widgets/watch_tiles.dart`), `title`, `setup` (one sentence
-  on where to put the phone), `find` (the `id`s of the suggested detection models, the best
-  first) and `name` (the suggested identification models, each `{"model": id, "list": file
+  on where to put the phone), `find` (the `id`s of the suggested detection models, in the order
+  to suggest them) and `name` (the suggested identification models, each `{"model": id, "list": file
   name}`; a classifier with one class list may leave out `list`). The first of `find` and of
   `name` are the page's *Suggested AI models* (the others wait under *Choose other models*; the
   page of the answer used last opens with the models in use instead). For naming, BioCLIP 2
@@ -111,26 +111,25 @@ In the code, "pack" means such a file of either kind.
    `python tool/model_downloads/update_catalogue.py --urls ~/fauna-pulse-models/publish/published.json`
    (`--check` only reports). Files are matched by SHA-256, so a file published under a new
    name keeps its entry; the command lists the old names that tests and docs still use.
-3. Do not replace a published file under the same link: app versions already installed would
-   reject the new file (its checksum differs from the one they carry). Upload changed weights
-   under a new file name or a new release tag and change the catalogue (`base_url`, or the
-   file's own `"url"`), so old and new app versions both keep working.
+3. Never replace a published file: app versions already installed carry its link and its
+   checksum. Publish changed weights under a new file name (the model cards say so too) and
+   run `--urls` again, so old and new app versions both keep working.
 
-## Files offered since round 268 (release `v0.8.0-alpha.1`, names from before the naming rule)
+## Where the files are (round 314)
 
-| Catalogue name | Local file to upload (in fauna-pulse-models since round 311) |
-|---|---|
-| `MDV6-yolov10-c_int8_256.tflite` | `assets/models/custom/` (already uploaded) |
-| `flatbug-n_640_fp16.tflite` | `detector_export/out/` |
-| `insectdct-v8-s_640_fp16.tflite` | `detector_export/out/` |
-| `insectdct-cls-v7_eff2s_fp16.tflite`, `.fpack` | `classifier_export/out/` |
-| `bioclip-2_image_fp16_4d.tflite` | `bioclip_export/out/gpu4d/bioclip-2_image_fp16.tflite` (**rename**: the GPU export) |
-| `bioclip2_pollinator_orders_europe_v1.fpack`, `bioclip2_flower_visitors_32fam_v1.fpack` | `bioclip_export/out/` |
-| `bioclip-25_image_fp16.tflite`, `bioclip25_*_v1.fpack` | `bioclip_export/out/bioclip25/` |
-| `bioclip-2_mammals-birds-world_v1.fpack` (round 278, named by the rule) | `bioclip_export/out/` |
+The offered files are on Hugging Face, one repository per model family on
+https://huggingface.co/Valen-Peregrine (`mdv6-tflite`, `flatbug-tflite`, `insectdct-v8-tflite`,
+`insectdct-cls-v7-tflite`, `bioclip-2-tflite`, `bioclip-2.5-tflite`). Each repository has a
+model card (where the weights come from, licence, how the file was converted; the flat-bug and insectDCT cards also give the check against the
+original) and the licence text of the original model (`LICENSE`).
+The links in the list are pinned to the upload commit and were taken with `--urls` (step 2
+above). All six repositories were made public on 2026-10-16. A download that fails with "This
+link is not public (HTTP 401)" means that a repository was made private again or that the link
+names a repository that does not exist.
 
-On 2026-10-02 only the MegaDetector file was online; the others answer "not found" (HTTP 404),
-which the app shows in plain words, until they are uploaded.
+- The MegaDetector file of release `v0.8.0-alpha.1` (`MDV6-yolov10-c_int8_256.tflite`, the
+  same bytes as `mdv6-yolov10c_256_w8a32.tflite`) stays online. Development builds from round
+  268 to round 313 (never released) download it from there, and the model card names it. The
+  released v0.8.0-alpha.1 carries the same file inside its APK.
 
-GitHub release assets may be up to 2 GiB each; BioCLIP 2.5 (1.27 GB) fits. The licences are in
-`docs/THIRD_PARTY_MODELS.md`.
+The app's notes on each model's licence are in `docs/THIRD_PARTY_MODELS.md`.

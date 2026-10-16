@@ -10,18 +10,53 @@ import 'package:crypto/crypto.dart';
 import '../logging/app_error_hooks.dart';
 import 'model_file_security.dart';
 
+/// Why a download answer cannot be used, in plain words, or null when it
+/// can (HTTP 200 and not a web page). Separate from [downloadToFile] so it
+/// can be tested without a server.
+String? downloadStatusMessage(int statusCode, {String? mimeType}) {
+  // Round 278: in plain words, as the app's own list can name files that
+  // are not uploaded yet.
+  if (statusCode == HttpStatus.notFound) {
+    return 'Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.';
+  }
+  // Round 314: Hugging Face answers 401, not 404, for a repository that is
+  // private or does not exist (the app's list names files whose repository
+  // may not be public yet).
+  if (statusCode == HttpStatus.unauthorized || statusCode == HttpStatus.forbidden) {
+    return 'This link is not public (HTTP $statusCode). The file may not be online yet: please try again later.';
+  }
+  if (statusCode != HttpStatus.ok) return 'Download failed (HTTP $statusCode).';
+  // Round 314: a file page (e.g. a Hugging Face or GitHub "blob" link) is a
+  // web page, not the file; refused before its body is downloaded.
+  if (mimeType == 'text/html') {
+    return 'This link opens a web page, not the file itself. Use the download link of the file.';
+  }
+  return null;
+}
+
+/// The link of the file itself for a Hugging Face file page link
+/// (`huggingface.co/<owner>/<repo>/blob/<version>/<file>` becomes
+/// `.../resolve/...`), as people copy the page's address from the browser.
+/// Any other link is returned unchanged.
+Uri directFileUri(Uri uri) {
+  final s = uri.pathSegments;
+  final huggingFace = uri.host == 'huggingface.co' || uri.host == 'hf.co';
+  if (!huggingFace || s.length < 5 || s[2] != 'blob') return uri;
+  return uri.replace(pathSegments: [...s.take(2), 'resolve', ...s.skip(3)]);
+}
+
 /// Streams [url] into [target] through a temporary `<target>.part` file and
 /// renames only on success, so a dropped connection never leaves half a file
-/// where the app looks for models. [validate] checks the finished `.part`
-/// file (structure); [expectedSha256], when given, must match. Reports
+/// where the app looks for models. Files above [kMaxModelFileBytes] are
+/// refused, from the size the server declares and while they stream.
+/// [validate] checks the finished `.part` file (structure);
+/// [expectedSha256], when given, must match. Reports
 /// progress via [onProgress] (total is null when the server doesn't say);
 /// [isCancelled] is checked between chunks. Throws with a plain-language
 /// message on any failure.
 Future<File> downloadToFile(
   Uri url,
   File target, {
-  required int maxBytes,
-  required String tooLargeMessage,
   required Future<void> Function(File part) validate,
   String? expectedSha256,
   void Function(int receivedBytes, int? totalBytes)? onProgress,
@@ -33,23 +68,20 @@ Future<File> downloadToFile(
   final partFile = File('${target.path}.part');
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   try {
-    // GitHub asset links redirect to the real file host; HttpClient follows
-    // redirects on GET by default.
+    // GitHub release links and Hugging Face file links redirect to a file
+    // host; HttpClient follows redirects on GET by default.
     final request = await client.getUrl(url);
     final response = await request.close();
     if (!redirectChainStaysHttps(url, response.redirects)) {
       throw Exception('The link redirected to an insecure non-HTTPS address.');
     }
-    // Round 278: in plain words, as the app's own list can name files that
-    // are not uploaded yet.
-    if (response.statusCode == HttpStatus.notFound) {
-      throw Exception('Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.');
-    }
-    if (response.statusCode != HttpStatus.ok) {
-      throw Exception('Download failed (HTTP ${response.statusCode}).');
-    }
+    final problem = downloadStatusMessage(
+      response.statusCode,
+      mimeType: response.headers.contentType?.mimeType,
+    );
+    if (problem != null) throw Exception(problem);
     final total = response.contentLength > 0 ? response.contentLength : null;
-    if (total != null && total > maxBytes) throw Exception(tooLargeMessage);
+    if (total != null && total > kMaxModelFileBytes) throw Exception(sizeLimitMessage());
     if (total != null) await ensureModelStorageAvailable(target.parent.path, total);
     var received = 0;
     final sink = partFile.openWrite();
@@ -63,7 +95,7 @@ Future<File> downloadToFile(
       await for (final chunk in data) {
         if (isCancelled?.call() ?? false) throw Exception('Download cancelled.');
         final nextReceived = received + chunk.length;
-        if (nextReceived > maxBytes) throw Exception(tooLargeMessage);
+        if (nextReceived > kMaxModelFileBytes) throw Exception(sizeLimitMessage());
         sink.add(chunk);
         received = nextReceived;
         onProgress?.call(received, total);

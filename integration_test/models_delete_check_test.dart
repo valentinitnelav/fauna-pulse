@@ -28,9 +28,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 // ignore: avoid_print
 void _log(String s) => print(s);
 
-const _detectors = {'flatbug-n_640_fp16.tflite', 'insectdct-v8-s_640_fp16.tflite'};
-const _idModel = 'insectdct-cls-v7_eff2s_fp16.tflite';
-const _classList = 'insectdct-cls-v7_eff2s_fp16.fpack';
+const _detectors = {'flatbug-n_640_fp16.tflite', 'insectdct-v8s_640_fp16.tflite'};
+const _idModel = 'insectdct-cls-v7-eff2s_224_fp16.tflite';
+const _classList = 'insectdct-cls-v7-eff2s_224_fp16.fpack';
 
 Future<Set<String>> _names(Future<Directory> dir) async =>
     {for (final f in (await dir).listSync().whereType<File>()) f.path.split('/').last};
@@ -105,7 +105,7 @@ void main() {
     await settle();
     await tester.longPress(find.text('flatbug-n_640_fp16.tflite'));
     await settle();
-    await tester.tap(find.text('insectdct-v8-s_640_fp16.tflite'));
+    await tester.tap(find.text('insectdct-v8s_640_fp16.tflite'));
     await settle();
     expect(find.text('2 selected'), findsOneWidget);
     await shot('del_selecting');

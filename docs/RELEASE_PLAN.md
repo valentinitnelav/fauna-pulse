@@ -20,6 +20,11 @@ yet, no release keystore, docs written for researchers.
   paired with checking GitHub's "Set as a pre-release" box when publishing. Every
   `v0.7.0` reference below now means `v0.7.0-alpha.1`; future alphas bump to
   `-alpha.2`, etc., and the suffix drops once the app is no longer alpha.
+  **Beta from 0.9.0 (owner, 2026-10-16):** the first Play production release is
+  `v0.9.0-beta.1` (later `-beta.2`, ...; the suffix drops at `v1.0.0`). Beta means the
+  features are in place for field use and bugs are still possible; from this release on an
+  update keeps older sessions and saved settings readable. GitHub releases stay marked as
+  pre-releases until `v1.0.0`, so Obtainium users keep "Include prereleases" on.
 - **Heat/performance controls move to a renamed "Power" tab**, not the Detection tab: the Detection tab
   is fully greyed out in the no-AI capture modes (round 147 mechanism), but the motion
   gate must stay editable in motion mode, where its sensitivity fields ARE the capture
@@ -63,7 +68,8 @@ Fixed in rounds 158, 194, 199, 200, 201 and 202:
 - [x] `scripts/create_release_keystore.sh` + `android/key.properties.example` + INSTALL.md
   section B4 make signing setup a one-command step.
 - [x] Round 200 added the Play security baseline: HTTPS-only model downloads,
-  bounded and validated private model imports (30 MiB TFLite ceiling), bounded
+  bounded and validated private model imports (a 30 MiB TFLite ceiling then; since
+  round 314 one 2 GiB limit for every model file and name list), bounded
   native metadata parsing, settings-only Android backup rules, private
   diagnostics, cleartext blocking, minimum manifest permissions, release lint,
   automated dependency updates, CI security regressions, and
@@ -116,7 +122,7 @@ Still open:
 No model ships in the app since round 270 (owner, 2026-10-01). Published insect detectors
 (flat-bug, insectDCT), MegaDetector V6, the insectDCT classifier and BioCLIP 2/2.5 with
 name lists are offered for download from the app's list (`assets/model_downloads.json`),
-hosted on Hugging Face by the fauna-pulse-models repository (see v0.9.0-alpha.1 below).
+hosted on Hugging Face by the fauna-pulse-models repository (see v0.9.0-beta.1 below).
 
 ---
 
@@ -251,7 +257,7 @@ Repo steps (Code-agent prepares, owner reviews and pushes):
        must switch on "Include prereleases" when adding the app, otherwise Obtainium
        finds no FaunaPulse release at all. Also note that GitHub's
        `/releases/latest` URL ignores pre-releases; link the releases list or the
-       tag URL, never `/releases/latest`, while the app is alpha.
+       tag URL, never `/releases/latest`, while releases are pre-releases (until v1.0.0).
 
 Verification: DOI resolves; GitHub shows "Cite this repository"; a fresh phone installs
 the arm64 APK and the AI pipeline runs with the bundled MegaDetector v6 (MDV6) model out of
@@ -295,14 +301,15 @@ Play later (closed test still running).
 7. [ ] Play: the same AAB (versionCode 13) to the closed-test track, and paste the new
        `full_description.txt` into the store listing in the same go (the listing must
        not describe a feature the live build lacks). Superseded: Play gets
-       v0.9.0-alpha.1 (versionCode 14) instead; 13 stays GitHub-only.
+       v0.9.0-beta.1 (versionCode 14) instead; 13 stays GitHub-only.
 
-## v0.9.0-alpha.1: models from Hugging Face, first Play production release (prepared round 312)
+## v0.9.0-beta.1: models from Hugging Face, first Play production release (prepared round 312)
 
 Owner plan (2026-10-15): put the models on Hugging Face, then release, also on Google Play
 (production access approved 2026-09-30). Prepared on `develop` in round 312: version
-`0.9.0-alpha.1+14` in pubspec; CHANGELOG section (heading says "not released yet");
-`fastlane/.../changelogs/14.txt` (466 of 500 characters); `full_description.txt` without
+`0.9.0-alpha.1+14` in pubspec (renamed `0.9.0-beta.1+14` in round 314, owner's choice);
+CHANGELOG section (heading says "not released yet");
+`fastlane/.../changelogs/14.txt` (490 of 500 characters since round 314); `full_description.txt` without
 the old "ships with a model" paragraph and with AI later, the downloads and field notes;
 PRIVACY_POLICY.md (downloads from Hugging Face or GitHub, videos, field notes, site photos);
 `tool/model_downloads/update_catalogue.py --urls` (step 2). Release dry run of round 312 on
@@ -312,10 +319,11 @@ AAB all passed.
 versionCode 14: Play has 11 (frozen) and 12, GitHub v0.8.0-alpha.1 has 13, so 14 updates
 both the closed testers (12) and GitHub users (13).
 
-1. [ ] fauna-pulse-models (its own session): the owner checks every card, then one repo per
+1. [x] fauna-pulse-models (its own session): the owner checks every card, then one repo per
        upload step (private first), then public and not gated; `publish_hf.py --verify
-       --full` passes without a login (as the app downloads).
-2. [ ] App round (next free number; the models repo's notes call it "Round 312", which
+       --full` passes without a login (as the app downloads). Done 2026-10-16: six public
+       repositories, collection huggingface.co/collections/Valen-Peregrine/faunapulse.
+2. [x] App round (next free number; the models repo's notes call it "Round 312", which
        this release-prep round took): `python tool/model_downloads/update_catalogue.py
        --urls ~/fauna-pulse-models/publish/published.json` (`--check` first). It renames
        10 catalogue files to the published names (matched by SHA-256), pins every link to
@@ -329,16 +337,22 @@ both the closed testers (12) and GitHub users (13).
        IDENTIFICATION, FIELD_GUIDE) need the new names too.
        Then `flutter test test/` and one phone check over Wi-Fi: download the small files
        from the app (a detector, the class list, one label pack), plus BioCLIP 2 once.
-3. [ ] Release day, on `develop`: CHANGELOG heading `## 0.9.0-alpha.1 (<date>)`;
-       CITATION.cff `version: "0.9.0-alpha.1"` and `date-released`; the year in
+       Done in round 314: `catalogue_download_check` on the Redmi Note 9S (Wi-Fi) downloaded
+       every file up to 700 MB from huggingface.co through the app's own download (12 ok,
+       0 problems; detectors run, BioCLIP 2 and insectDCT load with the size their lists
+       expect; only the 1.27 GB BioCLIP 2.5 model skipped). flat-bug n and the insectDCT
+       detector also came through the app's screens, and flat-bug n on the 11T Pro (owner).
+       Files from earlier versions are renamed at start (`former_model_names.dart`).
+3. [ ] Release day, on `develop`: CHANGELOG heading `## 0.9.0-beta.1 (<date>)`;
+       CITATION.cff `version: "0.9.0-beta.1"` and `date-released`; the year in
        `citationText` if the year changed (`home_screen_test` compares it).
-4. [ ] Owner: commit, merge `develop` into `main`, `git tag -a v0.9.0-alpha.1 -m
-       "FaunaPulse v0.9.0-alpha.1"`, push `main` and the tag.
+4. [ ] Owner: commit, merge `develop` into `main`, `git tag -a v0.9.0-beta.1 -m
+       "FaunaPulse v0.9.0-beta.1"`, push `main` and the tag.
 5. [ ] Build from the tag: `bash scripts/security_release_gate.sh` (Play AAB, no donation
        link) and `bash scripts/build_release_apks.sh` (GitHub APKs, with the donation link).
-       Check versionCode 14 and versionName 0.9.0-alpha.1 in both with
+       Check versionCode 14 and versionName 0.9.0-beta.1 in both with
        `aapt2 dump badging` (AAB: `bundletool dump manifest`).
-6. [ ] GitHub release `v0.9.0-alpha.1`, "Set as a pre-release", notes from the CHANGELOG
+6. [ ] GitHub release `v0.9.0-beta.1`, "Set as a pre-release", notes from the CHANGELOG
        section, attach both APKs, Publish (Zenodo mints the version DOI). Then the new
        version DOI goes into CITATION.cff `identifiers` (next round).
 7. [ ] Play Console, in one go: Production, Create new release, upload the AAB, release
@@ -557,11 +571,9 @@ supported by F-Droid.
 ## Verification (end-to-end)
 
 - `flutter analyze` clean and `flutter test test/fauna_pulse` green after every round.
-- Fresh clone builds a release APK that installs and runs the AI pipeline with the
-  bundled model (validates the Phase 0 build fixes; the bundled MegaDetector model
-  does not detect insects specifically, see the open owner question). A fresh clone
-  has NO model files (they are git-ignored), so this check needs the listed
-  `MDV6-yolov10-c_int8_256.tflite` placed in `assets/models/custom/` first.
+- Fresh clone builds a release APK that installs and runs the AI pipeline. The APK
+  carries no model (since round 270): download a suggested one in the app (Home, step 1),
+  then run live detection once.
 - DOI badge resolves; `CITATION.cff` validates (cffconvert); Obtainium picks up a new
   tagged release within a day.
 - Play pre-launch report (Google's automatic device-farm test of the uploaded build) on

@@ -60,10 +60,6 @@ class ModelImport {
     ModelFileKind.nameList => File('${(await IdentificationAssets.packsDir()).path}/$name'),
   };
 
-  /// The size cap of a [kind]: null keeps the detection model limits.
-  static int? maxBytes(ModelFileKind kind) =>
-      kind == ModelFileKind.detection ? null : kMaxIdentificationFileBytes;
-
   /// The kinds a file named [name] is already on the phone as. Asked before
   /// a link download, when only the name is known: a .tflite file can be
   /// either kind of model.
@@ -124,7 +120,7 @@ class ModelImport {
           kept.add(name);
           continue;
         }
-        await copyAndValidateModel(source, target, name, maxBytes: maxBytes(kind));
+        await copyAndValidateModel(source, target, name);
         imported.add((name, kind));
       } catch (e) {
         rejected.add('$display: ${plainModelError(e)}');
@@ -150,23 +146,16 @@ class ModelImport {
     if (name == null) {
       throw Exception('Use an HTTPS link to a safely named .tflite, *_qnn.onnx or .fpack file.');
     }
-    // The kind, and so the size cap, is known only once the file is here:
-    // the largest cap of the names' possible kinds until then.
-    final cap = isQnnModelPath(name) ? maxModelBytesForName(name) : kMaxIdentificationFileBytes;
     final cache = Directory('${(await getTemporaryDirectory()).path}/link_download');
     await cache.create(recursive: true);
     late ModelFileKind kind;
     final saved = await downloadToFile(
-      Uri.parse(url.trim()),
+      // Round 314: a Hugging Face file page link becomes the file's own link.
+      directFileUri(Uri.parse(url.trim())),
       File('${cache.path}/$name'),
-      maxBytes: cap,
-      tooLargeMessage: sizeLimitMessage(cap),
       validate: (part) async {
-        await validateModelFile(part, name, maxBytes: cap);
+        await validateModelFile(part, name);
         kind = await modelFileKind(part, name);
-        if (kind == ModelFileKind.detection && await part.length() > maxModelBytesForName(name)) {
-          throw Exception(modelSizeLimitMessage(name));
-        }
       },
       onProgress: onProgress,
       isCancelled: isCancelled,
@@ -178,7 +167,7 @@ class ModelImport {
         await saved.rename(target.path);
       } on FileSystemException {
         // Another storage volume: copy, then the finally below removes it.
-        await copyAndValidateModel(saved, target, name, maxBytes: maxBytes(kind));
+        await copyAndValidateModel(saved, target, name);
       }
     } finally {
       if (await saved.exists()) await saved.delete();

@@ -1,4 +1,4 @@
-// Security checks for user-supplied detection model files.
+// Security checks for user-supplied model files and name lists.
 //
 // Everything here runs only while a model is imported or downloaded. None of
 // these checks run in the camera, inference, tracking, or recording hot paths.
@@ -10,15 +10,17 @@ import 'package:file_picker/file_picker.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 
-/// Maximum accepted TFLite weight size.
-///
-/// Change this constant if future TFLite detectors legitimately exceed
-/// 30 MiB. Current bundled weights are about 2.5-4.7 MiB.
-const int kMaxTfliteModelBytes = 30 * 1024 * 1024;
-
-/// QNN context ONNX exports can be larger than equivalent TFLite weights.
-/// Change this separately without weakening the normal TFLite limit.
-const int kMaxQnnModelBytes = 256 * 1024 * 1024;
+/// The largest file the app accepts: every detection model, identification
+/// model and name list (round 314: one limit for all). 2 GiB is a ceiling the
+/// app sets. An .onnx file cannot be larger, and the Kotlin code that reads a
+/// model's labels and input size maps the whole file into memory as one
+/// block, which Java's file mapping allows only up to 2 GiB. (A .tflite file
+/// can be larger if its weights are stored after the FlatBuffer, as some
+/// large language models do, but no detector or identification model the
+/// app offers does this.) Detectors no longer have a smaller limit: none ships
+/// inside the app (they are downloaded or imported) and they can run live or
+/// afterwards on a recorded video, so a large detector is a choice of speed.
+const int kMaxModelFileBytes = 2 * 1024 * 1024 * 1024;
 
 const int _modelStorageReserveBytes = 5 * 1024 * 1024;
 const int _maxModelFileNameLength = 128;
@@ -54,9 +56,6 @@ int fileNameOrder(String a, String b) {
   return c != 0 ? c : x.compareTo(y);
 }
 
-int maxModelBytesForName(String name) =>
-    isQnnModelPath(name) ? kMaxQnnModelBytes : kMaxTfliteModelBytes;
-
 bool isValidSha256(String value) => _sha256Hex.hasMatch(value);
 
 /// A base name only, never a path. This rejects decoded %2F separators,
@@ -87,15 +86,10 @@ File safeModelTarget(Directory directory, String name) {
   return target;
 }
 
-String modelSizeLimitMessage(String name) {
-  final mib = maxModelBytesForName(name) ~/ (1024 * 1024);
-  return 'The model is larger than the $mib MiB limit. '
-      'The limit is documented in model_file_security.dart.';
-}
-
-/// Size message for a caller-supplied cap (identification files).
-String sizeLimitMessage(int maxBytes) =>
-    'The file is larger than the ${maxBytes ~/ (1024 * 1024)} MiB limit.';
+/// The plain-language refusal of a file above [maxBytes] ("2.0 GB").
+String sizeLimitMessage([int maxBytes = kMaxModelFileBytes]) =>
+    'The file is larger than ${formatBytes(maxBytes)}, the largest model '
+    'file or name list the app can use.';
 
 String plainModelError(Object error) =>
     '$error'.replaceFirst('Exception: ', '');
@@ -129,16 +123,16 @@ Future<void> ensureModelStorageAvailable(String path, int incomingBytes) async {
 /// strict name, non-empty file, size ceiling, private storage, and native
 /// metadata bounds.
 ///
-/// [maxBytes] overrides the per-name detector limit; the identification
-/// feature (round 208) passes its own, larger cap for embedding models and
-/// label packs without weakening the detector limits above.
-Future<void> validateModelFile(File file, String name, {int? maxBytes}) async {
-  final cap = maxBytes ?? maxModelBytesForName(name);
+/// [maxBytes] is [kMaxModelFileBytes] for every kind of file; tests pass a
+/// small one.
+Future<void> validateModelFile(
+  File file,
+  String name, {
+  int maxBytes = kMaxModelFileBytes,
+}) async {
   final length = await file.length();
   if (length <= 0) throw Exception('The model file is empty.');
-  if (length > cap) {
-    throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
-  }
+  if (length > maxBytes) throw Exception(sizeLimitMessage(maxBytes));
   if (!name.toLowerCase().endsWith('.tflite')) return;
 
   final input = await file.open();
@@ -164,14 +158,11 @@ Future<File> copyAndValidateModel(
   File source,
   File target,
   String name, {
-  int? maxBytes,
+  int maxBytes = kMaxModelFileBytes,
 }) async {
-  final cap = maxBytes ?? maxModelBytesForName(name);
   final sourceBytes = await source.length();
   if (sourceBytes <= 0) throw Exception('The selected model file is empty.');
-  if (sourceBytes > cap) {
-    throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
-  }
+  if (sourceBytes > maxBytes) throw Exception(sizeLimitMessage(maxBytes));
   await ensureModelStorageAvailable(target.parent.path, sourceBytes);
 
   final part = File('${target.path}.part');
@@ -182,9 +173,7 @@ Future<File> copyAndValidateModel(
     try {
       await for (final chunk in source.openRead()) {
         copied += chunk.length;
-        if (copied > cap) {
-          throw Exception(maxBytes == null ? modelSizeLimitMessage(name) : sizeLimitMessage(cap));
-        }
+        if (copied > maxBytes) throw Exception(sizeLimitMessage(maxBytes));
         sink.add(chunk);
       }
       await sink.flush();

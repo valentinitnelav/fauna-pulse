@@ -124,8 +124,8 @@ manually re-download the `.apk` every time a new version comes out.
    `https://github.com/valentinitnelav/fauna-pulse`
 3. **Switch on "Include prereleases"** in the app's settings on that same screen
    before tapping Add / +. Every FaunaPulse release is published as a GitHub
-   pre-release while the app is an early research preview (tags like
-   `v0.7.0-alpha.1`), and Obtainium skips pre-releases unless this switch is on,
+   pre-release while the app is a research preview (tags like `v0.7.0-alpha.1` or
+   `v0.9.0-beta.1`), and Obtainium skips pre-releases unless this switch is on,
    so without it Obtainium reports that the repository has no releases.
    Then tap Add or +, usually on the right side of where you pasted the URL above.
 4. Obtainium then detects the GitHub releases and lets you pick which release asset
@@ -208,7 +208,8 @@ flutter pub get           # retrieve or upgrade flutter dependencies
 Models are **not** in the repo (see [S1. Getting the models](#s1-getting-the-models)).
 Two options:
 
-- build/run first, then use the in-app **Import…** button (Track A3).
+- build/run first, then use the in-app **Import model files…** or **Download from a link…**
+  button (Track A3).
 - **Bundle them into your build:** copy the model files you were given into
   `assets/models/` (general models) and `assets/models/custom/` (custom detectors)
   *before* building. These folders are git-ignored, so your models never get committed.
@@ -400,19 +401,25 @@ To understand the difference between **debug** & **release**, imagine preparing 
 
 Model weights (`.tflite` files) are **deliberately not stored in this online repository**, for
 two reasons: they are large, and **some detectors belong to collaborators and must not
-be redistributed**.
+be redistributed**. The published models that the app offers for download (FaunaPulse's
+phone conversions of MegaDetector V6, flat-bug, insectDCT and BioCLIP 2) are on Hugging Face,
+see [THIRD_PARTY_MODELS.md](THIRD_PARTY_MODELS.md); the app downloads them itself (Track A3).
 
 - The maintainer will send you the model files you're permitted to use via a **private
   channel** (direct transfer or a shared-drive link).
 - **Do not** re-share models you receive, commit them to git, or upload them anywhere
   public. Treat collaborator-owned models as confidential.
-- To use a model, load it with the in-app **Import…** button or **Download
-  model…** (Track A3). Import accepts a file copied into any folder that Android's
+- To use a model, load it with the in-app **Import model files…** button or **Download
+  from a link…** (Track A3). Import accepts a file copied into any folder that Android's
   file picker can read, including Downloads populated over USB.
 
-Imported models are validated and copied into private app storage. TFLite imports
-are limited to 30 MiB; maintainers can change `kMaxTfliteModelBytes` in
-`lib/fauna_pulse/models/model_file_security.dart`. For local development, models
+Imported and downloaded models are validated and copied into private app storage. Every model
+file and name list may be up to 2 GiB (`kMaxModelFileBytes` in
+`lib/fauna_pulse/models/model_file_security.dart`). This is a ceiling the app sets: an `.onnx`
+file cannot be larger, and the app reads a model's labels by mapping the whole file into memory,
+which stops at 2 GiB. Detectors have no
+smaller limit: they are not packed into the APK, and a large detector only runs slower (live, or
+afterwards on a recorded video). For local development, models
 can also be placed in `assets/models/` / `assets/models/custom/` before a debug
 or release build (those folders stay git-ignored).
 

@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/app_error_hooks.dart';
+import 'package:fauna_pulse/fauna_pulse/models/former_model_names.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 
 Future<void> main() async {
@@ -20,6 +21,9 @@ Future<void> main() async {
   // Route uncaught errors into the active session's JSONL (and keep the app
   // alive on uncaught async errors) — a field crash must always leave a trace.
   installGlobalErrorHooks();
+  // Model files downloaded before round 314 get the names of the download
+  // list, before any screen looks for them.
+  await renameFormerModelFiles();
   runApp(const FaunaPulseApp());
 }
 

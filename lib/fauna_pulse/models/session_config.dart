@@ -16,6 +16,7 @@ import '../tracking/tracker.dart';
 
 import '../logging/app_error_hooks.dart';
 import 'bundled_models.dart';
+import 'model_choice_keys.dart';
 import 'schedule_window.dart';
 
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
@@ -1145,7 +1146,7 @@ class SessionConfig {
     highResSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
   ).normalizedFpsCaps();
 
-  static const String _prefsKey = 'faunapulse_session_config';
+  static const String _prefsKey = kSessionConfigPref;
 
   /// Loads the last-saved config, or defaults if none/invalid.
   static Future<SessionConfig> load() async {

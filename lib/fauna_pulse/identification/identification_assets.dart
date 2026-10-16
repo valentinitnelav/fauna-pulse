@@ -5,8 +5,9 @@
 // the phone by the user, or downloaded from the catalogue. Since round 275
 // one import for every model file (models/model_import.dart) checks what a
 // file is and copies it here, with the same streamed checks as detector
-// models (safe name, size cap, structural header) and a separate, much
-// larger cap because an image tower is 0.3 to 1.3 GB.
+// models (safe name, size limit, structural header). One size limit covers
+// every kind of file since round 314 (kMaxModelFileBytes, 2 GiB, in
+// models/model_file_security.dart); an image tower is 0.3 to 1.3 GB.
 
 import 'dart:io';
 
@@ -20,11 +21,6 @@ import 'crop_worker.dart' show kDefaultCropMargin;
 import 'identification_store.dart' show modelIdOf, modelKey, stemOf;
 import 'label_pack.dart' show isClassListHeader;
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
-
-/// Cap for one identification file (image tower or label pack). BioCLIP 2.5
-/// fp16 is 1.26 GB; a worldwide arthropod pack ~0.6 GB. TFLite itself stops
-/// at 2 GB.
-const int kMaxIdentificationFileBytes = 2 * 1024 * 1024 * 1024;
 
 final RegExp _safeName = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
 

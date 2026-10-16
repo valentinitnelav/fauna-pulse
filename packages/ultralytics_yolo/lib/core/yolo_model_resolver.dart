@@ -46,8 +46,10 @@ class YOLOModelResolver {
   static const String _iosModelReleaseBaseUrl =
       'https://github.com/ultralytics/yolo-ios-app/releases/download/v8.3.0';
   static bool get _isIosLikePlatform => Platform.isIOS || Platform.isMacOS;
-  // Generic plugin resolver ceiling. FaunaPulse's user-facing catalog applies
-  // the stricter 30 MiB TFLite limit in model_file_security.dart.
+  // Generic plugin resolver ceiling for HTTPS links only (local files pass
+  // through unchanged). FaunaPulse hands the plugin local files: it downloads
+  // and imports them itself, with the checks and the kMaxModelFileBytes limit
+  // in model_file_security.dart.
   static const int _maxRemoteArtifactBytes = 512 * 1024 * 1024;
   static final RegExp _safeRemoteBaseName = RegExp(
     r'^[A-Za-z0-9][A-Za-z0-9._-]*$',

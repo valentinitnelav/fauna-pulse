@@ -159,6 +159,8 @@ void main() {
     expect(find.text('Storage free: 12.4 GB'), findsOneWidget);
     // Round 277 (owner): who made the models, and to cite the originals.
     expect(find.textContaining('made by other research teams'), findsOneWidget);
+    // Round 314 (owner): where the files come from, to download them on a computer too.
+    expect(find.widgetWithText(ExternalLinkText, 'https://huggingface.co/collections/Valen-Peregrine/faunapulse'), findsOneWidget);
     expect(find.textContaining("keeps its creators' licence"), findsOneWidget);
     expect(find.text(_mdv6), findsOneWidget);
     expect(find.text('MegaDetector V6'), findsNothing, reason: 'no catalogue title for a file on the phone');
@@ -187,7 +189,7 @@ void main() {
     expect(_inCard('MIT'), findsOneWidget);
     await _close(tester);
     await _card(tester, _clsName);
-    expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsOneWidget, reason: 'its name lists');
+    expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsNothing, reason: 'its name lists are under it on the screen (r314)');
     expect(find.text('On this phone, 42.0 MB'), findsOneWidget);
     await _close(tester);
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
@@ -208,7 +210,7 @@ void main() {
     expect(find.text('flatbug-n_640_fp16.tflite, 5.4 MB'), findsOneWidget);
     await _close(tester);
     await _show(tester, find.text('Europe'));
-    expect(find.text('54.8 MB plus the model'), findsOneWidget);
+    expect(find.text('bioclip2_pollinator_orders_europe_v1.fpack, 54.8 MB plus the model'), findsOneWidget);
     await tester.tap(find.descendant(of: _tile('Europe'), matching: find.text('Download')));
     await tester.pumpAndSettle();
     expect(find.text('Download BioCLIP 2'), findsOneWidget);
@@ -310,7 +312,13 @@ void main() {
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
     await _show(tester, find.text('32 families'));
     expect(find.text('Model 581.2 MB, downloaded with the first name list you choose:'), findsOneWidget);
-    expect(find.text('59.8 MB plus the model'), findsOneWidget);
+    expect(find.text('bioclip2_flower_visitors_32fam_v1.fpack, 59.8 MB plus the model'), findsOneWidget);
+    // Round 314 (owner): the card of the model does not repeat the lists shown in their rows.
+    await _card(tester, 'BioCLIP 2', tooltip: 'About this model');
+    for (final repeated in ['Europe', '32 families', 'bioclip2_flower_visitors_32fam_v1.fpack']) {
+      expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining(repeated)), findsNothing);
+    }
+    await _close(tester);
     expect(find.descendant(of: _tile('32 families'), matching: find.byIcon(Icons.list_alt)), findsOneWidget);
     // What a name list is, and why a short one gives better names.
     expect(find.textContaining('A short list gives better names'), findsOneWidget);
@@ -636,6 +644,9 @@ void main() {
 
     testWidgets('press and hold selects; several are deleted at once; Back ends the selection', (tester) async {
       await _pump(tester);
+      // The Hugging Face line (round 314) moved the list down.
+      await tester.ensureVisible(find.text(_mdv6));
+      await tester.pumpAndSettle();
       await tester.longPress(find.text('my_bees_640.tflite'));
       await tester.pumpAndSettle();
       expect(find.text('1 selected'), findsOneWidget);

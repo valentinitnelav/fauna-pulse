@@ -48,7 +48,7 @@ import 'check_sessions.dart';
 
 const _clip = String.fromEnvironment('CLIP', defaultValue: 'sessions/bumblebee-2/videos/Bumblebees__720p__h264_.mp4');
 const _detector = String.fromEnvironment('DETECTOR', defaultValue: 'insectdct-v8-s_1024_fp16.tflite');
-const _idModel = String.fromEnvironment('ID_MODEL', defaultValue: 'insectdct-cls-v7_eff2s_fp16.tflite');
+const _idModel = String.fromEnvironment('ID_MODEL', defaultValue: 'insectdct-cls-v7-eff2s_224_fp16.tflite');
 
 // ignore: avoid_print
 void _log(String s) => print(s);

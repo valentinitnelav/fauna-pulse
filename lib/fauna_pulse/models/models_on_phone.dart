@@ -186,7 +186,7 @@ Future<void> useModels({String? detector, String? idModel, String? nameList}) as
 
 /// The models used last for the answer [useId] to "What do you want to
 /// watch?" (round 286), so tapping that answer again brings them back.
-String _watchChoiceKey(String useId) => 'watch_choice_$useId';
+String _watchChoiceKey(String useId) => '$kWatchChoicePrefPrefix$useId';
 
 Future<void> rememberWatchChoice(String useId, ModelChoice c) async {
   final prefs = await SharedPreferences.getInstance();

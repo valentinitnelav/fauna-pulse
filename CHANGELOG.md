@@ -1,19 +1,28 @@
 <!--
 Versions follow the `MAJOR.MINOR.PATCH` scheme of the `version:` field in
 `pubspec.yaml`, and each release is tagged `v<version>` on GitHub. While the app is
-an early research preview, versions carry a SemVer pre-release suffix (e.g.
-`0.7.0-alpha.1`) and the GitHub release is marked as a pre-release.
+a research preview, versions carry a SemVer pre-release suffix (`0.7.0-alpha.1`
+and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is marked as a
+pre-release.
 -->
 
-## 0.9.0-alpha.1 (not released yet)
+## 0.9.0-beta.1 (not released yet)
+
+The first beta: the features are in place for field use, bugs are still possible, and from
+this version on an update keeps your sessions and settings.
 
 - **No AI model inside the app any more.** The home screen asks what you want to watch
   (pollinators on flowers, insects on a flat surface, mammals and birds), suggests
-  published models for it and downloads them once: the flat-bug and insectDCT insect
-  detectors, MegaDetector V6, the insectDCT insect classifier, and BioCLIP 2 or 2.5 with
-  their name lists. **Download & import models** lists every model and name list on the
-  phone with its licence and source; your own `.tflite` models can still be imported. The
-  camera starts without a model and asks for one only for live detection.
+  published models for it and downloads them once from the project's model pages on
+  Hugging Face: the flat-bug insect detectors (suggested first, as a demo) and insectDCT,
+  MegaDetector V6, the insectDCT insect classifier, and BioCLIP 2 or 2.5 with their name
+  lists. **Download & import models** lists every model and name list on the phone with its
+  licence and source; your own models can still be imported or downloaded from a link
+  (detection models are no longer limited to 30 MB: any model file up to 2 GB). The models
+  have new file names; files downloaded with an earlier version are renamed when the app
+  starts, so they are not downloaded again. On the "What do you want to watch?" pages each
+  chosen file shows a tick when it is on the phone, or its download size. The camera
+  starts without a model and asks for one only for live detection.
 - **AI later:** *Find animals in photos* and *Find animals in videos* find animals, track
   IDs and names after recording, also in videos imported from the phone's gallery. The
   video player shows the AI's boxes and a time bar of the track IDs.

@@ -37,6 +37,10 @@
 // put it lower when a row had no details, and in the middle of long ones).
 // Round 288 (owner): the panels are ModelKindPanel, shared with Download &
 // import models, with the icons of the two kinds of model.
+// Round 314 (owner: the button said "Download and use" while the chosen
+// detection model was on the phone; the download was the identification
+// model): each file in the box has a green tick when it is on the phone, or
+// the download icon and its size.
 
 import 'package:flutter/material.dart';
 
@@ -256,17 +260,37 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     return notes.isEmpty ? const SizedBox.shrink() : Text(notes.join(' '), style: helperTextStyle);
   }
 
-  /// A label and the file names under it, in the "Suggested AI models" box.
-  Widget _chosenRow(String label, List<String> files) => Padding(
-    padding: const EdgeInsets.only(top: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: helperTextStyle),
-        for (final f in files) Text(f, style: const TextStyle(fontSize: 14)),
-      ],
-    ),
-  );
+  /// A label and the lines under it, in the "Suggested AI models" box: each
+  /// line (text, its files) with a tick when its files are on the phone, or
+  /// the download icon and the size still to download; a line without files
+  /// has no mark.
+  Widget _chosenRow(String label, List<(String, List<String>)> lines) {
+    final missing = {for (final m in _missing) m.$1.name: m.$1.bytes};
+    Widget line((String, List<String>) l) {
+      final (text, files) = l;
+      final bytes = files.fold(0, (s, f) => s + (missing[f] ?? 0));
+      return Row(
+        children: [
+          if (files.isNotEmpty) ...[
+            bytes == 0
+                ? const Icon(Icons.check_circle, size: 16, color: Colors.lightGreen)
+                : const Icon(Icons.download, size: 16, color: Colors.white70),
+            const SizedBox(width: 6),
+          ],
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+          if (bytes > 0) Text(' ${formatBytes(bytes)}', style: helperTextStyle),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [Text(label, style: helperTextStyle), for (final l in lines) line(l)],
+      ),
+    );
+  }
 
   Widget _chosenBox() {
     final n = _name;
@@ -284,11 +308,18 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
             _isDefault ? 'Suggested AI models' : 'Your choice',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
-          _chosenRow('To find the animals', [_find]),
+          _chosenRow('To find the animals', [(_find, [_find])]),
           if (_namingOffered)
-            n == null
-                ? _chosenRow('To name them', const ['None ($kNoNamingNote)'])
-                : _chosenRow('To name them', [n.$1, if (_listFile(n.$1, n.$2) case final f?) 'with $f']),
+            _chosenRow('To name them', switch (n) {
+              null => const [('None ($kNoNamingNote)', [])],
+              // A class list has its model's name: one line for both, and a
+              // line of its own when only the list is still to download.
+              (final m, final l) when _listFile(m, l) == null =>
+                _missing.any((f) => f.$1.name == l) && !_missing.any((f) => f.$1.name == m)
+                    ? [(m, [m]), ('with its class list', [l])]
+                    : [(m, [m, l])],
+              (final m, final l) => [(m, [m]), ('with $l', [l])],
+            }),
           const SizedBox(height: 10),
           _boxNote(),
           if (!_isDefault)

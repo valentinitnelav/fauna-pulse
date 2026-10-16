@@ -11,6 +11,7 @@
 // Round 286: the button returns the choice; readyChoice says what a tap on an
 // answer switches to; each answer remembers its own models. Round 287: the
 // fold's two parts in their own colours, radio buttons beside the file names.
+// Round 314: a tick or the download size beside each chosen file.
 
 import 'dart:io';
 
@@ -92,14 +93,14 @@ void main() {
 
   test('the shipped list has the three answers, each with offered models and a drawing', () {
     expect(_downloads.uses.map((u) => u.id), ['pollinators', 'flat_surface', 'mammals_birds']);
-    expect(_use('pollinators').find.map((d) => d.id), ['insectdct-v8s', 'flatbug-n']);
+    expect(_use('pollinators').find.map((d) => d.id), ['flatbug-n', 'flatbug-s', 'insectdct-v8s']);
     expect(_use('pollinators').name.map((n) => n.$1.id), ['bioclip-2', 'insectdct-cls-v7-eff2s', 'bioclip-2']);
-    expect(_use('pollinators').name.first.$2.file.name, 'bioclip2_pollinator_orders_europe_v1.fpack');
-    expect(_use('flat_surface').name.first.$2.file.name, 'bioclip2_pollinator_orders_europe_v1.fpack');
+    expect(_use('pollinators').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v1.fpack');
+    expect(_use('flat_surface').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v1.fpack');
     for (final u in _downloads.uses) {
       expect(u.name.first.$1.id, 'bioclip-2', reason: '${u.id}: BioCLIP 2 is suggested for naming');
     }
-    expect(_use('flat_surface').find.first.id, 'flatbug-n');
+    expect(_use('flat_surface').find.map((d) => d.id), ['flatbug-n', 'flatbug-s', 'insectdct-v8s']);
     final (model, list) = _use('mammals_birds').name.single;
     expect(model.id, 'bioclip-2');
     expect(list.file.name, 'bioclip-2_mammals-birds-world_v1.fpack');
@@ -114,31 +115,40 @@ void main() {
 
   testWidgets('pollinators: the suggested models by file name, one download, the choice saved', (tester) async {
     final calls = _Calls();
-    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(detectors: {'insectdct-v8-s_640_fp16.tflite'}), calls);
+    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(detectors: {'flatbug-n_640_fp16.tflite'}), calls);
     expect(find.byType(SetupPicture), findsOneWidget);
     expect(find.text('Suggested AI models'), findsOneWidget);
     expect(find.text('Back to the suggested models'), findsNothing);
-    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
-    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
-    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsOneWidget);
-    expect(find.text('flatbug-n_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
+    expect(find.text('flatbug-n_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
+    expect(find.text('with bioclip-2_pollinator-orders-europe_v1.fpack'), findsOneWidget);
+    expect(find.text('flatbug-s_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
+    expect(find.text('insectdct-v8s_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
     expect(find.text('Choose other models'), findsOneWidget);
     expect(find.text('Use them from now on'), findsNothing, reason: 'choosing is using');
     expect(tester.takeException(), isNull, reason: 'nothing overflows at 360 px');
     final bioclip = _use('pollinators').name.first;
+    // Round 314 (owner): each chosen file says whether it is on the phone or what it downloads.
+    Finder inRow(String file, Finder f) =>
+        find.descendant(of: find.ancestor(of: find.text(file), matching: find.byType(Row)).first, matching: f);
+    expect(inRow('flatbug-n_640_fp16.tflite', find.byIcon(Icons.check_circle)), findsOneWidget);
+    expect(inRow('bioclip-2_224_fp16.tflite', find.byIcon(Icons.download)), findsOneWidget);
+    expect(inRow('bioclip-2_224_fp16.tflite', find.text(' ${formatBytes(bioclip.$1.file!.bytes)}')), findsOneWidget);
+    final list = 'with bioclip-2_pollinator-orders-europe_v1.fpack';
+    expect(inRow(list, find.text(' ${formatBytes(bioclip.$2.file.bytes)}')), findsOneWidget);
     final button = 'Download and use (${formatBytes(bioclip.$1.file!.bytes + bioclip.$2.file.bytes)})';
     expect(find.text('The rest is on this phone. A large download: use Wi-Fi.'), findsOneWidget);
     await _tap(tester, find.text(button));
     expect(
       find.textContaining(
-        'bioclip-2_image_fp16_4d.tflite, bioclip2_pollinator_orders_europe_v1.fpack (the other chosen files are on this phone).',
+        'bioclip-2_224_fp16.tflite, bioclip-2_pollinator-orders-europe_v1.fpack (the other chosen files are on this phone).',
       ),
       findsOneWidget,
     );
     await _tap(tester, _inDialog('Download'));
-    expect(calls.downloaded, [('bioclip-2_image_fp16_4d.tflite', true), ('bioclip2_pollinator_orders_europe_v1.fpack', true)]);
+    expect(calls.downloaded, [('bioclip-2_224_fp16.tflite', true), ('bioclip-2_pollinator-orders-europe_v1.fpack', true)]);
     expect(calls.saved, [
-      ('insectdct-v8-s_640_fp16.tflite', 'bioclip-2_image_fp16_4d.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack'),
+      ('flatbug-n_640_fp16.tflite', 'bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v1.fpack'),
     ]);
     expect(find.byType(WatchPlanScreen), findsNothing, reason: 'back on the home screen');
   });
@@ -148,9 +158,9 @@ void main() {
     await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.text('Choose other models'));
     expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)'), findsOneWidget);
-    expect(find.text('with bioclip2_pollinator_orders_europe_v1.fpack'), findsNWidgets(2), reason: 'box and fold');
+    expect(find.text('with bioclip-2_pollinator-orders-europe_v1.fpack'), findsNWidgets(2), reason: 'box and fold');
     expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
-    await _tap(tester, find.text('flatbug-n_640_fp16.tflite'));
+    await _tap(tester, find.text('flatbug-s_640_fp16.tflite'));
     await _tap(tester, find.text('Not now'));
     await tester.drag(find.byType(ListView), const Offset(0, 3000)); // back to the box at the top
     await tester.pumpAndSettle();
@@ -160,6 +170,7 @@ void main() {
     expect(find.text('None (animals are found and counted, not named)'), findsOneWidget, reason: 'in the box');
     expect(find.text('Not now'), findsOneWidget, reason: 'in the fold');
     final flatbug = _use('pollinators').find[1].file!;
+    expect(flatbug.name, 'flatbug-s_640_fp16.tflite');
     await _tap(tester, find.text('Download and use (${formatBytes(flatbug.bytes)})'));
     await _tap(tester, _inDialog('Download'));
     expect(calls.downloaded, [(flatbug.name, false)]);
@@ -183,10 +194,32 @@ void main() {
     expect(calls.popped, (detector: use.find.single.file!.name, idModel: model.file!.name, nameList: list.file.name));
   });
 
+  testWidgets('insectDCT classifier on the phone without its class list: the list on a line of its own (r314)',
+      (tester) async {
+    final calls = _Calls();
+    final (model, list) = _use('pollinators').name[1];
+    await _pump(
+      tester,
+      _use('pollinators'),
+      ModelFilesOnPhone(detectors: const {'flatbug-n_640_fp16.tflite'}, idModels: {model.file!.name}),
+      calls,
+    );
+    await _tap(tester, find.text('Choose other models'));
+    await _tap(tester, find.textContaining('names insects in 104 fixed classes'));
+    Finder inRow(String text, Finder f) =>
+        find.descendant(of: find.ancestor(of: find.text(text), matching: find.byType(Row)).first, matching: f);
+    // The box is at the top, scrolled away while choosing.
+    await tester.scrollUntilVisible(find.text('with its class list'), -200, scrollable: find.byType(Scrollable).first);
+    expect(inRow(model.file!.name, find.byIcon(Icons.check_circle)), findsOneWidget);
+    expect(inRow('with its class list', find.byIcon(Icons.download)), findsOneWidget);
+    expect(inRow('with its class list', find.text(' ${formatBytes(list.file.bytes)}')), findsOneWidget);
+    expect(find.text('Download and use (${formatBytes(list.file.bytes)})'), findsOneWidget);
+  });
+
   testWidgets('mammals and birds: the new name list and a large download', (tester) async {
     await _pump(tester, _use('mammals_birds'), const ModelFilesOnPhone(), _Calls());
-    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
-    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
+    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget);
+    expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
     expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
     expect(find.text('A large download: use Wi-Fi.'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
   });
@@ -209,8 +242,8 @@ void main() {
       tester,
       _use('pollinators'),
       const ModelFilesOnPhone(
-        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite', 'MDV6-yolov10-c_int8_256.tflite'},
-        idModels: {'my_moths_224_fp16.tflite', 'bioclip-2_image_fp16_4d.tflite'},
+        detectors: {'flatbug-n_640_fp16.tflite', 'my_bees_640_fp16.tflite', 'mdv6-yolov10c_256_w8a32.tflite'},
+        idModels: {'my_moths_224_fp16.tflite', 'bioclip-2_224_fp16.tflite'},
         nameLists: {'my_moths_224_fp16.fpack', 'bioclip-2_mammals-birds-world_v1.fpack'},
       ),
       calls,
@@ -218,9 +251,9 @@ void main() {
     expect(find.text('my_bees_640_fp16.tflite'), findsNothing, reason: 'in the closed fold');
     await _tap(tester, find.text('Choose other models'));
     expect(find.text('Other models on this phone'), findsNWidgets(2), reason: 'detection and identification');
-    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget, reason: 'suggested for another answer');
+    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget, reason: 'suggested for another answer');
     expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
-    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsNWidgets(2), reason: 'box and suggestion, not again');
+    expect(find.text('flatbug-n_640_fp16.tflite'), findsNWidgets(2), reason: 'box and suggestion, not again');
     expect(tester.takeException(), isNull, reason: 'the longer fold fits 360 px');
     await _tap(tester, find.text('my_bees_640_fp16.tflite'));
     await _tap(tester, find.text('my_moths_224_fp16.tflite'));
@@ -239,7 +272,7 @@ void main() {
       tester,
       _use('flat_surface'),
       const ModelFilesOnPhone(
-        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
+        detectors: {'insectdct-v8s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
         idModels: {'my_moths_224_fp16.tflite'},
         nameLists: {'my_moths_224_fp16.fpack'},
       ),
@@ -271,26 +304,26 @@ void main() {
       tester,
       _use('pollinators'),
       const ModelFilesOnPhone(
-        detectors: {'insectdct-v8-s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
-        idModels: {'insectdct-cls-v7_eff2s_fp16.tflite'},
-        nameLists: {'insectdct-cls-v7_eff2s_fp16.fpack'},
+        detectors: {'insectdct-v8s_640_fp16.tflite', 'my_bees_640_fp16.tflite'},
+        idModels: {'insectdct-cls-v7-eff2s_224_fp16.tflite'},
+        nameLists: {'insectdct-cls-v7-eff2s_224_fp16.fpack'},
       ),
       calls,
       inUse: (
         detector: 'my_bees_640_fp16.tflite',
-        idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
-        nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+        idModel: 'insectdct-cls-v7-eff2s_224_fp16.tflite',
+        nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack',
       ),
     );
     expect(find.text('Your choice'), findsOneWidget);
     expect(find.text('my_bees_640_fp16.tflite'), findsOneWidget, reason: 'in the box (the fold is closed)');
-    expect(find.text('insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
+    expect(find.text('insectdct-cls-v7-eff2s_224_fp16.tflite'), findsOneWidget);
     expect(find.text('On this phone'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _tap(tester, find.text('Back to the suggested models'));
     expect(find.text('Suggested AI models'), findsOneWidget);
     expect(find.text('Back to the suggested models'), findsNothing);
-    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget);
+    expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
     expect(calls.saved, isEmpty, reason: 'nothing saved before the button');
   });
 
@@ -299,22 +332,22 @@ void main() {
     await _pump(
       tester,
       _use('pollinators'),
-      const ModelFilesOnPhone(detectors: {'insectdct-v8-s_640_fp16.tflite'}),
+      const ModelFilesOnPhone(detectors: {'flatbug-n_640_fp16.tflite'}),
       calls,
       inUse: (detector: null, idModel: null, nameList: null),
     );
     expect(find.text('Your choice'), findsOneWidget);
-    expect(find.text('insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('flatbug-n_640_fp16.tflite'), findsOneWidget);
     expect(find.text('None (animals are found and counted, not named)'), findsOneWidget);
     await _tap(tester, find.text('Use these'));
-    expect(calls.saved, [('insectdct-v8-s_640_fp16.tflite', null, null)]);
+    expect(calls.saved, [('flatbug-n_640_fp16.tflite', null, null)]);
   });
 
   test('readyChoice: the models used last if on the phone, else suggestions that are on the phone', () {
     final use = _use('flat_surface');
-    const flatbug = 'flatbug-n_640_fp16.tflite', insectdct = 'insectdct-v8-s_640_fp16.tflite';
-    const classifier = ('insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack');
-    const bioclip = ('bioclip-2_image_fp16_4d.tflite', 'bioclip2_pollinator_orders_europe_v1.fpack');
+    const flatbug = 'flatbug-n_640_fp16.tflite', insectdct = 'insectdct-v8s_640_fp16.tflite';
+    const classifier = ('insectdct-cls-v7-eff2s_224_fp16.tflite', 'insectdct-cls-v7-eff2s_224_fp16.fpack');
+    const bioclip = ('bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v1.fpack');
     ModelFilesOnPhone files(Set<String> detectors, List<(String, String)> namings) => ModelFilesOnPhone(
       detectors: detectors,
       idModels: {for (final n in namings) n.$1},
@@ -357,9 +390,9 @@ void main() {
   });
 
   test('useModels: the Identify choice is saved under the keys Identify reads', () async {
-    await useModels(idModel: 'bioclip-2_image_fp16_4d.tflite', nameList: 'bioclip-2_mammals-birds-world_v1.fpack');
+    await useModels(idModel: 'bioclip-2_224_fp16.tflite', nameList: 'bioclip-2_mammals-birds-world_v1.fpack');
     final p = await SharedPreferences.getInstance();
-    expect(p.getString(kIdentifyModelPref), 'bioclip-2_image_fp16_4d.tflite');
+    expect(p.getString(kIdentifyModelPref), 'bioclip-2_224_fp16.tflite');
     expect(p.getString(kIdentifyPackPref), 'bioclip-2_mammals-birds-world_v1.fpack');
     expect(p.getString(kAnalysisModelPref), isNull, reason: 'no detection model given');
   });
@@ -369,20 +402,20 @@ void main() {
     await saveNamingChoice(null, null);
     final p = await SharedPreferences.getInstance();
     expect((p.getString(kIdentifyModelPref), p.getString(kIdentifyPackPref)), (null, null));
-    await saveNamingChoice('insectdct-cls-v7_eff2s_fp16.tflite', 'insectdct-cls-v7_eff2s_fp16.fpack');
-    expect(p.getString(kIdentifyModelPref), 'insectdct-cls-v7_eff2s_fp16.tflite');
+    await saveNamingChoice('insectdct-cls-v7-eff2s_224_fp16.tflite', 'insectdct-cls-v7-eff2s_224_fp16.fpack');
+    expect(p.getString(kIdentifyModelPref), 'insectdct-cls-v7-eff2s_224_fp16.tflite');
   });
 
   test('currentModelChoice: the saved files, each only while it is on the phone', () async {
     SharedPreferences.setMockInitialValues({
-      kIdentifyModelPref: 'bioclip-2_image_fp16_4d.tflite',
+      kIdentifyModelPref: 'bioclip-2_224_fp16.tflite',
       kIdentifyPackPref: 'bioclip-2_mammals-birds-world_v1.fpack',
     });
-    var c = await currentModelChoice({'bioclip-2_image_fp16_4d.tflite', 'bioclip-2_mammals-birds-world_v1.fpack'});
+    var c = await currentModelChoice({'bioclip-2_224_fp16.tflite', 'bioclip-2_mammals-birds-world_v1.fpack'});
     expect(c.detector, isNull, reason: 'no camera model saved');
-    expect(c.idModel, 'bioclip-2_image_fp16_4d.tflite');
+    expect(c.idModel, 'bioclip-2_224_fp16.tflite');
     expect(c.nameList, 'bioclip-2_mammals-birds-world_v1.fpack');
-    c = await currentModelChoice({'bioclip-2_image_fp16_4d.tflite'});
+    c = await currentModelChoice({'bioclip-2_224_fp16.tflite'});
     expect((c.idModel, c.nameList), (null, null), reason: 'the list was deleted');
   });
 }

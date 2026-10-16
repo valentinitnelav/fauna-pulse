@@ -171,7 +171,7 @@ void main() {
     await tester.tap(find.text('Mammals and birds'));
     await tester.pumpAndSettle();
     expect(find.byType(WatchPlanScreen), findsOneWidget);
-    expect(find.text('MDV6-yolov10-c_int8_256.tflite'), findsOneWidget);
+    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), isNull);
@@ -183,11 +183,11 @@ void main() {
     final pollinators = _downloads.uses.first, flat = _downloads.uses[1];
     const flatModels = (
       detector: 'flatbug-n_640_fp16.tflite',
-      idModel: 'bioclip-2_image_fp16_4d.tflite',
-      nameList: 'bioclip2_pollinator_orders_europe_v1.fpack',
+      idModel: 'bioclip-2_224_fp16.tflite',
+      nameList: 'bioclip-2_pollinator-orders-europe_v1.fpack',
     );
     // Pollinators was set up earlier with its own choice: no naming.
-    const pollinatorModels = (detector: 'insectdct-v8-s_640_fp16.tflite', idModel: null, nameList: null);
+    const pollinatorModels = (detector: 'insectdct-v8s_640_fp16.tflite', idModel: null, nameList: null);
     SharedPreferences.setMockInitialValues({
       kHomeWatchUsePref: pollinators.id,
       'flutter.watch_choice_${pollinators.id}': [pollinatorModels.detector, '', ''],
@@ -241,12 +241,13 @@ void main() {
 
   testWidgets('the answer chosen last with a model of its own: a tap ticks it and changes no model', (tester) async {
     // As on the test phone: chosen from "Other models on this phone" before
-    // answers remembered their models.
+    // answers remembered their models (round 314: flat-bug s at 640 px is a
+    // suggestion now, so a size that is not offered).
     SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'flat_surface'});
     const mine = (
-      detector: 'flatbug-s_640_fp16.tflite',
-      idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
-      nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+      detector: 'flatbug-s_1024_fp16.tflite',
+      idModel: 'insectdct-cls-v7-eff2s_224_fp16.tflite',
+      nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack',
     );
     final saved = <ModelChoice>[];
     await _pumpHome(
@@ -257,7 +258,7 @@ void main() {
       saved: saved,
     );
     List<bool> ticked() => [for (final i in tester.widgetList<WatchIcon>(find.byType(WatchIcon))) i.selected];
-    expect(ticked(), [false, false, false, false], reason: 'flatbug-s is not a suggestion: unknown yet');
+    expect(ticked(), [false, false, false, false], reason: 'flatbug-s at 1024 px is not a suggestion: unknown yet');
     await tester.tap(find.text('Insects on a flat surface'));
     await tester.pumpAndSettle();
     expect(find.text('Your choice'), findsOneWidget);
@@ -305,14 +306,14 @@ void main() {
       tester,
       models: const ModelsOnPhone(detectors: 1, namers: 1),
       choice: (
-        detector: 'insectdct-v8-s_640_fp16.tflite',
-        idModel: 'insectdct-cls-v7_eff2s_fp16.tflite',
-        nameList: 'insectdct-cls-v7_eff2s_fp16.fpack',
+        detector: 'insectdct-v8s_640_fp16.tflite',
+        idModel: 'insectdct-cls-v7-eff2s_224_fp16.tflite',
+        nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack',
       ),
     );
     expect(find.text('Set up for: Pollinators on flowers'), findsOneWidget);
-    expect(find.text('Find: insectdct-v8-s_640_fp16.tflite'), findsOneWidget);
-    expect(find.text('Name: insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget, reason: 'its class list goes unsaid');
+    expect(find.text('Find: insectdct-v8s_640_fp16.tflite'), findsOneWidget);
+    expect(find.text('Name: insectdct-cls-v7-eff2s_224_fp16.tflite'), findsOneWidget, reason: 'its class list goes unsaid');
     expect(find.textContaining('Tap one'), findsNothing);
     expect(find.textContaining('On this phone:'), findsNothing);
     expect(find.text('1'), findsOneWidget);
@@ -323,14 +324,14 @@ void main() {
   testWidgets('set up with a label pack; a camera model from elsewhere is just "Chosen AI models"', (tester) async {
     SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'mammals_birds'});
     const bioclip = (
-      detector: 'MDV6-yolov10-c_int8_256.tflite',
-      idModel: 'bioclip-2_image_fp16_4d.tflite',
+      detector: 'mdv6-yolov10c_256_w8a32.tflite',
+      idModel: 'bioclip-2_224_fp16.tflite',
       nameList: 'bioclip-2_mammals-birds-world_v1.fpack',
     );
     _phoneSize(tester, const Size(360, 1200));
     await _pumpHome(tester, models: const ModelsOnPhone(detectors: 1, namers: 1), choice: bioclip);
     expect(find.text('Set up for: Mammals and birds'), findsOneWidget);
-    expect(find.text('Name: bioclip-2_image_fp16_4d.tflite with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
+    expect(find.text('Name: bioclip-2_224_fp16.tflite with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Record'), 200, scrollable: find.byType(Scrollable).first);
     expect(_image(roiPicture('mammals_birds')), findsOneWidget, reason: 'step 2 shows the answer chosen last');
     expect(tester.takeException(), isNull, reason: 'long file names wrap at 360 px');
@@ -355,11 +356,11 @@ void main() {
     await _pumpHome(
       tester,
       models: const ModelsOnPhone(namers: 1),
-      choice: (detector: null, idModel: 'insectdct-cls-v7_eff2s_fp16.tflite', nameList: 'insectdct-cls-v7_eff2s_fp16.fpack'),
+      choice: (detector: null, idModel: 'insectdct-cls-v7-eff2s_224_fp16.tflite', nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack'),
     );
     expect(find.text('Chosen AI models'), findsOneWidget);
     expect(find.text('Find: none (naming works only where animals were already found)'), findsOneWidget);
-    expect(find.text('Name: insectdct-cls-v7_eff2s_fp16.tflite'), findsOneWidget);
+    expect(find.text('Name: insectdct-cls-v7-eff2s_224_fp16.tflite'), findsOneWidget);
     expect(find.textContaining('Tap one'), findsNothing);
   });
 

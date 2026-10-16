@@ -122,11 +122,11 @@ Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse is an **early research preview (alpha)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
+FaunaPulse is a **research preview (beta)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Only Android OS is currently supported. iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md), also in [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
-- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack prepared on a PC, cannot run in real-time, and classification results will vary significantly with image quality.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack (ready-made ones can be downloaded in the app, your own are prepared on a PC), cannot run in real-time, and classification results will vary significantly with image quality.
 - Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
 - The quality of results depend on many factors, including AI model, its generalisability, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
@@ -173,7 +173,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
 | [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
-| [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / tester | `.tflite` exports of published detectors, e.g. MegaDetector V6. |
+| [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / tester | Where each model the app offers comes from, its licence and how to cite it; where the phone conversions are published (Hugging Face). |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
 | [RELEASE_PLAN.md](docs/RELEASE_PLAN.md) | Maintainer | Phased checklist for public release. |
 | [PLAY_STORE_LISTING_DRAFT.md](docs/PLAY_STORE_LISTING_DRAFT.md) | Maintainer | Draft answers for the Google Play Console forms (listing, data safety, content rating). |
@@ -189,7 +189,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 ## AI Models
 
-> AI detectors and classifiers (`tflite` files) will not be shipped directly with the app (e.g., via Google Play) or stored in this GitHub repository. They will be shipped as GitHub assets or other free storage services from where they can be downloaded on the phone. Links will be provided soon with the next releases.
+> AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. FaunaPulse's phone conversions are published on [Hugging Face](https://huggingface.co/Valen-Peregrine), one repository per model family, each with a model card and the original model's licence (see [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md)).
 
 <details>
 	<summary>Expand:</summary>
@@ -201,10 +201,11 @@ No detector comes inside the app, they must be downloaded.
 The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers several detectors.
 Their GitHub repositories are listed below:
 
-- [flat-bug][flatbug] mostly trained on dead specimens, so try it when aiming the camera at a homogenous background,
+- [flat-bug][flatbug] (sizes n and s) mostly trained on dead specimens, so try it when aiming the camera at a homogenous background; for insects the app suggests it first (n, then s) as a demo detector,
 - [insectDCT][insectdct] try it for insects on flowers,
-- [ArthroNat][arthronat] try it for both homogenous backgrounds and insects on flowers,
 - [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*).
+
+[ArthroNat][arthronat] (for both homogenous backgrounds and insects on flowers) is not offered for download; a converted file can be imported.
 
 Classifiers (identification models) are offered the same way.
 

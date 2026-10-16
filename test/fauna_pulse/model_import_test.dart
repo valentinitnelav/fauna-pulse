@@ -95,6 +95,17 @@ void main() {
     expect(onPhone.readAsBytesSync(), newer);
   });
 
+  test('a detector above the old 30 MiB limit is imported (r314: one limit for every kind)', () async {
+    final picked = pick('big_detector_1280.tflite', detector);
+    final raf = File(picked.$2).openSync(mode: FileMode.append);
+    raf.truncateSync(31 * 1024 * 1024); // zeros after the model's own bytes
+    raf.closeSync();
+    final r = await ModelImport.importFiles([picked], replace: (_, _, _) async => true);
+    expect(r.rejected, isEmpty);
+    expect(r.imported, [('big_detector_1280.tflite', ModelFileKind.detection)]);
+    expect(File('${tmp.path}/app/models/big_detector_1280.tflite').lengthSync(), 31 * 1024 * 1024);
+  });
+
   test('before a link download: where a name is on the phone already', () async {
     await ModelImport.importFiles(
       [pick('det.tflite', detector), pick('cls.tflite', classifier), pick('tiny_pack.fpack', pack)],

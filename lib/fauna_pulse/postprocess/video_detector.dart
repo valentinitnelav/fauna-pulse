@@ -33,6 +33,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart'
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../logging/thermal_pause.dart';
+import '../models/former_model_names.dart' show currentModelPath;
 import 'video_start_time.dart';
 
 /// The native decode + detect path (see VideoFrameSource.kt).
@@ -211,6 +212,9 @@ class VideoResume {
       switch (rec['type']) {
         case 'video_run_start':
           settings = (rec['settings'] as Map?)?.cast<String, dynamic>();
+          // Round 314: a model file renamed at start is the same model, so
+          // the run can still be continued.
+          if (settings?['model'] case final String m) settings = {...settings!, 'model': currentModelPath(m)};
         case 'video_clip_done':
           if (clip != null) done.add(clip);
         case 'raw_detections':

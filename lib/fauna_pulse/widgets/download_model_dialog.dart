@@ -65,10 +65,10 @@ typedef LinkDownloader =
       bool Function()? isCancelled,
     });
 
-/// Asks for a direct link to a model file or name list (e.g. a GitHub
-/// release asset), downloads it with a progress bar and pops its name and
-/// kind, or null on cancel. Errors show inline so the URL can be corrected
-/// without retyping.
+/// Asks for a direct link to a model file or name list (e.g. a Hugging Face
+/// or GitHub release file link), downloads it with a progress bar and pops
+/// its name and kind, or null on cancel. Errors show inline so the URL can be
+/// corrected without retyping.
 class DownloadModelDialog extends StatefulWidget {
   final LinkDownloader download;
   final Future<List<ModelFileKind>> Function(String name) onPhoneAs;
@@ -182,8 +182,8 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
               labelText: 'Link to a model file or name list',
               helperText:
                   'A .tflite, *_qnn.onnx or .fpack file. The app checks what it is '
-                  'and puts it in its place. Model links are published at '
-                  'github.com/valentinitnelav/fauna-pulse/releases',
+                  'and puts it in its place. Use the download link of the file. '
+                  'Model files are published at huggingface.co/collections/Valen-Peregrine/faunapulse',
               helperMaxLines: 5,
             ),
             onChanged: (_) => setState(() {}),

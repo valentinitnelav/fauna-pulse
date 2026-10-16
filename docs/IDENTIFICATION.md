@@ -15,10 +15,10 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 
 | File | What it is | Size | Made with |
 |---|---|---|---|
-| `bioclip2_image_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `bioclip_export/export_image_tower.py` ([fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)) |
-| `bioclip-25_image_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
+| `bioclip-2_224_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `bioclip_export/export_image_tower.py` ([fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)) |
+| `bioclip-2.5_224_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
 | `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `bioclip_export/build_label_pack.py` |
-| `insectdct-cls-v7_eff2s_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `classifier_export/export_insectdct_cls.py` |
+| `insectdct-cls-v7-eff2s_224_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `classifier_export/export_insectdct_cls.py` |
 
 The simplest way (round 278): the home screen's step 1, *What do you want to watch?*. Each answer
 chooses an identification model with its name list (and a detection model) for you, downloaded and set
@@ -45,7 +45,8 @@ belongs to every model file whose name starts the same way, by the naming rule o
 (`tool/model_downloads/README.md`): `bioclip-2_flower-visitors-32fam_v1.fpack` goes with
 `bioclip-2_224_fp16.tflite` and `bioclip-2_224_fp32.tflite`. A pack also names its model in its
 header (`model_id`), so a renamed pack still finds a model whose name starts with that id
-(upper and lower case, "-" and "." alike: `bioclip-2.5` for `bioclip-25_image_fp16.tflite`).
+(upper and lower case, "-" and "." alike: `bioclip-2.5` also finds `bioclip-25_image_fp16.tflite`, the
+name of that model before the naming rule).
 Your own files are built once on a PC (`bioclip_export/README.md` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) has the commands; a
 normal laptop without GPU is fine) and copied to the phone (USB, or `adb push … /sdcard/Download/`).
 In the app: home screen Menu → **Download & import models** → *Import model files…* (also reached with
@@ -58,7 +59,7 @@ Downloads can be deleted afterwards.
 
 A pack only works with the model it was built for (BioCLIP 2 packs hold 768 numbers per
 name, BioCLIP 2.5 packs 1024; the app refuses a mismatch). BioCLIP 2.5 packs start with
-`bioclip25_`.
+`bioclip-2.5_`.
 
 Model weights: BioCLIP 2 and BioCLIP 2.5 by Imageomics (MIT). Name embeddings: TreeOfLife-200M (CC0).
 Please cite Gu et al. (2025), *BioCLIP 2: Emergent Properties from Scaling Hierarchical
@@ -305,9 +306,10 @@ before round 242 cannot run on any GPU: their attention layers use 5-dimensional
 which the phone's GPU engine rejects, so the app fell back to the CPU ("Failed to compile
 model"; the screen now adds that a newer export is needed). Files exported since then
 (fauna-pulse-models `bioclip_export`, `--attention 4d`, the default) run entirely on the GPU with the
-same weights and maths. Measured on the Xiaomi test phone (plugged in): 0.27 s per crop on
-the GPU instead of 2.6 s on the CPU; identifying a session of 11 crops took 9.9 s instead
-of 35 s, with the same answer for each track ID.
+same weights and maths; the downloadable `bioclip-2_224_fp16.tflite` is such a file. Measured
+on the Xiaomi test phone (plugged in): 0.27 s per crop on the GPU instead of 2.6 s on the CPU;
+identifying a session of 11 crops took 9.9 s instead of 35 s, with the same answer for each
+track ID.
 
 GPUs differ between phones and Android versions, so the app checks each one. The first
 time a model runs on a phone's GPU, it embeds a fixed test picture on the GPU and on the
@@ -367,14 +369,16 @@ this project's pollinators better than BioCLIP 2 has not been tested yet (the on
 session here is a YouTube clip, fit for timing only).
 
 **insectDCT, a fixed-class classifier (round 266).** insectDCT's hierarchical classifier V7
-(Bjerge et al. 2026, from the InsectAI Model Zoo) knows 104 classes on three levels (e.g.
+(Bjerge et al. 2026; weights from the authors' zip that the insectDCT README links on Google Drive,
+see `THIRD_PARTY_MODELS.md`) knows 104 classes on three levels (e.g.
 `Hymenoptera_bees` > Apidae > *Bombus pascuorum*) instead of comparing a crop with a label
 pack's names. It comes as two files with the same name: the model
-(`insectdct-cls-v7_eff2s_fp16.tflite`, 42 MB) and its **class list**
-(`insectdct-cls-v7_eff2s_fp16.fpack`, 14 kB: every class with its kingdom ... species).
-Import both (Download & import models screen: *Import model files…*, both files at once); choosing the model then
-chooses its class list. It runs like BioCLIP: the same crops, the same combination per track ID, ladder,
-threshold, tables and files. Differences:
+(`insectdct-cls-v7-eff2s_224_fp16.tflite`, 42 MB) and its **class list**
+(`insectdct-cls-v7-eff2s_224_fp16.fpack`, 14 kB: every class with its kingdom ... species).
+Download it on the Download & import models screen (the class list brings the model along), or import
+both (*Import model files…*, both files at once); choosing the model then chooses its class list.
+It runs like BioCLIP: the same crops, the same combination per track ID, ladder, threshold,
+tables and files. Differences:
 
 - Each crop gets a score per class on each level; a class's probability combines its own
   level with its two parent groups, so it is only likely when all three levels agree.

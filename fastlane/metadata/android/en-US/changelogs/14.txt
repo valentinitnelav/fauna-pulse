@@ -1,5 +1,5 @@
-Version 0.9.0-alpha.1 - early research preview.
-- No AI model inside the app: say what you want to watch and download the suggested models once.
+Version 0.9.0-beta.1 - first beta (research preview).
+- No AI model inside the app: say what you want to watch and download the suggested models once from Hugging Face.
 - AI later: find, track and name animals in saved photos and videos, also in imported videos.
 - Time-lapse video clips, recording with the screen off, field notes, a Dashboard.
 - insectDCT insect classifier; BioCLIP 2 on the graphics processor where possible.

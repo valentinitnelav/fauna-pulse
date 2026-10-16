@@ -109,10 +109,12 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
   [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models), whose `docs/AGENT_OVERVIEW.md`
   lists every shared rule. The main pairs: the `.fpack` writer `bioclip_export/fpack.py` and
   `identification/label_pack.dart` (plus the fixtures in `test/fauna_pulse/fixtures/`);
-  `fpack.class_probabilities` and `identification/track_fusion.dart`; `APP_MAX_BYTES` in
-  `detector_export/export_detector.py` and `kMaxTfliteModelBytes`
-  (`models/model_file_security.dart`); the naming rule (`tool/model_downloads/README.md`) and
-  the file names the export scripts write.
+  `fpack.class_probabilities` and `identification/track_fusion.dart`; the naming rule
+  (`tool/model_downloads/README.md`) and the file names the export scripts write. File size
+  needs no pair: the app takes every model file and name list up to 2 GiB, the ceiling the app
+  sets (an `.onnx` file cannot be larger, and the native code that reads a model's class names
+  and input size maps the whole file into memory, which stops at 2 GiB; `kMaxModelFileBytes` in `models/model_file_security.dart`), with no
+  separate detector limit, and the export tools set no limit of their own.
 
 ## 5. What the plugin fork changed vs upstream
 

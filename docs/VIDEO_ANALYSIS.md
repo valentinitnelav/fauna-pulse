@@ -472,9 +472,10 @@ as in §3, are the realistic source. Useful public material:
 | [SA-FARI](https://huggingface.co/datasets/facebook/SA-FARI) ([about](https://www.conservationxlabs.com/sa-fari)) | 11,609 camera-trap videos of 99 species, boxes and track IDs at 6 fps (CC BY-NC; accept the terms before download) | mammals and birds, see below |
 | [Lindenthal camera traps](https://lila.science/datasets/lindenthal-camera-traps/) | camera-trap videos in RealSense files (one 213 GB zip) | mammals, second choice |
 
-**Mammals and birds**: the app's default detector, MegaDetector V6 (MDV6), finds
-animals, people and vehicles. For names, build a BioCLIP label pack of the expected
-mammals or birds with `bioclip_export/` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) ([IDENTIFICATION.md](IDENTIFICATION.md)).
+**Mammals and birds**: for this answer of *What do you want to watch?* the app suggests
+MegaDetector V6 (MDV6), which finds animals, people and vehicles, and for names BioCLIP 2 with
+the name list *Mammals and birds of the world*. For a shorter list of the expected mammals or birds, build
+your own BioCLIP label pack with `bioclip_export/` of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) ([IDENTIFICATION.md](IDENTIFICATION.md)).
 The occlusion tolerance and minimum track length then need values that suit larger,
 slower animals.
 

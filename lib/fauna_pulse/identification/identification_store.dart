@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../models/former_model_names.dart' show kFormerModelNames;
 import 'label_pack.dart';
 import 'track_fusion.dart';
 
@@ -56,10 +57,34 @@ class IdentificationPaths {
   static const dirName = 'identification';
   Directory get dir => Directory('${sessionDir.path}/$dirName');
 
-  File embeddingsBin(String modelStem) =>
-      File('${dir.path}/embeddings_$modelStem.bin');
-  File embeddingsJsonl(String modelStem) =>
-      File('${dir.path}/embeddings_$modelStem.jsonl');
+  File embeddingsBin(String modelStem) {
+    _adoptFormerEmbeddings(modelStem);
+    return File('${dir.path}/embeddings_$modelStem.bin');
+  }
+
+  File embeddingsJsonl(String modelStem) {
+    _adoptFormerEmbeddings(modelStem);
+    return File('${dir.path}/embeddings_$modelStem.jsonl');
+  }
+
+  /// Round 314: a model file renamed at start (models/former_model_names.dart)
+  /// is the same file, so the vectors this session holds under its old name
+  /// get the new name the first time they are looked for (not computed again).
+  void _adoptFormerEmbeddings(String modelStem) {
+    try {
+      File f(String stem, String ext) => File('${dir.path}/embeddings_$stem.$ext');
+      if (f(modelStem, 'jsonl').existsSync() || f(modelStem, 'bin').existsSync()) return;
+      for (final MapEntry(key: old, value: (name, _)) in kFormerModelNames.entries) {
+        final oldStem = stemOf(old);
+        if (stemOf(name) != modelStem || !f(oldStem, 'jsonl').existsSync()) continue;
+        if (f(oldStem, 'bin').existsSync()) f(oldStem, 'bin').renameSync(f(modelStem, 'bin').path);
+        f(oldStem, 'jsonl').renameSync(f(modelStem, 'jsonl').path);
+        return;
+      }
+    } on FileSystemException {
+      // The old files stay where they are; the crops are computed again.
+    }
+  }
   File predictionsJsonl(String packStem) =>
       File('${dir.path}/predictions_$packStem.jsonl');
   File tracksJson(String packStem) => File('${dir.path}/tracks_$packStem.json');

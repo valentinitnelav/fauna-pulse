@@ -60,6 +60,12 @@
 // and the lists still to download sit under that model ("Name lists to
 // download for it"), each with the list icon. The text at the top of the panel
 // says what a name list is, and why a short list gives better names.
+//
+// Round 314 (owner): each label pack to download shows its file name and size
+// in its own row, so the ⓘ card of its model no longer repeats the lists (a
+// classifier's class list, downloaded with it in one row, stays in the card).
+// A line at the top says the files come from the FaunaPulse collection on
+// Hugging Face, where they can also be downloaded on a computer.
 
 import 'dart:io';
 
@@ -286,6 +292,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
       'Most of these models were made by other research teams. FaunaPulse tools only adapted them '
       "to run on a phone, and each model keeps its creators' licence. If you publish results, please "
       'cite the original model: tap ⓘ, then its Source, where the authors say how to cite it.';
+
+  /// Where the files to download are published (round 314).
+  static const kModelsCollectionUrl = 'https://huggingface.co/collections/Valen-Peregrine/faunapulse';
+
+  static const _sourceHelp =
+      'The files to download come from Hugging Face. On a computer, you can download them there, copy '
+      'them to the phone and use "Import model files…" below:';
 
   static const _namesHelp =
       'An identification model names each animal by choosing from a name list. A classifier such '
@@ -734,11 +747,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   void _idModelCard(File f, ModelsInventory inv) {
     final d = inv.downloads.modelFor(_nameOf(f));
-    final lists = inv.listsOf(f);
     _showCard(kIdentificationIcon, _nameOf(f), [
       ('Kind', 'Identification model: names what is inside each box, choosing from a name list made for it'),
       ..._catalogueRows(d),
-      ('Name lists', lists.isEmpty ? 'None on this phone: it cannot identify yet' : lists.map(_nameOf).join('\n')),
+      // Its name lists are listed under it on the screen (round 314).
       ('File', _onPhone(f.path, inv)),
       ..._originRows(d),
     ]);
@@ -758,15 +770,24 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ]);
   }
 
-  void _offerCard(ModelDownload d) => _showCard(d.identification ? kIdentificationIcon : kDetectionIcon, d.title, [
-    ('Kind', d.identification ? 'Identification model' : 'Detection model'),
-    ('Use', d.purpose),
-    if (d.note != null) ('Note', d.note!),
-    ('File', '${d.file!.name}, ${formatBytes(d.file!.bytes)}'),
-    for (final l in d.nameLists)
-      (l.classList ? 'Class list' : 'Label pack', '${l.title}\n${l.file.name}, ${formatBytes(l.file.bytes)}'),
-    ..._originRows(d),
-  ]);
+  /// The card of a model to download. Its label packs have rows of their
+  /// own on the screen (title, file, size), so only their licence and source
+  /// are here, once when they share them.
+  void _offerCard(ModelDownload d) {
+    final packs = d.nameLists.where((l) => !l.classList);
+    _showCard(d.identification ? kIdentificationIcon : kDetectionIcon, d.title, [
+      ('Kind', d.identification ? 'Identification model' : 'Detection model'),
+      ('Use', d.purpose),
+      if (d.note != null) ('Note', d.note!),
+      ('File', '${d.file!.name}, ${formatBytes(d.file!.bytes)}'),
+      for (final l in d.nameLists)
+        if (l.classList) ('Class list', '${l.title}\n${l.file.name}, ${formatBytes(l.file.bytes)}'),
+      ..._originRows(d),
+      for (final licence in {for (final l in packs) l.licence}..remove(''))
+        ('Licence of the name lists', licence),
+      for (final source in {for (final l in packs) l.source}..remove('')) ('Source of the name lists', source),
+    ]);
+  }
 
   /// A file on the phone: its name (round 275, owner: the file name for
   /// every file, no catalogue title), ⓘ and delete. A file the user can
@@ -887,7 +908,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
         for (final l in more)
           Padding(
             padding: const EdgeInsets.only(left: 32),
-            child: _offerTile(Icons.list_alt, l.title, formatBytes(l.file.bytes), null, () => _get(offer!, list: l)),
+            child: _offerTile(
+              Icons.list_alt,
+              l.title,
+              '${l.file.name}, ${formatBytes(l.file.bytes)}',
+              null,
+              () => _get(offer!, list: l),
+            ),
           ),
       ],
     ];
@@ -957,7 +984,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
             child: _offerTile(
               Icons.list_alt,
               l.title,
-              '${formatBytes(l.file.bytes)} plus the model',
+              '${l.file.name}, ${formatBytes(l.file.bytes)} plus the model',
               null,
               () => _get(d, list: l),
             ),
@@ -1019,6 +1046,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
                     ),
                     const SizedBox(height: 10),
                     const _CreditsNote(_credits),
+                    const SizedBox(height: 8),
+                    const Text(_sourceHelp, style: helperTextStyle),
+                    const ExternalLinkText(kModelsCollectionUrl, logTag: 'models_collection_link', fontSize: 13),
                     if (inv.storage.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),

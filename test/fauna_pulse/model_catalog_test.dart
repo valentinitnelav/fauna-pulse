@@ -69,15 +69,105 @@ void main() {
   });
 
   group('model file security', () {
-    test('safe names and format-specific limits are explicit', () {
+    test('safe names and the one size limit are explicit', () {
       expect(isSafeModelBaseName('pollinator_v2-int8.tflite'), isTrue);
       expect(isSafeModelBaseName('detector_qnn.onnx'), isTrue);
       expect(isSafeModelBaseName('../detector.tflite'), isFalse);
       expect(isSafeModelBaseName('folder/detector.tflite'), isFalse);
-      expect(kMaxTfliteModelBytes, 30 * 1024 * 1024);
-      expect(kMaxQnnModelBytes, greaterThan(kMaxTfliteModelBytes));
-      expect(maxModelBytesForName('m.tflite'), kMaxTfliteModelBytes);
-      expect(maxModelBytesForName('m_qnn.onnx'), kMaxQnnModelBytes);
+      // Round 314: one limit for every model file and name list, a ceiling
+      // the app sets (see kMaxModelFileBytes for why 2 GiB).
+      expect(kMaxModelFileBytes, 2 * 1024 * 1024 * 1024);
+      expect(
+        sizeLimitMessage(),
+        'The file is larger than 2.0 GB, the largest model file or name list the app can use.',
+      );
+    });
+
+    test('every kind of file passes up to the limit, detectors included (r314)', () async {
+      final dir = Directory.systemTemp.createTempSync('model_limit_');
+      try {
+        // Larger than the old detector (30 MiB) and NPU (256 MiB) limits.
+        // Sparse: the file system stores no data for the zeros.
+        final big = File('${dir.path}/big')
+          ..writeAsBytesSync([0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33]);
+        final raf = big.openSync(mode: FileMode.append);
+        raf.truncateSync(300 * 1024 * 1024);
+        raf.closeSync();
+        for (final name in ['detector.tflite', 'detector_qnn.onnx', 'names.fpack']) {
+          await expectLater(validateModelFile(big, name), completes, reason: name);
+        }
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
+    });
+
+    test('a file above the limit is refused and nothing is left behind', () async {
+      final dir = Directory.systemTemp.createTempSync('model_over_limit_');
+      try {
+        // A small limit stands in for 2 GiB (no test writes such a file).
+        final source = File('${dir.path}/source.tflite')
+          ..writeAsBytesSync([0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33, ...List.filled(56, 0)]);
+        final target = File('${dir.path}/models/m.tflite')..parent.createSync();
+        for (final name in ['m.tflite', 'm_qnn.onnx', 'm.fpack']) {
+          await expectLater(
+            validateModelFile(source, name, maxBytes: 32),
+            throwsA(predicate((e) => '$e'.contains('larger than 32 B'))),
+            reason: name,
+          );
+        }
+        await expectLater(
+          copyAndValidateModel(source, target, 'm.tflite', maxBytes: 32),
+          throwsA(predicate((e) => '$e'.contains('larger than 32 B'))),
+        );
+        expect(target.parent.listSync(), isEmpty, reason: 'no model file');
+        // The same file at its own size passes.
+        await copyAndValidateModel(source, target, 'm.tflite', maxBytes: 64);
+        expect(target.lengthSync(), 64);
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
+    });
+
+    test('a file just above the real limit is refused (r314)', () async {
+      final dir = Directory.systemTemp.createTempSync('model_real_limit_');
+      try {
+        // Sparse: the file system stores no data for the zeros.
+        final big = File('${dir.path}/big')
+          ..writeAsBytesSync([0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33]);
+        final raf = big.openSync(mode: FileMode.append);
+        raf.truncateSync(kMaxModelFileBytes + 1);
+        raf.closeSync();
+        bool tooLarge(Object e) => '$e'.contains('larger than 2.0 GB');
+        for (final name in ['d.tflite', 'd_qnn.onnx', 'n.fpack']) {
+          await expectLater(validateModelFile(big, name), throwsA(predicate(tooLarge)), reason: name);
+        }
+        final target = File('${dir.path}/models/d.tflite')..parent.createSync();
+        await expectLater(copyAndValidateModel(big, target, 'd.tflite'), throwsA(predicate(tooLarge)));
+        expect(target.parent.listSync(), isEmpty, reason: 'no model and no .part file');
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
+    });
+
+    test('a refused copy leaves no .part file and keeps the model in place', () async {
+      final dir = Directory.systemTemp.createTempSync('model_bad_copy_');
+      try {
+        final good = [0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33, ...List.filled(56, 1)];
+        final target = File('${dir.path}/models/m.tflite')
+          ..parent.createSync()
+          ..writeAsBytesSync(good);
+        // No TFL3 header: refused after the copy into m.tflite.part.
+        final source = File('${dir.path}/source.tflite')..writeAsBytesSync(List.filled(64, 0));
+        await expectLater(
+          copyAndValidateModel(source, target, 'm.tflite'),
+          throwsA(predicate((e) => '$e'.contains('TFL3'))),
+        );
+        expect(File('${target.path}.part').existsSync(), isFalse);
+        expect(target.readAsBytesSync(), good, reason: 'the usable model is not replaced');
+        expect(target.parent.listSync(), hasLength(1));
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
     });
 
     test('target containment and SHA-256 syntax are checked', () {

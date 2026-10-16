@@ -18,8 +18,8 @@ FaunaPulse was built for ecological research, especially estimating visitation r
 AI MODELS
 No AI model comes inside the app. Tell FaunaPulse what you want to watch (pollinators on flowers, insects on a flat surface, or mammals and birds) and it suggests published models and downloads them once: insect detectors (flat-bug, insectDCT), MegaDetector for common animals, and BioCLIP 2 for names. You can also import your own .tflite detection model. The app shows each model's licence and source.
 
-IMPORTANT: EARLY RESEARCH PREVIEW (ALPHA)
-FaunaPulse is an early-stage, experimental research tool. Validation is ongoing. Detection, tracking and identification accuracy depend on your models, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.
+IMPORTANT: RESEARCH PREVIEW (BETA)
+FaunaPulse is an experimental research tool in beta: usable in the field, but bugs are still possible. Validation is ongoing. Detection, tracking and identification accuracy depend on your models, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.
 
 PRIVACY
 FaunaPulse collects and transmits nothing. There is no account, no analytics and no tracking. All processing happens on your device, and everything recorded stays in the app's local storage unless you choose to export or share it. Full privacy policy on the project's GitHub page.

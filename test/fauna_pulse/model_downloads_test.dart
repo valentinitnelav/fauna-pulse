@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fauna_pulse/fauna_pulse/identification/identification_store.dart' show modelIdOf;
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
+import 'package:fauna_pulse/fauna_pulse/models/model_file_security.dart' show kMaxModelFileBytes;
 import 'package:fauna_pulse/fauna_pulse/widgets/download_files_dialog.dart';
 
 void main() {
@@ -25,16 +26,22 @@ void main() {
       'bioclip-2',
       'bioclip-2.5',
     ]);
-    expect(c.detectorOffers.map((d) => d.id), ['mdv6-yolov10c', 'flatbug-n', 'insectdct-v8s']);
+    expect(c.detectorOffers.map((d) => d.id), ['mdv6-yolov10c', 'flatbug-n', 'flatbug-s', 'insectdct-v8s']);
     expect(c.identificationOffers.map((d) => d.id), ['insectdct-cls-v7-eff2s', 'bioclip-2', 'bioclip-2.5']);
     final all = [
       for (final d in [...c.detectorOffers, ...c.identificationOffers]) ...[d.file!, for (final l in d.nameLists) l.file],
     ];
-    expect(all, hasLength(3 + 3 + 1 + 3 + 2), reason: 'BioCLIP 2: three name lists since round 278');
+    expect(all, hasLength(4 + 3 + 1 + 3 + 2), reason: 'BioCLIP 2: three name lists since round 278');
     for (final f in all) {
       expect(f.url.isScheme('https'), isTrue, reason: f.name);
       expect(f.url.path, endsWith('/${f.name}'));
+      // Round 314: a Hugging Face link is pinned to one upload (a commit), never a branch.
+      if (f.url.host == 'huggingface.co') {
+        expect(f.url.path, matches(RegExp(r'/resolve/[0-9a-f]{40}/[^/]+$')), reason: f.name);
+      }
       expect(f.bytes, greaterThan(0), reason: f.name);
+      // Round 314: one size limit for every kind of file; every listed file fits it.
+      expect(f.bytes, lessThanOrEqualTo(kMaxModelFileBytes), reason: f.name);
       expect(f.sha256, matches(RegExp(r'^[0-9a-f]{64}$')), reason: f.name);
     }
     // Every known model says where it comes from (where its authors say how to
@@ -45,15 +52,19 @@ void main() {
     }
     expect(
       c.detectorOffers.first.file!.url.toString(),
-      'https://github.com/valentinitnelav/fauna-pulse/releases/download/v0.8.0-alpha.1/MDV6-yolov10-c_int8_256.tflite',
+      'https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a95c07ad60c71226c668b437af7a6213c3c/mdv6-yolov10c_256_w8a32.tflite',
     );
-    expect(c.modelFor('/data/x/bioclip-2_image_fp16_4d.tflite')?.title, 'BioCLIP 2');
-    final (model, list) = c.listFor('insectdct-cls-v7_eff2s_fp16.fpack')!;
+    expect(
+      c.identificationOffers.last.file!.url.toString(),
+      'https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/dd1f5b7259ce3ee2d3aef89c200dde96745f3e85/bioclip-2.5_224_fp16.tflite',
+    );
+    expect(c.modelFor('/data/x/bioclip-2_224_fp16.tflite')?.title, 'BioCLIP 2');
+    final (model, list) = c.listFor('insectdct-cls-v7-eff2s_224_fp16.fpack')!;
     expect(model.id, 'insectdct-cls-v7-eff2s');
     expect(list.title, 'Its 104 classes');
     expect(list.classList, isTrue);
-    expect(c.listFor('bioclip2_flower_visitors_32fam_v1.fpack')!.$2.classList, isFalse, reason: 'a label pack');
-    expect(c.listFor('bioclip2_flower_visitors_32fam_v1.fpack')!.$2.licence, startsWith('CC0-1.0'));
+    expect(c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!.$2.classList, isFalse, reason: 'a label pack');
+    expect(c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!.$2.licence, startsWith('CC0-1.0'));
   });
 
   test('a file finds its model by the offered name or by its first part (r276)', () {
@@ -68,12 +79,18 @@ void main() {
     expect(title('MDV6-yolov10-c_int8_320.tflite'), 'MegaDetector V6');
     expect(title('insectdct-v8-s_1024_fp16.tflite'), 'insectDCT detector');
     expect(title('bioclip-25_image_fp16.tflite'), 'BioCLIP 2.5');
-    expect(title('insectdct-cls-v7_eff2s_fp16.tflite'), 'insectDCT classifier', reason: 'the offered file');
     expect(title('arthronat-n_640_int8.tflite'), 'ArthroNat n');
     // Not in the list.
     expect(title('my_bees_640.tflite'), isNull);
     expect(modelIdOf('/p/bioclip-2.5_224_fp16.tflite'), 'bioclip-2.5');
     expect(modelIdOf('nounderscore.tflite'), 'nounderscore');
+    // The offered file finds its model by its exact name, even when its first
+    // part names another model.
+    final x = ModelDownloads.parse('{"base_url": "https://example.org/r/", "models": ['
+        '{"id": "det", "kind": "detection_model", "title": "Det", "purpose": "p", "file": {"name": "other_640_fp16.tflite", "bytes": 5}},'
+        '{"id": "other", "kind": "detection_model", "title": "Other", "purpose": "p"}]}');
+    expect(x.modelFor('/p/other_640_fp16.tflite')?.id, 'det', reason: 'the offered file: its exact name wins over its first part');
+    expect(x.modelFor('other_320_fp16.tflite')?.id, 'other');
   });
 
   test('an entry with an unsafe name, a non-HTTPS link, a repeated id or an unknown kind is skipped; a file may carry its own link', () {

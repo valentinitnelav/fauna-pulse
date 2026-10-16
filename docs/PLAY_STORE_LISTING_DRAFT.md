@@ -58,7 +58,7 @@ Play's newer forms allow ("data processed but not collected/transmitted off-devi
 **Is all of the user data collected encrypted in transit?** N/A — no user data is
 transmitted off the device by the app. (The two narrow exceptions are outbound-only
 HTTPS model file downloads the user explicitly triggers — no user data is sent, only
-a `.tflite` file is received; see `PRIVACY_POLICY.md` "When the app uses the
+a model file (`.tflite`) or a name list (`.fpack`) is received; see `PRIVACY_POLICY.md` "When the app uses the
 internet".)
 
 **Can users request data deletion?** Yes, entirely on-device: users can delete
@@ -73,7 +73,7 @@ deletes all app storage — external and private).
 |---|---|
 | `CAMERA` | Core function: live preview + on-device detector |
 | `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | Optional, one single position fix per session; user can skip or type coordinates manually |
-| `INTERNET` | Only for user-initiated detection-model downloads (HTTPS); no other network use |
+| `INTERNET` | Only for user-initiated downloads of AI models and their name lists (HTTPS); no other network use |
 | `POST_NOTIFICATIONS` | Ongoing notification for the recording foreground service |
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_CAMERA` | Keeps a long unattended recording session alive (persistent "recording" notification + process protection) while the phone sits on the camera screen with the display blacked out. NOTE (2026-09-11, verified on the Xiaomi): the camera is CameraX-lifecycle-bound, so pressing Home or switching apps stops frames and the 10 s watchdog banner appears; blackout, not Home, is the supported unattended mode. Play declaration filed as "Background camera streaming" with a screen-recorded demo video (start session, Home, notification shade shows the FaunaPulse notification, return). |
 | `WAKE_LOCK` | Keeps long unattended field sessions from being suspended by the system |
