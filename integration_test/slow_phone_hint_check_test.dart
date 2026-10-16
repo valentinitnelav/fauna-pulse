@@ -65,9 +65,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
         _log('SHOT slow_hint');
         await tester.pump(const Duration(seconds: 4));
-        await tester.tap(find.text('OK'));
+        await tester.tap(find.descendant(of: find.byType(SlowPhoneBanner), matching: find.text('Close')));
         await tester.pump(const Duration(seconds: 1));
-        expect(find.byType(SlowPhoneBanner), findsNothing, reason: 'OK closes it');
+        expect(find.byType(SlowPhoneBanner), findsNothing, reason: 'Close closes it');
       }
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 2));
@@ -94,10 +94,9 @@ void main() {
       final watch = Stopwatch()..start();
       while (watch.elapsed < Duration(milliseconds: 20000 + i * 400)) {
         await tester.pump(const Duration(milliseconds: 100));
-        // The windows' Close, and the slow-phone hint's OK.
-        for (final b in [find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')), find.text('OK')]) {
-          if (b.evaluate().isNotEmpty) await tester.tap(b.first);
-        }
+        // The windows' Close, and the slow-phone hint's Close (round 313; was OK).
+        final close = find.text('Close');
+        if (close.evaluate().isNotEmpty) await tester.tap(close.first);
       }
       _log('C close ${i + 1} after ${watch.elapsed.inMilliseconds} ms');
       await tester.pumpWidget(const SizedBox());

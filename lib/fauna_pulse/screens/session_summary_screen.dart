@@ -1050,6 +1050,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return tp is Map ? tp : null;
   }
 
+  /// The tracker values really used, with its frame budgets: the start
+  /// record's `tracker_params` (the live tracker's effective values), or the
+  /// "Find track IDs" run's. Round 313: the summary read the frame budget from
+  /// the stored settings, which always held the default 30.
+  Map? get _usedTracker {
+    if (_visitsAfterwards) return _postTracker;
+    final tp = _startRec?['tracker_params'];
+    return tp is Map ? tp : null;
+  }
+
   /// The C-BIoU tuning block (round 105), only present when that algorithm
   /// was selectable when the session was recorded.
   Map? get _cbiouParams {
@@ -1220,7 +1230,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       na: noAi,
     );
     add('IoU threshold', _setting('iouThreshold', 'iou_threshold'), na: noAi);
-    final infFps = _setting('inferenceFps', 'inference_fps');
+    // Round 313: the start record's top-level inference_fps is the rate that
+    // ran (never above the camera cap); the stored setting keeps what was
+    // typed. Older logs have the same number in both.
+    final infFps = _startRec?['inference_fps'] ?? _setting('inferenceFps');
     add(
       'Inference rate cap',
       infFps == null
@@ -1272,9 +1285,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         reserve == null ? null : (reserve is num && reserve == 0 ? 'never' : '${_numStr(reserve)} MB'),
       );
       add('Auto-throttle', _setting('autoThrottle'), na: noAi);
+      // Never above the rate that ran (SessionConfig.effectiveMinInferenceFps).
+      final minFps = _setting('minInferenceFps');
       add(
         'Min inference rate',
-        _setting('minInferenceFps'),
+        minFps is num && infFps is num && infFps > 0 && minFps > infFps ? infFps : minFps,
         suffix: ' /s',
         na: noAi,
       );
@@ -1288,11 +1303,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // tunables also show (dimmed) when the gate itself was off: recorded,
       // no effect.
       final gateNa = _timeLapseSession;
-      final gateOn = _setting('motionGateEnabled') == true;
+      // Round 313: the motion trigger runs the gate whatever the switch says
+      // (the trigger no longer stores the switch on).
+      final motionTrigger = _setting('captureTrigger') == 'motion';
+      final gateOn = _setting('motionGateEnabled') == true || motionTrigger;
       if (gateNa) {
         addNote('Motion gate was not applicable in time-lapse mode.');
       }
-      add('Motion gate', _setting('motionGateEnabled'), na: gateNa);
+      add('Motion gate', motionTrigger ? true : _setting('motionGateEnabled'), na: gateNa);
       final gateDetailNa = gateNa || !gateOn;
       add(
         'Gate pixel sensitivity',
@@ -1690,15 +1708,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Match overlap (IoU)', tp['matchThresh'], na: trackNa);
       add('Low-score association', tp['lowMatchThresh'], na: trackNa);
       add('Velocity smoothing', tp['velocitySmoothing'], na: trackNa);
-      // The frame-count buffer actually used by the tracker (derived from
-      // the seconds above at the session's frame rate).
-      add(
-        'Occlusion buffer (derived)',
-        tp['trackBuffer'],
-        suffix: ' frames',
-        na: trackNa,
-      );
       add('New-track confidence', tp['highThresh'], na: trackNa);
+    }
+    // The frame counts the tracker used, derived from the seconds above at
+    // the frame rate (at the start of a live session; it follows the frame
+    // rate during the session).
+    final used = _usedTracker;
+    if (used != null) {
+      final when = afterwards ? '' : ', at the start';
+      add('Occlusion buffer (derived$when)', used['trackBuffer'], suffix: ' frames', na: trackNa);
+      add('Minimum detections in a row (derived$when)', used['minHitsToConfirm'], na: trackNa);
     }
     // Only worth a row when it was on (it changes what the log contains).
     if (_setting('logRawDetections') == true) {

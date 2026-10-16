@@ -74,9 +74,11 @@ Terms used below:
    frames of each track ID* and, folded under *Fine-tuning*, the algorithm's own values. It
    takes seconds and can be run again with other settings: after a change the main button
    reads *Find track IDs again with these settings*. A new track ID starts only
-   from a box the detector is at least *New-track confidence* sure of (0.50, kept at least
-   0.10 above the confidence threshold); weaker boxes, down to the confidence threshold, only
-   continue a track. If *All boxes* (on the Video tab or under *Watch the results*) shows an
+   from a box the detector is at least *New-track confidence* sure of (0.50); weaker boxes,
+   down to the confidence the videos were analysed at, only continue a track. Keep the two
+   at least 0.10 apart (a note says when they are not; round 313: no longer forced). To try
+   tracker settings, analyze once with a low confidence (for example 0.10 to 0.25), then try
+   New-track values: each try only finds the track IDs again (seconds). If *All boxes* (on the Video tab or under *Watch the results*) shows an
    insect that never gets a track ID, lower it and find the track IDs again: no new AI run is
    needed (round 247). With *Keep frames of each
    track ID* on (the default, round 234) it then saves pictures of every track ID from the

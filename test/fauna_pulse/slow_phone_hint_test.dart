@@ -58,7 +58,7 @@ void main() {
     expect(_feed(h, 0, 300, SlowPhoneHint.slowMs), isFalse);
   });
 
-  testWidgets('the banner: the rate, what to do, OK and Don\'t show again', (tester) async {
+  testWidgets('the banner: the rate, what to do, Close and Don\'t show again', (tester) async {
     var ok = 0, never = 0;
     tester.view.physicalSize = const Size(360, 700);
     tester.view.devicePixelRatio = 1;
@@ -72,7 +72,7 @@ void main() {
     );
     expect(find.textContaining('fewer than 5 pictures per second (about 2.5)'), findsOneWidget);
     expect(find.textContaining('"Save bursts as: Video"'), findsOneWidget);
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.text('Close'));
     await tester.tap(find.text("Don't show again"));
     expect((ok, never), (1, 1));
     expect(tester.takeException(), isNull);

@@ -99,6 +99,10 @@ The headline changes, with the round that introduced each (full rationale in
   of `GlobalScope`, one owned model-load executor with a generation token, and
   the terminal `YOLOView.release()` called from platform-view dispose
   (`stop()` stays restartable).
+- **Engine change applies at once** (r313): `YOLOView.didUpdateWidget` loads
+  the same model again when `useGpu` or `cpuThreads` change (upstream reacted to
+  a model or task change only, so the GPU switch and the CPU thread count of
+  the app's Settings did nothing until the view was rebuilt).
 - **Model-load failure signal** (r151): a failed initial load emits
   `onInitialModelLoadFailed` so the app can revert to a runnable model instead
   of hanging calibration.

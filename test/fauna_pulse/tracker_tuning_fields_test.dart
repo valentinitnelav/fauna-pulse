@@ -6,8 +6,6 @@ import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/settings_sheet.dart';
-import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
-import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/tracker.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/numeric_setting_field.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/tracker_tuning_fields.dart';
@@ -18,14 +16,13 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('"New-track confidence" is raised to 0.10 above the confidence, never lowered', () {
-    expect(newTrackFloor(0.25), 0.35);
-    expect(newTrackFloor(0.1), 0.30, reason: 'never below 0.30');
-    expect(newTrackFloor(0.9), 0.95, reason: 'never above 0.95');
-    final (p, cp) = raiseNewTrackFloor(const ByteTrackParams(), const CBiouParams(highThresh: 0.8), 0.6);
-    expect(p.highThresh, closeTo(0.7, 1e-9));
-    expect(cp.highThresh, 0.8, reason: 'already above the floor');
-    expect(p.matchThresh, const ByteTrackParams().matchThresh, reason: 'the rest stays');
+  test('"New-track confidence" is never raised; a note says when it is close to the confidence (r313)', () {
+    expect(newTrackGapWarning(0.50, 0.25), isNull, reason: 'the defaults: a 0.25 gap');
+    expect(newTrackGapWarning(0.35, 0.25), isNull, reason: 'exactly 0.10 is enough');
+    expect(newTrackGapWarning(0.30, 0.25), contains('Only 0.05 above'));
+    expect(newTrackGapWarning(0.50, 0.50), contains('Not above'));
+    expect(newTrackGapWarning(0.40, 0.50), contains('every box can start a track ID'));
+    expect(newTrackGapWarning(0.8, 0.7), isNull, reason: '0.8 - 0.7 is 0.0999... in floating point');
   });
 
   group('camera Settings', () {

@@ -158,11 +158,11 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         _host(
-          const FoldSection(
+          FoldSection(
             title: 'On-screen display',
             subtitle: 'Boxes, info panel.',
             helperText: 'Display choices only.',
-            children: [Text('child control')],
+            children: const [Text('child control')],
           ),
         ),
       );

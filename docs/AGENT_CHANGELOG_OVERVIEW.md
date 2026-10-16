@@ -132,8 +132,8 @@ screen-on for the video players and video runs; never call WakelockPlus directly
 `mini_bar_chart.dart`, `scroll_hint.dart`, `watch_tiles.dart` (`WatchIcon`, `SetupPicture`,
 `roiPicture`), `model_kind_panel.dart` (`ModelKindPanel`, the kind colours and icons; optional
 `color`/`icon`, `kTrackingColor` light green + `Icons.timeline` for track ID cards),
-`tracker_tuning_fields.dart` (`TrackerTuning`, `newTrackFloor`/`raiseNewTrackFloor`, shared by
-camera Settings and the video Track IDs card), `dialog_title.dart`
+`tracker_tuning_fields.dart` (`TrackerTuning`, `newTrackGapWarning`: amber note when New-track is
+under 0.10 above the confidence, shared by camera Settings and the video Track IDs card), `dialog_title.dart`
 (`DialogTitle`, the X of every window),
 `download_files_dialog.dart`, `download_model_dialog.dart`, `external_link.dart`,
 `support_faunapulse.dart`, `session_info_dialog.dart`, `location_dialog.dart`,
@@ -203,6 +203,18 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   capture trigger "Live detection", settings tab "Detection". Refer to screens by their top title.
 - **Every new tunable ships user-adjustable:** Settings control + `SessionConfig` JSON + summary
   row (`_settingsSection()`, `na:` when not applicable) + round-trip test, in the same round.
+- **Settings are kept as typed (r313):** `NumericSettingField` never clamps silently (a number
+  outside the range is refused, a red "Allowed: a to b" line shows, and leaving the box puts back
+  the value it had); a comma is a decimal point; only the shown decimals can be typed; "Saved as X"
+  when a host stores another number; `warning`/`rangeNote`/`zeroMeans`/`enabled`. **No control
+  writes a second stored setting** (every keystroke commits, so "2" on the way to "20" used to leave
+  ratchets): a rule between two settings is applied where the values are used
+  (`SessionConfig.effectiveInferenceFps`/`effectiveMinInferenceFps`, C-BIoU uses the larger search
+  margin) and shown as the box's amber `warning`. `FoldSection` is keyed by its title (give a fixed
+  `key` when the title changes with a value); `NotApplicable` keeps one tree shape. Guarded by
+  `settings_fields_test.dart` (every control of every settings screen typed or switched and back;
+  a stored camera setting without a control must be listed there) and `tracker_effect_test.dart`
+  (each tracker setting changes the result and reaches the built tracker).
 - **New-screen layout checklist** (new screens keep shipping with these bugs): body in
   `SafeArea`, ListView bottom padding ≥ 32 or `+ MediaQuery.paddingOf(context).bottom` (an
   explicit `padding:` loses the automatic inset; a `Positioned(bottom:)` anchors to the screen
@@ -424,9 +436,19 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   against ID fragmentation) and C-BIoU-style (buffered IoU). Shared seconds-based settings
   (frame counts re-derived live; videos use one fixed rate per run). New track IDs start only at
   "New-track confidence" (`highThresh` 0.5; Find animals in videos keeps its own tracker values in
-  `VideoAnalysisPrefs`). The camera swaps the tracker only when settings
-  close (settings are locked while recording). The start record's
-  `tracker_params.algorithm` names it.
+  `VideoAnalysisPrefs`). New-track is the user's value (0.05 to 0.95), never floored or raised by
+  the confidence (r313; the reference trackers keep 0.15 to 0.6 between the detector's lowest box
+  and the new-track threshold, none forces it). Faint boxes (confidence to New-track) can confirm
+  a tentative track and revive a lost one here, unlike Ultralytics/BoT-SORT (audit r313: kept,
+  tune with the annotated videos first). `kMinDetectionsInARow` 2 (`tracker.dart`): a track starts
+  on its first box and confirms on a later match, so the seconds-to-frames conversions use at
+  least 2. The camera swaps the tracker only when settings close (settings are locked while
+  recording); a GPU/CPU-thread change reloads the model at once (plugin `didUpdateWidget`, r313).
+  The start record's `tracker_params` holds the values and frame budgets used (the summary's
+  derived rows read it).
+- `replayTracker` (videos, photos, session replay) treats a gap as a pause (expires lost tracks)
+  only when it is longer than the occlusion tolerance AND twice the frame rhythm (r313: an
+  occlusion at or below the frame gap wiped every track).
 - Replay: `flutter test test/fauna_pulse/tracker_replay_test.dart
   --dart-define=REPLAY_SESSION=…/session.jsonl`. A tracker variant becomes default only after
   it wins on hand-counted sessions (ByteTrack matched them; C-BIoU fragmented).
@@ -472,8 +494,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Settings: one tile "Detection, track ID and identification settings" (three summary lines,
   disabled while busy) opens `VideoTuningScreen`, also before any run: `ModelKindPanel` cards
   Detection (confidence, fps, IoU, pause temperature, sample interval), Track IDs (`TrackerTuning`
-  on `VideoAnalysisPrefs.trackerConfig`, New-track ≥ confidence + `kNewTrackBuffer` 0.10,
-  occlusion, minimum length, keep frames, fine-tuning fold, reset) and Identification
+  on `VideoAnalysisPrefs.trackerConfig`: the values as typed; the New-track note compares with the
+  last run's `confidence`, `analysedConfidence`; occlusion note under two analysed frames;
+  minimum length, keep frames, fine-tuning fold, reset to plain defaults; a note when the videos
+  were deleted) and Identification
   (`IdentifySettingsFields` in `NotApplicable` when live AI, keep frames off or Also identify
   off). Prefs are edited in place and saved on change.
 - One main button for what is due: analyze (pending clips or changed detection settings) >
@@ -715,7 +739,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 
 ## Build and test
 
-- `flutter analyze`; `flutter test test/` (about 840 tests, ~1 min). No whole-file `dart format`
+- `flutter analyze`; `flutter test test/` (about 990 tests, ~2.5 min). No whole-file `dart format`
   (the repository is not formatter-clean).
 - Debug APK: `flutter build apk --debug`, then `adb -s <serial> install -r`.
 - Device checks: `flutter test integration_test/<file> -d <serial> --no-uninstall`. Always pass

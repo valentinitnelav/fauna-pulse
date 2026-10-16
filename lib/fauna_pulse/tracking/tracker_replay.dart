@@ -233,10 +233,14 @@ class TrackerReplayReport {
 ///    far above the rhythm — are skipped, mirroring the round-85 resume
 ///    guard), and the tracker's frame budgets are re-derived from it about
 ///    once a second, exactly like the camera screen does;
-///  * a gap longer than [occlusionSeconds] expires lost tracks first,
-///    mirroring what `FrameProcessor.setGateIdle` does on a motion-gate wake
-///    (while the gate sleeps, no `raw_detections` records were written, so
-///    the gap in timestamps IS the sleep).
+///  * a gap longer than [occlusionSeconds] AND clearly longer than the frame
+///    rhythm (twice the usual frame gap) expires lost tracks first, mirroring
+///    what `FrameProcessor.setGateIdle` does on a motion-gate wake (while the
+///    gate sleeps, no `raw_detections` records were written, so the gap in
+///    timestamps IS the sleep). Round 313: without the rhythm test, an
+///    occlusion tolerance at or below the time between two analysed frames
+///    (0.2 s at 5 frames per second) wiped every track at ordinary frames and
+///    gave 0 track IDs, with fake "gate_expired" events.
 ///
 /// The budget formulas mirror `SessionConfig.occlusionFramesFor` /
 /// `minHitsFramesFor` — KEEP IN SYNC.
@@ -273,10 +277,9 @@ TrackerReplayReport replayTracker({
   final lastSeen = <int, int>{};
   final confirmOrder = <int>[];
 
-  int framesFor(double seconds, double fps) {
+  int framesFor(double seconds, double fps, {int least = 1}) {
     final f = (fps.isFinite && fps > 0) ? fps : 15.0;
-    final n = (seconds * f).round().clamp(1, 600);
-    return n;
+    return (seconds * f).round().clamp(least, 600);
   }
 
   for (final frame in frames) {
@@ -297,7 +300,9 @@ TrackerReplayReport replayTracker({
       // from the last busy frame to the wake, so that aging must be
       // reproduced here or a pre-gap track could survive the expiry and
       // wrongly inherit its id across the gap.
-      if (dt > occlusionSeconds * 1000) {
+      final rhythmFps = fpsEma > 0 ? fpsEma : (initialFps ?? 0);
+      final rhythmMs = rhythmFps > 0 ? 1000.0 / rhythmFps : 0.0;
+      if (dt > occlusionSeconds * 1000 && dt > 2 * rhythmMs) {
         tracker.update(const [], lastTs + 1);
         tracker.expireLostTracks();
       }
@@ -307,7 +312,7 @@ TrackerReplayReport replayTracker({
     if (adaptFps && frame.timestampMs - lastBudgetTs >= 1000) {
       lastBudgetTs = frame.timestampMs;
       final buffer = framesFor(occlusionSeconds, fpsEma);
-      final hits = framesFor(minHitsSeconds, fpsEma);
+      final hits = framesFor(minHitsSeconds, fpsEma, least: kMinDetectionsInARow);
       if (buffer != tracker.trackBuffer || hits != tracker.minHitsToConfirm) {
         tracker.setFrameBudgets(trackBuffer: buffer, minHitsToConfirm: hits);
       }

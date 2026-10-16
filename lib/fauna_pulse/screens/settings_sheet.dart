@@ -26,7 +26,11 @@
 // slider. Sliders were unusable here: a horizontal drag on a slider was stolen
 // by the swipeable TabBarView (the tab slid sideways instead of the value
 // moving). A number box has no horizontal drag, and lets the user enter exact
-// values. All boxes clamp the typed number into the documented range.
+// values. A box never takes a number outside its range (round 313: it says
+// what is allowed instead), and no control changes another stored setting:
+// rules between settings are applied where the values are used, and shown
+// next to the box (the camera cap and the inference rates, the search
+// margins, New-track confidence).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,8 +51,19 @@ import '../widgets/tracker_tuning_fields.dart';
 import '../widgets/dialog_title.dart';
 import 'models_screen.dart';
 
+/// The sheet's working copy, for the caller (round 313): closing the sheet
+/// without Apply (Back, a tap above it, a swipe down) returns null, and the
+/// camera screen then offers to apply what was changed instead of losing it
+/// silently. Tests read it to see what each control stores.
+class SettingsDraft {
+  SessionConfig? value;
+}
+
 class SettingsSheet extends StatefulWidget {
   final SessionConfig config;
+
+  /// Updated with the working copy after every change (see [SettingsDraft]).
+  final SettingsDraft? draft;
 
   /// Camera-supported analysis stream resolutions ("WxH"), from the HAL. When
   /// empty the sheet falls back to a standard preset list.
@@ -76,6 +91,7 @@ class SettingsSheet extends StatefulWidget {
   const SettingsSheet({
     super.key,
     required this.config,
+    this.draft,
     this.streamResolutions = const [],
     this.analysisCeiling = const {},
     this.sensorWidth = 0,
@@ -106,6 +122,20 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// True while the engine benchmark runs (disables its button).
   bool _benchmarkRunning = false;
 
+  /// Why the typed session length was not taken (0 or empty), or null.
+  String? _sessionLenError;
+
+  /// The working copy as Apply would return it.
+  SessionConfig get _result => _c.copyWith(folderName: _folder.text);
+
+  /// Every change goes through setState, so the caller's [SettingsDraft]
+  /// always holds what Apply would return.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    widget.draft?.value = _result;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -114,21 +144,32 @@ class _SettingsSheetState extends State<SettingsSheet> {
     // Show whole hours when the saved length divides cleanly into hours
     // (e.g. 120 → "2 h"); otherwise show minutes.
     _sessionInHours = _c.sessionMinutes >= 60 && _c.sessionMinutes % 60 == 0;
-    _sessionLen = TextEditingController(
-      text: _sessionInHours
-          ? '${_c.sessionMinutes ~/ 60}'
-          : '${_c.sessionMinutes}',
-    );
+    _sessionLen = TextEditingController(text: _sessionLengthText());
+    widget.draft?.value = _result;
     _reloadModels();
   }
 
+  /// The stored session length in the chosen unit ("90" min, "1.5" h).
+  String _sessionLengthText() {
+    if (!_sessionInHours) return '${_c.sessionMinutes}';
+    final h = _c.sessionMinutes / 60;
+    return h == h.roundToDouble() ? '${h.round()}' : h.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '');
+  }
+
   /// Reads the session-length text field in the current unit and writes the
-  /// resulting whole-minute count back into the config.
+  /// resulting whole-minute count back into the config. Round 313: 0 or an
+  /// empty box is refused with a note instead of being ignored silently.
   void _applySessionLength() {
-    final n = int.tryParse(_sessionLen.text.trim());
-    if (n == null || n <= 0) return;
-    final minutes = _sessionInHours ? n * 60 : n;
-    setState(() => _c = _c.copyWith(sessionMinutes: minutes));
+    final n = double.tryParse(_sessionLen.text.trim().replaceAll(',', '.'));
+    final minutes = n == null ? 0 : (_sessionInHours ? n * 60 : n).round();
+    if (minutes < 1) {
+      setState(() => _sessionLenError = 'At least 1 minute: the length stays ${_c.sessionMinutes} min.');
+      return;
+    }
+    setState(() {
+      _sessionLenError = null;
+      _c = _c.copyWith(sessionMinutes: minutes);
+    });
   }
 
   Future<void> _reloadModels() async {
@@ -247,9 +288,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).pop(_c.copyWith(folderName: _folder.text)),
+                    onPressed: () {
+                      // A box that still has focus settles its number when it
+                      // loses it (a refused number puts the old value back);
+                      // the focus change runs in a microtask, so the result is
+                      // read after it.
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      Future.microtask(() {
+                        if (context.mounted) Navigator.of(context).pop(_result);
+                      });
+                    },
                     child: const Text('Apply'),
                   ),
                 ),
@@ -279,7 +327,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           hintText: 'session',
           hintStyle: TextStyle(color: Colors.white38),
         ),
-        onChanged: (v) => _c = _c.copyWith(folderName: v),
+        onChanged: (v) => setState(() => _c = _c.copyWith(folderName: v)),
       ),
       const SizedBox(height: 16),
 
@@ -342,16 +390,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ),
           ),
         ],
-        onChanged: (t) => setState(
-          () => _c = _c.copyWith(
-            captureTrigger: t,
-            // The motion trigger cannot work without the gate — it IS the
-            // trigger — so selecting it switches the gate on too.
-            motionGateEnabled: t == CaptureTrigger.motion
-                ? true
-                : _c.motionGateEnabled,
-          ),
-        ),
+        // The motion trigger needs the gate (it IS the trigger); the gate
+        // runs in that mode whatever the switch says (camera_session_screen
+        // _pushMotionGate), so the trigger never writes the switch (round 313:
+        // a trip through "Motion-triggered photos" left the gate on for live
+        // detection).
+        onChanged: (t) => setState(() => _c = _c.copyWith(captureTrigger: t)),
       ),
       if (_c.timeLapseCapture) ..._timeLapseSaveAsFields(),
       if (_c.detectorEnabled && !_hasDetector)
@@ -694,12 +738,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
         Expanded(
           child: TextField(
             controller: _sessionLen,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            keyboardType: TextInputType.numberWithOptions(decimal: _sessionInHours),
+            inputFormatters: [
+              _sessionInHours
+                  ? FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}'))
+                  : FilteringTextInputFormatter.digitsOnly,
+            ],
             style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '60',
-              hintStyle: TextStyle(color: Colors.white38),
+              hintStyle: const TextStyle(color: Colors.white38),
+              errorText: _sessionLenError,
+              errorMaxLines: 2,
             ),
             onChanged: (_) => _applySessionLength(),
           ),
@@ -713,10 +763,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
           selectedColor: Colors.white,
           fillColor: Colors.white10,
           constraints: const BoxConstraints(minWidth: 64, minHeight: 40),
-          onPressed: (i) {
-            setState(() => _sessionInHours = i == 1);
-            _applySessionLength();
-          },
+          // The unit changes how the length is shown, never the length
+          // (round 313: 60 minutes switched to "60 h").
+          onPressed: (i) => setState(() {
+            _sessionInHours = i == 1;
+            _sessionLenError = null;
+            _sessionLen.text = _sessionLengthText();
+          }),
           children: const [Text('Minutes'), Text('Hours')],
         ),
       ],
@@ -738,11 +791,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// more than one window remains (a schedule needs at least one).
   Widget _windowRow(int index) {
     final w = _c.scheduleWindows[index];
+    // Round 313: compact buttons and a label that gives way, so two windows
+    // (with the delete icon) fit a 360-dp phone such as the Galaxy M12.
     Widget timeButton({required bool isStart}) => OutlinedButton(
       onPressed: () => _pickWindowTime(index, isStart: isStart),
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.white,
         side: const BorderSide(color: Colors.white24),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        minimumSize: const Size(0, 40),
       ),
       child: Text(isStart ? w.startLabel : w.endLabel),
     );
@@ -750,10 +807,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          SizedBox(
-            width: 80,
+          Expanded(
             child: Text(
               'Window ${index + 1}',
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ),
@@ -763,7 +820,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
             child: Text('–', style: TextStyle(color: Colors.white54)),
           ),
           timeButton(isStart: false),
-          const Spacer(),
           if (_c.scheduleWindows.length > 1)
             IconButton(
               icon: const Icon(
@@ -954,17 +1010,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'Minimum score for the model to report a detection at all '
             '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
             'reach the tracker — including the faint, partly-hidden ones the '
-            'tracker can use to hold onto a track ID. Note: raising this also '
-            'raises the tracker\'s "New-track confidence" below, so a band of '
-            'faint detections is always kept for that purpose.',
-        onChanged: (v) => setState(() {
-          // Keep "New-track confidence" at least kNewTrackBuffer above the
-          // new Confidence, so the "faint detection" band is never squeezed
-          // shut when the user raises Confidence. Both trackers carry their
-          // own high threshold; the floor applies to each.
-          final (p, cp) = raiseNewTrackFloor(_c.trackerParams, _c.cbiouParams, v);
-          _c = _c.copyWith(confidenceThreshold: v, trackerParams: p, cbiouParams: cp);
-        }),
+            'tracker can use to hold onto a track ID. Keep the tracker\'s '
+            '"New-track confidence" (Tracking, Advanced) at least 0.10 above '
+            'this, so a band of faint detections exists; a note there says '
+            'when it is not.',
+        onChanged: (v) => setState(() => _c = _c.copyWith(confidenceThreshold: v)),
       ),
       // IoU, engine and benchmark sit folded (round 159): all have good
       // defaults, and Confidence above is the one detection knob a first-time
@@ -1004,8 +1054,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Text(
-            'These settings apply only to live detection mode. Switch '
-            '"Capture trigger" on the Setup tab to edit them.',
+            'These settings apply to live detection mode (the Tracking '
+            'settings also to "Find animals in photos"). To edit them, '
+            'switch "Capture trigger" on the Setup tab to Live detection.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -1299,7 +1350,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'but lets in more false blips; higher (e.g. 0.5) counts only '
               'clear, sustained landings. This directly affects the visitation '
               'rate for short track IDs. Converted to frames live from the current '
-              'FPS (0–2 s; default 0.2).',
+              'FPS; at least 2 detections in a row are always needed (0–2 s; '
+              'default 0.2).',
           onChanged: (v) => setState(() => _c = _c.copyWith(minHitsSeconds: v)),
         ),
         ..._advancedTrackerSection(),
@@ -1382,6 +1434,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
     return [
       FoldSection(
+        // A fixed key: the title follows the algorithm, the fold stays open.
+        key: const ValueKey('fold:tracker-advanced'),
         title: 'Advanced (${t.algorithmName} tuning)',
         subtitle: 'Algorithm choice and frame-to-frame matching fine-tuning.',
         helperText:
@@ -1399,7 +1453,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           TrackerTuning.resetButton(
             helperText:
                 'Puts every tracking setting above back to its default (the '
-                'algorithm choice itself is kept).',
+                'algorithm choice itself is kept) and switches off "Log raw '
+                'detections" below.',
             onPressed: _resetTrackingDefaults,
           ),
           const SizedBox(height: 4),
@@ -1423,16 +1478,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// Resets every Visit-tracking setting to its default: the shared
   /// seconds-based controls and BOTH algorithms' advanced knobs (a knob you
   /// can't currently see shouldn't stay silently mis-tuned). The algorithm
-  /// choice itself is deliberately kept. The high-score defaults respect the
-  /// Confidence-coupled floor so the reset can never close the faint band.
+  /// choice itself is deliberately kept. Round 313: plain defaults (New-track
+  /// 0.50), and the focused box is unfocused first so it shows the reset value.
   void _resetTrackingDefaults() {
-    final (bp, cbp) = raiseNewTrackFloor(const ByteTrackParams(), const CBiouParams(), _c.confidenceThreshold);
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _c = _c.copyWith(
         occlusionSeconds: 3.0,
         minHitsSeconds: 0.2,
-        trackerParams: bp,
-        cbiouParams: cbp,
+        trackerParams: const ByteTrackParams(),
+        cbiouParams: const CBiouParams(),
         logRawDetections: false,
         // Reference photos are deliberately NOT reset here: their control
         // moved to the Setup tab, and a tracking reset must not silently
@@ -1778,16 +1833,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
           label: _c.autoThrottle ? 'Max inference rate' : 'Detector rate cap',
           value: _c.inferenceFps.toDouble(),
           min: SessionConfig.minimumInferenceFps.toDouble(),
-          max: _c.maximumAllowedInferenceFps.toDouble(),
+          max: SessionConfig.maximumInferenceFps.toDouble(),
           isInt: true,
           unitSuffix: 'FPS',
+          warning: _c.effectiveInferenceFps < _c.inferenceFps
+              ? 'Used: ${_c.effectiveInferenceFps} FPS, the Camera frame rate cap below.'
+              : null,
           // The "ceiling, not a guarantee" paragraph used to sit as its own
           // text block under this section; merged into the ⓘ (round 181).
           helperText:
               'Maximum number of camera frames per second the detector '
               'may analyze. This is inference FPS, not the camera preview '
               'frame rate. ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
-              '${_c.cameraFpsCap > 0 ? 'It cannot be set above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS). ' : 'The camera cap below is removed, so this field may be set up to ${SessionConfig.maximumInferenceFps} FPS. '}'
+              '${_c.cameraFpsCap > 0 ? 'It never runs above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS): the detector cannot analyze frames the camera did not capture. ' : 'The camera cap below is removed, so up to ${SessionConfig.maximumInferenceFps} FPS can be used. '}'
               'This is a ceiling, not a guaranteed speed: the real rate is '
               'also limited by the camera, the phone, and the selected '
               'model. The app starts at 15 FPS; lower rates use less power '
@@ -1809,17 +1867,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 label: 'Min inference rate',
                 value: _c.minInferenceFps.toDouble(),
                 min: 1,
-                max: _c.inferenceFps.toDouble(),
+                max: SessionConfig.maximumInferenceFps.toDouble(),
                 isInt: true,
                 unitSuffix: 'FPS',
+                warning: _c.effectiveMinInferenceFps < _c.minInferenceFps
+                    ? 'Used: ${_c.effectiveMinInferenceFps} FPS (never above the inference rate used).'
+                    : null,
                 helperText:
                     'The lowest the auto-adjust will drop to when the phone is hot, so '
-                    'a session stays usable. Default 3.',
-                onChanged: (v) => setState(
-                  () => _c = _c.copyWith(
-                    minInferenceFps: v.round().clamp(1, _c.inferenceFps),
-                  ),
-                ),
+                    'a session stays usable. Never above the Max inference rate. Default 3.',
+                onChanged: (v) => setState(() => _c = _c.copyWith(minInferenceFps: v.round())),
               ),
               NumericSettingField(
                 label: 'Target processor load',
@@ -1848,8 +1905,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
       NumericSettingField(
         label: 'Camera frame rate cap',
         value: _c.cameraFpsCap.toDouble(),
-        min: 0,
+        min: SessionConfig.minimumCameraFpsCap.toDouble(),
         max: SessionConfig.maximumCameraFpsCap.toDouble(),
+        zeroMeans: 'no cap',
         isInt: true,
         unitSuffix: 'FPS',
         // Round 110 wording: the old text said "0 = device default" and then
@@ -1864,9 +1922,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'processor run at that full rate the whole session, even while '
             'the motion gate has the detector asleep — the main reason a '
             '"sleeping" phone still warms up. Lower = cooler phone but a '
-            'less smooth preview. The Max inference rate above cannot be '
-            'higher than this camera cap; lowering the camera cap also '
-            'lowers the inference cap to match. The phone only '
+            'less smooth preview. The detector never runs faster than this cap'
+            '${_c.detectorEnabled ? ' (a note under the ${_c.autoThrottle ? 'Max inference rate' : 'Detector rate cap'} says when the cap limits it)' : ''}. '
+            'The phone only '
             'supports certain rates, so the nearest supported one is used. '
             'The app ships set to 15 FPS (cooler); note that capping also '
             'delays high-res photos in the rare cases when those are needed.',
@@ -1909,10 +1967,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
       // Sensitivity tuning is hidden in time-lapse mode (the gate never runs
       // there). In motion mode these fields ARE the capture sensitivity (the
-      // trigger dropdown force-enables the gate), so the fold arrives OPEN
+      // gate always runs in that mode), so the fold arrives OPEN
       // there; in AI mode it is collapsed expert tuning. The ValueKey rebuilds
       // the tile when the mode flips so initiallyExpanded applies again.
-      if (_c.motionGateEnabled && !_c.timeLapseCapture)
+      if ((_c.motionGateEnabled || _c.motionOnlyCapture) && !_c.timeLapseCapture)
         FoldSection(
           key: ValueKey(_c.motionOnlyCapture),
           title: 'Gate sensitivity',

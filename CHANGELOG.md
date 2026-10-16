@@ -33,6 +33,13 @@ an early research preview, versions carry a SemVer pre-release suffix (e.g.
 - Menu, *Cite FaunaPulse*: the citation of the installed version.
 - Smaller app: the normal build leaves out the Snapdragon NPU runtime; detection on the
   main processor uses two threads by default (about twice as fast as one).
+- Settings you type are kept as typed: a number box never replaces a number silently
+  (it says what is allowed), a comma works as the decimal point, and no setting changes
+  another one behind your back (New-track confidence is no longer raised by the
+  confidence threshold; a note says when the two are too close). The GPU switch and the
+  CPU threads apply at once; closing the camera Settings without Apply offers to apply.
+  Fixed: a short occlusion tolerance on videos gave no track IDs; "Smallest box to
+  identify" and "Crops per track ID" now also apply when results are scored again.
 
 ## 0.8.0-alpha.1 (2026-09-23)
 

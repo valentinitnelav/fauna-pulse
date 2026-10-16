@@ -52,11 +52,16 @@ class PhotoTrackability {
   /// before it misses that run's results.
   final int? lastRunMs;
 
+  /// The confidence of the newest analysis run: the lowest score of the boxes
+  /// "Find track IDs" gets (round 313, for the New-track note).
+  final double? lastRunConfidence;
+
   const PhotoTrackability({
     required this.trigger,
     required this.stepSeconds,
     required this.analysedPhotos,
     this.lastRunMs,
+    this.lastRunConfidence,
   });
 
   /// The AI already followed the insects while recording.
@@ -88,6 +93,7 @@ class PhotoTracker {
       stepSeconds: step,
       analysedPhotos: read.results.length,
       lastRunMs: read.lastRunMs,
+      lastRunConfidence: (read.lastRunSettings?['confidence'] as num?)?.toDouble(),
     );
   }
 

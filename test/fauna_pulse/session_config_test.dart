@@ -112,20 +112,22 @@ void main() {
       );
     });
 
-    test('inference cannot exceed a positive camera cap', () {
+    test('the inference rate used never exceeds a positive camera cap; the stored one stays (r313)', () {
       final defaultCamera = const SessionConfig().withInferenceFps(30);
-      expect(defaultCamera.inferenceFps, 15);
+      expect(defaultCamera.inferenceFps, 30, reason: 'stored as typed');
+      expect(defaultCamera.effectiveInferenceFps, 15, reason: 'the camera cap 15 limits it');
 
       final fasterCamera = const SessionConfig()
           .withCameraFpsCap(30)
           .withInferenceFps(30);
-      expect(fasterCamera.inferenceFps, 30);
+      expect(fasterCamera.effectiveInferenceFps, 30);
 
       final restored = SessionConfig.fromJson(const {
         'inferenceFps': 60,
         'cameraFpsCap': 24,
       });
-      expect(restored.inferenceFps, 24);
+      expect(restored.inferenceFps, 30, reason: 'the shared maximum');
+      expect(restored.effectiveInferenceFps, 24);
     });
 
     test('camera 0 removes its cap but inference keeps the shared maximum', () {
@@ -134,16 +136,26 @@ void main() {
           .withInferenceFps(60);
       expect(uncappedCamera.cameraFpsCap, 0);
       expect(uncappedCamera.inferenceFps, 30);
+      expect(uncappedCamera.effectiveInferenceFps, 30);
     });
 
-    test('lowering camera cap also lowers inference ceiling and floor', () {
-      final lowered = const SessionConfig(
-        inferenceFps: 30,
-        cameraFpsCap: 30,
-        minInferenceFps: 20,
-      ).withCameraFpsCap(12);
-      expect(lowered.inferenceFps, 12);
-      expect(lowered.minInferenceFps, 12);
+    test('a camera cap change never rewrites the inference rates; they are limited where used (r313)', () {
+      // The audit's repro: typing "20" passes through "2" (cap 5). Before,
+      // that lowered the stored inference rate to 5 for good.
+      var c = const SessionConfig(inferenceFps: 15, cameraFpsCap: 15, minInferenceFps: 8);
+      for (final typed in [2, 20]) {
+        c = c.withCameraFpsCap(typed);
+      }
+      expect([c.cameraFpsCap, c.inferenceFps, c.minInferenceFps], [20, 15, 8]);
+      expect([c.effectiveInferenceFps, c.effectiveMinInferenceFps], [15, 8]);
+      final lowered = c.withCameraFpsCap(12).withInferenceFps(30);
+      expect([lowered.inferenceFps, lowered.minInferenceFps], [30, 8], reason: 'stored as typed');
+      expect([lowered.effectiveInferenceFps, lowered.effectiveMinInferenceFps], [12, 8]);
+      expect(lowered.withCameraFpsCap(6).effectiveMinInferenceFps, 6, reason: 'the floor never above the rate');
+      expect(lowered.withCameraFpsCap(3).cameraFpsCap, 5, reason: '1 to 4 count as 5');
+      // Max inference typed as "12" passes through "1" (refused by its box,
+      // and stored as 5 here): the floor is never touched.
+      expect(c.withInferenceFps(1).withInferenceFps(12).minInferenceFps, 8);
     });
   });
 
@@ -286,9 +298,10 @@ void main() {
       expect(c.minHitsFramesFor(double.nan), 3);
     });
 
-    test('clamps to at least 1 frame so a track can always confirm', () {
+    test('at least 2 detections: a budget of 1 always worked like 2 (r313)', () {
       const c = SessionConfig(minHitsSeconds: 0.0);
-      expect(c.minHitsFramesFor(30), 1);
+      expect(c.minHitsFramesFor(30), kMinDetectionsInARow);
+      expect(kMinDetectionsInARow, 2);
     });
 
     test('matches occlusionFramesFor rounding behaviour', () {
@@ -309,7 +322,7 @@ void main() {
     final b = c.copyWith(trackerAlgorithm: TrackerAlgorithm.bytetrack).buildTracker(2);
     expect(b, isA<ByteTracker>());
     expect(b.trackBuffer, 4);
-    expect(b.minHitsToConfirm, 1); // 0.4 s at 2 fps rounds to 1 frame
+    expect(b.minHitsToConfirm, 2); // 0.4 s at 2 fps rounds to 1 frame, used as the minimum of 2
   });
 
   test('minHitsSeconds round-trips through toJson/fromJson', () {
@@ -759,6 +772,7 @@ void main() {
       expect(motion, contains('timeLapseWakeLeadSeconds'));
       expect(motion, contains('timeLapseTorch'));
       expect(motion, contains('timeLapseTorchLeadSeconds'));
+      expect(motion, contains('motionGateEnabled'), reason: 'the gate always runs there (r313)');
       expect(motion, isNot(contains('motionGateWakeSeconds')));
       expect(motion, isNot(contains('motionGatePixelDelta')));
       // Reference photos apply in detector AND motion mode (that is the

@@ -16,6 +16,7 @@ import '../logging/app_error_hooks.dart';
 import '../models/session_config.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
+import '../tracking/tracker.dart' show kMinDetectionsInARow;
 import '../widgets/home_button.dart';
 import '../widgets/model_kind_panel.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -46,6 +47,17 @@ class VideoTuningScreen extends StatefulWidget {
   /// frames" off removes.
   final int keptSaved;
 
+  /// The confidence the session's saved boxes were found at (its last
+  /// analysis), or null before any. With [videosGone] it is the lowest score
+  /// the tracker can get, which "New-track confidence" is compared with
+  /// (round 313); with the videos there, the Confidence threshold is (a change
+  /// of it means a new analysis).
+  final double? analysedConfidence;
+
+  /// The session's videos were deleted after an analysis: the Detection card
+  /// changes nothing for it any more (round 313).
+  final bool videosGone;
+
   /// "Also identify them" on the video screen, and the model and name list
   /// chosen there (file names, null when none is ready).
   final bool alsoIdentify;
@@ -57,6 +69,8 @@ class VideoTuningScreen extends StatefulWidget {
     required this.prefs,
     this.totalMs = 0,
     this.analysedFps,
+    this.analysedConfidence,
+    this.videosGone = false,
     this.liveAi = false,
     this.keptSaved = 0,
     this.alsoIdentify = false,
@@ -94,15 +108,6 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
     _p.save();
   }
 
-  /// The confidence threshold, with "New-track confidence" raised to stay
-  /// above it (as on the camera).
-  void _setConfidence(double v) {
-    final (p, cp) = raiseNewTrackFloor(_p.trackerParams, _p.cbiouParams, v);
-    _p
-      ..confidence = v
-      ..trackerParams = p
-      ..cbiouParams = cp;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,14 +168,30 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         'What the detector looks at, and how sure it must be. A change of the confidence, the frames per second '
         'or the IoU means analyzing the videos again.',
     children: [
+      if (widget.videosGone)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'This session\'s videos were deleted, so it cannot be analyzed again: these values apply to other '
+            'sessions only.${widget.analysedConfidence == null ? '' : ' Its boxes were found at confidence '
+                '${widget.analysedConfidence!.toStringAsFixed(2)}.'}',
+            style: const TextStyle(color: Colors.amber, fontSize: 13),
+          ),
+        ),
       _slider(
         label: 'Confidence threshold: ${_p.confidence.toStringAsFixed(2)}',
-        help: 'Minimum score for a detection to count. 0.25 is the live camera\'s default.',
+        help:
+            'Minimum score for a detection to count. 0.25 is the live camera\'s default. Lower finds more '
+            'faint boxes: they can keep an insect\'s track ID while it is half-hidden, and "New-track '
+            'confidence" (Track IDs card) decides which boxes may start one. A change here means analyzing '
+            'the videos again. A change of New-track confidence only means finding the track IDs again, '
+            'which takes a few seconds. So, to try settings: analyze once with a low confidence, then try '
+            'New-track values.',
         value: _p.confidence,
         min: 0.05,
         max: 0.95,
         divisions: 18,
-        onChanged: (v) => _setConfidence(double.parse(v.toStringAsFixed(2))),
+        onChanged: (v) => _p.confidence = double.parse(v.toStringAsFixed(2)),
       ),
       _slider(
         label: 'Frames analyzed per second: ${_p.analysisFps.round()}',
@@ -183,7 +204,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
             '15 is what the live camera analyzes. This counts seconds of the video, not of the '
             'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
             'phone videos have 30 pictures per second; asking for more than the video has '
-            'changes nothing.',
+            'gives no more pictures (but still counts as a change that needs a new analysis).',
         value: _p.analysisFps,
         min: 1,
         max: 30,
@@ -206,7 +227,9 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         onChanged: (v) => _p.iou = double.parse(v.toStringAsFixed(2)),
       ),
       NumericSettingField(
-        label: 'Pause above battery temperature',
+        // Its own name: the Identification card below has the same setting
+        // for identifying (round 313).
+        label: 'Pause the analysis above',
         value: _p.thermalLimitC,
         min: 35,
         max: 45,
@@ -237,11 +260,16 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
   static String _fmtFps(double fps) => fps == fps.roundToDouble() ? '${fps.round()}' : fps.toStringAsFixed(1);
 
   Widget _trackCard() {
+    // With the videos there, a changed confidence means a new analysis, after
+    // which the tracker gets boxes from that confidence; without them, the
+    // saved boxes stay as they were found.
+    final boxesConf = widget.videosGone ? widget.analysedConfidence : null;
     final t = TrackerTuning(
       algorithm: _p.trackerAlgorithm,
       byteTrack: _p.trackerParams,
       cbiou: _p.cbiouParams,
-      confidence: _p.confidence,
+      confidence: boxesConf ?? _p.confidence,
+      confidenceName: boxesConf == null ? 'the Confidence threshold' : 'the confidence the videos were analyzed at',
       onAlgorithm: (a) => _edit(() => _p.trackerAlgorithm = a),
       onByteTrack: (v) => _edit(() => _p.trackerParams = v),
       onCbiou: (v) => _edit(() => _p.cbiouParams = v),
@@ -250,6 +278,9 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
     // analyzed at (round 256).
     final fps = widget.analysedFps ?? _p.analysisFps;
     final detections = SessionConfig(minHitsSeconds: _p.minVisitSeconds).minHitsFramesFor(fps);
+    // Round 313: an occlusion of less than two analysed frames is used as
+    // that many frames (at least one), so say what it means.
+    final occFrames = SessionConfig(occlusionSeconds: _p.occlusionSeconds).occlusionFramesFor(fps);
     return ModelKindPanel(
       color: kTrackingColor,
       icon: kTrackingIcon,
@@ -276,6 +307,10 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
               'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
               'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
               'time between two analyzed frames. Default 3 s, as on the live camera.',
+          warning: occFrames < 2
+              ? 'Only $occFrames analyzed ${occFrames == 1 ? 'frame' : 'frames'} at ${_fmtFps(fps)} frames per second: '
+                    'an insect the detector misses in ${occFrames + 1} frames in a row gets a new track ID.'
+              : null,
           onChanged: (x) => _edit(() => _p.occlusionSeconds = x),
         ),
         NumericSettingField(
@@ -289,9 +324,10 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
               'How long an insect must be seen before it counts as a track ID; shorter sightings are '
               'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
               'below), so an insect it sees only on and off is dropped too when the value is high. '
-              'Default 1 s: at 5 frames per second that is 5 detections, while the live camera\'s '
-              '0.2 s would be a single one, so any one-frame false box would become a track ID. Try '
-              'other values and find the track IDs again.',
+              'At least $kMinDetectionsInARow detections in a row are always needed. Default 1 s: at 5 '
+              'frames per second that is 5 detections, while the live camera\'s 0.2 s would be the '
+              'minimum of $kMinDetectionsInARow, so a false box seen in two frames would become a track ID. '
+              'Try other values and find the track IDs again.',
           onChanged: (x) => _edit(() => _p.minVisitSeconds = x),
         ),
         Text(
@@ -352,6 +388,8 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
           ],
         ],
         FoldSection(
+          // A fixed key: the title follows the algorithm, the fold stays open.
+          key: const ValueKey('fold:tracker-fine-tuning'),
           title: 'Fine-tuning (${t.algorithmName})',
           subtitle: t.fineTuningSummary,
           helperText: 'The defaults suit insects on a flower; most sessions never need these.',
@@ -363,12 +401,12 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
                   'fine-tuning of both algorithms back to their defaults. The algorithm choice and the kept '
                   'frames stay as they are.',
               onPressed: () => _edit(() {
-                final (p, cp) = raiseNewTrackFloor(const ByteTrackParams(), const CBiouParams(), _p.confidence);
+                FocusManager.instance.primaryFocus?.unfocus();
                 _p
                   ..occlusionSeconds = 3.0
                   ..minVisitSeconds = 1.0
-                  ..trackerParams = p
-                  ..cbiouParams = cp;
+                  ..trackerParams = const ByteTrackParams()
+                  ..cbiouParams = const CBiouParams();
               }),
             ),
           ],

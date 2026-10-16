@@ -23,6 +23,23 @@ extension on _Unit {
     _Unit.min => 'min',
     _Unit.h => 'h',
   };
+
+  /// Decimals shown (and typable) in this unit (round 313): enough that a
+  /// switch of the unit keeps short durations readable (2 s = 0.03 min,
+  /// not "0.0 min").
+  int get decimals => switch (this) {
+    _Unit.s => 1,
+    _Unit.min => 2,
+    _Unit.h => 3,
+  };
+}
+
+/// A duration in words for the "Allowed" line, e.g. "1 s", "30 min", "24 h".
+String _words(double seconds) {
+  String n(double v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(1);
+  if (seconds >= 3600 && seconds % 3600 == 0) return '${n(seconds / 3600)} h';
+  if (seconds >= 60 && seconds % 60 == 0) return '${n(seconds / 60)} min';
+  return '${n(seconds)} s';
 }
 
 class DurationSettingField extends StatefulWidget {
@@ -71,8 +88,9 @@ class _DurationSettingFieldState extends State<DurationSettingField> {
             value: widget.valueSeconds / _unit.factor,
             min: widget.minSeconds / _unit.factor,
             max: widget.maxSeconds / _unit.factor,
-            decimals: 1,
+            decimals: _unit.decimals,
             unitSuffix: _unit.label,
+            rangeText: '${_words(widget.minSeconds)} to ${_words(widget.maxSeconds)}',
             helperText: widget.helperText,
             onChanged: (v) => widget.onChanged(v * _unit.factor),
           ),

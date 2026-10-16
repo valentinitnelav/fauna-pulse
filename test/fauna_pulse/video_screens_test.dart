@@ -1299,24 +1299,48 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('"New-track confidence" stays 0.10 above the video confidence', (tester) async {
+    testWidgets('"New-track confidence" is the user\'s value: never raised, a note when close (r313)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = VideoAnalysisPrefs();
       await showTuning(tester, VideoTuningScreen(prefs: prefs));
       final slider = tester.widget<Slider>(find.byType(Slider).first);
-      slider.onChanged!(0.6);
-      slider.onChangeEnd!(0.6);
+      // The owner's report: with the confidence at 0.50, 0.50 could not be
+      // typed (it jumped back to 0.60). A trip to 0.90 on the way must not
+      // leave anything behind either.
+      for (final v in [0.6, 0.9, 0.5]) {
+        slider.onChanged!(v);
+      }
+      slider.onChangeEnd!(0.5);
       await tester.pump();
-      expect(find.text('Confidence threshold: 0.60'), findsOneWidget);
-      expect([prefs.trackerParams.highThresh, prefs.cbiouParams.highThresh], [closeTo(0.7, 1e-9), closeTo(0.7, 1e-9)]);
+      expect(find.text('Confidence threshold: 0.50'), findsOneWidget);
+      expect([prefs.trackerParams.highThresh, prefs.cbiouParams.highThresh], [0.5, 0.5], reason: 'not raised');
       await _scrollTo(tester, find.text('New-track confidence'));
-      expect(tester.widget<TextField>(_numberBox('New-track confidence')).controller!.text, '0.70');
-      // Typed lower, it stays at the floor.
-      await tester.enterText(_numberBox('New-track confidence'), '0.5');
+      expect(tester.widget<TextField>(_numberBox('New-track confidence')).controller!.text, '0.50');
+      expect(find.textContaining('Not above the Confidence threshold (0.50)'), findsOneWidget);
+      await tester.enterText(_numberBox('New-track confidence'), '0.55');
       await tester.pump();
-      expect(prefs.trackerParams.highThresh, closeTo(0.7, 1e-9));
+      expect(prefs.trackerParams.highThresh, 0.55);
+      expect(find.textContaining('Only 0.05 above the Confidence threshold (0.50)'), findsOneWidget);
+      await tester.enterText(_numberBox('New-track confidence'), '0.6');
+      await tester.pump();
+      expect(find.textContaining('above the Confidence threshold'), findsNothing, reason: '0.10 is enough');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(tester.widget<TextField>(_numberBox('New-track confidence')).controller!.text, '0.60');
+      expect(prefs.trackerConfig(const SessionConfig()).trackerParams.highThresh, 0.6, reason: 'used as typed');
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      expect((await VideoAnalysisPrefs.load()).trackerParams.highThresh, closeTo(0.7, 1e-9), reason: 'saved');
+      expect((await VideoAnalysisPrefs.load()).trackerParams.highThresh, 0.6, reason: 'saved');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('after an analysis the note compares with the confidence the videos were analyzed at (r313)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = VideoAnalysisPrefs(confidence: 0.25);
+      await showTuning(tester, VideoTuningScreen(prefs: prefs, analysedConfidence: 0.45, videosGone: true));
+      expect(find.textContaining('videos were deleted, so it cannot be analyzed again'), findsOneWidget);
+      expect(find.textContaining('found at confidence 0.45'), findsOneWidget);
+      await _scrollTo(tester, find.text('New-track confidence'));
+      expect(find.textContaining('Only 0.05 above the confidence the videos were analyzed at (0.45)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -1536,8 +1560,9 @@ void main() {
     expect(defaults.trackerAlgorithm, TrackerAlgorithm.bytetrack);
     expect(defaults.trackerParams.toJson(), const ByteTrackParams().toJson());
     expect(defaults.cbiouParams.toJson(), const CBiouParams().toJson());
-    // "New-track confidence" stays 0.10 above a raised confidence.
-    expect((defaults..confidence = 0.6).newTrackConfidence, closeTo(0.7, 1e-9));
+    // Round 313: "New-track confidence" is never raised by the confidence.
+    expect((defaults..confidence = 0.6).newTrackConfidence, 0.5);
+    expect(defaults.trackerConfig(const SessionConfig()).trackerParams.highThresh, 0.5);
 
     await (p..modelId = null).save();
     expect((await VideoAnalysisPrefs.load()).modelId, isNull);

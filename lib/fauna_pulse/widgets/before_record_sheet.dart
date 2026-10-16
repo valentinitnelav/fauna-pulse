@@ -129,6 +129,13 @@ class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindi
           value: _showEachTime,
           onChanged: (v) => _setShowEachTime(v ?? true),
           title: const Text('Show this before each start', overflow: TextOverflow.ellipsis),
+          // Round 313: the only way back once unticked.
+          subtitle: _showEachTime
+              ? null
+              : const Text(
+                  'Bring it back with Menu, "Show setup tips at session start" on the home screen.',
+                  style: TextStyle(fontSize: 12),
+                ),
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 12 + bottom),

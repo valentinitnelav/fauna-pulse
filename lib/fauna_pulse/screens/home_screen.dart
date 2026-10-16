@@ -59,6 +59,7 @@ import '../models/model_downloads.dart';
 import '../models/models_on_phone.dart';
 import '../models/session_config.dart';
 import '../perf/slow_phone_hint.dart' show kHideSlowPhoneHintPrefKey;
+import '../widgets/before_record_sheet.dart' show kBeforeRecordSheetKey;
 import '../widgets/external_link.dart';
 import '../widgets/scroll_hint.dart';
 import '../widgets/support_faunapulse.dart';
@@ -262,22 +263,31 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   /// Reads the persisted "hide setup tips" flag so the menu check item
   /// reflects the current state.
+  /// Round 313: the tick shows only when every tip is on, so after "Show this
+  /// before each start" was unticked one tap on the menu item brings the
+  /// "Before you record" sheet back. Read again each time the menu opens.
   Future<void> _loadSetupTipsPref() async {
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getBool(kHideSessionInfoPrefKey) ?? false;
+    final beforeRecord = prefs.getBool(kBeforeRecordSheetKey) ?? true;
     if (!mounted) return;
-    setState(() => _showSetupTips = !hidden);
+    setState(() => _showSetupTips = !hidden && beforeRecord);
   }
 
   /// Turns the one-time setup reminder on/off by writing the persisted flag.
   /// On = reminder shows next time a session screen opens; Off = stays hidden.
   /// Round 278: turning it on also brings back the slow-phone hint after its
-  /// "Don't show again" (the only way back to it).
+  /// "Don't show again" (the only way back to it), and since round 313 the
+  /// "Before you record" sheet after "Show this before each start" was
+  /// unticked (no other control brings it back).
   Future<void> _toggleSetupTips() async {
     setState(() => _showSetupTips = !_showSetupTips);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(kHideSessionInfoPrefKey, !_showSetupTips);
-    if (_showSetupTips) await prefs.remove(kHideSlowPhoneHintPrefKey);
+    if (_showSetupTips) {
+      await prefs.remove(kHideSlowPhoneHintPrefKey);
+      await prefs.remove(kBeforeRecordSheetKey);
+    }
   }
 
   @override
@@ -490,7 +500,14 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       children: [
         Expanded(
           flex: 4,
-          child: _BarItem(icon: Icons.menu, label: 'Menu', onTap: () => _scaffold.currentState?.openDrawer()),
+          child: _BarItem(
+            icon: Icons.menu,
+            label: 'Menu',
+            onTap: () {
+              _loadSetupTipsPref();
+              _scaffold.currentState?.openDrawer();
+            },
+          ),
         ),
         Expanded(flex: 4, child: _BarItem(icon: Icons.history, label: 'Sessions', onTap: _openSessions)),
         // The word under the raised button; tapping it starts too.

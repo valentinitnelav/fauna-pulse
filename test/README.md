@@ -31,6 +31,21 @@ an intended change to its columns, rewrite it with
 and check the diff.
 Run `flutter analyze` alongside it; both must be clean before a PR.
 
+**Settings: can be set, and take effect (round 313).** `settings_fields_test.dart`
+types into every number box of every settings screen one character at a time (the
+camera Settings in four starting setups and all tabs with every fold open, the video
+settings, Identify organisms; the photo screen in `photo_tracker_test.dart`) and
+switches every switch, list and slider and back. Each must show what was typed, change
+exactly one stored setting (no hidden link, no "ratchet" from a half-typed number),
+give every value back when the old one is typed again, refuse a number above its
+maximum, and leave the same controls on screen. A new control is covered without
+changing the test; a stored camera setting that no control changes fails the test until
+it is listed there with the reason. `tracker_effect_test.dart` shows that each tracker
+setting changes the tracker's result and that every stored value reaches the tracker
+the camera, videos and photos build. When one of them fails, fix the screen, not the
+test: a rule between two settings belongs where the values are used (see
+`SessionConfig.effectiveInferenceFps`), shown with the box's `warning`.
+
 
 ## Security and release gate
 

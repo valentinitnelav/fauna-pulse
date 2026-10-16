@@ -998,6 +998,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   @override
   void dispose() {
+    // After this frame: the bar belongs to the app's messenger, which must
+    // not rebuild while this screen is being taken down.
+    final snack = _unappliedSnack;
+    if (snack != null) WidgetsBinding.instance.addPostFrameCallback((_) => snack.close());
     _stopScreenIdle();
     _sessionTimer?.cancel();
     _scheduleTimer?.cancel();
@@ -1710,6 +1714,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => SessionSummaryScreen(logFile: logFile)),
     );
+    // The summary's photo viewer saves its "1:1" chip into the stored config
+    // (round 313): take it over, or the next save of this screen's own copy
+    // (lens switch, model choice, Settings) would write the old value back.
+    final saved = await SessionConfig.load();
+    if (mounted && saved.cropSquareLock != _config.cropSquareLock) {
+      setState(() => _config = _config.copyWith(cropSquareLock: saved.cropSquareLock));
+    }
     if (mounted && _paused) {
       _paused = false;
       await _controller.resume();
@@ -1775,6 +1786,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     required String focusMode,
     ScheduleSlot? scheduleSlot,
   }) async {
+    _closeUnappliedSnack();
     _tracker.reset();
 
     // The session folder, logger, photo scheduler, wakelock and keep-alive
@@ -1888,7 +1900,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         ),
         'analysis_frame_width_px': _imageWidth,
         'analysis_frame_height_px': _imageHeight,
-        'inference_fps': _config.inferenceFps,
+        'inference_fps': _config.effectiveInferenceFps,
         'fps_sample_seconds': _config.fpsSampleSeconds,
         'thermal_sample_seconds': _config.thermalSampleSeconds,
         'power_sample_seconds': _config.powerSampleSeconds,
@@ -2723,8 +2735,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// shared with offline tracking of videos.
   InsectTracker _buildTracker(double detectorFps) => _config.buildTracker(detectorFps);
 
-  /// The explicit user-selected inference-rate ceiling (FPS).
-  int get _inferenceCeilFps => _config.inferenceFps;
+  /// The inference-rate ceiling (FPS): the user's value, never above the
+  /// camera cap (round 313: applied here, the stored value stays as typed).
+  int get _inferenceCeilFps => _config.effectiveInferenceFps;
 
   /// (Re)builds the auto-throttle from the current config and seeds the applied
   /// cap. Called at init and whenever settings change. When auto-throttle is off
@@ -2732,7 +2745,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void _rebuildThrottle() {
     if (_config.autoThrottle) {
       _throttle = AdaptiveInferenceThrottle(
-        minFps: _config.minInferenceFps,
+        minFps: _config.effectiveMinInferenceFps,
         ceilFps: _inferenceCeilFps,
         dutyTarget: _config.throttleDutyTarget,
       );
@@ -2741,7 +2754,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _appliedCapFps = _inferenceCeilFps;
     } else {
       _throttle = null;
-      _appliedCapFps = _config.inferenceFps;
+      _appliedCapFps = _inferenceCeilFps;
     }
   }
 
@@ -2953,6 +2966,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     await _controller.pause();
     _paused = true;
     if (!mounted) return;
+    _closeUnappliedSnack();
+    final draft = SettingsDraft();
     final updated = await showModalBottomSheet<SessionConfig>(
       context: context,
       isScrollControlled: true,
@@ -2962,6 +2977,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       backgroundColor: const Color(0xFF141414),
       builder: (_) => SettingsSheet(
         config: _config,
+        draft: draft,
         streamResolutions: _streamResolutions,
         analysisCeiling: _analysisCeiling,
         sensorWidth: _captureWidth,
@@ -2979,8 +2995,63 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // import models…): check its file again, nothing more.
     if (updated == null) {
       _recheckModelFile();
+      // Round 313: closed with Back, a tap above it or a swipe down: say that
+      // the changes were not used, and offer them, instead of losing them
+      // silently (which looked like "my value jumped back").
+      final changed = draft.value;
+      final before = jsonEncode(_config.toJson());
+      if (changed != null &&
+          mounted &&
+          jsonEncode(changed.toJson()) != jsonEncode(_config.normalizedFpsCaps().copyWith(folderName: _config.folderName).toJson())) {
+        _unappliedSnack = ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Settings closed without Apply: your changes are not used.'),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(label: 'Apply', onPressed: () => unawaited(_applyLate(changed, before))),
+          ),
+        );
+      }
       return;
     }
+    await _applySettings(updated);
+  }
+
+  /// The "Settings closed without Apply" bar, closed when it no longer fits
+  /// (Settings opened again, a recording started, the screen left).
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _unappliedSnack;
+
+  void _closeUnappliedSnack() {
+    _unappliedSnack?.close();
+    _unappliedSnack = null;
+  }
+
+  /// The bar's Apply: only while nothing records and nothing else changed the
+  /// settings meanwhile (a lens switch, a model choice), else it says so.
+  Future<void> _applyLate(SessionConfig changed, String before) async {
+    _unappliedSnack = null;
+    if (!mounted) return;
+    if (_recording || _schedule != null || jsonEncode(_config.toJson()) != before) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not applied: something changed meanwhile. Open Settings again.')),
+      );
+      return;
+    }
+    // The photo source (zero shutter lag) is set at a camera start: restart
+    // the camera only when it changes.
+    if (_stillZslFor(changed) != _stillZslFor(_config)) {
+      await _controller.pause();
+      _pushStillZsl(changed);
+      await _controller.resume();
+    }
+    await _applySettings(changed);
+  }
+
+  /// Stores [updated] (the Settings sheet's result) and pushes it to the live
+  /// preview: tracker, throttle, thresholds, gate, camera cap, time-lapse.
+  Future<void> _applySettings(SessionConfig updated) async {
+    if (!mounted) return;
+    // Used at the next camera start (a no-op when unchanged).
+    _pushStillZsl(updated);
     await updated.save();
     final modelChanged = updated.modelPath != _config.modelPath;
     setState(() {

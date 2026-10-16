@@ -192,6 +192,15 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       MaterialPageRoute(builder: (_) => VideoAnalysisScreen(initialSessionPath: widget.sessionDir.path)),
     );
     if (!mounted) return;
+    // The video settings' Identification card edits the same stored values
+    // (round 313): read them again, or this screen's next save would write
+    // its old copy back and the next run would use it.
+    final fresh = await IdentifyPrefs.load();
+    if (!mounted) return;
+    // The model and name list chosen here stay.
+    fresh.modelName = _prefs?.modelName ?? fresh.modelName;
+    fresh.packName = _prefs?.packName ?? fresh.packName;
+    setState(() => _prefs = fresh);
     await _plan();
     await _checkVisits();
   }
@@ -645,6 +654,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       onManage: _testingSpeed ? null : _manageModels,
       onChanged: (modelChanged) {
         setState(() {});
+        // Saved at once (round 313: before, only a run or another edit saved
+        // the choice, and leaving the screen lost it).
+        _savePrefs();
         if (modelChanged) {
           _loadSpeed();
           _checkVisits();

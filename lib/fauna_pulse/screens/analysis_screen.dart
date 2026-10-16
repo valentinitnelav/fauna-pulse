@@ -41,12 +41,14 @@ import '../postprocess/photo_tracker.dart';
 import '../postprocess/post_detector.dart';
 import '../postprocess/sahi.dart';
 import '../postprocess/sahi_profile.dart';
-import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResult, VideoTracker;
+import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResult, VideoTracker, trackerUserValues;
+import '../tracking/tracker.dart' show TrackerAlgorithm;
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
 import '../widgets/dialog_title.dart';
+import '../widgets/tracker_tuning_fields.dart' show newTrackGapWarning;
 import 'identification_choice_fields.dart';
 import 'identification_screen.dart';
 import 'models_screen.dart';
@@ -134,6 +136,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   PostTrackSummary? _visits;
   bool _tracking = false;
 
+  /// The camera's settings, whose tracker (algorithm, New-track confidence,
+  /// fine-tuning) "Find track IDs" uses on photos: shown and compared with
+  /// the last run (round 313: they were used without being shown).
+  SessionConfig? _cameraConfig;
+
   bool _loading = true;
   List<_AnalyzableSession> _sessions = const [];
   List<ModelEntry> _models = const [];
@@ -213,7 +220,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _occlusionSeconds = prefs.getDouble(_prefOcclusion) ?? 3.0;
       _minVisitSeconds = prefs.getDouble(_prefMinVisit) ?? 0.2;
       _sahiEnabled = prefs.getBool(_prefSahiEnabled) ?? false;
-      _sahiTilePx = prefs.getInt(_prefSahiTilePx) ?? 0;
+      // A tile below 128 px (stored before round 313, when every keystroke
+      // was saved) is read as 128.
+      _sahiTilePx = switch (prefs.getInt(_prefSahiTilePx) ?? 0) {
+        <= 0 => 0,
+        final px => px < 128 ? 128 : px,
+      };
       _sahiOverlapPct = prefs.getDouble(_prefSahiOverlapPct) ?? 25;
       _sahiFullPass = prefs.getBool(_prefSahiFullPass) ?? true;
       _sahiMergeIou = prefs.getDouble(_prefSahiMergeIou) ?? 0.5;
@@ -320,12 +332,42 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       t = await PhotoTracker.trackability(session.dir);
       v = await VideoTracker.readSummary(session.dir);
     }
+    final camera = await SessionConfig.load();
     if (mounted && _session == session) {
       setState(() {
         _trackability = t;
         _visits = v;
+        _cameraConfig = camera;
       });
     }
+  }
+
+  /// The camera's tracker values in one line, e.g. "ByteTrack, New-track
+  /// confidence 0.50".
+  String _cameraTrackerLine(SessionConfig c) {
+    final cbiou = c.trackerAlgorithm == TrackerAlgorithm.cbiou;
+    final newTrack = cbiou ? c.cbiouParams.highThresh : c.trackerParams.highThresh;
+    return '${cbiou ? 'C-BIoU' : 'ByteTrack'}, New-track confidence ${newTrack.toStringAsFixed(2)}';
+  }
+
+  /// The camera's tracker differs from the one the last track IDs were
+  /// found with (a value the run did not log does not count).
+  bool _cameraTrackerChanged(PostTrackSummary v, SessionConfig c) {
+    final now = trackerUserValues(
+      c.trackerAlgorithm == TrackerAlgorithm.cbiou ? c.cbiouParams.toJson() : c.trackerParams.toJson(),
+    );
+    return (v.algorithm.isNotEmpty && v.algorithm != c.trackerAlgorithm.name) ||
+        now.entries.any((e) => v.trackerValues.containsKey(e.key) && v.trackerValues[e.key] != e.value);
+  }
+
+  /// Confidence, IoU and model are saved as they change (round 313: before,
+  /// only Start saved them, and leaving the screen lost a change).
+  Future<void> _saveChoices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final model = _model;
+    if (model != null) await prefs.setString(_prefModel, model.id);
+    await prefs.setDouble(_prefConf, _confidence);
+    await prefs.setDouble(_prefIou, _iou);
   }
 
   /// Same sessions folder the home screen lists, but with photo counts.
@@ -399,10 +441,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     if (session == null || model == null || _running) return;
 
     // Remember the choices for next time.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefModel, model.id);
-    await prefs.setDouble(_prefConf, _confidence);
-    await prefs.setDouble(_prefIou, _iou);
+    await _saveChoices();
 
     setState(() {
       _running = true;
@@ -793,7 +832,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 child: Text(m.label, overflow: TextOverflow.ellipsis),
               ),
           ],
-          onChanged: _running ? null : (m) => setState(() => _model = m),
+          onChanged: _running
+              ? null
+              : (m) {
+                  setState(() => _model = m);
+                  _saveChoices();
+                },
         ),
         manageModelsButton(onPressed: _running ? null : _manageModels),
       ],
@@ -834,6 +878,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           max: 0.95,
           divisions: 18,
           onChanged: _running ? null : onChanged,
+          // Saved when the finger lifts (round 313).
+          onChangeEnd: (_) => _saveChoices(),
         ),
         const SizedBox(height: 4),
       ],
@@ -856,6 +902,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
     final modelPx = _model?.inputSize ?? 640;
     return FoldSection(
+      // A fixed key: the title follows the switch, the fold stays open.
+      key: const ValueKey('fold:sahi'),
       title: 'Small-insect tiling (SAHI)${_sahiEnabled ? ' — ON' : ''}',
       subtitle:
           'Cuts each photo into overlapping tiles so tiny insects are not '
@@ -892,10 +940,15 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         NumericSettingField(
           label: 'Tile size',
           value: _sahiTilePx.toDouble(),
-          min: 0,
+          // Round 313: 0 or at least 128 px. Before, typing "1024" stored a
+          // 1 px tile at its first keystroke, and the tile preview then
+          // planned millions of tiles.
+          min: 128,
           max: 2048,
+          zeroMeans: 'automatic',
           isInt: true,
           unitSuffix: 'px',
+          enabled: !_running,
           helperText:
               '0 = automatic: the model\'s own input size (now $modelPx px). '
               'Larger tiles = fewer passes but more downscaling per tile.',
@@ -912,6 +965,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           max: 50,
           isInt: true,
           unitSuffix: '%',
+          enabled: !_running,
           helperText:
               'Neighbouring tiles share this much, so an insect on a tile '
               'border appears whole in one of them.',
@@ -941,6 +995,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           min: 0.1,
           max: 0.9,
           decimals: 2,
+          enabled: !_running,
           helperText:
               'Overlap level at which boxes from different tiles count as '
               'the SAME insect and merge. Measured against the smaller box, '
@@ -959,6 +1014,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           max: 20,
           decimals: 1,
           unitSuffix: '%',
+          enabled: !_running,
           helperText:
               '0 = off. Ignores detections whose box is narrower than this '
               'percentage of the photo side in either direction — catches '
@@ -1077,6 +1133,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final busy = _running || _tracking || _cleanupBusy;
     const amber = TextStyle(color: Colors.amber, fontSize: 13);
     final step = t.stepSeconds;
+    final camera = _cameraConfig;
     return [
       const HelpLabel(
         label: 'Track IDs',
@@ -1104,11 +1161,31 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           title: 'Track ID settings',
           subtitle:
               'Occlusion tolerance ${_occlusionSeconds.toStringAsFixed(1)} s, minimum track '
-              '${_minVisitSeconds.toStringAsFixed(1)} s',
+              '${_minVisitSeconds.toStringAsFixed(1)} s${camera == null ? '' : ', ${_cameraTrackerLine(camera)} (camera)'}',
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (camera != null) ...[
+                  Text(
+                    'Tracker: ${_cameraTrackerLine(camera)} and its fine-tuning, from the camera Settings '
+                    '(Detection tab, Tracking, Advanced; editable while the Capture trigger is Live detection).',
+                    style: helperTextStyle,
+                  ),
+                  // The boxes were found at the last run's confidence.
+                  if (newTrackGapWarning(
+                        _cameraTrackerNewTrack(camera),
+                        t.lastRunConfidence ?? _confidence,
+                        confidenceName: t.lastRunConfidence != null
+                            ? 'the confidence the photos were analyzed at'
+                            : 'the Confidence threshold here',
+                      )
+                      case final w?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(w, style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                    ),
+                ],
                 NumericSettingField(
                   label: 'Occlusion tolerance',
                   value: _occlusionSeconds,
@@ -1120,6 +1197,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                       'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
                       'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
                       'step, or every track ID breaks into pieces.',
+                  // Counted as the tracker counts: whole photos.
+                  warning: step != null &&
+                          step > 0 &&
+                          SessionConfig(occlusionSeconds: _occlusionSeconds).occlusionFramesFor(1 / step) < 2
+                      ? 'Shorter than two photo steps (${_numStr(step)} s each): an insect missed in two photos '
+                            'in a row gets a new track ID.'
+                      : null,
                   onChanged: (x) async {
                     setState(() => _occlusionSeconds = x);
                     (await SharedPreferences.getInstance()).setDouble(_prefOcclusion, x);
@@ -1134,7 +1218,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   unitSuffix: 's',
                   helperText:
                       'How long an insect must be seen before it counts as a track ID; shorter sightings are '
-                      'dropped as noise. Default 0.2 s, as the live camera.',
+                      'dropped as noise. It is counted in photos in a row (at least two). Default 0.2 s, as '
+                      'the live camera.',
                   onChanged: (x) async {
                     setState(() => _minVisitSeconds = x);
                     (await SharedPreferences.getInstance()).setDouble(_prefMinVisit, x);
@@ -1158,7 +1243,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           ),
           if (t.lastRunMs != null && v.detectionsRunMs != t.lastRunMs)
             const Text('The photos were analyzed again since: find track IDs again to include that.', style: amber)
-          else if (v.occlusionSeconds != _occlusionSeconds || v.minHitsSeconds != _minVisitSeconds)
+          else if (v.occlusionSeconds != _occlusionSeconds ||
+              v.minHitsSeconds != _minVisitSeconds ||
+              (camera != null && _cameraTrackerChanged(v, camera)))
             const Text('Settings changed: find track IDs again to use them.', style: amber),
           const Text(
             'Saved in the session folder: track_ids.csv (one row per track ID) and post_tracks.jsonl.',
@@ -1176,6 +1263,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       Isolate.run(() => PhotoTracker.run(Directory(path), config));
 
   static String _numStr(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
+  static double _cameraTrackerNewTrack(SessionConfig c) =>
+      c.trackerAlgorithm == TrackerAlgorithm.cbiou ? c.cbiouParams.highThresh : c.trackerParams.highThresh;
 
   Future<void> _findVisits() async {
     final session = _session;

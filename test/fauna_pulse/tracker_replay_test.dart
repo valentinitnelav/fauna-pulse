@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/models/track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/byte_track.dart';
 import 'package:fauna_pulse/fauna_pulse/tracking/c_biou_track.dart';
@@ -315,6 +316,11 @@ void main() {
       // the replay matches the field run.
       var occlusionS = 3.0;
       var minHitsS = 0.2;
+      // Round 313: the session's own tracker values too (New-track
+      // confidence, match thresholds, velocity smoothing, search margins);
+      // the replay used the defaults before.
+      var bp = const ByteTrackParams();
+      var cp = const CBiouParams();
       for (final line in lines) {
         try {
           final rec = jsonDecode(line);
@@ -325,6 +331,9 @@ void main() {
                   (cfg['occlusionSeconds'] as num?)?.toDouble() ?? occlusionS;
               minHitsS =
                   (cfg['minHitsSeconds'] as num?)?.toDouble() ?? minHitsS;
+              final c = SessionConfig.fromJson(cfg.cast<String, dynamic>());
+              bp = c.trackerParams;
+              cp = c.cbiouParams;
             }
             break;
           }
@@ -339,16 +348,17 @@ void main() {
       // needs a fresh tracker, and the degraded pass must not share state
       // with the full-stream pass.
       final variants = <String, InsectTracker Function()>{
-        'byte': () => ByteTracker(),
-        'byte dtAware': () => ByteTracker(timeAwareMotion: true),
+        'byte': () => ByteTracker(params: bp),
+        'byte dtAware': () => ByteTracker(params: bp, timeAwareMotion: true),
         'byte bIoU-fb': () =>
-            ByteTracker(fallbackMode: FallbackMode.bufferedIou),
+            ByteTracker(params: bp, fallbackMode: FallbackMode.bufferedIou),
         'byte dt+bIoU': () => ByteTracker(
+          params: bp,
           timeAwareMotion: true,
           fallbackMode: FallbackMode.bufferedIou,
         ),
-        'cbiou': () => CBiouTracker(),
-        'cbiou dtAware': () => CBiouTracker(timeAwareMotion: true),
+        'cbiou': () => CBiouTracker(params: cp),
+        'cbiou dtAware': () => CBiouTracker(params: cp, timeAwareMotion: true),
       };
       // One throttle-like stress stream: the same detections delivered at a
       // 15 → 3 → 10 fps staircase (10 s segments).

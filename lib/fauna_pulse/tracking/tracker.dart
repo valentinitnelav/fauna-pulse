@@ -22,6 +22,13 @@ import '../models/track.dart';
 /// saved before this choice existed).
 enum TrackerAlgorithm { bytetrack, cbiou }
 
+/// The fewest detections in a row that can give a track ID (round 313): both
+/// trackers start a track on its first box and check it for confirmation only
+/// from its next match, so a minimum of 1 has always worked like 2. The
+/// seconds-to-frames conversions use at least this, so the screens show the
+/// number really needed.
+const int kMinDetectionsInARow = 2;
+
 /// What every tracker must provide to the per-frame pipeline and the UI.
 abstract class InsectTracker {
   /// Advance by one processed frame: [detections] are the ROI-filtered boxes,

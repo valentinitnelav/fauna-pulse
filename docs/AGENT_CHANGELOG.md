@@ -9434,3 +9434,17 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** reinstall on the Redmi (a person confirms the install), put its settings back, rerun F; the link switch round after the uploads; release-day steps; new Play screenshots; the slow-phone banner covers the REC badge on the Samsung while recording; the photo picker hands over generic file names, so imported videos get an uncertain filming time (the import screen says so).
 
+## Round 313 (2026-10-16): settings kept as typed and used, tracker threshold advice, phone checks
+
+**Asked:** New-track confidence on the video settings jumped back from 0.50 to 0.60; make sure every setting (the tracker's above all) can be set and takes effect, find why such bugs recur and add a check; advise how New-track should relate to the detector's confidence; Redmi follow-ups.
+
+**Cause:** a hidden floor (Confidence + 0.10) as the box's minimum, clamped silently, and raised for good with Confidence (also by half-typed numbers). A 9-agent audit confirmed ~55 findings with three causes: boxes replaced numbers silently; controls rewrote another stored setting (Confidence, camera cap, max inference, C-BIoU pass 1, capture trigger); values never reached their user (GPU switch and CPU threads, Identify's smallest box and crops per track ID on re-score).
+
+**Changed:** `NumericSettingField` refuses out-of-range numbers ("Allowed: a to b") and puts the old value back at once, takes a comma, only the shown decimals, "Saved as X", `warning`. Rules between settings are applied where used (`effectiveInferenceFps`, larger search margin) and shown; New-track 0.05 to 0.95 with an amber note under 0.10 gap. Plugin reloads the model on an engine change. "Settings closed without Apply" bar; folds keyed; `NotApplicable` one tree shape; `kMinDetectionsInARow` 2; replay gap rule needs twice the frame rhythm (short occlusions gave 0 IDs); photo screen shows the camera tracker it uses; choices saved on change; `cropsForScoring`; summary rows show what ran. Docs updated.
+
+**Why:** reference trackers keep 0.15 to 0.6 between the detector's lowest box and the new-track threshold (Ultralytics track() at 0.1 with new tracks at 0.25; ByteTrack 0.1 and 0.6 to 0.7) and none forces it: a note, not a floor. Defaults stay 0.25/0.50 until the annotated-video sweep (analyze once low, sweep New-track). Here faint boxes can also confirm and revive tracks, so a lower confidence may add false IDs.
+
+**Checked:** 989 app and 176 plugin tests. New `settings_fields_test.dart` (every control of every settings screen, typed or switched and back) found five more bugs at once; `tracker_effect_test.dart`. An 8-agent review led to restoring at refusal time. Samsung (release): 0.50 with Confidence 0.50, "0,55", 1.2 refused, GPU off reloads on CPU at once (~750 vs ~230 ms); values put back. Redmi (debug): "0,3" with Gboard, bar Apply saved; settings restored; modes check F passed; GPU 5 to 6 times faster than CPU.
+
+**Open (owner):** faint boxes confirming/reviving tracks, time-based occlusion, C-BIoU strong boxes first (test on annotated videos); "Ignore tiny tile boxes" rules; "Weak: detector confidence below" 0.20 never fires; smaller readout and log details. Phones keep any New-track raised before: retype 0.50 where wanted.
+

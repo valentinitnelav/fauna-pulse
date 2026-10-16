@@ -197,6 +197,9 @@ List<String> notApplicableConfigKeys(
     case CaptureTrigger.motion:
       return [
         ...aiKeys,
+        // The gate always runs in this mode; the switch is the live
+        // detection one (round 313: the trigger no longer stores it on).
+        'motionGateEnabled',
         'timeLapseGapSeconds',
         'timeLapseCameraSleep',
         'timeLapseWakeLeadSeconds',
@@ -770,11 +773,13 @@ class SessionConfig {
   /// Converts the user-facing [minHitsSeconds] into the whole number of frames a
   /// track must be matched before it is confirmed as a visit. Mirrors
   /// [occlusionFramesFor]: uses the *smoothed* detector FPS, falls back to 15
-  /// FPS before the first measurement, and is **clamped to at least 1** (a track
-  /// must confirm in one frame minimum — 0 would confirm every blip instantly).
+  /// FPS before the first measurement, and is **at least
+  /// [kMinDetectionsInARow]**: both trackers start a track on its first box
+  /// and check it for confirmation only from its next match, so 1 has always
+  /// worked like 2 (round 313 shows the real number instead).
   int minHitsFramesFor(double detectorFps) {
     final fps = (detectorFps.isFinite && detectorFps > 0) ? detectorFps : 15.0;
-    return (minHitsSeconds * fps).round().clamp(1, 600);
+    return (minHitsSeconds * fps).round().clamp(kMinDetectionsInARow, 600);
   }
 
   /// A fresh tracker of the chosen algorithm with its frame budgets derived
@@ -930,42 +935,38 @@ class SessionConfig {
       ? cameraFpsCap.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
       : maximumInferenceFps;
 
-  /// Applies a user-entered inference cap while keeping the throttle floor and
-  /// camera/inference relationship valid.
-  SessionConfig withInferenceFps(int requested) {
-    final fps = requested
-        .clamp(minimumInferenceFps, maximumAllowedInferenceFps)
-        .toInt();
-    return copyWith(
-      inferenceFps: fps,
-      minInferenceFps: minInferenceFps.clamp(1, fps).toInt(),
-    );
-  }
+  /// Applies a user-entered inference cap. Round 313: only this setting
+  /// changes; the camera cap and the throttle floor limit it where the values
+  /// are used ([effectiveInferenceFps]), so typing a two-digit number (which
+  /// passes through one digit) can never lower another stored setting.
+  SessionConfig withInferenceFps(int requested) =>
+      copyWith(inferenceFps: requested.clamp(minimumInferenceFps, maximumInferenceFps).toInt());
 
-  /// Applies a user-entered camera cap. Lowering a positive camera cap also
-  /// lowers inference FPS when needed, because the detector cannot run more
-  /// often than the camera supplies frames. Camera `0` remains uncapped.
-  SessionConfig withCameraFpsCap(int requested) {
-    final cameraFps = requested <= 0
-        ? 0
-        : requested.clamp(minimumCameraFpsCap, maximumCameraFpsCap).toInt();
-    final inferenceMax = cameraFps > 0 ? cameraFps : maximumInferenceFps;
-    final currentInference = inferenceFps > 0
-        ? inferenceFps
-        : defaultInferenceFps;
-    final normalizedInference = currentInference
-        .clamp(minimumInferenceFps, inferenceMax)
-        .toInt();
-    return copyWith(
-      cameraFpsCap: cameraFps,
-      inferenceFps: normalizedInference,
-      minInferenceFps: minInferenceFps.clamp(1, normalizedInference).toInt(),
-    );
-  }
+  /// Applies a user-entered camera cap: 0 = uncapped, 1 to 4 count as
+  /// [minimumCameraFpsCap]. Only this setting changes (round 313).
+  SessionConfig withCameraFpsCap(int requested) => copyWith(
+    cameraFpsCap: requested <= 0 ? 0 : requested.clamp(minimumCameraFpsCap, maximumCameraFpsCap).toInt(),
+  );
 
-  /// Migrates old/invalid combinations into the explicit linked-cap model.
-  /// In particular, the former inference value `0` becomes the 15 FPS default.
-  SessionConfig normalizedFpsCaps() => withCameraFpsCap(cameraFpsCap);
+  /// The inference cap the detector really runs at: the user's value, never
+  /// above the camera cap (the detector cannot analyze frames the camera did
+  /// not capture). The Settings sheet shows it when it differs.
+  int get effectiveInferenceFps =>
+      (inferenceFps > 0 ? inferenceFps : defaultInferenceFps).clamp(minimumInferenceFps, maximumAllowedInferenceFps).toInt();
+
+  /// The auto-adjust floor really used: never above [effectiveInferenceFps].
+  int get effectiveMinInferenceFps => minInferenceFps.clamp(1, effectiveInferenceFps).toInt();
+
+  /// Migrates invalid stored values: the former inference value `0` becomes
+  /// the 15 FPS default, values outside the boxes' ranges are brought into
+  /// them, and a camera cap of 1 to 4 becomes 5. The user's inference values
+  /// are not lowered to the camera cap any more (round 313).
+  SessionConfig normalizedFpsCaps() => withCameraFpsCap(cameraFpsCap).copyWith(
+    inferenceFps: inferenceFps > 0
+        ? inferenceFps.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
+        : defaultInferenceFps,
+    minInferenceFps: minInferenceFps.clamp(1, maximumInferenceFps).toInt(),
+  );
 
   Map<String, dynamic> toJson() => {
     'modelPath': modelPath,

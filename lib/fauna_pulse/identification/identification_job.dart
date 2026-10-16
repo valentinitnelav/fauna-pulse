@@ -626,10 +626,20 @@ class IdentificationJob {
       );
     }
 
+    // Round 313: "Smallest box to identify" and "Crops per track ID" also
+    // apply to crops embedded by an earlier run (Continue, Re-score): before,
+    // raising the one or lowering the other changed nothing for a session
+    // already identified, while the results named the new values.
+    final records = cropsForScoring(
+      index.records,
+      minCropPx: (settings['min_crop_px'] as num?)?.toInt() ?? 0,
+      maxPerTrack: (settings['max_crops_per_track'] as num?)?.toInt() ?? 0,
+    );
+
     // Group crops per track (crops without a track id stand alone).
     final groups = <String, List<EmbeddingRecord>>{};
     final order = <String>[];
-    for (final r in index.records) {
+    for (final r in records) {
       final g = r.trackId == null ? 'crop:${r.key}' : 'track:${r.trackId}';
       if (!groups.containsKey(g)) order.add(g);
       (groups[g] ??= []).add(r);
@@ -706,4 +716,27 @@ class IdentificationJob {
       },
     );
   }
+}
+
+/// The stored crops a scoring uses (round 313): at least [minCropPx] wide, and
+/// at most [maxPerTrack] per track ID (0 = all), the largest boxes, as the
+/// crop planner picks them (crop_planner.dart `sampleTracks`). Crops without a
+/// track ID are never dropped by the count. Keeps the stored order.
+List<EmbeddingRecord> cropsForScoring(List<EmbeddingRecord> records, {int minCropPx = 0, int maxPerTrack = 0}) {
+  final big = [for (final r in records) if (r.cropPx >= minCropPx) r];
+  if (maxPerTrack <= 0) return big;
+  double area(EmbeddingRecord r) =>
+      r.box.length < 4 ? 0 : (r.box[2] - r.box[0]).clamp(0, 1) * (r.box[3] - r.box[1]).clamp(0, 1);
+  final byTrack = <int, List<EmbeddingRecord>>{};
+  for (final r in big) {
+    if (r.trackId != null) (byTrack[r.trackId!] ??= []).add(r);
+  }
+  final keep = <EmbeddingRecord>{};
+  for (final list in byTrack.values) {
+    keep.addAll(list.length <= maxPerTrack ? list : ([...list]..sort((a, b) => area(b).compareTo(area(a)))).take(maxPerTrack));
+  }
+  return [
+    for (final r in big)
+      if (r.trackId == null || keep.contains(r)) r,
+  ];
 }

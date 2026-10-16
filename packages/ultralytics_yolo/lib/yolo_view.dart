@@ -384,6 +384,15 @@ class _YOLOViewState extends State<YOLOView> {
     if (oldWidget.modelPath != widget.modelPath ||
         oldWidget.task != widget.task) {
       _resolveModel(switchExisting: _platformViewId != null);
+    } else if (oldWidget.useGpu != widget.useGpu ||
+        oldWidget.cpuThreads != widget.cpuThreads) {
+      // FaunaPulse (round 313): a new engine (GPU switch, CPU thread count)
+      // loads the same model again with it. Before, the running detector kept
+      // its old engine until the view was rebuilt. Clearing the target makes
+      // the switch below run although the model itself is the same; the
+      // native model cache key includes the engine.
+      _nativeSwitchTarget = null;
+      _resolveModel(switchExisting: _platformViewId != null);
     }
 
     // Re-apply streaming config when it changes (e.g. analysis resolution or

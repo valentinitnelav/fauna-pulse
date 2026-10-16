@@ -236,14 +236,18 @@ class FoldSection extends StatefulWidget {
   final bool initiallyExpanded;
   final List<Widget> children;
 
-  const FoldSection({
-    super.key,
+  /// Round 313: keyed by its [title] unless a key is given, so a list that
+  /// gains or loses a row above it (a warning line appearing while a number
+  /// is typed) keeps the fold open; without a key Flutter matched it by its
+  /// place in the list and closed it.
+  FoldSection({
+    Key? key,
     required this.title,
     this.subtitle,
     this.helperText,
     this.initiallyExpanded = false,
     required this.children,
-  });
+  }) : super(key: key ?? ValueKey('fold:$title'));
 
   @override
   State<FoldSection> createState() => _FoldSectionState();
@@ -310,17 +314,25 @@ class NotApplicable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (applies) return child;
     final text = Padding(
       padding: EdgeInsets.only(bottom: 8, top: noteFirst ? 4 : 0),
       child: Text(note, style: helperTextStyle),
     );
+    // Round 313: the same tree whether it applies or not (the keyed child
+    // keeps its place), so switching it rebuilds nothing inside: before, the
+    // child was built anew and its open folds closed.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (noteFirst) text,
-        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
-        if (!noteFirst) text,
+        if (!applies && noteFirst) text,
+        KeyedSubtree(
+          key: const ValueKey('notApplicable.child'),
+          child: IgnorePointer(
+            ignoring: !applies,
+            child: Opacity(opacity: applies ? 1 : 0.4, child: child),
+          ),
+        ),
+        if (!applies && !noteFirst) text,
       ],
     );
   }

@@ -44,6 +44,7 @@
 // The player is left out while the screen is busy, so it never plays while
 // the detector or the frame saving reads the videos.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -79,7 +80,6 @@ import '../widgets/roi_overlay.dart';
 import '../widgets/screen_on.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/temperature_gauge.dart';
-import '../widgets/tracker_tuning_fields.dart';
 import '../widgets/video_review_player.dart';
 import '../widgets/video_speed_chips.dart';
 import '../widgets/video_timeline_bar.dart';
@@ -151,18 +151,16 @@ class VideoAnalysisPrefs {
       keepFrames ? KeepFramesSettings(stepSeconds: keepStepSeconds, durationSeconds: keepDurationSeconds) : null;
 
   /// [base] (the app's other settings) with the tracker "Find track IDs" uses
-  /// on videos; "New-track confidence" is never below the floor of [confidence],
-  /// as on the camera.
-  SessionConfig trackerConfig(SessionConfig base) {
-    final (p, cp) = raiseNewTrackFloor(trackerParams, cbiouParams, confidence);
-    return base.copyWith(
-      occlusionSeconds: occlusionSeconds,
-      minHitsSeconds: minVisitSeconds,
-      trackerAlgorithm: trackerAlgorithm,
-      trackerParams: p,
-      cbiouParams: cp,
-    );
-  }
+  /// on videos: exactly the values on the settings screen (round 313: no
+  /// floor; the screen warns when New-track confidence is close to the
+  /// confidence the videos were analyzed at).
+  SessionConfig trackerConfig(SessionConfig base) => base.copyWith(
+    occlusionSeconds: occlusionSeconds,
+    minHitsSeconds: minVisitSeconds,
+    trackerAlgorithm: trackerAlgorithm,
+    trackerParams: trackerParams,
+    cbiouParams: cbiouParams,
+  );
 
   /// The chosen algorithm's values as "Find track IDs" logs them.
   Map<String, dynamic> get trackerJson {
@@ -1160,7 +1158,14 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           items: [
             for (final m in _models) DropdownMenuItem(value: m, child: Text(m.label, overflow: TextOverflow.ellipsis)),
           ],
-          onChanged: _running ? null : (m) => setState(() => _model = m),
+          // Saved at once (round 313: before, only Start saved it).
+          onChanged: _running
+              ? null
+              : (m) {
+                  setState(() => _model = m);
+                  _prefs.modelId = m?.id;
+                  unawaited(_prefs.save());
+                },
         ),
         manageModelsButton(onPressed: _busy ? null : _manageModels),
       ],
@@ -1212,9 +1217,16 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final live = _session?.liveAi ?? false;
     final model = _idChoice.model?.path.split('/').last;
     final list = _idChoice.pack?.path.split('/').last;
+    // Round 313: with the videos deleted nothing can be analyzed again, so
+    // the line shows what the saved boxes were found with.
+    final gone = _videosGone(_session);
+    final last = _session?.lastSettings;
+    final conf = gone ? ((last?['confidence'] as num?)?.toDouble() ?? p.confidence) : p.confidence;
+    final fps = gone ? ((last?['analysis_fps'] as num?)?.toDouble() ?? p.analysisFps) : p.analysisFps;
+    final iou = gone ? ((last?['iou'] as num?)?.toDouble() ?? p.iou) : p.iou;
     return [
-      'Detection: confidence ${p.confidence.toStringAsFixed(2)}, ${p.analysisFps.round()} frames per second, '
-          'IoU ${p.iou.toStringAsFixed(2)}',
+      'Detection: confidence ${conf.toStringAsFixed(2)}, ${fps.round()} frames per second, '
+          'IoU ${iou.toStringAsFixed(2)}${gone ? ' (as analyzed; the videos were deleted)' : ''}',
       'Track IDs: ${p.trackerAlgorithm == TrackerAlgorithm.cbiou ? 'C-BIoU' : 'ByteTrack'}, new-track confidence '
           '${p.newTrackConfidence.toStringAsFixed(2)}, occlusion ${p.occlusionSeconds.toStringAsFixed(1)} s, minimum '
           '${p.minVisitSeconds.toStringAsFixed(1)} s${live ? '' : ', keep frames ${p.keepFrames ? 'on' : 'off'}'}',
@@ -1266,6 +1278,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     );
   }
 
+  /// The session's videos were deleted after an analysis: its boxes stay, but
+  /// nothing can be analyzed again.
+  bool _videosGone(_VideoSession? s) => s != null && s.clips.isEmpty && s.lastSettings != null;
+
   Future<void> _openTuning() async {
     _pausePlayer();
     final s = _session;
@@ -1277,6 +1293,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           // With the videos still there, a changed rate means a new analysis
           // at it; without them, the track IDs keep the last run's rate.
           analysedFps: s != null && s.clips.isEmpty ? (s.lastSettings?['analysis_fps'] as num?)?.toDouble() : null,
+          // The confidence the saved boxes were found at: the lowest score the
+          // tracker gets, for the New-track note (round 313).
+          analysedConfidence: s != null && s.doneClips.isNotEmpty
+              ? (s.lastSettings?['confidence'] as num?)?.toDouble()
+              : null,
+          videosGone: _videosGone(s),
           liveAi: s?.liveAi ?? false,
           // Frames of deleted videos are never removed.
           keptSaved: s != null && s.clips.isNotEmpty ? _kept.saved : 0,

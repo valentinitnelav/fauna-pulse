@@ -25,6 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
+import 'settings_fields_test.dart' show checkDropdowns, checkNumberBoxes, checkSliders, checkSwitches, controlsShown, openAllFolds;
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 import 'video_screens_test.dart' show idChoice;
 
@@ -280,6 +281,55 @@ void main() {
       }
     }
 
+    testWidgets('"Find animals in photos" settings: every control changes one setting and can be changed back (r313)', (tester) async {
+      // Every key the screen saves, at its default: a key saved for the first
+      // time is not a change of another setting.
+      SharedPreferences.setMockInitialValues({
+        'analysis_model': 'test_model',
+        'analysis_confidence': 0.25,
+        'analysis_iou': 0.7,
+        'analysis_keep_gap': 2.0,
+        'analysis_occlusion_s': 3.0,
+        'analysis_min_visit_s': 0.2,
+        'analysis_sahi_enabled': false,
+        'analysis_sahi_tile_px': 0,
+        'analysis_sahi_overlap_pct': 25.0,
+        'analysis_sahi_full_pass': true,
+        'analysis_sahi_merge_iou': 0.5,
+        'analysis_sahi_min_box_pct': 0.0,
+        'find_also_identify': false,
+      });
+      // A tall phone, so every row is built at once (settings_fields_test.dart).
+      tester.view.physicalSize = const Size(360, 24000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
+      _photoFiles(dir);
+      await openAnalysis(tester, dir);
+      Future<Map<String, Object?>> snap() async {
+        await tester.pump();
+        final p = await SharedPreferences.getInstance();
+        return {
+          for (final k in p.getKeys())
+            if (k.startsWith('analysis_') || k.startsWith('identify_') || k.startsWith('find_')) k: p.get(k),
+        };
+      }
+
+      await openAllFolds(tester);
+      final shown = controlsShown();
+      final changed = <String>{
+        ...await checkNumberBoxes(tester, snap),
+        ...await checkSliders(tester, snap),
+        // A choice for the next run only, not saved.
+        ...await checkSwitches(tester, snap, notStored: {'Re-analyze photos already done'}),
+        ...await checkDropdowns(tester, snap),
+      };
+      expect(changed, containsAll(['analysis_confidence', 'analysis_occlusion_s', 'analysis_sahi_tile_px']));
+      await openAllFolds(tester);
+      expect(controlsShown(), shown, reason: 'the same controls show after changing everything back');
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('"Find animals in photos" finds the track IDs of close photos (360 px)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);
@@ -289,9 +339,14 @@ void main() {
       await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
       // Round 273: folded, with the values in use on the fold's line.
       expect(find.text('Occlusion tolerance'), findsNothing);
-      expect(find.text('Occlusion tolerance 3.0 s, minimum track 0.2 s'), findsOneWidget);
+      // Round 313: the camera's tracker, which photos use, is named too.
+      expect(
+        find.text('Occlusion tolerance 3.0 s, minimum track 0.2 s, ByteTrack, New-track confidence 0.50 (camera)'),
+        findsOneWidget,
+      );
       await openFold(tester, list, 'Track ID settings');
       expect(find.text('Occlusion tolerance'), findsOneWidget);
+      expect(find.textContaining('from the camera Settings (Detection tab, Tracking, Advanced'), findsOneWidget);
       expect(find.text('Minimum track length'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Find track IDs'), 200, scrollable: list);
       await tester.pump();
