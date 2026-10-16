@@ -111,17 +111,12 @@ Still open:
   header warns that the list is long. Extracted `AboutFaunaPulseDialog` widget,
   covered by `test/fauna_pulse/home_about_dialog_test.dart`.
 
-## Open question for the owner
+## Answered: where the models come from
 
-The bundled MegaDetector v6 (`MDV6-yolov10-c_int8_256.tflite`, classes animal / person /
-vehicle; rounds 194 and 199) makes the AI pipeline run out of the box but it does **not**
-recognise insects specifically. So a citizen scientist who installs the app today cannot
-detect insects without obtaining a model from somewhere. Decide whether an insect-trained
-`.tflite` may be published as a public GitHub release asset (licence, collaborator
-approval). If yes, the "Download…" button becomes a copy-paste step and the Field Guide
-can promise real detections. If no, the docs keep saying plainly that insect work needs a
-model the user supplies (README §Models, INSTALL.md A3 and the Play full description
-already do).
+No model ships in the app since round 270 (owner, 2026-10-01). Published insect detectors
+(flat-bug, insectDCT), MegaDetector V6, the insectDCT classifier and BioCLIP 2/2.5 with
+name lists are offered for download from the app's list (`assets/model_downloads.json`),
+hosted on Hugging Face by the fauna-pulse-models repository (see v0.9.0-alpha.1 below).
 
 ---
 
@@ -299,7 +294,71 @@ Play later (closed test still running).
        `identifiers`.
 7. [ ] Play: the same AAB (versionCode 13) to the closed-test track, and paste the new
        `full_description.txt` into the store listing in the same go (the listing must
-       not describe a feature the live build lacks).
+       not describe a feature the live build lacks). Superseded: Play gets
+       v0.9.0-alpha.1 (versionCode 14) instead; 13 stays GitHub-only.
+
+## v0.9.0-alpha.1: models from Hugging Face, first Play production release (prepared round 312)
+
+Owner plan (2026-10-15): put the models on Hugging Face, then release, also on Google Play
+(production access approved 2026-09-30). Prepared on `develop` in round 312: version
+`0.9.0-alpha.1+14` in pubspec; CHANGELOG section (heading says "not released yet");
+`fastlane/.../changelogs/14.txt` (466 of 500 characters); `full_description.txt` without
+the old "ships with a model" paragraph and with AI later, the downloads and field notes;
+PRIVACY_POLICY.md (downloads from Hugging Face or GitHub, videos, field notes, site photos);
+`tool/model_downloads/update_catalogue.py --urls` (step 2). Release dry run of round 312 on
+`develop`: analyze, unit tests, plugin tests, native tests, release lint and the signed
+AAB all passed.
+
+versionCode 14: Play has 11 (frozen) and 12, GitHub v0.8.0-alpha.1 has 13, so 14 updates
+both the closed testers (12) and GitHub users (13).
+
+1. [ ] fauna-pulse-models (its own session): the owner checks every card, then one repo per
+       upload step (private first), then public and not gated; `publish_hf.py --verify
+       --full` passes without a login (as the app downloads).
+2. [ ] App round (next free number; the models repo's notes call it "Round 312", which
+       this release-prep round took): `python tool/model_downloads/update_catalogue.py
+       --urls ~/fauna-pulse-models/publish/published.json` (`--check` first). It renames
+       10 catalogue files to the published names (matched by SHA-256), pins every link to
+       its Hugging Face commit, gives `flatbug-s` its file, takes the rebuilt insectDCT
+       class list and renames the lists in `uses`. It prints the old names. A rehearsal
+       with a simulated `published.json` (round 312) failed 14 tests that read the shipped
+       list by file name, all in `home_screen_test`, `model_downloads_test` and
+       `watch_plan_screen_test`; the other tests use their own example names. Integration
+       checks with old default names (`cpu_threads_check`, `find_and_identify_check`,
+       `models_delete_check`) and docs (`tool/model_downloads/README.md` tables,
+       IDENTIFICATION, FIELD_GUIDE) need the new names too.
+       Then `flutter test test/` and one phone check over Wi-Fi: download the small files
+       from the app (a detector, the class list, one label pack), plus BioCLIP 2 once.
+3. [ ] Release day, on `develop`: CHANGELOG heading `## 0.9.0-alpha.1 (<date>)`;
+       CITATION.cff `version: "0.9.0-alpha.1"` and `date-released`; the year in
+       `citationText` if the year changed (`home_screen_test` compares it).
+4. [ ] Owner: commit, merge `develop` into `main`, `git tag -a v0.9.0-alpha.1 -m
+       "FaunaPulse v0.9.0-alpha.1"`, push `main` and the tag.
+5. [ ] Build from the tag: `bash scripts/security_release_gate.sh` (Play AAB, no donation
+       link) and `bash scripts/build_release_apks.sh` (GitHub APKs, with the donation link).
+       Check versionCode 14 and versionName 0.9.0-alpha.1 in both with
+       `aapt2 dump badging` (AAB: `bundletool dump manifest`).
+6. [ ] GitHub release `v0.9.0-alpha.1`, "Set as a pre-release", notes from the CHANGELOG
+       section, attach both APKs, Publish (Zenodo mints the version DOI). Then the new
+       version DOI goes into CITATION.cff `identifiers` (next round).
+7. [ ] Play Console, in one go: Production, Create new release, upload the AAB, release
+       notes from `changelogs/14.txt`; Store listing: paste `full_description.txt`, replace
+       the screenshots (they show the old home screen); Data safety stays "no data
+       collected" (the position is processed on the phone only; downloads send no user
+       data); App content: the camera foreground-service declaration still matches.
+       A staged rollout (for example 20 %, then 100 % after a few days without crash
+       reports in Android vitals) limits the damage of a bad build. Google reviews the
+       first production release; allow several days.
+8. [x] Upgrade path (round 312, Samsung, owner's OK): the arm64 release APK of `develop`
+       (0.9.0-alpha.1+14, GitHub flavour) installed with `adb install -r` over the GitHub
+       0.7.0-alpha.1 APK (same key accepted). A 0.7.0 session recorded just before stayed
+       listed and opens; the camera shows "No detection model" and names the old
+       built-in file as missing, with "Download & import models"; importing from
+       `Download/` (picker, three files at once), live detection on the GPU, the photo
+       picker video import with the fragmented-MP4 rewrite, video detection, track IDs,
+       the video player and the insectDCT classifier on the GPU (GPU check 0.999997) all
+       ran in the release build (code shrinking on) without an error in the log. Repeat
+       with the final AAB's APKs if native code changes before the release.
 
 ## Phase 2: citizen-scientist documentation (~2 rounds + owner screenshots)
 

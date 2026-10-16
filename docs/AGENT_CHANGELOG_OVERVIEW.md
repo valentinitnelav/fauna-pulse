@@ -566,8 +566,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; the first of each is
   "Suggested AI models"; naming is BioCLIP 2 first in every answer: the Europe 5-order list for
   pollinators and flat surface, the world list for mammals and birds). Presence on the phone = file name only; `sha256` only verifies a download.
-  `update_catalogue.py` refreshes sizes and checksums. Files are not online yet except
-  MegaDetector (base_url = release v0.8.0-alpha.1).
+  `update_catalogue.py` refreshes sizes and checksums; `--urls <published.json>` takes the
+  published names and Hugging Face links pinned to a commit (from fauna-pulse-models'
+  `publish/published.json`, matched by SHA-256; renames the `uses` lists too). Files are not
+  online yet except MegaDetector (base_url = release v0.8.0-alpha.1).
 - **What do you want to watch? pages** (`watch_plan_screen.dart`): setup drawing, "Suggested AI
   models" / "Your choice" by file name; the answer in use (`home_watch_use`) opens with
   `currentModelChoice` (param `inUse`) plus "Back to the suggested models"; one button at the bottom edge ("Download and use (size)" / "Use
@@ -653,7 +655,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the donation define; `QNN=1` builds the NPU edition (`-npu` names). QNN deps sit behind
   `project.findProperty('qnn')` in `android/app/build.gradle`. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
   blocked.
-- **Versioning:** pubspec `version:` (now `0.8.0-alpha.1+13`) is the single source; bump the
+- **Versioning:** pubspec `version:` (now `0.9.0-alpha.1+14`, not released yet; recipe in RELEASE_PLAN.md) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,
   CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
   never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`, the year in
@@ -672,10 +674,15 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   internet over USB: avoid big downloads. GPU speeds: flat-bug n/s and insectDCT v8-s detectors
   34 ms at 640 px (s at 1024: ~75 ms); BioCLIP 2 0.27 s/crop (CPU 2.6 s); BioCLIP 2.5 CPU only,
   5.5 s/crop; insectDCT classifier eff2s 0.02 s/crop (the cnb variant gives wrong GPU output).
-- **Samsung `RF8T403A3AT`** (Galaxy M12-class, Exynos 850, 3.9 GB, Android 13): secondary; debug
-  builds now (no Play build). Compute-limited, never hot. `battery_current_ua` broken (use
-  battery % drop). Lowest forced camera rate 15. BioCLIP 2 GPU refused by the memory guard (CPU
-  ~15 s/crop). Swipe lock (adb can wake and swipe).
+- **Samsung `RF8T403A3AT`** (Galaxy M12-class, Exynos 850, Mali-G52, 3.9 GB, Android 13):
+  secondary; since round 312 it runs release-signed APKs (the update test from 0.7.0), so no
+  `run-as`, and a debug build needs an uninstall (deletes its data: ask the owner).
+  Compute-limited, never hot. `battery_current_ua` broken (use battery % drop). Lowest forced
+  camera rate 15. BioCLIP 2 GPU refused by the memory guard (CPU ~15 s/crop); flat-bug n 640
+  GPU ~0.22 s per picture live. Swipe lock (adb can wake and swipe).
+- **Redmi Note 9S** (adb `c82216fd`, Snapdragon 720G, 3.6 GB, Android 12 MIUI): third phone,
+  debug builds; stays awake on USB. Check `adb devices -l` first: which phones are connected
+  changes.
 
 ## Pointers
 

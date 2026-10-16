@@ -74,11 +74,14 @@ void main() {
       (w) => w is Container && w.constraints == const BoxConstraints.tightFor(width: 72, height: 72),
     );
 
-    Future<void> pumpFor(Duration d) async {
+    // Closes any window that pops up (tips, hints), except one showing [keep]: since round 289
+    // "Scheduled run complete" also closes with "Close", and F must see it (round 312).
+    Future<void> pumpFor(Duration d, {Finder? keep}) async {
       final end = DateTime.now().add(d);
+      final close = find.descendant(of: find.byType(AlertDialog), matching: find.text('Close'));
       while (DateTime.now().isBefore(end)) {
         await tester.pump(const Duration(milliseconds: 500));
-        if (find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).evaluate().isNotEmpty) await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Close')).first);
+        if (close.evaluate().isNotEmpty && (keep == null || keep.evaluate().isEmpty)) await tester.tap(close.first);
       }
     }
 
@@ -418,7 +421,7 @@ void main() {
         final complete = find.text('Scheduled run complete');
         final deadline = DateTime.now().add(const Duration(minutes: 5));
         while (complete.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
-          await pumpFor(const Duration(seconds: 2));
+          await pumpFor(const Duration(seconds: 2), keep: complete);
         }
         if (complete.evaluate().isEmpty) {
           problem('F', 'the run did not end within 5 minutes');

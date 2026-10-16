@@ -1600,3 +1600,28 @@ log line prints it, and the identification "Test speed" result and
 Not measured yet: sustained heat of 2 vs 1 thread over a long live session
 (the benchmark is seconds long). If a paired run ever shows 2 threads
 throttling sooner for no net FPS gain, revisit.
+
+## Part G: Round 312 re-audit against upstream v0.6.16 (2026-10-15)
+
+Trigger: the owner downloaded upstream main (pubspec 0.6.16, files dated 2026-10-09) to
+`~/InsectDetectApp/other_repos/yolo-flutter-app-main` and asked for anything that improves
+TFLite inference. Part F's 0.6.15 copy was no longer on disk, so the Android, plugin-Dart,
+export-script and docs sources were diffed against the archived 0.6.11 copy
+(`~/InsectDetectApp/archive/yolo-flutter-app-main3`), leaving out what Part F settled; then
+the detection path (`ObjectDetector.kt`) was diffed against the fork directly.
+
+### G0. Verdict: nothing to port (recorded so this is never redone)
+
+| Upstream change | Version | Fork status |
+|---|---|---|
+| Depth models stretch the picture instead of letterboxing (`prepareBitmapForModel(stretch)`, `DepthEstimator.kt`, C++ colouriser) | 0.6.16 | Not applicable: no depth task |
+| Apple Core AI `.aimodel`, iOS label parser, iOS 15 deployment target | 0.6.14-0.6.16 | iOS only |
+| Export docs: `nms=None` (raw one-to-many head, NMS on Android) replaces `nms=False, end2end=False`; needs `ultralytics>=8.4.142` | docs | No change. The fork's `scripts/export-tflite-models.py` is the unused 0.6.4 copy. fauna-pulse-models' `export_detector.py` passes no `nms` (ultralytics 8.4.170); every offered detector has a YOLOv8, YOLO11 or YOLOv10 head and the plugin decodes both `[1,4+c,N]` and `[1,300,6]`. A future YOLO26 export there should pass `nms=None` for the raw head. |
+| Docs: "fp16 GPU variants run as fast as INT8 on the GPU, no reason to ship fp16" | docs | Already measured for our models (fauna-pulse-models round 264): w8a32 equal on the GPU and 2.3x faster on the CPU, but flat-bug n lost 6 of 28 boxes near the threshold. fp16 stays the default. |
+| Dart API (`yolo.dart`, `yolo_view.dart`, results) | 0.6.12-0.6.16 | Comments, blank lines and iOS model paths only |
+| Dependencies | | LiteRT 2.1.5 and onnxruntime-android-qnn 1.26.0, as in the fork |
+| "Future exploration" (zero-copy tensor I/O, RGBA camera input, A8W8 mixed precision for the NPU) | docs | Not implemented upstream either |
+
+`ObjectDetector.kt` upstream equals the fork apart from the fork's ROI crop, the CPU thread
+parameter and the gate's reuse of the ROI picture. No phone timing was needed, as no code
+changed.

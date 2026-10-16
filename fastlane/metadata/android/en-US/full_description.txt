@@ -1,22 +1,22 @@
 FaunaPulse turns your Android phone into an AI-powered wildlife camera for ecological field research.
 
-Point your phone's camera at a flower, feeding site, nest entrance, or any area of interest, and FaunaPulse detects, tracks, and photographs visiting animals in real time - fully on-device, with no internet connection required.
+Point your phone's camera at a flower, feeding site, nest entrance, or any area of interest, and FaunaPulse detects, tracks, and photographs visiting animals in real time - fully on-device. After a one-time download of the AI models, no internet connection is needed.
 
 KEY FEATURES
-- Real-time AI object detection and tracking using a configurable on-device model
-- Motion-triggered image capture
-- Time-lapse image capture, including a night mode using the phone's flashlight
-- Post-capture AI detection on already-captured images, with an optional tiling mode (SAHI) to reduce empty frames
-- Experimental on-device identification of the recorded animals with the BioCLIP 2 vision model, with a confidence per taxonomic rank (the model and the list of candidate taxa must be downloaded; see the project's GitHub page)
+- Real-time AI detection and tracking: every animal that enters the area you watch gets a track ID, and every detection is logged with its time
+- Capture without AI: motion-triggered photos, or time-lapse photos or video clips, including a night mode using the phone's flashlight
+- AI later: find animals, track IDs and names afterwards in saved photos and videos, also in videos you import (an option for older phones)
+- Experimental on-device identification of the recorded animals with the BioCLIP 2 vision model or a fixed-class insect classifier, with a confidence per taxonomic rank
 - A draggable region of interest (ROI) to focus monitoring on a specific spot
-- End-of-session dashboard with visitation-rate graphs and image review
-- Works fully offline: no account, no ads, no analytics, no data ever leaves your phone
+- Field notes and one GPS position per session
+- Session summaries with photos, video playback with the AI's boxes and graphs, plus a Dashboard over all sessions
+- Works offline: no account, no ads, no analytics, no data ever leaves your phone
 
 WHO IT'S FOR
 FaunaPulse was built for ecological research, especially estimating visitation rates of flower-visiting animals such as pollinators, but it can be configured with different detection models for other wildlife-monitoring use cases.
 
-BRING YOUR OWN MODEL
-The app ships with a general-purpose object-detection model, so it works immediately, but that model does not specifically recognize insects. For insect monitoring you will need to add a purpose-trained .tflite detection model of your own or from a collaborator (see the project's GitHub page for details).
+AI MODELS
+No AI model comes inside the app. Tell FaunaPulse what you want to watch (pollinators on flowers, insects on a flat surface, or mammals and birds) and it suggests published models and downloads them once: insect detectors (flat-bug, insectDCT), MegaDetector for common animals, and BioCLIP 2 for names. You can also import your own .tflite detection model. The app shows each model's licence and source.
 
 IMPORTANT: EARLY RESEARCH PREVIEW (ALPHA)
 FaunaPulse is an early-stage, experimental research tool. Validation is ongoing. Detection, tracking and identification accuracy depend on your models, device, target organism and field conditions. Please review your results and validate under your own field conditions before drawing scientific conclusions. See the project's GitHub page for full details and known limitations.

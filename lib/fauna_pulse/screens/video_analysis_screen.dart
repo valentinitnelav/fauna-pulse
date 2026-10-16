@@ -747,7 +747,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (failure == null && !result!.cancelled && result.clipsDone > 0) {
       final r = await _findVisits(session);
       message = '$message ${r.message}';
-      found = r.ok;
+      found = r.ok && r.trackIds > 0;
       if (!mounted) return;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -781,9 +781,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: s.dir, autoStart: true)),
     );
     if (!mounted) return;
-    // Another model may have been chosen there.
+    // Another model may have been chosen there, and Identify's own "Download
+    // & import models" may have added or deleted detection models (round 312).
     final (choice, _) = await AlsoIdentify.load(widget.identificationChoice);
     if (mounted) setState(() => _idChoice = choice);
+    await _reloadModels();
   }
 
   Widget _alsoIdentifySection() {
@@ -834,19 +836,22 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   /// Links the analyzed boxes of [session] into visits, off the screen's
   /// thread so it stays responsive, then saves the frames kept for them.
-  /// Returns the outcome in words, and whether the track IDs were found.
-  Future<({String message, bool ok})> _findVisits(_VideoSession session) async {
+  /// Returns the outcome in words, whether the track IDs were found, and how
+  /// many (round 312: none means nothing to identify).
+  Future<({String message, bool ok, int trackIds})> _findVisits(_VideoSession session) async {
     setState(() => _tracking = true);
     await _prefs.save();
     String message;
     var keptFrames = 0;
     var ok = false;
+    var trackIds = 0;
     try {
       // Round 308: the videos' own tracker settings on the app's other ones.
       final config = _prefs.trackerConfig(await SessionConfig.load());
       final r = await _trackInBackground(session.dir.path, config, _keepFor(session));
       keptFrames = r.keptFrames;
       ok = true;
+      trackIds = r.visits;
       message =
           'Found ${r.visits} ${r.visits == 1 ? 'track ID' : 'track IDs'} in ${r.clipsTracked} '
           '${r.clipsTracked == 1 ? 'clip' : 'clips'}.';
@@ -860,10 +865,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     // 308: also without kept frames, so the main button never offers the
     // track IDs just found as still to find.
     if (ok && mounted) await _refresh(session);
-    if (!mounted) return (message: message, ok: ok);
+    if (!mounted) return (message: message, ok: ok, trackIds: trackIds);
     setState(() => _tracking = false);
     if (keptFrames > 0) message = '$message ${await _saveKeptFrames(session)}';
-    return (message: message, ok: ok);
+    if (ok && trackIds == 0 && _identify) message = '$message Nothing to identify.';
+    return (message: message, ok: ok, trackIds: trackIds);
   }
 
   /// [identify]: then "Also identify them" too; not for the clips analyzed
@@ -876,7 +882,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
     await _refresh(s, player);
-    if (r.ok && identify) await _identifyAfter(s);
+    if (r.ok && r.trackIds > 0 && identify) await _identifyAfter(s);
   }
 
   /// Saves the kept frames of [session] that are not saved yet, from the
@@ -1166,8 +1172,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _manageModels() async {
     _pausePlayer();
     await openModelsScreen(context);
-    final models = widget.models ?? await ModelCatalog.build();
     if (widget.identificationChoice == null) await AlsoIdentify.reload(_idChoice);
+    await _reloadModels();
+  }
+
+  /// Re-reads the detection models, keeping the choice when it still exists.
+  Future<void> _reloadModels() async {
+    final models = widget.models ?? await ModelCatalog.build();
     if (!mounted) return;
     setState(() {
       _models = models;
@@ -1372,7 +1383,9 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     // clips analyzed so far still get their track IDs, e.g. to free storage
     // during a long run in several parts.
     final trackSoFar = pending > 0 && due;
-    final identifyOnly = !analyze && !track && _identify && s != null && s.doneClips.isNotEmpty;
+    // Round 312: only when track IDs were found (their frames are what is named).
+    final identifyOnly =
+        !analyze && !track && _identify && s != null && s.doneClips.isNotEmpty && (s.visits?.visits ?? 0) > 0;
     final and = _identify ? ' and identify' : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

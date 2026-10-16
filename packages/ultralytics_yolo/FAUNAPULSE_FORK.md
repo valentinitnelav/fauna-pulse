@@ -29,8 +29,9 @@ upstream release safely. Written in round 169 (perf review E10).
 | r153 (review Part D) | still 0.6.10 | Nothing on the live path worth porting; D1-D3 landed as fork improvements instead. |
 | r160 (review Part E) | 0.6.11 | Glanced: iOS-only change, Android parity stands. |
 | r226 (review Part F) | 0.6.15 | Ported the multi-threaded CPU default with a measured choice (2 threads, not upstream's up to 4) and the `output$i` output names; the rest was already in the fork or not applicable. |
+| r312 (review Part G) | 0.6.16 | Nothing to port: Android changes are depth-only (stretched depth input), the rest is iOS (Core AI) and docs. Upstream's export docs now use `nms=None` (needs ultralytics >= 8.4.142); noted for any future YOLO26 export. |
 
-Details and rationale live in `docs/PERF_AND_ROBUSTNESS_REVIEW.md` Parts C-F.
+Details and rationale live in `docs/PERF_AND_ROBUSTNESS_REVIEW.md` Parts C-G.
 One piece of upstream work-in-progress was adopted early: `OrtQnnModel.kt`
 (Snapdragon-NPU `*_qnn.onnx` context binaries) originates from upstream PR
 #526; the model picker exposes it since round 150. Note QNN context binaries

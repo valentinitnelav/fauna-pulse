@@ -1066,10 +1066,32 @@ void main() {
         detections: [jsonEncode({'type': 'video_run_start', 'settings': settings}), '{"type":"video_clip_done","clip":"a.mp4"}'],
       );
       // Round 308: the track IDs are up to date too, else finding them comes first.
-      File('${dir.path}/post_tracks.jsonl').writeAsStringSync(postTracks(['a.mp4']));
+      File('${dir.path}/post_tracks.jsonl').writeAsStringSync(postTracks(['a.mp4'], trackIds: 1));
       await open(tester, tmp, dir, find.text('Identify the animals found'));
       final start = tester.widget<FilledButton>(find.ancestor(of: find.text('Identify the animals found'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
       expect(start.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no track IDs found: nothing to identify, so no Identify button (r312)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      simulateBottomSystemBar(tester);
+      final tmp = _tempDir('also_identify_none');
+      final settings = const VideoRunConfig(
+        modelPath: 'test_model',
+        modelName: 'test_model.tflite',
+        confidence: 0.25,
+        iou: 0.7,
+        useGpu: true,
+        roi: [0.5, 0.5, 0.75],
+      ).identity;
+      final dir = session(
+        tmp,
+        detections: [jsonEncode({'type': 'video_run_start', 'settings': settings}), '{"type":"video_clip_done","clip":"a.mp4"}'],
+      );
+      File('${dir.path}/post_tracks.jsonl').writeAsStringSync(postTracks(['a.mp4']));
+      await open(tester, tmp, dir, find.text('All clips analyzed with these settings'));
+      expect(find.text('Identify the animals found'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

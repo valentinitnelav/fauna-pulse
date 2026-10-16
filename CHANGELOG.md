@@ -5,6 +5,35 @@ an early research preview, versions carry a SemVer pre-release suffix (e.g.
 `0.7.0-alpha.1`) and the GitHub release is marked as a pre-release.
 -->
 
+## 0.9.0-alpha.1 (not released yet)
+
+- **No AI model inside the app any more.** The home screen asks what you want to watch
+  (pollinators on flowers, insects on a flat surface, mammals and birds), suggests
+  published models for it and downloads them once: the flat-bug and insectDCT insect
+  detectors, MegaDetector V6, the insectDCT insect classifier, and BioCLIP 2 or 2.5 with
+  their name lists. **Download & import models** lists every model and name list on the
+  phone with its licence and source; your own `.tflite` models can still be imported. The
+  camera starts without a model and asks for one only for live detection.
+- **AI later:** *Find animals in photos* and *Find animals in videos* find animals, track
+  IDs and names after recording, also in videos imported from the phone's gallery. The
+  video player shows the AI's boxes and a time bar of the track IDs.
+- Recording: time-lapse bursts can be saved as short video clips of the yellow square;
+  live AI can also save video; the camera sleeps between bursts; a recording continues
+  with the screen off, and the screen can switch off by itself after some minutes; a clean
+  stop at low battery or low storage.
+- Field notes (with your own fields, site photos and a GPS accuracy goal) are saved with
+  every session; a *Before you record* sheet checks the phone for the field.
+- Identification: the insectDCT fixed-class insect classifier as a second option;
+  BioCLIP 2 runs on the phone's graphics processor where the phone allows it (checked once
+  per phone); one score per track ID from all its photos.
+- New Sessions screen (search, filters, select several) and Dashboard (track IDs per hour
+  watched, by time of day, by day and by name). "Visit" is now "track ID" everywhere, and
+  a track length runs from the first sighting to the last.
+- Photo sessions of the sister app FaunaLapse can be imported for *AI later*.
+- Menu, *Cite FaunaPulse*: the citation of the installed version.
+- Smaller app: the normal build leaves out the Snapdragon NPU runtime; detection on the
+  main processor uses two threads by default (about twice as fast as one).
+
 ## 0.8.0-alpha.1 (2026-09-23)
 
 - **Identify organisms (experimental):** after a session, the saved photos of every

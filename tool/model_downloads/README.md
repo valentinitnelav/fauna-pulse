@@ -104,7 +104,13 @@ In the code, "pack" means such a file of either kind.
 
 1. Re-export, then refresh the sizes and checksums from the local files:
    `python tool/model_downloads/update_catalogue.py <files…>` (`--check` only reports).
-2. Upload the files as GitHub release assets under exactly the names in the catalogue.
+2. Publish the files on Hugging Face with `publish/publish_hf.py` of fauna-pulse-models
+   (it checks them against this list first), then take the published names and the links
+   pinned to the upload commit (`https://huggingface.co/<owner>/<repo>/resolve/<commit>/<file>`)
+   into the list (round 312):
+   `python tool/model_downloads/update_catalogue.py --urls ~/fauna-pulse-models/publish/published.json`
+   (`--check` only reports). Files are matched by SHA-256, so a file published under a new
+   name keeps its entry; the command lists the old names that tests and docs still use.
 3. Do not replace a published file under the same link: app versions already installed would
    reject the new file (its checksum differs from the one they carry). Upload changed weights
    under a new file name or a new release tag and change the catalogue (`base_url`, or the
