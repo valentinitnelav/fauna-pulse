@@ -274,11 +274,13 @@ class IdentifyPrefs {
 }
 
 /// Why the GPU was not used, for the Identify screen (round 242): the native
-/// reason, plus what to do when the GPU could not compile the model, the
-/// usual cause being a BioCLIP file exported before round 242 (its attention
-/// layers use tensors the phone's GPU cannot run).
+/// reason, plus what it means when the GPU could not compile the model. The
+/// catalogue's files are already exported for phone GPUs, so the re-export
+/// advice (a BioCLIP file exported before round 242, whose attention layers
+/// use tensors phone GPUs cannot run) is only for files people converted
+/// themselves; the cause can also be this phone's GPU (round 317).
 String gpuNoteText(String note) => note.contains('Failed to compile')
-    ? '$note. The usual cause is a BioCLIP file whose attention layers use 5-dimensional '
-          'tensors, which phone GPUs cannot run; export the model again with bioclip_export of fauna-pulse-models '
-          '(4-dimensional attention, see IDENTIFICATION.md)'
+    ? '$note. This phone\'s GPU could not run this model, so the CPU is used (the same answers, '
+          'only slower). If you converted this model yourself from a BioCLIP file, convert it again '
+          'with the current bioclip_export tool (see IDENTIFICATION.md)'
     : note;

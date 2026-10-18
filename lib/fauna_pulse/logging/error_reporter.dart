@@ -1,8 +1,9 @@
 // FaunaPulse — error reporting.
 //
-// Builds a single, self-contained plain-text diagnostic report and saves it to a
-// folder reachable over USB/adb, so a problem (e.g. an incompatible AI model that
-// won't run) can be reviewed later or sent to the developer. The report bundles:
+// Builds a single, self-contained plain-text diagnostic report and saves it in
+// the app's internal storage (not reachable over USB), so a problem (e.g. an
+// incompatible AI model that won't run) can be sent to the developer with Share.
+// The report bundles:
 //   * app version + device / Android version,
 //   * a short description of what went wrong (the "trigger") and any error text,
 //   * the most recent saved crash files (see crash_store.dart),
@@ -92,7 +93,7 @@ class ErrorReporter {
   static const String _recipientEmailPrefsKey = 'report_recipient_email';
 
   /// Builds the report text and writes it to `error_reports/` under the app's
-  /// external files directory (browsable over USB and pullable with `adb pull`).
+  /// internal support directory (not reachable over USB; Share is the way out).
   /// Returns the saved file and its size; never throws (best-effort sections).
   static Future<ErrorReport> build({
     required String trigger,
@@ -107,7 +108,7 @@ class ErrorReporter {
   }) async {
     final now = DateTime.now();
     final b = StringBuffer();
-    b.writeln('==== FaunaPulse — Error Report ====');
+    b.writeln('==== FaunaPulse error report ====');
     b.writeln('Generated: ${now.toIso8601String()}');
     b.writeln('Trigger:   $trigger');
     b.writeln();
@@ -205,9 +206,10 @@ class ErrorReporter {
     b.writeln();
 
     // Round 190: email is deliberately NOT suggested (owner decision — no
-    // mail-server load); the issue tracker leads, the share sheet / USB copy
-    // follow. The dormant email plumbing (emailTo + the recipient pref)
-    // stays in code for a possible later revival.
+    // mail-server load); the issue tracker leads, the share sheet follows
+    // (round 317: no USB copy, reports live in internal app storage). The
+    // dormant email plumbing (emailTo + the recipient pref) stays in code for
+    // a possible later revival.
     b.writeln('==== How to send this report ====');
     if (githubIssuesUrl.isNotEmpty) {
       b.writeln(
@@ -216,8 +218,8 @@ class ErrorReporter {
       );
     }
     b.writeln(
-      'Or share it from the app with any messaging app of your choice, '
-      'or copy it off the phone over USB.',
+      'Or send it from the app with Share (any messaging app or a cloud '
+      'drive).',
     );
 
     final dir = await _reportsDir();

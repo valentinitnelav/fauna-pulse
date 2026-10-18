@@ -43,10 +43,11 @@ void main() {
     expect(seen, [true, false]);
   });
 
-  test('a failed GPU compile points to the newer export; other reasons stay as they are', () {
-    expect(gpuNoteText('Failed to compile model'), contains('export the model again'));
+  test('a failed GPU compile says the CPU is used and points to the newer export; other reasons stay as they are', () {
+    expect(gpuNoteText('Failed to compile model'), contains('so the CPU is used'));
+    expect(gpuNoteText('Failed to compile model'), contains('convert it again'));
     const other = "the GPU's results differed from the CPU's on this phone (agreement 0.900, needs 0.995)";
     expect(gpuNoteText(other), other);
-    expect(gpuNoteText('on the GPU blocklist after repeated failed GPU compiles'), isNot(contains('export the model again')));
+    expect(gpuNoteText('on the GPU blocklist after repeated failed GPU compiles'), isNot(contains('convert it again')));
   });
 }

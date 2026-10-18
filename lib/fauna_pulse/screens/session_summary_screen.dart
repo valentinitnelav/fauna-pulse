@@ -934,7 +934,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   String get _durationLabel {
     if (_startMs == null || _endMs == null || _endMs! < _startMs!) {
-      return 'unknown (no end record — crash/forced stop)';
+      return 'unknown (no end record: crash or forced stop)';
     }
     return _hmsLabel(_endMs! - _startMs!);
   }
@@ -950,6 +950,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   String get _batteryUsedLabel {
     final drop = _batteryDrainPercent;
     if (drop == null) return 'unknown';
+    // Round 317: a level that rose (charger or power bank, the normal field
+    // setup) printed as a negative use ("-5%"), which read like an error.
+    if (drop < 0) {
+      return 'none (it rose by ${-drop}% while charging, from '
+          '$_startBatteryPct% to $_endBatteryPct%)';
+    }
     return '$drop% (from $_startBatteryPct% to $_endBatteryPct%)';
   }
 
@@ -1007,9 +1013,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       : _recordedVideoSession
       ? 'Time-lapse video bursts (detection afterwards)'
       : _timeLapseSession
-      ? 'Time-lapse photo bursts (no detection)'
+      ? 'Time-lapse photo bursts (no live detection)'
       : _motionOnlySession
-      ? 'Motion-triggered photos (no detection)'
+      ? 'Motion-triggered photos (no live detection)'
       : 'Live detection';
 
   bool get _noAiSession =>
@@ -1234,8 +1240,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // ran (never above the camera cap); the stored setting keeps what was
     // typed. Older logs have the same number in both.
     final infFps = _startRec?['inference_fps'] ?? _setting('inferenceFps');
+    // Round 317: the labels of these rows are the Settings labels, so the
+    // user finds the control they record ("Max detector rate" is one label
+    // whether the auto-adjust is on or off).
     add(
-      'Inference rate cap',
+      'Max detector rate',
       infFps == null
           ? null
           : (infFps is num && infFps == 0
@@ -1261,7 +1270,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       if (noAi) {
         addNote(
-          'Inference auto-throttle was not applicable because no detector '
+          'Auto-adjust detector rate was not applicable because no detector '
           'was running.',
         );
       }
@@ -1284,16 +1293,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Keep free storage',
         reserve == null ? null : (reserve is num && reserve == 0 ? 'never' : '${_numStr(reserve)} MB'),
       );
-      add('Auto-throttle', _setting('autoThrottle'), na: noAi);
+      add('Auto-adjust detector rate', _setting('autoThrottle'), na: noAi);
       // Never above the rate that ran (SessionConfig.effectiveMinInferenceFps).
       final minFps = _setting('minInferenceFps');
       add(
-        'Min inference rate',
+        'Min detector rate',
         minFps is num && infFps is num && infFps > 0 && minFps > infFps ? infFps : minFps,
         suffix: ' /s',
         na: noAi,
       );
-      add('Throttle duty target', _setting('throttleDutyTarget'), na: noAi);
+      add('Target processor load', _setting('throttleDutyTarget'), na: noAi);
       // Motion-only capture: photos on ROI motion, detector never ran.
       add('Motion-only capture (detector off)', _setting('motionOnlyCapture'));
       // Motion gate (round 58+): detector sleeps while nothing moves in the
@@ -1313,33 +1322,32 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       add('Motion gate', motionTrigger ? true : _setting('motionGateEnabled'), na: gateNa);
       final gateDetailNa = gateNa || !gateOn;
       add(
-        'Gate pixel sensitivity',
+        'Pixel sensitivity',
         _setting('motionGatePixelDelta'),
         na: gateDetailNa,
       );
       final area = _setting('motionGateAreaFraction');
       add(
-        'Gate trigger area',
+        'Trigger area',
         area is num ? area * 100 : null,
         suffix: ' %',
         na: gateDetailNa,
       );
       add(
-        'Gate wake duration',
+        'Wake duration after motion',
         _setting('motionGateWakeSeconds'),
         suffix: ' s',
         na: gateDetailNa,
       );
       add(
-        'Gate grid resolution',
+        'Motion grid resolution',
         _setting('motionGateGridSize'),
         suffix: ' cells',
         na: gateDetailNa,
       );
       add(
-        'Gate idle check rate',
+        'Idle check rate (frames/s)',
         _setting('motionGateIdleFps'),
-        suffix: ' fps',
         na: gateDetailNa,
       );
     }
@@ -1431,20 +1439,20 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     add('Save bursts as', _setting('timeLapseSaveAs'), na: tlNa);
     add('Video frame rate', _setting('timeLapseVideoFps'), suffix: ' fps', na: !tlVideo);
     add(
-      'Photo step interval',
+      'Photo step',
       _setting('stepSeconds', 'step_seconds'),
       suffix: ' s',
       na: tlVideo,
     );
     add(
-      'Photo capture duration',
+      tlVideo ? 'Burst duration (clip length)' : 'Photo duration',
       _setting('durationSeconds', 'duration_seconds'),
       suffix: ' s',
     );
     // 'still' is the frozen wire value for the high-res path (r112 rename) —
     // translate it for display only.
     add(
-      'Photo source mode',
+      'ROI photo source',
       _setting('captureMode') == 'still' ? 'high-res' : _setting('captureMode'),
     );
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
@@ -1457,7 +1465,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Reference photos',
         _setting('gtFramesEnabled') == true
             ? 'every ${_numStr(_setting('gtFrameSeconds'))} s (gt_frames/)'
-                  '${_timeLapseSession ? ' — not used in time-lapse mode' : ''}'
+                  '${_timeLapseSession ? ', not used in time-lapse mode' : ''}'
             : 'off',
         na: _timeLapseSession,
       );
@@ -1565,7 +1573,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (!_importedVideoSession) rows.add(_subhead('Session & sampling'));
     final scheduleEnabled = _setting('scheduleEnabled');
     add(
-      'Max session length',
+      'Session length',
       _setting('sessionMinutes', 'session_minutes'),
       suffix: ' min',
       na: scheduleEnabled == true,
@@ -1591,7 +1599,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
     }
     add(
-      'Schedule days',
+      'Days to run',
       _setting('scheduleDays'),
       na: scheduleEnabled != true,
     );
@@ -1839,7 +1847,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
           )
           case final SessionLocation loc)
-        _stat('Location', '${loc.label} (${loc.source})'),
+        _stat('Location', '${loc.label} (${locationSourceLabel(loc.source)})'),
       // Round 297: the field notes saved with the session.
       ..._fieldNoteRows(),
       _stat('Session duration', _durationLabel),
@@ -1869,9 +1877,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 2, bottom: 6),
           child: Text(
-            '⚠ The phone was plugged in during (part of) this session, so '
-            'the power/energy graph is hidden — the battery sensor would '
-            'measure charging, not consumption. Measure unplugged.',
+            'The phone was plugged in during (part of) this session. This is '
+            'normal with a charger or power bank. While charging, the battery '
+            'sensor measures the charging, not what the phone uses, so the '
+            'power graph (Graphs tab, Extra graphs) is not shown.',
             style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
           ),
         ),
@@ -2023,13 +2032,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (!mounted) return;
     final what = videos ? 'videos' : 'photos';
     final msg = !res.supported
-        ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
+        ? 'Copying to Gallery needs Android 10 or newer. This phone runs an '
               'older Android. The $what are still on the phone in the '
               'session folder (reachable over USB).'
         : 'Copied ${res.exported} $what to Gallery ▸ '
               '${videos ? 'Movies' : 'Pictures'}/FaunaPulse/$album.'
               '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
-              '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}';
+              '${res.failed > 0 ? ' ${res.failed} failed: try again.' : ''}';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
@@ -2220,9 +2229,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _visitsFromPhotos
           ? '${_spans.length} (found afterwards in the photos)'
           : _motionOnlySession
-          ? 'n/a (motion-only capture — detector off)'
+          ? 'none yet ("Find track IDs" on "Find animals in photos", for photos 0.5 s apart or closer)'
           : _timeLapseSession && !_recordedVideoSession
-          ? 'n/a (time-lapse — detector off)'
+          ? 'none yet ("Find track IDs" on "Find animals in photos", for photos 0.5 s apart or closer)'
           : _videoSession
           ? (_visitsAfterwards
                 ? '${_spans.length} (found afterwards in the videos)'
@@ -2274,8 +2283,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
           _extraGraphsExpanded
-              ? '▾ Extra graphs — temperature, FPS, power'
-              : '▸ Extra graphs — temperature, FPS, power (tap to show)',
+              ? '▾ Extra graphs (temperature, FPS, power)'
+              : '▸ Extra graphs (temperature, FPS, power): tap to show',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -2304,7 +2313,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<Widget> _liveGraphs() => [
     const SizedBox(height: 12),
     const Text(
-      'Phone temperature over the session (°C)',
+      'Battery temperature over the session (°C)',
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 12),
@@ -2320,8 +2329,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Text(
         'How close the phone is to slowing itself down to cool off, from the '
         'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
-        '1). When this nears 1 the phone throttles and the FPS drops — a faster, '
-        'more comparable signal than battery temperature.',
+        '1). When this nears 1 the phone throttles and the FPS drops. This value '
+        'reacts faster than the battery temperature and compares better between phones.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2346,7 +2355,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_infMs.length >= 2) ...[
       const SizedBox(height: 28),
       const Text(
-        'Detector inference time (ms) — throttle signal',
+        'Detector inference time (ms), a sign of throttling',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
@@ -2360,12 +2369,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Milliseconds the detector model itself needs per frame: only the '
         'neural-network run on the chip (including handing the prepared '
         'image in and reading the results out). Image preparation before '
-        'it and detection-box post-processing after it are NOT included — '
+        'it and detection-box post-processing after it are NOT included: '
         'they are recorded separately in the data log (pre_ms and post_ms) '
         'and are normally much smaller. Each point is a raw single-frame '
         'value, not an average. This number climbs when the chip slows '
-        'itself to cool off (thermal throttling) — often before battery '
-        'temperature moves — which is what makes the FPS above drop. Read '
+        'itself to cool off (thermal throttling), often before the battery '
+        'temperature moves, and this is what makes the FPS above drop. Read '
         'it against the FPS and temperature graphs on the same left→right '
         'time axis.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -2383,9 +2392,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_chargingDuringSession)
       const Text(
         'Not shown: the phone was plugged in during (part of) this session. '
-        'The battery sensor then measures charging current — not what the '
-        'phone consumes — so a power or energy estimate would be wrong. '
-        'Record a full session on battery to see this graph.',
+        'The battery sensor then measures the charging current, not what the '
+        'phone uses, so a power or energy estimate would be wrong. '
+        'Only a session fully on battery shows this graph.',
         style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
       )
     else ...[
@@ -2398,7 +2407,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'lightly smoothed); the app corrects known phone quirks (some '
         'report milliamps instead of microamps, some report a doubled '
         'two-cell voltage). Phone battery sensors are coarse, so treat '
-        'this as a good indication rather than a lab measurement — the '
+        'this as a good indication rather than a lab measurement. The '
         'battery-percentage drop below is an independent cross-check.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
@@ -2412,7 +2421,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           'min ${_powerMin!.toStringAsFixed(2)}, max ${_powerMax!.toStringAsFixed(2)} W). '
           'Total energy this session ≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh '
           '(the power curve summed over the session); '
-          'battery level dropped $_batteryUsedLabel.',
+          'battery used: $_batteryUsedLabel.',
           style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
       ],
@@ -2808,7 +2817,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             'Showing ${_photos.length} of $_totalSavedPhotos $noun'
             '${_totalSavedPhotos == 1 ? '' : 's'} this session'
             '${_totalReferencePhotos > 0 ? ' ($_totalReferencePhotos reference)' : ''}'
-            '${_photos.length < _totalSavedPhotos ? ' — picked at random' : ''}.',
+            '${_photos.length < _totalSavedPhotos ? ', picked at random' : ''}.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2828,8 +2837,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           child: Text(
             'Identifications (name list ${id.packId}, '
             '${id.generatedIso.length >= 16 ? id.generatedIso.substring(0, 16).replaceFirst('T', ' ') : id.generatedIso}) '
-            'are shown under each photo, one per track ID: the answer is per TRACK ID '
-            '(all photos of that track ID combined), not per photo.',
+            'are shown under each photo. With track IDs, the answer is per track ID '
+            '(all photos of that track ID combined); without track IDs, each photo '
+            'has its own answer.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2847,23 +2857,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
-            'Photos taken on the high-resolution path come as a PAIR: the '
-            'high-res photo itself, plus a lower-resolution "_live" '
-            'companion — the same ROI cropped from the fast camera stream '
-            'at the exact trigger moment. The viewer shows the companion '
-            'first (the detection boxes match the object\'s real position '
-            'there); the ⚡ button above the photo switches to the high-res '
-            'one, which is sharper but shows the scene a fraction of a '
-            'second later (its "Lag" row), so a fast objects can have moved '
-            'or left. On the high-res view the boxes are re-matched by time '
-            'to the photo\'s real content moment when the log carries the '
-            'needed timestamps. Taking '
-            'a high-res photo briefly pauses the detector, so there is '
-            'often no frame at the photo\'s exact moment — the app then '
-            'estimates each object\'s position by interpolating between '
-            'the frames just before and after the pause, or shows the '
-            'nearest available frame; the "Boxes" row states exactly what '
-            'was used.',
+            'High-res photos come as a pair: the sharp high-res photo and a '
+            'smaller "_live" companion photo taken at the exact moment the photo was '
+            'triggered. The viewer shows the companion photo first, because its '
+            'boxes match where the animal really was. The ⚡ button above the '
+            'photo switches to the high-res photo. It shows the scene a '
+            'fraction of a second later (see the "Lag" row), so a fast animal '
+            'may have moved or left. The "Boxes" row says how the boxes on the '
+            'high-res photo were placed.',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2935,11 +2936,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         helperText:
             'Copies every saved photo of this session into the phone\'s own '
             'Gallery app, as one album under Pictures/FaunaPulse. Useful when '
-            'you want the images alongside your normal photos — but the '
+            'you want the images alongside your normal photos, but the '
             'copies take extra storage (the originals always stay in the '
             'session folder). Two things to know: some gallery apps take a '
             'while to notice newly added albums, and the copies are plain '
-            'photos — the detection boxes and the extra information you see '
+            'photos: the detection boxes and the extra information you see '
             'in this app\'s photo viewer are not part of the image files.',
       ),
       const SizedBox(height: 8),
@@ -2981,15 +2982,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       label: 'Identify organisms',
       labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
       helperText:
-          'Runs an identification model (BioCLIP) over the saved photos of every '
-          'tracked organism and combines the photos of each track ID into one answer '
-          'with a confidence per rank (order, family, genus, species). Needs a model '
-          'file and a name list, imported once on the next screen. '
-          'Depending on number of images it can take minutes to hours, therefore use with the phone plugged in. '
-          'Results land in the session folder as CSV and JSON. '
-          'And when ready, a "View results" button will also appear here. '
-          'Please treat the results as suggestions. ' 
-          'Misidentifications are possible, especially for taxa that are not in the name list.',
+          'Names the animals on the saved photos with an identification model (for example '
+          'BioCLIP or insectDCT) and a name list made for that model. With track IDs, all '
+          'photos of a track ID give one answer; without track IDs, each photo gets its own '
+          'answer. Each answer has a confidence per rank (for example family, genus, species). '
+          'The next screen shows the identification models and name lists on this phone and '
+          'has a button to get more. Photos of a session without live detection need '
+          '"Find animals in photos" first (for videos: "Find animals in videos"). '
+          'It can take minutes to hours, so keep the phone plugged in. '
+          'Results are saved in the session folder (CSV and JSON), and a "View results" '
+          'button then appears here. Treat the results as suggestions: mistakes are '
+          'possible, especially for taxa that are not in the name list.',
     ),
     const SizedBox(height: 8),
     Wrap(
@@ -3132,13 +3135,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Post-hoc analysis: $withBoxes of ${outcomes.length} analyzed '
-                'photos contain a detection (green boxes in the viewer). '
-                'Keep time-window ${formatKeepWindow(_postGapSeconds)} (set on the '
-                'analysis screen): $kept kept ($keptPct%), $deleted to delete '
-                '($deletedPct%). Photos marked with a red ✕ below have no '
-                'detection nearby; photos kept only because of a nearby '
-                'detection say so under the image.',
+                '"Find animals in photos" found a detection in $withBoxes of '
+                '${outcomes.length} checked photos (green boxes in the viewer). '
+                'With a keep time-window of ${formatKeepWindow(_postGapSeconds)} '
+                '(set under "Photo cleanup" on the "Find animals in photos" '
+                'screen): $kept kept ($keptPct%), $deleted to delete '
+                '($deletedPct%). Photos with a red ✕ below have no detection '
+                'nearby. Photos kept only because of a nearby detection say so '
+                'under the image.',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -3172,7 +3176,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         title: DialogTitle(const Text('Delete photos without detections?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'This permanently deletes ${plan.deleteNames.length} photos '
-          '(${formatBytes(plan.deleteBytes)}) — the ones marked with a red ✕. '
+          '(${formatBytes(plan.deleteBytes)}): the ones marked with a red ✕. '
           '${plan.keepCount} photos stay. The session log keeps its records; '
           'this cannot be undone.',
           style: const TextStyle(fontSize: 13),
@@ -3215,6 +3219,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     await _loadStorageInfo();
   }
 
+  /// The timeline's note for motion and time-lapse photo sessions without
+  /// track IDs: they can still get them afterwards (round 317; the old note
+  /// said none were recorded, which read as never possible).
+  static const _photosNoTrackIdsYet =
+      'no detector ran while recording, so there are no track IDs yet. '
+      '"Find animals in photos" (home screen, or the session\'s ⋮ menu on the '
+      'Sessions screen) finds the animals in the photos, then "Find track IDs" '
+      'there follows each one from photo to photo (if the photos are close '
+      'enough in time).';
+
   Widget _timeline() {
     if (_spans.isEmpty ||
         _startMs == null ||
@@ -3226,13 +3240,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           _visitsFromPhotos
               ? 'No track IDs found in the photos.'
               : _motionOnlySession
-              ? 'Motion-only capture session — the detector was off, so '
-                    'no track IDs were recorded. Photos were taken on '
-                    'ROI motion; see the Photos tab.'
+              ? 'Motion-triggered photos: $_photosNoTrackIdsYet'
               : _timeLapseSession && !_videoSession
-              ? 'Time-lapse session — the detector was off, so no track IDs '
-                    'or tracks were recorded. Photos were taken in scheduled '
-                    'bursts; see the Photos tab.'
+              ? 'Time-lapse photos: $_photosNoTrackIdsYet'
               : _visitsAfterwards
               ? 'No track IDs found in the videos.'
               : _videoSession
@@ -3253,8 +3263,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         key: _timelineKey,
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          'Track ID timeline hidden — ${ids.length} object track ID'
-          '${ids.length == 1 ? '' : 's'}. Use the button below to show it.',
+          'Track ID timeline hidden (${ids.length} track ID'
+          '${ids.length == 1 ? '' : 's'}). Use the button below to show it.',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       );
@@ -3779,9 +3789,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     if (d == null) return null;
     return switch (d.reason) {
       KeepReason.detected => null,
-      KeepReason.bridged => 'kept — detection ${formatKeepDelta(d.deltaMs!)}',
-      KeepReason.pair => 'kept — pair photo has the detection',
-      KeepReason.failed => 'kept — analysis failed',
+      KeepReason.bridged => 'kept (detection ${formatKeepDelta(d.deltaMs!)})',
+      KeepReason.pair => 'kept (pair photo has the detection)',
+      KeepReason.failed => 'kept (analysis failed)',
     };
   }
 
@@ -3939,7 +3949,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       );
       if (cropped == null) {
         msg =
-            'Crop failed — the box is too small (under $kMinCropSidePx px) '
+            'Crop failed: the box is too small (under $kMinCropSidePx px) '
             'or the photo could not be read.';
       } else {
         final name = cropExportName(_liveShown ? p.liveName! : p.name);
@@ -4002,8 +4012,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             selected: _cropSquareLock,
             visualDensity: VisualDensity.compact,
             tooltip:
-                'Force the crop box to a square (same setting as in '
-                'Settings → Summary)',
+                'Force the crop box to a square (same setting as "Square (1:1) '
+                'export crops" on the Photos tab of Session settings)',
             onSelected: _setCropSquareLock,
           ),
           const SizedBox(width: 8),
@@ -4106,7 +4116,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                 icon: Icons.bolt,
                 tooltip:
                     'Switch between the trigger-moment "_live" crop (shown '
-                    'by default — lower resolution, but the detection boxes '
+                    'by default: lower resolution, but the detection boxes '
                     'match the object\'s real position) and the '
                     'high-resolution photo (sharper, but shows the scene a '
                     'fraction of a second later).',
@@ -4306,7 +4316,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                                       BorderRadius.circular(10),
                                                 ),
                                                 child: const Text(
-                                                  'no detection — cleanup '
+                                                  'no detection: cleanup '
                                                   'will delete',
                                                   style: TextStyle(
                                                     color: Colors.white,
@@ -4381,8 +4391,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                                                       BorderRadius.circular(10),
                                                 ),
                                                 child: const Text(
-                                                  'Reference photo — fixed '
-                                                  'interval',
+                                                  'Reference photo (fixed '
+                                                  'interval)',
                                                   style: TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 11,
@@ -4504,7 +4514,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          'Zoom ${_scale.toStringAsFixed(1)}× — drag to move, '
+                          'Zoom ${_scale.toStringAsFixed(1)}×: drag to move, '
                           '‹ › or double-tap to exit',
                           style: const TextStyle(
                             color: Color(0xFF00E5FF),
@@ -4596,7 +4606,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         .map(
           (e) => p.trackConf[e] != null
               ? '#$e Conf.: ${p.trackConf[e]!.toStringAsFixed(2)}'
-              : '#$e Conf.: —',
+              : '#$e Conf.: unknown',
         )
         .join(', ');
     return Container(
@@ -4653,12 +4663,12 @@ class _PhotoViewerState extends State<_PhotoViewer> {
             if (d.reason == KeepReason.failed)
               _infoRow(
                 'Kept',
-                'analysis failed on this photo — kept to be safe',
+                'analysis failed on this photo (kept to be safe)',
               ),
           ] else if (widget.deleteMarked.contains(_shownNameFor(p)))
             _infoRow(
               'Cleanup',
-              'marked for deletion — no detection within the keep window',
+              'marked for deletion: no detection within the keep time-window',
             ),
           // Lag of the image ON SCREEN behind the trigger moment (round
           // 112: each view states only its OWN delay — showing the high-res
@@ -4690,7 +4700,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     if (p.stillBoxes != null && m != null) {
       final pre = p.contentAtApprox ? '~' : '';
       if (m.anyInterpolated) {
-        return "estimated at this photo's moment — from detector frames "
+        return "estimated at this photo's moment from the detector frames "
             '$pre${m.beforeDeltaMs!.abs()} ms before and '
             '${m.afterDeltaMs} ms after';
       }
@@ -4711,11 +4721,11 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       // A distant single-side frame: still the best available — the
       // detector pauses while a high-res photo is captured, so frames at
       // the content moment often don't exist at all.
-      return 'nearest available frame, $n ms $when — the detector pauses '
-          'while a high-res photo is taken';
+      return 'nearest available frame, $n ms $when (the detector pauses '
+          'while a high-res photo is taken)';
     }
     if (p.stillMatchNote != null) {
-      return 'trigger frame — ${p.stillMatchNote}';
+      return 'trigger frame (${p.stillMatchNote})';
     }
     return 'trigger frame';
   }

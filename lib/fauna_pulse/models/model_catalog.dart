@@ -74,16 +74,16 @@ class ModelEntry {
   });
 
   /// Full, human-readable label for the dropdown: full file name, then the
-  /// precision and input resolution when known, then where it came from.
+  /// precision and input resolution when known. Round 317: no "(imported)",
+  /// as every model a release build lists is downloaded or imported, so the
+  /// tag told the user nothing; "bundled" stays for development builds.
   String get label {
-    final tags = <String>[?precision, if (inputSize != null) '${inputSize}px'];
-    final meta = tags.isEmpty ? '' : ' — ${tags.join(', ')}';
-    final origin = switch (source) {
-      ModelSource.official => '',
-      ModelSource.bundled => ' (bundled)',
-      ModelSource.imported => ' (imported)',
-    };
-    return '$name$meta$origin';
+    final tags = <String>[
+      ?precision,
+      if (inputSize != null) '$inputSize px',
+      if (source == ModelSource.bundled) 'bundled',
+    ];
+    return tags.isEmpty ? name : '$name (${tags.join(', ')})';
   }
 }
 

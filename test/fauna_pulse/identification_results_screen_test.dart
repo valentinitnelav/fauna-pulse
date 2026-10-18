@@ -64,6 +64,7 @@ void main() {
           'model_id': 'bioclip-2_image_fp16_with_a_very_long_model_file_name',
           'pack_id': 'bioclip2_flower_visitors_32fam_v1',
           'pack_rows': 38600,
+          'pack_sink_rows': 6,
           'tracks_total': 41,
           'by_identified_rank': {'genus': 40, 'family': 1},
           'no_organism': 0,
@@ -92,7 +93,10 @@ void main() {
     // Key/value header (round 214), one aggregated row for the 40 Bombus
     // visits (taxon and rank in separate cells), one for the long family.
     expect(find.text('Model'), findsOneWidget);
-    expect(find.text('Label pack'), findsOneWidget);
+    // Round 317: "Name list", counted without its "none of these" rows (as
+    // on Identify organisms), not "Label pack" with every row.
+    expect(find.text('Name list'), findsOneWidget);
+    expect(find.text('bioclip2_flower_visitors_32fam_v1 (38,594 names)'), findsOneWidget);
     expect(find.text('Date run'), findsOneWidget);
     expect(find.text('2026-09-21 10:00'), findsOneWidget);
     expect(find.text('Bombus'), findsOneWidget);
@@ -317,6 +321,77 @@ void main() {
         find.text('The track IDs were found again since; run identification again.'),
         warned ? findsOneWidget : findsNothing,
       );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  // Round 317: a crop's Agree is empty on purpose when nothing was identified,
+  // so an unidentified track ID shows "–" (track IDs list and crops table) and
+  // no "older app version" note; an identified one without the value (older
+  // results) still gets "?" and the note.
+  for (final (identified, warned) in [(false, false), (true, true)]) {
+    testWidgets('crops Agree without a value: identified = $identified, note = $warned', (tester) async {
+      simulateBottomSystemBar(tester);
+      final tmp = Directory.systemTemp.createTempSync('identify_results_agree');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final idDir = Directory('${tmp.path}/identification')..createSync();
+      final track = _track(1, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'], 'genus', 0.9);
+      ((track['crops'] as List).first as Map).remove('agrees'); // read as null, as the store writes it
+      if (!identified) {
+        track['identified_rank'] = null;
+        track['headline'] = 'unidentified';
+        track['flags'] = ['unidentified'];
+      }
+      final tracksJson = File('${idDir.path}/tracks_p.json')
+        ..writeAsStringSync(jsonEncode({'session_id': 's', 'tracks': [track]}));
+      final summaryJson = File('${idDir.path}/summary_p.json')
+        ..writeAsStringSync(
+          jsonEncode({
+            'generated_iso': '2026-10-18T10:00:00.000',
+            'model_id': 'bioclip',
+            'pack_id': 'pack',
+            'pack_rows': 10,
+            'tracks_total': 1,
+            'tracks': [],
+          }),
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IdentificationResultsScreen(
+            sessionDir: tmp,
+            tracksJson: tracksJson,
+            summaryJson: summaryJson,
+            tracksCsv: File('${idDir.path}/tracks_p.csv'),
+          ),
+        ),
+      );
+      final all = find.textContaining('All 1 track ID');
+      for (var i = 0; i < 100; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+        if (all.evaluate().isNotEmpty) break;
+      }
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first,
+      );
+      scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+      await tester.pump();
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      // This sheet's list is wider than the screen (its table scrolls sideways),
+      // so it is dragged from a point on the screen, not from its centre.
+      for (var i = 0; i < 20 && find.text('#1').evaluate().isEmpty; i++) {
+        await tester.dragFrom(const Offset(100, 500), const Offset(0, -150));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('#1'));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(find.text('Side px'), find.byType(ListView).last, const Offset(0, -150));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('"?" = a value'), warned ? findsOneWidget : findsNothing);
+      expect(find.text('?'), warned ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
   }

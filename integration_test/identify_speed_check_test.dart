@@ -92,9 +92,9 @@ void main() {
     await waitFor(find.textContaining('s per crop on the'), seconds: 600);
     final result = tester.widget<Text>(find.textContaining('s per crop on the')).data;
     _log('RESULT after ${DateTime.now().difference(started).inSeconds} s: $result');
-    // 10 crops, or fewer when the session has fewer above the "Smallest box" setting (the result
-    // then says so; the owner's Xiaomi uses 96 px, round 248).
-    expect(result, anyOf(contains('10 crops after a warm-up'), contains('reach the "Smallest box"')));
+    // 10 crops, or fewer when the session has fewer above the "Smallest box to identify" setting
+    // (the result then says so; the owner's Xiaomi uses 96 px, round 248).
+    expect(result, anyOf(contains('10 crops after a warm-up'), contains('reach the "Smallest box to identify"')));
     expect(find.textContaining('Testing speed: '), findsNothing);
     await tester.pump(const Duration(milliseconds: 500));
     expectOnScreen(find.textContaining('s per crop on the'), 'result');

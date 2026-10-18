@@ -25,6 +25,23 @@ const kIdentificationIcon = Icons.biotech_outlined;
 const kTrackingColor = Colors.lightGreen;
 const kTrackingIcon = Icons.timeline;
 
+/// The green tick and "On this phone" under a model file that is on the
+/// phone: on the "What do you want to watch?" pages and, since round 317
+/// (owner: the ⓘ and delete buttons did not say clearly that a model is
+/// ready), on Download & import models.
+class OnThisPhoneLine extends StatelessWidget {
+  const OnThisPhoneLine({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Row(
+    children: [
+      Icon(Icons.check_circle, size: 16, color: Colors.lightGreen),
+      SizedBox(width: 6),
+      Flexible(child: Text('On this phone', style: TextStyle(color: Colors.lightGreen, fontSize: 13))),
+    ],
+  );
+}
+
 class ModelKindPanel extends StatelessWidget {
   final bool identification;
 

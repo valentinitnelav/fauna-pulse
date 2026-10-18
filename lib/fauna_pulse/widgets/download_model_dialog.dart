@@ -7,6 +7,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../logging/app_error_hooks.dart';
+import '../models/model_file_security.dart' show plainModelError;
 import '../models/model_import.dart';
 import 'dialog_title.dart';
 
@@ -133,10 +135,12 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
         Navigator.of(context).pop(); // user cancelled; partial file cleaned up
         return;
       }
+      // Round 317: the same plain words as the list's Download buttons (no
+      // internet, a lost connection, a full phone); the original is logged.
+      logSwallowed('model_link_download', e);
       setState(() {
         _downloading = false;
-        // Exception.toString() prefixes "Exception: " — drop it for the UI.
-        _error = '$e'.replaceFirst('Exception: ', '');
+        _error = plainModelError(e);
       });
     }
   }
@@ -180,10 +184,12 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
               isDense: true,
               border: OutlineInputBorder(),
               labelText: 'Link to a model file or name list',
+              // Round 317: no link to the published files here, as every
+              // listed file has its own Download button on the screen.
               helperText:
-                  'A .tflite, *_qnn.onnx or .fpack file. The app checks what it is '
-                  'and puts it in its place. Use the download link of the file. '
-                  'Model files are published at huggingface.co/collections/Valen-Peregrine/faunapulse',
+                  'For a file not listed on this screen (listed files have their own Download button). '
+                  'Paste the link of a .tflite or .fpack file (or a _qnn.onnx detection model). The app '
+                  'checks what it is and puts it in its place.',
               helperMaxLines: 5,
             ),
             onChanged: (_) => setState(() {}),

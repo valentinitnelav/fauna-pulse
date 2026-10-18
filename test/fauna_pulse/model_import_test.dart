@@ -67,11 +67,22 @@ void main() {
     expect(File('${tmp.path}/app/models/insectdct-cls-v7_eff2s_fp16.tflite').existsSync(), isFalse);
     expect(r.rejected, hasLength(3));
     expect(r.rejected[0], startsWith('text_tower.tflite: not a model for pictures'));
-    expect(r.rejected[1], startsWith('my model.tflite: not a safely named model file'));
+    expect(r.rejected[1], startsWith('my model.tflite: the file name must start with a letter or digit'));
+    expect(r.rejected[1], contains("may have only letters, digits, '-', '_' and '.'"));
     expect(r.rejected[2], 'lost.tflite: the chosen file could not be read.');
     expect(r.namesOf(ModelFileKind.detection), ['my_bees_640.tflite']);
     expect(r.namesOf(ModelFileKind.identification), ['insectdct-cls-v7_eff2s_fp16.tflite']);
     expect(r.namesOf(ModelFileKind.nameList), ['tiny_pack.fpack']);
+  });
+
+  test('a refused name says whether the ending or the name is the problem (r317)', () async {
+    final r = await ModelImport.importFiles(
+      [pick('flatbug-n_640_fp16 (1).tflite', detector), pick('best.pt', detector)],
+      replace: (_, _, _) async => true,
+    );
+    expect(r.imported, isEmpty);
+    expect(r.rejected[0], contains("Rename the file (for example remove ' (1)')"));
+    expect(r.rejected[1], startsWith('best.pt: the app cannot use this kind of file.'));
   });
 
   test('a file already on the phone is replaced only when the user says so', () async {

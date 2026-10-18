@@ -261,6 +261,14 @@ void main() {
       expect(info!.usedDetectorLive, isTrue);
     });
 
+    test('imported videos (no config) are not live detection (r317)', () {
+      final info = liveSessionInfoFromLogHead(
+        jsonEncode({'type': 'start_of_session', 'time_ms': 1, 'source': 'imported_video'}),
+      );
+      expect(info!.importedVideos, isTrue);
+      expect(info.usedDetectorLive, isFalse);
+    });
+
     test('no start record yields null', () {
       expect(liveSessionInfoFromLogHead('{"type":"fps"}'), isNull);
     });

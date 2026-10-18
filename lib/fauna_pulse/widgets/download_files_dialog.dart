@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_downloads.dart';
 import '../models/model_file_security.dart' show plainModelError;
@@ -97,6 +98,8 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
         Navigator.of(context).pop(false);
         return;
       }
+      // The technical text, for a problem report (the user sees plain words).
+      logSwallowed('catalogue_download', e);
       setState(() {
         _running = false;
         _error = plainModelError(e);

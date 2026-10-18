@@ -9482,3 +9482,13 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** the fauna-pulse-models hand-off (owner pastes it into a session there).
 
+## Round 317 (2026-10-18): models screen with green ticks and one list per kind, on-screen text check before the beta
+
+**Asked (owner):** a neutral note on Download & import models without a link that invites downloading there; a clear tick for models on the phone; identification models alphabetical, with the two steps (model, then name lists) clear; a check of other screens before the beta.
+
+**Why:** the owner chose from sketches: one list per kind by file name, a BioCLIP model with its own Download and numbered steps (a name list still brings its model), the proposed note. On the Redmi Note 9S, BioCLIP 2.5's lists had no model and the model was offered nowhere; they now sit under it. Later (owner): "label pack", the word on Hugging Face and in fauna-pulse-models, is given as the other name of a name list; the Field guide no longer asks users to send in photos (no data requests for now).
+
+**Checked:** readers of every screen reported 141 text problems, a second reader confirmed 130 (4 serious: "recording continues" in Preview, reports "over USB", session delete silent on videos, an "older app version" note on new results). Analyze clean, tests pass, screen checked on the Redmi Note 9S.
+
+**Open:** the BioCLIP cards on Hugging Face could say the app calls them name lists.
+

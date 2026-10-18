@@ -701,7 +701,8 @@ class _IndexBuilder {
       // ROI-move check FIRST (r115): a moved ROI genuinely invalidates the
       // coordinates, whatever frames exist.
       if (roiMovedInWindow(roiUpdateTimes, p.captureMs, contentMs)) {
-        p.stillMatchNote = 'the ROI was moved before the photo landed';
+        p.stillMatchNote =
+            'the yellow square was moved while this photo was being taken';
         continue;
       }
       final bracket = acc.bracketOf(file);
@@ -712,8 +713,8 @@ class _IndexBuilder {
       );
       if (result == null) {
         p.stillMatchNote =
-            'no detector frame within $kBracketWindowMs ms — the insect '
-            "had likely left by this photo's moment";
+            'no detector frame within $kBracketWindowMs ms, so the animal had '
+            'likely left when this photo was taken';
         continue;
       }
       // r115: no hard tolerance rejection — it only picks the label tone.

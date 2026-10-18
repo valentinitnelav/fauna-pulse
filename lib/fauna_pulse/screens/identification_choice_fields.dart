@@ -63,12 +63,12 @@ class IdentificationChoiceFields extends StatelessWidget {
             label: 'Model and name list',
             labelStyle: headingStyle,
             helperText:
-                'The model names a crop by choosing from a NAME LIST made for it; without one it cannot '
-                'identify, so only the lists made for the chosen model are offered. A BioCLIP model works '
-                'with many LABEL PACKS (lists of names with their taxonomy). A classifier such as insectDCT '
-                'knows a fixed set of classes: its CLASS LIST has the same file name as the model and is '
-                'chosen with it. Add files with Download & import models… below (also in the home '
-                "screen's Menu).",
+                'The model names each crop (an animal cut out of a photo) by choosing from a name list '
+                'made for it. Without one it cannot name anything, so only the lists made for the chosen '
+                'model are offered. A BioCLIP model can use many name lists (names with their taxonomy): '
+                'choose the one for your region and the animals you watch. A classifier such as insectDCT '
+                'has one fixed list with the same file name as the model, chosen with it. Add files with '
+                "Download & import models… below (also in the home screen's Menu).",
           ),
           const SizedBox(height: 8),
         ],
@@ -109,15 +109,13 @@ class IdentificationChoiceFields extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               choice.isClassList
-                  ? 'Class list of ${header['model_id']}: ${header['rows']} classes on '
-                        '${(header['heads'] as List?)?.length ?? 1} levels, ${header['sink_rows']} '
+                  ? 'Class list of ${header['model_id']}: ${header['rows']} classes, ${header['sink_rows']} '
                         '"none" class (e.g. vegetation)'
-                  : 'Label pack ${header['pack_id']} for ${header['model_id']}: '
+                  : 'Name list ${header['pack_id']} for ${header['model_id']}: '
                         // Names without the "none" rows, as on the Download & import models
                         // screen and in the catalogue (round 271).
                         '${thousands((header['rows'] as num? ?? 0) - (header['sink_rows'] as num? ?? 0))} '
-                        'names, ${header['sink_rows']} "none" entries, '
-                        'scale ${(header['logit_scale'] as num?)?.toStringAsFixed(1)}',
+                        'names, ${header['sink_rows']} "none of these" entries (flower, leaf …)',
               style: helperTextStyle,
             ),
           ),
@@ -206,9 +204,9 @@ class AlsoIdentifySection extends StatelessWidget {
           title: 'Also identify them',
           helperText:
               'After the animals and their track IDs are found, an identification model names them from '
-              'its name list, and the results open (the same as "Identify organisms" in the session\'s ⋮ '
-              'menu, which starts by itself). It runs on this phone and can take long with a big model: '
-              'keep the phone charging.',
+              'its name list, and the results open. This is the same as "Identify organisms" in the '
+              'session\'s ⋮ menu, except that it starts by itself. It runs on this phone and can take long '
+              'with a big model: keep the phone charging.',
           statusText: blockedReason,
           statusColor: Colors.amber,
           value: usable && value,

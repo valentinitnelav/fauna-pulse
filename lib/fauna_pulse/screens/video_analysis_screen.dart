@@ -1728,8 +1728,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           child: Text(
             'This permanently deletes $n ${n == 1 ? 'video' : 'videos'} '
             '(${formatBytes(plan.deleteBytes)})${all ? '' : ': ${plan.deleteNames.join(', ')}'}. '
-            '${cut ? '${n == 1 ? 'It was' : 'They were'} never finished, so nothing in ${n == 1 ? 'it' : 'them'} can be read; the rest of the session stays. ' : 'The boxes the detector found, the visits and the kept frames stay, and "Find visits" can run '
-                      'again. The deleted clips can no longer be played, analyzed again or give other frames. '}'
+            '${cut ? '${n == 1 ? 'It was' : 'They were'} never finished, so nothing in ${n == 1 ? 'it' : 'them'} can be read; the rest of the session stays. ' : 'The boxes the detector found, the track IDs and the kept frames stay, so the track IDs can '
+                      'be found again with other settings. The deleted clips can no longer be played, analyzed again or give other frames. '}'
             'This cannot be undone.',
             style: const TextStyle(fontSize: 13),
           ),

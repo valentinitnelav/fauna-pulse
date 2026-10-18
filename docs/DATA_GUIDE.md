@@ -468,8 +468,8 @@ the track ID timeline) are unaffected either way.
     back to image coordinates;
   - `track_ms` — the Dart-side tracker update.
   All four are raw single-frame values captured when the sampler fires, not
-  averages; `throttle_inf_ms_ema` is the smoothed inference time the
-  auto-throttle controller acts on. (The camera-to-bitmap conversion happens
+  averages; `throttle_inf_ms_ema` is the smoothed inference time that
+  *Auto-adjust detector rate* (config key `autoThrottle`) acts on. (The camera-to-bitmap conversion happens
   before this pipeline and is in none of them.)
 - `power`: `power_w`, `battery_current_ua`, `battery_voltage_mv` (mV),
   `charge_counter_uah` (µAh remaining), `is_charging`, `is_plugged`
@@ -1027,8 +1027,9 @@ FaunaLapse video sessions are imported with *Import videos…* (§9): their file
 *Import videos…* (round 227; since round 277 a button on the home screen, also in the Sessions
 screen's ⋮ menu and on the Find animals in videos screen) makes a session from video files
 filmed elsewhere: the phone's camera app, a collaborator, a published dataset. The files
-are moved into `<session>/videos/` (names made file-system safe; the original name is
-logged). `session.jsonl` then only records where the clips came from: the start record
+are copied into `<session>/videos/` (names made file-system safe; the original name is
+logged); the originals stay where they are, so they take storage twice until you delete
+them. `session.jsonl` then only records where the clips came from: the start record
 (§3), one `video_clip` record per clip in start order, and an `end_of_session` with
 `ended_normally: true` whose `time_ms` is the last clip's end. It has no `detections` or
 `track_event` records; the boxes come from the analysis pass below.

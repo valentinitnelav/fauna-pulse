@@ -87,8 +87,9 @@ class TrackerTuning {
       helperText:
           'How detections are linked frame to frame. ByteTrack predicts '
           'where each insect went and matches by box overlap; C-BIoU '
-          'enlarges the boxes before comparing them. Both count track IDs '
-          'the same way, so results stay comparable across sessions.',
+          'enlarges the boxes before comparing them. The two can give a '
+          'different number of track IDs for the same scene, so compare '
+          'only sessions that used the same algorithm.',
     ),
     DropdownButton<TrackerAlgorithm>(
       value: algorithm,
@@ -230,11 +231,11 @@ class TrackerTuning {
             helperText:
                 'While an insect is briefly hidden, the tracker guesses where it '
                 'went by continuing its recent motion. This sets how much it '
-                'trusts the very latest movement. Low (≈0.2) = "assume it barely '
-                'moved": steadier, best for insects that land and sit still '
-                '(the usual case here). High (≈0.8) = follow the latest motion '
-                'closely: better for fast, darting insects but jumpier. '
-                '(0–1; default 0.5.)',
+                'trusts the very latest movement. Low (about 0.2) = "assume it '
+                'barely moved": steadier, for insects that land and sit still. '
+                'High (about 0.8) = follow the latest motion closely: better for '
+                'fast, darting insects but jumpier. The default 0.5 lies '
+                'between the two (allowed 0–1).',
             onChanged: (v) => onByteTrack(byteTrack.copyWith(velocitySmoothing: v)),
           ),
         ];

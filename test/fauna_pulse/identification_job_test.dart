@@ -155,6 +155,9 @@ void main() {
     expect(summary['tracks_total'], 2);
     expect((summary['by_identified_rank'] as Map)['species'], 2);
     expect(summary['no_organism'], 0);
+    // Round 317: the results header counts names without the "none" rows.
+    expect(summary['pack_sink_rows'], pack.sinkRows);
+    expect(summary['pack_class_list'], isFalse);
 
     final tracks = (jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
     expect(tracks.length, 2);

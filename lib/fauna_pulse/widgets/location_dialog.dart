@@ -84,9 +84,10 @@ class _LocationDialogState extends State<LocationDialog> {
     if (!ok && mounted) {
       setState(
         () => _hint =
-            'GPS unavailable — turn on Location and allow the permission. '
-            'Tip: get the fix BEFORE enabling flight mode (assisted GPS '
-            'cannot download there, so a fix takes much longer).',
+            'GPS unavailable: turn on Location and allow FaunaPulse to use '
+            'it. Tip: find the position before you turn on airplane mode '
+            '(without internet the phone cannot download GPS helper data, '
+            'so the search takes much longer).',
       );
     }
   }
@@ -96,18 +97,20 @@ class _LocationDialogState extends State<LocationDialog> {
     final prev = widget.previous;
     return AlertDialog(
       actionsOverflowDirection: VerticalDirection.up,
-      title: DialogTitle(const Text('Session location'), onClose: () => Navigator.of(context).pop()),
+      // "Position", not "location": the Field notes page and the "Before you
+      // record" sheet say position, and "Location" is the phone's own setting.
+      title: DialogTitle(const Text('Session position'), onClose: () => Navigator.of(context).pop()),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'One location per session: written to the session log and into '
+              'One position per session: written to the session log and into '
               'the photo details (EXIF) of crops you export after the '
               'session, so identification apps know where the photo was '
-              'taken. Read once — the GPS is released as soon as the fix is '
-              'stable.',
+              'taken. Read once (the app stops using the GPS when the '
+              'position is accurate enough, or after 3 min).',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
             const SizedBox(height: 12),
@@ -139,11 +142,11 @@ class _LocationDialogState extends State<LocationDialog> {
                         Expanded(
                           child: Text(
                             loc != null
-                                ? '${loc.label}  (${loc.source})'
-                                      '${searching ? ' — improving…' : ''}'
+                                ? '${loc.label}  (${locationSourceLabel(loc.source)}'
+                                      '${searching ? ', improving…' : ''})'
                                 : (searching
                                       ? 'Searching for GPS…'
-                                      : 'No location set'),
+                                      : 'No position set'),
                             style: const TextStyle(fontSize: 13),
                           ),
                         ),

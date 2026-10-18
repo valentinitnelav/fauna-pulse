@@ -65,6 +65,14 @@ import 'problem_description_screen.dart';
 import 'settings_sheet.dart';
 import 'session_summary_screen.dart';
 
+/// The hint on the screen-off cover. Round 317: the moon button also works in
+/// Preview, so the hint must not claim a recording runs when none does (a
+/// user could leave the phone in the field and get no data).
+@visibleForTesting
+String blackoutHintText({required bool recording}) => recording
+    ? 'Screen off to save power\nRecording continues (tap anywhere to wake)'
+    : 'Screen off to save power\nNot recording (tap anywhere to wake)';
+
 class CameraSessionScreen extends StatefulWidget {
   final SessionConfig initialConfig;
 
@@ -1608,7 +1616,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Still calibrating — please wait a moment.'),
+            content: Text('Still calibrating. Please wait a moment.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -1746,9 +1754,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         actionsOverflowDirection: VerticalDirection.up,
         title: DialogTitle(const Text('Keep recording alive?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: const Text(
-          'For long or unattended sessions (hours/days), Android — and especially '
-          'some phone makers’ "battery managers" — can stop the app in the '
-          'background and end your recording.\n\n'
+          'For long or unattended sessions (hours or days), Android can stop '
+          'the app in the background and end your recording. The "battery '
+          'managers" of some phone makers do this most often.\n\n'
           'On the next screen, find FaunaPulse and choose "Unrestricted" or '
           '"Don’t optimize" if reliable unattended recording matters. '
           'On some phones you may also need to enable "Autostart" '
@@ -2377,7 +2385,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "All of today's windows are already over — nothing to record. "
+            "All of today's windows are already over, so there is nothing to "
+            'record. '
             'Adjust the windows or the number of days in Settings.',
           ),
         ),
@@ -2558,7 +2567,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// The run's natural end: close everything, release the keep-alive service
   /// + wakelock, restore the screen and tell the user what was recorded. The
-  /// per-window sessions are on the home screen's list — no summary stack.
+  /// per-window sessions are on the Sessions screen (no summary stack).
   Future<void> _finishSchedule() async {
     final plan = _schedule;
     if (plan == null) return;
@@ -2596,8 +2605,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           title: DialogTitle(const Text('Scheduled run complete'), onClose: () => Navigator.of(ctx).pop()),
           content: Text(
             '$recorded session${recorded == 1 ? '' : 's'} recorded. '
-            'Each window is its own session — find them in the list on the '
-            'home screen.',
+            'Each window is its own session. Find them under "Sessions" at '
+            'the bottom of the home screen.',
             style: const TextStyle(fontSize: 13),
           ),
           actions: [
@@ -2718,7 +2727,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         start.month == now.month &&
         start.day == now.day;
     final when = ScheduleWindow.hhmm(start.hour * 60 + start.minute);
-    return 'Scheduled sleep — day ${next.day + 1}/${plan.days}\n'
+    return 'Scheduled sleep (day ${next.day + 1} of ${plan.days})\n'
         'Next recording: ${startsToday ? '' : 'tomorrow '}$when\n'
         '$_scheduleSessionsDone session'
         '${_scheduleSessionsDone == 1 ? '' : 's'} recorded so far';
@@ -3557,8 +3566,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'This camera reports no torch — the time-lapse continues '
-                'without light.',
+                'The torch did not turn on with this camera. The '
+                'time-lapse continues without light.',
               ),
             ),
           );
@@ -3765,7 +3774,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           ? _config.streamHeight
           : _config.streamWidth;
       streamLabel = capped
-          ? 'Stream: $_imageWidth×$_imageHeight px (asked $reqLo×$reqHi — device max)'
+          ? "Stream: $_imageWidth×$_imageHeight px (the phone's maximum; asked $reqLo×$reqHi)"
           : 'Stream: $_imageWidth×$_imageHeight px';
     }
     // Calibration = the whole start-up probe cycle (see _calibrating);
@@ -4100,8 +4109,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                       _statLine(
                                         _config.timeLapseCapture
                                             ? 'Camera: ${f[0].toStringAsFixed(0)} fps '
-                                                  '(frames kept for time-lapse — the '
-                                                  'camera itself runs at full rate)'
+                                                  '(only the frames kept for time-lapse, '
+                                                  'so a low number is normal)'
                                             : 'Camera: ${f[0].toStringAsFixed(0)} fps (sensor→app)',
                                       ),
                                       // Detector/pipeline rates are meaningless while
@@ -4110,11 +4119,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                       if (_config.detectorEnabled) ...[
                                         _statLine(
                                           'Detector: ${f[1].toStringAsFixed(1)} fps '
-                                          '(pre+inf+NMS)',
+                                          '(prepare + detect + remove duplicate boxes)',
                                         ),
                                         _statLine(
-                                          'Pipeline: ${f[2].toStringAsFixed(1)} fps '
-                                          '(+track/overlay)',
+                                          'All steps: ${f[2].toStringAsFixed(1)} fps '
+                                          '(with tracking and drawing)',
                                         ),
                                       ],
                                     ],
@@ -4124,9 +4133,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                 ValueListenableBuilder<List<double>>(
                                   valueListenable: _perfVN,
                                   builder: (_, p, _) => _statLine(
-                                    'pre ${p[0].toStringAsFixed(0)} · '
-                                    'inf ${p[1].toStringAsFixed(0)} · '
-                                    'post ${p[2].toStringAsFixed(0)} ms',
+                                    'prepare ${p[0].toStringAsFixed(0)} · '
+                                    'detect ${p[1].toStringAsFixed(0)} · '
+                                    'clean-up ${p[2].toStringAsFixed(0)} ms',
                                   ),
                                 ),
                               // Motion gate status: "idle" means the detector is
@@ -4317,7 +4326,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                             color: Colors.white,
                             icon: const Icon(Icons.dark_mode),
                             tooltip:
-                                'Screen off (save power) — tap screen to wake',
+                                'Screen off to save power (tap the screen to wake it)',
                             // Blackout would hide the calibrating banner.
                             onPressed: _calibrating ? null : _enterBlackout,
                           ),
@@ -4354,7 +4363,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                               ),
                               tooltip: _focusUserAdjusted
                                   ? 'Manual focus'
-                                  : 'Manual focus (preset applied — check '
+                                  : 'Manual focus (preset applied: check '
                                         'sharpness)',
                               onPressed:
                                   (_minFocusDistance > 0 && !_calibrating)
@@ -4400,10 +4409,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                       child: Text(
                         _schedule != null
                             ? (_recording
-                                  ? 'Scheduled recording — tap ■ to stop the run'
+                                  ? 'Scheduled recording (tap ■ to stop the run)'
                                   : 'Scheduled run active')
                             : _recording
-                            ? 'Recording — tap to stop'
+                            ? 'Recording (tap ■ to stop)'
                             : calibrationDone
                             ? (_config.scheduleEnabled
                                   ? 'Tap ● to start scheduled run '
@@ -4412,8 +4421,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                         '${_config.scheduleWindows.length == 1 ? '' : 's'}'
                                         ' × ${_config.scheduleDays} '
                                         'day${_config.scheduleDays == 1 ? '' : 's'})'
-                                  : 'Preview — tap ● to start recording')
-                            : 'Calibrating — please wait…',
+                                  : 'Preview (tap ● to start recording)')
+                            : 'Calibrating, please wait…',
                         style: TextStyle(
                           color: _recording
                               ? Colors.redAccent
@@ -4457,11 +4466,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                           // timer via [_blackoutFade].
                           duration: _blackoutFade,
                           curve: Curves.easeIn,
-                          child: const Text(
-                            'Screen off to save power\n'
-                            'Recording continues — tap anywhere to wake',
+                          child: Text(
+                            blackoutHintText(recording: _recording),
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 14,
                             ),
@@ -4573,7 +4581,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           // VIDEO: RECORDING" was cut off on the Xiaomi).
           final kind = _config.timeLapseVideo ? 'VIDEO' : 'TIME-LAPSE';
           if (!_recording || plan == null) {
-            label = '$kind: press REC';
+            label = '$kind: tap ●';
             active = false;
           } else {
             final t = DateTime.now().millisecondsSinceEpoch - _timeLapseStartMs;
@@ -4735,11 +4743,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               SelectableText(message, style: const TextStyle(fontSize: 13)),
               const SizedBox(height: 12),
               const Text(
-                'You can save a diagnostic report (settings, session log and the '
-                "app's recent technical log) to this phone and send it to the "
-                'developer. It is stored as a .txt file you can also copy off the '
-                'phone over USB.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                'You can create a diagnostic report (settings, session log and the '
+                "app's recent technical log) and send it to the developer with "
+                'Share… (for example with a messaging app or to a cloud drive).',
+                // Round 317: white70 like the other windows; black54 was
+                // unreadable on the dark dialog (the app always uses the dark
+                // theme).
+                style: TextStyle(fontSize: 12, color: Colors.white70),
               ),
             ],
           ),
@@ -4804,9 +4814,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       builder: (ctx) => AlertDialog(
         actionsOverflowDirection: VerticalDirection.up,
         title: DialogTitle(const Text('Report saved'), onClose: () => Navigator.of(ctx).pop()),
+        // Round 317: the same words as the home screen's window. Reports are
+        // kept in the app's private storage, which a computer cannot open
+        // over USB, and no screen lists old reports.
         content: Text(
-          'Saved a ${saved.humanSize} report to:\n\n${saved.file.path}\n\n'
-          'You can send it now, or find it later over USB.',
+          'The report is ready (${saved.humanSize}). Tap Share… to send it now (for example with '
+          'a messaging app or to a cloud drive). After you close this window, you cannot open '
+          'this report again (not in the app and not from a computer).',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -4820,7 +4834,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ErrorReporter.share(saved);
             },
             child: const Text(
-              'Send…',
+              'Share…',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),

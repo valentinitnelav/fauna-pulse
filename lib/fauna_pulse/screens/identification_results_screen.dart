@@ -53,6 +53,7 @@ import '../logging/app_error_hooks.dart';
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
+import 'identification_choice_fields.dart' show thousands;
 
 const _cellStyle = TextStyle(color: Colors.white, fontSize: 13);
 const _dimCellStyle = TextStyle(color: Colors.white54, fontSize: 13);
@@ -70,6 +71,9 @@ String _plural(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
 const _rankPlural = {'phylum': 'phyla', 'class': 'classes', 'order': 'orders', 'family': 'families', 'genus': 'genera'};
 
 const _amberStyle = TextStyle(color: Colors.amber);
+
+/// Where the flag notes send the user to change a limit.
+const _suspectLimitsWhere = 'under "Suspect track IDs" in the Advanced settings of Identify organisms';
 
 /// Round 221: a flag shown where it applies: amber ⚠ line, tap for why.
 Widget _flagNote(String text, String help) => HelpLabel(
@@ -481,9 +485,12 @@ double? _ladderP(Map<String, dynamic> t, String? rank) => (_ladderStep(t, rank)?
 
 /// Crops whose top species falls under the step's taxon, of [n]: the
 /// Agree share ("50 %") and the Crops agree count ("5/10"), two columns
-/// since round 222 (owner); "?" when the file lacks it.
+/// since round 222 (owner); "?" when the file lacks it. Round 317: "–" without
+/// a step (nothing identified, so no taxon to agree with), as the Conf. cell
+/// beside it; "?" there read as data missing from an older app version.
 String _agreePct(Map<String, dynamic>? step) {
-  final s = step?['support'] as num?;
+  if (step == null) return '–';
+  final s = step['support'] as num?;
   return s == null ? '?' : _pct(s);
 }
 
@@ -493,6 +500,7 @@ int? _agreeCount(Map<String, dynamic>? step, int n) {
 }
 
 String _agreeRatio(Map<String, dynamic>? step, int n) {
+  if (step == null) return '–';
   final c = _agreeCount(step, n);
   return c == null ? '?' : '$c/$n';
 }
@@ -687,9 +695,21 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     final iso = s['generated_iso'].toString();
     final when = iso.length >= 16 ? iso.substring(0, 16).replaceFirst('T', ' ') : iso;
     final merged = ((s['track_ids_merged'] ?? s['visits_merged']) as num? ?? 0).toInt();
+    // Round 317: counted as on Identify organisms (names without the "none of
+    // these" rows). Results made before have no sink count: no count rather
+    // than a too high one.
+    final classList = s['pack_class_list'] == true;
+    final rows = s['pack_rows'] as num?, sink = s['pack_sink_rows'] as num?;
+    final count = rows == null
+        ? ''
+        : classList
+        ? ' (${thousands(rows)} classes)'
+        : sink == null
+        ? ''
+        : ' (${thousands(rows - sink)} names)';
     return [
       _kv('Model', '${s['model_id']}'),
-      _kv('Label pack', '${s['pack_id']} (${s['pack_rows']} names)'),
+      _kv(classList ? 'Class list' : 'Name list', '${s['pack_id']}$count'),
       _kv('Date run', when),
       _kv(
         'Track IDs',
@@ -703,7 +723,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             'The track IDs were found again since; run identification again.',
             '"Find track IDs" numbers the track IDs anew each time it runs, and keeps new frames for them. '
                 'These results still use the old numbers and frames, so they no longer match the track IDs '
-                'on the session screen. Run identification again to match them.',
+                'in Session summary. Run Identify organisms again to match them.',
           ),
         ),
     ];
@@ -791,7 +811,8 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           title: Text('Include ${_plural(_suspectCount, 'suspect track ID')}', style: const TextStyle(color: Colors.white)),
           subtitle: const Text(
             'Short-lived AND weakly supported (low detector confidence, weak identification or "no organism"); '
-            'likely false detections. Thresholds under Advanced settings; the CSV keeps them with a "suspect" flag.',
+            'likely false detections. Thresholds: "Suspect track IDs" in the Advanced settings of Identify '
+            'organisms; the CSV keeps them with a "suspect" flag.',
             style: helperTextStyle,
           ),
         ),
@@ -1068,13 +1089,14 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                   ('Time', 'from the first to the last frame the tracker saw the track ID in.'),
                   (
                     'Conf.',
-                    'the model\'s confidence that this track ID belongs to $taxonWord: its crops\' own values '
-                        'averaged, a crop that is sure of its answer counting more (explained on the next screen).',
+                    'the model\'s confidence that this track ID belongs to $taxonWord. It comes from all its '
+                        'crops together (not an average of the crops\' own values), so it can be higher than any '
+                        'single crop\'s; the next screen explains how.',
                   ),
                   (
                     'Agree',
                     'the share of its crops that, judged one by one, put their top species inside $taxonWord, '
-                        'e.g. 50 %.',
+                        'e.g. 50 %${widget.rank == null ? '; "–" when nothing was identified' : ''}.',
                   ),
                   ('Crops agree', 'the same as a count: agreeing crops of all its crops, e.g. 5/10.'),
                 ],
@@ -1404,7 +1426,7 @@ class _TrackSheetState extends State<_TrackSheet> {
           'Time = from the first to the last frame the tracker saw the track ID in. Detector frames = every '
           'frame the detector saw it in (several per second). Photos = the frames saved on the photo schedule '
           '($schedule) plus frames another organism triggered while this one was in view; each saved '
-          'photo gives one crop. Mean detector conf. = the live detector\'s mean confidence over the photos '
+          'photo gives one crop. Mean detector conf. = the detector\'s mean confidence over the photos '
           '(each photo\'s own value: "Detector conf." column in the Crops table). '
           'Amber values, ⚠ lines and ⚠ on ladder rows are flags; tap a ⚠ line for the reason.',
           style: helperTextStyle,
@@ -1534,7 +1556,6 @@ class _TrackSheetState extends State<_TrackSheet> {
   List<Widget> _visitNotes(int nIds, num? dur, num? det, num? detConf, bool shortDur, bool shortDet) {
     final minDur = _setting('flag_min_duration_s'), minDet = _setting('flag_min_detections');
     final minConf = _setting('flag_min_det_conf');
-    const where = 'under "Suspect track IDs" in the Identify screen\'s settings';
     final shortParts = [
       if (shortDur) '${_secs(dur)}${minDur == null ? '' : ' (under ${_secs(minDur)})'}',
       if (shortDet) '$det detector frames${minDet == null ? '' : ' (under ${minDet.round()})'}',
@@ -1559,14 +1580,14 @@ class _TrackSheetState extends State<_TrackSheet> {
           'A brief track ID gives the detector and the identification little to work with. On its own this is '
               'only a hint; together with low detector confidence, a weak identification or "no organism" the '
               'track ID is also marked suspect. Limits: "Short: duration below" and "Short: detections below" '
-              '$where.',
+              '$_suspectLimitsWhere.',
         ),
       if (_has('low_det'))
         _flagNote(
           'Detector unsure: mean detector conf. ${_pct(detConf)}${minConf == null ? '' : ', below ${_pct(minConf)}'} (low_det)',
-          'The live detector was not very sure that its boxes show an organism (mean over the photos). '
+          'The detector was not very sure that its boxes show an organism (mean over the photos). '
               'Often a false detection: a moving leaf, a shadow or a reflection. Limit: "Weak: detector '
-              'confidence below" $where.',
+              'confidence below" $_suspectLimitsWhere.',
         ),
       if (_has('suspect'))
         _flagNote(
@@ -1593,8 +1614,7 @@ class _TrackSheetState extends State<_TrackSheet> {
           'Weak identification: order Conf. ${_pct(order?['p'] as num?)}${minOrder == null ? '' : ', below ${_pct(minOrder)}'} (weak_id)',
           'Even the order, a broad rank, is uncertain for this track ID. Common causes: blurry or small crops, '
               'an unusual view, or an animal the name list does not contain. Together with a short track ID this '
-              'makes the track ID suspect. Limit: "Weak: order probability below" under "Suspect track IDs" in '
-              'the Identify screen\'s settings.',
+              'makes the track ID suspect. Limit: "Weak: order confidence below" $_suspectLimitsWhere.',
         ),
       if (_has('unidentified'))
         _flagNote(
@@ -1700,8 +1720,12 @@ class _TrackSheetState extends State<_TrackSheet> {
     // The shown crop's number carries a photo icon: room for it in every row
     // (two-digit numbers overflowed the measured column, owner's Xiaomi).
     widths['no'] = widths['no']! + _shownIconGap + _shownIconSize;
+    // Round 317: a crop's Agree is empty on purpose when no taxon was reported (unidentified or
+    // "no organism"), so it shows "–" there and does not raise the "older app version" note,
+    // which a Re-score cannot fix.
+    bool agreeMissing(Map<String, dynamic> c) => c['agrees'] == null && _rank != null;
     final missing =
-        _crops.any((c) => c['agrees'] == null || _mass(c) == null || c['top1_tree'] == null || c['det_conf'] == null) ||
+        _crops.any((c) => agreeMissing(c) || _mass(c) == null || c['top1_tree'] == null || c['det_conf'] == null) ||
         _ladder.any((s) => s['p_max'] == null);
     final sel = _selTaxon.isEmpty ? 'the selected taxon' : '$_selTaxon ($_selRank)';
     return [
@@ -1711,7 +1735,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         helperChild: _ColumnsHelp(
           intro: 'One row per crop = one photo of this track ID, in capture order.',
           cols: [
-            ('No.', 'capture order; the camera icon marks the crop shown in the photo above.'),
+            ('No.', 'capture order; the small picture icon marks the crop shown in the photo above.'),
             (
               'Conf. $_selTaxon',
               'this crop\'s own confidence for $sel, the ladder row selected above'
@@ -1720,7 +1744,14 @@ class _TrackSheetState extends State<_TrackSheet> {
                   'behind the ladder: the track ID\'s Conf. comes from the averaged descriptions, so it can '
                   'be higher than every value here when the crops agree, or lower when they disagree.',
             ),
-            ('Agree', '✓ when the crop\'s top species is inside $sel.'),
+            (
+              'Agree',
+              _rank == null
+                  ? '"–" in every row: nothing was identified for this track ID, so there is no taxon to '
+                        'agree with.'
+                  : '✓ when the crop\'s top species is inside the reported taxon (the highlighted ladder '
+                        'row). It stays the same when you tap another ladder row.',
+            ),
             ('Top species', 'the species with the highest probability for this crop alone.'),
             (
               'Species conf.',
@@ -1732,7 +1763,7 @@ class _TrackSheetState extends State<_TrackSheet> {
             ),
             (
               'Detector conf.',
-              'the live detector\'s confidence that its box on this photo shows an organism (the value on '
+              'the detector\'s confidence that its box on this photo shows an organism (the value on '
                   'the yellow box\'s label). A low value often means a leaf, a shadow or a reflection, or '
                   'only part of the animal in view. The header\'s detector conf. is the mean of this column. '
                   'It plays no part in the identification.',
@@ -1759,8 +1790,8 @@ class _TrackSheetState extends State<_TrackSheet> {
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
-            '"?" = a value missing from these results because an older app version made them. '
-            '"Re-score with this name list" on the Identify screen fills them in within seconds.',
+            '"?" = a value these results do not have, because an older app version made them. '
+            '"Re-score with this name list" on Identify organisms adds the missing values within seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),
@@ -1793,7 +1824,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                   ],
                 ),
                 _txt(_mass(c) == null ? '?' : _pct(_mass(c)), right: true),
-                _txt(c['agrees'] == null ? '?' : (c['agrees'] == true ? '✓' : '–'), right: true, style: c['agrees'] == true ? _cellStyle : _dimCellStyle),
+                _txt(agreeMissing(c) ? '?' : (c['agrees'] == true ? '✓' : '–'), right: true, style: c['agrees'] == true ? _cellStyle : _dimCellStyle),
                 _txt('${c['top1']}', maxLines: 2),
                 _txt(_pct(c['top1_p'] as num?), right: true, style: _dimCellStyle),
                 _txt(_detText(c), right: true, style: _dimCellStyle),

@@ -80,10 +80,10 @@ files (ai-edge-litert on the CPU).
 The model card verified a Pixel 8a (Mali GPU) and an iPhone. On this Adreno GPU something in the
 first transformer blocks goes wrong; finding which operation needs an operation-by-operation
 comparison with the PC (next step). The app therefore stops a SAM 3 run with a plain message as
-soon as a picture gives NaN, which now says to switch off "Use GPU when faster".
+soon as a picture gives NaN, which now says to switch off "Use the GPU when it can run the model".
 
 **The CPU route (round 259).** With the GPU switched off (`useGpu = false`, which "Run AI on
-videos" takes from "Use GPU when faster") and the picture model in parts, `Sam3Detector.kt`
+videos" takes from "Use the GPU when it can run the model") and the picture model in parts, `Sam3Detector.kt`
 loads one part, runs it, closes it, then the next; the head is loaded only after the four parts
 and closed after each picture. Memory measured: on the PC (ai-edge-litert, CPU) all 4 parts at
 once need 5.0 GB, the whole model 3.9 GB, one part about 1 GB, the head about 1.4 GB; on the

@@ -847,10 +847,13 @@ class _BarItem extends StatelessWidget {
   );
 }
 
-/// Shown after a problem report is written to disk: where it landed (with
-/// any screenshot copies), the GitHub issue link and the share action.
-/// Pops true to open the share sheet, null/false for "Done" (keep the file,
-/// send nothing). Round 190: the developer-email field and "Email…" action
+/// Shown after a problem report is written to disk: its size, what Share
+/// bundles (any screenshot copies), the GitHub issue link and the share
+/// action. Pops true to open the share sheet, null/false for Close (keep the
+/// file, send nothing). Round 317: no file path and no "find it later over
+/// USB" any more: reports live in internal app storage (no USB access, and no
+/// screen lists old reports), so Share now is the only way out. Round 190:
+/// the developer-email field and "Email…" action
 /// are gone (owner decision — don't encourage emailed reports); with no
 /// TextEditingController left this is a plain StatelessWidget again.
 class ReportSavedDialog extends StatelessWidget {
@@ -879,10 +882,11 @@ class ReportSavedDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Saved a ${report.humanSize} report to:\n\n'
-            '${report.file.path}\n\n'
+            'The report is ready (${report.humanSize}). '
             '$bundleNote'
-            'You can send it now, or find it later over USB.',
+            'Tap Share… to send it now (for example with a messaging app or '
+            'to a cloud drive). After you close this window, you cannot open '
+            'this report again (not in the app and not from a computer).',
             style: const TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 10),
@@ -975,8 +979,8 @@ class AboutFaunaPulseDialog extends StatelessWidget {
               'stay, live or later in saved photos and videos;\n'
               '• name them: an identification model on the phone suggests the group or species of each '
               'animal;\n'
-              '• record when each visit starts and ends, so you can count visits and see how long they '
-              'last.\n\n'
+              '• give each animal a track ID and record when it arrives and leaves, so you can estimate '
+              'visits and how long they last (one animal can get several track IDs).\n\n'
               'Everything runs on the phone. No internet is needed in the field, and your photos and '
               'videos stay on your phone.\n\n'
               'It can also take photos when something moves, take time-lapse photos or videos, run for '

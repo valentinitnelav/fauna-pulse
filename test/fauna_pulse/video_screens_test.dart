@@ -1011,7 +1011,7 @@ void main() {
       expect(find.textContaining('Then the track IDs are found, their frames saved'), findsOneWidget);
       expect(find.text('Model (.tflite)'), findsOneWidget);
       expect(find.text('Name list (.fpack)'), findsOneWidget);
-      expect(find.textContaining('Class list of insectdct-eff2s_cls: 104 classes on 2 levels'), findsOneWidget);
+      expect(find.text('Class list of insectdct-eff2s_cls: 104 classes, 1 "none" class (e.g. vegetation)'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Off: only the detector, and the choice is remembered.
       final list = find.byType(Scrollable).first;
@@ -1230,7 +1230,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);
       await showTuning(tester, VideoTuningScreen(prefs: VideoAnalysisPrefs(), totalMs: 60000));
-      expect(find.text('Detection, track IDs, identification'), findsOneWidget);
+      expect(find.text('Detection, track ID and identification settings'), findsOneWidget);
       expect(find.text('About 300 frames for this session.'), findsOneWidget);
       await _scrollTo(tester, find.text('Track IDs'));
       // The track IDs card in its own colour.
@@ -1771,7 +1771,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('Phone temperature over the session'), findsNothing);
+    expect(find.textContaining('Battery temperature over the session'), findsNothing);
     final list = tester.state<ScrollableState>(scrollable);
     list.position.jumpTo(list.position.maxScrollExtent);
     await tester.pump();

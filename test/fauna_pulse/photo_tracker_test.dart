@@ -422,5 +422,87 @@ void main() {
       expect(find.text('Occlusion tolerance'), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    /// Round 317: opens [dir] (in [root]) with "Also identify them" ready.
+    Future<Finder> openPicked(WidgetTester tester, Directory root, Directory dir) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisScreen(
+            initialSessionPath: dir.path,
+            sessionsDir: root,
+            models: models,
+            identificationChoice: idChoice(Directory.systemTemp.createTempSync('id_choice')),
+          ),
+        ),
+      );
+      await _pumpUntil(tester, find.textContaining(dir.path.split('/').last));
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      return find.byType(Scrollable).first;
+    }
+
+    /// A session folder without photos whose start record carries [start].
+    (Directory, Directory) photoless(Map<String, dynamic> start) {
+      final root = Directory.systemTemp.createTempSync('photoless_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      final dir = Directory('${root.path}/Meadow')..createSync();
+      File('${dir.path}/session.jsonl').writeAsStringSync('${_rec('start_of_session', start)}\n');
+      return (root, dir);
+    }
+
+    void expectNoPhotosButton(WidgetTester tester) {
+      final label = find.textContaining('This session has no photos to analyze');
+      expect(label, findsOneWidget);
+      final button = tester.widget<FilledButton>(
+        find.ancestor(of: label, matching: find.byWidgetPredicate((w) => w is FilledButton)),
+      );
+      expect(button.onPressed, isNull);
+      expect(find.text('Identify the animals found'), findsNothing);
+      expect(find.textContaining('All photos already analyzed'), findsNothing);
+    }
+
+    testWidgets('imported videos are not called live detection (r317)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final (root, dir) = photoless({'source': 'imported_video'});
+      final list = await openPicked(tester, root, dir);
+      expect(find.text('Meadow [imported videos]: 0 photos'), findsWidgets);
+      expect(find.textContaining('This session holds imported videos.'), findsOneWidget);
+      expect(find.textContaining('already ran live detection'), findsNothing);
+      expect(find.textContaining('To name the live track IDs'), findsNothing);
+      expect(find.text('Also identify them'), findsNothing);
+      await tester.scrollUntilVisible(find.textContaining('This session has no photos'), 200, scrollable: list);
+      expectNoPhotosButton(tester);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('video bursts without photos: no "Identify the animals found" (r317)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final (root, dir) = photoless({
+        'config': {'captureTrigger': 'timelapse', 'timeLapseSaveAs': 'video', 'stepSeconds': 1.0},
+      });
+      final list = await openPicked(tester, root, dir);
+      expect(find.text('Meadow [time-lapse]: 0 photos'), findsWidgets);
+      await tester.scrollUntilVisible(find.textContaining('This session has no photos'), 200, scrollable: list);
+      expectNoPhotosButton(tester);
+      expect(find.textContaining('Then the track IDs are found'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('"Also identify them" says track IDs need close photos (r317)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
+      _photoFiles(dir);
+      File('${dir.path}/post_detections.jsonl').deleteSync(); // nothing analyzed yet
+      final list = await openPicked(tester, dir.parent, dir);
+      final line = find.text(
+        'Then the track IDs are found (only when the photos are 0.5 s apart or closer), the animals '
+        'identified and the results opened.',
+      );
+      await tester.scrollUntilVisible(line, 200, scrollable: list);
+      expect(find.text('Analyze 100 photos and identify'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

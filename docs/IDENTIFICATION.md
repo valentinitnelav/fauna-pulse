@@ -17,7 +17,7 @@ Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this 
 |---|---|---|---|
 | `bioclip-2_224_fp16.tflite` | the BioCLIP 2 image tower, converted for the phone | ~0.6 GB (fp16), ~0.3 GB (int8) | `bioclip_export/export_image_tower.py` ([fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)) |
 | `bioclip-2.5_224_fp16.tflite` | the BioCLIP 2.5 Huge image tower (round 264; see *BioCLIP 2.5* below) | ~1.27 GB (fp16) | same script, `--model bioclip-2.5` |
-| `<pack>.fpack` | a **label pack**: the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `bioclip_export/build_label_pack.py` |
+| `<pack>.fpack` | a **name list** for BioCLIP (a *label pack*): the names the model may choose from, their embeddings, their taxonomy, plus "none of these" entries (flower, leaf, shadow, …) | tens of MB (a list of families) to ~430 MB (all Insecta + Arachnida; slow to score in this version) | `bioclip_export/build_label_pack.py` |
 | `insectdct-cls-v7-eff2s_224_fp16.tflite` + `.fpack` | insectDCT's hierarchical classifier (round 266) and its **class list** (same file name; see *insectDCT* below) | 42 MB + 14 kB | `classifier_export/export_insectdct_cls.py` |
 
 The simplest way (round 278): the home screen's step 1, *What do you want to watch?*. Each answer
@@ -28,10 +28,12 @@ other models*):
 beetles, butterflies and moths of Europe* (or the insectDCT classifier, or BioCLIP 2 with the
 32 flower-visitor families), *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
 (17,130 names, 28 MB, round 278). Every model is on **Download & import models** (home screen: *AI
-models* in the bottom bar) → *Available to download* (round 268); a name list brings its model
-along when the model is not on the phone yet (BioCLIP 2 with three name lists, BioCLIP 2.5 with
-two, the insectDCT classifier with its class list; the list is `assets/model_downloads.json`, see
-`tool/model_downloads/README.md`).
+models* in the bottom bar). Each kind is one list by file name, and each file that is not on the
+phone has its own **Download** button. An insectDCT classifier is one row with its class list. A
+BioCLIP model has its own **Download** and two numbered steps: *1. The model, needed once*, then
+*2. the name lists for your region and the animals you watch*. A name list's **Download** also
+brings the model when it is missing. BioCLIP 2 has three name lists, BioCLIP 2.5 two (the
+catalogue is `assets/model_downloads.json`, see `tool/model_downloads/README.md`).
 
 **Words (round 276):** a *name list* is what an identification model chooses its names from. It
 is one of two kinds, both `.fpack` files ("FaunaPulse pack"): a *class list* (the fixed classes of a
@@ -77,13 +79,14 @@ videos* the settings of *Identify organisms* are also on the Identification card
 detection sessions already have their track IDs: use the steps below.
 
 1. Open a session's ⋮ menu (Sessions screen) or its summary → Photos tab → **Identify organisms**.
-2. Pick the model and the label pack. The screen shows how many crops will be processed
+2. Pick the model and the name list. The screen shows how many crops will be processed
    (one per photo per tracked insect, capped per track ID) and, after the first run on this
    phone, a time estimate.
 3. Plug the phone in and tap **Start**. Progress shows crops done, elapsed time, the
    estimated remainder and the battery temperature. The run pauses by itself above the
-   temperature limit (default 43 °C, the same as for Find animals in videos) and resumes 3 °C lower. **Cancel** keeps everything
-   done so far; **Continue** resumes where it stopped (the files are append-only).
+   temperature limit (default 43 °C, the same as for Find animals in videos) and resumes 3 °C lower. **Cancel (keeps what is done)**
+   keeps everything done so far; **Continue / re-run** (shown in place of *Start* once crops
+   are stored) resumes where it stopped (the files are append-only).
 4. When finished, **View results** shows a table with one row per taxon (track IDs, total
    time, median confidence); tap a row for its track IDs and a track ID for its full ladder.
    **Share results (CSV file)** hands the per-track-ID table to another app (the same file
@@ -91,22 +94,23 @@ detection sessions already have their track IDs: use the steps below.
    Photos tab then shows each track ID's identification under its photos.
 
 **Re-score with this name list** repeats only the last step (seconds): the stored embeddings are
-compared against a different label pack, e.g. a country-restricted one, without running
+compared against a different name list, e.g. a country-restricted one, without running
 the model again. For track IDs found in videos, *Find track IDs* numbers the track IDs anew each
 time: after it ran again, the stored crops belong to the old numbers, so the button is
 hidden, a note says the next *Continue / re-run* starts over, and the session summary
 shows no answers on the frames until then (round 235).
 
 **What a re-run recomputes (round 213).** The model output for every crop is stored in
-`embeddings_<model>.jsonl/.bin`, keyed by photo, track ID and box. "Continue / re-run" runs
+`embeddings_<model>.jsonl/.bin`, keyed by photo, track ID and box. **Continue / re-run** runs
 the model only on crops without a stored vector (new photos, or crops that a lower
-"smallest box" setting now admits) and then re-scores everything, which is why a re-run
+*Smallest box to identify* now admits) and then re-scores everything, which is why a re-run
 on an unchanged session takes seconds. Confidence and "no organism" thresholds, the CSV
 rank, the merge settings and the suspect flags are all applied at scoring, so changing them
-never re-runs the model. The **crop margin** and **Square crops** are the exception: they
+never re-runs the model. **Crop margin** and **Square crops** are the exception: they
 change what the model saw, but the stored vectors do not know it; when either differs from
-what the stored crops were cut with, Start asks whether to keep the stored crops (fast) or
-recompute all of them (a full run). "Smallest box" and "crops per track ID" only add or remove crops.
+what the stored crops were cut with, Start asks (*Crop settings changed*) whether to *Keep
+stored crops* (fast) or *Recompute all crops* (a full run). *Smallest box to identify* and
+*Crops per track ID* only add or remove crops.
 
 **Aligning with the detection data in R or Python.** Both sides share the same keys: the
 session id (folder name) and the track ID (`track_id` in `tracks_<pack>.csv`, `track_id`
@@ -444,10 +448,10 @@ butterfly) are distorted beyond that. Squaring instead costs pixels (on a 1.5:1 
 of the square is background). The margin is a share of the box's longer side in both shapes
 (round 262), because legs, antennae and wings stick out by an amount tied to the insect's
 size, not to the box's shorter side. Neither shape nor margin is yet compared on pollinator
-photos (owner experiment: re-run a session with "recompute" and another setting);
-**smallest box 48 px** because the model looks at every crop
+photos (owner experiment: re-run a session with *Recompute all crops* and another setting);
+**Smallest box to identify 48 px** because the model looks at every crop
 at 224 px, so a smaller box is enlarged more than 4 times and is mostly blur (on the default
-1024 px photos that is an insect about 5 % of the photo side); **crops per
+1024 px photos that is an insect about 5 % of the photo side); **Crops per
 track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos (the photo count per
 track ID comes from the session's photo schedule: live detection default one photo per second for
 10 s, so the cap rarely removes anything and only bounds the runtime of long bursts).

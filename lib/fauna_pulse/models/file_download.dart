@@ -12,18 +12,27 @@ import 'model_file_security.dart';
 
 /// Why a download answer cannot be used, in plain words, or null when it
 /// can (HTTP 200 and not a web page). Separate from [downloadToFile] so it
-/// can be tested without a server.
-String? downloadStatusMessage(int statusCode, {String? mimeType}) {
+/// can be tested without a server. [pastedLink]: the user typed or pasted
+/// the link ("Download from a link"), so they can correct it.
+String? downloadStatusMessage(int statusCode, {String? mimeType, bool pastedLink = false}) {
   // Round 278: in plain words, as the app's own list can name files that
-  // are not uploaded yet.
+  // are not uploaded yet. Round 317: for a pasted link a 404 is almost
+  // always a wrong link, and waiting does not help.
   if (statusCode == HttpStatus.notFound) {
-    return 'Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.';
+    return pastedLink
+        ? 'Nothing was found at this link (HTTP 404). Check that the link is complete and correct.'
+        : 'Nothing was found at this link (HTTP 404). The file may not be online yet: please try again later.';
   }
   // Round 314: Hugging Face answers 401, not 404, for a repository that is
   // private or does not exist (the app's list names files whose repository
-  // may not be public yet).
+  // may not be public yet). Round 317: a pasted link can be wrong or need a
+  // login, which the app cannot give.
   if (statusCode == HttpStatus.unauthorized || statusCode == HttpStatus.forbidden) {
-    return 'This link is not public (HTTP $statusCode). The file may not be online yet: please try again later.';
+    return pastedLink
+        ? 'This link is wrong or needs a login (HTTP $statusCode). The app can only download public files: '
+              'check the link, or download the file on a computer, copy it to the phone and use '
+              '"Import model files…".'
+        : 'This link is not public (HTTP $statusCode). The file may not be online yet: please try again later.';
   }
   if (statusCode != HttpStatus.ok) return 'Download failed (HTTP $statusCode).';
   // Round 314: a file page (e.g. a Hugging Face or GitHub "blob" link) is a
@@ -52,8 +61,10 @@ Uri directFileUri(Uri uri) {
 /// [validate] checks the finished `.part` file (structure);
 /// [expectedSha256], when given, must match. Reports
 /// progress via [onProgress] (total is null when the server doesn't say);
-/// [isCancelled] is checked between chunks. Throws with a plain-language
-/// message on any failure.
+/// [isCancelled] is checked between chunks. [pastedLink]: see
+/// [downloadStatusMessage]. Throws with a plain-language message for the
+/// app's own checks; network errors reach the caller as they are
+/// ([plainModelError] words them).
 Future<File> downloadToFile(
   Uri url,
   File target, {
@@ -61,6 +72,7 @@ Future<File> downloadToFile(
   String? expectedSha256,
   void Function(int receivedBytes, int? totalBytes)? onProgress,
   bool Function()? isCancelled,
+  bool pastedLink = false,
 }) async {
   if (expectedSha256 != null && !isValidSha256(expectedSha256)) {
     throw Exception('The expected SHA-256 value must contain 64 hex digits.');
@@ -78,6 +90,7 @@ Future<File> downloadToFile(
     final problem = downloadStatusMessage(
       response.statusCode,
       mimeType: response.headers.contentType?.mimeType,
+      pastedLink: pastedLink,
     );
     if (problem != null) throw Exception(problem);
     final total = response.contentLength > 0 ? response.contentLength : null;
@@ -90,7 +103,9 @@ Future<File> downloadToFile(
       // stalled stream would otherwise also never reach the cancel check).
       final data = response.timeout(
         const Duration(seconds: 30),
-        onTimeout: (s) => s.addError(Exception('Connection stalled — try again.')),
+        onTimeout: (s) => s.addError(
+          Exception('The connection stopped (no data for 30 seconds). Check the internet connection and try again.'),
+        ),
       );
       await for (final chunk in data) {
         if (isCancelled?.call() ?? false) throw Exception('Download cancelled.');
@@ -109,7 +124,9 @@ Future<File> downloadToFile(
     if (expectedSha256 != null) {
       final actual = (await sha256.bind(partFile.openRead()).first).toString();
       if (actual.toLowerCase() != expectedSha256.toLowerCase()) {
-        throw Exception('The downloaded file did not match its SHA-256 hash.');
+        // The checksum differs: a damaged download, or the file on the
+        // server was replaced by a newer export than the app's list knows.
+        throw Exception('The downloaded file is damaged or not the expected version. Please try again.');
       }
     }
     if (await target.exists()) await target.delete();

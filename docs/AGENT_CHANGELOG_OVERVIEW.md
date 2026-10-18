@@ -177,7 +177,7 @@ under 0.10 above the confidence, shared by camera Settings and the video Track I
 | Log raw detections | off | |
 | Reference photos | on, every 30 s | `gt_frames/` |
 | Samples fps / temperature / power | 5 s / 10 s / 10 s | always logged |
-| GPU when faster / CPU threads | on / 0 = auto = 2 | |
+| Use the GPU when it can run the model / CPU threads | on / 0 = auto = 2 | no speed check; only the benchmark compares |
 | Crop 1:1 lock | off | |
 
 Outside `SessionConfig` (shared_preferences): focus (manual close-up preset, screen state);
@@ -198,8 +198,11 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   session start); `video_box_timeline.dart` applies the same lead. "Visit" only for the ecological
   quantity (hand counts, visitation rate). Readers accept older names; saved-settings keys and
   Dart identifiers kept old names on purpose.
-- Screen names in the UI: "Download & import models", "Find animals in photos / videos",
-  capture trigger "Live detection", settings tab "Detection". Refer to screens by their top title.
+- Screen names in the UI: "Download & import models", "Find animals in photos", "Find animals in
+  videos", capture trigger "Live detection", settings tab "Detection". Refer to screens by their top
+  title. User-facing words: "name list" (Hugging Face and fauna-pulse-models say "label pack":
+  the models screen help, README and IDENTIFICATION give it as the other name), "detector rate" (not
+  inference rate), "yellow square" before "ROI"; download and import errors in plain words.
 - **Every new tunable ships user-adjustable:** Settings control + `SessionConfig` JSON + summary
   row (`_settingsSection()`, `na:` when not applicable) + round-trip test, in the same round.
 - **Settings are kept as typed (r313):** `NumericSettingField` never clamps silently (a number
@@ -576,27 +579,37 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   2 GiB for every model file and name list, detectors included (`kMaxModelFileBytes`; the
   plugin's Kotlin label reader maps the whole file, which Java allows only up to 2 GiB). A web
   page answer (`text/html`) is refused before its body downloads; 401/403/404 get plain
-  words (`downloadStatusMessage`); a pasted Hugging Face `/blob/` link becomes `/resolve/`
+  words (`downloadStatusMessage`; a pasted link's 404/401/403 say to check the link), other failures
+  too (`plainModelError`: no internet, connection lost, no storage; the technical text only in the log); a pasted Hugging Face `/blob/` link becomes `/resolve/`
   (`directFileUri`, link downloads only). These checks run only at intake, never in the
   camera path.
 - **No bundled models:** `assets/models/bundled_models.txt` is empty; the camera picker lists only
   imported/downloaded files. Debug builds still pack local weights for device checks.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and
-  delete model files and name lists. Every file is listed by its file name, details behind ⓘ
-  (from the file: classes, input size, precision; plus title, licence and source when listed).
-  Deleting an identification model takes its name lists along unless another model still uses
-  them; "Delete all …" per kind; press and hold selects several. Each kind sits in a
-  `ModelKindPanel`: detection light blue, identification orange (faint fill, thick line on top,
-  framed-circle or microscope icon); the same panels split the watch pages' fold. A listed
-  identification model counts as on the phone by its file name or, for BioCLIP (label packs), by
-  any file of the same model key (`idModelFor`): its lists still to download sit under that model
-  ("Name lists to download for it"), and "Available to download" holds only models not on the
-  phone, each with its lists (list icon; title, then "<file>, <size> plus the model"). The ⓘ card
-  of a model to download does not repeat its label packs (only their shared licence and source);
-  the card of a model on the phone does not list its name lists (they sit under it). A line
-  under the credits note links the Hugging Face collection (`kModelsCollectionUrl`), to
-  download on a computer and import. The panel's first text says what a name list is and why a
-  short one gives better names.
+  delete model files and name lists. Each kind is ONE list by file name (`fileNameOrder`: case
+  ignored, "_" before ".", so bioclip-2 before bioclip-2.5), files on the phone and files to
+  download together: a file on the phone has the green `OnThisPhoneLine` (shared with the watch
+  pages), ⓘ and delete; a file to download shows its catalogue title and size and a Download
+  button (its name may break after "_"). Details behind ⓘ (from the file: classes, input size,
+  "Number format" fp16/int8/fp32 in words; plus title, licence and source when listed). Deleting an identification model takes
+  its name lists along unless another model still uses them; "Delete all …" per kind; press and
+  hold selects several. Each kind sits in a `ModelKindPanel`: detection light blue,
+  identification orange (faint fill, thick line on top, framed-circle or microscope icon); the
+  same panels split the watch pages' fold. A listed identification model counts as on the phone
+  by its file name or, for BioCLIP (label packs), by any file of the same model key
+  (`idModelFor`). Under each identification model sit its name lists (on the phone or to
+  download, by file name, "Name lists for your region and the animals you watch:"); a BioCLIP
+  model not on the phone has its own Download (model alone) and two numbered steps ("1. The
+  model, needed once", "2. Then the name lists…"), a list's Download also brings the model; name
+  lists on the phone of an offered model that is not sit under that model; "Name lists without
+  their model" holds only lists of models neither on the phone nor offered. A classifier to
+  download is one row (model + class list). The ⓘ card of a model to download does not repeat
+  its label packs (only their shared licence and source). The note at the top ("About these
+  models": adapted to run on a phone, each model's own licence and how to cite it from ⓘ, the
+  Download buttons get the files from Hugging Face) names no makers; the Hugging Face collection
+  link (`kModelsCollectionUrl`, to download on a computer and import) sits under "Your own
+  models", next to Import (at the top it invited downloads there). The panel's first text says
+  what a name list is and why a list that fits the region and the animals gives better names.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
   optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home

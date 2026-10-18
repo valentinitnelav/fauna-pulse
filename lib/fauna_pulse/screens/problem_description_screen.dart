@@ -154,14 +154,16 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
               // screen uses — the original black54/black45 (and the r189
               // GitHub line) were near-invisible dark-on-dark (owner report).
               const Text(
-                'Please describe what went wrong in your own words — what you '
-                'were doing, what you expected, and what happened instead. This '
-                'is required and helps with debugging.',
+                'Please describe in your own words what went wrong (what you '
+                'were doing, what you expected, and what happened instead). This '
+                'is required and helps to find the cause.',
                 style: TextStyle(fontSize: 13, color: Colors.white70),
               ),
               const SizedBox(height: 6),
               // Round 189 (owner request): point at the public issue tracker
-              // as an alternative reporting channel, up front.
+              // as an alternative reporting channel, up front. Round 317: worded
+              // as a step after Continue, so an issue still gets the report's
+              // logs and settings instead of the user leaving without them.
               InkWell(
                 onTap: () => openExternalLink(ErrorReporter.githubIssuesUrl, 'describe_open_issues'),
                 child: const Text.rich(
@@ -169,8 +171,8 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.white54),
                     children: [
                       TextSpan(
-                        text: 'Problems can also be reported as a GitHub '
-                            'issue: ',
+                        text: 'After Continue, you can share the report or '
+                            'paste its text into a GitHub issue: ',
                       ),
                       TextSpan(
                         text: ErrorReporter.githubIssuesUrl,
@@ -215,8 +217,8 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Markdown is allowed — e.g. **bold**, *italic*, or "- " for a '
-                'bulleted list.',
+                'Plain text is fine. For formatting, you can write **bold**, '
+                '*italic*, or start a line with "- " for a list (see Preview).',
                 style: TextStyle(fontSize: 11, color: Colors.white54),
               ),
               const SizedBox(height: 8),
@@ -309,8 +311,8 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                   ],
                 ),
                 const Text(
-                  'Pick the session your problem is about — its settings and '
-                  'samples of its technical logs are added to the report. '
+                  'Pick the session your problem is about: its settings and '
+                  'parts of its technical logs are added to the report. '
                   'Choose "No session data" if the problem is unrelated.',
                   style: TextStyle(fontSize: 11, color: Colors.white54),
                 ),

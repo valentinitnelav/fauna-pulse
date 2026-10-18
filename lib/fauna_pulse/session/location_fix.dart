@@ -18,6 +18,16 @@ import 'package:geolocator/geolocator.dart';
 
 import '../logging/app_error_hooks.dart';
 
+/// How a session position was set, in the words of Field notes' Position
+/// section; also the Session summary's Location row and the Session position
+/// window (round 317: they showed the stored word 'gps', 'manual' or
+/// 'previous', and 'previous' alone did not say the position was not measured).
+String locationSourceLabel(String source) => switch (source) {
+  'gps' => 'from this phone\'s GPS',
+  'manual' => 'typed by hand',
+  _ => 'from the last session',
+};
+
 /// A session's single location: where the phone stood, with the fix accuracy
 /// and where the value came from — `gps` (measured this session), `manual`
 /// (typed by the user), or `previous` (re-used from an earlier session,

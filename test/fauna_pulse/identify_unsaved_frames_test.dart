@@ -101,12 +101,12 @@ void main() {
     expect(
       find.text(
         'Only ${first.length} of ${kept.length} kept frames of the videos are saved, so 1 of 2 track IDs '
-        'have no photo to identify yet. Save the remaining frames on the Video screen first.',
+        'have no photo to identify yet. Save the remaining frames on "Find animals in videos" first.',
       ),
       findsOneWidget,
     );
-    await tester.scrollUntilVisible(find.text('Open the Video screen'), 100, scrollable: list);
-    expect(find.text('Open the Video screen'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Open Find animals in videos'), 100, scrollable: list);
+    expect(find.text('Open Find animals in videos'), findsOneWidget);
     expect(find.textContaining('No crops to identify'), findsNothing);
     expect(tester.takeException(), isNull);
   });

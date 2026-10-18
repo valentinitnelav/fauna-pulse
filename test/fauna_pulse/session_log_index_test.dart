@@ -313,7 +313,7 @@ void main() {
       final index = await SessionLogIndex.parseFile(path);
       final p = index.photos['roi_mv.jpg']!;
       expect(p.stillMatch, null);
-      expect(p.stillMatchNote, contains('ROI was moved'));
+      expect(p.stillMatchNote, contains('yellow square was moved'));
     });
   });
 

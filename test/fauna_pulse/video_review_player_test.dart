@@ -722,10 +722,10 @@ void main() {
       await tester.pumpAndSettle();
     }
     await tester.scrollUntilVisible(find.text('While the detector ran'), 200, scrollable: graphs);
-    expect(find.text('Phone temperature over the session (°C)'), findsOneWidget);
+    expect(find.text('Battery temperature over the session (°C)'), findsOneWidget);
     await tester.tap(find.text('While the detector ran'));
     await _pumpUntil(tester, find.textContaining('No measurements yet.'));
-    expect(find.text('Phone temperature over the session (°C)'), findsNothing);
+    expect(find.text('Battery temperature over the session (°C)'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());

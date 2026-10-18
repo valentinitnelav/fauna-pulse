@@ -40,7 +40,7 @@ class CalibratingBanner extends StatelessWidget {
           ),
           SizedBox(height: 4),
           Text(
-            'Measuring camera & photo resolution —\nthis takes a few moments',
+            'Measuring camera and photo resolution.\nThis takes a few moments.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),

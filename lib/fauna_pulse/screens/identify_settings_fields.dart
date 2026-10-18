@@ -137,7 +137,7 @@ class IdentifySettingsFields extends StatelessWidget {
           helperText:
               'A crop whose Species conf. is below the surest crop\'s divided by this factor is left out '
               'of the combined answer (it still appears in the crops table, marked "left out"). '
-              '1 = every crop counts. The default of 10 is a FaunaPulse rule of thumb, not yet tested '
+              '1 = every crop counts. The default of 10 is a FaunaPulse estimate, not yet tested '
               'on representative data.',
         ),
         NumericSettingField(
@@ -184,8 +184,8 @@ class IdentifySettingsFields extends StatelessWidget {
               'Off: every track ID stays on its own. On: when a track ID ends and a new one starts within '
               'the gap below, the two are joined into one track ID (and identified again from all their '
               'photos) if they pass three checks: a compatible identification (same taxon on the same '
-              'path, e.g. Apidae then Bombus), a similar appearance (the model\'s image embeddings, the '
-              'strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
+              'path, e.g. Apidae then Bombus), a similar appearance (the model\'s descriptions of their '
+              'photos, the strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
               'insect for a moment and gave it a new track ID. Track IDs that overlap in time are never '
               'joined (two insects at once). Changes the track ID count, so it is off by default; the CSV '
               'lists the joined track IDs.',
@@ -200,8 +200,9 @@ class IdentifySettingsFields extends StatelessWidget {
             unitSuffix: 's',
             onChanged: (v) => onEdit(() => prefs.mergeGapS = v),
             helperText:
-                'Time from the end of one track ID to the start of the next. Check also what is set for the '
-                'tracker\'s own continuity buffer (its occlusion tolerance, 3 s by default). Longer gaps '
+                'Time from the end of one track ID to the start of the next. Compare it with the tracker\'s '
+                '"Occlusion tolerance" (3 s by default): over shorter gaps the tracker itself usually '
+                'keeps the same track ID. Longer gaps '
                 'risk joining two different insects of the same species: the appearance check cannot '
                 'tell individuals apart, only the time gap can.',
           ),
@@ -213,9 +214,10 @@ class IdentifySettingsFields extends StatelessWidget {
             decimals: 2,
             onChanged: (v) => onEdit(() => prefs.mergeMinCos = v),
             helperText:
-                'Cosine similarity (0 to 1) between the two track IDs\' combined image embeddings: 1 = the '
-                'model sees the same thing. Same species usually scores 0.8 to 0.95, different families '
-                'well below. 0.85 is a cautious default; lower it if fragments of one insect stay apart.',
+                'How alike the two track IDs look to the model, from 0 to 1 (it compares the model\'s '
+                'averaged descriptions of their photos): 1 = the model sees the same thing. Same species '
+                'usually scores 0.8 to 0.95, different families well below. 0.85 is a cautious default; '
+                'lower it if fragments of one insect stay apart.',
           ),
           NumericSettingField(
             label: 'Box size may differ by up to',
@@ -239,7 +241,7 @@ class IdentifySettingsFields extends StatelessWidget {
               'Very short track IDs are often false detections (a moving petal, a shadow, a video '
               'artefact), and a weak identification makes that more likely. A track ID is flagged '
               '"suspect" when it is SHORT (below the duration OR the detections below) AND weakly '
-              'supported (detector confidence below the threshold, order-level probability below the '
+              'supported (detector confidence below the threshold, confidence at order rank below the '
               'threshold, or "no organism"). Suspect track IDs are hidden from the results table by default '
               '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
               'thresholds on your own data in R or Python.',
@@ -273,19 +275,19 @@ class IdentifySettingsFields extends StatelessWidget {
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.flagMinDetConf = v),
           helperText: 
-              'If the mean confidence of the live detector over the track ID\'s crops '
+              'If the detector\'s mean confidence over the track ID\'s crops '
               'is below this, the track ID is flagged as weak. '
         ),
         NumericSettingField(
-          label: 'Weak: order probability below',
+          label: 'Weak: order confidence below',
           value: prefs.flagMinOrderP,
           min: 0,
           max: 1,
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.flagMinOrderP = v),
           helperText:
-              'If the identification\'s probability at ORDER rank (e.g. Diptera) '
-              'is below this, the track ID is flagged as weak. '
+              'If the track ID\'s confidence at ORDER rank (e.g. Diptera; the order\'s Conf. in the '
+              'results) is below this, the track ID is flagged as weak. '
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -308,8 +310,9 @@ class IdentifySettingsFields extends StatelessWidget {
             'pred_prob_weighted, pred_prob_mean and pred_imgs give the answer at ONE rank, as the '
             'insect-detect-post tool of Maximilian Sittinger does, so the files of both can be '
             'compared; this picks that rank. All ranks are in the bioclip_<rank> and p_<rank> columns '
-            'anyway. The names follow that tool; the formulas are FaunaPulse\'s (certainty-weighted mean '
-            'and plain mean of the crops\' probabilities). '
+            'anyway. The names follow that tool; the formulas are FaunaPulse\'s: pred_prob_weighted is the '
+            'track ID\'s Conf. at that rank (as in the results), pred_prob_mean the plain mean of the '
+            'crops\' own values. '
             '${prefs.targetRank == 'family' ? 'Family is the app\'s default.' : 'You chose ${prefs.targetRank}; the app\'s default is family.'}',
             style: helperTextStyle,
           ),

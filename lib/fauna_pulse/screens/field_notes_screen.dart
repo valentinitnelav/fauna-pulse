@@ -146,12 +146,7 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
         builder: (context, searching, _) {
           final String line;
           if (loc != null) {
-            final how = switch (loc.source) {
-              'gps' => 'from this phone\'s GPS',
-              'manual' => 'typed by hand',
-              _ => 'from the last session',
-            };
-            line = '${loc.label} ($how)';
+            line = '${loc.label} (${locationSourceLabel(loc.source)})';
           } else {
             line = searching ? 'Searching for the GPS position…' : 'No position yet.';
           }

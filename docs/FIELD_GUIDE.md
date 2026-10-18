@@ -40,7 +40,7 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   phone upright.
 - **Distance to the flower.** There is no single correct distance: let the on-screen
   readout decide it. Move the phone closer until the region of
-  interest covers the flower *and* the label shows your target saved size with no
+  interest covers the flower *and* the label shows your *Saved photo side* with no
   ⚠ warning. Closer means more pixels on the insect, but a smaller area watched.
 - **Power.** Plan for a power bank on any session longer than a few tens of minutes
   (see §8 on heat and battery).
@@ -131,7 +131,7 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
     empty flower — it is not a fault. The ROI border also turns grey while
     sleeping. See §5 for how this affects the FPS number.
   - Motion-trigger: "MOTION: CAPTURING" / "MOTION: WAITING".
-  - Time-lapse: "TIME-LAPSE: press REC" before recording, then
+  - Time-lapse: "TIME-LAPSE: tap ●" before recording, then
     "TIME-LAPSE: CAPTURING" during a burst or "NEXT BURST in mm:ss" between
     bursts.
   On a narrow screen a long label may shorten itself with "…" — that is
@@ -240,10 +240,9 @@ overwritten.
 
 **Why reference photos matter:** they are taken on a fixed clock (default
 every 30 s) whether or not anything was detected, so they show what the
-camera *really* saw. If you find a pollinator in a reference photo that the
-AI never logged, that photo is a documented miss — please send such photos
-in (Report a problem, or with the session folder): they are exactly what is
-needed to improve the detection models.
+camera *really* saw. If you find an animal in a reference photo that the
+AI never logged, that photo is a documented miss: it shows what the
+detection model did not see at your site.
 
 To retrieve the data: connect the phone by **USB** and copy the `sessions`
 folder to your computer with your file manager (or `adb pull`). This location
@@ -267,26 +266,27 @@ Also, avoid creating copy of sessions with large data volumes.
 ## 7. Field troubleshooting
 
 **FPS dropped a lot after ~30 seconds.** Under direct sun the phone's own
-thermal management throttles the processor — this is the device protecting
-itself, not an app bug. The app defends against it with an inference FPS cap
-(default 10) and optional auto-throttle; a steady lower rate collects better
-data than a fast rate that collapses. Shade the phone if you can.
+thermal management slows the processor (the device protects itself; this is
+not an app bug). The app defends against it with **Max detector rate** (Power
+tab, default 15 FPS) and the switch **Auto-adjust detector rate (reduces
+heat)**, which is on by default; a steady lower rate collects better data than
+a fast rate that collapses. Shade the phone if you can.
 
 **"DETECTOR SLEEPING" and it won't wake.** The motion gate only wakes on
 movement inside the ROI. Confirm the ROI actually covers where insects land,
-and check the motion-gate sensitivity settings (pixel delta / area fraction /
-grid size). Handheld shake also keeps it awake — the gate is designed for a
-*mounted* phone.
+and check the motion gate settings in the **Gate sensitivity** fold (Power
+tab): *Pixel sensitivity*, *Trigger area* and *Motion grid resolution*.
+Handheld shake also keeps it awake: the gate is made for a *mounted* phone.
 
 **FPS number looks low while nothing is happening.** When the motion gate is
-sleeping it deliberately only inspects a few frames per second (the idle check
-rate), so a low FPS readout during an empty period is the feature working, not
-the camera failing.
+sleeping it deliberately only inspects a few frames per second (*Idle check
+rate* in the Gate sensitivity fold), so a low FPS readout during an empty
+period is the feature working, not the camera failing.
 
-**"Camera: 1 fps" in time-lapse mode.** Same idea: the camera hardware keeps
-running at its normal rate, but between bursts the app deliberately keeps only
-about one frame per second (and discards the rest before the costly image
-conversion) to save heat and battery. The number counts the frames the app
+**"Camera: 1 fps" in time-lapse mode.** Same idea: between bursts the app
+deliberately keeps only about one frame per second (and discards the rest before
+the costly image conversion; with "Turn camera off between bursts" on, the camera
+is off) to save heat and battery. The number counts the frames the app
 *keeps*, and the panel label says so in this mode. During a burst it rises a
 little; it never needs to reach the camera's full rate because time-lapse
 photos come on a clock, not from every frame.
@@ -310,8 +310,8 @@ clearly running but nothing is ever detected for several seconds, the app raises
 a banner suggesting the model may be incompatible.
 
 **⚠ "below N px" on the ROI label.** The flower is too small in frame to reach
-your target saved photo size. Move closer or use a zoom lens — this cannot be
-fixed in software.
+your *Saved photo side* (Settings, Photos tab). Move closer or use a zoom lens
+(software cannot fix this).
 
 **Battery drains fast / phone got killed mid-session.** Long sessions are
 demanding. On first record the app offers to open Android's battery settings.

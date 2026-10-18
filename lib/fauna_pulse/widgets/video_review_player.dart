@@ -671,8 +671,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'Opens "Find animals in videos" for this session. There you can move or resize the '
-                    'square, analyse the videos again and then press "Find track IDs". The new boxes '
-                    'and track IDs replace the ones shown here.',
+                    'square and analyse the videos again; the track IDs are then found automatically. '
+                    'The new boxes and track IDs replace the ones shown here.',
               ),
             const SizedBox(height: 4),
             Align(

@@ -109,7 +109,18 @@ class ModelImport {
         continue;
       }
       if (!isSafeName(name)) {
-        rejected.add('$display: not a safely named model file (.tflite, *_qnn.onnx) or name list (.fpack).');
+        // Round 317: a browser's second copy ("model (1).tflite") has the
+        // right ending, so say whether the ending or the name is the problem.
+        final lower = name.toLowerCase();
+        final usableEnding = isSupportedModelFileName(lower) || lower.endsWith('.fpack');
+        rejected.add(
+          usableEnding
+              ? "$display: the file name must start with a letter or digit and may have only letters, "
+                    "digits, '-', '_' and '.' (no spaces, brackets or two dots in a row), at most 128 "
+                    "characters. Rename the file (for example remove ' (1)'), then import it again."
+              : '$display: the app cannot use this kind of file. It takes .tflite model files, .fpack '
+                    'name lists and _qnn.onnx detection models.',
+        );
         continue;
       }
       try {
@@ -123,7 +134,7 @@ class ModelImport {
         await copyAndValidateModel(source, target, name);
         imported.add((name, kind));
       } catch (e) {
-        rejected.add('$display: ${plainModelError(e)}');
+        rejected.add('$display: ${plainModelError(e, importing: true)}');
         logSwallowed('model_import', e);
       }
     }
@@ -159,6 +170,7 @@ class ModelImport {
       },
       onProgress: onProgress,
       isCancelled: isCancelled,
+      pastedLink: true,
     );
     try {
       final target = await ModelImport.target(kind, name);

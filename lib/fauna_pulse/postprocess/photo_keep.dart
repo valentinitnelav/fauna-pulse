@@ -383,7 +383,8 @@ Future<int> runCleanup(
 /// How the photos of a recorded session were triggered, read from the start
 /// record of its session.jsonl (the `config` block every start record embeds).
 /// [captureTrigger] is 'detector' / 'motion' / 'timelapse' (legacy configs
-/// without the field map like SessionConfig.fromJson does); [modelPath] is
+/// without the field map like SessionConfig.fromJson does), or
+/// 'imported_video' for videos imported with "Import videos…"; [modelPath] is
 /// the model the session had selected (loaded but never run in the AI-free
 /// modes).
 class LiveSessionInfo {
@@ -392,6 +393,8 @@ class LiveSessionInfo {
   const LiveSessionInfo(this.captureTrigger, this.modelPath);
 
   bool get usedDetectorLive => captureTrigger == 'detector';
+
+  bool get importedVideos => captureTrigger == 'imported_video';
 }
 
 /// Parses [logHead] (the first few KB of a session.jsonl) for the start
@@ -401,6 +404,10 @@ LiveSessionInfo? liveSessionInfoFromLogHead(String logHead) {
     if (!line.contains('"start_of_session"')) continue;
     try {
       final rec = jsonDecode(line) as Map<String, dynamic>;
+      // Round 317: imported videos have no camera settings; read as the
+      // no-config default below, they were called live detection sessions
+      // on "Find animals in photos".
+      if (rec['source'] == 'imported_video') return const LiveSessionInfo('imported_video', null);
       final config = rec['config'];
       if (config is! Map) return const LiveSessionInfo('detector', null);
       // Same legacy mapping as SessionConfig: explicit captureTrigger wins,

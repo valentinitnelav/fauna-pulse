@@ -105,12 +105,12 @@ void main() {
         (trigger: 'detector', label: 'Live detection', usesAi: true),
         (
           trigger: 'motion',
-          label: 'Motion-triggered photos (no detection)',
+          label: 'Motion-triggered photos (no live detection)',
           usesAi: false,
         ),
         (
           trigger: 'timelapse',
-          label: 'Time-lapse photo bursts (no detection)',
+          label: 'Time-lapse photo bursts (no live detection)',
           usesAi: false,
         ),
       ];
@@ -185,7 +185,7 @@ void main() {
       await pumpUntilFound(tester, find.textContaining('saved photo'));
       expect(
         find.textContaining(
-          'Showing 10 of 15 saved photos this session — picked at random',
+          'Showing 10 of 15 saved photos this session, picked at random',
         ),
         findsOneWidget,
       );
@@ -316,7 +316,7 @@ void main() {
       await expectSummaryRowValue(
         tester,
         scrollable,
-        label: 'Schedule days',
+        label: 'Days to run',
         value: 'Not applicable',
       );
       expect(find.textContaining('06:00'), findsNothing);
@@ -425,6 +425,58 @@ void main() {
         scrollable,
         label: 'Time between bursts',
         value: 'Not applicable',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'round 317: a battery level that rose, the position source in words, and '
+    'a photo session without track IDs says how to get them',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final tmp = Directory.systemTemp.createTempSync('summary_r317');
+      addTearDown(() {
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      File('${tmp.path}/session.jsonl').writeAsStringSync([
+        '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
+            '"battery_percent":80,"location":{"lat":51.1,"lon":12.6,'
+            '"fix_time_ms":1,"source":"previous"},'
+            '"config":{"captureTrigger":"timelapse"}}',
+        '{"type":"end_of_session","time_ms":60000,"ended_normally":true,'
+            '"battery_percent":85,"unique_track_count":0}',
+      ].join('\n'));
+      final log = File('${tmp.path}/session.jsonl');
+
+      await tester.pumpWidget(
+        MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 2)),
+      );
+      await pumpUntilFound(tester, find.text('Overview'));
+      // Not "-5% (from 80% to 85%)", which read like an error.
+      expect(
+        find.text('none (it rose by 5% while charging, from 80% to 85%)'),
+        findsOneWidget,
+      );
+      // The Field notes words, not the stored "previous".
+      expect(find.text('51.10000, 12.60000 (from the last session)'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
+      );
+      await pumpUntilFound(tester, find.textContaining('Track ID timeline'));
+      expect(
+        find.text('none yet ("Find track IDs" on "Find animals in photos", for photos 0.5 s apart or closer)'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Time-lapse photos: no detector ran while recording'),
+        findsOneWidget,
       );
 
       await tester.pumpWidget(const SizedBox());

@@ -231,7 +231,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final owner = '${h['model_id']}';
     if (_isClassList && owner != stemOf(modelName)) {
       return 'The class list ${h['pack_id']} belongs to the model $owner.tflite. Choose that model, '
-          'or a label pack for $modelName.';
+          'or a name list made for $modelName.';
     }
     return null;
   }
@@ -493,7 +493,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _speedResult =
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
           '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crop${rgb.length == 1 ? '' : 's'} after a warm-up'
-          '${rgb.length < n ? ' (only ${rgb.length} of this session\'s crops reach the "Smallest box" of ${prefs.minCropPx} px)' : ''}.'
+          '${rgb.length < n ? ' (only ${rgb.length} of this session\'s crops reach the "Smallest box to identify" of ${prefs.minCropPx} px)' : ''}.'
           '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
           '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
       _accelNote = info.accelerationNote;
@@ -680,7 +680,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: Text(
             'Only ${k.saved} of ${k.total} kept frames of the videos are saved'
             '${without > 0 ? ', so $without of $found track IDs have no photo to identify yet' : ''}. '
-            'Save the remaining frames on the Video screen first.',
+            'Save the remaining frames on "Find animals in videos" first.',
             style: amber,
           ),
         ),
@@ -689,7 +689,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: TextButton.icon(
             onPressed: _running ? null : _openVideoScreen,
             icon: const Icon(Icons.movie_outlined),
-            label: const Text('Open the Video screen'),
+            label: const Text('Open Find animals in videos'),
           ),
         ),
       ],
@@ -717,13 +717,13 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Run',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Every saved photo of every tracked insect is cut out around its detector box (a square '
-            'unless switched off under Advanced settings) and run through '
-            'the model. The crops of one track ID are then combined into ONE answer: the model '
-            'describes each crop in a vector of numbers, then they are averaged (a crop the model is sure about counts '
-            'more, crops it is far less sure about are left out) and the average is classified once, so '
-            'photos that agree reinforce each other (not a vote per photo), giving a probability per '
-            'rank. Track IDs '
+            'The saved photos of each track ID (up to "Crops per track ID", largest boxes first; boxes '
+            'under "Smallest box to identify" are skipped) are cut out around the detector box (a square '
+            'unless switched off under Advanced settings). Each cut-out (a crop) is shown to the model, '
+            'which describes it as a list of numbers. The descriptions of one track ID are averaged '
+            '(crops the model is sure about count more, crops it is far less sure about are left out) '
+            'and the model names the average once: ONE answer per track ID, with a confidence for every '
+            'rank. Photos that agree make the answer stronger (it is not a vote per photo). Track IDs '
             'are not joined unless "Merge consecutive track IDs" is on (Advanced settings). '
             'Identification runs on this phone with the chosen model and name list; no image '
             'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
@@ -735,15 +735,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         crops == null
             ? 'Counting crops…'
             : '$crops crops from ${_plannedTracks ?? 0} track ID${_plannedTracks == 1 ? '' : 's'}'
-                  '${estimate == null ? '' : ' — about ${_fmtDuration(estimate)} on this phone'}',
+                  '${estimate == null ? '' : ' (about ${_fmtDuration(estimate)} on this phone)'}',
         style: const TextStyle(color: Colors.white),
       ),
       if (crops == 0 && _kept.remaining == 0)
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
-            'No crops to identify: this session has no photos with tracked insects '
-            '(sessions without detection need "Find animals in photos" first).',
+            'No crops to identify: this session has no photos of tracked animals. If it was recorded '
+            'without a detection model, first run "Find animals in photos" (for videos: "Find animals '
+            'in videos") from the session\'s ⋮ menu.',
             style: helperTextStyle,
           ),
         ),
@@ -822,10 +823,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               _hasEmbeddings ? 'Continue / re-run' : 'Start',
               _hasEmbeddings
                   ? 'runs the model only on photos that have no stored result yet (new photos, or after '
-                        'lowering "Smallest box"), then recomputes the results; with nothing new it takes '
-                        'seconds.'
-                  : 'runs the model on every photo of every track ID (the slow step), then computes the '
-                        'results.',
+                        'lowering "Smallest box to identify"), then recomputes the results; with nothing new '
+                        'it takes seconds.'
+                  : 'runs the model on the photos of every track ID (up to "Crops per track ID", largest '
+                        'boxes first; the slow step), then computes the results.',
             ),
             _buttonNote(
               'Test speed',
@@ -879,8 +880,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         Text('$done of $total crops (counted per photo: a photo with several insects adds several crops at once)',
             style: const TextStyle(color: Colors.white)),
       Text('Elapsed ${_fmtDuration(elapsed)}'
-          '${remaining == null ? '' : ' — about ${_fmtDuration(remaining)} left'}'
-          '${p != null && p.avgMs > 0 ? ' — the model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop' : ''}',
+          '${remaining == null ? '' : ', about ${_fmtDuration(remaining)} left'}.'
+          '${p != null && p.avgMs > 0 ? ' The model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop.' : ''}',
           style: helperTextStyle),
       if (p?.tempC != null)
         ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
@@ -914,7 +915,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       const SizedBox(height: 6),
       if (_error != null) Text(_error!, style: const TextStyle(color: Colors.redAccent)),
       if (r != null) ...[
-        if (r.cancelled) const Text('Cancelled — progress is kept; Continue resumes.', style: TextStyle(color: Colors.amber)),
+        if (r.cancelled)
+          Text(
+            'Cancelled (progress is kept). "${_hasEmbeddings ? 'Continue / re-run' : 'Start'}" goes on from here.',
+            style: const TextStyle(color: Colors.amber),
+          ),
         Text(
           '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
           '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(_runTook ?? r.elapsed)}'
@@ -971,5 +976,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   }
 }
 
-/// Plain-language error text (strips the "Exception: " prefix).
-String plainError(Object e) => '$e'.replaceFirst('Exception: ', '').replaceFirst('PlatformException', 'Error');
+/// Plain-language error text (strips the "Exception: " prefix). Round 317:
+/// only at the start: replaceFirst anywhere turned "FileSystemException: …"
+/// into "FileSystem…".
+String plainError(Object e) => '$e'.replaceFirst(RegExp('^Exception: '), '').replaceFirst('PlatformException', 'Error');

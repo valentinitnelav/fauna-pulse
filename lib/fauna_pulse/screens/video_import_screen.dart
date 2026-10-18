@@ -356,7 +356,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         label: 'Adds the videos as a new session. The detector runs on them afterwards, from "Find animals in videos".',
         labelStyle: TextStyle(color: Colors.white70, fontSize: 13),
         helperText:
-            'The files are moved into the app\'s own folder for this session (the originals on '
+            'The videos are copied into the app\'s own folder for this session (the originals on '
             'the phone stay where they are). '
             '10-bit (HDR) videos must be re-exported as ordinary 8-bit ones first.',
       ),
@@ -420,7 +420,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Text(
             'Not enough free storage: ${formatBytes(_freeBytes!)} free, about '
-            '${formatBytes(_neededBytes)} needed while the files are moved. Free some space, then pick again.',
+            '${formatBytes(_neededBytes)} needed during the import. Free some space, then pick again.',
             style: const TextStyle(color: Colors.redAccent, fontSize: 12.5),
           ),
         ),
@@ -435,7 +435,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         const SizedBox(height: 8),
         Text(
           _rewrite == null
-              ? 'Moving clip ${min(_done + 1, plan.length)} of ${plan.length}…'
+              ? 'Copying clip ${min(_done + 1, plan.length)} of ${plan.length}…'
               : 'Rewriting clip ${min(_done + 1, plan.length)} of ${plan.length} as a plain MP4… '
                     '${(_rewrite! * 100).round()} %',
           textAlign: TextAlign.center,

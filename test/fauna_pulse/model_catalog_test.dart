@@ -160,7 +160,7 @@ void main() {
         final source = File('${dir.path}/source.tflite')..writeAsBytesSync(List.filled(64, 0));
         await expectLater(
           copyAndValidateModel(source, target, 'm.tflite'),
-          throwsA(predicate((e) => '$e'.contains('TFL3'))),
+          throwsA(predicate((e) => '$e'.contains('not a .tflite model file'))),
         );
         expect(File('${target.path}.part').existsSync(), isFalse);
         expect(target.readAsBytesSync(), good, reason: 'the usable model is not replaced');
@@ -222,6 +222,12 @@ void main() {
     expect(isQnnModelPath('/models/yolo26n_qnn.onnx'), isTrue);
     expect(isQnnModelPath('/models/m.tflite'), isFalse);
     expect(isQnnModelPath('yolo26n'), isFalse);
+  });
+
+  test('the model list label: file name and its details, no "(imported)" (r317)', () {
+    const m = ModelEntry(id: '/m/a_640_fp16.tflite', name: 'a_640_fp16.tflite', source: ModelSource.imported, precision: 'fp16', inputSize: 640);
+    expect(m.label, 'a_640_fp16.tflite (fp16, 640 px)');
+    expect(const ModelEntry(id: '/m/b.tflite', name: 'b.tflite', source: ModelSource.imported).label, 'b.tflite');
   });
 
   group('modelLoadRecovery (r151)', () {

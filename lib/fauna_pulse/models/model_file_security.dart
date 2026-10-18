@@ -3,6 +3,7 @@
 // Everything here runs only while a model is imported or downloaded. None of
 // these checks run in the camera, inference, tracking, or recording hot paths.
 
+import 'dart:async' show TimeoutException;
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -48,11 +49,14 @@ bool isSupportedModelFileName(String name) {
 bool isQnnModelPath(String path) => path.toLowerCase().endsWith('_qnn.onnx');
 
 /// Alphabetical order of two files by name, upper and lower case alike
-/// (round 275: every model list is sorted this way).
+/// (round 275: every model list is sorted this way). "_" counts as a space,
+/// so "bioclip-2_224…" comes before "bioclip-2.5_224…" as a person expects
+/// (in plain character order "." comes before "_").
 int fileNameOrder(String a, String b) {
   final x = a.split('/').last;
   final y = b.split('/').last;
-  final c = x.toLowerCase().compareTo(y.toLowerCase());
+  String key(String n) => n.toLowerCase().replaceAll('_', ' ');
+  final c = key(x).compareTo(key(y));
   return c != 0 ? c : x.compareTo(y);
 }
 
@@ -91,8 +95,27 @@ String sizeLimitMessage([int maxBytes = kMaxModelFileBytes]) =>
     'The file is larger than ${formatBytes(maxBytes)}, the largest model '
     'file or name list the app can use.';
 
-String plainModelError(Object error) =>
-    '$error'.replaceFirst('Exception: ', '');
+/// Why a download or import failed, in plain words. The app's own errors
+/// already say it plainly; Dart's network and storage errors say it in
+/// technical words ("SocketException: Failed host lookup ..."), so round 317
+/// gives each of them a sentence with what to do (callers log the original).
+/// Only a leading "Exception: " is cut: cutting the first one anywhere broke
+/// "SocketException: " into "Socket...". [importing]: the file came from the
+/// phone, not a download.
+String plainModelError(Object error, {bool importing = false}) {
+  if (error is SocketException || error is TlsException || error is TimeoutException) {
+    return 'Could not reach the server. Check that the phone is connected to the internet (Wi-Fi or '
+        'mobile data), then try again.';
+  }
+  if (error is HttpException) return 'The connection was lost during the download. Please try again.';
+  if (error is FileSystemException) {
+    return 'Could not save the file on this phone. Check that there is enough free storage, then try again.';
+  }
+  const prefix = 'Exception: ';
+  final text = '$error';
+  if (error is Exception && text.startsWith(prefix)) return text.substring(prefix.length);
+  return importing ? 'The file could not be imported. Please try again.' : 'The download failed. Please try again.';
+}
 
 /// A redirect may be relative, so resolve every hop against the previous URL.
 bool redirectChainStaysHttps(Uri original, List<RedirectInfo> redirects) {
@@ -108,10 +131,13 @@ bool redirectChainStaysHttps(Uri original, List<RedirectInfo> redirects) {
 Future<void> ensureModelStorageAvailable(String path, int incomingBytes) async {
   final reading = await DeviceStorage.read(path: path);
   final free = reading.freeBytes;
-  if (free != null && free < incomingBytes + _modelStorageReserveBytes) {
+  final needed = incomingBytes + _modelStorageReserveBytes;
+  if (free != null && free < needed) {
+    // The needed amount includes the small reserve, so the two numbers
+    // never read as "needs 48 MB, 50 MB free" (round 317).
     throw Exception(
-      'Not enough free storage for this model. Keep at least 5 MiB free '
-      'after the import.',
+      'Not enough free storage on this phone: the file needs ${formatBytes(needed)}, and only '
+      '${formatBytes(free)} is free. Delete some files (for example old sessions), then try again.',
     );
   }
 }
@@ -145,7 +171,7 @@ Future<void> validateModelFile(
         header[6] == 0x4c &&
         header[7] == 0x33;
     if (!valid) {
-      throw Exception('This file does not contain a valid TFLite TFL3 header.');
+      throw Exception('This is not a .tflite model file, or the file is damaged.');
     }
   } finally {
     await input.close();

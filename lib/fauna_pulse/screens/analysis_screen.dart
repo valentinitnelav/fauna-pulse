@@ -86,6 +86,7 @@ class _AnalyzableSession {
     'motion' => 'motion',
     'timelapse' => 'time-lapse',
     'detector' => 'live detection',
+    'imported_video' => 'imported videos',
     _ => '?',
   };
 }
@@ -539,6 +540,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
     if (!mounted) return;
     setState(() => _running = false);
+    // Round 317: the stop hint names the button that exists. With re-analyze
+    // ticked the next run redoes every photo, so it would not continue.
+    final resumeHint = _forceReanalyze
+        ? 'To continue from there, untick "Re-analyze photos already done" '
+              'and press the Analyze button.'
+        : 'Press the Analyze button again to continue from there '
+              '(photos already done are skipped).';
     // The total wall time (round 168): shown here and logged as `elapsed_ms`
     // in the post_end record, so the user learns what a run of this session
     // costs — SAHI multiplies inferences per photo, and this is the honest
@@ -546,8 +554,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     var message = failure != null
         ? 'Analysis failed: $failure'
         : result!.cancelled
-        ? 'Stopped — ${result.processed} files analyzed '
-              'in ${_fmtElapsed(result.elapsed)} (resumable).'
+        ? 'Stopped: ${result.processed} files analyzed '
+              'in ${_fmtElapsed(result.elapsed)}. $resumeHint'
         : 'Done: ${result.processed} files analyzed '
               'in ${_fmtElapsed(result.elapsed)}'
               '${result.failed > 0 ? ', ${result.failed} failed' : ''}'
@@ -580,9 +588,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   /// "Also identify them" can run: switched on, a model with a name list
-  /// chosen, and not a live detection session (its track IDs are named from
-  /// the session's ⋮ menu).
-  bool get _identify => _alsoIdentify && _idChoice.ready && !(_session?.live?.usedDetectorLive ?? false);
+  /// chosen, and not a live detection or imported video session (their track
+  /// IDs are named from the session's ⋮ menu).
+  bool get _identify =>
+      _alsoIdentify &&
+      _idChoice.ready &&
+      !(_session?.live?.usedDetectorLive ?? false) &&
+      !(_session?.live?.importedVideos ?? false);
 
   /// Opens Identify organisms on [s], which starts by itself and ends on the
   /// results; the model and name list chosen here are remembered for it.
@@ -599,6 +611,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Widget _alsoIdentifySection() {
+    // The imported videos notice above already says where to name them.
+    if (_session?.live?.importedVideos ?? false) return const SizedBox.shrink();
     if (_session?.live?.usedDetectorLive ?? false) {
       return const Padding(
         padding: EdgeInsets.only(bottom: 8),
@@ -710,8 +724,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                     titleStyle: const TextStyle(fontSize: 14),
                     helperText:
                         'Runs every photo again, for trying another model '
-                        'or other tiling settings. The newest result per '
-                        'photo wins.',
+                        'or other tiling settings. Only the newest result of '
+                        'each photo is kept.',
                     value: _forceReanalyze,
                     onChanged: _running
                         ? null
@@ -726,8 +740,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ],
                 const SizedBox(height: 12),
                 const Text(
-                  'Long runs: keep the phone charging and set it aside — '
-                  'processing slows down if the phone is used meanwhile. '
+                  'Long runs: keep the phone charging and set it aside '
+                  '(processing slows down if the phone is used meanwhile). '
                   'A stopped run resumes where it left off.',
                   style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
@@ -759,7 +773,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               // Photo units first (the same count the session summary shows);
               // the live-copy surplus is disclosed separately so the file
               // total stays explainable (round 172).
-              '${s.name} [${s.modeTag}] — ${s.photoCount} photos'
+              '${s.name} [${s.modeTag}]: ${s.photoCount} photos'
               '${_sessionExtras(s)}',
               overflow: TextOverflow.ellipsis,
             ),
@@ -775,12 +789,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     );
   }
 
-  /// Parenthesized dropdown extras: "(+63 live copies)", "(12 analyzed)", or
+  /// Parenthesized dropdown extras: "(+63 companion photos)", "(12 analyzed)", or
   /// both joined with a comma. Empty for the common no-pair, nothing-done case.
   String _sessionExtras(_AnalyzableSession s) {
     final extras = <String>[
       if (s.fileCount != s.photoCount)
-        '+${s.fileCount - s.photoCount} live copies',
+        '+${s.fileCount - s.photoCount} companion photos',
       if (s.donePhotoCount > 0) '${s.donePhotoCount} analyzed',
     ];
     return extras.isEmpty ? '' : ' (${extras.join(', ')})';
@@ -789,24 +803,33 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   /// Shown for sessions that already ran the detector live: re-analysis with
   /// the SAME model would only repeat what the session did, and better models
   /// are easier to run on a computer after copying the photos over USB.
+  /// Imported video sessions get their own note (round 317: they were told
+  /// live detection had run on them).
   Widget? _detectorSessionNotice() {
     final live = _session?.live;
-    if (live == null || !live.usedDetectorLive) return null;
-    final sameModel = _model != null && _model!.id == live.modelPath;
-    return Container(
+    if (live == null) return null;
+    Widget box(String text) => Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.blueGrey.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        'This session already ran live detection (model: '
-        '${(live.modelPath ?? 'unknown').split('/').last}). Analyzing saved '
-        'photos mainly helps motion / time-lapse sessions, where no detection ran '
-        'during capture.'
-        '${sameModel ? '\n\nRe-analysis with the SAME model is disabled — it would only repeat the live result. Pick a different model, or copy the photos to a computer for heavier processing.' : ''}',
-        style: const TextStyle(fontSize: 12.5, color: Colors.white70),
-      ),
+      child: Text(text, style: const TextStyle(fontSize: 12.5, color: Colors.white70)),
+    );
+    if (live.importedVideos) {
+      return box(
+        'This session holds imported videos. To find the animals in them, use "Find animals in videos". '
+        'To name them, use "Identify organisms" in the session\'s ⋮ menu.',
+      );
+    }
+    if (!live.usedDetectorLive) return null;
+    final sameModel = _model != null && _model!.id == live.modelPath;
+    return box(
+      'This session already ran live detection (model: '
+      '${(live.modelPath ?? 'unknown').split('/').last}). Analyzing saved '
+      'photos mainly helps motion / time-lapse sessions, where no detection ran '
+      'during capture.'
+      '${sameModel ? '\n\nRe-analysis with the SAME model is turned off: it would only repeat the live result. Pick a different model, or copy the photos to a computer for heavier processing.' : ''}',
     );
   }
 
@@ -904,16 +927,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     return FoldSection(
       // A fixed key: the title follows the switch, the fold stays open.
       key: const ValueKey('fold:sahi'),
-      title: 'Small-insect tiling (SAHI)${_sahiEnabled ? ' — ON' : ''}',
+      title: 'Small-insect tiling (SAHI)${_sahiEnabled ? ': on' : ''}',
       subtitle:
-          'Cuts each photo into overlapping tiles so tiny insects are not '
-          'shrunk away.',
+          'Cuts each photo into overlapping tiles so tiny insects stay large '
+          'enough for the model to see.',
       helperText:
           'The model sees every photo shrunk to its own input size, so a '
           'small insect can end up just a few pixels wide. Tiling analyzes '
-          'the photo piece by piece at model scale instead. Slower (several '
-          'inferences per photo); worth trying when the model input is much '
-          'smaller than the photos.',
+          'the photo piece by piece at model scale instead. Slower (the model '
+          'runs several times per photo); worth trying when the model\'s input '
+          'size is much smaller than the photos.',
       children: [
         SwitchListTile(
           dense: true,
@@ -979,7 +1002,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           title: 'Also run the whole-photo pass',
           titleStyle: const TextStyle(fontSize: 14),
           helperText:
-              'Catches insects larger than one tile (one extra inference '
+              'Catches insects larger than one tile (the model runs once more '
               'per photo).',
           value: _sahiFullPass,
           onChanged: _running
@@ -1017,7 +1040,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           enabled: !_running,
           helperText:
               '0 = off. Ignores detections whose box is narrower than this '
-              'percentage of the photo side in either direction — catches '
+              'percentage of the photo side in either direction. This removes '
               'background specks and the thin sliver boxes tiling produces '
               'at tile borders. It also applies to '
               'existing results: after a run, move it and watch the cleanup '
@@ -1040,13 +1063,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final dims = session == null ? null : _photoDimsCache[session.dir.path];
     final tile = _sahiOptions.effectiveTileSide(_model?.inputSize ?? 640);
     if (dims == null) {
-      return 'Photo size not read yet — the tile grid adapts to each photo '
+      return 'Photo size not read yet: the tile grid adapts to each photo '
           'automatically.';
     }
     final tiles = planTiles(dims.$1, dims.$2, tile, _sahiOverlapPct / 100);
     if (tiles.length <= 1) {
-      return '${dims.$1}×${dims.$2} px photos fit in one $tile px tile — '
-          'tiling adds nothing here; only the whole-photo pass would run.';
+      return '${dims.$1}×${dims.$2} px photos fit in one $tile px tile: '
+          'tiling adds nothing here (only the whole-photo pass would run).';
     }
     final cols = tiles.map((t) => t.left).toSet().length;
     final rows = tiles.map((t) => t.top).toSet().length;
@@ -1055,7 +1078,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         '${_sahiOverlapPct.round()}% overlap → $cols×$rows tiles'
         '${_sahiFullPass ? ' + whole photo' : ''} = $passes passes '
         '≈ $passes× processing time. Expect a few extra kept photos '
-        '(better recall, slightly more false alarms — the safe direction '
+        '(fewer insects missed, a few more false alarms: the safe side '
         'for cleanup).';
   }
 
@@ -1076,8 +1099,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         : session.fileCount - session.doneFileCount;
     final filesSuffix = pendingFiles != pending ? ' ($pendingFiles files)' : '';
     final nothingToDo = session != null && pendingFiles == 0;
+    // Round 317: a session without photos (for example videos only) said "All photos
+    // already analyzed" and, with "Also identify them" on, offered to
+    // identify animals no photo showed.
+    final noPhotos = session != null && session.fileCount == 0;
     // Round 274: every photo is analyzed, so Start only names the animals found.
-    final identifyOnly = _identify && nothingToDo;
+    final identifyOnly = _identify && nothingToDo && !noPhotos;
     // An AI-live session must not be re-run with the very model it already
     // used — that can only reproduce the live result.
     final sameModelAsLive =
@@ -1100,21 +1127,27 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 ? 'Pick a session to analyze'
                 : identifyOnly
                 ? 'Identify the animals found'
+                : noPhotos
+                ? 'This session has no photos to analyze (videos are analyzed on "Find animals in videos")'
                 : nothingToDo
                 ? 'All photos already analyzed (tick re-analyze to redo)'
                 : sameModelAsLive
-                ? 'Same model as the live session — pick another'
+                ? 'Same model as the live session: pick another'
                 : _forceReanalyze
                 ? 'Re-analyze $pending photos$filesSuffix${_identify ? ' and identify' : ''}'
                 : 'Analyze $pending photos$filesSuffix${_identify ? ' and identify' : ''}',
           ),
         ),
-        if (_identify && !identifyOnly && session != null && !sameModelAsLive)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
+        if (_identify && !identifyOnly && session != null && !sameModelAsLive && !noPhotos)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'Then the track IDs are found, the animals identified and the results opened.',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+              // Round 317: track IDs are only found for close photos (see
+              // _start), so the line no longer promises them for every session.
+              'Then the track IDs are found (only when the photos are '
+              '${_numStr(PhotoTracker.maxStepSeconds)} s apart or closer), the animals identified and the '
+              'results opened.',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ),
       ],
@@ -1344,7 +1377,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               'The analysis itself already removed boxes narrower than '
-              '${(rec * 100).toStringAsFixed(1)}% — to filter less than '
+              '${(rec * 100).toStringAsFixed(1)}%. To filter less than '
               'that, re-analyze with "Ignore tiny tile boxes" at 0%.',
               style: TextStyle(color: Colors.amber.shade200, fontSize: 12),
             ),
@@ -1356,8 +1389,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           minSeconds: 0,
           maxSeconds: 3600,
           helperText:
-              'Photos within this time of a detection are kept too — bridges '
-              'photos where the detector missed an insect that is still '
+              'Photos within this time of a detection are kept too. This '
+              'keeps photos where the detector missed an insect that is still '
               'there. Up to 60 minutes; type the number, pick s/min.',
           onChanged: (v) async {
             if (_cleanupBusy) return;
@@ -1416,7 +1449,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         title: DialogTitle(const Text('Delete photos without detections?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'This permanently deletes ${plan.deleteNames.length} files '
-          '(${formatBytes(plan.deleteBytes)}) from "${session.name}" — the '
+          '(${formatBytes(plan.deleteBytes)}) from "${session.name}": the '
           'ones with no detection and no detection nearby. '
           '${plan.keepCount} files stay. The session log keeps its records; '
           'this cannot be undone.',
@@ -1478,7 +1511,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           // "files", not "photos": a high-res/live pair is two analyzed files
           // but one photo, and this counter walks files (round 172).
           '$_done / $_total files'
-          '${_avgMs > 0 ? ' — ${_avgMs.round()} ms/file, ${_eta()}' : ''}',
+          '${_avgMs > 0 ? ' (${_avgMs.round()} ms per file, ${_eta()})' : ''}',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),

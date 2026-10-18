@@ -195,7 +195,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             why ??
             [
               if (agg.busiestHour case final h?) 'Most at ${_two(h)}:00–${_two((h + 1) % 24)}:00.',
-              'Hours you watched longer show more.',
+              'The bars are not adjusted for watching time: hours you watched for longer can show more '
+                  'track IDs.',
             ].join(' '),
         child: MiniBarChart(
           values: agg.visitsByHour,
@@ -434,7 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 'Names are suggestions from each session\'s last identification: mistakes are possible, '
                 'especially for animals that are not in the name list. Sessions named with different name '
                 'lists are added together. A track ID named only at a higher rank is counted under "not '
-                'resolved to …". As on the results screen, suspect track IDs (likely false detections) are '
+                'resolved to …". As on the Identification screen, suspect track IDs (likely false detections) are '
                 'left out, and track IDs joined into one count once.',
           ),
           const SizedBox(height: 4),
@@ -474,8 +475,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static String _namedLine(DashboardAggregate agg) => [
     'Named: ${agg.namedVisits} of ${_count(agg.totalVisits, 'track ID')}.',
     if (agg.suspectVisits > 0)
-      '${_count(agg.suspectVisits, 'suspect track ID')} (likely false detections) left out, as on the results '
-          'screen.',
+      '${_count(agg.suspectVisits, 'suspect track ID')} (likely false detections) left out, as on the '
+          'Identification screen.',
     if (agg.joinedEntries > 0)
       'Joined by the identification, ${agg.joinedVisits} track IDs count as ${agg.joinedEntries} in the bars.',
     if (agg.unnamedSessions > 0)

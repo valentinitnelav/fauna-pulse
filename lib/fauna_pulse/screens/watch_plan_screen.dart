@@ -235,13 +235,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     );
   }
 
-  static const _onPhoneLine = Row(
-    children: [
-      Icon(Icons.check_circle, size: 16, color: Colors.lightGreen),
-      SizedBox(width: 6),
-      Flexible(child: Text('On this phone', style: TextStyle(color: Colors.lightGreen, fontSize: 13))),
-    ],
-  );
+  static const _onPhoneLine = OnThisPhoneLine();
 
   /// The name list's file, unless it is the class list of its [model] (same
   /// name, nothing to choose).
@@ -415,7 +409,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         childrenPadding: EdgeInsets.zero,
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         title: const Text('Choose other models'),
-        subtitle: const Text('For example a larger, more accurate one', style: helperTextStyle),
+        subtitle: const Text('The suggested models, and the models already on this phone', style: helperTextStyle),
         children: [
           const SizedBox(height: 12),
           ModelKindPanel(identification: false, title: 'To find the animals', children: [

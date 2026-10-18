@@ -2,8 +2,12 @@
 // plain-words reason for an answer the app cannot use, and the Hugging Face
 // file page link turned into the file's own link.
 
+import 'dart:async' show TimeoutException;
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/models/file_download.dart';
+import 'package:fauna_pulse/fauna_pulse/models/model_file_security.dart' show plainModelError;
 
 void main() {
   group('downloadStatusMessage', () {
@@ -28,12 +32,53 @@ void main() {
       }
     });
 
+    test('a pasted link: check the link, as waiting does not help (r317)', () {
+      expect(
+        downloadStatusMessage(404, pastedLink: true),
+        'Nothing was found at this link (HTTP 404). Check that the link is complete and correct.',
+      );
+      for (final code in [401, 403]) {
+        final m = downloadStatusMessage(code, pastedLink: true)!;
+        expect(m, startsWith('This link is wrong or needs a login (HTTP $code).'));
+        expect(m, contains('"Import model files…"'));
+        expect(m, isNot(contains('try again later')));
+      }
+    });
+
     test('other answers keep their code', () {
       expect(downloadStatusMessage(500), 'Download failed (HTTP 500).');
     });
 
     test('a web page instead of the file is refused', () {
       expect(downloadStatusMessage(200, mimeType: 'text/html'), contains('opens a web page'));
+    });
+  });
+
+  group('plainModelError (r317)', () {
+    test("the app's own message loses only its leading \"Exception: \"", () {
+      expect(plainModelError(Exception('Download cancelled.')), 'Download cancelled.');
+    });
+
+    test('no internet, a lost connection and a full phone say what to do', () {
+      expect(
+        plainModelError(const SocketException("Failed host lookup: 'huggingface.co'")),
+        startsWith('Could not reach the server. Check that the phone is connected to the internet'),
+      );
+      expect(plainModelError(const HandshakeException('bad certificate')), startsWith('Could not reach the server.'));
+      expect(plainModelError(TimeoutException('slow')), startsWith('Could not reach the server.'));
+      expect(
+        plainModelError(const HttpException('Connection closed while receiving data')),
+        'The connection was lost during the download. Please try again.',
+      );
+      expect(
+        plainModelError(const FileSystemException('No space left on device')),
+        startsWith('Could not save the file on this phone.'),
+      );
+    });
+
+    test('any other error: no technical text', () {
+      expect(plainModelError(const FormatException('Label pack header is truncated')), 'The download failed. Please try again.');
+      expect(plainModelError(StateError('x'), importing: true), 'The file could not be imported. Please try again.');
     });
   });
 

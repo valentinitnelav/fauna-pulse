@@ -334,25 +334,30 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // The helper explains the currently selected mode (it follows the
       // dropdown), so the ⓘ always answers "what does my choice mean".
       HelpLabel(
-        label: 'Capture trigger — what causes photos',
+        label: 'Capture trigger (what causes photos)',
         helperText: switch (_c.captureTrigger) {
           CaptureTrigger.detector =>
-            'The full pipeline: on-device detection and tracking, photos '
-                'per track ID, visitation data in the log.',
+            'The detection model runs on the phone during the session: it finds '
+                'and follows the animals (track IDs), takes photos of each track ID '
+                'and logs when each one is seen.',
           CaptureTrigger.motion =>
-            'Photos whenever something moves in the ROI. No detection model '
-                'runs (big energy saver), so there is no '
-                'species or track data. The motion gate on the Power tab is '
+            'Photos whenever something moves in the yellow square (ROI). No '
+                'detection model runs during the session (big energy saver), '
+                'so no track IDs or names are recorded live. Afterwards, '
+                '"Find animals in photos" can find the animals in the saved '
+                'photos, and "Identify organisms" can then name them. The '
+                'motion gate on the Power tab is '
                 'the trigger (forced on) and its sensitivity settings decide '
                 'what counts as movement. A false alarm (wind, moving '
                 'shadows) costs only a junk photo, not computation.',
           CaptureTrigger.timelapse =>
-            'Photos on a pure clock, no detection and no motion check: the '
-                'cheapest mode. Each burst takes a photo every "Photo step" '
-                'for "Photo duration", then pauses for "Time between '
-                'bursts" below before the next burst. Set the pause to 0 '
-                'for a continuous time-lapse. Meant for running a detector '
-                'on the saved photos afterwards.',
+            'Photos or video clips on a fixed schedule, with no detection '
+                'and no motion check: the cheapest mode. Each burst lasts '
+                '"Photo duration" ("Burst duration" for video; photos are '
+                'taken every "Photo step"), then pauses for "Time between '
+                'bursts" below before the next burst. Set the pause to 0 to '
+                'record without breaks. Meant for running a detector on the '
+                'saved photos or videos afterwards.',
         },
       ),
       DropdownButton<CaptureTrigger>(
@@ -434,12 +439,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'Seconds between saved ROI photos — of the same track ID (live '
-              'detection) or within one motion/time-lapse burst (0.1–10). '
-              'Default 1. Steps below ~0.5 s need the "fast" photo source: '
-              'high-res photos take 0.5–1.5 s each and cannot keep up. '
-              'Fast photos are capped at the live-stream short side, so raise '
-              'the stream resolution if fast bursts need bigger photos.',
+              'Seconds between saved photos of the yellow square (ROI), for '
+              'the same track ID (live detection) or within one motion or '
+              'time-lapse burst (0.1–10). Default 1. Steps below about 0.5 s '
+              'need "Fast crops only" as "ROI photo source" (Photos tab): '
+              'high-res photos take 0.5–1.5 s each and cannot keep up. Fast '
+              'crops are limited by the live stream\'s short side, so raise '
+              '"Live stream resolution" (Photos tab, Advanced) if fast bursts '
+              'need bigger photos.',
           onChanged: (v) => setState(() => _c = _c.copyWith(stepSeconds: v)),
         ),
       ),
@@ -449,10 +456,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         minSeconds: 1,
         maxSeconds: 86400,
         helperText:
-            'How long photos keep being saved — per track ID (live detection on), '
+            'How long photos keep being saved: per track ID (live detection), '
             'per motion event (motion trigger; a new event starts once the '
             'gate has slept and motion returns), or per time-lapse burst (burst duration). '
-            'Should be a whole multiple of the step.',
+            'For photos, it should be a whole multiple of the step.',
         onChanged: (v) => setState(() => _c = _c.copyWith(durationSeconds: v)),
       ),
       if (_c.timeLapseCapture) ...[
@@ -506,10 +513,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 'How many seconds before each burst the camera is turned '
                 'back on. After a full power-off the camera needs a few '
                 'seconds to settle exposure and physically move the lens '
-                'back to your locked focus — with less than ~10 the first '
+                'back to your locked focus. With less than about 10, the first '
                 'burst photo can come out dark and blurry (field-tested). '
-                'Default 10. Raise it if first photos still look off; lower '
-                'only if your first-photo quality holds up.',
+                'Default 10. Raise it if first photos still look wrong; lower '
+                'it only if your first photos stay sharp and bright.',
             onChanged: (v) =>
                 setState(() => _c = _c.copyWith(timeLapseWakeLeadSeconds: v)),
           ),
@@ -577,9 +584,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'Saves an ROI photo at a fixed interval, whether or not '
             'anything is detected. Lets you check afterwards what the '
-            'camera really saw, including pollinators the detector may have '
-            'missed (send those photos in to improve the model). Same size '
-            'as normal photos (Photos tab → "Saved photo side").',
+            'camera really saw, including animals the detector may have '
+            'missed. Same size as normal photos (Photos tab → "Saved photo '
+            'side").',
         statusText: _c.timeLapseCapture
             ? 'Not used in time-lapse mode; photos come on a clock there '
                   'anyway.'
@@ -596,8 +603,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           minSeconds: 1,
           maxSeconds: 3600,
           helperText:
-              'Time between reference photos. Default 30 s — about 120 '
-              'photos per hour; shorter catches insects that stay only briefly but uses '
+              'Time between reference photos. Default 30 s (about 120 '
+              'photos per hour); shorter catches insects that stay only briefly but uses '
               'more storage.',
           onChanged: (v) => setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
         ),
@@ -638,7 +645,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             padding: EdgeInsets.only(bottom: 8),
             child: Text(
               '⚠ Windows must not overlap, and each must end after it starts '
-              '(a window cannot cross midnight — split it in two).',
+              '(a window cannot cross midnight: split it in two).',
               style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
             ),
           ),
@@ -913,8 +920,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
           // Variable height so long names can wrap onto several lines in
           // the open menu.
           itemHeight: null,
+          // Shown when no listed model is chosen (none yet, or the chosen
+          // file was deleted); only the app's own model files are listed,
+          // so there is no "custom" entry to name.
           hint: const Text(
-            'Custom / other',
+            'Choose a model',
             style: TextStyle(color: Colors.white54),
           ),
           // Closed (collapsed) display: keep it to a single ellipsized line
@@ -1009,7 +1019,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         helperText:
             'Minimum score for the model to report a detection at all '
             '(0.05–0.95). Default 0.25. Lower = more (but noisier) detections '
-            'reach the tracker — including the faint, partly-hidden ones the '
+            'reach the tracker, including the faint, partly-hidden ones the '
             'tracker can use to hold onto a track ID. Keep the tracker\'s '
             '"New-track confidence" (Tracking, Advanced) at least 0.10 above '
             'this, so a band of faint detections exists; a note there says '
@@ -1032,9 +1042,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'one track ID. In pollination ecology a track ID usually stands '
             'for one visit (an insect\'s stay on the flower), the basis of the '
             'visitation rate; some can be false detections, or one insect '
-            'split into two track IDs. The two settings below are the ones that matter day to '
-            'day; the defaults suit insects that land and linger on a '
-            'flower. The algorithm choice and its own knobs live under '
+            'split into two track IDs. The two settings below are the ones that matter in most '
+            'sessions; the defaults suit insects that land and stay on a '
+            'flower. The algorithm choice and its own settings are under '
             'Advanced.',
       ),
       _trackerFields(),
@@ -1089,24 +1099,32 @@ class _SettingsSheetState extends State<SettingsSheet> {
         'benchmark, which finds the fastest engine for a newly added model.',
     children: [
       NumericSettingField(
-        label: 'IoU threshold (NMS — removes duplicate boxes)',
+        // "IoU threshold" stays the first words: the session summary and
+        // both Find animals screens name this setting so.
+        label: 'IoU threshold (removes duplicate boxes)',
         value: _c.iouThreshold,
         min: 0.1,
         max: 0.95,
         decimals: 2,
         helperText:
-            'Overlap above which two boxes are treated as the same '
-            'object (0.10–0.95). Default 0.70.',
+            'IoU is how much two boxes overlap: the area they share divided '
+            'by the area they cover together. When two boxes overlap more '
+            'than this, they are treated as the same animal and only the box '
+            'with the higher score is kept (0.10–0.95). Default 0.70.',
         onChanged: (v) => setState(() => _c = _c.copyWith(iouThreshold: v)),
       ),
       HelpSwitchTile(
-        title: 'Use GPU when faster',
+        // Same label as on the Identify settings: the GPU is used whenever
+        // it can load the model; no speed check runs (only the benchmark).
+        title: 'Use the GPU when it can run the model',
         helperText:
             'Lets the model run on the phone\'s graphics chip (GPU), '
             'usually faster and cooler than the main processor (CPU). A '
             'model the GPU cannot run falls back to the CPU automatically, '
             'so this is safe to leave on; the engine actually used is shown '
-            'on the camera screen\'s info panel.',
+            'on the camera screen\'s info panel. The app does not test which '
+            'is faster on this phone; "Benchmark engines (GPU vs CPU)" below '
+            'does.',
         value: _c.useGpu,
         onChanged: (v) => setState(() => _c = _c.copyWith(useGpu: v)),
       ),
@@ -1253,10 +1271,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 Text(
                   r['avgMs'] != null
                       ? '${(r['avgMs'] as num).toStringAsFixed(1)} ms per '
-                            'inference — up to '
-                            '~${(1000 / (r['avgMs'] as num)).toStringAsFixed(0)} '
-                            'inferences/s'
-                            '${identical(r, fastest) ? ' — fastest' : ''}'
+                            'inference (up to about '
+                            '${(1000 / (r['avgMs'] as num)).toStringAsFixed(0)} '
+                            'inferences/s)'
+                            '${identical(r, fastest) ? ', fastest' : ''}'
                       : 'Unavailable: ${r['error'] ?? 'unknown error'}',
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
@@ -1266,17 +1284,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 '"ms per inference" = how long ONE frame takes to go through '
                 'the model on that engine, averaged over 20 timed runs (after '
                 '3 untimed warm-ups). The "inferences/s" figure is just '
-                '1000 ÷ that — the ceiling if the model ran back-to-back with '
-                'no camera or tracking work. Your session detector rate will '
-                'be at or below it (and is capped by the inference-rate '
-                'setting).\n\n'
+                '1000 ÷ that: the most the model could manage if it ran '
+                'without pause and with no camera or tracking work. Your '
+                'session detector rate will be at or below it (and is capped '
+                'by "Max detector rate" on the Power tab).\n\n'
                 'The test frames are random noise generated at exactly the '
                 'model\'s input resolution, so camera capture and downscaling '
                 'are NOT part of these timings (in a session that cost shows '
                 'up separately, as pre_ms in the log).\n\n'
-                'Applying the fastest sets the "Use GPU" switch and the '
-                'CPU-thread count above; Apply the settings sheet as usual '
-                'afterwards.',
+                'The "Use …" button below copies the fastest engine into the '
+                'GPU switch (and, when the CPU wins, into "CPU threads"). '
+                'Then tap Apply at the bottom of Session settings as usual.',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -1365,7 +1383,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final cap = _c.cameraFpsCap;
     return FoldSection(
       title: 'Check live detection (advanced)',
-      subtitle: 'Also record the ROI as video while the detector runs.',
+      subtitle: 'Also record the yellow square (ROI) as video while the detector runs.',
       initiallyExpanded: _c.liveAiVideo,
       children: [
         HelpSwitchTile(
@@ -1389,8 +1407,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             isInt: true,
             unitSuffix: 'FPS',
             helperText:
-                'Frames per second in the clips (1 to 30). Default 15, the camera frame rate cap '
-                'the app ships with (Power tab), so the camera delivers every frame the clip '
+                'Frames per second in the clips (1 to 30). Default 15, the same as the default '
+                '"Camera frame rate cap" (Power tab), so the camera delivers every frame the clip '
                 'needs. Lower rates save storage and heat.',
             onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideoFps: v.round())),
           ),
@@ -1598,18 +1616,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'The image resolution you want saved photos to have (side length '
             'of the square photo, in pixels). Bigger crops are scaled down to '
             'exactly this size so files stay uniform; photos are NEVER '
-            'enlarged to reach it — stretching pixels adds no real detail. '
+            'enlarged to reach it (stretching pixels adds no real detail). '
             'With fast crops (the default) the photo is cut from the live '
             'analysis stream (see Advanced below), so it can only reach this '
-            'size when the ROI covers that many stream pixels. If not, the '
+            'size when the yellow square (ROI) covers that many stream '
+            'pixels. If not, the '
             '"ROI photo source" setting '
             'below can force it with slower full-resolution photos ("Auto" '
             'does that per photo, only when needed). When even a '
             'full-resolution photo cannot supply it, the photo saves smaller '
-            'and the ROI readout on the camera screen shows ⚠ — move the '
+            'and the ROI readout on the camera screen shows ⚠: move the '
             'phone closer or switch lens. Values snap to a multiple of 32. '
-            'The app ships set to 1024, and the "Auto" stream size (in '
-            'Advanced below) follows whatever you enter here. Time-lapse '
+            'Default 1024. The "Auto" stream size (in Advanced below) '
+            'follows whatever you enter here. Time-lapse '
             'video clips get this side too.',
         onChanged: (v) => setState(() {
           _c = _c.copyWith(targetRoiSavedPx: snapToMultipleOf32(v));
@@ -1669,7 +1688,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 DropdownMenuItem(
                   value: RoiCaptureMode.auto,
                   child: Text(
-                    'Auto — high-res only when needed',
+                    'Auto (high-res only when needed)',
                     style: TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
@@ -1711,7 +1730,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         title: 'Square (1:1) export crops',
         helperText:
             'Forces the crop-and-export box in the summary photo viewer to '
-            'a square. Off = free rectangle that can hug the insect\'s '
+            'a square. Off = free rectangle that can fit the insect\'s '
             'shape. The "1:1" chip next to the crop box toggles this same '
             'setting.',
         value: _c.cropSquareLock,
@@ -1769,9 +1788,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'on with the screen off. A touch, or waking the phone, brings it '
             'back. 0 = never (the default): the screen stays on for the '
             'whole recording. For unattended runs, 3 minutes leaves time to '
-            'check the first photos. While the phone charges (a power bank '
-            'too), the "Stay awake" developer option keeps the screen on, '
-            'black.',
+            'check the first photos. If the "Stay awake" developer option is '
+            'switched on in the phone\'s own settings, the screen does not '
+            'switch off while the phone charges (also from a power bank); it '
+            'only turns black.',
         onChanged: (v) => setState(() => _c = _c.copyWith(screenOffAfterMin: v.round())),
       ),
       // Round 296 (idea from FaunaLapse): clean stops before the battery or
@@ -1808,19 +1828,20 @@ class _SettingsSheetState extends State<SettingsSheet> {
       // The saved preference is untouched and returns with the AI mode
       // (r147; the detail fields below are hidden entirely then).
       HelpSwitchTile(
-        title: 'Auto-adjust inference rate (prevents overheating)',
+        title: 'Auto-adjust detector rate (reduces heat)',
         helperText:
-            'Running the detector flat-out keeps the processor ~100% busy; '
-            'after about a minute the phone overheats and quietly slows the '
-            'chip, so the frame rate collapses (e.g. to ~3/s) and stays '
+            'Running the detector at full speed keeps the processor about '
+            '100% busy; after about a minute the phone overheats and slows '
+            'the chip without telling you, so the frame rate collapses (e.g. '
+            'to about 3/s) and stays '
             'there. With this on, the app watches how long each detection '
             'takes and automatically lowers the rate just enough to give '
             'the chip cooling gaps, holding a steady, sustainable frame '
             'rate instead. Leave it on for long field sessions.',
         statusText: _c.detectorEnabled
             ? null
-            : 'Live detection mode only; there is no inference to throttle '
-                  'in this mode.',
+            : 'Live detection mode only; the detector does not run in this '
+                  'mode.',
         value: _c.detectorEnabled && _c.autoThrottle,
         onChanged: _c.detectorEnabled
             ? (v) => setState(() => _c = _c.copyWith(autoThrottle: v))
@@ -1830,7 +1851,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
         // This is the inference-FPS ceiling. A positive camera cap is also the
         // input's upper bound because the model cannot analyze absent frames.
         NumericSettingField(
-          label: _c.autoThrottle ? 'Max inference rate' : 'Detector rate cap',
+          // One name in both switch states (it is a ceiling either way), so
+          // other help texts can refer to it by a single label.
+          label: 'Max detector rate',
           value: _c.inferenceFps.toDouble(),
           min: SessionConfig.minimumInferenceFps.toDouble(),
           max: SessionConfig.maximumInferenceFps.toDouble(),
@@ -1842,14 +1865,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
           // The "ceiling, not a guarantee" paragraph used to sit as its own
           // text block under this section; merged into the ⓘ (round 181).
           helperText:
-              'Maximum number of camera frames per second the detector '
-              'may analyze. This is inference FPS, not the camera preview '
-              'frame rate. ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
+              'The most camera frames per second the detector may analyze '
+              '(not the frame rate of the camera picture). ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
               '${_c.cameraFpsCap > 0 ? 'It never runs above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS): the detector cannot analyze frames the camera did not capture. ' : 'The camera cap below is removed, so up to ${SessionConfig.maximumInferenceFps} FPS can be used. '}'
               'This is a ceiling, not a guaranteed speed: the real rate is '
               'also limited by the camera, the phone, and the selected '
-              'model. The app starts at 15 FPS; lower rates use less power '
-              'and are often steadier during long sessions.',
+              'model. Default 15 FPS; lower rates use less power and are '
+              'often steadier during long sessions.',
           onChanged: (v) {
             setState(() => _c = _c.withInferenceFps(v.round()));
           },
@@ -1858,24 +1880,24 @@ class _SettingsSheetState extends State<SettingsSheet> {
         // rate above stays visible as the one day-to-day heat lever.
         if (_c.autoThrottle)
           FoldSection(
-            title: 'Advanced (throttle tuning)',
+            title: 'Advanced (detector rate tuning)',
             subtitle:
                 'The floor and the processor-load target the auto-adjust '
                 'works within. Defaults suit most phones.',
             children: [
               NumericSettingField(
-                label: 'Min inference rate',
+                label: 'Min detector rate',
                 value: _c.minInferenceFps.toDouble(),
                 min: 1,
                 max: SessionConfig.maximumInferenceFps.toDouble(),
                 isInt: true,
                 unitSuffix: 'FPS',
                 warning: _c.effectiveMinInferenceFps < _c.minInferenceFps
-                    ? 'Used: ${_c.effectiveMinInferenceFps} FPS (never above the inference rate used).'
+                    ? 'Used: ${_c.effectiveMinInferenceFps} FPS (never above the detector rate used).'
                     : null,
                 helperText:
                     'The lowest the auto-adjust will drop to when the phone is hot, so '
-                    'a session stays usable. Never above the Max inference rate. Default 3.',
+                    'a session stays usable. Never above "Max detector rate". Default 3.',
                 onChanged: (v) => setState(() => _c = _c.copyWith(minInferenceFps: v.round())),
               ),
               NumericSettingField(
@@ -1888,7 +1910,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     'How busy the auto-adjust lets the processor stay on detection '
                     '(0.3–0.8; default 0.50 = about half the time). Lower = cooler and '
                     'steadier but fewer frames per second; higher = more frames but more '
-                    'heat. Advanced — 0.50 suits most phones.',
+                    'heat. 0.50 suits most phones.',
                 onChanged: (v) =>
                     setState(() => _c = _c.copyWith(throttleDutyTarget: v)),
               ),
@@ -1917,17 +1939,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
         // separate, differently-worded sentences.
         helperText:
             'How many frames per second the camera itself captures. Enter 0 '
-            'to remove the cap — the camera then runs at its own full rate '
-            '(~30 FPS on most phones). Without a cap the sensor and image '
+            'to remove the cap (the camera then runs at its own full rate, '
+            'about 30 FPS on most phones). Without a cap the sensor and image '
             'processor run at that full rate the whole session, even while '
-            'the motion gate has the detector asleep — the main reason a '
-            '"sleeping" phone still warms up. Lower = cooler phone but a '
+            'the motion gate has the detector asleep. This is the main reason '
+            'a "sleeping" phone still warms up. Lower = cooler phone but a '
             'less smooth preview. The detector never runs faster than this cap'
-            '${_c.detectorEnabled ? ' (a note under the ${_c.autoThrottle ? 'Max inference rate' : 'Detector rate cap'} says when the cap limits it)' : ''}. '
+            '${_c.detectorEnabled ? ' (a note under "Max detector rate" says when the cap limits it)' : ''}. '
             'The phone only '
             'supports certain rates, so the nearest supported one is used. '
-            'The app ships set to 15 FPS (cooler); note that capping also '
-            'delays high-res photos in the rare cases when those are needed.',
+            'Default 15 FPS (cooler); note that capping also delays '
+            'high-res photos in the rare cases when those are needed.',
         onChanged: (v) {
           setState(() => _c = _c.withCameraFpsCap(v.round()));
         },
@@ -1941,8 +1963,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       HelpSwitchTile(
         title: 'Motion gate (experimental): sleep while the flower is empty',
         helperText:
-            'Runs the detector only when something moves inside the ROI (a '
-            'cheap brightness check watches every frame). Big heat and '
+            'Runs the detector only when something moves inside the yellow '
+            'square (ROI); a cheap brightness check looks at a few camera '
+            'frames per second ("Idle check rate" under "Gate sensitivity", '
+            'shown below when the gate is on). Big heat and '
             'battery saving during long empty periods. Designed for a '
             'MOUNTED phone: handheld shake counts as motion, so in the '
             'hand the gate stays awake (that is normal, not a fault). Off '
@@ -1995,12 +2019,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
               // AI mode = how long the detector stays on; motion mode = how long
               // photos keep being taken (they stop when the gate goes idle).
               helperText: _c.motionOnlyCapture
-                  ? 'How long photos keep being taken after the last motion, '
-                        'before the gate goes back to sleep. Every new movement '
-                        'restarts this window. Default 3 s.'
+                  ? 'How long the gate stays awake after the last movement; '
+                        'every new movement restarts this window. Photos are '
+                        'taken while it is awake, but for at most "Photo '
+                        'duration" (Setup tab) per motion event. The next event '
+                        'starts only after the gate has gone back to sleep and '
+                        'motion returns. Default 3 s.'
                   : 'How long the detector keeps running after the last movement '
                         'or detection. Every new detection restarts this window, '
-                        'so a sitting insect is not lost. Longer = safer recall, '
+                        'so a sitting insect is not lost. Longer = fewer missed animals, '
                         'less heat saving. Default 3 s.',
               onChanged: (v) =>
                   setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
@@ -2030,7 +2057,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               unitSuffix: '%',
               helperText:
                   'How much of the ROI must change in one frame to wake the detector. '
-                  'Keep small — an insect covers little of the ROI. Default 0.5%.',
+                  'Keep small: an insect covers little of the ROI. Default 0.5%.',
               onChanged: (v) => setState(
                 () => _c = _c.copyWith(motionGateAreaFraction: v / 100),
               ),
@@ -2045,8 +2072,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   'Number of cells per side of the motion-check thumbnail (a count, '
                   'not pixels): the ROI is compared as an N×N mosaic, so each cell '
                   'watches 1/N of the ROI width. An insect only registers if it '
-                  'spans at least about one cell — e.g. at 48, an insect narrower '
-                  'than ~1/48th (2%) of the ROI width may pass unseen; at 128 '
+                  'spans at least about one cell. For example, at 48 an insect narrower '
+                  'than about 1/48 (2%) of the ROI width may pass unseen; at 128 '
                   'anything wider than ~0.8% of the ROI registers. Raise it for '
                   'small insects relative to your ROI (and consider lowering '
                   'Trigger area too); higher costs slightly more CPU. Default 48.',
@@ -2065,7 +2092,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               helperText:
                   'How many camera frames per second are inspected for motion '
                   'while the detector sleeps; the rest are dropped before the '
-                  'costly image conversion — the main source of idle heat. Higher '
+                  'costly image conversion (the main source of idle heat). Higher '
                   'wakes faster but runs warmer; an arriving insect is noticed '
                   'within ~1/rate s (default 5 → ~0.2 s). While awake, every '
                   'frame is processed regardless, so the camera FPS readout '
@@ -2114,7 +2141,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
             unitSuffix: 's',
             helperText:
                 'How often (1–120 s) the phone temperature is sampled. '
-                'A system call, so kept coarser — heat changes slowly. '
+                'Each reading asks Android for the value, so it is taken less '
+                'often (heat changes slowly). '
                 'Default 10 s.',
             onChanged: (v) => setState(
               () => _c = _c.copyWith(thermalSampleSeconds: v.round()),
@@ -2129,8 +2157,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             unitSuffix: 's',
             helperText:
                 'How often (1–120 s) battery power (current × voltage) and '
-                'remaining charge are sampled for the energy graphs. A '
-                'system call, so kept coarse — power changes slowly. '
+                'remaining charge are sampled for the energy graphs. Each '
+                'reading asks Android for the values, so it is taken less '
+                'often (power changes slowly). '
                 'Default 10 s.',
             onChanged: (v) =>
                 setState(() => _c = _c.copyWith(powerSampleSeconds: v.round())),
@@ -2173,9 +2202,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Text(
-                    'Camera details aren\'t available yet. Open Settings from the '
-                    'live camera screen (with the preview running) so the app can '
-                    'read the lens list first.',
+                    'Camera details are not available yet. Close Session '
+                    'settings, wait until the camera picture shows, then open '
+                    'Session settings again.',
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ),
@@ -2213,7 +2242,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'ultra-wide, macro and telephoto lenses are reserved for the built-in '
           'camera app, so they won\'t appear here even though you can see them on '
           'the back of the phone. That\'s a phone/OS limitation, not a fault of '
-          'this app. "Usable for inference" means the detector can read that '
+          'this app. "Detector can use it" means the detector can read that '
           'camera\'s frames.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
@@ -2259,7 +2288,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             iconColor: Colors.white54,
             collapsedIconColor: Colors.white54,
             title: const Text(
-              'Front cameras — not used for monitoring',
+              'Front cameras (not used for monitoring)',
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
             childrenPadding: const EdgeInsets.only(bottom: 8),
@@ -2269,8 +2298,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 child: Text(
                   'Selfie-facing cameras. Field monitoring uses the rear cameras, '
                   'so these aren\'t selectable. Some phones '
-                  'report a second, duplicate front camera — that\'s a firmware '
-                  'quirk, not an extra physical lens.',
+                  'report a second, duplicate front camera: this comes from the '
+                  'phone\'s own software and is not an extra physical lens.',
                   style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ),
@@ -2299,8 +2328,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   /// One card describing a single camera/lens, with a colour-coded usability
-  /// badge (green = usable for inference, amber = zoom-only hidden lens,
-  /// grey = reported but not bindable) and a plain-language reason.
+  /// badge (green = the detector can use it, amber = zoom-only hidden lens,
+  /// grey = reported but the app cannot open it) and a plain-language reason.
   Widget _cameraInfoCard(Map<String, dynamic> cam) {
     final usable = cam['usableForInference'] == true;
     final physicalOnly = cam['isPhysicalOnly'] == true;
@@ -2322,8 +2351,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ? Colors.greenAccent
         : (physicalOnly ? Colors.amberAccent : Colors.white38);
     final String badgeText = usable
-        ? 'Usable for inference'
-        : (physicalOnly ? 'Zoom-only (hidden lens)' : 'Not bindable');
+        ? 'Detector can use it'
+        : (physicalOnly ? 'Zoom only (hidden lens)' : 'Not available to this app');
 
     final String title = _cameraTitle(facing, type);
 
@@ -2476,12 +2505,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
     } else if ((autoPick.$1 < autoPick.$2 ? autoPick.$1 : autoPick.$2) >=
         target) {
       autoLabel =
-          'Auto — matches Saved photo side ($target px): '
+          'Auto (matches Saved photo side, $target px): '
           '${label('${autoPick.$1}x${autoPick.$2}')}';
     } else {
       autoLabel =
-          'Auto — largest this phone streams '
-          '(${label('${autoPick.$1}x${autoPick.$2}')}, below $target px)';
+          'Auto (largest this phone streams, below $target px): '
+          '${label('${autoPick.$1}x${autoPick.$2}')}';
     }
 
     return DropdownButton<String>(
@@ -2545,7 +2574,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'change detection accuracy: every frame is shrunk to the model\'s '
           'own input size anyway. It only caps the sharpness of fast '
           '(live-frame) ROI photos; the "ROI photo source" setting controls '
-          'when a photo pays for a full-resolution high-res capture instead.',
+          'when a photo is taken at full resolution instead.',
       'Larger streams cost more per-frame processing (heat and battery), '
           'and may cost FPS. "Auto" picks the smallest size that still lets '
           'fast crops reach the saved-photo target.',
@@ -2598,7 +2627,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             child: Text(
               'The camera advertises larger sizes for photo capture, but when the live '
               'preview, the detector stream and photo capture run together it can only '
-              'feed the detector up to about this size — so larger stream choices '
+              'feed the detector up to about this size, so larger stream choices '
               'are scaled down. This does not affect detection accuracy.',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),

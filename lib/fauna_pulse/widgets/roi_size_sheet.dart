@@ -144,9 +144,10 @@ class _RoiSizeSheetState extends State<RoiSizeSheet> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Slide or type the exact ROI resolution (it snaps to the '
-              'nearest multiple of 32). Then drag or pinch on the preview '
-              'to position it. The maximum equals the full sensor width.',
+              'Slide or type the exact ROI size (it snaps to the nearest '
+              'multiple of 32). Then drag or pinch on the preview to move '
+              'it. The maximum is the largest square that fits in the '
+              'camera picture you see.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 12),

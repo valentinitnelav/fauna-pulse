@@ -249,13 +249,13 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
     if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
     _snack(
       !res.supported
-          ? 'Copying to Gallery needs Android 10 or newer — this phone runs an '
-                'older Android. The photos are still on the phone in the '
+          ? 'Copying to Gallery needs Android 10 or newer (this phone runs an '
+                'older Android). The photos are still on the phone in the '
                 'session folder (reachable over USB).'
           : 'Copied ${res.exported} photos to Gallery ▸ '
                 'Pictures/FaunaPulse/$album.'
                 '${res.skipped > 0 ? ' ${res.skipped} were already there.' : ''}'
-                '${res.failed > 0 ? ' ${res.failed} failed — try again.' : ''}',
+                '${res.failed > 0 ? ' ${res.failed} failed: try again.' : ''}',
     );
     await reloadSessions();
   }
@@ -270,9 +270,9 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
         actionsOverflowDirection: VerticalDirection.up,
         title: DialogTitle(const Text('Delete this session?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
-          'This permanently deletes "${s.name}"$size from the phone: the '
-          'data log, all metadata and every saved photo. '
-          'This cannot be undone.',
+          'This permanently deletes "${s.name}"$size from the phone: its '
+          'data log, photos, videos and all results (Find animals, Identify '
+          'organisms). This cannot be undone.',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -316,8 +316,9 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
               title: DialogTitle(Text(n == 1 ? 'Delete 1 session?' : 'Delete $n sessions?'), onClose: () => Navigator.of(ctx).pop(false)),
               content: Text(
                 'This permanently deletes ${n == 1 ? '"${chosen.single.name}"' : 'the $n selected sessions'} '
-                '(${formatBytes(bytes)}) from the phone: the data logs, all metadata and every '
-                'saved photo. This cannot be undone.',
+                '(${formatBytes(bytes)}) from the phone: ${n == 1 ? 'its data log' : 'their data logs'}, '
+                'photos, videos and all results (Find animals, Identify organisms). '
+                'This cannot be undone.',
                 style: const TextStyle(fontSize: 13),
               ),
               actions: [
@@ -427,8 +428,9 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
         children: [
           Text(
             'This permanently deletes all ${widget.count} sessions '
-            '(${formatBytes(widget.totalBytes)}) from the phone — every data '
-            'log, all metadata and every saved photo. This cannot be undone.',
+            '(${formatBytes(widget.totalBytes)}) from the phone: every data '
+            'log, photo, video and result (Find animals, Identify organisms). '
+            'This cannot be undone.',
             style: const TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 12),

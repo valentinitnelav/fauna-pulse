@@ -112,7 +112,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const FitTitle('Detection, track IDs, identification'), actions: const [HomeButton()]),
+      appBar: AppBar(title: const FitTitle('Detection, track ID and identification settings'), actions: const [HomeButton()]),
       // SafeArea: without it the list's last lines sit under the system
       // navigation bar and can never be scrolled into view.
       body: SafeArea(
