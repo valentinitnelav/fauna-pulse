@@ -14,6 +14,8 @@ abstract: >-
   performing inference directly on the smartphone, FaunaPulse enables portable and
   low-cost ecological monitoring without requiring an internet connection.
   Source code and documentation at https://github.com/valentinitnelav/fauna-pulse
+  Compatible models for detection and identification are available at
+  https://huggingface.co/collections/Valen-Peregrine/faunapulse
 type: software
 license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
@@ -34,15 +36,15 @@ keywords:
 authors:
   - family-names: "Ștefan"
     given-names: "Valentin"
-    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ; German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
     orcid: "https://orcid.org/0000-0002-4757-8008"
   - family-names: "Sittinger"
     given-names: "Maximilian"
-    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ; German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany"
     orcid: "https://orcid.org/0000-0002-4096-8556"
   - family-names: "Knight"
     given-names: "Tiffany"
-    affiliation: "Helmholtz Centre for Environmental Research - UFZ & German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany & Martin Luther University, Halle, Germany & National Tropical Botanical Garden, Kalāheo, US"
+    affiliation: "Helmholtz Centre for Environmental Research - UFZ; German Centre for Integrative Biodiversity Research Halle-Jena-Leipzig – iDiv e. V., Leipzig, Germany; Martin Luther University, Halle, Germany; National Tropical Botanical Garden, Kalāheo, US"
     orcid: "https://orcid.org/0000-0003-0318-1567"
 # Concept DOI: fixed for the lifetime of the project, always resolves to the newest
 # Zenodo version. The version DOI below changes with every release.
