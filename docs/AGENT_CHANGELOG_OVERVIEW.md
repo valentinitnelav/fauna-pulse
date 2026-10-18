@@ -16,8 +16,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - **AI later:** detection, track IDs and identification (BioCLIP image tower with name lists, or
   fixed-class classifiers) run afterwards on saved photos and videos, also on imported videos.
 - Everything runs on the phone. No model ships in the APK: users download or import them.
-- Owner: pollination ecologist, not a mobile developer. UI text is plain English for citizen
-  scientists; expert settings sit in closed folds.
+- UI text is plain English for citizen scientists; expert settings sit in closed folds.
 
 ## Where things live
 
@@ -716,24 +715,24 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 
 ## Device quirks (test phones)
 
-- **Xiaomi 11T Pro `2107113SG`** (adb `2b2dc560`, Snapdragon 888, 7.4 GB): primary; debug builds
+- **Xiaomi 11T Pro `2107113SG`** (Snapdragon 888, 7.4 GB): primary; debug builds
   only. PIN lock: a person unlocks it. Reports the laptop USB cable as AC power, so keep it awake
-  with `adb -s 2b2dc560 shell svc power stayon true`. Hot: camera throttles at ~41–42 °C, then
+  with `adb -s <serial> shell svc power stayon true`. Hot: camera throttles at ~41–42 °C, then
   auto-throttle holds ~6 fps; MIUI `thermal_status` always "none". Lowest forced camera rate 12
   (AE range [12,12]). Battery voltage is 2-cell series: the summary halves it,
   `tool/perf_summary.dart` does not. Only the main lens is offered. Often tethers the laptop's
   internet over USB: avoid big downloads. GPU speeds at 640 px: flat-bug n 19 ms, flat-bug s
   and insectDCT v8-s 34 ms (insectDCT at 1024: ~75 ms); BioCLIP 2 0.27 s/crop (CPU 2.6 s); BioCLIP 2.5 CPU only,
   5.5 s/crop; insectDCT classifier eff2s 0.02 s/crop (the cnb variant gives wrong GPU output).
-- **Samsung `RF8T403A3AT`** (Galaxy M12-class, Exynos 850, Mali-G52, 3.9 GB, Android 13):
+- **Samsung `SM-M127F`** (Galaxy M12-class, Exynos 850, Mali-G52, 3.9 GB, Android 13):
   secondary; since round 312 it runs release-signed APKs (the update test from 0.7.0), so no
   `run-as`, and a debug build needs an uninstall (deletes its data: ask the owner).
   Compute-limited, never hot. `battery_current_ua` broken (use battery % drop). Lowest forced
   camera rate 15. BioCLIP 2 GPU refused by the memory guard (CPU ~15 s/crop); flat-bug n 640
   GPU ~0.22 s per picture live. Swipe lock (adb can wake and swipe).
-- **Redmi Note 9S** (adb `c82216fd`, Snapdragon 720G, 3.6 GB, Android 12 MIUI): third phone,
+- **Redmi Note 9S** (Snapdragon 720G, 3.6 GB, Android 12 MIUI): third phone,
   debug builds; stays awake on USB. Check `adb devices -l` first: which phones are connected
-  changes.
+  changes (its `model:` field tells them apart). No adb serials in tracked files.
 
 ## Pointers
 
@@ -744,9 +743,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   channel contract, keep-in-sync pairs), `CONTRIBUTING.md`, `IDENTIFICATION.md`,
   `VIDEO_ANALYSIS.md`, `MODEL_CONVERSION.md`,
   `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `LEAN_QNN_PACKAGING.md`, `SAM3.md` (parked experiment, code on branch
-  `sam3`), `PLAY_STORE_LISTING_DRAFT.md`. `PERF_AND_ROBUSTNESS_REVIEW.md`: all parts closed except
-  E9 (build-time camera A/B experiments); owed field checks: heap/thread plateau after E2, paired
-  camera-sleep run (E3), paired cap 12 vs 15 on the Xiaomi.
+  `sam3`).
 - **PC tools:** `tool/model_downloads/` (download list, naming rule), `tool/video_eval/`,
   `tool/perf_summary.dart`. The model export tools (`detector_export/` .pt → fp16 `.tflite` +
   agreement check, `classifier_export/` insectDCT classifier + class list, `bioclip_export/` image
@@ -755,7 +752,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   usually `~/fauna-pulse-models`; round 311). Its `docs/AGENT_OVERVIEW.md` maps it and lists the
   rules both repositories share; `FAUNAPULSE_MODELS_REPO` lets `model_file_kind_test` see its files.
 - **Outside git:** release plan `~/InsectDetectApp/RELEASE_PLAN.md` (checklist and recipe;
-  re-ground there for release work); design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
+  re-ground there for release work); Play Console draft answers
+  `~/InsectDetectApp/PLAY_STORE_LISTING_DRAFT.md`; performance and robustness review
+  `~/InsectDetectApp/PERF_AND_ROBUSTNESS_REVIEW.md` (the "perf review A1"-style tags in code
+  comments; all parts closed except E9, build-time camera A/B experiments; owed field checks:
+  heap/thread plateau after E2, paired camera-sleep run (E3), paired cap 12 vs 15 on the
+  Xiaomi); design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
   sources `~/InsectDetectApp/generated_art/` (`make_setup_sketches.py`); test videos and the hand
   count set `~/InsectDetectApp/test_videos/` (feature references only; check pictures
   `frames_bumblebees_720p`, crops `crops_bumblebees_720p_square`); plans
@@ -763,6 +765,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   next steps), `~/.claude/plans/pasted-content-id-a09e-what-about-pure-yeti.md` (video plan).
 - **Agent rules:** `AGENTS.md` (repository root). Deny list:
   `~/InsectDetectApp/.claude/settings.local.json` (do not read).
+- **Session start:** a SessionStart hook (`~/InsectDetectApp/.claude/settings.json`, outside git) runs
+  `~/InsectDetectApp/.claude/hooks/session_start.sh`: branch, uncommitted files, unpushed commits and
+  author check of both repositories, the last changelog round (committed or not), overview size.
 
 ## Build and test
 

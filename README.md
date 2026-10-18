@@ -175,8 +175,6 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
 | [Model cards on Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse) | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
-| [PLAY_STORE_LISTING_DRAFT.md](docs/PLAY_STORE_LISTING_DRAFT.md) | Maintainer | Draft answers for the Google Play Console forms (listing, data safety, content rating). |
-| [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | Maintainer | Review the prioritized performance and robustness roadmap. |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | The lean (no-QNN) default build and the optional Snapdragon NPU edition (`-P qnn=true`). |
 | [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream; re-audit checklist. |

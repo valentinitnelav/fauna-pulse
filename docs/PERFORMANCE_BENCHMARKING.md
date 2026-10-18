@@ -1,8 +1,7 @@
 # Performance benchmarking protocol
 
 How to measure FaunaPulse performance so that two runs can be compared honestly,
-and how to decide whether an optimization is real. Written for this project's
-review workflow (docs/PERF_AND_ROBUSTNESS_REVIEW.md, item E1): every claimed
+and how to decide whether an optimization is real. Every claimed
 speed/heat/power improvement should come with numbers produced this way.
 
 In plain language: phone performance is noisy. The same app, same phone and
@@ -123,18 +122,17 @@ speed win is not the goal; require instead: **equal useful delivered FPS**
 plus at least **5% lower power** or a **materially delayed thermal collapse**
 (later/lower temperature plateau on the Xiaomi).
 
-Record the verdict (numbers, phones, builds, dates) in
-`PERF_AND_ROBUSTNESS_REVIEW.md` under the item that motivated the test, as
-rounds C2/C3/D3 did.
+Record the verdict (numbers, phones, builds, dates) in the round's entry in
+`AGENT_CHANGELOG.md`.
 
 ## Existing benchmarking assets (don't duplicate these)
 
 - **In-app engine benchmark** (Settings → AI, round 76): times GPU vs CPU
   thread variants on noise input at the model's own resolution. Good for
   picking an engine; NOT a pipeline benchmark (no camera, no tracker).
-- **Review measurements:** C2 (parity vs the Ultralytics demo app), C3
-  (per-frame conversion cost vs stream size), D3 (batch-analysis timing and
-  the 10-minute cool-down lesson). All in `PERF_AND_ROBUSTNESS_REVIEW.md`.
+- **Earlier measurements:** parity with the Ultralytics demo app, per-frame
+  conversion cost vs stream size, batch-analysis timing and the 10-minute
+  cool-down lesson (rounds 128 to 156 in `AGENT_CHANGELOG.md`).
 - **`integration_test/qnn_benchmark_test.dart`:** on-device QNN validation +
   CPU/GPU/QNN micro-benchmark. Needs network (downloads models + bus.jpg) and
   a QNN-capable Snapdragon. Opt-in flags are exact-spelling booleans:

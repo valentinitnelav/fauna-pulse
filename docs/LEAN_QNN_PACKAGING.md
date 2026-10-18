@@ -8,7 +8,7 @@ minus its 72 MB of QNN and ONNX Runtime; uncompressed would be about 39 MB to do
 there is no `isQnnRuntimeAvailable` query yet: a `*_qnn.onnx` model in the normal build fails
 to load with the existing recovery and a plain hint (`modelLoadHint`: "needs the Snapdragon NPU
 edition"). Whether the NPU edition is published at all is the owner's release decision.
-Sections 1 to 3 below are the original design (perf review E8, round 171).
+Sections 1 to 3 below are the original design (round 171).
 At the time of that design the accepted distribution policy was ONE build that includes the
 QNN runtime (release plan, Play phase: "keep `useLegacyPackaging` ... and accept the size
 cost"). This document exists so that, if the owner ever reopens that policy,

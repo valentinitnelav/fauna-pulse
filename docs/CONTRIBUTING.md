@@ -112,7 +112,7 @@ Claude-facing overview):
   **debug** build, and on MIUI use the **"Install via USB"** path. Its GPU has
   needed the crash guard. Thermal character: fast but hot (camera-first
   throttle from ~41 °C).
-- **Samsung (`RF8T403A3AT`, mid-range):** the release-test phone (round 158).
+- **Samsung (Galaxy M12-class, mid-range):** the release-test phone (round 158).
   Camera analysis stream caps around **960×720** (selecting higher silently
   falls back), useful for validating the "truthful stream readout" behaviour.
   Its `battery_current_ua` reading is broken (wrong scale), so compare energy
@@ -149,7 +149,11 @@ Claude-facing overview):
   snapshot — **rewrite it in place, never append**, and keep it short. Update
   it whenever a change alters a default, invariant, or the file map.
 - [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) is the append-only
-  development journal — add a round entry describing what changed and why.
+  development journal: a short round entry with why, what was checked and
+  what is open; the round's commit ("Round N: ...") says what changed.
+- Code comments tagged "perf review A1" (and similar item codes) refer to a
+  performance and robustness review of 2026 that is not part of the repository;
+  the round number next to the tag leads to its reasoning in AGENT_CHANGELOG.md.
 
 ## Git etiquette
 

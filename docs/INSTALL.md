@@ -229,8 +229,8 @@ Two options:
 
     ```text
     Found 4 connected devices:
-      2107113SG (mobile) • 2b2dc560    • android-arm64  • Android 14 (API 34)
-      SM M127F (mobile)  • RF8T403A3AT • android-arm64  • Android 12 (API 31)
+      2107113SG (mobile) • <device-id-1> • android-arm64  • Android 14 (API 34)
+      SM M127F (mobile)  • <device-id-2> • android-arm64  • Android 12 (API 31)
       Linux (desktop)    • linux       • linux-x64      • Ubuntu 24.04.4 LTS 6.8.0-124-generic
       Chrome (web)       • chrome      • web-javascript • Google Chrome 149.0.7827.196
   
@@ -248,11 +248,11 @@ Two options:
    ```
 
    If you have multiple smartphones connected, and need to run on a specific smartphone, use its ID listed in the output of `flutter devices`.
-   See above the device IDs: "2b2dc560" & "RF8T403A3AT"
+   See above the device IDs (second column; yours are different)
    
    ```bash
    cd fauna-pulse    # navigate to this git repository (cloned on your computer)
-   flutter run -d 2b2dc560  # will run the app (debug mode) on mobile device id "2b2dc560"
+   flutter run -d <device-id>  # will run the app (debug mode) on the phone with that device id
    # -d stands for --device-id
    ```
 
@@ -260,7 +260,7 @@ Two options:
 
    ```bash
    cd fauna-pulse # navigate to the git repository (cloned on your computer)
-   stdbuf -oL -eL flutter run -d 2b2dc560 2>&1 | tee -a ~/InsectDetectApp/sessions/logcats/flutter_run_output_xiaomi_$(date +"%Y-%m-%d_%H:%M:%S").txt
+   stdbuf -oL -eL flutter run -d <device-id> 2>&1 | tee -a ~/InsectDetectApp/sessions/logcats/flutter_run_output_xiaomi_$(date +"%Y-%m-%d_%H:%M:%S").txt
    ```
 
    > Note that in the path used above, `~/InsectDetectApp/sessions/logcats/` is an example on my local computer at the time of writing this guide.
@@ -337,7 +337,7 @@ To deploy the app (the `app-release.apk`) on a specific smartphone:
 
 ```bash
 cd fauna-pulse           # navigate to the git repository
-adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
+adb -s <device-id> install -r build/app/outputs/flutter-apk/app-release.apk
 # Your phone might require you to click "Allow" (or something similar) to install the app,
 # so watch the phone's screen for any pop-up messages.
 
@@ -367,10 +367,10 @@ Note that this will discard any session setups and change them to their defaults
 Uninstall the existing package directly via ADB:
 
 ```bash
-adb -s 2b2dc560 uninstall com.faunapulse.app
+adb -s <device-id> uninstall com.faunapulse.app
 # Then re-run the release installation command
 # Note that this will discard any sesssion setups and change them to their defaults values.
-adb -s 2b2dc560 install -r build/app/outputs/flutter-apk/app-release.apk
+adb -s <device-id> install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
 NOTES:
@@ -528,7 +528,7 @@ adb pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
 # Check all connected devices with:
 flutter devices
 # Then pull from a specific smartphone using their id
-adb -s 2b2dc560 pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
+adb -s <device-id> pull -a /sdcard/Android/data/com.faunapulse.app/files/. ./
 
 # Or pull directly into the destination folder (without `cd` command first):
 adb pull -a /sdcard/Android/data/com.faunapulse.app/files/ ~/InsectDetectApp/sessions/Xiaomi/

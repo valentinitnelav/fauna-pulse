@@ -16,8 +16,10 @@ phone with LiteRT.
 The application is built on the Ultralytics YOLO Flutter plugin, using a modified copy (fork) in
 `packages/ultralytics_yolo/`; its `FAUNAPULSE_FORK.md` lists what FaunaPulse changed.
 
-Code comments and technical explanations should 
-define complex mobile development terms in plain language upon first occurrence.
+**Code comments** explain why: the reason for a choice, alternatives that failed, side effects,
+and what must stay in sync elsewhere. Names and the code itself say what it does. Define mobile,
+Android and machine-learning terms in plain words at first use. Write so that a coding agent or a
+new contributor understands the code without reading its history.
 
 ## Development Environment & Context
 
@@ -45,14 +47,15 @@ this repository keeps no copy of the cards.
     should never be read fully due to its size. 
     Always ask for permission to read round entries if explicit past rationale or a round-by-round 
     change log is absolutely needed. 
-    Append short summary changes at the end of the file without reading it entirely. 
+    Append a short entry at the end of the file without reading it entirely. 
     The next round number is one more than the last header
     (`grep '^## Round' docs/AGENT_CHANGELOG.md | tail -1`).
     Add a header line like this: "## Round xy (yyyy-mm-dd): some short title"
     Example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
-    Each round entry (briefly): what was asked, what changed (visible behavior and main files), 
-    why (decisions, evidence, rejected options), what was checked, and what is open, 
-    in about 1,500–2,000 characters; leave details the git diff shows to the diff.
+    The round's commit ("Round xy: ...", found with `git log --grep '^Round xy:'`) says what
+    changed and the diff shows how, so the entry adds only what those do not: what was asked,
+    why (decisions, evidence, rejected options), what was checked, and what is open,
+    in about 500 to 1,200 characters. No file lists and no repeat of the commit message.
     Do not write suggested commit message here.
     Add an empty line that will separate future entries.
     Do not write personal or private information here either (see *General rules*).
@@ -70,7 +73,8 @@ Everything tracked is public (GitHub, and every release is archived on Zenodo), 
 out of tracked files: personal details and whereabouts, the names of people whose data or
 models are not public yet, models shared privately by colleagues, and where third-party test
 material that is not ours to share came from (describe it by what it is, for example "an edited
-compilation video").
+compilation video"). Phones are named by model, never by serial number (`adb devices -l` lists
+both); use placeholders such as `<device-id>` in commands.
 
 Do not read without being asked specifically into the folder `~/InsectDetectApp/sessions/`. 
 It contains many txt files with test session outputs.
