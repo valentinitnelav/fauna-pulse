@@ -71,7 +71,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 fps), `session_recorder.dart` (recording lifecycle: folder, logger, photos, keep-alive, stop
 order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, focus preset),
 `capture_calibration_cache.dart`, `time_lapse_camera_coordinator.dart`, `schedule_plan.dart`,
-`location_fix.dart`.
+`location_fix.dart`, `plan_sentence.dart` (`planSentence`), `screen_idle.dart`, `session_guards.dart`,
+`site_photos.dart`.
 
 **tracking/** `tracker.dart` (`InsectTracker`, `TrackEventBuffer`), `byte_track.dart` (default),
 `c_biou_track.dart`, `tracker_replay.dart` (`replayTracker`, offline replay of `raw_detections`).
@@ -141,8 +142,6 @@ under 0.10 above the confidence, shared by camera Settings and the video Track I
 `roi_size_sheet.dart`, `calibrating_banner.dart`, `home_button.dart` (`HomeButton`, `goHome`, `FitTitle`),
 `selection_app_bar.dart`, `before_record_sheet.dart` (r298, `BeforeRecordSheet`, pref
 `before_record_sheet`).
-**session/** also `plan_sentence.dart` (r298, `planSentence`), `screen_idle.dart` (r293),
-`session_guards.dart` (r296).
 
 **services/** `recording_keepalive.dart` (foreground service + wake-lock).
 
@@ -313,7 +312,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   gate sleeps; time-lapse shows ~1 fps between bursts. That is correct.
 
 ### ROI and photos
-- **ROI is ÷32 WYSIWYG:** the box, readout, saved crop and inference ROI are the same square;
+- **ROI is ÷32 WYSIWYG:** the box, readout, saved crop and inference ROI are the same square (a
+  square needs no letterbox padding before the square model input);
   side snaps to a multiple of 32, capped to the frame's short side (720 → 704). Single mutation
   funnel `_onRoiChanged` (camera screen); helpers in `models/roi.dart`.
 - **One scale:** the box readout, slider and snapping use the analysis stream grid
@@ -358,7 +358,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Frozen wire names** (do not rename): reference photos `gt_frames/`, `gt_capture`,
   `gtFramesEnabled`/`gtFrameSeconds`; high-res photo source `still` (config `captureMode`,
   capture `path`, `roi_source`); JSON key `stillSyncCompanion` (Dart `highResSyncCompanion`).
-- The session folder also holds `logcat_start.txt` / `logcat_end.txt` (the app's own logcat
+- Each session is one folder in `<app external files>/sessions/` (`sessionsRoot`, reachable over
+  USB). The session folder also holds `logcat_start.txt` / `logcat_end.txt` (the app's own logcat
   lines), `roi_frames/`, `gt_frames/`, `videos/`, and the post-hoc files.
 - While the gate is idle (or in no-AI modes) `fps` records omit inference fields and carry
   `gate_idle: true` / `motion_only: true`: never log stale or zero inference numbers. The fps
@@ -563,6 +564,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   and crop). Mini-table kit measures column widths; ids/names left, numbers right.
 
 ### Models and downloads
+- **Model facts** (origin, licence, conversion, citation of each offered model): its model card
+  on Hugging Face (https://huggingface.co/collections/Valen-Peregrine/faunapulse, `kModelsCollectionUrl`; card sources `hf_cards/` in
+  fauna-pulse-models). This repository keeps only `assets/model_downloads.json` (licence and
+  source per model, also for models not offered, such as ArthroNat n).
 - Formats: `.tflite` or `*_qnn.onnx` (Snapdragon NPU; its runtime only in the NPU edition,
   `-P qnn=true`, r299; the normal build fails such a model with `modelLoadHint`'s edition
   line); plain `.onnx` refused
@@ -687,8 +692,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `faunapulse_hide_slow_phone_hint`.
 
 ### Build, release, repository
-- **Branches:** `main` = stable, `develop` = integration (base for PRs and Dependabot). Never
-  commit or push without the owner's request. Commit messages start "Round <n>".
+- **Branches:** `main` = stable, `develop` = integration (base for PRs and Dependabot). Git and
+  commit rules: `AGENTS.md`.
 - **Toolchain:** Gradle 9.1.0, AGP 9.0.1, Kotlin 2.3.20; `compileSdk`/`targetSdk` 36, `minSdk`
   24 pinned in `android/app/build.gradle`. Keep `android.builtInKotlin=false` and
   `android.newDsl=false`; `file_picker` stays `^10.3.10`. Root lint disables only the
@@ -701,7 +706,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the donation define; `QNN=1` builds the NPU edition (`-npu` names). QNN deps sit behind
   `project.findProperty('qnn')` in `android/app/build.gradle`. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
   blocked.
-- **Versioning:** pubspec `version:` (now `0.9.0-beta.1+14`, not released yet; recipe in RELEASE_PLAN.md; beta since 0.9.0, so an update keeps older sessions and saved settings readable) is the single source; bump the
+- **Versioning:** pubspec `version:` (now `0.9.0-beta.1+14`, not released yet; release recipe in `~/InsectDetectApp/RELEASE_PLAN.md`, outside git; beta since 0.9.0, so an update keeps older sessions and saved settings readable) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,
   CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
   never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`, the year in
@@ -737,9 +742,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Docs:** `FIELD_GUIDE.md` (run a session), `INSTALL.md`, `SETTINGS_REFERENCE.md` (every
   setting), `DATA_GUIDE.md` (record dictionary, R/Python analysis), `ARCHITECTURE.md` (data flow,
   channel contract, keep-in-sync pairs), `CONTRIBUTING.md`, `IDENTIFICATION.md`,
-  `VIDEO_ANALYSIS.md`, `MODEL_CONVERSION.md`, `THIRD_PARTY_MODELS.md`,
-  `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `RELEASE_PLAN.md` (re-ground
-  there for release work), `LEAN_QNN_PACKAGING.md`, `SAM3.md` (parked experiment, code on branch
+  `VIDEO_ANALYSIS.md`, `MODEL_CONVERSION.md`,
+  `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `LEAN_QNN_PACKAGING.md`, `SAM3.md` (parked experiment, code on branch
   `sam3`), `PLAY_STORE_LISTING_DRAFT.md`. `PERF_AND_ROBUSTNESS_REVIEW.md`: all parts closed except
   E9 (build-time camera A/B experiments); owed field checks: heap/thread plateau after E2, paired
   camera-sleep run (E3), paired cap 12 vs 15 on the Xiaomi.
@@ -750,7 +754,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   in the separate repository `fauna-pulse-models` (GitHub `valentinitnelav/fauna-pulse-models`,
   usually `~/fauna-pulse-models`; round 311). Its `docs/AGENT_OVERVIEW.md` maps it and lists the
   rules both repositories share; `FAUNAPULSE_MODELS_REPO` lets `model_file_kind_test` see its files.
-- **Outside git:** design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
+- **Outside git:** release plan `~/InsectDetectApp/RELEASE_PLAN.md` (checklist and recipe;
+  re-ground there for release work); design notes `~/InsectDetectApp/BIOCLIP_ON_DEVICE_PLAN.md`; setup-drawing
   sources `~/InsectDetectApp/generated_art/` (`make_setup_sketches.py`); test videos and the hand
   count set `~/InsectDetectApp/test_videos/` (feature references only; check pictures
   `frames_bumblebees_720p`, crops `crops_bumblebees_720p_square`); plans

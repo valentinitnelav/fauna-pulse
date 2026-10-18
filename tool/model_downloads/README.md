@@ -120,8 +120,10 @@ In the code, "pack" means such a file of either kind.
 The offered files are on Hugging Face, one repository per model family on
 https://huggingface.co/Valen-Peregrine (`mdv6-tflite`, `flatbug-tflite`, `insectdct-v8-tflite`,
 `insectdct-cls-v7-tflite`, `bioclip-2-tflite`, `bioclip-2.5-tflite`). Each repository has a
-model card (where the weights come from, licence, how the file was converted; the flat-bug and insectDCT cards also give the check against the
-original) and the licence text of the original model (`LICENSE`).
+model card (where the weights come from, licence, how the file was converted, how to cite the
+original model) and the licence text of the original model (`LICENSE`). The collection
+https://huggingface.co/collections/Valen-Peregrine/faunapulse links them all; the cards' sources are in `hf_cards/` of
+fauna-pulse-models.
 The links in the list are pinned to the upload commit and were taken with `--urls` (step 2
 above). All six repositories were made public on 2026-10-16. A download that fails with "This
 link is not public (HTTP 401)" means that a repository was made private again or that the link
@@ -132,4 +134,5 @@ names a repository that does not exist.
   268 to round 313 (never released) download it from there, and the model card names it. The
   released v0.8.0-alpha.1 carries the same file inside its APK.
 
-The app's notes on each model's licence are in `docs/THIRD_PARTY_MODELS.md`.
+A model in the list that is not offered (for example ArthroNat n) has no model card: its
+`licence` and `source` here are taken from the authors' pages.

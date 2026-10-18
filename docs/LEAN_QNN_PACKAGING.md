@@ -9,8 +9,8 @@ there is no `isQnnRuntimeAvailable` query yet: a `*_qnn.onnx` model in the norma
 to load with the existing recovery and a plain hint (`modelLoadHint`: "needs the Snapdragon NPU
 edition"). Whether the NPU edition is published at all is the owner's release decision.
 Sections 1 to 3 below are the original design (perf review E8, round 171).
-The accepted distribution policy remains ONE build that includes the QNN runtime
-(RELEASE_PLAN, Play phase: "keep `useLegacyPackaging` ... and accept the size
+At the time of that design the accepted distribution policy was ONE build that includes the
+QNN runtime (release plan, Play phase: "keep `useLegacyPackaging` ... and accept the size
 cost"). This document exists so that, if the owner ever reopens that policy,
 the lean variant can be implemented from a thought-through plan instead of from
 scratch. Nothing in the build or the app changes with this round.

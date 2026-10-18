@@ -34,7 +34,7 @@ echo "Building per-ABI release APKs for v${version}..."
 # A phone that installed such a GitHub APK would then refuse the Google Play
 # build of the same release (same app, LOWER versionCode). The flag below keeps
 # the pubspec build number unchanged, so GitHub APKs and the Play AAB share one
-# versionCode and can update each other (RELEASE_PLAN.md, signing strategy).
+# versionCode and can update each other (both are signed with the same key).
 # DONATION_LINK=true (round 277): these APKs are published outside Google
 # Play, so their "Support FaunaPulse" box links to GitHub Sponsors. The Play
 # bundle (security_release_gate.sh) must never get this flag: Google Play

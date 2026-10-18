@@ -3,8 +3,7 @@
 Copy-paste starting point for the Play Console forms, grounded in `PRIVACY_POLICY.md`
 and the current `AndroidManifest.xml` permissions. This is a draft: re-verify against
 the live Play Console wording during setup (form fields change over time), and the
-owner must review before submitting anything. See `docs/RELEASE_PLAN.md` Phase 4 for
-the full checklist this supports.
+owner must review before submitting anything.
 
 ## Store listing basics
 
@@ -21,7 +20,7 @@ the full checklist this supports.
 - **Privacy policy URL:** OWNER TODO — Play requires a URL, not a repo file path.
   Once the repo is public, the raw GitHub URL works:
   `https://github.com/valentinitnelav/fauna-pulse/blob/main/PRIVACY_POLICY.md`
-  (or the GitHub Pages site once that exists, per RELEASE_PLAN.md Phase 2).
+  (or a GitHub Pages site, if one is made).
 - **Graphic assets still needed (owner):** 1024×500 feature graphic (none exists yet
   for FaunaPulse itself), 2-8 phone screenshots (reuse the 6-10 captured for Phase 2 /
   the docs site). The Play Store icon is already prepared:

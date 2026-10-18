@@ -63,7 +63,8 @@ name, BioCLIP 2.5 packs 1024; the app refuses a mismatch). BioCLIP 2.5 packs sta
 
 Model weights: BioCLIP 2 and BioCLIP 2.5 by Imageomics (MIT). Name embeddings: TreeOfLife-200M (CC0).
 Please cite Gu et al. (2025), *BioCLIP 2: Emergent Properties from Scaling Hierarchical
-Contrastive Learning*, NeurIPS, when publishing results (see `THIRD_PARTY_MODELS.md`).
+Contrastive Learning*, NeurIPS, when publishing results (the model cards
+[bioclip-2-tflite](https://huggingface.co/Valen-Peregrine/bioclip-2-tflite) and [bioclip-2.5-tflite](https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite) give the full references).
 
 ## Running it
 
@@ -366,11 +367,11 @@ file was also tried: half the size and 1.6 GB of memory, but slower on the phone
 (9.2 s per crop) and it changed the top family on 2 of 34 crops (one where the original
 was sure) and the top species on 4 of 34; not recommended. Whether BioCLIP 2.5 identifies
 this project's pollinators better than BioCLIP 2 has not been tested yet (the one test
-session here is a YouTube clip, fit for timing only).
+session here is an edited compilation video, not a field recording, fit for timing only).
 
 **insectDCT, a fixed-class classifier (round 266).** insectDCT's hierarchical classifier V7
 (Bjerge et al. 2026; weights from the authors' zip that the insectDCT README links on Google Drive,
-see `THIRD_PARTY_MODELS.md`) knows 104 classes on three levels (e.g.
+see the model card [insectdct-cls-v7-tflite](https://huggingface.co/Valen-Peregrine/insectdct-cls-v7-tflite)) knows 104 classes on three levels (e.g.
 `Hymenoptera_bees` > Apidae > *Bombus pascuorum*) instead of comparing a crop with a label
 pack's names. It comes as two files with the same name: the model
 (`insectdct-cls-v7-eff2s_224_fp16.tflite`, 42 MB) and its **class list**
@@ -492,7 +493,7 @@ mechanism the packs implement (`--subset` / `apply_filter`), the softmax with th
 model's logit scale, the roll-up of species probabilities to higher ranks, and the
 recommendation to restrict candidates to a regional GBIF species list ("Geo-Restricted
 Taxon List Predictions" in the pybioclip docs). Cite Stevens et al. (2024) and Gu et al.
-(2025), see `THIRD_PARTY_MODELS.md`.
+(2025), as the authors' [BioCLIP 2 model card](https://huggingface.co/imageomics/bioclip-2) suggests.
 
 From Max Sittinger's `insect-detect-post` (AGPL-3.0; Sittinger, M. 2026, Zenodo
 https://doi.org/10.5281/zenodo.21822140), re-implemented in FaunaPulse's own code with

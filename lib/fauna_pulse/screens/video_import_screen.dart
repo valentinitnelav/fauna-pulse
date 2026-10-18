@@ -476,7 +476,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
                 ),
                 if (_clips[c.index].fragmented)
                   const Text(
-                    'Fragmented MP4 (e.g. saved from YouTube): the video player cannot jump in it, so the '
+                    'Fragmented MP4 (as some download tools save videos): the video player cannot jump in it, so the '
                     'app writes it once more as a plain MP4 while importing. Same pictures and sound, '
                     'nothing re-compressed.',
                     style: TextStyle(fontSize: 12, color: Colors.white54),

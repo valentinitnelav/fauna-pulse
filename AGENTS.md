@@ -2,6 +2,8 @@
 
 This file provides guidance to AI coding agents (Claude Code, codex, etc.) 
 when working with code in this repository. CLAUDE.md points to this file.
+It holds working rules only. Facts about the app (file map, defaults, invariants) live in
+`docs/AGENT_CHANGELOG_OVERVIEW.md`, so the two files cannot drift apart.
 
 ## Project Overview
 
@@ -9,11 +11,12 @@ This project is an Android field application designed to detect flower-visiting 
 in real time and log every detection with its timestamp to compute visitation rates. 
 With swappable detection models and AI-free capture modes (motion-triggered, time-lapse), 
 it can monitor the activity of any organism at a fixed spot. 
+The app is Dart (Flutter) code on top of native Android code in Kotlin; the models run on the
+phone with LiteRT.
 The application is built on the Ultralytics YOLO Flutter plugin, using a modified copy (fork) in
 `packages/ultralytics_yolo/`; its `FAUNAPULSE_FORK.md` lists what FaunaPulse changed.
 
-The project owner is a pollination ecologist with statistical proficiency (R/Python) 
-but is not a professional mobile developer. Code comments and technical explanations should 
+Code comments and technical explanations should 
 define complex mobile development terms in plain language upon first occurrence.
 
 ## Development Environment & Context
@@ -22,6 +25,9 @@ The app sits at the git repository root and paths below are relative to it.
 The PC tools that convert and publish models (detectors, classifiers, BioCLIP, `.fpack` name lists)
 live in the separate repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) (usually `~/fauna-pulse-models`);
 its `docs/AGENT_OVERVIEW.md` lists the rules both repositories share.
+The converted model files and their model cards (origin, licence, conversion, citation) are
+published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse);
+this repository keeps no copy of the cards.
 
 **Grounding order at the start of a session:** 
 
@@ -31,19 +37,25 @@ its `docs/AGENT_OVERVIEW.md` lists the rules both repositories share.
     It is read at the start of every session, so each entry says only what is true 
     now and where it lives: replace or remove text when it changes instead of adding to it.
     Keep `AGENT_CHANGELOG_OVERVIEW.md` under 75000 characters.
-    The history of a change (which round, why) belongs in `AGENT_CHANGELOG.md`.
+    When a change alters what is true, replace the affected text (no history
+    there). When the reason for a choice is not obvious, give it in one short clause
+    next to the fact, or in a code comment. The history of a change (which round, why)
+    belongs in `AGENT_CHANGELOG.md` and git commit messages (git history).
 2. The very long, extra detailed history in `docs/AGENT_CHANGELOG.md` 
     should never be read fully due to its size. 
     Always ask for permission to read round entries if explicit past rationale or a round-by-round 
     change log is absolutely needed. 
-    Append summary changes at the end of the file without reading it entirely. 
+    Append short summary changes at the end of the file without reading it entirely. 
+    The next round number is one more than the last header
+    (`grep '^## Round' docs/AGENT_CHANGELOG.md | tail -1`).
     Add a header line like this: "## Round xy (yyyy-mm-dd): some short title"
     Example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
-    Each round entry: what was asked, what changed (visible behavior and main files), 
+    Each round entry (briefly): what was asked, what changed (visible behavior and main files), 
     why (decisions, evidence, rejected options), what was checked, and what is open, 
-    in about 1,500–3,000 characters; leave details the git diff shows to the diff.
+    in about 1,500–2,000 characters; leave details the git diff shows to the diff.
     Do not write suggested commit message here.
     Add an empty line that will separate future entries.
+    Do not write personal or private information here either (see *General rules*).
 
 ## General rules
 
@@ -54,6 +66,11 @@ functionality is not lost and as long as the code remains readable for humans to
 
 Do not place in any git tracked file any private or sensitive data like email addresses,
 passwords, any sort of digital keys.
+Everything tracked is public (GitHub, and every release is archived on Zenodo), so also keep
+out of tracked files: personal details and whereabouts, the names of people whose data or
+models are not public yet, models shared privately by colleagues, and where third-party test
+material that is not ours to share came from (describe it by what it is, for example "an edited
+compilation video").
 
 Do not read without being asked specifically into the folder `~/InsectDetectApp/sessions/`. 
 It contains many txt files with test session outputs.
@@ -72,32 +89,10 @@ Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round
 - Never git push to main branch and never force push. 
 - When you implement code changes, and git is on main, then git branch into `develop`,
   but do not git commit the changes.
-- Suggest commit messages & title that are short, clear and easy to understand 
-   what the overall edits were about.
-
-If code changes happened, then suggest also clear, readable git message.
-That message must start with "Round <counter>" (e.g. Round 76) where <counter> 
-is the same counter/round id used in the appended summary rounds in `AGENT_CHANGELOG.md` 
-(and also matches the counter in the title of the git messages).
-After the first line in the git message, you can add a short summary of changes and why 
-those were needed.
-
-## Pipeline & Technical Specifications
-
-The app is Dart (Flutter) code on top of native Android code in Kotlin.
-Computer vision detection runs on smartphone (on the device) using LiteRT, 
-and real-time inference is handled via the YOLOView camera widget. 
-
-### Tracking & Region of Interest (ROI)
-
-* **Tracking:** To calculate accurate visitation rates, a tracker follows each 
-detected animal across frames and gives it a track ID: ByteTrack by default, 
-C-BIoU selectable (`lib/fauna_pulse/tracking/`).
-
-* **ROI:** To eliminate background noise, a draggable, square (1:1) Region of Interest 
-overlay is placed on the camera preview. This square matching also ensures cropping 
-eliminates letterbox padding before sending data to the machine learning model.
-
-* **Triggers:** When an organism enters the ROI, the tracking pipeline activates 
-and assigns track IDs. Each session is saved in its own folder under the app's 
-`files/sessions` folder (reachable over USB): photos (JPEG) or videos, and the session's log.
+- Commits use the identity in the repository's git config (the GitHub noreply address): never
+  pass `--author` or write a private address. Commit messages contain no author or attribution
+  lines (no "Co-Authored-By", no tool or person names).
+- When files changed, suggest a short, clear commit message that says what the overall edits
+  were about. Its first line starts with "Round <counter>" (e.g. "Round 76: added
+  user-triggered engine benchmark"), the same counter as the round appended to
+  `AGENT_CHANGELOG.md`; after it, a short summary of the changes and why they were needed.

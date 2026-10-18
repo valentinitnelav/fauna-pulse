@@ -416,7 +416,7 @@ cost time and heat on the phone. Two published systems show both ends:
   makes the track IDs of fast-moving insects "jump", so one insect is counted more than
   once.
 
-The app's default is 5 fps (round 254; 15 before). On the first 333 s of a 60-fps YouTube
+The app's default is 5 fps (round 254; 15 before). On the first 333 s of a 60-fps edited
 compilation of bees on flowers, analysed once at 15 fps, re-running the tracker on the
 frames of lower rates gave 53, 52, 48, 39 and 32 track IDs at 15, 10, 5, 3 and 2 fps, and
 every track ID of the 15-fps run still had one at the same time at 5 fps. That clip has

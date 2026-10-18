@@ -62,7 +62,7 @@ adb shell rm -rf /data/local/tmp/sam3
 Device check: `integration_test/sam3_check_test.dart` (compares the phone with the PC on one
 frame). Its pictures go to `files/sam3_check/` the same way: `bumblebees_6s.jpg` (Bumblebees clip
 at 6 s), `bumblebees_6s_1008.png` (the same, 1008 x 1008) and `onflower_3s.jpg`. They are frames of
-the YouTube test clips, so they are not in git (the owner keeps a copy); the PC numbers written in
+test clips that are not ours to share, so they are not in git (the owner keeps a copy); the PC numbers written in
 the test belong to them. With other pictures, replace those numbers with a PC run of the same
 files (ai-edge-litert on the CPU).
 
@@ -127,7 +127,7 @@ flutter test test/fauna_pulse/video_fps_sweep_test.dart --dart-define=SWEEP_SESS
 
 ## Results on the test videos (2026-09-30)
 
-These clips are YouTube compilations, not hand-counted field videos: the numbers compare two
+These clips are edited compilations (with scene cuts), not hand-counted field videos: the numbers compare two
 models on the same frames, they say nothing about accuracy. Both models saw exactly the same
 frames and square; track IDs come from the app's own tracker with the settings of the earlier
 ArthroNat run (ByteTrack, occlusion tolerance 3 s). Prompt `insect`.

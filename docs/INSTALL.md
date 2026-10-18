@@ -402,8 +402,9 @@ To understand the difference between **debug** & **release**, imagine preparing 
 Model weights (`.tflite` files) are **deliberately not stored in this online repository**, for
 two reasons: they are large, and **some detectors belong to collaborators and must not
 be redistributed**. The published models that the app offers for download (FaunaPulse's
-phone conversions of MegaDetector V6, flat-bug, insectDCT and BioCLIP 2) are on Hugging Face,
-see [THIRD_PARTY_MODELS.md](THIRD_PARTY_MODELS.md); the app downloads them itself (Track A3).
+phone conversions of MegaDetector V6, flat-bug, insectDCT, BioCLIP 2 and BioCLIP 2.5) are on
+[Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), each with a model card (source, licence, how to cite); the app
+downloads them itself (Track A3).
 
 - The maintainer will send you the model files you're permitted to use via a **private
   channel** (direct transfer or a shared-drive link).

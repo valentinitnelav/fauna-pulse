@@ -125,7 +125,7 @@ Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 FaunaPulse is a **research preview (beta)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Only Android OS is currently supported. iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md), also in [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
+- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and in each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse).
 - Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack (ready-made ones can be downloaded in the app, custom ones can be prepared on a PC), cannot run in real-time, and classification results will vary significantly with image quality.
 - Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
@@ -173,9 +173,8 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
 | [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
-| [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) | Developer / tester | Where each model the app offers comes from, its licence and how to cite it; where the phone conversions are published (Hugging Face). |
+| [Model cards on Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse) | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
-| [RELEASE_PLAN.md](docs/RELEASE_PLAN.md) | Maintainer | Phased checklist for public release. |
 | [PLAY_STORE_LISTING_DRAFT.md](docs/PLAY_STORE_LISTING_DRAFT.md) | Maintainer | Draft answers for the Google Play Console forms (listing, data safety, content rating). |
 | [PERF_AND_ROBUSTNESS_REVIEW.md](docs/PERF_AND_ROBUSTNESS_REVIEW.md) | Maintainer | Review the prioritized performance and robustness roadmap. |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
@@ -189,7 +188,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 ## AI Models
 
-AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. Compatible models are published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), one repository per model family, each with a model card and the original model's licence (see [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md)).
+AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. Compatible models are published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), one repository per model family, each with a model card (where the model comes from, how it was converted, how to cite it) and the original model's licence.
 
 The tools to convert and quantise the models published on Hugging Face (or any other compatible model you may have) are provided at the associated GitHub repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
 
@@ -234,7 +233,7 @@ BioCLIP chooses each animal's name from a name list. Such lists are prepared per
 
 These models were made by other research teams. FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence. If you publish results, please cite the original model as its authors ask on its source page (also often linked in the app's ⓘ card of each model).
 
-See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) nad each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse).
+Each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse) names the original authors, the licence and how to cite the model.
 
 </details>
 
