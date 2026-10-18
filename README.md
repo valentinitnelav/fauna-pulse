@@ -126,7 +126,7 @@ FaunaPulse is a **research preview (beta)**, provided as a free, experimental fi
 
 - Only Android OS is currently supported. iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
 - AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md), also in [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
-- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack (ready-made ones can be downloaded in the app, your own are prepared on a PC), cannot run in real-time, and classification results will vary significantly with image quality.
+- Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a label / name pack (ready-made ones can be downloaded in the app, custom ones can be prepared on a PC), cannot run in real-time, and classification results will vary significantly with image quality.
 - Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
 - The quality of results depend on many factors, including AI model, its generalisability, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
@@ -189,7 +189,9 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 ## AI Models
 
-> AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. FaunaPulse's phone conversions are published on [Hugging Face](https://huggingface.co/Valen-Peregrine), one repository per model family, each with a model card and the original model's licence (see [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md)).
+AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. Compatible models are published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), one repository per model family, each with a model card and the original model's licence (see [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md)).
+
+The tools to convert and quantise the models published on Hugging Face (or any other compatible model you may have) are provided at the associated GitHub repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
 
 <details>
 	<summary>Expand:</summary>
@@ -204,8 +206,6 @@ Their GitHub repositories are listed below:
 - [flat-bug][flatbug] (sizes n and s) mostly trained on dead specimens, so try it when aiming the camera at a homogenous background; for insects the app suggests it first (n, then s) as a demo detector,
 - [insectDCT][insectdct] try it for insects on flowers,
 - [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*).
-
-[ArthroNat][arthronat] (for both homogenous backgrounds and insects on flowers) is not offered for download; a converted file can be imported.
 
 Classifiers (identification models) are offered the same way.
 
@@ -234,7 +234,7 @@ BioCLIP chooses each animal's name from a name list. Such lists are prepared per
 
 These models were made by other research teams. FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence. If you publish results, please cite the original model as its authors ask on its source page (also often linked in the app's ⓘ card of each model).
 
-See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md).
+See also [THIRD_PARTY_MODELS.md](docs/THIRD_PARTY_MODELS.md) nad each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse).
 
 </details>
 
@@ -387,7 +387,6 @@ These are links used throughout this file
 [bioclip]: https://imageomics.github.io/bioclip-ecosystem/index.html
 [bioclip2]: https://imageomics.github.io/bioclip-2/
 [sahi]: https://github.com/obss/sahi
-[arthronat]: https://github.com/edgaremy/arthropod-detection-dataset
 [flatbug]: https://github.com/darsa-group/flat-bug
 [insectdct]: https://github.com/kimbjerge/insectDCT
 [mgdet]: https://github.com/microsoft/MegaDetector
