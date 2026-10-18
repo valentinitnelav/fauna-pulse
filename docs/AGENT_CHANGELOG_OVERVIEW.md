@@ -718,7 +718,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the donation define; `QNN=1` builds the NPU edition (`-npu` names). QNN deps sit behind
   `project.findProperty('qnn')` in `android/app/build.gradle`. Backup = shared preferences only (`PRIVACY_POLICY.md`); cleartext
   blocked.
-- **Versioning:** pubspec `version:` (now `0.9.0-beta.1+14`, not released yet; release recipe in `~/InsectDetectApp/RELEASE_PLAN.md`, outside git; beta since 0.9.0, so an update keeps older sessions and saved settings readable) is the single source; bump the
+- **Versioning:** pubspec `version:` (now `0.9.0-beta.1+14`, released 2026-10-18; release recipe in `~/InsectDetectApp/RELEASE_PLAN.md`, outside git; beta since 0.9.0, so an update keeps older sessions and saved settings readable) is the single source; bump the
   build number for every tester APK; tags `v<version>`. Move together: pubspec version,
   CITATION.cff `version` + `date-released` + version DOI (concept DOI `10.5281/zenodo.22309221`
   never changes), CHANGELOG.md, `fastlane/.../changelogs/<versionCode>.txt`, the year in

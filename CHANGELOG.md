@@ -6,7 +6,7 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
-## 0.9.0-beta.1 (not released yet)
+## 0.9.0-beta.1 (2026-10-18)
 
 The first beta: the features are in place for field use, bugs are still possible, and from
 this version on an update keeps your sessions and settings.
