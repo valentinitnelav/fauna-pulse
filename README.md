@@ -53,6 +53,7 @@
   <a href="https://doi.org/10.5281/zenodo.22309221"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22309221.svg" alt="DOI"></a>
   <a href="https://github.com/valentinitnelav/fauna-pulse/releases"><img src="https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases" alt="GitHub release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
+  <a href="https://huggingface.co/collections/Valen-Peregrine/faunapulse-6ad22f04766aed6641688544"><img src="https://img.shields.io/badge/Hugging%20Face-models-blue?logo=huggingface" alt="Models on Hugging Face"></a>
 </p>
 
 ## Demo
