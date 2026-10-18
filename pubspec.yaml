@@ -22,7 +22,7 @@ dependencies:
   crypto: ^3.0.7 # optional SHA-256 verification for trusted model downloads
   fl_chart: ^0.69.0 # end-of-session activity graph
   battery_plus: ^6.0.0 # battery level logged at session start/stop
-  device_info_plus: ^11.0.0 # phone model / device id for session metadata
+  device_info_plus: ^12.4.0 # phone model / device id for session metadata
   screen_brightness: ^2.1.0 # dim-to-black power-saving mode
   permission_handler: ^11.3.0 # request camera permission from Flutter
   geolocator: ^13.0.1 # one stable GPS fix per session (no continuous tracking)
