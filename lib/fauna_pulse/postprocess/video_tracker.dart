@@ -50,6 +50,7 @@ import 'package:archive/archive.dart';
 
 import '../capture/roi_capture.dart' show TrackKeepRule, roiPhotoFileName;
 import '../logging/app_error_hooks.dart';
+import '../logging/session_log_head.dart';
 import '../logging/session_logger.dart' show isoWithOffset;
 import '../logging/track_source.dart' show postTracksFileName;
 import '../models/roi.dart' show boxInRoi;
@@ -574,8 +575,7 @@ class VideoTracker {
     try {
       final raf = File('${sessionDir.path}/session.jsonl').openSync();
       try {
-        final head = utf8.decode(raf.readSync(min(65536, raf.lengthSync())), allowMalformed: true);
-        for (final line in const LineSplitter().convert(head)) {
+        for (final line in const LineSplitter().convert(readLogHeadSync(raf))) {
           if (!line.contains('"start_of_session"')) continue;
           final token = (jsonDecode(line) as Map)['file_token'];
           if (token is String && RegExp(r'^[a-z0-9]+$').hasMatch(token)) return token;

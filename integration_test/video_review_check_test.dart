@@ -24,7 +24,7 @@
 //    moves the video there (SHOT: the boxes on the new picture);
 //  - 4× playback: how long Flutter's frames take while the boxes move;
 //  - battery temperature before and after REVIEW_SOAK_MIN minutes of playback;
-//  - "Change square and analyse again" opens "Find animals in videos": round
+//  - "Change square and analyze again" opens "Find animals in videos": round
 //    309, the same videos play there under the results (SHOT); opening its
 //    settings screen pauses them; a run started right after watching keeps
 //    the screen on (stopped after a few seconds);
@@ -160,7 +160,14 @@ void main() {
     Future<void> waitFor(Finder f, {int seconds = 20}) async {
       for (var i = 0; i < seconds * 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
-        if (f.evaluate().isNotEmpty) return;
+        // A '.first' finder throws StateError while nothing matches (for
+        // example a screen still showing its spinner on a slow phone), so
+        // that counts as "not found yet" and the loop keeps waiting.
+        try {
+          if (f.evaluate().isNotEmpty) return;
+        } on StateError {
+          continue;
+        }
       }
       fail('not found: $f');
     }
@@ -334,8 +341,8 @@ void main() {
     }
 
     // 4. Change the square and analyse again, then back to the tab.
-    await scrollTo(find.text('Change square and analyse again'), 200);
-    await tester.tap(find.text('Change square and analyse again'));
+    await scrollTo(find.text('Change square and analyze again'), 200);
+    await tester.tap(find.text('Change square and analyze again'));
     await waitFor(find.byType(VideoAnalysisScreen));
     await tester.pump(const Duration(seconds: 1)); // the route transition: the tab is hidden then
     // Round 309: the videos play on that screen too, under the track ID results. The test session

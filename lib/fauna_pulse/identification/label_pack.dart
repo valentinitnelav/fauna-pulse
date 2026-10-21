@@ -176,9 +176,12 @@ class LabelPack {
         throw FormatException('Not a label pack (missing FPK1 magic)');
       }
       final lenBytes = await raf.read(4);
+      if (lenBytes.length != 4) throw const FormatException('Label pack header is truncated');
       final hlen = ByteData.sublistView(lenBytes).getUint32(0, Endian.little);
-      final hdr = await raf.read(hlen);
-      final map = jsonDecode(utf8.decode(hdr)) as Map<String, dynamic>;
+      // raf.read returns only what is left, so a cut file must be caught here.
+      final payload = await raf.length() - 8 - hlen;
+      if (payload < 0) throw const FormatException('Label pack header is truncated');
+      final map = _checkedHeader(await raf.read(hlen), payload);
       map.remove('labels'); // keep listings light
       return map;
     } finally {
@@ -192,8 +195,44 @@ class LabelPack {
     return Isolate.run(() => parseBytes(File(path).readAsBytesSync()));
   }
 
+  /// Decodes the JSON header and checks the fields every reader needs. Import
+  /// and the download check call only [readHeader], so it must refuse what
+  /// [parseBytes] cannot load; a FormatException gives callers a plain reason.
+  /// [payloadBytes] = bytes after the header (the matrix must fit in them).
+  static Map<String, dynamic> _checkedHeader(List<int> hdr, int payloadBytes) {
+    final h = jsonDecode(utf8.decode(hdr));
+    if (h is! Map<String, dynamic>) throw const FormatException('Label pack header is not a JSON object');
+    final dim = h['dim'], rows = h['rows'], labels = h['labels'];
+    // The dim cap (real packs: a few hundred to a few thousand) keeps rows * dim
+    // from overflowing and stops a damaged header from asking for gigabytes.
+    if (dim is! int || rows is! int || dim < 0 || rows < 0 || dim > 1 << 20) {
+      throw FormatException('Label pack header has a wrong dim ($dim) or rows ($rows)');
+    }
+    if (labels is! List || labels.length != rows) {
+      throw FormatException('Label pack has ${labels is List ? labels.length : 'no'} labels for $rows rows');
+    }
+    if (!isClassListHeader(h) && payloadBytes < rows * dim * (h['dtype'] == 'f32' ? 4 : 2)) {
+      throw const FormatException('Label pack matrix is truncated');
+    }
+    return h;
+  }
+
   /// Parses pack [bytes] (synchronous; used by tests and by [load]).
+  /// Any wrong field type in a damaged or hand-made header becomes a
+  /// FormatException, the one error type callers expect from a bad file.
   static LabelPack parseBytes(Uint8List bytes) {
+    try {
+      return _parseBytes(bytes);
+    } on TypeError catch (e) {
+      throw FormatException('Label pack header has a wrong field type: $e');
+    } on ArgumentError catch (e) {
+      throw FormatException('Label pack is damaged: $e'); // includes RangeError
+    } on UnsupportedError catch (e) {
+      throw FormatException('Label pack header has a wrong number: $e'); // e.g. 1e999.toInt()
+    }
+  }
+
+  static LabelPack _parseBytes(Uint8List bytes) {
     if (bytes.length < 8 || String.fromCharCodes(bytes.sublist(0, 4)) != 'FPK1') {
       throw const FormatException('Not a label pack (missing FPK1 magic)');
     }
@@ -202,15 +241,11 @@ class LabelPack {
     if (headerEnd > bytes.length) {
       throw const FormatException('Label pack header is truncated');
     }
-    final header =
-        jsonDecode(utf8.decode(bytes.sublist(8, headerEnd))) as Map<String, dynamic>;
-    final dim = (header['dim'] as num).toInt();
-    final rows = (header['rows'] as num).toInt();
+    final header = _checkedHeader(bytes.sublist(8, headerEnd), bytes.length - headerEnd);
+    final dim = header['dim'] as int;
+    final rows = header['rows'] as int;
     final dtype = (header['dtype'] as String?) ?? 'f16';
     final rawLabels = header['labels'] as List;
-    if (rawLabels.length != rows) {
-      throw FormatException('Label pack has ${rawLabels.length} labels for $rows rows');
-    }
     final labels = <LabelRow>[];
     for (final e in rawLabels) {
       final l = (e as List).map((x) => (x ?? '').toString()).toList();
@@ -222,12 +257,9 @@ class LabelPack {
     if (isClassListHeader(header)) {
       return _classList(header, labels, dim, rows);
     }
-    final n = rows * dim;
+    final n = rows * dim; // _checkedHeader made sure the file holds n numbers
     final matrix = Float32List(n);
     final bytesPer = dtype == 'f32' ? 4 : 2;
-    if (bytes.length < headerEnd + n * bytesPer) {
-      throw const FormatException('Label pack matrix is truncated');
-    }
     final data = ByteData.sublistView(bytes, headerEnd, headerEnd + n * bytesPer);
     if (dtype == 'f32') {
       for (var i = 0; i < n; i++) {

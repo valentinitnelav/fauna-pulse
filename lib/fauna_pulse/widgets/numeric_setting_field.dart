@@ -68,6 +68,12 @@ class NumericSettingField extends StatefulWidget {
   /// Optional unit printed inside the box after the number (e.g. "s", "/s").
   final String? unitSuffix;
 
+  /// False keeps [unitSuffix] out of the box (it still appears in the
+  /// "Allowed" and error lines), for a host that shows the unit beside the
+  /// box itself, like DurationSettingField's unit menu; otherwise the unit
+  /// reads twice ("2.0 s  s").
+  final bool showSuffixInField;
+
   /// Called with the typed value whenever it is a number inside the range.
   final ValueChanged<double> onChanged;
 
@@ -101,6 +107,7 @@ class NumericSettingField extends StatefulWidget {
     this.isInt = false,
     this.decimals = 2,
     this.unitSuffix,
+    this.showSuffixInField = true,
     this.warning,
     this.rangeNote,
     this.rangeText,
@@ -301,7 +308,7 @@ class _NumericSettingFieldState extends State<NumericSettingField> {
                   style: TextStyle(color: widget.enabled ? Colors.white : Colors.white38),
                   decoration: InputDecoration(
                     isDense: true,
-                    suffixText: widget.unitSuffix,
+                    suffixText: widget.showSuffixInField ? widget.unitSuffix : null,
                     suffixStyle: const TextStyle(color: Colors.white54),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 8,

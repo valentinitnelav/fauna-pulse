@@ -183,8 +183,14 @@ class FrameProcessor {
       _pipelineIntervalEmaMs = 0;
       _lastCallbackMs = 0;
     } else if (_gateIdleSinceMs > 0) {
-      idleS = (nowMs - _gateIdleSinceMs) / 1000.0;
-      if (idleS > occlusionSeconds) {
+      // _clock is the wall clock (it also stamps frames without a native
+      // timestamp, so it is not swapped for a monotonic one). A network time
+      // correction can set it back during the sleep: the sleep length is then
+      // unknown, so report 0 and expire anyway (a missed expiry would let a
+      // new insect inherit an old track ID; an extra expiry costs nothing).
+      final rawS = (nowMs - _gateIdleSinceMs) / 1000.0;
+      idleS = rawS < 0 ? 0 : rawS;
+      if (rawS < 0 || idleS > occlusionSeconds) {
         tracker.expireLostTracks();
         expired = true;
       }
@@ -261,8 +267,11 @@ class FrameProcessor {
         frameBox = clampToRoi(frameBox);
         // Drop anything that clamped to a zero-area sliver (i.e. it was
         // entirely outside the ROI), so a degenerate box never becomes a
-        // track.
-        if (frameBox.width <= 0 || frameBox.height <= 0) continue;
+        // track. Written as `!(x > 0)` so a NaN box edge (clamp keeps NaN)
+        // is dropped too, and a NaN or infinite confidence is dropped as well:
+        // jsonEncode throws on both in the raw-detection and track logs.
+        if (!(frameBox.width > 0) || !(frameBox.height > 0)) continue;
+        if (!result.confidence.isFinite) continue;
         dets.add(
           Detection(
             box: frameBox,

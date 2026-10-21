@@ -304,7 +304,17 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
       setState(() => _starting = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Camera permission is required.')),
+          SnackBar(
+            content: const Text(
+              'FaunaPulse needs the camera to record. Allow it in the phone '
+              'settings (Apps > FaunaPulse > Permissions).',
+            ),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Open settings',
+              onPressed: () => openAppSettings(),
+            ),
+          ),
         );
       }
       return;
@@ -566,7 +576,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
             style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 2),
-          _fileLine('Find', detector ?? 'none (naming works only where animals were already found)'),
+          _fileLine('Find', detector ?? 'none (Identify organisms then works only on sessions where a detector already found animals)'),
           _fileLine(
             'Name',
             idModel == null || list == null
@@ -876,7 +886,7 @@ class ReportSavedDialog extends StatelessWidget {
               '${samples > 0 ? ' + $samples session file sample${samples == 1 ? '' : 's'}' : ''}). ';
     return AlertDialog(
       actionsOverflowDirection: VerticalDirection.up,
-      title: DialogTitle(const Text('Report saved'), onClose: () => Navigator.of(context).pop()),
+      title: DialogTitle(const Text('Report ready'), onClose: () => Navigator.of(context).pop()),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

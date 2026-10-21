@@ -170,7 +170,7 @@ void main() {
       final saved = await IdentifyPrefs.load();
       expect(saved.maxCropsPerTrack, 5);
       expect(saved.modelName, 'insectdct-eff2s_cls.tflite', reason: 'the screen saves its choice with them');
-      await tester.scrollUntilVisible(find.textContaining('Changes nothing in the app'), 200, scrollable: list);
+      await tester.scrollUntilVisible(find.textContaining('Only for the CSV file of the results'), 200, scrollable: list);
       expect(tester.takeException(), isNull);
     });
   });

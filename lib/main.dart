@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/app_error_hooks.dart';
+import 'package:fauna_pulse/fauna_pulse/models/file_download.dart';
 import 'package:fauna_pulse/fauna_pulse/models/former_model_names.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 
@@ -24,6 +25,9 @@ Future<void> main() async {
   // Model files downloaded before round 314 get the names of the download
   // list, before any screen looks for them.
   await renameFormerModelFiles();
+  // Half downloads cut off by an app kill; awaited so no screen can start
+  // a download (whose .part file this would delete) before it is done.
+  await deleteLeftoverModelPartFiles();
   runApp(const FaunaPulseApp());
 }
 

@@ -139,4 +139,64 @@ void main() {
     expect(find.widgetWithText(TextField, 'About the site photos'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('deleting a site photo asks first; Cancel keeps the file', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final dir = Directory.systemTemp.createTempSync('site_photo_delete');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    // A 1x1 PNG, so the thumbnail can decode.
+    final f = File('${dir.path}/site_1.png')
+      ..writeAsBytesSync(const [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+      ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: FieldNotesScreen(
+          location: ValueNotifier<SessionLocation?>(null),
+          searching: ValueNotifier(false),
+          onChangePosition: () async {},
+          loadSitePhotos: ({Directory? dir}) async => f.existsSync() ? [f] : const [],
+          takePhoto: () async => null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -1500));
+    await tester.pumpAndSettle();
+    expect(find.text('1 site photo: they move into the session folder at Start.'), findsOneWidget);
+    final thumb = find.ancestor(of: find.byType(Image), matching: find.byType(InkWell)).first;
+
+    await tester.tap(thumb);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Delete photo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Delete this site photo?'), findsOneWidget);
+    expect(find.text('This cannot be undone.'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(f.existsSync(), isTrue);
+    expect(find.text('Delete this site photo?'), findsNothing);
+
+    await tester.tap(thumb);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Delete photo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Delete'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(f.existsSync(), isFalse);
+    expect(tester.takeException(), isNull);
+  });
 }

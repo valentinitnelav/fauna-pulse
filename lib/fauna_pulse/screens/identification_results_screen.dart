@@ -714,16 +714,16 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       _kv(
         'Track IDs',
         '${s['tracks_total']}'
-        '${merged > 0 ? ' ($merged joined from consecutive track ids, ${s['tracks_before_merge']} before joining)' : ''}',
+        '${merged > 0 ? ' ($merged joined from consecutive track IDs, ${s['tracks_before_merge']} before joining)' : ''}',
       ),
       if (_visitsRenumbered)
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: _flagNote(
-            'The track IDs were found again since; run identification again.',
-            '"Find track IDs" numbers the track IDs anew each time it runs, and keeps new frames for them. '
-                'These results still use the old numbers and frames, so they no longer match the track IDs '
-                'in Session summary. Run Identify organisms again to match them.',
+            'Track IDs were found again after these results were made.',
+            '"Find track IDs" numbers the track IDs anew each time and keeps new frames for them, so these '
+                'results no longer match the track IDs in Session summary. Run Identify organisms again (all '
+                'photos are identified again, which can take a while).',
           ),
         ),
     ];
@@ -1080,8 +1080,8 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                   ('No.', 'row number in this list.'),
                   (
                     'Track ID',
-                    'the id the detector and tracker gave the organism (ids can jump). An amber "suspect" '
-                        'under it: short-lived and weakly supported, likely a false detection.',
+                    'the number the tracker gave this organism; the numbers can have gaps. An amber '
+                        '"suspect" under it: short and weakly supported, likely a false detection.',
                   ),
                   if (widget.showTaxon) ('Taxon', 'the taxon it was identified to.'),
                   if (widget.showTaxon) ('Rank', 'the rank of that taxon; "–" when nothing was identified.'),
@@ -1260,28 +1260,21 @@ class _TrackSheetState extends State<_TrackSheet> {
         '$rank: $rival${split ? ' ($jRank $theirs, not $mine)' : ''} scores $rivalP, more than $pick ($pickP), '
         'the best $rank inside $parent (path_conflict)';
     final help = StringBuffer(
-      'Why the ladder shows $pick and not $rival: the ladder is built from the top down, and every row '
-      'shows the best taxon INSIDE the row above it, so the rows always fit together as one taxonomic '
-      'path (each $rank shown belongs to the ${kRankNames[math.max(0, k - 1)]} above it). ',
+      'Why the ladder shows $pick and not $rival: the ladder goes from kingdom down and each row shows '
+      'the best taxon inside the row above, so the rows form one taxonomic path. ',
     );
     if (split) {
       help.write(
-        'Each Conf. is the sum over all species of that taxon in the name list. $mine got '
-        '${_pct(_ladder[j]['p'] as num?)} in total, but that is shared among several of its $plural, '
-        'so $pick keeps only $pickP. $theirs got less in total, but a larger share of it sits in $rival, '
-        'which therefore reaches $rivalP on its own. So the model leans towards $mine as a whole, while '
-        'the single most likely $rank is in $theirs: the photos fit two readings (for example a bee and a '
-        'hover fly that mimics bees). A group with many species in the name list collects more summed '
-        'Conf. at the higher ranks, which makes this more likely. ',
+        '$mine as a whole scores more than $theirs, but its share is split among several $plural, so the '
+        'single most likely $rank ($rival, $rivalP) lies in $theirs: the photos fit two readings (for '
+        'example a bee and a hover fly that mimics bees). ',
       );
     }
-    help.write('Every ladder row where this happens carries ⚠; tap one to see its rival here. ');
+    help.write('Rows marked ⚠ have such a rival; tap one to see it here. ');
     help.write(
       _rank == null
           ? 'Nothing is identified for this track ID, so every row is a suggestion.'
-          : 'It can only happen below the highlighted row, among the suggestions: the highlighted row and '
-                'those above it hold at least the threshold${widget.tau == null ? '' : ' (${_pct(widget.tau)})'}, '
-                'never less than 50 %, so no other taxon of their rank can score more. The reported '
+          : 'This happens only among the suggestions below the highlighted row; the reported '
                 'identification is not affected.',
     );
     return (note, help.toString());
@@ -1646,7 +1639,7 @@ class _TrackSheetState extends State<_TrackSheet> {
         helperText:
             'Opens on the BEST VIEW: the crop whose own top species has the highest Species conf., i.e. '
             'the single photo the model is surest about on its own (it need not agree with the track '
-            'id\'s answer). Tap a row of the Crops table below to show another crop.\n'
+            'ID\'s answer). Tap a row of the Crops table below to show another crop.\n'
             'Yellow box: the detector\'s box for this organism; its label is the detector\'s confidence '
             'for this photo (Detector conf. in the Crops table). Cyan box: the part (box + margin, widened '
             'to a square when "Square crops" was on) that was cut out and shown to the identification model. The eye button hides the boxes, pinch or '
@@ -1791,7 +1784,7 @@ class _TrackSheetState extends State<_TrackSheet> {
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
             '"?" = a value these results do not have, because an older app version made them. '
-            '"Re-score with this name list" on Identify organisms adds the missing values within seconds.',
+            '"Update results" on Identify organisms adds the missing values within seconds.',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),

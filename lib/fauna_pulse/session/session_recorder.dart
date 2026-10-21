@@ -67,6 +67,15 @@ class SessionRecorder {
   bool get stopping => _stopping;
   bool _stopping = false;
 
+  /// True while [start] is mid-flight ([recording] is still false then: it
+  /// flips only at the end, after several platform waits). A [stop] in this
+  /// window is remembered in [_pendingStop] and run by [start] when it ends;
+  /// otherwise start would reopen the session (wakelock, keep-alive service)
+  /// after the caller believed it stopped, e.g. Back pressed right after REC.
+  bool get starting => _starting;
+  bool _starting = false;
+  ({bool normal, int uniqueTrackCount, bool retainKeepAlive})? _pendingStop;
+
   int _lastFlushMs = 0;
 
   /// Starts a session: creates the session folder + `roi_frames/`, opens the
@@ -94,6 +103,49 @@ class SessionRecorder {
     // `gt_frames/` folder is created and this builds its scheduler (screen
     // wiring, like [captureBuilder]). The screen's periodic timer drives it
     // through [recordGtFrame].
+    RoiCaptureScheduler Function(Directory gtDir, String fileToken)?
+    gtCaptureBuilder,
+  }) async {
+    // A second start while one runs (double tap on REC) would open a second
+    // session folder and drop the first logger unclosed, with no end record.
+    // Throw rather than return: the caller must not arm timers for a session
+    // this call did not open. Checked before setting [_starting], so the
+    // first call's flag stays set.
+    if (_starting || _recording) {
+      throw StateError('SessionRecorder.start: a session is already starting or recording');
+    }
+    _starting = true;
+    try {
+      await _start(
+        folderName: folderName,
+        startMetadata: startMetadata,
+        captureBuilder: captureBuilder,
+        onLogWriteError: onLogWriteError,
+        onStartReadings: onStartReadings,
+        gtCaptureBuilder: gtCaptureBuilder,
+      );
+    } finally {
+      _starting = false;
+    }
+    final pending = _pendingStop;
+    _pendingStop = null;
+    if (pending != null && _recording) {
+      await stop(
+        normal: pending.normal,
+        uniqueTrackCount: pending.uniqueTrackCount,
+        retainKeepAlive: pending.retainKeepAlive,
+      );
+    }
+  }
+
+  Future<void> _start({
+    required String folderName,
+    required Map<String, dynamic> Function() startMetadata,
+    required RoiCaptureScheduler Function(Directory framesDir, String fileToken)
+    captureBuilder,
+    required void Function(Object error) onLogWriteError,
+    void Function(ThermalReading thermal, StorageReading storage)?
+    onStartReadings,
     RoiCaptureScheduler Function(Directory gtDir, String fileToken)?
     gtCaptureBuilder,
   }) async {
@@ -210,6 +262,15 @@ class SessionRecorder {
     required int uniqueTrackCount,
     bool retainKeepAlive = false,
   }) async {
+    if (_starting) {
+      // Run by [start] once its session is fully open (see [starting]).
+      _pendingStop = (
+        normal: normal,
+        uniqueTrackCount: uniqueTrackCount,
+        retainKeepAlive: retainKeepAlive,
+      );
+      return;
+    }
     if (_stopping) return;
     _stopping = true;
     // Stop the frame path from logging new records right away.

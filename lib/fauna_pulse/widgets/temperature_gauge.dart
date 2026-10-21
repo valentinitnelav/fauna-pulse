@@ -26,7 +26,7 @@ List<Widget> temperatureGauge(double tempC, double limitC, {required bool paused
       children: [
         Icon(Icons.device_thermostat, size: 18, color: color),
         const SizedBox(width: 4),
-        const Expanded(child: Text('Phone temperature', style: TextStyle(fontSize: 13))),
+        const Expanded(child: Text('Battery temperature', style: TextStyle(fontSize: 13))),
         Text('${tempC.toStringAsFixed(1)} °C', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ],
     ),

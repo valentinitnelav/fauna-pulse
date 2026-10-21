@@ -10,7 +10,8 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
+
+import 'session_log_head.dart';
 
 /// The visits file written by "Find visits" (video_tracker.dart).
 const postTracksFileName = 'post_tracks.jsonl';
@@ -52,17 +53,13 @@ File tracksFileOf(Directory sessionDir) =>
     ? File('${sessionDir.path}/$postTracksFileName')
     : File('${sessionDir.path}/session.jsonl');
 
-/// The start record's `config`, from the first 64 KB of the log (the start
-/// record is its first line), or null.
+/// The start record's `config`, from the head of the log (the start record is
+/// its first line, see [readLogHeadSync]), or null.
 dynamic _startConfig(File log) {
   try {
     final raf = log.openSync();
     try {
-      final head = utf8.decode(
-        raf.readSync(min(65536, raf.lengthSync())),
-        allowMalformed: true,
-      );
-      for (final line in const LineSplitter().convert(head)) {
+      for (final line in const LineSplitter().convert(readLogHeadSync(raf))) {
         if (!line.contains('"start_of_session"')) continue;
         return (jsonDecode(line) as Map)['config'];
       }

@@ -21,7 +21,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Phone temperature'), findsOneWidget);
+      expect(find.text('Battery temperature'), findsOneWidget);
       expect(find.text('${temp.toStringAsFixed(1)} °C'), findsOneWidget);
       expect(find.text('25 °C'), findsOneWidget);
       expect(find.text('pauses at 43 °C'), findsOneWidget);

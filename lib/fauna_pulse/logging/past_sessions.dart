@@ -18,6 +18,7 @@ import '../postprocess/post_detector.dart';
 import '../postprocess/video_detector.dart';
 import 'app_error_hooks.dart';
 import 'device_storage.dart';
+import 'session_log_head.dart';
 
 /// The folder holding every session (`…/Android/data/<pkg>/files/sessions`,
 /// reachable over USB).
@@ -98,8 +99,9 @@ class PastSession {
   Directory get dir => logFile.parent;
 }
 
-/// Every session under [root] (default [sessionsRoot]), newest first. A
-/// storage error ends the scan with what was found so far.
+/// Every session under [root] (default [sessionsRoot]), newest first. An
+/// error in one session folder skips only that folder; an error listing
+/// [root] itself ends the scan with what was found so far.
 Future<List<PastSession>> scanPastSessions({Directory? root}) async {
   final found = <PastSession>[];
   try {
@@ -107,32 +109,39 @@ Future<List<PastSession>> scanPastSessions({Directory? root}) async {
     if (!await dir.exists()) return found;
     for (final entity in dir.listSync()) {
       if (entity is! Directory) continue;
-      final log = File('${entity.path}/session.jsonl');
-      if (!log.existsSync()) continue;
-      final span = await _readSessionSpan(log);
-      final startMs = (span.startRecord?['time_ms'] as num?)?.toInt();
-      final endMs = span.endMs;
-      found.add(
-        PastSession(
-          entity.path.split('/').last,
-          log,
-          startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : log.statSync().modified,
-          end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
-          duration: startMs != null && endMs != null && endMs >= startMs
-              ? Duration(milliseconds: endMs - startMs)
-              : null,
-          endedNormally: span.endedNormally,
-          sizeBytes: await folderSizeBytes(entity),
-          kind: recordingKindOf(span.startRecord),
-          hasAnalysis:
-              File('${entity.path}/${PostDetector.outputFileName}').existsSync() ||
-              File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
-          hasIdentification: IdentificationPaths(entity).existingSummaries().isNotEmpty,
-          hasVideos:
-              VideoDetector.clipsOf(entity).isNotEmpty ||
-              File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
-        ),
-      );
+      // Per folder: one damaged log, or a file deleted while we scan (summary
+      // replaced, clip cleanup, session deleted), skips only that folder;
+      // the folders after it in the listing still show on Home and Sessions.
+      try {
+        final log = File('${entity.path}/session.jsonl');
+        if (!log.existsSync()) continue;
+        final span = await _readSessionSpan(log);
+        final startMs = _msOrNull(span.startRecord?['time_ms']);
+        final endMs = span.endMs;
+        found.add(
+          PastSession(
+            entity.path.split('/').last,
+            log,
+            startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : log.statSync().modified,
+            end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
+            duration: startMs != null && endMs != null && endMs >= startMs
+                ? Duration(milliseconds: endMs - startMs)
+                : null,
+            endedNormally: span.endedNormally,
+            sizeBytes: await folderSizeBytes(entity),
+            kind: recordingKindOf(span.startRecord),
+            hasAnalysis:
+                File('${entity.path}/${PostDetector.outputFileName}').existsSync() ||
+                File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
+            hasIdentification: IdentificationPaths(entity).existingSummaries().isNotEmpty,
+            hasVideos:
+                VideoDetector.clipsOf(entity).isNotEmpty ||
+                File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
+          ),
+        );
+      } catch (e) {
+        logSwallowed('session_list_scan_folder', e);
+      }
     }
   } catch (e) {
     logSwallowed('session_list_scan', e);
@@ -142,8 +151,9 @@ Future<List<PastSession>> scanPastSessions({Directory? root}) async {
 }
 
 /// The start record, the end time and the clean-stop flag, from the head and
-/// the tail of the log only. The head is 64 KB, as in track_source.dart: the
-/// start record (the first line) carries the whole config.
+/// the tail of the log only. The head is read by [readLogHead], as in
+/// track_source.dart: the start record (the first line) carries the whole
+/// config and may pass 64 KB with long field notes.
 Future<({Map<String, dynamic>? startRecord, int? endMs, bool endedNormally})> _readSessionSpan(File log) async {
   Map<String, dynamic>? startRecord;
   int? endMs;
@@ -151,30 +161,15 @@ Future<({Map<String, dynamic>? startRecord, int? endMs, bool endedNormally})> _r
   try {
     final raf = await log.open();
     try {
-      final len = await raf.length();
-      final head = await raf.read(min(65536, len));
-      for (final l in utf8.decode(head, allowMalformed: true).split('\n')) {
+      for (final l in (await readLogHead(raf)).split('\n')) {
         if (l.contains('"start_of_session"')) {
           startRecord = _tryDecode(l);
           break;
         }
       }
-      final tailLen = min(16384, len);
-      await raf.setPosition(len - tailLen);
-      final tail = await raf.read(tailLen);
-      final tailLines = utf8
-          .decode(tail, allowMalformed: true)
-          .split('\n')
-          .where((l) => l.trim().isNotEmpty)
-          .toList();
-      for (final l in tailLines.reversed) {
-        if (l.contains('"end_of_session"')) {
-          final rec = _tryDecode(l);
-          endMs = (rec?['time_ms'] as num?)?.toInt();
-          endedNormally = rec?['ended_normally'] == true;
-          break;
-        }
-      }
+      final end = await readSessionLogEnd(raf);
+      endMs = end.endMs;
+      endedNormally = end.endedNormally;
     } finally {
       await raf.close();
     }
@@ -183,6 +178,51 @@ Future<({Map<String, dynamic>? startRecord, int? endMs, bool endedNormally})> _r
     logSwallowed('session_duration_scan', e);
   }
   return (startRecord: startRecord, endMs: endMs, endedNormally: endedNormally);
+}
+
+/// Records appended to a session log after the recording ended (a clip
+/// cleanup, a rename): their time is not recording time, and they must not
+/// hide the end_of_session record before them.
+const _laterRecords = {'"video_cleanup"', '"session_renamed"'};
+
+/// The end of a session log, shared by the session lists and the Dashboard:
+/// the `end_of_session` time and flag (null / false after a crash) and the
+/// time of the last record written while recording (the crash fallback).
+/// Reads a 16 KB tail and grows it (x4) only while it holds nothing but
+/// later records and cut lines: one video_cleanup line lists every deleted
+/// clip (ClipCleanup.run) and can pass 16 KB. A normal log stops at the first
+/// window, so a huge crashed log is never read in full.
+Future<({int? endMs, int? lastMs, bool endedNormally})> readSessionLogEnd(RandomAccessFile raf) async {
+  final len = await raf.length();
+  for (var win = 16384;; win *= 4) {
+    final tailLen = min(win, len);
+    await raf.setPosition(len - tailLen);
+    final lines = utf8.decode(await raf.read(tailLen), allowMalformed: true).split('\n');
+    int? lastMs;
+    var sawRecording = false;
+    for (final l in lines.reversed) {
+      if (l.trim().isEmpty || _laterRecords.any(l.contains)) continue;
+      final rec = _tryDecode(l);
+      if (rec == null) continue; // a cut line (the window's first, or a crash's last)
+      final t = _msOrNull(rec['time_ms']);
+      if (rec['type'] == 'end_of_session') {
+        return (endMs: t, lastMs: lastMs, endedNormally: rec['ended_normally'] == true);
+      }
+      sawRecording = true;
+      lastMs ??= t;
+    }
+    if (sawRecording || tailLen == len) return (endMs: null, lastMs: lastMs, endedNormally: false);
+  }
+}
+
+/// A time_ms value as an int, or null when it is not a number or lies outside
+/// the DateTime range (hand-edited or corrupted log). Null makes the caller
+/// fall back to the file time (start) or "no end time" instead of throwing.
+int? _msOrNull(Object? v) {
+  if (v is! num || !v.isFinite) return null;
+  // 8.64e15 ms is the DateTime limit; check before toInt (1e20 would clamp).
+  if (v.abs() > 8640000000000000) return null;
+  return v.toInt();
 }
 
 Map<String, dynamic>? _tryDecode(String line) {

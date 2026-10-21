@@ -318,7 +318,7 @@ void main() {
       }
       expect(find.text('Bombus'), findsOneWidget);
       expect(
-        find.text('The track IDs were found again since; run identification again.'),
+        find.text('Track IDs were found again after these results were made.'),
         warned ? findsOneWidget : findsNothing,
       );
       await tester.pumpWidget(const SizedBox());

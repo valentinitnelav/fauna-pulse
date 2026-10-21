@@ -582,6 +582,10 @@ class RoiCaptureScheduler {
     if (_busy) return;
     _busy = true;
     final sw = Stopwatch()..start();
+    // Set only while the final JPEG write runs, so the catch below can remove
+    // a half-written file (full disk). A good photo is never deleted, even if
+    // [onStat] throws after the write.
+    File? writing;
     try {
       final roi = roiProvider();
       final (streamW, streamH) = streamDims();
@@ -726,7 +730,9 @@ class RoiCaptureScheduler {
       }
       final outFile = File('${framesDir.path}/${pending.fileName}');
       outFile.parent.createSync(recursive: true);
+      writing = outFile;
       await outFile.writeAsBytes(finalBytes, flush: true);
+      writing = null;
       sw.stop();
       onStat?.call(
         CaptureStat(
@@ -751,6 +757,14 @@ class RoiCaptureScheduler {
       // The Dart-fallback crop and the final file write were previously only
       // wrapped in try/finally: a full disk here became an invisible unhandled
       // async error. Report it so the session log gets an app_error line.
+      // A cut write leaves a truncated JPEG with no gt_capture record (seen
+      // with "Keep free storage" = 0): remove it so the photos folder holds
+      // only readable photos that the session log counts.
+      if (writing != null) {
+        try {
+          if (writing.existsSync()) writing.deleteSync();
+        } catch (_) {}
+      }
       onError?.call(pending.fileName, e);
     } finally {
       _busy = false;

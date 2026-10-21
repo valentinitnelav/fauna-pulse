@@ -273,14 +273,27 @@ class IdentifyPrefs {
   };
 }
 
-/// Why the GPU was not used, for the Identify screen (round 242): the native
-/// reason, plus what it means when the GPU could not compile the model. The
+/// Why the GPU was not used, for the Identify screen (round 242), in plain words; the raw
+/// native note goes to the log only (round 317: any other note comes from the GPU set-up
+/// exception, not only 'Failed to compile'). The
 /// catalogue's files are already exported for phone GPUs, so the re-export
 /// advice (a BioCLIP file exported before round 242, whose attention layers
 /// use tensors phone GPUs cannot run) is only for files people converted
 /// themselves; the cause can also be this phone's GPU (round 317).
-String gpuNoteText(String note) => note.contains('Failed to compile')
-    ? '$note. This phone\'s GPU could not run this model, so the CPU is used (the same answers, '
-          'only slower). If you converted this model yourself from a BioCLIP file, convert it again '
-          'with the current bioclip_export tool (see IDENTIFICATION.md)'
-    : note;
+String gpuNoteText(String note) {
+  if (note.startsWith('on the GPU blocklist')) {
+    return 'The GPU failed with this model several times before on this phone, so the CPU is used: '
+        'the same answers, only slower.';
+  }
+  if (note.contains('differed from the CPU')) {
+    return 'On this phone the GPU gave different answers from the CPU on a test picture, so the CPU '
+        'is used: the same answers, only slower.';
+  }
+  if (note.contains('GB of memory')) {
+    final t = note.isEmpty ? note : note[0].toUpperCase() + note.substring(1);
+    return t.endsWith('.') ? t : '$t.';
+  }
+  return 'This phone\'s graphics processor (GPU) cannot run this model, so the main processor (CPU) '
+      'is used: the same answers, only slower. If you converted this model yourself, convert it again '
+      'with the current tool (github.com/valentinitnelav/fauna-pulse, docs/IDENTIFICATION.md).';
+}

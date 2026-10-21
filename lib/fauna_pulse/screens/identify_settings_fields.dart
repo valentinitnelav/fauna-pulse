@@ -36,15 +36,11 @@ class IdentifySettingsFields extends StatelessWidget {
           value: prefs.useGpu,
           onChanged: (v) => onEdit(() => prefs.useGpu = v),
           helperText:
-              'Runs the model on the phone\'s graphics processor (GPU) when it can. On a Xiaomi Mi 11 '
-              'Lite 5G (a 2021 mid-range phone) that took 0.27 s per crop instead of 2.6 s on the CPU, so a large session is '
-              'identified about ten times faster. GPUs differ between phones and Android versions: '
-              'the first time a model runs on this phone\'s GPU, the app compares its result on a '
-              'test picture with the CPU\'s and keeps the GPU only when they agree. When the GPU '
-              'cannot compile the model, does not match the CPU or runs out of memory, the app uses '
-              'the CPU and says why after loading. "Test speed" on the Identify organisms screen shows what this '
-              'phone does. '
-              'Off = CPU only.',
+              'Runs the model on the phone\'s graphics processor (GPU), on tested phones about ten times '
+              'faster than the main processor (CPU). The first time, the app checks on a test picture that '
+              'the GPU gives the same answers as the CPU; if not, or if the GPU cannot run the model or lacks '
+              'memory, the CPU is used and the app says why. "Test speed" on the Identify organisms screen '
+              'shows what this phone does. Off = CPU only.',
         ),
         NumericSettingField(
           label: 'CPU threads (0 = automatic)',
@@ -65,14 +61,11 @@ class IdentifySettingsFields extends StatelessWidget {
           value: prefs.squareCrops,
           onChanged: (v) => onEdit(() => prefs.squareCrops = v),
           helperText:
-              'The model always looks at a square picture. On: the detector box is widened to a '
-              'square on its longer side, so the insect keeps its shape and the extra room shows '
-              'the flower around it. Off: only the box (plus the margin below) is cut out and '
-              'stretched to the square, so the insect fills the picture but looks squeezed when '
-              'the box is long and thin (BioCLIP learned from photos squeezed by up to about 4:3, '
-              'so Off suits roughly square boxes). On by default: it keeps the shape and suits '
-              'models trained on square crops; which works better on pollinator photos is not yet '
-              'tested. After a change, the next run asks whether to recompute the stored crops.',
+              'The model always looks at a square picture. On: the box is widened to a square, so the '
+              'insect keeps its shape and some flower shows around it. Off: only the box (plus the margin) '
+              'is cut out and stretched to a square, so a long, thin insect looks squeezed. On by default '
+              'because it keeps the insect\'s shape; which works better on pollinator photos is not yet '
+              'tested. After a change, the next run asks whether to cut the stored crops again.',
         ),
         NumericSettingField(
           label: 'Crop margin',
@@ -148,11 +141,11 @@ class IdentifySettingsFields extends StatelessWidget {
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.tau = v),
           helperText:
-              'The model gives every name in the name list a probability (they add up to 100 %); '
-              'a family\'s probability is the sum of its species, and so on up to kingdom. Going '
-              'from kingdom down to species, the deepest rank whose probability still reaches this '
-              'value is reported as the answer. Deeper ranks are still listed in the results, with '
-              'their lower probabilities, as suggestions to verify.',
+              'The model gives every species in the name list a share of 100 %; a genus or family gets the '
+              'sum of its species, and so on up to kingdom. The deepest rank that reaches this value is the '
+              'reported answer; deeper ranks are listed as suggestions to check. 0.60 = 60 %, the default: '
+              'above one half, so the reported taxon is always the most likely one at its rank. Higher gives '
+              'fewer but safer species names.',
         ),
         NumericSettingField(
           label: '"No organism" threshold',
@@ -162,9 +155,10 @@ class IdentifySettingsFields extends StatelessWidget {
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.noneThreshold = v),
           helperText:
-              'The name list also contains a few "none of these" entries (flower, leaf, shadow, empty '
-              'background). When their summed probability is above this, the track ID is reported as '
-              '"no organism": the detector most likely fired on nothing.',
+              'The name list also has a few "none of these" entries (flower, leaf, shadow, empty '
+              'background). When together they get more than this share (0.50 = 50 %), the track ID is '
+              'reported as "no organism": the detector most likely boxed something that is not an animal. '
+              'Default 0.50: "no organism" only when it is more likely than all animals together.',
         ),
         NumericSettingField(
           label: 'Pause above battery temperature',
@@ -181,14 +175,12 @@ class IdentifySettingsFields extends StatelessWidget {
           value: prefs.mergeVisits,
           onChanged: (v) => onEdit(() => prefs.mergeVisits = v),
           helperText:
-              'Off: every track ID stays on its own. On: when a track ID ends and a new one starts within '
-              'the gap below, the two are joined into one track ID (and identified again from all their '
-              'photos) if they pass three checks: a compatible identification (same taxon on the same '
-              'path, e.g. Apidae then Bombus), a similar appearance (the model\'s descriptions of their '
-              'photos, the strongest signal) and a similar box size (a loose guard). Helps when the tracker lost an '
-              'insect for a moment and gave it a new track ID. Track IDs that overlap in time are never '
-              'joined (two insects at once). Changes the track ID count, so it is off by default; the CSV '
-              'lists the joined track IDs.',
+              'Helps when the tracker lost an insect for a moment and gave it a new track ID. On: a track '
+              'ID that starts within the gap below after another one ended is joined to it when both have a '
+              'fitting identification (for example Apidae, then Bombus), look alike to the model and have a '
+              'similar box size; the joined track ID is identified again from all its photos. Track IDs at '
+              'the same time are never joined. Off by default because it changes the number of track IDs; '
+              'the CSV lists which were joined.',
         ),
         if (prefs.mergeVisits) ...[
           NumericSettingField(
@@ -228,9 +220,10 @@ class IdentifySettingsFields extends StatelessWidget {
             unitSuffix: '%',
             onChanged: (v) => onEdit(() => prefs.mergeSizeTol = v / 100),
             helperText:
-                'Mean box side of each track ID, as a fraction of the ROI, compared as a percentage of the '
-                'larger one. A loose guard on purpose (wings, distance and ROI-edge cuts change box size); '
-                '100 % switches the check off.',
+                'Compares the average box size of the two track IDs. They are joined only if the smaller one '
+                'is at most this much smaller than the larger one (50 % = it may be half the size). Default '
+                '50 %: a loose check on purpose, because wings, distance to the camera and boxes cut at the '
+                'edge of the square change the size. 100 % switches the check off.',
           ),
         ],
         const SizedBox(height: 8),
@@ -239,12 +232,11 @@ class IdentifySettingsFields extends StatelessWidget {
           labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           helperText:
               'Very short track IDs are often false detections (a moving petal, a shadow, a video '
-              'artefact), and a weak identification makes that more likely. A track ID is flagged '
-              '"suspect" when it is SHORT (below the duration OR the detections below) AND weakly '
-              'supported (detector confidence below the threshold, confidence at order rank below the '
-              'threshold, or "no organism"). Suspect track IDs are hidden from the results table by default '
-              '(a switch shows them) and stay in the CSV with a "suspect" column, so you can check the '
-              'thresholds on your own data in R or Python.',
+              'artefact). A track ID is marked "suspect" when it is short (under "Short: duration below" or '
+              '"Short: detections below") and also weak (under "Weak: detector confidence below", under '
+              '"Weak: order confidence below", or "no organism"). Suspect track IDs are hidden in the '
+              'results table unless you switch them on, and they stay in the CSV with a "suspect" column. '
+              'Nothing is deleted.',
         ),
         NumericSettingField(
           label: 'Short: duration below',
@@ -274,9 +266,10 @@ class IdentifySettingsFields extends StatelessWidget {
           max: 1,
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.flagMinDetConf = v),
-          helperText: 
-              'If the detector\'s mean confidence over the track ID\'s crops '
-              'is below this, the track ID is flagged as weak. '
+          helperText:
+              'If the detector\'s average confidence over the photos of a track ID is below this, the track '
+              'ID counts as weak. Weak alone changes nothing; weak and short together make it suspect. '
+              'Default 0.20, the same as the track filter of the insect-detect-post tool.',
         ),
         NumericSettingField(
           label: 'Weak: order confidence below',
@@ -286,8 +279,9 @@ class IdentifySettingsFields extends StatelessWidget {
           decimals: 2,
           onChanged: (v) => onEdit(() => prefs.flagMinOrderP = v),
           helperText:
-              'If the track ID\'s confidence at ORDER rank (e.g. Diptera; the order\'s Conf. in the '
-              'results) is below this, the track ID is flagged as weak. '
+              'If the confidence for the order (for example Diptera: the Conf. of the order row in the '
+              'results) is below this, the track ID counts as weak. Weak alone changes nothing; weak and '
+              'short together make it suspect. Default 0.50: below it, even the order is less likely than not.',
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -305,14 +299,10 @@ class IdentifySettingsFields extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 8),
           child: Text(
             // Round 247 (owner: unclear what this does, and "default is family" next to genus).
-            'Changes nothing in the app: the results on screen always show every rank. It only '
-            'matters for the CSV file of the results (tracks_<name list>.csv): its columns pred, '
-            'pred_prob_weighted, pred_prob_mean and pred_imgs give the answer at ONE rank, as the '
-            'insect-detect-post tool of Maximilian Sittinger does, so the files of both can be '
-            'compared; this picks that rank. All ranks are in the bioclip_<rank> and p_<rank> columns '
-            'anyway. The names follow that tool; the formulas are FaunaPulse\'s: pred_prob_weighted is the '
-            'track ID\'s Conf. at that rank (as in the results), pred_prob_mean the plain mean of the '
-            'crops\' own values. '
+            'Only for the CSV file of the results (tracks_<name list>.csv); the screen always shows every '
+            'rank. Its "pred" columns give the answer at this one rank, like the insect-detect-post tool of '
+            'Maximilian Sittinger, so the files of both can be compared; all ranks are in the other columns '
+            'anyway. Column details: github.com/valentinitnelav/fauna-pulse (docs/DATA_GUIDE.md). '
             '${prefs.targetRank == 'family' ? 'Family is the app\'s default.' : 'You chose ${prefs.targetRank}; the app\'s default is family.'}',
             style: helperTextStyle,
           ),

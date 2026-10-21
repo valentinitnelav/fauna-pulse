@@ -706,7 +706,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // field user can read them (round 65).
       _logger?.logAppError({'source': 'detector', 'message': message});
       setState(() {
-        _inferenceError = 'Detector error: $message';
+        _inferenceError =
+            'The detection model failed on a camera picture; insects may be '
+            'missed. If this keeps coming back, choose another model or tap '
+            'Report. Details: $message';
         _errorBannerDismissed = false;
       });
     });
@@ -923,6 +926,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         'free_storage_bytes': storage.freeBytes,
       });
       _logger?.flushNow();
+      // Tell a user who is present why the recording ends. The app-wide
+      // messenger keeps it visible on the summary pushed next, whose
+      // "Stopped by itself" row (from the guard_stop record) keeps the reason.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(
+            why == 'low_battery'
+                ? 'Recording stopped: battery at or below ${_config.lowBatteryStopPercent} % (Settings, Stop at battery level).'
+                : 'Recording stopped: less than ${_config.storageReserveMb} MB free storage (Settings, Keep free storage).',
+          ),
+        ),
+      );
       if (_schedule != null) {
         await _abortSchedule();
       } else {
@@ -1042,7 +1058,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       ScreenBrightness().resetApplicationScreenBrightness().catchError((_) {});
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
-    if (_recording) _stopRecording(normal: false);
+    // A start still waiting for the phone counts too: the recorder runs this
+    // stop when its start ends, so no session is left open behind the screen.
+    if (_recording || _recorder.starting) _stopRecording(normal: false);
     // After _stopRecording's synchronous flush — drops any leftover timer.
     _roiLogDebounce.cancel();
     _focusLogDebounce.cancel();
@@ -1277,8 +1295,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         });
         setState(() {
           _inferenceError =
-              'The detector is not producing any results (0 FPS) although the '
-              'camera is running. The chosen detection model may be incompatible.';
+              'The detection model gives no results although the camera is '
+              'running. It may not work on this phone: choose another model in '
+              'Session settings (Detection tab), or tap Report.';
           _errorBannerDismissed = false;
         });
       }
@@ -1301,6 +1320,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           minHitsToConfirm: wantedHits,
         );
       }
+      // Same seconds setting as a time limit for pauses in frames (see
+      // InsectTracker.maxFrameGapMs), but never under three frame intervals,
+      // so a slow (throttled) detector does not expire lost tracks early.
+      final occlusionMs = (_config.occlusionSeconds * 1000).round();
+      final slowFramesMs = (fps.isFinite && fps > 0) ? (3000 / fps).round() : 0;
+      _tracker.maxFrameGapMs =
+          occlusionMs > slowFramesMs ? occlusionMs : slowFramesMs;
       // Auto thermal-aware throttle: feed the latest inference time and apply the
       // resulting rate cap. A change re-sends the streaming config (declaratively,
       // via the YOLOView prop) which updates the native frame-skip interval with
@@ -1598,10 +1624,44 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   // --- Recording lifecycle ------------------------------------------------
 
+  /// True from a REC tap that may start a session until that tap's start path
+  /// ends. [_recorder.starting] alone comes too late: before it, the start path
+  /// waits for the "Before you record" sheet, the battery pop-up and
+  /// PhoneSettings.read, and a second tap there ran a second start (two
+  /// session folders, timers armed twice).
+  bool _recStartBusy = false;
+
+  /// True from the first line of [_stopRecording] until it ends.
+  /// [_recorder.stopping] alone comes too late: before it, the stop awaits the
+  /// video clips closing (up to 5 s on a hot phone), and a second Stop tap (or
+  /// the session timer) there ran a second stop, which closed the log before
+  /// the first stop wrote its clip-end record.
+  bool _stopInProgress = false;
+
+  /// True for the whole of [_stopAndShowSummary] (stop, camera pause, summary
+  /// review, resume). Blocks a second summary on top of the first, and a tap
+  /// between the stop and the summary push that would open the start path.
+  bool _summaryFlowBusy = false;
+
   Future<void> _toggleRecording() async {
+    // The stop path stays unguarded: the session-length timer also calls this.
+    if (_recording) return _toggleRecordingUnguarded();
+    if (_recStartBusy) return;
+    _recStartBusy = true;
+    try {
+      await _toggleRecordingUnguarded();
+    } finally {
+      _recStartBusy = false;
+    }
+  }
+
+  Future<void> _toggleRecordingUnguarded() async {
     // A tap while the previous stop sequence is still tearing down does
     // nothing (it would otherwise start a new session mid-teardown).
-    if (_recorder.stopping) return;
+    // Same for a tap while a start is still running ([_recording] is false
+    // until it ends): it would open the start path, and a second session, again.
+    if (_recorder.stopping || _recorder.starting) return;
+    if (_stopInProgress || _summaryFlowBusy) return;
     // While a scheduled run is active the record button means "stop the whole
     // run", never "stop this one window" — confirm-guarded, since it ends a
     // possibly multi-day deployment.
@@ -1641,7 +1701,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (_config.scheduleEnabled) {
         if (!_config.isScheduleValid) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('The schedule is invalid (check the windows in Settings).')),
+            const SnackBar(
+              content: Text(
+                'The schedule cannot start: windows overlap or end before they '
+                'start. Fix them in Session settings (Setup tab, Scheduled '
+                'recording).',
+              ),
+            ),
           );
           return;
         }
@@ -1701,6 +1767,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// Shared by the record-button stop, the [_sessionTimer] timed end, and a
   /// schedule abort mid-window (the user is present in all three).
   Future<void> _stopAndShowSummary() async {
+    if (_summaryFlowBusy) return;
+    _summaryFlowBusy = true;
+    try {
+      await _stopAndShowSummaryUnguarded();
+    } finally {
+      _summaryFlowBusy = false;
+    }
+  }
+
+  Future<void> _stopAndShowSummaryUnguarded() async {
     // A timed session end arrives here straight from [_sessionTimer] with the
     // blackout cover still up: the summary would otherwise be pushed on top of
     // it at minimum window brightness, with no cover left to tap (the window
@@ -1794,6 +1870,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     required String focusMode,
     ScheduleSlot? scheduleSlot,
   }) async {
+    // SessionRecorder.start throws on a second start; a caller that slipped
+    // past the REC guard (or a schedule tick) just does nothing here.
+    if (_recording || _recorder.starting) return;
     _closeUnappliedSnack();
     _tracker.reset();
 
@@ -2102,6 +2181,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
             ),
     );
+    // The screen closed (or a stop came) while start waited for the phone: the
+    // recorder has already ended that session, so set up no timers on it.
+    if (!mounted || !_recording) return;
 
     // Round 292: from now on the screen going off no longer stops the camera.
     _pushCameraHold();
@@ -2139,6 +2221,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // count down to it.
     if (scheduleSlot == null) {
       final length = Duration(minutes: _config.sessionMinutes);
+      // Cancel first: an overwritten Timer still fires (a second auto-stop).
+      _sessionTimer?.cancel();
       _sessionTimer = Timer(length, () => _toggleRecording());
       _recordEndAt = DateTime.now().add(length);
       _recordSlotLabel = null;
@@ -2159,6 +2243,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     _recordElapsedVN.value = 0;
     _lastStreamEventMs = DateTime.now().millisecondsSinceEpoch;
     _cameraSilent = false;
+    _recordTicker?.cancel(); // an overwritten periodic timer would tick forever
     _recordTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       final start = _recordStart;
       if (start != null) {
@@ -2263,7 +2348,24 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     required bool normal,
     bool retainKeepAlive = false,
   }) async {
-    if (_recorder.stopping) return;
+    // A second call while the first still waits for the clips does nothing
+    // (see [_stopInProgress]); dispose's stop then relies on the first one.
+    if (_recorder.stopping || _stopInProgress) return;
+    _stopInProgress = true;
+    try {
+      await _stopRecordingUnguarded(
+        normal: normal,
+        retainKeepAlive: retainKeepAlive,
+      );
+    } finally {
+      _stopInProgress = false;
+    }
+  }
+
+  Future<void> _stopRecordingUnguarded({
+    required bool normal,
+    required bool retainKeepAlive,
+  }) async {
     _sessionTimer?.cancel();
     _recordTicker?.cancel();
     _recordTicker = null;
@@ -2334,7 +2436,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The schedule is invalid (check the windows in Settings).',
+            'The schedule cannot start: windows overlap or end before they '
+            'start. Fix them in Session settings (Setup tab, Scheduled '
+            'recording).',
           ),
         ),
       );
@@ -4229,10 +4333,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _statLine(
-                                        'Current tracks: ${tracks.length}',
+                                        'Track IDs now: ${tracks.length}',
                                       ),
                                       _statLine(
-                                        'Total tracks: ${_tracker.totalConfirmed}',
+                                        'Track IDs this session: ${_tracker.totalConfirmed}',
                                       ),
                                     ],
                                   ),
@@ -4597,9 +4701,16 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
                     };
             } else {
               final waitS = ((plan.nextBurstStartAt(t) - t) / 1000).ceil();
-              final mm = (waitS ~/ 60).toString().padLeft(2, '0');
-              final ss = (waitS % 60).toString().padLeft(2, '0');
-              label = 'NEXT BURST in $mm:$ss';
+              // "Time between bursts" goes up to 24 h; mm:ss alone would show
+              // "1439:59", which reads like a clock time.
+              if (waitS >= 3600) {
+                label =
+                    'NEXT BURST in ${waitS ~/ 3600} h ${(waitS % 3600) ~/ 60} min';
+              } else {
+                final mm = (waitS ~/ 60).toString().padLeft(2, '0');
+                final ss = (waitS % 60).toString().padLeft(2, '0');
+                label = 'NEXT BURST in $mm:$ss';
+              }
               // Round 163: the frozen preview while parked is the feature
               // working, not a hang — say so where the user is looking.
               if (_tlCamera?.cameraIntentionallyDown ?? false) {
@@ -4813,7 +4924,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         actionsOverflowDirection: VerticalDirection.up,
-        title: DialogTitle(const Text('Report saved'), onClose: () => Navigator.of(ctx).pop()),
+        title: DialogTitle(const Text('Report ready'), onClose: () => Navigator.of(ctx).pop()),
         // Round 317: the same words as the home screen's window. Reports are
         // kept in the app's private storage, which a computer cannot open
         // over USB, and no screen lists old reports.

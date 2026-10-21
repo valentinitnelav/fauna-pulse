@@ -196,15 +196,11 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
       _slider(
         label: 'Frames analyzed per second: ${_p.analysisFps.round()}',
         help:
-            'How many pictures of each second of the video the detector looks at; the pictures in '
-            'between are skipped. 5 = one picture every 0.2 s of video: enough for insects that '
-            'stay on a flower for a second or more, and a run takes less than half the time 15 '
-            'would (not a third: the phone still has to unpack every picture). More pictures '
-            'follow fast flying insects better (fewer missed or counted twice) but take longer; '
-            '15 is what the live camera analyzes. This counts seconds of the video, not of the '
-            'run: a slow or warm phone takes longer, it never looks at fewer pictures. Most '
-            'phone videos have 30 pictures per second; asking for more than the video has '
-            'gives no more pictures (but still counts as a change that needs a new analysis).',
+            'How many pictures per second of video the detector looks at; the others are skipped. '
+            'Default 5 (one every 0.2 s): enough for insects that stay on a flower for a second or more, '
+            'and less than half the run time of 15, the live camera\'s value. More pictures follow '
+            'fast-flying insects better but take longer. Values above the video\'s own rate (often 30) '
+            'add nothing.',
         value: _p.analysisFps,
         min: 1,
         max: 30,
@@ -219,7 +215,10 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
       const SizedBox(height: 12),
       _slider(
         label: 'IoU threshold: ${_p.iou.toStringAsFixed(2)}',
-        help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
+        help:
+            'IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the '
+            'more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes '
+            'but can drop one of two insects sitting close together. 0.7 is the live camera\'s default.',
         value: _p.iou,
         min: 0.05,
         max: 0.95,
@@ -304,7 +303,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect can vanish (e.g. behind a petal) and keep its number. Longer: fewer '
+              'How long an insect can vanish (for example behind a petal) and keep its track ID. Longer: fewer '
               'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
               'time between two analyzed frames. Default 3 s, as on the live camera.',
           warning: occFrames < 2

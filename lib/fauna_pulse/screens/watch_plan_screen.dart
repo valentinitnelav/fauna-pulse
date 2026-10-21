@@ -310,7 +310,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
               // line of its own when only the list is still to download.
               (final m, final l) when _listFile(m, l) == null =>
                 _missing.any((f) => f.$1.name == l) && !_missing.any((f) => f.$1.name == m)
-                    ? [(m, [m]), ('with its class list', [l])]
+                    ? [(m, [m]), ('with its name list', [l])]
                     : [(m, [m, l])],
               (final m, final l) => [(m, [m]), ('with $l', [l])],
             }),

@@ -229,39 +229,46 @@ class VideoBoxTimeline {
     if (!f.existsSync()) return empty;
     final recs = _records(const LineSplitter().convert(utf8.decode(f.readAsBytesSync(), allowMalformed: true))).toList();
     final spans = <(String, int, int)>[];
+    // Each record is read under its own try (here and in [parse]): one
+    // wrong-typed field (a file edited by hand, or written by another app
+    // version) costs that record only, not every box of the session.
     for (final rec in recs) {
       if (rec['type'] != 'video_clip') continue;
-      final file = rec['file'] as String?;
-      final start = (rec['start_epoch_ms'] as num?)?.toInt();
-      final dur = (rec['duration_ms'] as num?)?.toInt();
-      if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
+      try {
+        final file = rec['file'] as String?;
+        final start = (rec['start_epoch_ms'] as num?)?.toInt();
+        final dur = (rec['duration_ms'] as num?)?.toInt();
+        if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
+      } catch (_) {}
     }
     final c = {for (final (name, _, _) in spans) name: _ClipAcc()..done = true};
     final leads = _leads(recs);
     for (final rec in recs) {
       if (rec['type'] != 'detections') continue;
-      final t = ((rec['frame_sensor_ms'] ?? rec['frame_ms']) as num?)?.toInt();
-      final tracks = rec['tracks'];
-      if (t == null || tracks is! List) continue;
-      for (final (name, start, dur) in spans) {
-        if (t < start || t > start + dur) continue;
-        final ms = t - start;
-        final a = c[name]!;
-        a.addLeads(rec, tracks, leads);
-        a.raw[ms] = const [];
-        a.tracked[ms] = [
-          for (final tr in tracks)
-            if (tr is Map && tr['box_in_roi'] is Map)
-              TimelineBox(
-                box: _fromArea((tr['box_in_roi'] as Map).cast<String, dynamic>(), const Rect.fromLTWH(0, 0, 1, 1)),
-                confidence: (tr['confidence'] as num?)?.toDouble() ?? 0,
-                className: '${tr['class_name'] ?? ''}',
-                trackId: (tr['track_id'] as num?)?.toInt(),
-                coasted: tr['coasted'] == true,
-              ),
-        ];
-        break;
-      }
+      try {
+        final t = ((rec['frame_sensor_ms'] ?? rec['frame_ms']) as num?)?.toInt();
+        final tracks = rec['tracks'];
+        if (t == null || tracks is! List) continue;
+        for (final (name, start, dur) in spans) {
+          if (t < start || t > start + dur) continue;
+          final ms = t - start;
+          final a = c[name]!;
+          a.addLeads(rec, tracks, leads);
+          a.raw[ms] = const [];
+          a.tracked[ms] = [
+            for (final tr in tracks)
+              if (tr is Map && tr['box_in_roi'] is Map)
+                TimelineBox(
+                  box: _fromArea((tr['box_in_roi'] as Map).cast<String, dynamic>(), const Rect.fromLTWH(0, 0, 1, 1)),
+                  confidence: (tr['confidence'] as num?)?.toDouble() ?? 0,
+                  className: '${tr['class_name'] ?? ''}',
+                  trackId: (tr['track_id'] as num?)?.toInt(),
+                  coasted: tr['coasted'] == true,
+                ),
+          ];
+          break;
+        }
+      } catch (_) {}
     }
     return VideoBoxTimeline(
       clips: {
@@ -309,37 +316,40 @@ class VideoBoxTimeline {
     List<double>? settingsRoi;
     List<String>? anyNames;
     for (final rec in _records(detectionLines)) {
-      final name = rec['clip'] as String?;
-      switch (rec['type']) {
-        case 'video_run_start':
-          runMs ??= (rec['time_ms'] as num?)?.toInt();
-          final roi = (rec['settings'] as Map?)?['roi'];
-          settingsRoi = roi is List && roi.length == 3 ? [for (final v in roi) (v as num).toDouble()] : null;
-        case 'video_clip_done' when name != null:
-          final a = c.putIfAbsent(name, _ClipAcc.new)..done = true;
-          a.width = (rec['frame_width'] as num?)?.toInt() ?? 0;
-          a.height = (rec['frame_height'] as num?)?.toInt() ?? 0;
-          final roi = rec['roi_px'];
-          if (roi is List && roi.length == 4 && a.width > 0 && a.height > 0) {
-            final r = [for (final v in roi) (v as num).toDouble()];
-            a.area = Rect.fromLTWH(r[0] / a.width, r[1] / a.height, r[2] / a.width, r[3] / a.height);
-          }
-          final names = rec['class_names'];
-          if (names is List && names.isNotEmpty) a.names = anyNames = [for (final n in names) '$n'];
-        case 'raw_detections' when name != null:
-          final pts = (rec['pts_us'] as num?)?.toInt();
-          final boxes = rec['boxes'];
-          if (pts == null || boxes is! List) continue;
-          c.putIfAbsent(name, _ClipAcc.new).raw[(pts / 1000).round()] = [
-            for (final b in boxes)
-              if (b is List && b.length >= 6)
-                (
-                  Rect.fromLTRB((b[0] as num).toDouble(), (b[1] as num).toDouble(), (b[2] as num).toDouble(), (b[3] as num).toDouble()),
-                  (b[4] as num).toDouble(),
-                  (b[5] as num).toInt(),
-                ),
-          ];
-      }
+      try {
+        final name = rec['clip'] as String?;
+        switch (rec['type']) {
+          case 'video_run_start':
+            runMs ??= (rec['time_ms'] as num?)?.toInt();
+            final roi = (rec['settings'] as Map?)?['roi'];
+            settingsRoi = roi is List && roi.length == 3 ? [for (final v in roi) (v as num).toDouble()] : null;
+          case 'video_clip_done' when name != null:
+            final a = c.putIfAbsent(name, _ClipAcc.new)..done = true;
+            a.width = (rec['frame_width'] as num?)?.toInt() ?? 0;
+            a.height = (rec['frame_height'] as num?)?.toInt() ?? 0;
+            final roi = rec['roi_px'];
+            if (roi is List && roi.length == 4 && a.width > 0 && a.height > 0) {
+              final r = [for (final v in roi) (v as num).toDouble()];
+              a.area = Rect.fromLTWH(r[0] / a.width, r[1] / a.height, r[2] / a.width, r[3] / a.height);
+            }
+            final names = rec['class_names'];
+            if (names is List && names.isNotEmpty) a.names = anyNames = [for (final n in names) '$n'];
+          case 'raw_detections' when name != null:
+            final pts = (rec['pts_us'] as num?)?.toInt();
+            final boxes = rec['boxes'];
+            if (pts == null || boxes is! List) continue;
+            c.putIfAbsent(name, _ClipAcc.new).raw[(pts / 1000).round()] = [
+              for (final b in boxes)
+                // A damaged box is left out alone; the frame keeps the others.
+                if (b is List && b.length >= 6 && b.take(6).every((v) => v is num && v.isFinite))
+                  (
+                    Rect.fromLTRB((b[0] as num).toDouble(), (b[1] as num).toDouble(), (b[2] as num).toDouble(), (b[3] as num).toDouble()),
+                    (b[4] as num).toDouble(),
+                    (b[5] as num).toInt(),
+                  ),
+            ];
+        }
+      } catch (_) {} // see readLiveSync: a wrong-typed record is skipped
     }
 
     // Visits: only when they were found on this very analysis.
@@ -348,32 +358,40 @@ class VideoBoxTimeline {
     final trackRecs = _records(trackLines).toList();
     if (trackRecs.isNotEmpty && trackRecs.first['type'] == 'post_track_start') {
       final start = trackRecs.first;
-      stale = (start['detections_run_ms'] as num?)?.toInt() != runMs;
-      if (!stale) trackedClips = {for (final n in (start['clips'] as List? ?? const [])) '$n'};
+      // A start record that cannot be read counts as stale: the boxes still
+      // show, without the visits.
+      try {
+        stale = (start['detections_run_ms'] as num?)?.toInt() != runMs;
+        if (!stale) trackedClips = {for (final n in (start['clips'] as List? ?? const [])) '$n'};
+      } catch (_) {
+        stale = true;
+      }
     }
     if (trackedClips.isNotEmpty) {
       final leads = _leads(trackRecs);
       for (final rec in trackRecs) {
-        final name = rec['clip'] as String?;
-        final pts = (rec['pts_us'] as num?)?.toInt();
-        final tracks = rec['tracks'];
-        if (rec['type'] != 'detections' || name == null || pts == null || tracks is! List) continue;
-        final a = c[name];
-        if (a == null || !trackedClips.contains(name)) continue;
-        a.addLeads(rec, tracks, leads);
-        final area = a.area ?? const Rect.fromLTWH(0, 0, 1, 1);
-        final ms = (pts / 1000).round();
-        a.tracked[ms] = [
-          for (final t in tracks)
-            if (t is Map && t['box_in_roi'] is Map)
-              TimelineBox(
-                box: _fromArea((t['box_in_roi'] as Map).cast<String, dynamic>(), area),
-                confidence: (t['confidence'] as num?)?.toDouble() ?? 0,
-                className: '${t['class_name'] ?? ''}',
-                trackId: (t['track_id'] as num?)?.toInt(),
-                coasted: t['coasted'] == true,
-              ),
-        ];
+        try {
+          final name = rec['clip'] as String?;
+          final pts = (rec['pts_us'] as num?)?.toInt();
+          final tracks = rec['tracks'];
+          if (rec['type'] != 'detections' || name == null || pts == null || tracks is! List) continue;
+          final a = c[name];
+          if (a == null || !trackedClips.contains(name)) continue;
+          a.addLeads(rec, tracks, leads);
+          final area = a.area ?? const Rect.fromLTWH(0, 0, 1, 1);
+          final ms = (pts / 1000).round();
+          a.tracked[ms] = [
+            for (final t in tracks)
+              if (t is Map && t['box_in_roi'] is Map)
+                TimelineBox(
+                  box: _fromArea((t['box_in_roi'] as Map).cast<String, dynamic>(), area),
+                  confidence: (t['confidence'] as num?)?.toDouble() ?? 0,
+                  className: '${t['class_name'] ?? ''}',
+                  trackId: (t['track_id'] as num?)?.toInt(),
+                  coasted: t['coasted'] == true,
+                ),
+          ];
+        } catch (_) {}
       }
     }
 
@@ -441,10 +459,14 @@ class VideoBoxTimeline {
   static Map<int, (int, int)> _leads(Iterable<Map<String, dynamic>> recs) => {
     for (final r in recs)
       if (r['type'] == 'track_event' && r['event'] == 'created')
-        if ((r['track_id'] as num?)?.toInt() case final id?)
-          if (((r['frame_ms'] ?? r['time_ms']) as num?)?.toInt() case final at?)
-            if ((r['first_seen_ms'] as num?)?.toInt() case final first?) id: (at, max(0, at - first)),
+        if (_int(r['track_id']) case final id?)
+          if (_int(r['frame_ms'] ?? r['time_ms']) case final at?)
+            if (_int(r['first_seen_ms']) case final first?) id: (at, max(0, at - first)),
   };
+
+  /// A finite JSON number as int, else null: a wrong-typed event gives no
+  /// lead instead of throwing out of the whole reader.
+  static int? _int(Object? v) => v is num && v.isFinite ? v.toInt() : null;
 
   /// Each visit's span in the clip, and the class seen on most of its
   /// detected (not coasted) boxes. [leadMs] moves a start back to the first

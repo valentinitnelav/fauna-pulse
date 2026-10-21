@@ -498,7 +498,14 @@ class _ModelsScreenState extends State<ModelsScreen> {
             widget.download(f, d.identification, onProgress, isCancelled),
       ),
     );
-    if (ok != true || !mounted) return;
+    if (!mounted) return;
+    if (ok != true) {
+      // Cancel, Back or a failure: files that arrived before it (the model
+      // before its name list) are on the phone, so the list must say so and
+      // not still offer "Download" (same as the watch page).
+      await _reload();
+      return;
+    }
     // File names, as the list shows them (round 275).
     _snack('Downloaded ${files.map((f) => f.name).join(' and ')}.');
     await _reload();

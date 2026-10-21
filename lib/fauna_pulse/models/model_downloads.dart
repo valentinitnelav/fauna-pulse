@@ -174,11 +174,23 @@ class ModelDownloads {
   /// the others.
   static ModelDownloads parse(String text) {
     final j = jsonDecode(text) as Map<String, dynamic>;
-    final base = Uri.parse(j['base_url'] as String);
+    // base_url is only needed for a file without its own 'url'; a missing or
+    // wrong base_url fails just those entries (in file()), not the whole list.
+    final rawBase = j['base_url'];
+    final base = rawBase is String ? Uri.tryParse(rawBase) : null;
     DownloadFile file(Map<String, dynamic> f) {
       final name = f['name'] as String;
-      final url = f['url'] is String ? Uri.parse(f['url'] as String) : base.resolve(Uri.encodeComponent(name));
-      if (!url.isScheme('https')) throw FormatException('not an HTTPS link: $url');
+      final Uri url;
+      if (f['url'] is String) {
+        url = Uri.parse(f['url'] as String);
+      } else if (base != null) {
+        url = base.resolve(Uri.encodeComponent(name));
+      } else {
+        throw FormatException('no url and no usable base_url for $name');
+      }
+      // An empty host ('https:///x') still has the https scheme; without the
+      // host check such a typo would be offered and only fail at download.
+      if (!url.isScheme('https') || url.host.isEmpty) throw FormatException('not an HTTPS link with a host: $url');
       final sha = f['sha256'] as String?;
       return DownloadFile(
         name: name,
@@ -191,7 +203,16 @@ class ModelDownloads {
     final ids = <String>{};
     final detectors = <ModelDownload>[];
     final identification = <ModelDownload>[];
-    for (final raw in (j['models'] as List? ?? const [])) {
+    // A wrong type here or at 'uses' is logged and read as an empty list
+    // instead of throwing, matching how single entries are skipped below.
+    List topList(String key) {
+      final v = j[key];
+      if (v is List) return v;
+      if (v != null) logSwallowed('model_downloads_top', '$key is not a list');
+      return const [];
+    }
+
+    for (final raw in topList('models')) {
       try {
         final e = raw as Map<String, dynamic>;
         final id = e['id'] as String;
@@ -241,7 +262,7 @@ class ModelDownloads {
     return ModelDownloads(
       detectors: detectors,
       identification: identification,
-      uses: _parseUses(j['uses'] as List? ?? const [], detectors, identification),
+      uses: _parseUses(topList('uses'), detectors, identification),
     );
   }
 

@@ -90,6 +90,8 @@ class _DurationSettingFieldState extends State<DurationSettingField> {
             max: widget.maxSeconds / _unit.factor,
             decimals: _unit.decimals,
             unitSuffix: _unit.label,
+            // The unit menu beside the box already shows the unit.
+            showSuffixInField: false,
             rangeText: '${_words(widget.minSeconds)} to ${_words(widget.maxSeconds)}',
             helperText: widget.helperText,
             onChanged: (v) => widget.onChanged(v * _unit.factor),

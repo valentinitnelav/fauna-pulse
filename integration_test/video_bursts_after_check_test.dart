@@ -95,7 +95,7 @@ void main() {
     _log('CLIP LINE $clipLine');
     expect(find.text('Video'), findsOneWidget);
     await shot('bursts_video_tab');
-    await scrollTo(find.text('Not analysed yet'), 200);
+    await scrollTo(find.text('Not analyzed yet'), 200);
     await shot('bursts_not_analysed');
 
     // 2. "Run AI on videos" from the tab.

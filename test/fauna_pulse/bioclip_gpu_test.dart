@@ -43,11 +43,20 @@ void main() {
     expect(seen, [true, false]);
   });
 
-  test('a failed GPU compile says the CPU is used and points to the newer export; other reasons stay as they are', () {
-    expect(gpuNoteText('Failed to compile model'), contains('so the CPU is used'));
-    expect(gpuNoteText('Failed to compile model'), contains('convert it again'));
-    const other = "the GPU's results differed from the CPU's on this phone (agreement 0.900, needs 0.995)";
-    expect(gpuNoteText(other), other);
-    expect(gpuNoteText('on the GPU blocklist after repeated failed GPU compiles'), isNot(contains('convert it again')));
+  test('GPU notes are shown in plain words; the memory note keeps the native text', () {
+    // Any set-up failure (not only "Failed to compile"): CPU used + the re-export advice.
+    for (final n in ['Failed to compile model', 'GPU delegate could not be created']) {
+      expect(gpuNoteText(n), contains('so the main processor (CPU) is used'));
+      expect(gpuNoteText(n), contains('convert it again'));
+      expect(gpuNoteText(n), isNot(contains(n)));
+    }
+    const mismatch = "the GPU's results differed from the CPU's on this phone (agreement 0.900, needs 0.995)";
+    expect(gpuNoteText(mismatch), startsWith('On this phone the GPU gave different answers from the CPU'));
+    expect(gpuNoteText(mismatch), isNot(contains('agreement')));
+    final blocked = gpuNoteText('on the GPU blocklist after repeated failed GPU compiles');
+    expect(blocked, startsWith('The GPU failed with this model several times before'));
+    expect(blocked, isNot(contains('convert it again')));
+    const memory = 'this phone has 3.5 GB of memory; setting this model up on the GPU needs about 4.0 GB, so it runs on the CPU';
+    expect(gpuNoteText(memory), 'T${memory.substring(1)}.');
   });
 }

@@ -73,7 +73,9 @@ class SlowPhoneBanner extends StatelessWidget {
     margin: const EdgeInsets.all(10),
     padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
     decoration: BoxDecoration(
-      color: Colors.brown.shade900.withValues(alpha: 0.94),
+      // Opaque: the banner lies over the camera's top-left chip, which showed
+      // through a see-through background and mixed with the first text line.
+      color: Colors.brown.shade900,
       borderRadius: BorderRadius.circular(12),
       border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
     ),

@@ -359,7 +359,7 @@ void main() {
       choice: (detector: null, idModel: 'insectdct-cls-v7-eff2s_224_fp16.tflite', nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack'),
     );
     expect(find.text('Chosen AI models'), findsOneWidget);
-    expect(find.text('Find: none (naming works only where animals were already found)'), findsOneWidget);
+    expect(find.text('Find: none (Identify organisms then works only on sessions where a detector already found animals)'), findsOneWidget);
     expect(find.text('Name: insectdct-cls-v7-eff2s_224_fp16.tflite'), findsOneWidget);
     expect(find.textContaining('Tap one'), findsNothing);
   });

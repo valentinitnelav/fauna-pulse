@@ -46,6 +46,14 @@ the camera, videos and photos build. When one of them fails, fix the screen, not
 test: a rule between two settings belongs where the values are used (see
 `SessionConfig.effectiveInferenceFps`), shown with the box's `warning`.
 
+**Stress tests (round 318).** `test/fauna_pulse/stress/` feeds the app damaged and
+odd files (FaunaLapse zips, session logs, saved settings, name lists, the model
+catalogue, video analysis files), very large inputs, and timing races (double taps,
+Back during a run, two downloads of one file). They run with the normal
+`flutter test test/fauna_pulse`. A case that shows a known bug is kept and marked
+`skip: 'BUG: ...'`; a case for an input the app can never receive is marked
+`skip: 'NOT FIXED (audit): ...'`. Add `--run-skipped` to see them fail.
+
 
 ## Security and release gate
 

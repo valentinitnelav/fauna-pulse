@@ -46,7 +46,8 @@ void main() {
     });
 
     test('other answers keep their code', () {
-      expect(downloadStatusMessage(500), 'Download failed (HTTP 500).');
+      expect(downloadStatusMessage(500), startsWith('Download failed (HTTP 500). Try again later'));
+      expect(downloadStatusMessage(500), contains('"Import model files…"'));
     });
 
     test('a web page instead of the file is refused', () {

@@ -93,7 +93,7 @@ detection sessions already have their track IDs: use the steps below.
    stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
    Photos tab then shows each track ID's identification under its photos.
 
-**Re-score with this name list** repeats only the last step (seconds): the stored embeddings are
+**Update results** repeats only the last step (seconds): the stored embeddings are
 compared against a different name list, e.g. a country-restricted one, without running
 the model again. For track IDs found in videos, *Find track IDs* numbers the track IDs anew each
 time: after it ran again, the stored crops belong to the old numbers, so the button is

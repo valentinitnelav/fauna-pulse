@@ -133,7 +133,7 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   - Motion-trigger: "MOTION: CAPTURING" / "MOTION: WAITING".
   - Time-lapse: "TIME-LAPSE: tap ●" before recording, then
     "TIME-LAPSE: CAPTURING" during a burst or "NEXT BURST in mm:ss" between
-    bursts.
+    bursts ("NEXT BURST in 2 h 15 min" when the wait is an hour or more).
   On a narrow screen a long label may shorten itself with "…" — that is
   deliberate, so the info toggle next to it always stays reachable.
 - **Info panel over the REC banner** — while recording, expanding the "▸"
@@ -193,7 +193,7 @@ tabs:
   slow — for big sessions, copying the folder to a computer over USB is
   easier, see §6). Reference photos (see below) are mixed in chronologically
   and marked with a "Reference photo" chip; they have no detection boxes by
-  design. **Copy photos to gallery** at the bottom copies the session's
+  design. **Copy photos to Gallery** at the bottom copies the session's
   photos into the phone's own Gallery app (details in §6).
 - **Graphs** — the track ID count, the track ID timeline (your
   visitation-rate result), a track-length histogram with a selectable bin

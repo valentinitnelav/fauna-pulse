@@ -504,7 +504,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                       'the video to pause or play. Boxes show only on the frames live detection logged '
                       'with an insect. Sound is off unless you switch it on.'
                 : 'Plays the videos of this session with the boxes the detector found. Tap the video to '
-                      'pause or play. Boxes are shown only on the frames the detector analysed, so at '
+                      'pause or play. Boxes are shown only on the frames the detector analyzed, so at '
                       'higher speeds they can trail a fast insect a little. Sound is off unless you '
                       'switch it on.',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -582,10 +582,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             const SizedBox(height: 4),
             Text(
-              'Whole frame: the square is the area the detector ${here ? 'analyzed' : 'analysed'}; the darker part '
+              'Whole frame: the square is the area the detector analyzed; the darker part '
               'was left out. What the detector saw: zoomed onto that square. If insects sit outside the square or '
               'on its edge, change it '
-              '${here ? 'under "Area to analyze" above and analyze again' : 'and analyse again (button below)'}.',
+              '${here ? 'under "Area to analyze" above and analyze again' : 'and analyze again (button below)'}.',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
@@ -626,7 +626,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               label: 'Compare with detection afterwards',
               labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               helperText:
-                  '"Find animals in videos" analyses these clips again, frame by frame, and "Find track IDs" '
+                  '"Find animals in videos" analyzes these clips again, frame by frame, and "Find track IDs" '
                   'there links the boxes into track IDs. Then "Detection afterwards" above shows those boxes on '
                   'the same frames, for example to see whether live detection missed insects while the '
                   'phone was hot or the motion gate slept. The session\'s own track IDs stay live detection\'s.',
@@ -648,7 +648,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               // Round 239: before the first analysis there is no square to
               // move yet (recorded bursts, fresh imports).
               const HelpLabel(
-                label: 'Not analysed yet',
+                label: 'Not analyzed yet',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     '"Find animals in videos" finds the insects in these videos. It is the slow step and can '
@@ -661,7 +661,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 label: 'Other track ID settings?',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
-                    'The videos were deleted to free storage, so they cannot be analysed again. '
+                    'The videos were deleted to free storage, so they cannot be analyzed again. '
                     '"Find animals in videos" can still find the track IDs again from the saved boxes, for '
                     'example with another occlusion tolerance or minimum track length.',
               )
@@ -671,7 +671,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
                     'Opens "Find animals in videos" for this session. There you can move or resize the '
-                    'square and analyse the videos again; the track IDs are then found automatically. '
+                    'square and analyze the videos again; the track IDs are then found automatically. '
                     'The new boxes and track IDs replace the ones shown here.',
               ),
             const SizedBox(height: 4),
@@ -681,7 +681,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 onPressed: _openAnalysis,
                 icon: Icon(_files.isEmpty ? Icons.timeline : Icons.crop_free),
                 label: Text(
-                  _timeline.clips.isEmpty || _files.isEmpty ? 'Find animals in videos' : 'Change square and analyse again',
+                  _timeline.clips.isEmpty || _files.isEmpty ? 'Find animals in videos' : 'Change square and analyze again',
                 ),
               ),
             ),
@@ -728,8 +728,8 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       final v = b != null && b.tracked ? '${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}, ' : '';
       return ' · ${v}video deleted';
     }
-    if (b == null) return ' · not analysed';
-    if (!b.done) return ' · analysed in part';
+    if (b == null) return ' · not analyzed';
+    if (!b.done) return ' · analyzed in part';
     if (b.tracked) return ' · ${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}';
     return '';
   }
@@ -751,7 +751,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     } else if (boxes == null) {
       note = here
           ? 'This clip was not analyzed yet, so there are no boxes. The main button above analyzes it.'
-          : 'This clip was not analysed yet, so there are no boxes. "Find animals in videos" '
+          : 'This clip was not analyzed yet, so there are no boxes. "Find animals in videos" '
                 '(button below) finds the insects in it.';
     } else if (!boxes.done) {
       final last = boxes.lastAnalysedMs;
@@ -761,7 +761,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       note = here
           ? 'The videos were analyzed again after "Find track IDs", so the track IDs no longer match. '
                 'Finding the track IDs again (button above) updates them. Until then all boxes are shown.'
-          : 'The videos were analysed again after "Find track IDs", so the track IDs no longer match. '
+          : 'The videos were analyzed again after "Find track IDs", so the track IDs no longer match. '
                 'The button below opens "Find animals in videos", where "Find track IDs" updates them. Until '
                 'then all boxes are shown.';
     } else if (!boxes.tracked) {
@@ -772,7 +772,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 : 'No track IDs yet: "Find track IDs" (button above) links the boxes of each insect into '
                       'track IDs. Until then all boxes are shown.'
           : _timeline.hasVisits
-          ? '"Find track IDs" ran before this clip was analysed. The button below opens "Find animals in '
+          ? '"Find track IDs" ran before this clip was analyzed. The button below opens "Find animals in '
                 'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all boxes '
                 'are shown.'
           : 'No track IDs yet: "Find track IDs" on "Find animals in videos" (button below) links the boxes '
@@ -943,7 +943,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       final frames = boxes.analysedFrames, withBox = boxes.rawBoxMs.length;
       if (frames == 0) return null;
       final share = withBox > 0 && withBox * 100 < frames ? 'less than 1' : '${(100 * withBox / frames).round()}';
-      return 'Boxes on $share % of the analysed frames.';
+      return 'Boxes on $share % of the analyzed frames.';
     }
     if (boxes.visits.isEmpty) return 'No track ID in this clip.';
     final clipMs = c.value.duration.inMilliseconds;

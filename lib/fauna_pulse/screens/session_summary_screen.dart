@@ -145,6 +145,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _endedNormally = false;
   int? _uniqueTracks;
 
+  /// The `guard_stop` record (round 296) when the recording stopped by itself
+  /// before the battery or storage ran out, else null. Such a stop is clean, so
+  /// "Ended normally" stays Yes; without this row the user could believe the
+  /// session ran for its whole planned time.
+  Map<String, dynamic>? _guardStop;
+
   /// Videos deleted to free storage and the space freed (round 236, from
   /// the `video_cleanup` records after the session's end).
   int _videosDeleted = 0;
@@ -520,7 +526,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             .where((l) => l.trim().isNotEmpty)
             .toList();
         _videosDeleted = _videosFreedBytes = 0;
+        _guardStop = null;
         for (final l in tailLines) {
+          // Written just before `end_of_session`, so it is always in the tail.
+          if (l.contains('"guard_stop"')) _guardStop = _tryDecode(l) ?? _guardStop;
           if (!l.contains('"video_cleanup"')) continue;
           final rec = _tryDecode(l);
           _videosDeleted += (rec?['clips'] as List?)?.length ?? 0;
@@ -945,6 +954,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return h > 0 ? '${h}h ${m}m ${sec}s' : '${m}m ${sec}s';
   }
 
+  /// Why the guard stopped the recording ("Yes: storage almost full (140 MB
+  /// free, limit 200 MB)"), or null when it did not. The limits come from the
+  /// saved settings (keys must match SessionConfig and the reasons
+  /// guardStopReason returns).
+  String? get _guardStopLabel {
+    final g = _guardStop;
+    if (g == null) return null;
+    final free = g['free_storage_bytes'];
+    final reserve = _setting('storageReserveMb');
+    final level = g['battery_percent'];
+    final limit = _setting('lowBatteryStopPercent');
+    return switch (g['reason']) {
+      'storage_low' =>
+        'Yes: storage almost full (${free is num ? '${(free / (1024 * 1024)).round()} MB free' : 'free space unknown'}'
+            '${reserve != null ? ', limit ${_numStr(reserve)} MB' : ''})',
+      'low_battery' =>
+        'Yes: battery low (${level is num ? '${level.round()} %' : 'level unknown'}'
+            '${limit != null ? ', limit ${_numStr(limit)} %' : ''})',
+      final r => 'Yes ($r)',
+    };
+  }
+
   /// "8% (from 74% to 66%)" or "unknown". (Android's battery % can be coarse/laggy,
   /// so it's shown only as a rough independent check on the energy estimate.)
   String get _batteryUsedLabel {
@@ -1158,12 +1189,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // block still registers every value (see config_not_applicable there).
     final noAi = _noAiSession;
     final modeName = _importedVideoSession
-        ? 'imported-video'
+        ? 'imported videos'
         : _timeLapseSession
         ? 'time-lapse'
         : _motionOnlySession
-        ? 'motion-trigger'
-        : 'Live detection';
+        ? 'motion-triggered photos'
+        : 'live detection';
     void addNote(String text) {
       rows.add(
         Padding(
@@ -1186,7 +1217,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (run == null || vs is! Map) {
         addNote(
           'Not analyzed yet: "Find animals in videos" on the home screen finds '
-          'the insects in these videos.',
+          'the animals in these videos.',
         );
       } else {
         addNote('Chosen on the "Find animals in videos" screen.');
@@ -1217,8 +1248,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
     } else if (noAi) {
       addNote(
-        'Not applicable: the detector never ran in this session '
-        '($modeName mode).',
+        'Not applicable: the detector did not run during recording '
+        '($modeName).',
       );
     }
     add('Model', _setting('modelPath', 'model_path'), na: noAi);
@@ -1229,7 +1260,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _setting('cpuThreads', 'cpu_threads'),
       na: noAi,
     );
-    add('Inference engine used', _accelerator, na: noAi);
+    add('Detector ran on', _accelerator, na: noAi);
     add(
       'Confidence threshold',
       _setting('confidenceThreshold', 'confidence_threshold'),
@@ -1396,7 +1427,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         (_setting('timeLapseGapSeconds') != null ||
             _setting('timeLapseIntervalSeconds') != null)) {
       addNote(
-        'Time-lapse settings were not applicable in $modeName mode.',
+        'Time-lapse settings were not used in this session ($modeName).',
       );
     }
     // Round 174: the key became a BREAK between bursts. Pre-174 sessions
@@ -1453,7 +1484,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // translate it for display only.
     add(
       'ROI photo source',
-      _setting('captureMode') == 'still' ? 'high-res' : _setting('captureMode'),
+      switch (_setting('captureMode')) {
+        'still' => 'High-res photos always',
+        'auto' => 'Auto (high-res only when needed)',
+        'fast' => 'Fast crops only (live frame)',
+        final v => v,
+      },
     );
     add('Saved photo side', _setting('targetRoiSavedPx'), suffix: ' px');
     // Reference photos (wire keys stay gt_* from the r107 "ground-truth
@@ -1474,7 +1510,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // ('stillSyncCompanion' is the setting's frozen wire key).
     if (_setting('stillSyncCompanion') != null) {
       add(
-        'Sync companion (high-res)',
+        'Also save a fast crop with each high-res photo',
         _setting('stillSyncCompanion') == true ? 'on' : 'off',
         na:
             _setting('captureMode') == 'fast' ||
@@ -1660,7 +1696,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             ? 'Track IDs found afterwards with "Find track IDs" on the "Find animals in '
                   'videos" screen.'
             : 'Not run yet: "Find track IDs" on the "Find animals in videos" screen '
-                  'follows each insect from frame to frame.',
+                  'follows each animal from frame to frame.',
       );
     } else if (_visitsFromPhotos) {
       addNote(
@@ -1669,7 +1705,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
     } else if (noAi) {
       addNote(
-        'Not applicable: tracking requires the detector ($modeName mode).',
+        'Not applicable: track IDs need the detector during recording ($modeName).',
       );
     }
     add(
@@ -1867,11 +1903,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             : _model ?? 'unknown',
       ),
       if (!_noAiSession && _accelerator != null && _accelerator!.isNotEmpty)
-        _stat('Inference engine', _accelerator!),
+        _stat('Detector ran on', _accelerator!),
       _stat(
         'Ended normally',
         _endedNormally ? 'Yes' : 'No (crash / forced stop)',
       ),
+      if (_guardStopLabel case final String why) _stat('Stopped by itself', why),
       _stat('Battery used', _batteryUsedLabel),
       if (_chargingDuringSession)
         const Padding(
@@ -1932,10 +1969,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         title: DialogTitle(Text('Copy $n ${n == 1 ? 'video' : 'videos'} to Gallery?'), onClose: () => Navigator.of(ctx).pop(false)),
         content: Text(
           'Copies the video clips of this session into the phone\'s Gallery '
-          'app, as the album "Movies/FaunaPulse/$album". The copies take about '
-          '${formatBytes(bytes)} of extra storage; the originals stay in the '
-          'session folder, and deleting those later ("Free storage") leaves the '
-          'copies alone. Videos already copied are skipped, so re-running is safe.',
+          'app, as the album "Movies/FaunaPulse/$album" (about '
+          '${formatBytes(bytes)} extra). The originals stay in the session '
+          'folder; deleting them later with "Free storage" (Find animals in '
+          'videos screen) does not delete the copies. Videos copied before are '
+          'skipped.',
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -2245,17 +2283,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       _stat('Track IDs found afterwards in the videos', '$_afterVisits (for comparison; Video tab)'),
     const SizedBox(height: 8),
     const Text(
-      'Track ID timeline (each lane is one tracked object)',
+      'Track ID timeline (one row per track ID)',
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 4),
     const Text(
-      'Time runs left → right across the session. A bar shows when an object was '
-      'within the ROI, from the first to the last frame the tracker saw it in; overlapping bars '
-      'were in the ROI at the same time. Next to each bar: '
-      'its start and end, counted from the session start like the axis below. In pollination '
-      'ecology a track ID usually stands for one visit; some can be false detections, or one '
-      'insect split into two track IDs.',
+      'Time runs from left to right across the session. Each bar is one track ID, from the '
+      'first to the last frame it was seen; bars that overlap were there at the same time. '
+      'The times next to a bar count from the session start, like the axis below. A track '
+      'ID is often one visit, but some are false detections or one animal split into two '
+      'track IDs.',
       style: TextStyle(color: Colors.white70, fontSize: 12),
     ),
     if (_visitsAfterwards) ...[
@@ -2293,8 +2330,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const Padding(
         padding: EdgeInsets.only(top: 4),
         child: Text(
-          'No temperature, FPS or power data in this session: the app version '
-          'that recorded it did not save them.',
+          'No temperature, FPS or power data were saved for this session.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       )
@@ -2322,15 +2358,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_headroom.length >= 2) ...[
       const SizedBox(height: 28),
       const Text(
-        'Thermal headroom (0 = cool → 1 = throttling)',
+        'Heat level (0 = cool, 1 = phone slows down)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
       const Text(
-        'How close the phone is to slowing itself down to cool off, from the '
-        'chip/skin sensors. 0 = cool, 1 = the throttling point (may briefly exceed '
-        '1). When this nears 1 the phone throttles and the FPS drops. This value '
-        'reacts faster than the battery temperature and compares better between phones.',
+        'How close the phone is to slowing itself down to cool off, from its own '
+        'heat sensors (it may briefly go above 1). Near 1 the phone slows down and '
+        'the FPS drops. It reacts faster than the battery temperature and compares '
+        'better between phones.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2338,9 +2374,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ] else ...[
       const SizedBox(height: 12),
       const Text(
-        'Thermal headroom: not reported by this phone (common on many devices). '
-        'This is not a bug. Use the Temperature and '
-        'Inference-time graphs as the throttle indicators on this device.',
+        'Heat level: this phone does not report it (common, not an error). Watch '
+        'the battery temperature and the detector time per frame instead: both '
+        'rise when the phone gets hot.',
         style: TextStyle(color: Colors.white54, fontSize: 12),
       ),
     ],
@@ -2355,7 +2391,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (_infMs.length >= 2) ...[
       const SizedBox(height: 28),
       const Text(
-        'Detector inference time (ms), a sign of throttling',
+        'Detector time per frame (ms)',
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
@@ -2366,17 +2402,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // records but are NOT in this graph. Raw per-frame values, never
       // smoothed. Keep this text in sync with ObjectDetector.kt's timing.
       const Text(
-        'Milliseconds the detector model itself needs per frame: only the '
-        'neural-network run on the chip (including handing the prepared '
-        'image in and reading the results out). Image preparation before '
-        'it and detection-box post-processing after it are NOT included: '
-        'they are recorded separately in the data log (pre_ms and post_ms) '
-        'and are normally much smaller. Each point is a raw single-frame '
-        'value, not an average. This number climbs when the chip slows '
-        'itself to cool off (thermal throttling), often before the battery '
-        'temperature moves, and this is what makes the FPS above drop. Read '
-        'it against the FPS and temperature graphs on the same left→right '
-        'time axis.',
+        'How long the detector needs for one frame, in milliseconds (each point '
+        'is one frame). When the phone gets hot it slows its chip down to cool '
+        'off: this number then climbs, often before the battery temperature '
+        'rises, and the FPS above drops. Compare it with the other graphs on '
+        'the same time axis.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2402,13 +2432,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // source and the silent corrections, and frame the battery-% drop
       // as the cross-check. Keep in sync with [_buildEnergySeries].
       const Text(
-        'Watts (W) = how fast energy is being used right now. Estimated '
-        'from the phone\'s own battery sensors (current × voltage, '
-        'lightly smoothed); the app corrects known phone quirks (some '
-        'report milliamps instead of microamps, some report a doubled '
-        'two-cell voltage). Phone battery sensors are coarse, so treat '
-        'this as a good indication rather than a lab measurement. The '
-        'battery-percentage drop below is an independent cross-check.',
+        'How much power the phone uses, in watts (W), estimated from its own '
+        'battery sensors. Phone sensors are coarse, so take it as an '
+        'indication, not a lab measurement. The battery percentage used '
+        '(below) is an independent check.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2513,13 +2540,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (_headroom.length >= 2) ...[
         const SizedBox(height: 28),
         const Text(
-          'Thermal headroom (0 = cool → 1 = throttling)',
+          'Heat level (0 = cool, 1 = phone slows down)',
           style: bold,
         ),
         const SizedBox(height: 4),
         const Text(
           'How close the phone is to slowing itself down to cool off, from '
-          'the chip/skin sensors.',
+          'its own heat sensors.',
           style: note,
         ),
         const SizedBox(height: 12),
@@ -2527,7 +2554,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ] else ...[
         const SizedBox(height: 12),
         const Text(
-          'Thermal headroom: not reported by this phone (common, not a bug).',
+          'Heat level: this phone does not report it (common, not an error).',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ],
@@ -2561,12 +2588,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         // Keep in sync with VideoFrameSource.kt: inferMs times the whole
         // predict() call (input preparation, model run, box decoding + NMS).
         const Text(
-          'Milliseconds the detector needs per frame (preparing the picture '
-          'for the model, the model itself and sorting out its boxes), '
-          'averaged since the previous measurement. Reading the frame from '
-          'the video and cutting out the square are not included; they are '
-          'in the data (decode_ms and convert_ms). This number climbs when '
-          'the chip slows itself down to cool off.',
+          'How long the detector needs for one frame, in milliseconds, '
+          'averaged since the previous measurement (reading the frame from the '
+          'video is not included). It climbs when the phone slows its chip down '
+          'to cool off.',
           style: note,
         ),
         const SizedBox(height: 12),
@@ -2693,7 +2718,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       const SizedBox(height: 4),
       const Text(
         'When this session\'s track IDs began, per hour of the day (local time). '
-        'The Dashboard pools this chart over all sessions, without videos whose filming time is only a guess.',
+        'The Dashboard adds this chart up over all sessions, leaving out videos that do not say when they were filmed.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 12),
@@ -2757,13 +2782,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       ),
       const SizedBox(height: 4),
       const Text(
-        'A random sample of $_randomSampleCount photos across the session is '
-        'shown by default; pick a bigger sample or all photos below. '
-        'If a detector ran, predicted boxes are displayed too. '
-        'Swipe left/right, or use the navigation arrows to '
-        'step through them (always in capture order). Reference photos '
-        '(taken on a fixed clock regardless of detections) are mixed in and '
-        'marked; they have no prediction boxes by design.',
+        '$_randomSampleCount photos picked at random are shown; choose more '
+        'below. Swipe, or use the arrows, to step through them in the order '
+        'they were taken. Reference photos (taken at fixed times, whether or '
+        'not an animal was there) are marked and have no boxes.',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       ],
@@ -2772,7 +2794,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // the frame that scheduled it, not only the one(s) whose time-lapse
       // step was due.
       const Text(
-        'Bounding box colors (if a detector was used):',
+        'Box colors (if a detector was used):',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
       const SizedBox(height: 2),
@@ -2787,7 +2809,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             TextSpan(
               text: videoFrames
                   ? 'the track ID this frame was kept for'
-                  : 'tracked object whose photo schedule triggered this shot',
+                  : 'the track ID this photo was taken for',
             ),
           ],
         ),
@@ -2800,7 +2822,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               text: '■ ',
               style: TextStyle(color: _BoxPainter.coDetectedColor),
             ),
-            TextSpan(text: 'other target objects detected in the same frame'),
+            TextSpan(text: 'other animals detected in the same picture'),
           ],
         ),
       ),
@@ -2857,14 +2879,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text(
-            'High-res photos come as a pair: the sharp high-res photo and a '
-            'smaller "_live" companion photo taken at the exact moment the photo was '
-            'triggered. The viewer shows the companion photo first, because its '
-            'boxes match where the animal really was. The ⚡ button above the '
-            'photo switches to the high-res photo. It shows the scene a '
-            'fraction of a second later (see the "Lag" row), so a fast animal '
-            'may have moved or left. The "Boxes" row says how the boxes on the '
-            'high-res photo were placed.',
+            'High-res photos are saved twice: a smaller photo taken at the '
+            'moment of detection, and a sharp photo taken a fraction of a second '
+            'later. The viewer shows the smaller one first, because its boxes '
+            'match where the animal was. The ⚡ button switches to the sharp '
+            'photo; a fast animal may have moved by then (see the "Lag" row; '
+            'the "Boxes" row says how its boxes were placed).',
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ),
@@ -2908,7 +2928,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (videoFrames || withVideoCopy) ...[
         const Divider(height: 32, color: Colors.white24),
         const HelpLabel(
-          label: 'Copy videos to gallery',
+          label: 'Copy videos to Gallery',
           labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           helperText:
               'Copies the video clips of this session into the phone\'s own Gallery app, as one '
@@ -2931,17 +2951,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // from the retired Overview tab, round 187) ---
       const Divider(height: 32, color: Colors.white24),
       const HelpLabel(
-        label: 'Copy photos to gallery',
+        label: 'Copy photos to Gallery',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Copies every saved photo of this session into the phone\'s own '
-            'Gallery app, as one album under Pictures/FaunaPulse. Useful when '
-            'you want the images alongside your normal photos, but the '
-            'copies take extra storage (the originals always stay in the '
-            'session folder). Two things to know: some gallery apps take a '
-            'while to notice newly added albums, and the copies are plain '
-            'photos: the detection boxes and the extra information you see '
-            'in this app\'s photo viewer are not part of the image files.',
+            'Copies every saved photo of this session into the phone\'s Gallery '
+            'app, as an album under Pictures/FaunaPulse. The copies take extra '
+            'storage; the originals stay in the session folder. The copies are '
+            'plain photos, without the detection boxes. Some gallery apps need '
+            'a while to show a new album.',
       ),
       const SizedBox(height: 8),
       ..._galleryProgress(videos: false),
@@ -2982,17 +2999,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       label: 'Identify organisms',
       labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
       helperText:
-          'Names the animals on the saved photos with an identification model (for example '
-          'BioCLIP or insectDCT) and a name list made for that model. With track IDs, all '
-          'photos of a track ID give one answer; without track IDs, each photo gets its own '
-          'answer. Each answer has a confidence per rank (for example family, genus, species). '
-          'The next screen shows the identification models and name lists on this phone and '
-          'has a button to get more. Photos of a session without live detection need '
-          '"Find animals in photos" first (for videos: "Find animals in videos"). '
-          'It can take minutes to hours, so keep the phone plugged in. '
-          'Results are saved in the session folder (CSV and JSON), and a "View results" '
-          'button then appears here. Treat the results as suggestions: mistakes are '
-          'possible, especially for taxa that are not in the name list.',
+          'Names the animals on this session\'s saved photos with an identification model '
+          'and its list of species names. With track IDs, all photos of one track ID give '
+          'one answer. Sessions without live detection need "Find animals in photos" (for '
+          'videos: "Find animals in videos") first. It can take minutes to hours, so keep '
+          'the phone plugged in; a "View results" button then appears here. The names are '
+          'suggestions: mistakes are possible, especially for animals that are not in the '
+          'name list.',
     ),
     const SizedBox(height: 8),
     Wrap(
@@ -3136,13 +3149,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             children: [
               Text(
                 '"Find animals in photos" found a detection in $withBoxes of '
-                '${outcomes.length} checked photos (green boxes in the viewer). '
-                'With a keep time-window of ${formatKeepWindow(_postGapSeconds)} '
-                '(set under "Photo cleanup" on the "Find animals in photos" '
-                'screen): $kept kept ($keptPct%), $deleted to delete '
-                '($deletedPct%). Photos with a red ✕ below have no detection '
-                'nearby. Photos kept only because of a nearby detection say so '
-                'under the image.',
+                '${outcomes.length} photos (green boxes). Photos within '
+                '${formatKeepWindow(_postGapSeconds)} of such a photo are kept '
+                'too ("keep window", set under "Photo cleanup" on the "Find '
+                'animals in photos" screen): $kept kept ($keptPct%), $deleted '
+                'marked for deletion ($deletedPct%) with a red ✕.',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -3248,7 +3259,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               : _videoSession
               ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Find animals in videos" '
                     '(Video tab, or the session\'s ⋮ menu on the Sessions screen) finds the '
-                    'insects, then "Find track IDs" there follows each one from frame to frame.'
+                    'animals, then "Find track IDs" there follows each one from frame to frame.'
               : 'No track IDs recorded.',
           textAlign: TextAlign.center,
         ),
@@ -3974,7 +3985,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       }
     } catch (e) {
       logSwallowed('crop_export', e);
-      msg = 'Crop export failed: $e';
+      msg =
+          'Could not save or share the crop. Try again; if it keeps failing, '
+          'use "Report a problem" in the Home screen menu.';
     } finally {
       if (mounted) setState(() => _cropBusy = false);
     }
@@ -4642,7 +4655,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           // answer per track id, combined over all its photos; no-AI
           // sessions are identified per photo instead).
           if (_identifiedText(p) case final text?) _infoRow('Identified', text),
-          _infoRow('Captured', _formatStamp(p.captureMs)),
+          _infoRow('Captured', formatCaptureStamp(p.captureMs)),
           if (p.clip case final clip? when p.ptsUs != null)
             _infoRow('In video', '$clip at ${_clipTime(p.ptsUs! ~/ 1000)}'),
           _infoRow('File', liveShown ? p.liveName! : p.name),
@@ -4668,7 +4681,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           ] else if (widget.deleteMarked.contains(_shownNameFor(p)))
             _infoRow(
               'Cleanup',
-              'marked for deletion: no detection within the keep time-window',
+              'marked for deletion: no detection within the keep window',
             ),
           // Lag of the image ON SCREEN behind the trigger moment (round
           // 112: each view states only its OWN delay — showing the high-res
@@ -4767,15 +4780,18 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       ],
     ),
   );
+}
 
-  /// Capture time as hh:mm:ss:milliseconds (local time), e.g. 14:07:32:481.
-  String _formatStamp(int ms) {
-    if (ms <= 0) return 'unknown';
-    final d = DateTime.fromMillisecondsSinceEpoch(ms);
-    String two(int v) => v.toString().padLeft(2, '0');
-    final msPart = d.millisecond.toString().padLeft(3, '0');
-    return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}:$msPart';
-  }
+/// Capture time as hh:mm:ss.milliseconds (local time), e.g. 14:07:32.481.
+/// A dot, not a colon, before the milliseconds so they do not read as a
+/// fourth time field; same form as the session log lines (session_logger.dart).
+@visibleForTesting
+String formatCaptureStamp(int ms) {
+  if (ms <= 0) return 'unknown';
+  final d = DateTime.fromMillisecondsSinceEpoch(ms);
+  String two(int v) => v.toString().padLeft(2, '0');
+  final msPart = d.millisecond.toString().padLeft(3, '0');
+  return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}.$msPart';
 }
 
 /// Draws ROI-normalized detection boxes (0..1) over the displayed square photo.

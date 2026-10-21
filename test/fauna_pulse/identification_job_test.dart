@@ -371,6 +371,28 @@ void main() {
     expect(r2.skipped, 0);
   });
 
+  test('crops that failed with an embed error are tried again on the next run', () async {
+    final session = makeSession('s4b');
+    var broken = true;
+    final job = IdentificationJob(
+      embed: (rgb) async {
+        if (broken) throw StateError('No embedder loaded');
+        return fakeEmbed(rgb);
+      },
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r1 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r1.embedded, 0);
+    expect(r1.failed, 3);
+    final index = EmbeddingIndex.parse(IdentificationPaths(session).embeddingsJsonl('fake_model').readAsStringSync());
+    expect(index.skippedFor(1), isEmpty);
+    broken = false;
+    final r2 = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r2.embedded, 3);
+    expect(r2.failed, 0);
+  });
+
   test('restart recomputes every crop; the index remembers the margin (round 213)', () async {
     final session = makeSession('s5');
     final job = IdentificationJob(

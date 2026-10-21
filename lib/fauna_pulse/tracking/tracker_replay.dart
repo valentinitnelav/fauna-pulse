@@ -68,32 +68,38 @@ List<ReplayFrame> parseRawDetectionLines(Iterable<String> lines) {
       continue; // truncated/corrupt line
     }
     if (rec['type'] != 'raw_detections') continue;
-    final ts = (rec['frame_ms'] as num?)?.toInt();
+    // A line can be valid JSON yet hold the wrong types (hand-edited or
+    // foreign file): check with `is` instead of casting, so one odd line or
+    // box is skipped like a cut line instead of throwing and ending the whole
+    // replay / offline tracking run. Non-finite numbers are rejected too
+    // (jsonDecode turns 1e400 into Infinity, and Infinity.toInt() throws).
+    int? asInt(Object? v) => v is num && v.isFinite ? v.toInt() : null;
+    final ts = asInt(rec['frame_ms']);
     final boxes = rec['boxes'];
     if (ts == null || boxes is! List) continue;
     final dets = <Detection>[];
     for (final b in boxes) {
       if (b is! List || b.length < 6) continue;
-      final l = (b[0] as num).toDouble();
-      final t = (b[1] as num).toDouble();
-      final r = (b[2] as num).toDouble();
-      final bt = (b[3] as num).toDouble();
+      final v = b.take(6).toList();
+      if (!v.every((x) => x is num && x.isFinite)) continue;
+      final n = v.cast<num>();
       dets.add(
         Detection(
-          box: Rect.fromLTRB(l, t, r, bt),
-          confidence: (b[4] as num).toDouble(),
-          classIndex: (b[5] as num).toInt(),
-          className: 'class${(b[5] as num).toInt()}',
+          box: Rect.fromLTRB(n[0].toDouble(), n[1].toDouble(), n[2].toDouble(), n[3].toDouble()),
+          confidence: n[4].toDouble(),
+          classIndex: n[5].toInt(),
+          className: 'class${n[5].toInt()}',
         ),
       );
     }
+    final clip = rec['clip'];
     frames.add(
       ReplayFrame(
         timestampMs: ts,
         detections: dets,
-        clip: rec['clip'] as String?,
-        frameIndex: (rec['frame'] as num?)?.toInt(),
-        ptsUs: (rec['pts_us'] as num?)?.toInt(),
+        clip: clip is String ? clip : null,
+        frameIndex: asInt(rec['frame']),
+        ptsUs: asInt(rec['pts_us']),
       ),
     );
   }

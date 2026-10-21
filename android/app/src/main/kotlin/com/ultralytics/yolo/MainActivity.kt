@@ -64,6 +64,11 @@ class MainActivity : FlutterFragmentActivity() {
         // (not shutdownNow()) lets any queued crop/Gallery write finish; the executor is per-Activity
         // (val field), so a recreated Activity gets a fresh one.
         cropExecutor.shutdown()
+        // The recording lives in this Activity's Flutter engine, which dies with it. When the
+        // Activity is really finishing (not a rotation/config recreate), stop the keepalive
+        // service too, so no "Recording" notification and wake lock outlive the recording.
+        // RecordingService.onTaskRemoved covers the Recents swipe; this covers other finishes.
+        if (isFinishing) stopService(Intent(this, RecordingService::class.java))
         super.onDestroy()
     }
 

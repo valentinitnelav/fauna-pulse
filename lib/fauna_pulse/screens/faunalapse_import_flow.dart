@@ -99,7 +99,8 @@ Future<String?> pickAndImportFaunaLapse(BuildContext context) async {
             ? problem ?? 'Nothing was imported.'
             : '${done.photos} photos are now the session ${done.folder}'
                   '${done.sitePhotos > 0 ? ', with ${done.sitePhotos} site photos' : ''}.'
-                  '${done.missingPhotos > 0 ? ' ${done.missingPhotos} photos named in its record were not in the zip files.' : ''}',
+                  '${done.missingPhotos > 0 ? ' ${done.missingPhotos} photos named in its record were not in the zip files.' : ''}'
+                  '${done.damagedPhotos > 0 ? ' ${done.damagedPhotos} damaged photos were left out (their bytes do not match the check value in the zip; copy the zip again from the phone).' : ''}',
         style: const TextStyle(fontSize: 13),
       ),
       actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],

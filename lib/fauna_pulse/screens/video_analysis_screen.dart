@@ -195,21 +195,45 @@ class VideoAnalysisPrefs {
       }
     }
 
+    // getDouble/getBool throw when a key holds another type (an int written by
+    // a future version, a hand-edited or damaged prefs file), and that would
+    // keep "Find animals in videos" from opening for good. Read the raw value,
+    // fall back per key, and clamp to the ranges of the boxes in
+    // video_tuning_screen.dart (keep both in sync) so a 0 FPS or 0 s keep step
+    // never reaches the analysis.
+    double d(String key, double def, double lo, double hi) {
+      final v = p.get(key);
+      return v is num && v.isFinite ? v.toDouble().clamp(lo, hi) : def;
+    }
+
+    // fromJson casts each field; a wrong-typed field inside valid JSON throws
+    // after json() has returned, so guard the whole parse.
+    T params<T>(T Function(Map<String, dynamic>) parse, String key, T def) {
+      try {
+        return parse(json(key));
+      } catch (_) {
+        return def;
+      }
+    }
+
+    final keep = p.get(_kKeep);
+    final model = p.get(_kModel);
+    final tracker = p.get(_kTracker);
     return VideoAnalysisPrefs(
-      modelId: p.getString(_kModel),
-      confidence: p.getDouble(_kConf) ?? 0.25,
-      iou: p.getDouble(_kIou) ?? 0.7,
-      analysisFps: p.getDouble(_kFps) ?? kDefaultVideoAnalysisFps,
-      thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
-      occlusionSeconds: p.getDouble(_kOcclusion) ?? 3.0,
-      minVisitSeconds: p.getDouble(_kMinVisit) ?? 1.0,
-      sampleSeconds: p.getDouble(_kSample) ?? 10,
-      keepFrames: p.getBool(_kKeep) ?? true,
-      keepStepSeconds: p.getDouble(_kKeepStep) ?? 1.0,
-      keepDurationSeconds: p.getDouble(_kKeepDuration) ?? 10.0,
-      trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[p.getString(_kTracker)] ?? TrackerAlgorithm.bytetrack,
-      trackerParams: ByteTrackParams.fromJson(json(_kByteTrack)),
-      cbiouParams: CBiouParams.fromJson(json(_kCbiou)),
+      modelId: model is String ? model : null,
+      confidence: d(_kConf, 0.25, 0.05, 0.95),
+      iou: d(_kIou, 0.7, 0.05, 0.95),
+      analysisFps: d(_kFps, kDefaultVideoAnalysisFps, 1, 30),
+      thermalLimitC: d(_kThermal, kDefaultPauseTempC, 35, 45),
+      occlusionSeconds: d(_kOcclusion, 3.0, 0.2, 10),
+      minVisitSeconds: d(_kMinVisit, 1.0, 0, 2),
+      sampleSeconds: d(_kSample, 10, 5, 60),
+      keepFrames: keep is bool ? keep : true,
+      keepStepSeconds: d(_kKeepStep, 1.0, 0.1, 10),
+      keepDurationSeconds: d(_kKeepDuration, 10.0, 1, 300),
+      trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[tracker is String ? tracker : null] ?? TrackerAlgorithm.bytetrack,
+      trackerParams: params(ByteTrackParams.fromJson, _kByteTrack, const ByteTrackParams()),
+      cbiouParams: params(CBiouParams.fromJson, _kCbiou, const CBiouParams()),
     );
   }
 
@@ -354,6 +378,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   String? _framePath;
 
   bool _running = false;
+
+  /// Between the Start tap and [_running] (dialog and settings save); part
+  /// of [_busy] so the buttons stay locked in that gap.
+  bool _starting = false;
   bool _cancelRequested = false;
   bool _tracking = false;
 
@@ -440,7 +468,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         final files = VideoDetector.clipsOf(entity);
         // A session whose clips were all deleted keeps its boxes (round 236).
         if (files.isEmpty && !File('${entity.path}/${VideoDetector.outputFileName}').existsSync()) continue;
-        found.add(await _readSession(entity, files));
+        // One damaged session is left out here, not every session after it
+        // (the outer catch would end the whole scan).
+        try {
+          found.add(await _readSession(entity, files));
+        } catch (e) {
+          logSwallowed('video_analysis_scan_session', e);
+        }
       }
       // Newest first by folder modification time, like the photo screen.
       found.sort((a, b) => b.dir.statSync().modified.compareTo(a.dir.statSync().modified));
@@ -466,7 +500,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       // detection lines keeps the list quick.
       final lines = await out
           .openRead()
-          .transform(utf8.decoder)
+          // allowMalformed: one torn multi-byte letter must not hide the session.
+          .transform(const Utf8Decoder(allowMalformed: true))
           .transform(const LineSplitter())
           .where((l) => l.contains('"video_run_start"') || l.contains('"video_clip_done"'))
           .toList();
@@ -662,15 +697,27 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final session = _session;
     final config = _config;
     if (session == null || config == null || _busy) return;
+    // _running is set only after the settings are saved (14 separate disk
+    // writes on Android, tens to hundreds of ms); _starting closes that gap
+    // so a quick second tap cannot start a second run on the same
+    // video_detections.jsonl. The finally clears it on every early return;
+    // on the normal path _running takes over with no await in between.
+    setState(() => _starting = true);
     _pausePlayer();
     final player = _playerBeforeChange();
-    final changed = _changedSettings(session, config);
-    if (!startOver && changed.isNotEmpty) {
-      if (!await _confirmStartOver(session, changed)) return;
-      startOver = true;
+    try {
+      final changed = _changedSettings(session, config);
+      if (!startOver && changed.isNotEmpty) {
+        if (!await _confirmStartOver(session, changed)) return;
+        startOver = true;
+      }
+      _prefs.modelId = config.modelPath;
+      await _prefs.save();
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
-    _prefs.modelId = config.modelPath;
-    await _prefs.save();
+    // The screen may have closed during the save: start nothing then.
+    if (!mounted) return;
 
     setState(() {
       _running = true;
@@ -830,7 +877,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (now != null && identical(now, player)) await now.reload();
   }
 
-  bool get _busy => _running || _tracking || _keeping || _deleting;
+  bool get _busy => _running || _starting || _tracking || _keeping || _deleting;
 
   /// Links the analyzed boxes of [session] into visits, off the screen's
   /// thread so it stays responsive, then saves the frames kept for them.
@@ -1025,7 +1072,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               : 'Leaving stops the analysis. A stopped run continues where it left off.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stop and leave')),
         ],
       ),
@@ -1345,7 +1392,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
             padding: EdgeInsets.only(top: 4),
             child: Text(
               'These clips were recorded by the app as the camera\'s square, so the whole picture '
-              'is that square. A smaller square analyses only part of it.',
+              'is that square. A smaller square analyzes only part of it.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
@@ -1619,13 +1666,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           label: 'Watch the results',
           labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           helperText:
-              'Plays the analyzed videos with the boxes the detector found and their track IDs, as on the '
-              'session\'s Video tab, so you can see what the detector found and decide whether to change the '
-              'settings and run again. After a new run the player opens on the same clip and moment, to '
-              'compare. Tap the video to pause or play. Boxes are shown only on the frames the detector '
-              'analyzed, so at higher speeds they can trail a fast insect a little. Sound is off unless you '
-              'switch it on. The player is hidden while the screen is busy (analyzing, finding track IDs, '
-              'saving frames or deleting videos), so the phone works on one video at a time.',
+              'Plays the analyzed videos with the detector\'s boxes and track IDs, so you can decide whether '
+              'to change the settings and run again; after a new run it opens at the same clip and moment, '
+              'to compare. Tap the video to pause or play; sound is off unless you switch it on. Boxes show '
+              'only on analyzed frames, so at high speed they can lag behind a fast insect. The player is '
+              'hidden while the screen is busy, so the phone works on one video at a time.',
         ),
         const Text(
           'The videos with the boxes and track IDs found. If insects are missed or counted twice, change the '

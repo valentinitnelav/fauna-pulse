@@ -169,7 +169,7 @@ cases explicit:
 | `created` | The track was matched in enough frames to count as a track ID — its id starts appearing in `detections` records from here. |
 | `lost` | The first frame the track was **not** matched (occlusion, missed detection, or the insect left). The id stays buffered for the occlusion tolerance in case it comes back. |
 | `recovered` | The lost track was matched again: same id, the same track ID continues. |
-| `removed` | The id is gone for good. `reason` says why: `aged_out` (unmatched longer than the occlusion tolerance) or `gate_expired` (the motion gate slept longer than the tolerance, so the stale id must not be revived by a newly arriving insect). |
+| `removed` | The id is gone for good. `reason` says why: `aged_out` (unmatched longer than the occlusion tolerance), `gate_expired` (the motion gate slept longer than the tolerance, so the stale id must not be revived by a newly arriving insect) or `frame_gap_expired` (no frames came for longer than the tolerance, for example the camera stopped for a while; same reason). |
 
 Fields on every `track_event` line:
 
@@ -182,7 +182,7 @@ Fields on every `track_event` line:
 | `first_seen_ms` | When the track's very first detection was seen — the **real track ID start**. It precedes `created` by the frames the tracker needs before it confirms a track ID: for example, a minimum track length of 1 s at 5 frames per second needs 5 frames, so `first_seen_ms` is 4 frame steps (0.8 s) earlier. The app and `track_ids.csv` start a track ID here (§4). |
 | `last_seen_ms` | The last real observation. On a `recovered` line this is the pre-gap moment, so `frame_ms − last_seen_ms` = the gap the id survived. |
 | `frames_missed` | Unmatched frames at the transition (only written when > 0). |
-| `reason` | Removals only: `aged_out` / `gate_expired`. |
+| `reason` | Removals only: `aged_out` / `gate_expired` / `frame_gap_expired`. |
 
 How to use them:
 
@@ -462,7 +462,7 @@ the track ID timeline) are unaffected either way.
     input and packing into the input tensor;
   - `inf_ms` — the detector model run ONLY (handing the tensor to the
     LiteRT/NPU interpreter, the network forward pass, reading the outputs
-    back). This is what the summary's "Detector inference time" throttle
+    back). This is what the summary's "Detector time per frame (ms)"
     graph plots;
   - `post_ms` — output decoding, non-maximum suppression and mapping boxes
     back to image coordinates;
@@ -513,7 +513,7 @@ Round-108 additions:
 | `grab_ms` | Time the image grab alone took; the rest of `total_ms` is crop + encode + write. |
 | `content_lag_ms` | High-res path only. How much OLDER/NEWER the frame's *content* is than the capture request. **Negative = the phone's zero-shutter-lag really served a pre-request frame**; a large positive value means the photo shows the scene that long after the triggering detection (fast insects will have left). |
 | `callback_lag_ms` | High-res path only. Plain request→JPEG wait. |
-| `live_jpeg`, `live_bytes`, `live_saved_px` | Sync companion (when enabled): the trigger-moment live-frame crop saved next to the high-res photo as `…_live.jpg`. Small but in sync — use it when the high-res photo misses the insect. |
+| `live_jpeg`, `live_bytes`, `live_saved_px` | "Also save a fast crop with each high-res photo" (when enabled): the trigger-moment live-frame crop saved next to the high-res photo as `…_live.jpg`. Small but in sync — use it when the high-res photo misses the insect. |
 | `live_lag_ms` | Round 112. The companion's own delay behind the trigger moment, measured when its frame grab returned — an upper bound on how old its content can be (typically a few tens of ms; compare with the high-res photo's `content_lag_ms`). |
 | `content_at_ms` | Round 114. High-res path only: the photo content's **sensor-exposure moment as epoch ms** — what to time-match `detections` frames against (see §5). Absent on odd HALs; reconstruct older logs as `captured_at_ms + content_lag_ms + live_lag_ms` (approximate — the lag is measured from the takePicture() call, which follows the trigger by the companion-grab gap that `live_lag_ms` brackets). Also present in `gt_capture` records. |
 
@@ -1338,7 +1338,7 @@ the same there.
   and darkens the part left out; *What the detector saw* zooms onto the square. The square comes
   from `roi_px` in `video_clip_done`, or from the run's `settings.roi` for a clip whose
   analysis has not finished. Insects outside the square or cut by its edge mean the square
-  should move: *Change square and analyse again* opens *Find animals in videos* for the session,
+  should move: *Change square and analyze again* opens *Find animals in videos* for the session,
   and the tab reloads on return.
 * **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next
   track ID (each starts 1 s before the track ID's first sighting; its boxes appear from

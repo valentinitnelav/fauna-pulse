@@ -105,11 +105,15 @@ double iou(Rect a, Rect b) {
   final interBottom = a.bottom < b.bottom ? a.bottom : b.bottom;
   final interW = interRight - interLeft;
   final interH = interBottom - interTop;
-  if (interW <= 0 || interH <= 0) return 0;
+  // Guards are written as `!(x > 0)` so a NaN (from a NaN or infinite box)
+  // also returns 0: every comparison with NaN is false, so `x <= 0` lets it
+  // through and callers that sum or sort scores would get NaN.
+  if (!(interW > 0) || !(interH > 0)) return 0;
   final interArea = interW * interH;
   final union = a.width * a.height + b.width * b.height - interArea;
-  if (union <= 0) return 0;
-  return interArea / union;
+  if (!(union > 0)) return 0;
+  final v = interArea / union;
+  return v.isFinite ? v : 0;
 }
 
 /// Diagonal length of a rectangle (normalized units), used to scale the
@@ -186,6 +190,9 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
   @override
   int totalConfirmed = 0;
 
+  @override
+  int maxFrameGapMs = 0;
+
   ByteTracker({
     this.params = const ByteTrackParams(),
     this.distanceGateFactor = 1.5,
@@ -257,7 +264,7 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
   /// newly arriving insect can never be re-linked to (and miscounted as) one
   /// that left before the gate closed.
   @override
-  void expireLostTracks() {
+  void expireLostTracks({String reason = 'gate_expired'}) {
     for (final t in _tracks) {
       if (t.state == TrackState.lost) {
         // Stamped with the LAST processed frame: no frames arrive while the
@@ -268,7 +275,7 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
           t,
           _lastFrameTs,
           framesMissed: t.timeSinceUpdate,
-          reason: 'gate_expired',
+          reason: reason,
         );
       }
     }
@@ -286,6 +293,14 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
     // (its last box shifted by its velocity); the last actual box is kept until
     // a match updates it, so velocity stays a true frame-to-frame measurement.
 
+    // Frame gap longer than [maxFrameGapMs]: lost tracks did not age while
+    // no frames came, so expire them now (see InsectTracker.maxFrameGapMs).
+    if (maxFrameGapMs > 0 &&
+        _lastFrameTs > 0 &&
+        timestampMs - _lastFrameTs > maxFrameGapMs) {
+      expireLostTracks(reason: 'frame_gap_expired');
+    }
+
     // Time base for the time-aware variant: how long since the last frame.
     _frameDtS = (_lastFrameTs > 0 && timestampMs > _lastFrameTs)
         ? ((timestampMs - _lastFrameTs) / 1000.0).clamp(0.0, _maxPredictSeconds)
@@ -295,7 +310,14 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
     final high = <Detection>[];
     final low = <Detection>[];
     for (final d in detections) {
-      (d.confidence >= params.highThresh ? high : low).add(d);
+      // A box with a NaN or infinite edge can never be placed: drop it.
+      // FrameProcessor already filters these; this is a second guard.
+      final b = d.box;
+      if (!b.left.isFinite || !b.top.isFinite || !b.right.isFinite || !b.bottom.isFinite) continue;
+      // A broken score (NaN, infinity) goes to the low pool, so it may keep an
+      // existing track alive but never spawns one; _applyMatch keeps the
+      // track's old confidence in that case.
+      (d.confidence.isFinite && d.confidence >= params.highThresh ? high : low).add(d);
     }
 
     final unmatchedTracks = List<Track>.from(_tracks);
@@ -556,7 +578,9 @@ class ByteTracker with TrackEventBuffer implements InsectTracker {
 
     t.box = d.box;
     t.lastObservedCenter = newCenter; // true last position (not coasted)
-    t.confidence = d.confidence;
+    // Never copy a NaN or infinite score: jsonEncode throws on it when the
+    // track is written to the session log.
+    if (d.confidence.isFinite) t.confidence = d.confidence;
     t.classIndex = d.classIndex;
     t.className = d.className;
     t.lastSeenMs = timestampMs;

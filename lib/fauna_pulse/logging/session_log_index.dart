@@ -20,7 +20,8 @@
 //  * `detection` (one line per track, sessions ≤ round 68) and `detections`
 //    (one line per frame, round 69+) must BOTH be understood everywhere.
 //  * Malformed/truncated lines (crash mid-write) are skipped silently, like
-//    the screen's old `_tryDecode`.
+//    the screen's old `_tryDecode`; so are valid JSON lines with a field of
+//    the wrong type (`feed` catches the cast errors per line).
 //  * The cheap head/tail stats path (`_loadStats` in the summary screen,
 //    same pattern in home/analysis screens) stays separate on purpose — the
 //    headline numbers must appear before this full parse finishes.
@@ -340,9 +341,15 @@ class SessionLogIndex {
         final rec = _tryDecode(line);
         if (rec == null || rec['type'] != 'detections') continue;
         // Prefer the sensor-exposure stamp (precise) over the emit stamp.
-        final frameMs =
-            (rec['frame_sensor_ms'] as num?)?.toInt() ??
-            (rec['frame_ms'] as num?)?.toInt();
+        // A wrong-typed stamp skips the line, same rule as feed().
+        final int? frameMs;
+        try {
+          frameMs =
+              (rec['frame_sensor_ms'] as num?)?.toInt() ??
+              (rec['frame_ms'] as num?)?.toInt();
+        } catch (_) {
+          continue;
+        }
         if (frameMs == null) continue;
         if (prevFrameMs != null && intervals.length < 5000) {
           final d = frameMs - prevFrameMs;
@@ -452,6 +459,22 @@ class _IndexBuilder {
     if (line.trim().isEmpty) return;
     final rec = SessionLogIndex._tryDecode(line);
     if (rec == null) return;
+    try {
+      _apply(rec, tracks: tracks, other: other);
+    } catch (_) {
+      // Valid JSON with a field of the wrong type (a hand-edited log, a
+      // future writer bug): the `as num?` / `as String?` casts below and in
+      // TrackSpans.add throw. Skip just this line, like a cut line, so one
+      // odd record never loses the whole session (summary + Dashboard).
+      // The line may be half applied; that is no worse than skipping it.
+    }
+  }
+
+  void _apply(
+    Map<String, dynamic> rec, {
+    required bool tracks,
+    required bool other,
+  }) {
     final type = rec['type'];
     if (type != 'capture' && (_trackTypes.contains(type) ? !tracks : !other)) {
       if (type == 'post_track_start') postTrackStart ??= rec;
@@ -706,11 +729,20 @@ class _IndexBuilder {
         continue;
       }
       final bracket = acc.bracketOf(file);
-      final result = buildPhotoBoxes(
-        before: bracket.before,
-        after: bracket.after,
-        photoFile: file,
-      );
+      final PhotoBoxResult? result;
+      try {
+        result = buildPhotoBoxes(
+          before: bracket.before,
+          after: bracket.after,
+          photoFile: file,
+        );
+      } catch (_) {
+        // The matched frames' raw track entries are only cast here, so a
+        // wrong-typed field (see feed()) costs this photo its boxes only.
+        p.stillMatchNote =
+            'the log line of the nearest detector frame is damaged';
+        continue;
+      }
       if (result == null) {
         p.stillMatchNote =
             'no detector frame within $kBracketWindowMs ms, so the animal had '

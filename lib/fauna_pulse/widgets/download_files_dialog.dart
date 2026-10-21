@@ -108,6 +108,15 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
   }
 
   @override
+  void dispose() {
+    // Safety net: if the route goes away some other way while a file is
+    // downloading, the downloader sees the cancel at its next chunk and
+    // deletes the partial file instead of running on with nobody watching.
+    _cancel = true;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final total = _total;
     final n = widget.files.length;
@@ -123,7 +132,16 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
               Navigator.of(context).pop(false);
             }
           };
-    return AlertDialog(
+    // The phone's Back button acts like Cancel while a file is downloading
+    // (barrierDismissible: false blocks only a tap outside). The dialog stays
+    // until the download has really stopped, so a second Download of the same
+    // file cannot overlap with this one; it then pops false as for Cancel.
+    return PopScope(
+      canPop: !_running,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _running && !_cancel) setState(() => _cancel = true);
+      },
+      child: AlertDialog(
       actionsOverflowDirection: VerticalDirection.up,
       title: DialogTitle(Text('Download ${widget.title}'), onClose: cancel),
       content: Column(
@@ -163,6 +181,7 @@ class _DownloadFilesDialogState extends State<DownloadFilesDialog> {
           child: Text(_error == null ? 'Download' : 'Try again', style: const TextStyle(fontWeight: FontWeight.bold)),
         ),
       ],
+      ),
     );
   }
 }

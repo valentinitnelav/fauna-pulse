@@ -136,6 +136,26 @@ double _timeLapseGapFromJson(Map<String, dynamic> j) {
   return migrated < 0 ? 0.0 : migrated;
 }
 
+/// Reads a saved number and clamps it into [lo]..[hi]. Every caller passes
+/// the min/max of that setting's box in settings_sheet.dart (keep the two in
+/// sync). The boxes enforce the range, so only a damaged, hand-edited or
+/// older file holds such values, but a step of 0 or a session of 0 min would
+/// crash or end the session on every start. Clamping before toInt() also
+/// keeps a huge number (1e999 decodes to Infinity) from throwing, which would
+/// reset ALL settings to defaults in load().
+double _clampedNum(Map<String, dynamic> j, String key, num fallback, num lo, num hi) =>
+    ((j[key] as num?) ?? fallback).toDouble().clamp(lo.toDouble(), hi.toDouble());
+
+/// The saved live stream size, or the factory 640x480 pair when either side
+/// is missing, 0 or less, or not finite (no real camera size). Both fall back
+/// together, so the aspect ratio stays one the camera really offers.
+(int, int) _streamSizeFromJson(Map<String, dynamic> j) {
+  final w = (j['streamWidth'] as num?)?.toDouble() ?? 640;
+  final h = (j['streamHeight'] as num?)?.toDouble() ?? 480;
+  if (!(w > 0 && h > 0 && w.isFinite && h.isFinite)) return (640, 480);
+  return (w.toInt(), h.toInt());
+}
+
 /// Config keys (as written by [SessionConfig.toJson]) that have NO effect
 /// under [trigger]. The start record carries this list as
 /// `config_not_applicable`, next to the `config` block, so analysis code can
@@ -766,9 +786,11 @@ class SessionConfig {
   /// momentary FPS spike or stall can't produce an absurd buffer. Falls back to
   /// 15 FPS before the first real measurement arrives.
   int occlusionFramesFor(double detectorFps) {
-    if (occlusionSeconds <= 0) return 1;
+    // `!(x > 0)` also catches NaN. Clamp the double BEFORE round(): round()
+    // throws on Infinity (a huge or infinite value via copyWith or old prefs).
+    if (!(occlusionSeconds > 0)) return 1;
     final fps = (detectorFps.isFinite && detectorFps > 0) ? detectorFps : 15.0;
-    return (occlusionSeconds * fps).round().clamp(1, 600);
+    return (occlusionSeconds * fps).clamp(1.0, 600.0).round();
   }
 
   /// Converts the user-facing [minHitsSeconds] into the whole number of frames a
@@ -780,7 +802,11 @@ class SessionConfig {
   /// worked like 2 (round 313 shows the real number instead).
   int minHitsFramesFor(double detectorFps) {
     final fps = (detectorFps.isFinite && detectorFps > 0) ? detectorFps : 15.0;
-    return (minHitsSeconds * fps).round().clamp(kMinDetectionsInARow, 600);
+    // Clamp before round(), as in occlusionFramesFor; NaN counts as 0 s.
+    final frames = minHitsSeconds * fps;
+    return (frames.isNaN ? 0.0 : frames)
+        .clamp(kMinDetectionsInARow.toDouble(), 600.0)
+        .round();
   }
 
   /// A fresh tracker of the chosen algorithm with its frame budgets derived
@@ -1039,14 +1065,22 @@ class SessionConfig {
     'stillSyncCompanion': highResSyncCompanion,
   };
 
-  factory SessionConfig.fromJson(Map<String, dynamic> j) => SessionConfig(
+  factory SessionConfig.fromJson(Map<String, dynamic> saved) {
+    // Drop wrong-typed keys first, so one bad value falls back to its own
+    // default instead of throwing a TypeError that load() turns into "ALL
+    // settings back to defaults" (and the next save makes that permanent).
+    // Matters most when a future version changes the type of a saved key.
+    final j = _dropWrongTypedKeys(saved, const SessionConfig().toJson());
+    return SessionConfig(
     modelPath: migrateModelPath(j['modelPath'] as String?),
     task: YOLOTaskParsing.tryParse(j['task'] as String?) ?? YOLOTask.detect,
-    confidenceThreshold: (j['confidenceThreshold'] as num?)?.toDouble() ?? 0.25,
-    iouThreshold: (j['iouThreshold'] as num?)?.toDouble() ?? 0.7,
-    stepSeconds: (j['stepSeconds'] as num?)?.toDouble() ?? 1.0,
-    durationSeconds: (j['durationSeconds'] as num?)?.toDouble() ?? 10.0,
-    sessionMinutes: (j['sessionMinutes'] as num?)?.toInt() ?? 60,
+    confidenceThreshold: _clampedNum(j, 'confidenceThreshold', 0.25, 0.05, 0.95),
+    iouThreshold: _clampedNum(j, 'iouThreshold', 0.7, 0.1, 0.95),
+    stepSeconds: _clampedNum(j, 'stepSeconds', 1.0, 0.1, 10),
+    durationSeconds: _clampedNum(j, 'durationSeconds', 10.0, 1, 86400),
+    // The Session length box has no upper limit; 10 years only keeps
+    // Duration(minutes: ...) from overflowing.
+    sessionMinutes: _clampedNum(j, 'sessionMinutes', 60, 1, 5256000).toInt(),
     scheduleEnabled: j['scheduleEnabled'] as bool? ?? false,
     scheduleWindows: _scheduleWindowsFromJson(j['scheduleWindows']),
     scheduleDays: ((j['scheduleDays'] as num?)?.toInt() ?? 1).clamp(1, 365),
@@ -1056,7 +1090,7 @@ class SessionConfig {
     showOverlayInfo: j['showOverlayInfo'] as bool? ?? true,
     flashOnCapture: j['flashOnCapture'] as bool? ?? true,
     useGpu: j['useGpu'] as bool? ?? true,
-    cpuThreads: (j['cpuThreads'] as num?)?.toInt() ?? 0,
+    cpuThreads: _clampedNum(j, 'cpuThreads', 0, 0, 8).toInt(),
     inferenceFps: (j['inferenceFps'] as num?)?.toInt() ?? defaultInferenceFps,
     cameraFpsCap: (j['cameraFpsCap'] as num?)?.toInt() ?? defaultCameraFpsCap,
     screenOffAfterMin: ((j['screenOffAfterMin'] as num?)?.round() ?? 0).clamp(
@@ -1067,23 +1101,19 @@ class SessionConfig {
     storageReserveMb: ((j['storageReserveMb'] as num?)?.round() ?? 200).clamp(0, 5000),
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
-    throttleDutyTarget: (j['throttleDutyTarget'] as num?)?.toDouble() ?? 0.5,
+    throttleDutyTarget: _clampedNum(j, 'throttleDutyTarget', 0.5, 0.3, 0.8),
     motionGateEnabled: j['motionGateEnabled'] as bool? ?? false,
-    motionGatePixelDelta: (j['motionGatePixelDelta'] as num?)?.toInt() ?? 25,
-    motionGateAreaFraction:
-        (j['motionGateAreaFraction'] as num?)?.toDouble() ?? 0.005,
-    motionGateWakeSeconds:
-        (j['motionGateWakeSeconds'] as num?)?.toDouble() ?? 3.0,
-    motionGateGridSize: (j['motionGateGridSize'] as num?)?.toInt() ?? 48,
-    motionGateIdleFps: (j['motionGateIdleFps'] as num?)?.toInt() ?? 5,
+    motionGatePixelDelta: _clampedNum(j, 'motionGatePixelDelta', 25, 5, 100).toInt(),
+    motionGateAreaFraction: _clampedNum(j, 'motionGateAreaFraction', 0.005, 0.0005, 0.2),
+    motionGateWakeSeconds: _clampedNum(j, 'motionGateWakeSeconds', 3.0, 0.5, 60),
+    motionGateGridSize: _clampedNum(j, 'motionGateGridSize', 48, 16, 160).toInt(),
+    motionGateIdleFps: _clampedNum(j, 'motionGateIdleFps', 5, 1, 30).toInt(),
     captureTrigger: _captureTriggerFromJson(j),
-    timeLapseGapSeconds: _timeLapseGapFromJson(j),
+    timeLapseGapSeconds: _timeLapseGapFromJson(j).clamp(0.0, 86400.0),
     timeLapseCameraSleep: j['timeLapseCameraSleep'] as bool? ?? true,
-    timeLapseWakeLeadSeconds:
-        (j['timeLapseWakeLeadSeconds'] as num?)?.toDouble() ?? 10.0,
+    timeLapseWakeLeadSeconds: _clampedNum(j, 'timeLapseWakeLeadSeconds', 10.0, 1, 60),
     timeLapseTorch: j['timeLapseTorch'] as bool? ?? false,
-    timeLapseTorchLeadSeconds:
-        (j['timeLapseTorchLeadSeconds'] as num?)?.toDouble() ?? 5.0,
+    timeLapseTorchLeadSeconds: _clampedNum(j, 'timeLapseTorchLeadSeconds', 5.0, 1, 60),
     timeLapseSaveAs: TimeLapseSaveAs.values.firstWhere(
       (v) => v.name == j['timeLapseSaveAs'],
       orElse: () => TimeLapseSaveAs.photos,
@@ -1092,8 +1122,8 @@ class SessionConfig {
       1,
       30,
     ),
-    streamWidth: (j['streamWidth'] as num?)?.toInt() ?? 640,
-    streamHeight: (j['streamHeight'] as num?)?.toInt() ?? 480,
+    streamWidth: _streamSizeFromJson(j).$1,
+    streamHeight: _streamSizeFromJson(j).$2,
     // Pre-round-109 configs lack the key. A stored size that differs from the
     // old factory default (640×480) can only mean the user once picked it in
     // Settings — treat that as explicit so the auto default never stomps it.
@@ -1104,18 +1134,21 @@ class SessionConfig {
     captureMode: _captureModeFromJson(j),
     // Round-62 configs stored a min/max pair; the min carries the intent
     // ("photos must be at least this"), so it becomes the target.
-    targetRoiSavedPx:
-        (j['targetRoiSavedPx'] as num?)?.toInt() ??
-        (j['minRoiSavedPx'] as num?)?.toInt() ??
-        1024,
+    targetRoiSavedPx: _clampedNum(
+      j,
+      j['targetRoiSavedPx'] != null ? 'targetRoiSavedPx' : 'minRoiSavedPx',
+      1024,
+      128,
+      2048,
+    ).toInt(),
     // Fallback must match the constructor default (3.0). A legacy config saved
     // before this key existed should load the current bee-tuned buffer, not an
     // old 1.0 that silently fragments tracks.
-    occlusionSeconds: (j['occlusionSeconds'] as num?)?.toDouble() ?? 3.0,
-    minHitsSeconds: (j['minHitsSeconds'] as num?)?.toDouble() ?? 0.2,
-    fpsSampleSeconds: (j['fpsSampleSeconds'] as num?)?.toInt() ?? 5,
-    thermalSampleSeconds: (j['thermalSampleSeconds'] as num?)?.toInt() ?? 10,
-    powerSampleSeconds: (j['powerSampleSeconds'] as num?)?.toInt() ?? 10,
+    occlusionSeconds: _clampedNum(j, 'occlusionSeconds', 3.0, 0.2, 10),
+    minHitsSeconds: _clampedNum(j, 'minHitsSeconds', 0.2, 0, 2),
+    fpsSampleSeconds: _clampedNum(j, 'fpsSampleSeconds', 5, 1, 60).toInt(),
+    thermalSampleSeconds: _clampedNum(j, 'thermalSampleSeconds', 10, 1, 120).toInt(),
+    powerSampleSeconds: _clampedNum(j, 'powerSampleSeconds', 10, 1, 120).toInt(),
     cropSquareLock: j['cropSquareLock'] as bool? ?? false,
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
     // Configs saved before round 105 carry no algorithm choice: they were
@@ -1142,18 +1175,22 @@ class SessionConfig {
     // on/30 s defaults — toJson always writes the keys, so an explicitly
     // saved value (including an explicit `false`) always survives.
     gtFramesEnabled: j['gtFramesEnabled'] as bool? ?? true,
-    gtFrameSeconds: (j['gtFrameSeconds'] as num?)?.toDouble() ?? 30.0,
+    gtFrameSeconds: _clampedNum(j, 'gtFrameSeconds', 30.0, 1, 3600),
     highResSyncCompanion: j['stillSyncCompanion'] as bool? ?? true,
   ).normalizedFpsCaps();
+  }
 
   static const String _prefsKey = kSessionConfigPref;
 
   /// Loads the last-saved config, or defaults if none/invalid.
   static Future<SessionConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
-    if (raw == null) return const SessionConfig();
     try {
+      // getString sits inside the try because it casts (`as String?`) and
+      // throws if the key ever holds another type (hand-edited prefs, a future
+      // bug); every screen awaits load() unguarded, so it must never throw.
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null) return const SessionConfig();
       return SessionConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (e) {
       // Corrupt saved settings: start over from defaults, but say so.
@@ -1167,6 +1204,47 @@ class SessionConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(toJson()));
   }
+}
+
+/// Returns [saved] without the keys whose value has another JSON type than
+/// the same key in [reference] (the defaults' toJson): number, bool, text,
+/// list and map must match. Nested maps (trackerParams, cbiouParams) are
+/// cleaned the same way one level down. Keys that the reference lacks or holds
+/// as null are kept: legacy keys and nullable fields have their own lenient
+/// readers in [SessionConfig.fromJson].
+Map<String, dynamic> _dropWrongTypedKeys(
+  Map<String, dynamic> saved,
+  Map<String, dynamic> reference,
+) {
+  bool sameType(Object a, Object b) =>
+      (a is num && b is num) ||
+      (a is bool && b is bool) ||
+      (a is String && b is String) ||
+      (a is List && b is List) ||
+      (a is Map && b is Map);
+  final out = <String, dynamic>{};
+  saved.forEach((key, value) {
+    final ref = reference[key];
+    // jsonDecode reads 1e999 as Infinity (hand-edited or damaged prefs). Kept,
+    // toInt()/round() in fromJson throws (ALL settings reset) and save() can
+    // never write it back (jsonEncode refuses it), so drop it like a wrong
+    // type. Checked first so legacy keys (no reference value) are covered too.
+    if (value is double && !value.isFinite) {
+      logSwallowed('config_load_key', '$key is not a finite number');
+    } else if (value == null || ref == null) {
+      out[key] = value;
+    } else if (!sameType(value, ref)) {
+      logSwallowed('config_load_key', '$key has type ${value.runtimeType}');
+    } else if (value is Map && ref is Map) {
+      out[key] = _dropWrongTypedKeys(
+        value.cast<String, dynamic>(),
+        ref.cast<String, dynamic>(),
+      );
+    } else {
+      out[key] = value;
+    }
+  });
+  return out;
 }
 
 /// Reads the schedule windows list from a saved config. Defensive like every

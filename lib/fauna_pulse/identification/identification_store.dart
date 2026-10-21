@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../logging/app_error_hooks.dart' show logSwallowed;
 import '../models/former_model_names.dart' show kFormerModelNames;
 import 'label_pack.dart';
 import 'track_fusion.dart';
@@ -158,7 +159,8 @@ class EmbeddingRecord {
   static EmbeddingRecord? fromJson(Map<String, dynamic> j) {
     final row = (j['row'] as num?)?.toInt();
     final key = j['key'] as String?;
-    if (row == null || key == null) return null;
+    // A negative row can only come from a damaged file; it would index before the .bin start.
+    if (row == null || row < 0 || key == null) return null;
     return EmbeddingRecord(
       key: key,
       source: (j['src'] as String?) ?? '',
@@ -247,24 +249,41 @@ class EmbeddingIndex {
       } catch (_) {
         continue; // truncated tail line after a kill
       }
+      // The app only writes correct types, but a hand-edited file or another
+      // app version can hold valid JSON with a wrong type in one field: a hard
+      // cast would throw out of parse and block Identify for the session.
+      // Header fields are read type-checked (one bad field keeps the rest);
+      // a bad crop line is dropped like a torn line, which leaves a gap in
+      // the rows so the resume check in IdentificationJob starts over.
+      num? number(Object? v) => v is num && v.isFinite ? v : null;
       switch (rec['type']) {
         case 'crop':
-          final r = EmbeddingRecord.fromJson(rec);
-          if (r != null) records.add(r);
+          try {
+            final r = EmbeddingRecord.fromJson(rec);
+            if (r != null) records.add(r);
+          } catch (_) {
+            continue;
+          }
         case 'crop_skipped':
           final k = rec['key'];
-          if (k is String) {
+          // An embed_error is a passing failure of the model (closed while
+          // loading, out of memory, delegate error), not a fact about the
+          // crop: it must stay pending so "Continue / re-run" tries it again,
+          // otherwise the batch is dropped for good and results stay empty.
+          // A later 'crop' line for the same key then counts it as done.
+          if (k is String && rec['reason'] != 'embed_error') {
             skipped.add(k);
-            final px = (rec['crop_px'] as num?)?.toInt();
+            final px = number(rec['crop_px'])?.toInt();
             if (rec['reason'] == 'too_small' && px != null) tooSmall[k] = px;
           }
         case 'identify_start':
-          dim ??= (rec['dim'] as num?)?.toInt();
-          modelId ??= rec['model'] as String?;
-          margin ??= (rec['margin'] as num?)?.toDouble();
-          minCropPx ??= (rec['min_crop_px'] as num?)?.toInt();
-          squareCrops ??= rec['square_crops'] as bool? ?? true;
-          visitsRunId ??= ((rec['track_ids_run_id'] ?? rec['visits_run_id']) as num?)?.toInt(); // r248 name, old one
+          final model = rec['model'], square = rec['square_crops'];
+          dim ??= number(rec['dim'])?.toInt();
+          modelId ??= model is String ? model : null;
+          margin ??= number(rec['margin'])?.toDouble();
+          minCropPx ??= number(rec['min_crop_px'])?.toInt();
+          squareCrops ??= square is bool ? square : true;
+          visitsRunId ??= number(rec['track_ids_run_id'] ?? rec['visits_run_id'])?.toInt(); // r248 name, old one
       }
     }
     return EmbeddingIndex(
@@ -284,10 +303,13 @@ class EmbeddingIndex {
 /// Reads the whole vector file (rows × dim float32 little-endian).
 Float32List readEmbeddingRows(File bin, int rows, int dim) {
   final bytes = bin.readAsBytesSync();
-  final n = rows * dim;
-  if (bytes.length < n * 4) {
+  // Compare by division before multiplying: a corrupt "row" near 2^62 in the
+  // jsonl makes rows * dim * 4 wrap around 64 bits to a small number, which
+  // would pass a size test and return a tiny array (stress test 2026-10-20).
+  if (rows < 0 || dim <= 0 || rows > bytes.length ~/ (dim * 4)) {
     throw StateError('embeddings .bin is shorter than its record count');
   }
+  final n = rows * dim;
   final out = Float32List(n);
   final data = ByteData.sublistView(bytes, 0, n * 4);
   for (var i = 0; i < n; i++) {
@@ -893,7 +915,20 @@ class LatestIdentification {
   static Future<LatestIdentification?> load(Directory sessionDir) async {
     final summaries = IdentificationPaths(sessionDir).existingSummaries();
     if (summaries.isEmpty) return null;
-    final s = jsonDecode(await summaries.first.readAsString()) as Map<String, dynamic>;
+    // A summary cut short (it is not written atomically, so a kill during the
+    // write can leave half a file) or with a wrong-typed value throws from
+    // the decode or the casts below; the session then shows no identification,
+    // the same as never identified, and Identify can write a new summary.
+    try {
+      return _parse(summaries.first, await summaries.first.readAsString());
+    } catch (e) {
+      logSwallowed('latest_identification_load', e);
+      return null;
+    }
+  }
+
+  static LatestIdentification _parse(File summaryFile, String text) {
+    final s = jsonDecode(text) as Map<String, dynamic>;
     final byTrack = <int, TrackIdentity>{};
     final byPhoto = <String, TrackIdentity>{};
     for (final t in (s['tracks'] as List? ?? const []).cast<Map<String, dynamic>>()) {
@@ -916,7 +951,7 @@ class LatestIdentification {
     return LatestIdentification(
       packId: '${s['pack_id']}',
       generatedIso: '${s['generated_iso']}',
-      summaryFile: summaries.first,
+      summaryFile: summaryFile,
       byTrack: byTrack,
       byPhoto: byPhoto,
       visitsRunId: (((s['capture'] as Map?)?['track_ids_run_id'] ?? (s['capture'] as Map?)?['visits_run_id']) as num?)

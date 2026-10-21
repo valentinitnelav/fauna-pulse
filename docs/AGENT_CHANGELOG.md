@@ -9492,3 +9492,13 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** the BioCLIP cards on Hugging Face could say the app calls them name lists.
 
+## Round 318 (2026-10-20): stress test of the beta code (races, damaged files, full storage, Recents swipe)
+
+**Asked (owner):** a stress test of the 0.9.0-beta.1 code on the PC and on the Redmi Note 9S, with fixes only for proven problems, and a new check of the on-screen texts.
+
+**Why:** each fix needed a test that fails on the old code or evidence from the phone, and three reviewers. One fix (guards on the native time stamp and inference time) was undone, because native code never sends such values. Open bugs, and inputs a user cannot reach, stay as skipped tests in `test/fauna_pulse/stress/`.
+
+**Checked:** analyzer clean; app tests 1488 pass (18 skipped on purpose), plugin tests 176 pass. On the phone a new build fixed the Identify Back race, the swipe from Recents and the leftover .part file; random taps gave no app crash or ANR (only a debug-build assertion in a text field).
+
+**Open:** a download hangs when storage fills during it; Identify is killed in the background (no foreground service); a damaged detector model is reported as unreadable videos; a heat pause inflates the time left; low-memory Identify and downloads with Wi-Fi cuts were not tested (usage stop).
+

@@ -124,17 +124,13 @@ class TrackerTuning {
     decimals: 2,
     warning: newTrackGapWarning(newTrackConfidence, confidence, confidenceName: confidenceName),
     helperText:
-        'The score that separates a "strong" detection from a "faint" '
-        'one. A box at or above this is a clear sighting and may START a '
-        'new track ID. A box below it, but still above the Confidence '
-        'threshold, is a faint sighting: it may only continue a track ID '
-        'that a stronger box started. That faint band (between Confidence '
-        'and this) is what holds onto a bee whose score dips while it is '
-        'half-hidden under a petal, so it is not counted twice. Higher = more '
-        'cautious about starting new IDs (fewer false track IDs, but small or '
-        'half-hidden visitors may be missed); lower = quicker to start a new '
-        'track ID. Keep it at least ${kNewTrackGapWarning.toStringAsFixed(2)} above '
-        'Confidence (a note says so when it is not). Default 0.50.$extraHelp',
+        'Only a box at least this sure can start a new track ID. Weaker '
+        'boxes (between the Confidence threshold and this) can only continue '
+        'an existing track ID, which keeps a bee half hidden under a petal '
+        'from being counted twice. Higher: fewer false track IDs, but small '
+        'or half-hidden insects may be missed. Default 0.50, at least '
+        '${kNewTrackGapWarning.toStringAsFixed(2)} above the Confidence '
+        'threshold so that this in-between band exists.$extraHelp',
     onChanged: (v) => isCbiou ? onCbiou(cbiou.copyWith(highThresh: v)) : onByteTrack(byteTrack.copyWith(highThresh: v)),
   );
 
@@ -173,10 +169,10 @@ class TrackerTuning {
                 ? 'Used as ${cbiou.bufferScale1.toStringAsFixed(2)}, the same as pass 1 (pass 2 is never narrower).'
                 : null,
             helperText:
-                'A second, wider matching pass for whatever pass 1 could not '
-                'pair: this is what catches the big between-frame jumps. Always '
-                'at least as large as pass 1: a smaller value is used as pass 1. '
-                '(up to 2.0; default 0.50.)',
+                'A second, wider search for boxes that pass 1 could not pair; '
+                'it catches insects that jumped far between pictures. If you '
+                'enter a value below pass 1, the pass 1 value is used. Default '
+                '0.50 (up to 2.0).',
             onChanged: (v) => onCbiou(cbiou.copyWith(bufferScale2: v)),
           ),
           ?newTrack,
@@ -191,16 +187,12 @@ class TrackerTuning {
             max: 0.9,
             decimals: 2,
             helperText:
-                'How much a strong detection box must overlap a track\'s predicted '
-                'box to be treated as the same insect. This is your "movement '
-                'tolerance", inverted: LOWER tolerates faster motion; HIGHER is '
-                'stricter. It matters most for a newly arriving insect: until its '
-                'track ID is confirmed it must match in every frame, so a high '
-                'value can miss a visitor that moves. An insect that already has '
-                'a track ID is also found again by the distance to where it was '
-                'last seen. For small fast insects keep it low (0.1–0.2). The '
-                'range stops at 0.05–0.90 on purpose: 0 would match unrelated '
-                'boxes anywhere on screen (the track IDs would mix up).',
+                'How much a new box must overlap the place where the tracker '
+                'expects the insect, to count as the same insect. Lower allows '
+                'faster movement between frames; higher is stricter. It matters '
+                'most for an insect that just arrived; one that already has a '
+                'track ID is also found again by distance. For small, fast '
+                'insects keep it low (0.1 to 0.2). Default 0.10.',
             onChanged: (v) => onByteTrack(byteTrack.copyWith(matchThresh: v)),
           ),
           NumericSettingField(
@@ -211,13 +203,11 @@ class TrackerTuning {
             max: 0.8,
             decimals: 2,
             helperText:
-                'A second, looser overlap test used to link faint detections '
-                '(a half-hidden or blurred insect that briefly drops in '
-                'confidence) so it keeps its track ID. Normally set at or below '
-                'Match overlap. The 0.02 floor stops a real track grabbing a '
-                'random noise box; set it high and faint boxes rarely help a '
-                'new track ID get confirmed (an existing one is still found '
-                'again by distance) (0.02–0.80).',
+                'A second, looser overlap check for faint boxes (an insect that '
+                'is half hidden or blurred for a moment), so it keeps its track '
+                'ID. Usually at or below "Match overlap". Higher: faint boxes help '
+                'less. Allowed 0.02 to 0.80 (below 0.02 a track ID could take '
+                'over a random box); default 0.10.',
             onChanged: (v) => onByteTrack(byteTrack.copyWith(lowMatchThresh: v)),
           ),
           ?newTrack,

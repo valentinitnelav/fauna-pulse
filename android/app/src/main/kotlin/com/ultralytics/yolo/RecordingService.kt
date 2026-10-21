@@ -123,6 +123,18 @@ class RecordingService : Service() {
         }
     }
 
+    /**
+     * Swiping FaunaPulse away in Recents finishes the Activity, and with it the Flutter
+     * engine and the camera, so the recording ends. Without this the service would stay
+     * (foreground services survive task removal) and keep the "Recording" notification and
+     * the wake lock while nothing is recorded (stress test D2b, 2026-10-20). onDestroy does
+     * the clean-up. The session stays "incomplete": Dart cannot write its end row here.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         try {
             wakeLock?.let { if (it.isHeld) it.release() }

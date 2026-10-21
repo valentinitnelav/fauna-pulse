@@ -98,6 +98,7 @@ Future<void> _pump(
   ModelsInventory Function()? inventory,
   ModelFilesImporter? importFiles,
   List<ModelFileKind> onPhone = const [],
+  bool failNameLists = false,
 }) async {
   _downloaded.clear();
   _linked.clear();
@@ -111,7 +112,10 @@ Future<void> _pump(
           _scans++;
           return (inventory ?? _inventory)();
         },
-        download: (f, identification, onProgress, isCancelled) async => _downloaded.add(f.name),
+        download: (f, identification, onProgress, isCancelled) async {
+          if (failNameLists && f.name.endsWith('.fpack')) throw Exception('connection lost');
+          _downloaded.add(f.name);
+        },
         importFiles: importFiles ?? ({required replace, onFileLoading}) async => const ModelImportReport(),
         linkDownload: (url, {onProgress, isCancelled}) async {
           _linked.add(url);
@@ -240,6 +244,23 @@ void main() {
     expect(_downloaded, ['bioclip-2_image_fp16_4d.tflite', _europeName]);
     expect(find.text('Downloaded bioclip-2_image_fp16_4d.tflite and $_europeName.'), findsOneWidget);
     expect(_scans, 2);
+  });
+
+  testWidgets('a download that stops after the model still re-reads the list', (tester) async {
+    // Stress run 2026-10-20: after Cancel, Back or a failure the list kept
+    // offering "Download" for a model that had already arrived.
+    await _pump(tester, failNameLists: true);
+    await _show(tester, find.text(_b(_europeName)));
+    await tester.tap(find.descendant(of: _tile(_b(_europeName)), matching: find.text('Download')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Download').last);
+    await tester.pumpAndSettle();
+    expect(_downloaded, ['bioclip-2_image_fp16_4d.tflite']);
+    expect(find.text('Try again'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Download BioCLIP 2'), findsNothing);
+    expect(_scans, 2, reason: 'the list is scanned again after the dialog closed without success');
   });
 
   testWidgets('one list per kind by file name: files on the phone and to download together (r317)', (tester) async {

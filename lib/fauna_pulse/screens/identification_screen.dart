@@ -82,6 +82,27 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   bool _running = false;
   bool _loadingModel = false;
   bool _cancel = false;
+
+  // The app has ONE native model (ImageEmbedder: load replaces it, close releases it for every
+  // caller). A run left going by Back, or a speed test, must end (close the model, switch the
+  // screen-on lock off, close its files) before the next run or test loads; otherwise its end
+  // cuts the next run, or both write into one session folder. The returned function MUST be
+  // called when done, or later starts wait forever. Null when free: an idle app holds no
+  // Future (widget tests run each test in its own zone; an old zone's Future never completes).
+  static Completer<void>? _modelInUse;
+
+  static Future<void Function()> _takeModel() async {
+    // A loop, not one await: when several starts wait, only the first to wake takes the model.
+    while (_modelInUse != null) {
+      await _modelInUse!.future;
+    }
+    final mine = _modelInUse = Completer<void>();
+    return () {
+      _modelInUse = null;
+      mine.complete();
+    };
+  }
+
   IdentifyProgress? _progress;
   IdentifyResult? _result;
   String? _error;
@@ -95,6 +116,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   // Round 211: why the GPU was not used (null when it was, or was not asked for).
   String? _accelNote;
   bool _testingSpeed = false;
+  // True from the tap on Start until _running is set: _start first saves the settings and reads
+  // the stored crops (slow for a big session), and a second tap in that gap started a second
+  // job that shared the one native model and wrote the same files.
+  bool _starting = false;
   String? _speedResult;
 
   /// While "Test speed" runs: the share of timed crops done (0 = not counting yet) and what it
@@ -130,6 +155,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    // Back during a run: stop the job at its next check, as the Cancel button does. Without
+    // this the model kept embedding with no screen (heat, battery). The job's finally block in
+    // _start still closes the model and the screen-on lock; it keeps what is done.
+    _cancel = true;
     super.dispose();
   }
 
@@ -293,14 +322,21 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   Future<void> _start() async {
     final model = _model, pack = _pack, prefs = _prefs;
-    if (model == null || pack == null || prefs == null) return;
+    if (model == null || pack == null || prefs == null || _running || _starting) return;
     final problem = _pairingProblem(model.path.split('/').last);
     if (problem != null) {
       setState(() => _error = problem);
       return;
     }
-    await _savePrefs();
-    final restart = await _confirmCropSettings(prefs, model.path.split('/').last);
+    setState(() => _starting = true);
+    final bool? restart;
+    try {
+      await _savePrefs();
+      restart = await _confirmCropSettings(prefs, model.path.split('/').last);
+    } finally {
+      // No await between here and `_running = true` below, so no second tap fits in between.
+      if (mounted) setState(() => _starting = false);
+    }
     if (restart == null || !mounted) return;
     setState(() {
       _running = true;
@@ -317,10 +353,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
-    await WakelockPlus.enable();
     final modelName = model.path.split('/').last;
     IdentifyResult? result;
+    // Waits (screen shows "Loading the model") while an earlier run or speed test still ends.
+    final freeModel = await _takeModel();
     try {
+      await WakelockPlus.enable();
       final info = await ImageEmbedder.load(
         model.path,
         useGpu: prefs.useGpu,
@@ -330,8 +368,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       final packDim = (_packHeader?['dim'] as num?)?.toInt();
       if (packDim != null && packDim != info.dim) {
         throw Exception(
-          'The name list ${pack.path.split('/').last} was made for a model that gives $packDim numbers '
-          'per crop; ${model.path.split('/').last} gives ${info.dim}. Choose the name list made for this model.',
+          'The name list ${pack.path.split('/').last} was made for another model and does not work with '
+          '${model.path.split('/').last}. Choose the name list made for this model, or the model that list '
+          'was made for.',
         );
       }
       if (!mounted) return;
@@ -409,8 +448,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       } catch (e) {
         logSwallowed('identify_close', e);
       }
-      await WakelockPlus.disable();
       _ticker?.cancel();
+      try {
+        await WakelockPlus.disable();
+      } finally {
+        freeModel(); // only after close and lock off, so the next run starts clean
+      }
     }
     _runTook = DateTime.now().difference(_runStarted!);
     if (!mounted) return;
@@ -421,8 +464,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
     await _checkVisits();
-    // Round 274: the one-Start path ends on the results (newest summary first).
-    if (widget.autoStart && mounted && result != null && !result.cancelled && _error == null) _openResults();
+    // Round 274: the one-Start path ends on the results (newest summary first). Not when crops
+    // failed: the results then miss them (all of them when the model was lost), and the user
+    // must see the warning in "Last run" to press Start again.
+    if (widget.autoStart && mounted && result != null && !result.cancelled && result.failed == 0 && _error == null) {
+      _openResults();
+    }
   }
 
   Widget _buttonNote(String name, String text) => Padding(
@@ -442,17 +489,18 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// is written.
   Future<void> _testSpeed() async {
     final model = _model, prefs = _prefs;
-    if (model == null || prefs == null) return;
+    if (model == null || prefs == null || _running || _starting) return;
     await _savePrefs();
     setState(() {
       _testingSpeed = true;
       _speedResult = null;
-      _speedProgress = (0, 'Loading the model (up to half a minute the first time)…');
+      _speedProgress = (0, 'Loading the model (the first time on this phone can take up to a minute)…');
     });
     _showSpeed();
     // Round 247: 10 crops, one per call, so the screen can count them (the model runs one crop
     // at a time anyway; the job's batches of 8 only group the calls).
     const n = kSpeedTestCrops;
+    final freeModel = await _takeModel(); // a run left going by Back ends first (see _modelInUse)
     try {
       final tasks = await IdentificationJob.planSession(widget.sessionDir, maxCropsPerTrack: prefs.maxCropsPerTrack);
       final info = await ImageEmbedder.load(model.path, useGpu: prefs.useGpu, cpuThreads: prefs.cpuThreads);
@@ -475,7 +523,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           if (r.rgb != null) rgb.add(r.rgb!);
         }
       }
-      if (rgb.isEmpty) throw Exception('no crops large enough to test');
+      if (rgb.isEmpty) {
+        throw Exception(
+          'No photo of this session has a box of at least "Smallest box to identify" (${prefs.minCropPx} px). '
+          'Lower that value under Advanced settings, or test another session.',
+        );
+      }
       if (mounted) setState(() => _speedProgress = (0, 'Warm-up crop (not timed)…'));
       await ImageEmbedder.embed([rgb.first]); // warm-up (first run pays one-off costs)
       final sw = Stopwatch()..start();
@@ -494,8 +547,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           '${sPerCrop.toStringAsFixed(2)} s per crop on the ${info.accelerator}'
           '${info.accelerator == 'CPU' ? ' ($threads threads)' : ''}, ${rgb.length} crop${rgb.length == 1 ? '' : 's'} after a warm-up'
           '${rgb.length < n ? ' (only ${rgb.length} of this session\'s crops reach the "Smallest box to identify" of ${prefs.minCropPx} px)' : ''}.'
-          '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU matched the CPU on a test picture (agreement ${agree.toStringAsFixed(4)}).' : ''}'
-          '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}.' : ''}';
+          '${info.accelerator == 'GPU' && agree != null ? '\nThe GPU gave the same answers as the CPU on a test picture, so the GPU is used.' : ''}'
+          '${info.accelerationNote != null ? '\nGPU not used: ${gpuNoteText(info.accelerationNote!)}' : ''}';
       _accelNote = info.accelerationNote;
     } catch (e) {
       logSwallowed('identify_speed_test', e);
@@ -506,6 +559,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       } catch (e) {
         logSwallowed('identify_close', e);
       }
+      freeModel();
     }
     if (mounted) {
       setState(() {
@@ -609,6 +663,40 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Back (or the Home button, which uses maybePop) during a run used to close the page with no
+    // word while the job went on unseen. Same question as Find animals in videos; "Stop and
+    // leave" pops, and dispose sets _cancel, so the job stops after the current crop.
+    return PopScope(
+      canPop: !_running,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leaveIfConfirmed();
+      },
+      child: _screen(),
+    );
+  }
+
+  Future<void> _leaveIfConfirmed() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Identification is still running'), onClose: () => Navigator.pop(ctx, false)),
+        content: const Text(
+          'Leaving stops the identification after the current photo. What is done is kept; '
+          'Start continues where it left off.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stop and leave')),
+        ],
+      ),
+    );
+    // Navigator.pop ignores PopScope, so this leaves even while canPop is false. If the run ended
+    // while the dialog was open, leaving is still what the user asked for.
+    if (leave == true && mounted) Navigator.of(context).pop();
+  }
+
+  Widget _screen() {
     final prefs = _prefs;
     return Scaffold(
       // Two rows (round 210): one row ellipsised the session name away.
@@ -717,18 +805,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Run',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'The saved photos of each track ID (up to "Crops per track ID", largest boxes first; boxes '
-            'under "Smallest box to identify" are skipped) are cut out around the detector box (a square '
-            'unless switched off under Advanced settings). Each cut-out (a crop) is shown to the model, '
-            'which describes it as a list of numbers. The descriptions of one track ID are averaged '
-            '(crops the model is sure about count more, crops it is far less sure about are left out) '
-            'and the model names the average once: ONE answer per track ID, with a confidence for every '
-            'rank. Photos that agree make the answer stronger (it is not a vote per photo). Track IDs '
-            'are not joined unless "Merge consecutive track IDs" is on (Advanced settings). '
-            'Identification runs on this phone with the chosen model and name list; no image '
-            'or data is sent anywhere. The run can take minutes to hours, can be cancelled and '
-            'resumed at any time, and pauses when the battery gets warmer than the temperature '
-            'set under Advanced settings. Plug the phone in for long runs.',
+            'The app cuts each saved photo of a track ID around the insect (a crop) and the model names '
+            'the crops of one track ID together: one answer per track ID, with a confidence for every '
+            'rank. Photos that agree make the answer stronger. Everything runs on this phone; no picture '
+            'or data is sent anywhere. A run can take minutes to hours; you can cancel it and continue '
+            'later, and it pauses when the battery is warmer than set under Advanced settings. Plug the '
+            'phone in for long runs.',
       ),
       const SizedBox(height: 6),
       Text(
@@ -760,12 +842,12 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         runSpacing: 8,
         children: [
           OutlinedButton.icon(
-            onPressed: ready && !_testingSpeed ? _start : null,
+            onPressed: ready && !_testingSpeed && !_starting ? _start : null,
             icon: const Icon(Icons.biotech),
             label: Text(_hasEmbeddings ? 'Continue / re-run' : 'Start'),
           ),
           OutlinedButton.icon(
-            onPressed: ready && !_testingSpeed ? _testSpeed : null,
+            onPressed: ready && !_testingSpeed && !_starting ? _testSpeed : null,
             icon: const Icon(Icons.speed),
             label: Text(_testingSpeed ? 'Testing…' : 'Test speed'),
           ),
@@ -773,7 +855,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             OutlinedButton.icon(
               onPressed: _rescore,
               icon: const Icon(Icons.refresh),
-              label: const Text('Re-score with this name list'),
+              label: const Text('Update results'),
             ),
           if (_summaries.isNotEmpty)
             FilledButton.icon(
@@ -807,8 +889,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         const Padding(
           padding: EdgeInsets.only(top: 8),
           child: Text(
-            'The track IDs were found again since the last run, so its stored results no longer match '
-            'them. Continue / re-run starts over.',
+            'Track IDs were found again after the last identification, so its results no longer fit '
+            'them. "Continue / re-run" will identify all photos again from the start (this takes as '
+            'long as a first run).',
             style: TextStyle(color: Colors.amber, fontSize: 12),
           ),
         ),
@@ -821,7 +904,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           children: [
             _buttonNote(
               _hasEmbeddings ? 'Continue / re-run' : 'Start',
-              _hasEmbeddings
+              _visitsChanged
+                  ? 'runs the model again on the photos of every track ID (the slow step), then computes '
+                        'the results.'
+                  : _hasEmbeddings
                   ? 'runs the model only on photos that have no stored result yet (new photos, or after '
                         'lowering "Smallest box to identify"), then recomputes the results; with nothing new '
                         'it takes seconds.'
@@ -837,9 +923,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             ),
             if (_hasEmbeddings && _pack != null && !_visitsChanged)
               _buttonNote(
-                'Re-score with this name list',
-                'recomputes the results from the stored model outputs without running the model: use it '
-                    'after changing the name list or any threshold, merge or flag setting (seconds).',
+                'Update results',
+                'recomputes the results in seconds from the stored model answers, without running the '
+                    'model again: use it after changing the name list or any threshold, merge or suspect '
+                    'setting.',
               ),
             if (_summaries.isNotEmpty) _buttonNote('View results', 'opens the newest results of this session.'),
           ],
@@ -859,11 +946,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       remaining = Duration(milliseconds: (cropping.inMilliseconds / done * (total - done)).round());
     }
     final stageText = _loadingModel
-        ? 'Loading the model (the first time can take a minute)…'
+        ? 'Loading the model (the first time on this phone can take up to a minute)…'
         : switch (p?.stage) {
             'planning' => 'Planning crops…',
             'embedding' => 'Identifying crops on the $_accelerator…'
-                '${_accelNote != null ? ' (GPU not used: $_accelNote)' : ''}',
+                '${_accelNote != null ? ' (GPU not used: ${gpuNoteText(_accelNote!)})' : ''}',
             'paused' => 'Paused: ${p!.note}',
             'scoring' => 'Combining crops per track ID and writing results…',
             'done' => 'Finishing…',
@@ -920,6 +1007,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
             'Cancelled (progress is kept). "${_hasEmbeddings ? 'Continue / re-run' : 'Start'}" goes on from here.',
             style: const TextStyle(color: Colors.amber),
           ),
+        // The store does not count a failed crop as done (EmbeddingIndex.parse), so the next run
+        // tries it again; without this line a run that lost its model looked finished.
+        if (r.failed > 0 && !r.cancelled)
+          Text(
+            '${r.failed} crops could not be identified (the model gave an error). The results miss them. '
+            '"${_hasEmbeddings ? 'Continue / re-run' : 'Start'}" tries them again.',
+            style: const TextStyle(color: Colors.redAccent),
+          ),
         Text(
           '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
           '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(_runTook ?? r.elapsed)}'
@@ -927,7 +1022,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           style: const TextStyle(color: Colors.white),
         ),
         if (r.embedded > 0 && _accelNote != null)
-          Text('GPU not used: ${gpuNoteText(_accelNote!)}.', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+          Text('GPU not used: ${gpuNoteText(_accelNote!)}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         if (s != null) ...[
           const SizedBox(height: 6),
           Text(

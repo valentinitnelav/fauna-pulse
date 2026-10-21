@@ -6,6 +6,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_error_hooks.dart';
 import 'model_file_security.dart';
@@ -34,7 +35,10 @@ String? downloadStatusMessage(int statusCode, {String? mimeType, bool pastedLink
               '"Import model files…".'
         : 'This link is not public (HTTP $statusCode). The file may not be online yet: please try again later.';
   }
-  if (statusCode != HttpStatus.ok) return 'Download failed (HTTP $statusCode).';
+  if (statusCode != HttpStatus.ok) {
+    return 'Download failed (HTTP $statusCode). Try again later; if it keeps failing, download the file on a '
+        'computer, copy it to the phone and use "Import model files…".';
+  }
   // Round 314: a file page (e.g. a Hugging Face or GitHub "blob" link) is a
   // web page, not the file; refused before its body is downloaded.
   if (mimeType == 'text/html') {
@@ -52,6 +56,53 @@ Uri directFileUri(Uri uri) {
   final huggingFace = uri.host == 'huggingface.co' || uri.host == 'hf.co';
   if (!huggingFace || s.length < 5 || s[2] != 'blob') return uri;
   return uri.replace(pathSegments: [...s.take(2), 'resolve', ...s.skip(3)]);
+}
+
+/// Absolute paths of the files [downloadToFile] is writing right now. Two
+/// downloads of one file would share `<target>.part` (one truncates or
+/// deletes it under the other, so one or both fail), which happens when the
+/// download dialog is left with Back and the same file is downloaded again.
+/// The single `.part` name is kept on purpose: a `.part` left behind by an
+/// app kill is overwritten by the next download instead of piling up.
+final Set<String> _activeDownloadTargets = {};
+
+/// Deletes the `.part` files in [dirs]: a download or import that the app
+/// kill (force-stop, swipe from Recents, low memory, reboot) cut off never
+/// reaches its own cleanup, and the half file (up to 1.2 GB for BioCLIP 2.5)
+/// stays hidden: the model lists and the storage line count only finished
+/// files. Must run only while no download or import is writing, so it is
+/// called once at start ([deleteLeftoverModelPartFiles]). Returns the count.
+int deleteLeftoverPartFiles(List<Directory> dirs) {
+  var deleted = 0;
+  for (final dir in dirs) {
+    if (!dir.existsSync()) continue;
+    for (final f in dir.listSync(followLinks: false).whereType<File>()) {
+      if (!f.path.endsWith('.part')) continue;
+      try {
+        f.deleteSync();
+        deleted++;
+      } catch (e) {
+        logSwallowed('model_part_cleanup', e);
+      }
+    }
+  }
+  return deleted;
+}
+
+/// Run once at start, before any screen can start a download. The folders
+/// are the ones ModelCatalog.modelsDir and IdentificationAssets use (keep in
+/// sync, as in renameFormerModelFiles).
+Future<void> deleteLeftoverModelPartFiles() async {
+  try {
+    final base = (await getApplicationSupportDirectory()).path;
+    deleteLeftoverPartFiles([
+      Directory('$base/models'),
+      Directory('$base/identification/models'),
+      Directory('$base/identification/packs'),
+    ]);
+  } catch (e) {
+    logSwallowed('model_part_cleanup', e);
+  }
 }
 
 /// Streams [url] into [target] through a temporary `<target>.part` file and
@@ -77,6 +128,12 @@ Future<File> downloadToFile(
   if (expectedSha256 != null && !isValidSha256(expectedSha256)) {
     throw Exception('The expected SHA-256 value must contain 64 hex digits.');
   }
+  // Refused before the try below, whose catch would delete the running
+  // download's `.part` file.
+  final targetKey = target.absolute.path;
+  if (!_activeDownloadTargets.add(targetKey)) {
+    throw Exception('This file is already being downloaded. Wait for that download to finish, then check the list again.');
+  }
   final partFile = File('${target.path}.part');
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   try {
@@ -85,7 +142,11 @@ Future<File> downloadToFile(
     final request = await client.getUrl(url);
     final response = await request.close();
     if (!redirectChainStaysHttps(url, response.redirects)) {
-      throw Exception('The link redirected to an insecure non-HTTPS address.');
+      throw Exception(
+        'The link leads on to an unsafe address (not https), so the app does not download it. Use a link '
+        'that starts with https, or download the file on a computer, copy it to the phone and use '
+        '"Import model files…".',
+      );
     }
     final problem = downloadStatusMessage(
       response.statusCode,
@@ -139,6 +200,7 @@ Future<File> downloadToFile(
     }
     rethrow;
   } finally {
+    _activeDownloadTargets.remove(targetKey);
     client.close();
   }
 }

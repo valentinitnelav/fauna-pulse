@@ -52,7 +52,11 @@ class ScheduleWindow {
     if (j is! Map) return null;
     final start = j['start'];
     final end = j['end'];
-    if (start is! num || end is! num) return null;
+    // Infinity (1e999 in the saved text) would throw in toInt() and reset
+    // every setting, not just this window.
+    if (start is! num || end is! num || !start.isFinite || !end.isFinite) {
+      return null;
+    }
     final w = ScheduleWindow(start.toInt(), end.toInt());
     return w.isValid ? w : null;
   }

@@ -159,52 +159,54 @@ class VideoRunSamples {
         if (t != null && runs.isNotEmpty) runs.last.endMs = t;
         continue;
       }
-      Map<String, dynamic> rec;
+      // The whole record is read under the try: one wrong-typed field (a file
+      // edited by hand, or written by another app version) costs one sample,
+      // not the phone graphs of the whole analysis (parseFile gives null).
       try {
-        rec = (jsonDecode(line) as Map).cast<String, dynamic>();
+        final rec = (jsonDecode(line) as Map).cast<String, dynamic>();
+        final type = rec['type'];
+        final t = (rec['time_ms'] as num?)?.toInt();
+        if (t == null) continue;
+        if (type == 'video_run_start') {
+          runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt()));
+          continue;
+        }
+        if (runs.isEmpty) continue;
+        final run = runs.last..endMs = t;
+        switch (type) {
+          case 'thermal':
+            final s = run.at(t);
+            s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
+            s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
+            s.thermalStatus = rec['thermal_status'] as String?;
+            s.paused = rec['paused'] == true;
+            s.clip ??= rec['clip'] as String?;
+          case 'power':
+            final s = run.at(t);
+            s.powerW = (rec['power_w'] as num?)?.toDouble();
+            s.currentUa = (rec['battery_current_ua'] as num?)?.toInt();
+            s.voltageMv = (rec['battery_voltage_mv'] as num?)?.toInt();
+            s.chargeUah = (rec['charge_counter_uah'] as num?)?.toInt();
+            s.charging = rec['is_charging'] as bool?;
+            s.plugged = rec['is_plugged'] as bool?;
+          case 'analysis_speed':
+            final s = run.at(t);
+            s.clip = rec['clip'] as String? ?? s.clip;
+            s.framesPerS = (rec['frames_per_s'] as num?)?.toDouble();
+            s.frames = (rec['frames'] as num?)?.toInt();
+            s.pausedMs = (rec['paused_ms'] as num?)?.toInt();
+            s.decodeMs = (rec['decode_ms'] as num?)?.toDouble();
+            s.convertMs = (rec['convert_ms'] as num?)?.toDouble();
+            s.detectMs = (rec['detect_ms'] as num?)?.toDouble();
+          case 'video_thermal_pause':
+            run.pauses.add((t, null));
+          case 'video_thermal_resume':
+            if (run.pauses.isNotEmpty && run.pauses.last.$2 == null) {
+              run.pauses.last = (run.pauses.last.$1, t);
+            }
+        }
       } catch (_) {
-        continue; // a half-written last line after a kill
-      }
-      final type = rec['type'];
-      final t = (rec['time_ms'] as num?)?.toInt();
-      if (t == null) continue;
-      if (type == 'video_run_start') {
-        runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt()));
-        continue;
-      }
-      if (runs.isEmpty) continue;
-      final run = runs.last..endMs = t;
-      switch (type) {
-        case 'thermal':
-          final s = run.at(t);
-          s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
-          s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
-          s.thermalStatus = rec['thermal_status'] as String?;
-          s.paused = rec['paused'] == true;
-          s.clip ??= rec['clip'] as String?;
-        case 'power':
-          final s = run.at(t);
-          s.powerW = (rec['power_w'] as num?)?.toDouble();
-          s.currentUa = (rec['battery_current_ua'] as num?)?.toInt();
-          s.voltageMv = (rec['battery_voltage_mv'] as num?)?.toInt();
-          s.chargeUah = (rec['charge_counter_uah'] as num?)?.toInt();
-          s.charging = rec['is_charging'] as bool?;
-          s.plugged = rec['is_plugged'] as bool?;
-        case 'analysis_speed':
-          final s = run.at(t);
-          s.clip = rec['clip'] as String? ?? s.clip;
-          s.framesPerS = (rec['frames_per_s'] as num?)?.toDouble();
-          s.frames = (rec['frames'] as num?)?.toInt();
-          s.pausedMs = (rec['paused_ms'] as num?)?.toInt();
-          s.decodeMs = (rec['decode_ms'] as num?)?.toDouble();
-          s.convertMs = (rec['convert_ms'] as num?)?.toDouble();
-          s.detectMs = (rec['detect_ms'] as num?)?.toDouble();
-        case 'video_thermal_pause':
-          run.pauses.add((t, null));
-        case 'video_thermal_resume':
-          if (run.pauses.isNotEmpty && run.pauses.last.$2 == null) {
-            run.pauses.last = (run.pauses.last.$1, t);
-          }
+        continue; // a half-written last line after a kill, or a wrong type
       }
     }
 

@@ -313,6 +313,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   `YOLOView.onFrame` before conversion), so the camera fps readout shows ~that number while the
   gate sleeps; time-lapse shows ~1 fps between bursts. That is correct.
 
+- **Swiping FaunaPulse away in Recents ends a recording:** `RecordingService.onTaskRemoved` calls
+  `stopSelf()`, so the wake lock and notification go (r318).
+
 ### ROI and photos
 - **ROI is ÷32 WYSIWYG:** the box, readout, saved crop and inference ROI are the same square (a
   square needs no letterbox padding before the square model input);
@@ -565,6 +568,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Results screens: taxon table → track-ID sheets → one track ID (ladder, photo with detector box
   and crop). Mini-table kit measures column widths; ids/names left, numbers right.
 
+- **One job, one model user:** one Identify job per session at a time (`IdentificationJob`
+  `_activeSessions`); runs and Test speed take a static model lock before `ImageEmbedder.load`
+  and free it after `close()`. Back during a run asks first (`PopScope`); leaving cancels the job (r318).
+
 ### Models and downloads
 - **Model facts** (origin, licence, conversion, citation of each offered model): its model card
   on Hugging Face (https://huggingface.co/collections/Valen-Peregrine/faunapulse, `kModelsCollectionUrl`; card sources `hf_cards/` in
@@ -652,6 +659,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   ring, a tick and bold words (`WatchIcon.selected`); step 2 shows its phone screen.
 - A model needs a list entry only to be offered or suggested; any model on the phone can be
   chosen everywhere.
+
+- **Downloads:** a second download of a file that is already being written is refused
+  (`_activeDownloadTargets`); leftover `.part` files are deleted at app start
+  (`deleteLeftoverPartFiles`) (r318).
 
 ### Home, Sessions, summary
 - **Home** (`home_screen.dart`): tagline "Your phone as a camera trap: find, count and name

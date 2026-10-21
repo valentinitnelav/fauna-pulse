@@ -209,10 +209,10 @@ void main() {
     Finder inRow(String text, Finder f) =>
         find.descendant(of: find.ancestor(of: find.text(text), matching: find.byType(Row)).first, matching: f);
     // The box is at the top, scrolled away while choosing.
-    await tester.scrollUntilVisible(find.text('with its class list'), -200, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.text('with its name list'), -200, scrollable: find.byType(Scrollable).first);
     expect(inRow(model.file!.name, find.byIcon(Icons.check_circle)), findsOneWidget);
-    expect(inRow('with its class list', find.byIcon(Icons.download)), findsOneWidget);
-    expect(inRow('with its class list', find.text(' ${formatBytes(list.file.bytes)}')), findsOneWidget);
+    expect(inRow('with its name list', find.byIcon(Icons.download)), findsOneWidget);
+    expect(inRow('with its name list', find.text(' ${formatBytes(list.file.bytes)}')), findsOneWidget);
     expect(find.text('Download and use (${formatBytes(list.file.bytes)})'), findsOneWidget);
   });
 

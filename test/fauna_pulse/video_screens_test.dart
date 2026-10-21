@@ -309,7 +309,7 @@ void main() {
 
     await back();
     expect(find.text('Frames are still being saved'), findsOneWidget);
-    await tester.tap(find.text('Stay'));
+    await tester.tap(find.text('Cancel'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Frames are still being saved'), findsNothing);
@@ -844,7 +844,7 @@ void main() {
     expect(find.textContaining(RegExp(r'^Track IDs in \d+ % of this clip'), skipOffstage: false), findsOneWidget);
     // Nothing that would open this screen again; the notes point to the controls above.
     expect(find.widgetWithText(FilledButton, 'Find animals in videos', skipOffstage: false), findsNothing);
-    expect(find.text('Change square and analyse again', skipOffstage: false), findsNothing);
+    expect(find.text('Change square and analyze again', skipOffstage: false), findsNothing);
     expect(find.text('Square in the wrong place?', skipOffstage: false), findsNothing);
     expect(find.textContaining('(see Kept frames below)', skipOffstage: false), findsNothing);
     expect(tester.takeException(), isNull);
@@ -1238,7 +1238,7 @@ void main() {
       expect(track.color, kTrackingColor);
       expect({kDetectionColor, kIdentificationColor, kTrackingColor}, hasLength(3));
       await _scrollTo(tester, find.text('Identification'));
-      final last = find.textContaining('Changes nothing in the app');
+      final last = find.textContaining('Only for the CSV file of the results');
       await _scrollTo(tester, last);
       await tester.drag(find.byType(ListView), const Offset(0, -3000));
       await tester.pump();

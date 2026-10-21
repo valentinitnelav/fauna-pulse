@@ -433,10 +433,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             labelStyle: TextStyle(color: Colors.white, fontSize: 14),
             helperText:
                 'Names are suggestions from each session\'s last identification: mistakes are possible, '
-                'especially for animals that are not in the name list. Sessions named with different name '
-                'lists are added together. A track ID named only at a higher rank is counted under "not '
-                'resolved to …". As on the Identification screen, suspect track IDs (likely false detections) are '
-                'left out, and track IDs joined into one count once.',
+                'especially for animals that are not in the name list. Sessions with different name '
+                'lists are added together. A track ID named only to family, for example, appears under "not '
+                'resolved to genus". As on the Identification screen, likely false detections are '
+                'left out, and track IDs judged to be one animal count once.',
           ),
           const SizedBox(height: 4),
           Wrap(
@@ -478,7 +478,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       '${_count(agg.suspectVisits, 'suspect track ID')} (likely false detections) left out, as on the '
           'Identification screen.',
     if (agg.joinedEntries > 0)
-      'Joined by the identification, ${agg.joinedVisits} track IDs count as ${agg.joinedEntries} in the bars.',
+      '${agg.joinedVisits} track IDs that the identification joined (close in time and alike, so likely one '
+          'animal) count as ${agg.joinedEntries} in the bars.',
     if (agg.unnamedSessions > 0)
       '${_count(agg.unnamedSessions, 'session')} ${agg.unnamedSessions == 1 ? 'has' : 'have'} no current names: '
           'open ${agg.unnamedSessions == 1 ? 'it' : 'them'} and tap "Identify organisms".',

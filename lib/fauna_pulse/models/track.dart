@@ -166,7 +166,8 @@ class TrackEvent {
   /// Unmatched frames at the transition (recovered/removed; 0 elsewhere).
   final int framesMissed;
 
-  /// Why a track was removed: 'aged_out' | 'gate_expired'. Null otherwise.
+  /// Why a track was removed: 'aged_out' | 'gate_expired' |
+  /// 'frame_gap_expired' (see InsectTracker.maxFrameGapMs). Null otherwise.
   final String? reason;
 
   const TrackEvent({

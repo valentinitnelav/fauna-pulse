@@ -154,7 +154,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.text('Inference engine'),
+          find.text('Detector ran on'),
           c.usesAi ? findsOneWidget : findsNothing,
         );
         expect(
@@ -190,15 +190,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Bounding box colors (if a detector was used):'),
+        find.text('Box colors (if a detector was used):'),
         findsOneWidget,
       );
       final triggerLegend = find.textContaining(
-        'tracked object whose photo schedule triggered this shot',
+        'the track ID this photo was taken for',
         findRichText: true,
       );
       final coDetectedLegend = find.textContaining(
-        'other target objects detected in the same frame',
+        'other animals detected in the same picture',
         findRichText: true,
       );
       expect(triggerLegend, findsOneWidget);
@@ -276,7 +276,7 @@ void main() {
         200,
         scrollable: scrollable,
       );
-      expect(find.textContaining('the detector never ran'), findsOneWidget);
+      expect(find.textContaining('the detector did not run during recording'), findsOneWidget);
       // Inert rows remain visible but never show misleading saved defaults.
       await expectSummaryRowValue(
         tester,
@@ -416,7 +416,7 @@ void main() {
       await tester.tap(find.textContaining('All session settings'));
       await tester.pump();
       await tester.scrollUntilVisible(
-        find.textContaining('Time-lapse settings were not applicable'),
+        find.textContaining('Time-lapse settings were not used in this session'),
         200,
         scrollable: scrollable,
       );

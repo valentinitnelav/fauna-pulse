@@ -202,24 +202,26 @@ class VideoResume {
       if (!line.contains('"raw_detections"') && !line.contains('"video_clip_done"') && !line.contains('"video_run_start"')) {
         continue;
       }
-      Map<String, dynamic> rec;
+      // The casts sit in the try too: a record with a wrong-typed field
+      // (edited by hand, or an older/newer app version) is skipped like a
+      // torn line, instead of a TypeError blocking Continue for the whole run.
       try {
-        rec = (jsonDecode(line) as Map).cast<String, dynamic>();
+        final rec = (jsonDecode(line) as Map).cast<String, dynamic>();
+        final clip = rec['clip'] as String?;
+        switch (rec['type']) {
+          case 'video_run_start':
+            settings = (rec['settings'] as Map?)?.cast<String, dynamic>();
+            // Round 314: a model file renamed at start is the same model, so
+            // the run can still be continued.
+            if (settings?['model'] case final String m) settings = {...settings!, 'model': currentModelPath(m)};
+          case 'video_clip_done':
+            if (clip != null) done.add(clip);
+          case 'raw_detections':
+            final pts = (rec['pts_us'] as num?)?.toInt();
+            if (clip != null && pts != null && pts > (last[clip] ?? -1)) last[clip] = pts;
+        }
       } catch (_) {
-        continue; // a half-written last line after a kill
-      }
-      final clip = rec['clip'] as String?;
-      switch (rec['type']) {
-        case 'video_run_start':
-          settings = (rec['settings'] as Map?)?.cast<String, dynamic>();
-          // Round 314: a model file renamed at start is the same model, so
-          // the run can still be continued.
-          if (settings?['model'] case final String m) settings = {...settings!, 'model': currentModelPath(m)};
-        case 'video_clip_done':
-          if (clip != null) done.add(clip);
-        case 'raw_detections':
-          final pts = (rec['pts_us'] as num?)?.toInt();
-          if (clip != null && pts != null && pts > (last[clip] ?? -1)) last[clip] = pts;
+        continue; // a half-written last line after a kill, or a wrong type
       }
     }
     return VideoResume(settings, done, last);
@@ -323,7 +325,10 @@ class VideoDetector {
     final log = File('${sessionDir.path}/session.jsonl');
     final out = <String, Map<String, dynamic>>{};
     if (!log.existsSync()) return out;
-    final lines = log.openRead().transform(utf8.decoder).transform(const LineSplitter());
+    // allowMalformed: a log torn inside a multi-byte letter (kill, full
+    // storage) must not throw before the torn last line is skipped below;
+    // the other session.jsonl readers decode the same way.
+    final lines = log.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter());
     await for (final line in lines) {
       if (!line.contains('"video_clip"')) continue;
       try {
@@ -360,7 +365,9 @@ class VideoDetector {
     final every = sampleEvery < const Duration(seconds: 1) ? const Duration(seconds: 1) : sampleEvery;
     final outFile = File('${sessionDir.path}/$outputFileName');
     var resume = outFile.existsSync()
-        ? VideoResume.parse(await outFile.openRead().transform(utf8.decoder).transform(const LineSplitter()).toList())
+        // allowMalformed: a half-written last line cut inside a multi-byte
+        // letter would otherwise throw here, and Continue could never start.
+        ? VideoResume.parse(await outFile.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter()).toList())
         : const VideoResume(null, {}, {});
     final sameSettings = resume.settings == null || jsonEncode(resume.settings) == jsonEncode(config.identity);
     if (!sameSettings && !startOver) throw VideoSettingsChanged(resume.settings!);

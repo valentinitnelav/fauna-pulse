@@ -43,6 +43,7 @@ import '../identification/label_pack.dart' show kRankNames;
 import '../identification/taxa_table.dart';
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import 'app_error_hooks.dart';
+import 'past_sessions.dart' show readSessionLogEnd;
 import 'session_log_index.dart';
 import 'track_source.dart';
 
@@ -343,43 +344,18 @@ class DashboardStatsCache {
     }
   }
 
-  /// Records appended to a session log after the recording ended (a clip
-  /// cleanup, a rename): their time is not recording time.
-  static const _laterRecords = {'"video_cleanup"', '"session_renamed"'};
-
-  /// From the log tail (same cheap trick as the home list, never a full
-  /// scan): the `end_of_session` stamp, null when the session crashed, and
-  /// the time of the last record written while recording (the crash
-  /// fallback; phone samples arrive every 5 to 10 s).
+  /// From the log tail (readSessionLogEnd, the same reader as the home list,
+  /// never a full scan): the `end_of_session` stamp, null when the session
+  /// crashed, and the time of the last record written while recording (the
+  /// crash fallback; phone samples arrive every 5 to 10 s).
   static Future<({int? endMs, int? lastMs})> _readTail(File log) async {
     int? endMs, lastMs;
     try {
       final raf = await log.open();
       try {
-        final len = await raf.length();
-        final tailLen = min(16384, len);
-        await raf.setPosition(len - tailLen);
-        final tail = await raf.read(tailLen);
-        final lines = utf8
-            .decode(tail, allowMalformed: true)
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .toList();
-        for (final l in lines.reversed) {
-          if (_laterRecords.any(l.contains)) continue;
-          final Map<String, dynamic> rec;
-          try {
-            rec = jsonDecode(l) as Map<String, dynamic>;
-          } catch (_) {
-            continue; // a cut line (the window's first, or a crash's last)
-          }
-          final t = (rec['time_ms'] as num?)?.toInt();
-          if (rec['type'] == 'end_of_session') {
-            endMs = t;
-            break;
-          }
-          lastMs ??= t;
-        }
+        final end = await readSessionLogEnd(raf);
+        endMs = end.endMs;
+        lastMs = end.lastMs;
       } finally {
         await raf.close();
       }
@@ -533,7 +509,9 @@ class DashboardAggregate {
   final int recordDayCount;
 
   /// Track IDs left out of the charts by time: their videos do not say
-  /// when they were filmed ([SessionDashboardStats.guessedClips]).
+  /// when they were filmed ([SessionDashboardStats.guessedClips]), or their
+  /// time is not plausible (before 2000 or over a year after today, see
+  /// [aggregateDashboard]).
   final int visitsWithoutClock;
 
   /// Taxa per rank of [kDashboardRanks], over the sessions with a current
@@ -632,16 +610,20 @@ DateTime periodStart(int days, DateTime now) =>
 /// Aggregates [sessions] whose START falls inside the period: the last
 /// [periodDays] calendar days up to [now] (null = all time). Hour/day
 /// bucketing uses the device's local time: the biological question ("when
-/// are pollinators active?") is about local solar-ish time.
+/// are pollinators active?") is about local solar-ish time. A [periodDays]
+/// below 1 counts as 1 (today only).
 DashboardAggregate aggregateDashboard(
   List<SessionDashboardStats> sessions, {
   int? periodDays,
   DateTime? now,
 }) {
   final today = now ?? DateTime.now();
-  final sinceMs = periodDays == null
+  // Below 1, periodStart lies after today: 0 gave an empty activity list
+  // (breaks "never empty") and a negative value made List.filled throw.
+  final period = periodDays == null ? null : max(1, periodDays);
+  final sinceMs = period == null
       ? 0
-      : periodStart(periodDays, today).millisecondsSinceEpoch;
+      : periodStart(period, today).millisecondsSinceEpoch;
   final inPeriod = [
     for (final s in sessions)
       if (s.startMs >= sinceMs) s,
@@ -655,11 +637,19 @@ DashboardAggregate aggregateDashboard(
   final byDay = <int, int>{};
   final lengths = <int>[];
   var recordedMs = 0, withoutClock = 0;
+  // Times outside 2000-01-01 .. one year after today come from a phone that
+  // lost its clock or from a corrupt session.jsonl / dashboard_stats.json.
+  // They go to the "without clock" count: beyond +-8.64e15 ms DateTime throws
+  // (the whole Dashboard build failed), and a far but valid date stretched
+  // the all-time chart to thousands of empty bars. The year of slack keeps
+  // sessions from a phone whose clock ran ahead and was later corrected.
+  final plausibleFromMs = DateTime(2000).millisecondsSinceEpoch;
+  final plausibleToMs = today.millisecondsSinceEpoch + 366 * Duration.millisecondsPerDay;
   for (final s in ai) {
     recordedMs += s.recordedMs;
     for (final (startMs, endMs) in s.visits) {
       lengths.add(max(0, endMs - startMs));
-      if (s.clockUnsure(startMs)) {
+      if (s.clockUnsure(startMs) || startMs < plausibleFromMs || startMs > plausibleToMs) {
         withoutClock++;
         continue;
       }
@@ -677,12 +667,12 @@ DashboardAggregate aggregateDashboard(
   // all time (the last 7 days when none has a known time, so the empty chart
   // keeps its days); weekly when that would need more than ~2 months of bars.
   final int first, last;
-  if (periodDays == null && byDay.isNotEmpty) {
+  if (period == null && byDay.isNotEmpty) {
     final days = byDay.keys.toList()..sort();
     first = days.first;
     last = days.last;
   } else {
-    first = _dayNumber(periodStart(periodDays ?? 7, today));
+    first = _dayNumber(periodStart(period ?? 7, today));
     last = _dayNumber(today);
   }
   final spanDays = last - first + 1;

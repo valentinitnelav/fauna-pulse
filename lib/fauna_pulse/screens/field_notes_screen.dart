@@ -484,11 +484,25 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
         content: Image.file(f, fit: BoxFit.contain, cacheWidth: 1080),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete photo')),
+        ],
+      ),
+    );
+    if (delete != true || !mounted) return;
+    // A second step, so one tap next to "Close" cannot remove the photo.
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        actionsOverflowDirection: VerticalDirection.up,
+        title: DialogTitle(const Text('Delete this site photo?'), onClose: () => Navigator.of(ctx).pop(false)),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
         ],
       ),
     );
-    if (delete != true) return;
+    if (sure != true) return;
     try {
       await f.delete();
     } catch (_) {}

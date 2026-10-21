@@ -40,7 +40,18 @@ abstract class InsectTracker {
 
   /// Drops every "lost" track immediately (motion-gate wake after a sleep
   /// longer than the occlusion tolerance — see the byte_track.dart original).
-  void expireLostTracks();
+  /// [reason] goes into the `removed` track events.
+  void expireLostTracks({String reason = 'gate_expired'});
+
+  /// A pause between two frames given to [update] longer than this (ms)
+  /// expires the lost tracks first ('frame_gap_expired'), like a gate wake:
+  /// lost tracks age by frame COUNT, so without it a camera that stops in
+  /// the middle of a recording (another app takes it, the system stops it)
+  /// would let a new insect inherit an old ID when frames come back.
+  /// Confirmed tracks are kept on purpose (a still insect seen again in the
+  /// same place is most likely the same one). 0 = off (replay, video, tests).
+  int get maxFrameGapMs;
+  set maxFrameGapMs(int value);
 
   /// All currently confirmed tracks (the ones worth showing/logging).
   List<Track> get confirmedTracks;

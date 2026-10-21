@@ -42,8 +42,15 @@ class FaunaLapseLog {
   final Map<String, dynamic>? end;
   const FaunaLapseLog(this.start, this.photos, this.end);
 
+  // Throws a TypeError when settings is not an object: the import reads it inside its
+  // TypeError guard and refuses such a record with a plain message.
   Map<String, dynamic> get settings => (start['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
-  bool get isVideo => settings['mode'] == 'video';
+  // Type check, not [settings]: the import asks this before its TypeError guard, so a cast here
+  // would show a hand-edited record (settings as text) to the user as a raw Dart error.
+  bool get isVideo {
+    final s = start['settings'];
+    return s is Map && s['mode'] == 'video';
+  }
   int get startMs => DateTime.parse(start['time'] as String).millisecondsSinceEpoch;
   int? get endMs => end == null ? null : DateTime.tryParse('${end!['time']}')?.millisecondsSinceEpoch;
 }
@@ -71,7 +78,11 @@ FaunaLapseLog? parseFaunaLapseLog(Iterable<String> lines) {
         final t = DateTime.tryParse('${r['time']}');
         final file = r['file'];
         if (t == null || file is! String || r['error'] != null) continue;
-        photos.add(FaunaLapsePhoto(file, t.millisecondsSinceEpoch, (r['saved_side_px'] as num?)?.toInt(), burst < 0 ? 0 : burst));
+        // Type check, not a cast: this runs outside the try above, so a cast would let one
+        // hand-edited line (size as text) reject the whole record. The photo itself is real,
+        // so keep it and only drop the size (it is just copied into the frame line).
+        final px = r['saved_side_px'];
+        photos.add(FaunaLapsePhoto(file, t.millisecondsSinceEpoch, px is num ? px.toInt() : null, burst < 0 ? 0 : burst));
       case 'session_end':
         end = r;
     }
@@ -121,7 +132,9 @@ class FaunaLapseImportResult {
   final int photos;
   final int missingPhotos;
   final int sitePhotos;
-  const FaunaLapseImportResult(this.folder, this.photos, this.missingPhotos, this.sitePhotos);
+  /// Photos left out because their bytes did not match the checksum stored in the zip.
+  final int damagedPhotos;
+  const FaunaLapseImportResult(this.folder, this.photos, this.missingPhotos, this.sitePhotos, {this.damagedPhotos = 0});
 }
 
 /// A plain-language reason the zips cannot be imported.
@@ -144,6 +157,11 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
   // Every entry of every zip, by its path inside the zip.
   final entries = <String, ArchiveFile>{};
   final streams = <InputFileStream>[];
+  // The new session folder while it is only partly written, and its record. Any error after
+  // the folder is made (disk full while copying photos, a damaged photo entry) must remove it
+  // again (see the finally below): a leftover folder blocks the next try with "already here".
+  Directory? halfMade;
+  SessionLogger? logger;
   try {
     for (final p in zipPaths) {
       final input = InputFileStream(p);
@@ -170,7 +188,15 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
       throw const FaunaLapseImportError('The chosen zips hold more than one session: import them one at a time.');
     }
     final folder = folders.single;
-    final log = parseFaunaLapseLog(const LineSplitter().convert(utf8.decode(entries['$folder/session.jsonl']!.content)));
+    // Damaged compressed data (bad SD card, broken copy) or a record that is not UTF-8 throws
+    // archive or FormatException errors here; the user should get a plain reason instead.
+    // Nothing is written yet, so there is nothing to clean up.
+    final FaunaLapseLog? log;
+    try {
+      log = parseFaunaLapseLog(const LineSplitter().convert(utf8.decode(entries['$folder/session.jsonl']!.content)));
+    } catch (_) {
+      throw const FaunaLapseImportError('The session record (session.jsonl) is damaged and cannot be read.');
+    }
     if (log == null) throw const FaunaLapseImportError('The session record is not a FaunaLapse record.');
     if (log.isVideo) {
       throw const FaunaLapseImportError(
@@ -179,21 +205,39 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
     }
     final dir = Directory('${sessionsRoot.path}/$folder');
     if (dir.existsSync()) throw FaunaLapseImportError('A session named $folder is already here.');
+    // Read every typed value of the start record before anything is written: a hand-edited or
+    // foreign record (text where FaunaLapse writes a number or an object) fails here with a
+    // plain message instead of a raw Dart TypeError.
+    final start = log.start;
+    final int startMs;
+    final Map<String, dynamic> config;
+    final Map<String, dynamic>? location;
+    final Map<String, dynamic> device;
+    try {
+      startMs = log.startMs;
+      config = faunaLapseConfig(log, folder).toJson();
+      location = faunaLapseLocation(start);
+      final field = start['field'] as Map?;
+      device = {'manufacturer': field?['phone_maker'], 'model': field?['phone_model']};
+    } on TypeError {
+      throw const FaunaLapseImportError('The session record has a value of the wrong kind (it may have been edited by hand).');
+    }
+    // Deleting it on failure is safe: the check above proved this call made the folder.
+    halfMade = dir;
     final frames = Directory('${dir.path}/roi_frames')..createSync(recursive: true);
 
     const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
-    final seed = log.startMs;
+    final seed = startMs;
     final token = String.fromCharCodes([for (var i = 0; i < 4; i++) alphabet.codeUnitAt((seed ~/ (1 << (5 * i))) % 36)]);
-    final logger = SessionLogger(File('${dir.path}/session.jsonl'))..open();
-    final start = log.start;
+    logger = SessionLogger(File('${dir.path}/session.jsonl'))..open();
     logger.logStart({
-      'session_id': '${log.startMs}',
+      'session_id': '$startMs',
       'file_token': token,
       'source': 'faunalapse',
       'imported_at': isoWithOffset(DateTime.now()),
-      'config': faunaLapseConfig(log, folder).toJson(),
-      'device': {'manufacturer': (start['field'] as Map?)?['phone_maker'], 'model': (start['field'] as Map?)?['phone_model']},
-      if (faunaLapseLocation(start) case final Map<String, dynamic> loc) 'location': loc,
+      'config': config,
+      'device': device,
+      'location': ?location,
       'field': start['field'],
       'phone_state': start['phone_state'],
       'faunalapse': {
@@ -206,16 +250,39 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
 
     var written = 0;
     var missing = 0;
+    var damaged = 0;
+    // roi_frames/ is new and empty (made above), so names used in this loop are all that exist.
+    final usedNames = <String>{};
     for (final p in log.photos) {
       final src = entries['$folder/${p.file}'];
       if (src == null) {
         missing++;
         continue;
       }
-      final name = roiPhotoFileName(p.takenAtMs, token);
-      final out = OutputFileStream('${frames.path}/$name');
-      src.writeContent(out);
-      await out.close();
+      // package:archive (4.0.x) does not compare the zip's stored CRC with the data, so bit damage
+      // inside a stored JPEG (failing SD card or USB stick, bad transfer) would be copied silently.
+      // Check it here and leave such photos out, counted apart from missing ones. Photos are a few
+      // MB, so holding one in memory is fine. Done before the name is taken, so names stay compact.
+      // writeContent into memory, not src.content: that getter keeps every photo cached in its
+      // ArchiveFile until the import ends, which for a long session would not fit in memory.
+      final mem = OutputMemoryStream();
+      src.writeContent(mem);
+      final bytes = mem.getBytes();
+      if (src.crc32 != null && getCrc32(bytes) != src.crc32) {
+        damaged++;
+        continue;
+      }
+      // roi_ names show local wall-clock time to the millisecond, so two photos can share one:
+      // the repeated hour at the end of summer time, a zip imported in another time zone, or a
+      // hand-made log. Writing to a used name would silently overwrite the first photo, so move the
+      // name on by 1 ms until it is free. captured_at_ms below keeps the true time, and the
+      // name keeps the documented roi_ pattern (no suffix), so downstream parsing still works.
+      var nameMs = p.takenAtMs;
+      var name = roiPhotoFileName(nameMs, token);
+      while (!usedNames.add(name)) {
+        name = roiPhotoFileName(++nameMs, token);
+      }
+      File('${frames.path}/$name').writeAsBytesSync(bytes);
       final at = DateTime.fromMillisecondsSinceEpoch(p.takenAtMs);
       logger.logTimeLapseCapture({'jpeg': name, 'captured_at_ms': p.takenAtMs, 'burst': p.burst, 'original_name': p.file}, at: at);
       logger.logCapture({
@@ -231,6 +298,16 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
     for (final e in entries.entries) {
       if (!e.key.startsWith('$folder/site_photos/')) continue;
       final rel = e.key.substring(folder.length + 1);
+      // Zip slip guard: zip names are untrusted text and OutputFileStream makes any missing
+      // parent folders, so a hand-made zip with `site_photos/../../x` would write (or
+      // overwrite) files of other sessions or models. FaunaLapse never writes such names, so
+      // skip the entry instead of failing the whole import (the time-lapse photos matter more).
+      // A plain segment check, because package:path is not a direct dependency.
+      final parts = rel.split('/');
+      if (rel.contains('\\') || rel.contains('\u0000') ||
+          parts.skip(1).any((s) => s.isEmpty || s == '.' || s == '..')) {
+        continue;
+      }
       final out = OutputFileStream('${dir.path}/$rel');
       e.value.writeContent(out);
       await out.close();
@@ -246,10 +323,21 @@ Future<FaunaLapseImportResult> importFaunaLapseZips(List<String> zipPaths, Direc
       if (log.end?['reason'] != null) 'faunalapse_reason': log.end!['reason'],
       'imported_photos': written,
       if (missing > 0) 'missing_photos': missing,
+      if (damaged > 0) 'damaged_photos': damaged,
     }, at: DateTime.fromMillisecondsSinceEpoch(log.endMs ?? lastPhoto));
     await logger.close();
-    return FaunaLapseImportResult(folder, written, missing, sitePhotos);
+    halfMade = null; // complete: keep it
+    return FaunaLapseImportResult(folder, written, missing, sitePhotos, damagedPhotos: damaged);
   } finally {
+    if (halfMade != null) {
+      // Best effort: the original error is the one the user must see, so cleanup errors are dropped.
+      try {
+        await logger?.close();
+      } catch (_) {}
+      try {
+        halfMade.deleteSync(recursive: true);
+      } catch (_) {}
+    }
     for (final s in streams) {
       await s.close();
     }

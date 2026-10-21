@@ -27,6 +27,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import '../logging/app_error_hooks.dart';
+import '../logging/session_log_head.dart';
 import '../logging/session_logger.dart' show isoWithOffset;
 import '../logging/track_source.dart' show postTracksFileName;
 import '../models/session_config.dart';
@@ -291,8 +292,7 @@ class PhotoTracker {
     try {
       final raf = File('${sessionDir.path}/session.jsonl').openSync();
       try {
-        final head = utf8.decode(raf.readSync(min(65536, raf.lengthSync())), allowMalformed: true);
-        for (final line in const LineSplitter().convert(head)) {
+        for (final line in const LineSplitter().convert(readLogHeadSync(raf))) {
           if (!line.contains('"start_of_session"')) continue;
           return (jsonDecode(line) as Map).cast<String, dynamic>();
         }

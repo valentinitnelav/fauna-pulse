@@ -207,13 +207,22 @@ class IdentificationJob {
     if (tasks.isEmpty) {
       final post = File('${sessionDir.path}/${PostDetector.outputFileName}');
       if (post.existsSync()) {
-        tasks = planFromPostDetections(await post.readAsString());
+        tasks = planFromPostDetections(utf8.decode(await post.readAsBytes(), allowMalformed: true));
       }
     }
     tasks = tasks.where((t) => exists(t.source)).toList();
     return sampleTracks(tasks, maxCropsPerTrack);
   }
 
+  /// Session folders with a job running now. Two jobs on one session would
+  /// both append to `embeddings_<model>.jsonl/.bin`, each numbering rows from
+  /// what it read at its start: lines tear and a row is used twice, yet both
+  /// report success. Keyed by session, not session + model, because the
+  /// native embedder is one shared instance.
+  static final Set<String> _activeSessions = {};
+
+  /// Throws (plain words, shown by the Identify screen) when [sessionDir]
+  /// already has a job running, for example after Back and Start again.
   Future<IdentifyResult> run(
     Directory sessionDir, {
     required IdentifyRunSettings settings,
@@ -223,6 +232,37 @@ class IdentificationJob {
     String appVersion = '',
     bool scoreAfter = true,
     bool restart = false,
+  }) async {
+    final key = sessionDir.absolute.path;
+    // Checked and added with no await between, so two calls cannot both pass.
+    if (!_activeSessions.add(key)) {
+      throw Exception('This session is already being identified. Wait for that run to finish, or cancel it first.');
+    }
+    try {
+      return await _run(
+        sessionDir,
+        settings: settings,
+        packFile: packFile,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+        appVersion: appVersion,
+        scoreAfter: scoreAfter,
+        restart: restart,
+      );
+    } finally {
+      _activeSessions.remove(key);
+    }
+  }
+
+  Future<IdentifyResult> _run(
+    Directory sessionDir, {
+    required IdentifyRunSettings settings,
+    required File packFile,
+    void Function(IdentifyProgress p)? onProgress,
+    bool Function()? isCancelled,
+    required String appVersion,
+    required bool scoreAfter,
+    required bool restart,
   }) async {
     final started = DateTime.now();
     final paths = IdentificationPaths(sessionDir);
@@ -247,7 +287,10 @@ class IdentificationJob {
     // inconsistent (dim changed, rows missing, bin short) is redone.
     var existing = const EmbeddingIndex(records: [], skippedKeys: {}, dim: null, modelId: null);
     if (jsonlFile.existsSync()) {
-      existing = EmbeddingIndex.parse(await jsonlFile.readAsString());
+      // allowMalformed here and in the reads below: a kill can leave the last
+      // line cut inside a multi-byte letter; readAsString would throw before
+      // the parser skips that torn line, and resume / scoring would fail.
+      existing = EmbeddingIndex.parse(utf8.decode(await jsonlFile.readAsBytes(), allowMalformed: true));
       final binLen = binFile.existsSync() ? binFile.lengthSync() : 0;
       final intact = existing.contiguous &&
           (existing.dim == null || existing.dim == settings.dim) &&
@@ -509,7 +552,7 @@ class IdentificationJob {
   static Future<EmbeddingIndex?> storedIndex(Directory sessionDir, String modelName) async {
     final f = IdentificationPaths(sessionDir).embeddingsJsonl(stemOf(modelName));
     if (!f.existsSync()) return null;
-    return EmbeddingIndex.parse(await f.readAsString());
+    return EmbeddingIndex.parse(utf8.decode(await f.readAsBytes(), allowMalformed: true));
   }
 
   /// Phase 2 alone: fuse every track from the stored embeddings and write the
@@ -552,7 +595,7 @@ class IdentificationJob {
     if (!jsonl.existsSync()) {
       throw StateError('No embeddings for $modelName in this session yet');
     }
-    final index = EmbeddingIndex.parse(jsonl.readAsStringSync());
+    final index = EmbeddingIndex.parse(utf8.decode(jsonl.readAsBytesSync(), allowMalformed: true));
     final pack = LabelPack.parseBytes(packFile.readAsBytesSync());
     final dim = index.dim ?? pack.dim;
     if (dim != pack.dim) {
@@ -584,7 +627,7 @@ class IdentificationJob {
     for (final file in tracksFile.path == log.path ? [log] : [log, tracksFile]) {
       if (!file.existsSync()) continue;
       final readTracks = file.path == tracksFile.path;
-      for (final line in const LineSplitter().convert(file.readAsStringSync())) {
+      for (final line in const LineSplitter().convert(utf8.decode(file.readAsBytesSync(), allowMalformed: true))) {
         if (!line.contains('"track') &&
             !line.contains('"start_of_session"') &&
             !line.contains('"post_track_start"')) {

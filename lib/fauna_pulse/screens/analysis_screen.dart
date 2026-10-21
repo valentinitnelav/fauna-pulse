@@ -707,7 +707,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                         ),
                         _thresholdSlider(
                           label: 'IoU threshold',
-                          help: 'Overlap level at which two boxes merge into one. 0.7 is the live camera\'s default.',
+                          help:
+                              'IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera\'s default.',
                           value: _iou,
                           onChanged: (v) => setState(() => _iou = v),
                         ),
@@ -1039,13 +1040,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           unitSuffix: '%',
           enabled: !_running,
           helperText:
-              '0 = off. Ignores detections whose box is narrower than this '
-              'percentage of the photo side in either direction. This removes '
-              'background specks and the thin sliver boxes tiling produces '
-              'at tile borders. It also applies to '
-              'existing results: after a run, move it and watch the cleanup '
-              'numbers below update instantly (no re-analysis). Tip: '
-              'analyze with 0% so every box stays recorded and tunable.',
+              'Ignores boxes narrower than this share of the photo side, such as background specks and '
+              'thin boxes at tile borders. 0 = off. You can change it after a run and the photo cleanup '
+              'numbers below update at once. Boxes removed during the analysis cannot come back, so '
+              'analyze with 0 % and filter afterwards.',
           onChanged: (v) async {
             setState(() => _sahiMinBoxPct = v);
             await save();
@@ -1182,9 +1180,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         Text(
           '${step == null ? 'This session\'s photo step is not known, so its photos' : 'Photos ${_numStr(step)} s apart'} '
           'are too far apart to follow an insect: it can move too far between two photos to be '
-          'recognised as the same one. Finding track IDs needs a photo every '
-          '${_numStr(PhotoTracker.maxStepSeconds)} s or more often (Settings → "Photo step", with the '
-          'fast photo source). The photos with an insect still show in the summary.',
+          'recognized as the same one. Finding track IDs needs a photo every '
+          '${_numStr(PhotoTracker.maxStepSeconds)} s or more often: for the next session, in Settings set '
+          '"Photo step" (Setup tab) to ${_numStr(PhotoTracker.maxStepSeconds)} s or less and "ROI photo '
+          'source" (Photos tab) to "Fast crops only". The photos with an insect still show in Session summary.',
           style: const TextStyle(color: Colors.white70, fontSize: 13),
         )
       else ...[
@@ -1228,7 +1227,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   unitSuffix: 's',
                   helperText:
                       'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
-                      'still keep its number. Default 3 s, as the live camera. Keep it well above the photo '
+                      'still keep its track ID. Default 3 s, as the live camera. Keep it well above the photo '
                       'step, or every track ID breaks into pieces.',
                   // Counted as the tracker counts: whole photos.
                   warning: step != null &&

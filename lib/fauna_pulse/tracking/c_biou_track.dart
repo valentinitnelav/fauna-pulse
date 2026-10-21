@@ -152,6 +152,9 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
   @override
   int totalConfirmed = 0;
 
+  @override
+  int maxFrameGapMs = 0;
+
   CBiouTracker({
     this.params = const CBiouParams(),
     this.timeAwareMotion = false,
@@ -204,7 +207,7 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
   }
 
   @override
-  void expireLostTracks() {
+  void expireLostTracks({String reason = 'gate_expired'}) {
     for (final t in _tracks) {
       if (t.state == TrackState.lost) {
         // Stamped with the LAST processed frame: no frames arrive while the
@@ -215,7 +218,7 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
           t,
           _lastFrameTs,
           framesMissed: t.timeSinceUpdate,
-          reason: 'gate_expired',
+          reason: reason,
         );
       }
     }
@@ -224,6 +227,13 @@ class CBiouTracker with TrackEventBuffer implements InsectTracker {
 
   @override
   List<Track> update(List<Detection> detections, int timestampMs) {
+    // Frame gap longer than [maxFrameGapMs]: lost tracks did not age while
+    // no frames came, so expire them now (see InsectTracker.maxFrameGapMs).
+    if (maxFrameGapMs > 0 &&
+        _lastFrameTs > 0 &&
+        timestampMs - _lastFrameTs > maxFrameGapMs) {
+      expireLostTracks(reason: 'frame_gap_expired');
+    }
     _frameDtS = (_lastFrameTs > 0 && timestampMs > _lastFrameTs)
         ? ((timestampMs - _lastFrameTs) / 1000.0).clamp(0.0, _maxPredictSeconds)
         : 0.0;

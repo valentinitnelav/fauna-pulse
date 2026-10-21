@@ -256,12 +256,12 @@ void main() {
     final rawBar = tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false));
     expect(rawBar.spans, [(1000, 3100)]);
     expect(rawBar.spanColor, VideoReviewPlayer.rawColor);
-    expect(find.text('Boxes on 51 % of the analysed frames.', skipOffstage: false), findsOneWidget); // 21 of 41
+    expect(find.text('Boxes on 51 % of the analyzed frames.', skipOffstage: false), findsOneWidget); // 21 of 41
     expect(find.textContaining('green on the frames with at least one box', skipOffstage: false), findsOneWidget);
     expect(find.textContaining('A new track ID starts only from a box the detector is at least 0.50 sure of', skipOffstage: false),
         findsOneWidget);
     // Round 309: the Video tab keeps its way to "Find animals in videos" (the player there has none).
-    expect(find.text('Change square and analyse again', skipOffstage: false), findsOneWidget);
+    expect(find.text('Change square and analyze again', skipOffstage: false), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     // Folded: the count and the note, no rows until tapped.
@@ -576,7 +576,7 @@ void main() {
     expect(find.byKey(const ValueKey('track_id_timeline')), findsOneWidget);
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Track IDs in this clip (1)'), 200, scrollable: list);
-    for (final t in ['Square in the wrong place?', 'Change square and analyse again', 'Find animals in videos']) {
+    for (final t in ['Square in the wrong place?', 'Change square and analyze again', 'Find animals in videos']) {
       expect(find.text(t, skipOffstage: false), findsNothing, reason: t);
     }
     expect(find.textContaining('change it under "Area to analyze" above and analyze again', skipOffstage: false), findsOneWidget);
@@ -640,8 +640,8 @@ void main() {
     await tester.pump();
     await tester.tap(find.text(a));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('$b · not analysed').last);
-    await _pumpUntil(tester, find.textContaining('This clip was not analysed yet'));
+    await tester.tap(find.text('$b · not analyzed').last);
+    await _pumpUntil(tester, find.textContaining('This clip was not analyzed yet'));
     expect(player.calls.where((c) => c.startsWith('create')), ['create $a', 'create $b']);
     // Round 307: the grey time bar with the marker only, and no share under it.
     expect(tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'))).spans, isEmpty);
@@ -672,7 +672,7 @@ void main() {
     await _pumpUntil(tester, find.text('2 clips · 20.0 s filmed · 2.3 MB'));
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
     await tester.scrollUntilVisible(find.text('Find animals in videos'), 200, scrollable: scrollable);
-    expect(find.text('Not analysed yet'), findsOneWidget);
+    expect(find.text('Not analyzed yet'), findsOneWidget);
     expect(find.text('Square in the wrong place?'), findsNothing);
 
     // Copy videos: one clip per call, then the counts.
@@ -792,7 +792,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('#7'), 100, scrollable: scrollable);
     expect(find.text('0:02.0 – 0:04.0'), findsOneWidget);
     expect(find.text('All boxes'), findsNothing);
-    expect(find.text('Not analysed yet'), findsNothing);
+    expect(find.text('Not analyzed yet'), findsNothing);
     expect(find.text('Square in the wrong place?'), findsNothing);
     expect(find.text('Live detection'), findsNothing, reason: 'nothing analysed afterwards yet');
     // Above the (opened) track list.
