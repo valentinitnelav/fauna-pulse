@@ -105,7 +105,19 @@ The headline changes, with the round that introduced each (full rationale in
   the app's Settings did nothing until the view was rebuilt).
 - **Model-load failure signal** (r151): a failed initial load emits
   `onInitialModelLoadFailed` so the app can revert to a runnable model instead
-  of hanging calibration.
+  of hanging calibration. Since r319 a failed in-place model switch is only
+  logged (not passed to `FlutterError.reportError`) when the host handles
+  `onModelError` and the error is not a programming `Error`, so a damaged model
+  chosen by the user no longer writes an app crash file.
+- **Embedder memory** (r319): `NativeMemory.kt` plus a JNI `purge()` in
+  `native-lib.cpp` (bionic `mallopt` M_PURGE_ALL or M_PURGE, found with
+  `dlsym`; `CMakeLists.txt` links libdl) asks the allocator to give freed pages
+  back after `embedderClose`, after a replaced embedder and before
+  `embedderMemory`. `embedderMemory` (Dart `ImageEmbedder.memory`) reports the
+  model size, the estimated need (GPU 4.5 x file, CPU
+  `Embedder.CPU_MEMORY_FACTOR` 2.15 x file) and Android's free-memory numbers,
+  so the app can decide whether a background load fits. `Embedder`'s
+  constructor closes a loaded model when a later check fails.
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

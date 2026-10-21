@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import com.faunapulse.app.R
 
 /**
  * A minimal **foreground service** that keeps a recording session's process alive
@@ -69,6 +70,10 @@ class RecordingService : Service() {
             manager.createNotificationChannel(channel)
         }
 
+        // Round 319: also says that swiping the app away stops the recording
+        // (onTaskRemoved below ends the service); BigTextStyle shows all of it.
+        val text = "Recording, also with the screen off. To stop, open FaunaPulse. " +
+            "Do not swipe FaunaPulse away from recent apps: that also stops the recording."
         val notification: Notification = (
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Notification.Builder(this, CHANNEL_ID)
@@ -78,8 +83,9 @@ class RecordingService : Service() {
             }
             )
             .setContentTitle("FaunaPulse — recording")
-            .setContentText("Recording. The screen may be off; open FaunaPulse to stop.")
-            .setSmallIcon(applicationInfo.icon)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .build()
 

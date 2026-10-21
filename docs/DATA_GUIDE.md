@@ -88,7 +88,7 @@ Session-wide metadata. Notable fields:
 | `field` | Round 297+: the field notes (camera screen → pin with a pencil → Field notes), in the same form as the sister app FaunaLapse's `field` block, so one script reads both apps. Every key is always present, null when empty: `phone_maker`, `phone_model`, `phone_id` (always null in FaunaPulse), `setup_by`, `site`, `transect`, `plant`, `habitat`, `sample_id`, `session_id`, `camera_height_m`, `detection_distance_m` (numbers, m), `detection_distance_source` (`typed` or null), `site_photos_about` (round 302: the note about the site photos, cleared after each Start), `custom` (round 301: the user's own fields by name, a number for a number field, true/false for yes or no, `yyyy-MM-dd` for a date, `HH:mm` for a time, else text, null when empty; then `"Notes"` when notes were written), `location` (null, or `latitude`, `longitude` with 6 decimals, `datum` `WGS 84`, `source` `gps`/`typed`/`previous`, `coordinate_uncertainty_m`, `satellites_used` (null), `uncertainty_goal_m` (the user's GPS goal for a GPS position, default 10 since round 302), `fix_time` ISO or null), `site_photos` (round 302: the names of the photos moved into the session's `site_photos/` folder at Start, `yyyyMMdd_HHmmss_SSS.jpg`). The older top-level `location` stays as before. Both positions are removed from problem reports. |
 | `free_storage_bytes`, `total_storage_bytes` | Free/total bytes on the session's storage volume at start (round 68). |
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
-| `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models). |
+| `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models); the summary's *Detector ran on* row. |
 | `camera_full_width_px`, `camera_full_height_px` | Full-resolution (high-res) photo size. |
 | `capture_dims_from_cache` | Present (`true`) when recording started before the live photo probe confirmed the cached photo size (round 121) — the dims above came from the previous measurement. |
 | `location` | The session's single location fix (round 126): `lat`, `lon` (decimal degrees), `accuracy_m` (GPS only), `fix_time_ms`, `source` (`gps` / `manual` / `previous`). Absent when no location was set. Stripped from problem-report samples. |
@@ -283,7 +283,8 @@ why a session's screen was dark, not gaps in the data.
 `reason`: `low_battery` (on the phone's own battery at or below *Stop at battery level*) or
 `storage_low` (free storage below *Keep free storage*); `battery_percent` and
 `free_storage_bytes` at that moment. The normal `end_of_session` follows, so the session is
-complete up to that time.
+complete up to that time. The summary's Setup tab shows it as *Stopped by itself* (for
+example "Yes: storage almost full (140 MB free, limit 200 MB)").
 
 ### `timelapse_capture` — one per time-lapse photo (round 97+)
 
@@ -894,10 +895,10 @@ Append-only (resumable). Records:
 
 | `type` | Fields |
 |---|---|
-| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin` (border on every side as a share of the box's longer side), `square_crops` (round 262: true = square on the longer side, false = box shape stretched to the model input; missing = true), `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`; round 242: `gpu_note` (why the GPU was not used, when asked for) and `gpu_agreement` (cosine of the GPU and CPU embeddings of the first-use test picture, see IDENTIFICATION.md)), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `track_ids_run_id` (round 234, track IDs found in videos only: the *Find track IDs* run the crops' track IDs come from; a run after a new *Find track IDs* deletes both files and starts over) |
+| `identify_start` | the run's settings (`model`, `model_id`, `pack`, `input_size`, `dim`, `accelerator`, `margin` (border on every side as a share of the box's longer side), `square_crops` (round 262: true = square on the longer side, false = box shape stretched to the model input; missing = true), `min_crop_px`, `max_crops_per_track`, `tau`, `none_threshold`, `thermal_limit_c`, `target_rank`, `use_gpu`, `cpu_threads`; round 242: `gpu_note` (why the GPU was not used, when asked for) and `gpu_agreement` (cosine of the GPU and CPU embeddings of the first-use test picture, see IDENTIFICATION.md)), `crops_planned`, `crops_pending`, `crops_done_before`, `app_version`; `track_ids_run_id` (round 234, track IDs found in videos only: the *Find track IDs* run the crops' track IDs come from; a run after a new *Find track IDs* deletes both files and starts over); `memory_check` (round 319, only when *Also identify them* reached the identification with the app in the background: `need_mb` (the estimated memory the model needs), `model_mb`, `on_gpu`, `free_mb` (the smaller of `avail_mem_mb` and `mem_available_mb`), `threshold_mb` (where Android starts closing apps), `margin_mb`, `total_mb`, `low_memory`, `decision` (`load`, or `wait_for_app` when the model did not fit and the run waited for the app to be opened) and `waited_s` (seconds waited)) |
 | `crop` | `key` (resume key: source|track|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
 | `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
-| `identify_end` | `embedded`, `skipped`, `failed`, `thermal_pauses`, `cancelled`, `elapsed_ms` (the crop loop: reading the photos, cutting the crops and running the model; model loading before and the scoring after are not included), `avg_embed_ms` (the model alone, per crop: what *Test speed* and the progress line report), `error` |
+| `identify_end` | `embedded`, `skipped`, `failed`, `unreadable` (round 319: the part of `failed` whose photo could not be read; the rest are model errors), `thermal_pauses`, `paused_ms` (round 319: the time spent in heat pauses, part of `elapsed_ms`; the screen's time estimate leaves it out), `cancelled`, `elapsed_ms` (the crop loop: reading the photos, cutting the crops and running the model; model loading before and the scoring after are not included), `avg_embed_ms` (the model alone, per crop: what *Test speed* and the progress line report), `error` |
 
 The `.bin` holds row-major float32 little-endian unit vectors (`dim` per row). Read in
 Python: `np.fromfile(path, dtype='<f4').reshape(-1, dim)`. Round 266: for a fixed-class
@@ -1033,6 +1034,12 @@ them. `session.jsonl` then only records where the clips came from: the start rec
 (§3), one `video_clip` record per clip in start order, and an `end_of_session` with
 `ended_normally: true` whose `time_ms` is the last clip's end. It has no `detections` or
 `track_event` records; the boxes come from the analysis pass below.
+While the import copies the clips, the folder holds a hidden file `.import_unfinished`
+(round 319); it is removed when the log is complete. A folder that still has it and whose
+log has no `end_of_session` is an import cut off by closing the app: it is deleted at the
+next start, together with the photo picker's own copies in the app's cache. A copy that
+fails (for example full storage) deletes its half-made folder at once and says why on the
+*Import videos* screen.
 
 ### `video_clip` — one per imported clip
 
@@ -1097,8 +1104,15 @@ import screen says what the file name and the stored time gave (round 306).
   `frame_height`, `roi_px` (the square in video pixels), `class_names`, and time sums
   `decode_ms`, `convert_ms`, `infer_ms`, `elapsed_ms`. `video_clip_error` instead when a
   clip failed (`error`, `at_pts_us`).
+* `video_model_error` (round 319) — `clip`, `error`: the detection model could not be loaded
+  or run (for example a damaged file). The run stops there; the clip is not counted as failed,
+  so no `video_clip_error` is written for it.
 * `video_run_end` — `clips_done`, `clips_failed`, `frames_analysed`, `thermal_pauses`,
-  `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped).
+  `elapsed_ms`, `ended_normally` (plus `reason: "cancelled"` when stopped, or
+  `reason: "model_error"` with `ended_normally: false` after a `video_model_error`).
+  A run stopped by full storage (round 319) has no `video_run_end`; on *Continue*, a last
+  line that was cut off half-written is removed (a whole last line without its line end gets
+  one) before new records are added, so every line stays valid JSON.
 
 **Cut-off clips (round 243+).** Android writes an MP4's index (the `moov` box) only when
 the recording is closed. A clip that was still open when the app was killed (battery, the
@@ -1193,7 +1207,8 @@ complete, so a crash never leaves half a file in place of a good one):
   plus `clip`, `frame` and `pts_us`; `box_in_roi` relative to the analysed square, as live;
   a track entry names its kept frame in `jpeg`, as live photos do), `capture` records for
   the kept frames (below), and `post_track_end` last (`track_ids`, `frames`, `detections`,
-  `clips_tracked`, `kept_frames`, `elapsed_ms`).
+  `clips_tracked`, `clips_with_track_ids` (round 319: the clips in which at least one track
+  ID has a box; missing in older files), `kept_frames`, `elapsed_ms`).
 * `track_ids.csv` (`visits.csv` before round 248): one row per confirmed track ID, for spreadsheets and R:
   `track_id, clip, start_time` (wall clock), `start_s, end_s, duration_s` (seconds from
   the start of the clip the track ID began in, the position a video player shows),
@@ -1259,7 +1274,8 @@ the *Find animals in videos* screen offers two deletions, each after a confirmat
 are kept unless you choose one:
 
 * **Delete the clips without any track ID**: clips that the current *Find track IDs* followed
-  and in which no track ID has a box (a track ID running on into the next clip keeps that clip).
+  and in which no track ID has a box (a track ID running on into the next clip keeps that clip;
+  one that only ran out of time there, with no box in it, does not).
 * **Delete all clips, keep the saved frames**: offered once every clip is analysed, the
   track IDs include the latest analysis and every kept frame is saved.
 

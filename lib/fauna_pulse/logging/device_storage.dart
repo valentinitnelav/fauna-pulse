@@ -32,16 +32,31 @@ Future<int> folderSizeBytes(Directory dir) async {
 /// Formats a byte count with the unit that fits its magnitude — "412 KB",
 /// "8.3 MB", "1.2 GB" — so a log-only session and a multi-gigabyte
 /// photo-heavy one both read naturally (same 1024-based convention as the
-/// problem-report size).
-String formatBytes(int bytes) {
+/// problem-report size). [unitOf]: use the unit that fits this other number
+/// instead, so two sizes in one sentence share one unit (round 319: never
+/// "needs 1.2 GB, but only 765.2 MB is free").
+String formatBytes(int bytes, {int? unitOf}) {
   const kb = 1024;
   const mb = kb * 1024;
   const gb = mb * 1024;
-  if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
-  if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
-  if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
+  final unit = unitOf ?? bytes;
+  if (unit >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
+  if (unit >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
+  if (unit >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
   return '$bytes B';
 }
+
+/// "only 0.7 GB is free", or "almost no storage is free" when the number in
+/// the unit of [unitOf] would read 0.0.
+String freeStorageClause(int freeBytes, {required int unitOf}) {
+  final free = formatBytes(freeBytes, unitOf: unitOf);
+  return free.startsWith('0.0 ') ? 'almost no storage is free' : 'only $free is free';
+}
+
+/// [bytes] in MB, for a sentence that also names a setting in MB ("Keep
+/// free storage"). Whole MB like the setting; rounded down, so 4999.6 MB never
+/// reads as "5000 MB free, but ... needs at least 5000 MB".
+String formatMegabytes(int bytes) => '${bytes ~/ (1024 * 1024)} MB';
 
 /// One free-storage sample. All-null when the platform gave us nothing
 /// (e.g. running on a platform without the channel) — the UI hides itself.

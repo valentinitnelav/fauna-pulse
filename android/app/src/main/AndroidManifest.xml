@@ -25,12 +25,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- LiteRT declares dataSync for its optional AI Pack downloader. FaunaPulse
-         bundles models or imports/downloads ordinary files and never uses AI Packs,
-         so remove the unused permission from the merged Play manifest. -->
-    <uses-permission
-        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
-        tools:node="remove" />
+    <!-- Round 319: AnalysisService keeps "Find animals in videos/photos" and Identify
+         going in the background or with the screen off. Its type is dataSync on
+         Android 10 to 14 and mediaProcessing on Android 15+ (processing media files
+         on the phone). Both need a Play Console declaration. (LiteRT's optional AI Pack
+         downloader also declares dataSync; FaunaPulse never uses AI Packs.) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <!-- One GPS fix per session (round 126): read once at session setup while
          the app is in the foreground, then the subscription stops. No
          background/continuous tracking, so no FOREGROUND_SERVICE_LOCATION. -->
@@ -75,6 +76,13 @@
             android:name="com.ultralytics.yolo.RecordingService"
             android:exported="false"
             android:foregroundServiceType="camera" />
+        <!-- Round 319: foreground service for the long analysis jobs on saved sessions
+             (see AnalysisService.kt). Not exported; started only by this app while the
+             user runs a job. -->
+        <service
+            android:name="com.ultralytics.yolo.AnalysisService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|mediaProcessing" />
         <!-- FileProvider: lets MainActivity.sendFileByEmail hand ONE saved error
              report to an email app without exposing the rest of the app's storage.
              The paths it may serve are whitelisted in res/xml/report_file_paths.xml. -->

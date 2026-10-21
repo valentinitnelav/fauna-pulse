@@ -42,7 +42,8 @@ class MainActivity : FlutterFragmentActivity() {
     private val diagnosticsChannel = "faunapulse/diagnostics"
 
     // Channel for keeping long sessions alive: start/stop the recording foreground
-    // service, and check/open battery settings (RecordingKeepAlive).
+    // service, and check/open battery settings (RecordingKeepAlive); round 319: start/stop
+    // the analysis foreground service (AnalysisKeepAlive).
     private val keepAliveChannel = "faunapulse/keepalive"
     private val cropExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -57,6 +58,9 @@ class MainActivity : FlutterFragmentActivity() {
         )
         super.onCreate(savedInstanceState)
         installCrashFileHandler()
+        // Round 319, part 2: a reminder left from an app that Android closed while it waited; the
+        // identification it asked for lived in that app's Flutter engine, which is gone.
+        AnalysisService.cancelReminder(this)
     }
 
     override fun onDestroy() {
@@ -68,7 +72,11 @@ class MainActivity : FlutterFragmentActivity() {
         // Activity is really finishing (not a rotation/config recreate), stop the keepalive
         // service too, so no "Recording" notification and wake lock outlive the recording.
         // RecordingService.onTaskRemoved covers the Recents swipe; this covers other finishes.
-        if (isFinishing) stopService(Intent(this, RecordingService::class.java))
+        if (isFinishing) {
+            stopService(Intent(this, RecordingService::class.java))
+            // Round 319: an analysis job also lives in this engine.
+            AnalysisService.release(this)
+        }
         super.onDestroy()
     }
 
@@ -294,6 +302,34 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "stopService" -> {
                         stopService(Intent(this, RecordingService::class.java))
+                        result.success(true)
+                    }
+                    // Round 319: the analysis service (AnalysisService.kt) for "Find animals in
+                    // videos/photos" and Identify; Dart counts the holds (AnalysisKeepAlive).
+                    // False when Android does not allow the start (app in the background).
+                    "startAnalysis" -> result.success(
+                        AnalysisService.request(
+                            this,
+                            call.argument<String>("title") ?: "FaunaPulse",
+                            call.argument<String>("text") ?: "",
+                        ),
+                    )
+                    "stopAnalysis" -> {
+                        AnalysisService.release(this)
+                        result.success(true)
+                    }
+                    // Round 319, part 2: "Animals found - open FaunaPulse to identify them"
+                    // (IdentificationRun waits for the app when the model does not fit in the
+                    // background). False when it could not be shown.
+                    "showIdentifyReminder" -> result.success(
+                        AnalysisService.showReminder(
+                            this,
+                            call.argument<String>("title") ?: "FaunaPulse",
+                            call.argument<String>("text") ?: "",
+                        ),
+                    )
+                    "cancelIdentifyReminder" -> {
+                        AnalysisService.cancelReminder(this)
                         result.success(true)
                     }
                     "isIgnoringBatteryOptimizations" ->

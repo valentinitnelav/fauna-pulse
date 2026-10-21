@@ -371,3 +371,16 @@ String modelLoadHint(String failedPath, String reason) {
   }
   return '';
 }
+
+/// Round 319: what to do when a model file cannot be loaded, said instead of
+/// the raw error text (that goes to the error log only).
+const kModelDamagedAdvice =
+    'The file may be damaged. On the "Download & import models" screen, '
+    'delete it, then download or import it again.';
+
+/// Round 319: the advice under "... could not be loaded": the plain hint for a
+/// known case ([modelLoadHint]), else [kModelDamagedAdvice].
+String modelLoadAdvice(String failedPath, String reason) {
+  final hint = modelLoadHint(failedPath, reason);
+  return hint.isEmpty ? kModelDamagedAdvice : hint;
+}

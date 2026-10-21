@@ -63,6 +63,7 @@ import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../logging/past_sessions.dart' show sessionsRoot;
 import '../identification/identification_choice.dart';
+import '../identification/identification_run.dart';
 import '../models/model_catalog.dart';
 import '../models/model_choice_keys.dart';
 import '../models/roi.dart';
@@ -71,6 +72,7 @@ import '../postprocess/clip_cleanup.dart';
 import '../postprocess/video_detector.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
+import '../services/analysis_keepalive.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
@@ -329,6 +331,15 @@ class _VideoSession {
 
   int get firstClipWidth => clipSizes[clips.firstOrNull]?.$1 ?? 0;
   int get firstClipHeight => clipSizes[clips.firstOrNull]?.$2 ?? 0;
+}
+
+/// "8 track IDs in 4 of 8 clips": the clips counted are those in which a track ID has a box, as
+/// "Delete … clips without any track ID" counts them (not every clip the tracker went through).
+@visibleForTesting
+String trackIdsInClips(int trackIds, int clipsWithTrackIds, int clips) {
+  final ofClips = '$clips ${clips == 1 ? 'clip' : 'clips'}';
+  if (trackIds == 0) return '0 track IDs in $ofClips';
+  return '$trackIds ${trackIds == 1 ? 'track ID' : 'track IDs'} in $clipsWithTrackIds of $ofClips';
 }
 
 class VideoAnalysisScreen extends StatefulWidget {
@@ -718,7 +729,25 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     }
     // The screen may have closed during the save: start nothing then.
     if (!mounted) return;
+    // Round 319: keeps the run going in the background (foreground service), from the boxes to
+    // the track IDs, the kept frames and the hand-over to "Also identify them". Taken here, on the
+    // tap on Start, while the app is on screen.
+    final keepAlive = AnalysisKeepAlive.acquire(title: kFindVideosKeepAliveTitle);
+    try {
+      await _run(session, config, startOver, player, keepAlive);
+    } finally {
+      keepAlive.release();
+    }
+  }
 
+  /// The run of [_start] (no await before `_running` is set).
+  Future<void> _run(
+    _VideoSession session,
+    VideoRunConfig config,
+    bool startOver,
+    VideoReviewPlayerState? player,
+    AnalysisKeepAliveHold keepAlive,
+  ) async {
     setState(() {
       _running = true;
       _cancelRequested = false;
@@ -735,9 +764,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     VideoRunResult? result;
     String? failure;
     var askStartOver = false;
+    var modelLoaded = false;
     final yolo = YOLO(modelPath: config.modelPath, task: YOLOTask.detect, useGpu: config.useGpu, useMultiInstance: true);
     try {
       await yolo.loadModel();
+      modelLoaded = true;
+      await _readMissingLengths(session, startOver: startOver);
       var appVersion = '';
       try {
         final info = await PackageInfo.fromPlatform();
@@ -749,7 +781,15 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         session.dir,
         config: config,
         onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
+          if (!mounted) return;
+          setState(() {
+            _progress = p;
+            // Round 319: a clip whose length neither the session log nor the
+            // reader gave earlier has it now, from the clip itself.
+            if (p.clipIndex < _runLengthsMs.length && _runLengthsMs[p.clipIndex] <= 0 && p.clipLengthS > 0) {
+              _runLengthsMs = [..._runLengthsMs]..[p.clipIndex] = (p.clipLengthS * 1000).round();
+            }
+          });
         },
         isCancelled: () => _cancelRequested,
         thermalLimitC: _prefs.thermalLimitC,
@@ -762,7 +802,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       askStartOver = true;
     } catch (e) {
       logSwallowed('video_analysis_run', e);
-      failure = '$e';
+      // Round 319: no raw error text when the model cannot be loaded (it is in
+      // the error log).
+      failure = !modelLoaded
+          ? _modelFailedMessage
+          : isStorageFullError(e)
+          ? _storageFullMessage
+          : 'Analysis failed: $e';
     } finally {
       try {
         await yolo.dispose();
@@ -778,18 +824,25 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       if (await _confirmStartOver(session, const [])) await _start(startOver: true);
       return;
     }
-    var message = failure != null
-        ? 'Analysis failed: $failure'
-        : result!.cancelled
-        ? 'Stopped after ${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}; '
-              'Continue picks up from there.'
-        : 'Done: ${result.clipsDone} ${result.clipsDone == 1 ? 'clip' : 'clips'}, '
-              '${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}'
-              '${result.thermalPauses > 0 ? ', ${result.thermalPauses} heat pauses' : ''}'
-              '${result.clipsFailed > 0 ? '. ${result.clipsFailed} could not be read; Continue tries them again' : ''}.';
+    var message =
+        failure ??
+        (result!.modelFailed
+            ? _modelFailedMessage
+            : result.writeError != null
+            ? (isStorageFullError(result.writeError!)
+                  ? _storageFullMessage
+                  : 'The results could not be saved, so the analysis stopped. What is done is kept. '
+                        'Press Continue to try again.')
+            : result.cancelled
+            ? 'Stopped after ${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}; '
+                  'Continue picks up from there.'
+            : 'Done: ${result.clipsDone} ${result.clipsDone == 1 ? 'clip' : 'clips'}, '
+                  '${result.framesAnalysed} frames in ${_fmtElapsed(result.elapsed)}'
+                  '${result.thermalPauses > 0 ? ', ${result.thermalPauses} heat pause${result.thermalPauses == 1 ? '' : 's'}' : ''}'
+                  '${result.clipsFailed > 0 ? '. ${result.clipsFailed} could not be read; Continue tries them again' : ''}.');
     // Boxes alone are not visits yet: link them right away (seconds).
     var found = false;
-    if (failure == null && !result!.cancelled && result.clipsDone > 0) {
+    if (failure == null && !result!.cancelled && !result.modelFailed && result.writeError == null && result.clipsDone > 0) {
       final r = await _findVisits(session);
       message = '$message ${r.message}';
       found = r.ok && r.trackIds > 0;
@@ -797,16 +850,44 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     await _refresh(session, player);
-    if (found) await _identifyAfter(session);
+    if (found) await _identifyAfter(session, from: keepAlive);
+  }
+
+  /// Round 319: a damaged detector model is not a clip that cannot be read.
+  static const _modelFailedMessage = 'The detector model could not be loaded. $kModelDamagedAdvice';
+  static const _storageFullMessage =
+      'Storage full: the analysis stopped. What is done is kept. Free some space, then press Continue.';
+
+  /// Round 319: the lengths of the clips of this run that the session log does
+  /// not give (a clip copied in by hand), from the clips themselves: without
+  /// them the time left was "~0 s". A clip that cannot be read keeps 0.
+  Future<void> _readMissingLengths(_VideoSession session, {required bool startOver}) async {
+    // The clips in the order of [_runLengthsMs] (see _start).
+    final todo = [
+      for (final c in session.clips)
+        if (startOver || !session.doneClips.contains(c)) c,
+    ];
+    if (todo.length != _runLengthsMs.length || !_runLengthsMs.contains(0)) return;
+    final lengths = [..._runLengthsMs];
+    for (var i = 0; i < todo.length; i++) {
+      if (lengths[i] > 0) continue;
+      try {
+        lengths[i] = (await VideoFrameSource.info('${session.dir.path}/videos/${todo[i]}')).durationMs ?? 0;
+      } catch (e) {
+        logSwallowed('video_analysis_clip_length', e);
+      }
+    }
+    if (mounted) setState(() => _runLengthsMs = lengths);
   }
 
   /// Round 274: one Start from the boxes to the names, once the kept frames
   /// (what identification names) are all saved; round 308: also after
-  /// finding the track IDs again.
-  Future<void> _identifyAfter(_VideoSession ran) async {
+  /// finding the track IDs again. [from]: the run's hold on the analysis
+  /// service, handed over to the identification (round 319).
+  Future<void> _identifyAfter(_VideoSession ran, {AnalysisKeepAliveHold? from}) async {
     // Round 309: not when another session was picked meanwhile.
     if (_identify && _kept.remaining == 0 && mounted && _session?.dir.path == ran.dir.path) {
-      if (_session case final s?) await _openIdentify(s);
+      if (_session case final s?) await _openIdentify(s, from: from);
     }
   }
 
@@ -818,10 +899,17 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
 
   /// Opens Identify organisms on [s], which starts by itself and ends on the
   /// results; the model and name list chosen here are remembered for it.
-  Future<void> _openIdentify(_VideoSession s) async {
+  Future<void> _openIdentify(_VideoSession s, {AnalysisKeepAliveHold? from}) async {
     _pausePlayer();
     await _idChoice.save();
     if (!mounted) return;
+    // Round 319: the run starts here, not when the Identify page is built: no page is built while
+    // the app is in the background (Flutter draws no frames then), so it waited until the app was
+    // shown again. The page shows the run. The run's hold on the analysis service is taken before
+    // [from] (the finished run's) goes, so the service runs on without a new start, which Android
+    // refuses in the background.
+    IdentificationRun.autoStart(s.dir, chain: 'videos');
+    from?.release();
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: s.dir, autoStart: true)),
     );
@@ -898,11 +986,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       ok = true;
       trackIds = r.visits;
       message =
-          'Found ${r.visits} ${r.visits == 1 ? 'track ID' : 'track IDs'} in ${r.clipsTracked} '
-          '${r.clipsTracked == 1 ? 'clip' : 'clips'}.';
+          'Found ${trackIdsInClips(r.visits, r.clipsWithTrackIds, r.clipsTracked)}.';
     } catch (e) {
       logSwallowed('video_find_track_ids', e);
-      message = 'Finding track IDs failed: ${e is StateError ? e.message : e}';
+      // Round 319: storage full, also as text from the background isolate.
+      message = isStorageFullError(e)
+          ? 'Storage full: finding the track IDs stopped. Free some space, then find the track IDs again.'
+          : 'Finding track IDs failed: ${e is StateError ? e.message : e}';
     }
     // Round 256: show the new track IDs, and under them the saving progress
     // with its Stop button, before the frames are saved; a first run showed
@@ -923,11 +1013,17 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final s = _session;
     if (s == null || _busy) return;
     final player = _playerBeforeChange();
-    final r = await _findVisits(s);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
-    await _refresh(s, player);
-    if (r.ok && r.trackIds > 0 && identify) await _identifyAfter(s);
+    // Round 319: saving the kept frames after the track IDs can take minutes (see _start).
+    final keepAlive = AnalysisKeepAlive.acquire(title: kFindVideosKeepAliveTitle);
+    try {
+      final r = await _findVisits(s);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      await _refresh(s, player);
+      if (r.ok && r.trackIds > 0 && identify) await _identifyAfter(s, from: keepAlive);
+    } finally {
+      keepAlive.release();
+    }
   }
 
   /// Saves the kept frames of [session] that are not saved yet, from the
@@ -952,14 +1048,19 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
         isCancelled: () => _cancelRequested,
       );
       final lost = r.failed + r.missing;
-      message = r.cancelled
+      message = r.storageFull
+          ? 'Storage full: saving the frames stopped after ${r.saved} ${r.saved == 1 ? 'frame' : 'frames'}. '
+                'Free some space; "Save the remaining frames" continues.'
+          : r.cancelled
           ? 'Stopped after saving ${r.saved} ${r.saved == 1 ? 'frame' : 'frames'}; '
                 '"Save the remaining frames" continues.'
           : 'Saved ${r.saved} ${r.saved == 1 ? 'frame' : 'frames'} in ${_fmtElapsed(r.elapsed)}'
                 '${lost > 0 ? '; $lost could not be read from their video' : ''}.';
     } catch (e) {
       logSwallowed('video_keep_frames_run', e);
-      message = 'Saving the frames failed: $e';
+      message = isStorageFullError(e)
+          ? 'Storage full: saving the frames stopped. Free some space; "Save the remaining frames" continues.'
+          : 'Saving the frames failed: $e';
     } finally {
       ScreenOn.release(this);
     }
@@ -976,7 +1077,13 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final s = _session;
     if (s == null || _busy) return;
     final player = _playerBeforeChange();
-    final message = await _saveKeptFrames(s);
+    final keepAlive = AnalysisKeepAlive.acquire(title: kFindVideosKeepAliveTitle); // round 319, see _start
+    final String message;
+    try {
+      message = await _saveKeptFrames(s);
+    } finally {
+      keepAlive.release();
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     await _refresh(s, player);
@@ -1021,6 +1128,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final p = _progress;
     final f = _fraction;
     if (p == null || f == null || p.msPerFrame <= 0) return '';
+    // Round 319: with the length of this or a later clip unknown, any number
+    // is wrong (it said "~0 s left" with minutes of video left).
+    if (_runLengthsMs.length != p.clipCount || _runLengthsMs.skip(p.clipIndex).any((ms) => ms <= 0)) {
+      return ', time left not known yet';
+    }
     final totalS = _runLengthsMs.fold(0, (s, v) => s + v) / 1000;
     final leftS = totalS * (1 - f);
     // Phone videos rarely have more than 30 frames per second.
@@ -1059,16 +1171,30 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
   Future<void> _leaveIfConfirmed() async {
     final keeping = _keeping;
     final p = _keepProgress;
+    // Round 319: during a heat pause nothing runs (it said "The detector is still running").
+    final paused = !keeping && (_progress?.note.isNotEmpty ?? false);
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         actionsOverflowDirection: VerticalDirection.up,
-        title: DialogTitle(Text(keeping ? 'Frames are still being saved' : 'The detector is still running'), onClose: () => Navigator.pop(ctx, false)),
+        title: DialogTitle(
+          Text(
+            keeping
+                ? 'Frames are still being saved'
+                : paused
+                ? 'The analysis is paused'
+                : 'The detector is still running',
+          ),
+          onClose: () => Navigator.pop(ctx, false),
+        ),
         content: Text(
           keeping
               ? 'Leaving stops saving the kept frames${p == null ? '' : ' (${p.done} of ${p.total} done)'}. '
                     'Identify organisms can only use saved frames; "Save the remaining frames" '
                     'continues later.'
+              : paused
+              ? 'The phone is cooling down, so the analysis is paused. Leaving stops it. What is done is kept, '
+                    'and Continue goes on from there.'
               : 'Leaving stops the analysis. A stopped run continues where it left off.',
         ),
         actions: [
@@ -1137,7 +1263,12 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     final imported = await pickAndImportVideos(context);
     final sessions = await _scanSessions();
     if (!mounted) return;
-    setState(() => _sessions = sessions);
+    // Round 319: the chosen session again from the new list, by its folder: the one from before
+    // is not in it, and the session list failed when nothing was imported (picker left with Back).
+    setState(() {
+      _sessions = sessions;
+      _session = sessions.where((s) => s.dir.path == _session?.dir.path).firstOrNull;
+    });
     final added = sessions.where((s) => imported != null ? s.dir.path == imported : !before.contains(s.dir.path));
     if (added.isNotEmpty) _select(added.first);
   }
@@ -1484,8 +1615,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
                 : analyze
                 ? (changed.isNotEmpty
                       ? 'Analyze again with these settings'
-                      : s.doneClips.isNotEmpty
-                      ? 'Continue ($pending of ${s.clips.length} clips left)'
+                      // Round 319: also a run stopped inside its first clip (storage full,
+                      // Stop) goes on from there, as its message says ("press Continue").
+                      : s.doneClips.isNotEmpty || s.lastSettings != null
+                      ? (s.clips.length == 1 ? 'Continue' : 'Continue ($pending of ${s.clips.length} clips left)')
                       : 'Analyze ${s.clips.length} ${s.clips.length == 1 ? 'clip' : 'clips'}$and')
                 : track
                 ? (s.visits == null ? 'Find track IDs$and' : 'Find track IDs again with these settings$and')
@@ -1621,7 +1754,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           ),
         const SizedBox(height: 8),
         Text(
-          '${v.visits} ${v.visits == 1 ? 'track ID' : 'track IDs'} in ${v.clips.length} of ${s.allClipCount} clips '
+          '${trackIdsInClips(v.visits, v.clipsWithTrackIds, s.allClipCount)} '
           '(occlusion tolerance ${v.occlusionSeconds.toStringAsFixed(1)} s, minimum track '
           '${v.minHitsSeconds.toStringAsFixed(1)} s).',
         ),
@@ -1863,7 +1996,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               p.tempC!,
               _prefs.thermalLimitC,
               paused: p.note.isNotEmpty,
-              limitWhere: 'in "Detection, track ID and identification settings"',
+              limitWhere: '"Detection, track ID and identification settings"',
             ),
         ],
         const SizedBox(height: 8),

@@ -187,3 +187,82 @@ Java_com_ultralytics_yolo_ObjectDetector_postprocess(
     }
     return objArray;
 }
+
+// FaunaPulse (round 319, part 2): give freed native memory back to Android.
+//
+// On a 3.6 GB phone the CPU copy of BioCLIP 2 grew the native heap to about 1.25 GB. After the
+// model was closed the heap held only 55 MB of live data, but the allocator kept the freed
+// 1.37 GB in the process (dumpsys meminfo: Native Heap PSS still 1.25 GB, Heap Free 1.37 GB),
+// so the app stayed big and Android ended it once it was in the background.
+//
+// Android's allocator (scudo, or jemalloc on some phones) gives such pages back by itself about
+// one second after the last free (the decay time the system sets for every app); mallopt makes
+// it do so at once. What each option does, from the AOSP sources (bionic malloc_common.cpp,
+// jemalloc_wrapper.cpp, external/scudo wrappers_c.inc):
+//   M_PURGE_ALL  Android 14+: scudo also empties its caches; jemalloc treats it as M_PURGE.
+//                Android 12 and 13 do not know it and answer 0.
+//   M_PURGE      Android 9+: scudo releases its free pages and cached large blocks; jemalloc
+//                purges all arenas (and the calling thread's cache).
+//   M_DECAY_TIME 0 = give back at every free from now on, 1 = after about a second (what
+//                Zygote sets for apps, so step 3 below puts that back).
+// The Redmi test phone (Android 12) answered 1 to M_PURGE_ALL but nothing came back (RSS 1553 ->
+// 1552 MB), so the caller (NativeMemory.kt) checks each step by the app's RSS, not by its answer,
+// and tries the next one when nothing moved.
+//
+// mallopt is looked up at run time in libc itself: the plugin's floor is Android 6 and the
+// function exists from Android 8; older phones get -1 back.
+#include <dlfcn.h>
+#include <malloc.h>
+#ifndef M_DECAY_TIME
+#define M_DECAY_TIME (-100)
+#endif
+#ifndef M_PURGE
+#define M_PURGE (-101)
+#endif
+#ifndef M_PURGE_ALL
+#define M_PURGE_ALL (-104)
+#endif
+
+using MalloptFn = int (*)(int, int);
+
+static MalloptFn libcMallopt() {
+    static MalloptFn fn = [] {
+        // libc's own symbol, not the first "mallopt" in the global lookup order.
+        void* libc = dlopen("libc.so", RTLD_NOW | RTLD_NOLOAD);
+        void* sym = libc != nullptr ? dlsym(libc, "mallopt") : nullptr;
+        if (sym == nullptr) sym = dlsym(RTLD_DEFAULT, "mallopt");
+        return reinterpret_cast<MalloptFn>(sym);
+    }();
+    return fn;
+}
+
+// step 1 = M_PURGE_ALL, 2 = M_PURGE, 3 = decay time 0, M_PURGE, decay time back to 1.
+// Returns mallopt's answer (1 = done, 0 = this Android does not know the option), or -1 when
+// mallopt is missing or the step is unknown.
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_ultralytics_yolo_NativeMemory_purge(JNIEnv *, jclass, jint step) {
+    MalloptFn fn = libcMallopt();
+    if (fn == nullptr) return -1;
+    switch (step) {
+        case 1: return fn(M_PURGE_ALL, 0);
+        case 2: return fn(M_PURGE, 0);
+        case 3: {
+            fn(M_DECAY_TIME, 0);
+            int rc = fn(M_PURGE, 0);
+            fn(M_DECAY_TIME, 1);
+            return rc;
+        }
+        default: return -1;
+    }
+}
+
+// The file that provides the mallopt used above (for the log line), or null.
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_ultralytics_yolo_NativeMemory_malloptLibrary(JNIEnv *env, jclass) {
+    MalloptFn fn = libcMallopt();
+    Dl_info info;
+    if (fn == nullptr || dladdr(reinterpret_cast<void*>(fn), &info) == 0 || info.dli_fname == nullptr) return nullptr;
+    return env->NewStringUTF(info.dli_fname);
+}

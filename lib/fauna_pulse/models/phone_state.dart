@@ -67,8 +67,20 @@ class PhoneState {
       if (wifiOn == true) 'Wi-Fi',
       if (bluetoothOn == true) 'Bluetooth',
     ];
+    // Round 319 (stress test item 19): airplane mode is already on, so only the
+    // radios turned on again after it are left to switch off.
+    final onAfterAirplane = radios.join(' and ');
     return [
-      if (radios.isNotEmpty)
+      if (radios.isNotEmpty && airplaneMode == true)
+        PhoneTip(
+          radios.length == 1
+              ? 'Airplane mode is on, but $onAfterAirplane is still on. Turn $onAfterAirplane off to save '
+                    'battery, unless you need it.'
+              : 'Airplane mode is on, but $onAfterAirplane are still on. Turn them off to save battery, '
+                    'unless you need them.',
+          'airplane',
+        )
+      else if (radios.isNotEmpty)
         PhoneTip(
           'On: ${radios.join(', ')}. Radios use energy: for the field, turn on airplane mode '
           '(flight mode) and keep Wi-Fi and Bluetooth off.',

@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../capture/crop_export.dart';
+import '../identification/identify_wait_note.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart';
@@ -80,88 +81,14 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
 
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
-  /// Rename dialog for one session (round 182). The heavy lifting (folder
-  /// rename, start-record update, `session_renamed` audit record) is
-  /// `renameSession` (logging/session_rename.dart); this dialog only collects
-  /// the name and shows any failure inline so the user can correct it
-  /// without retyping.
+  /// Renames one session through [RenameSessionDialog].
   Future<void> askRenameSession(PastSession s) async {
-    final controller = TextEditingController(text: s.name);
-    String? error;
-    var busy = false;
-    final renamed = await showDialog<bool>(
+    final newName = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          actionsOverflowDirection: VerticalDirection.up,
-          title: DialogTitle(const Text('Rename session'), onClose: busy ? null : () => Navigator.of(ctx).pop(false)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                enabled: !busy,
-                decoration: InputDecoration(
-                  labelText: 'Session name',
-                  border: const OutlineInputBorder(),
-                  errorText: error,
-                  errorMaxLines: 3,
-                  helperText:
-                      'Letters, digits, spaces, - and _ '
-                      '(anything else becomes _).',
-                  helperMaxLines: 2,
-                ),
-                onChanged: (_) {
-                  if (error != null) setSt(() => error = null);
-                },
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Renames the session folder and updates the name inside the '
-                'session\'s data log too (the change itself is documented '
-                'there as a "session_renamed" record). Photos keep their '
-                'file names.',
-                style: TextStyle(fontSize: 12, color: Colors.white54),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: busy ? null : () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setSt(() => busy = true);
-                      try {
-                        await renameSession(s.dir, controller.text);
-                        if (ctx.mounted) Navigator.of(ctx).pop(true);
-                      } on SessionRenameException catch (e) {
-                        setSt(() {
-                          busy = false;
-                          error = e.message;
-                        });
-                      } catch (e) {
-                        setSt(() {
-                          busy = false;
-                          error = 'Rename failed: $e';
-                        });
-                      }
-                    },
-              child: const Text('Rename'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => RenameSessionDialog(session: s),
     );
-    final newName = sanitizeSessionName(controller.text);
-    controller.dispose();
-    if (renamed == true && mounted) {
+    if (newName != null && mounted) {
       _snack('Session renamed to "$newName".');
       await reloadSessions();
     }
@@ -292,6 +219,7 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
       if (mounted) _snack('Could not delete the session.');
       return;
     }
+    await IdentifyWaitNote.clear(s.dir);
     await reloadSessions();
   }
 
@@ -364,6 +292,7 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
     for (final s in sessions) {
       try {
         await s.dir.delete(recursive: true);
+        await IdentifyWaitNote.clear(s.dir);
       } catch (e) {
         failures++;
         logSwallowed('sessions_delete', e);
@@ -458,6 +387,105 @@ class _DeleteAllSessionsDialogState extends State<DeleteAllSessionsDialog> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Rename dialog for one session (round 182). The heavy lifting (folder
+/// rename, start-record update, `session_renamed` audit record) is
+/// `renameSession` (logging/session_rename.dart); this dialog only collects
+/// the name and shows any failure inline so the user can correct it
+/// without retyping. Pops the new (cleaned) name after a rename, else null.
+///
+/// It owns its text controller, like [DeleteAllSessionsDialog]: the closing
+/// dialog still rebuilds its text field (the keyboard going down changes the
+/// screen insets), so a controller disposed by the caller as soon as
+/// showDialog returns crashed with '_dependents.isEmpty'.
+class RenameSessionDialog extends StatefulWidget {
+  const RenameSessionDialog({super.key, required this.session});
+
+  final PastSession session;
+
+  @override
+  State<RenameSessionDialog> createState() => _RenameSessionDialogState();
+}
+
+class _RenameSessionDialogState extends State<RenameSessionDialog> {
+  late final TextEditingController _controller = TextEditingController(text: widget.session.name);
+  String? _error;
+  var _busy = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _rename() async {
+    setState(() => _busy = true);
+    try {
+      await renameSession(widget.session.dir, _controller.text);
+      if (mounted) Navigator.of(context).pop(sanitizeSessionName(_controller.text));
+    } on SessionRenameException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      logSwallowed('session_rename', e);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'The session could not be renamed. Try again or choose another name.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      actionsOverflowDirection: VerticalDirection.up,
+      title: DialogTitle(const Text('Rename session'), onClose: _busy ? null : () => Navigator.of(context).pop()),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: 'Session name',
+              border: const OutlineInputBorder(),
+              errorText: _error,
+              errorMaxLines: 3,
+              helperText:
+                  'Letters, digits, spaces, - and _ '
+                  '(anything else becomes _).',
+              helperMaxLines: 2,
+            ),
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Renames the session folder and updates the name inside the '
+            'session\'s data log too (the change itself is documented '
+            'there as a "session_renamed" record). Photos keep their '
+            'file names.',
+            style: TextStyle(fontSize: 12, color: Colors.white54),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _busy ? null : _rename, child: const Text('Rename')),
       ],
     );
   }

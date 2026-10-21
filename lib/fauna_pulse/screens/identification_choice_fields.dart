@@ -14,6 +14,18 @@ import '../logging/device_storage.dart' show formatBytes;
 import '../widgets/setting_help.dart';
 import 'models_screen.dart';
 
+/// Round 319, part 3: identification is the heaviest step, so users are told to keep the app on
+/// the screen. On a Find screen the identification that follows may also wait while the app is in
+/// the background (too little free memory), on any phone.
+const String kKeepOnScreenFindText =
+    'Identification needs a lot of memory. Keep FaunaPulse on the screen until it ends: if you switch to '
+    'another app, it may wait, or Android may stop it.';
+
+/// The same on "Identify organisms", where a started run does not wait.
+const String kKeepOnScreenIdentifyText =
+    'Identification needs a lot of memory. Keep FaunaPulse on the screen until it ends: if you switch to '
+    'another app, Android may stop it.';
+
 /// 35264 → "35,264".
 String thousands(num n) => '$n'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 
@@ -212,6 +224,11 @@ class AlsoIdentifySection extends StatelessWidget {
           value: usable && value,
           onChanged: usable ? onChanged : null,
         ),
+        if (usable && value)
+          const Padding(
+            padding: EdgeInsets.only(left: 12, bottom: 6),
+            child: Text(kKeepOnScreenFindText, style: helperTextStyle),
+          ),
         if (usable && value)
           Padding(
             padding: const EdgeInsets.only(left: 12, bottom: 8),

@@ -67,6 +67,7 @@ import '../widgets/watch_tiles.dart';
 import '../widgets/dialog_title.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
+import 'identification_screen.dart' show WaitingIdentificationWatch;
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'session_actions.dart';
@@ -142,6 +143,9 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   final _list = ScrollController();
 
+  /// Starts again an "Also identify them" that Android ended while it waited (round 319, part 3).
+  late final _waitingIdentification = WaitingIdentificationWatch(context);
+
   @override
   void initState() {
     super.initState();
@@ -149,10 +153,12 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     _reloadModels();
     _loadSetupTipsPref();
     _loadUses();
+    _waitingIdentification.start();
   }
 
   @override
   void dispose() {
+    _waitingIdentification.stop();
     _list.dispose();
     super.dispose();
   }
@@ -310,6 +316,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
               'settings (Apps > FaunaPulse > Permissions).',
             ),
             duration: const Duration(seconds: 8),
+            // A bar with a button stays until tapped unless told otherwise.
+            persist: false,
             action: SnackBarAction(
               label: 'Open settings',
               onPressed: () => openAppSettings(),

@@ -29,6 +29,10 @@ export 'model_file_kind.dart' show ModelFileKind;
 /// then offer the same answer for the others).
 typedef ReplaceQuestion = Future<bool> Function(String name, ModelFileKind kind, int filesLeft);
 
+/// How far an import is (round 319): the file being copied ([index] of
+/// [count], from 0) and its bytes copied so far of [totalBytes].
+typedef ModelImportProgress = ({String name, int index, int count, int copiedBytes, int totalBytes});
+
 class ModelImportReport {
   final List<(String, ModelFileKind)> imported;
 
@@ -79,14 +83,20 @@ class ModelImport {
   /// Opens the file chooser (many files at once) and imports the chosen
   /// files. [onFileLoading] reports when the chooser starts copying (slow
   /// for a 1 GB model); its own cache copies are removed afterwards.
+  /// [onProgress]: see [importFiles].
   static Future<ModelImportReport> pickAndImport({
     required ReplaceQuestion replace,
     void Function(FilePickerStatus)? onFileLoading,
+    void Function(ModelImportProgress)? onProgress,
   }) async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true, onFileLoading: onFileLoading);
     if (result == null) return const ModelImportReport();
     try {
-      return await importFiles([for (final f in result.files) (f.name, f.path)], replace: replace);
+      return await importFiles(
+        [for (final f in result.files) (f.name, f.path)],
+        replace: replace,
+        onProgress: onProgress,
+      );
     } finally {
       await clearFilePickerCache();
     }
@@ -94,10 +104,12 @@ class ModelImport {
 
   /// Copies each chosen file ([name], [path]) where its kind lives, through
   /// the streamed size and structure checks. A file already on the phone is
-  /// replaced only when [replace] says so.
+  /// replaced only when [replace] says so. [onProgress] reports each file's
+  /// copy, from 0 bytes to its size (a 1.2 GB model takes about 30 s).
   static Future<ModelImportReport> importFiles(
     List<(String, String?)> files, {
     required ReplaceQuestion replace,
+    void Function(ModelImportProgress)? onProgress,
   }) async {
     final imported = <(String, ModelFileKind)>[];
     final kept = <String>[];
@@ -131,7 +143,20 @@ class ModelImport {
           kept.add(name);
           continue;
         }
-        await copyAndValidateModel(source, target, name);
+        await copyAndValidateModel(
+          source,
+          target,
+          name,
+          onProgress: onProgress == null
+              ? null
+              : (copied, total) => onProgress((
+                  name: name,
+                  index: i,
+                  count: files.length,
+                  copiedBytes: copied,
+                  totalBytes: total,
+                )),
+        );
         imported.add((name, kind));
       } catch (e) {
         rejected.add('$display: ${plainModelError(e, importing: true)}');

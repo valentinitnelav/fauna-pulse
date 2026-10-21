@@ -101,7 +101,7 @@ void main() {
     expect(
       find.text(
         'Only ${first.length} of ${kept.length} kept frames of the videos are saved, so 1 of 2 track IDs '
-        'have no photo to identify yet. Save the remaining frames on "Find animals in videos" first.',
+        'has no photo to identify yet. Save the remaining frames on "Find animals in videos" first.',
       ),
       findsOneWidget,
     );

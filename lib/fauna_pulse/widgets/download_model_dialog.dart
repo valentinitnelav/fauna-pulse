@@ -8,8 +8,10 @@
 import 'package:flutter/material.dart';
 
 import '../logging/app_error_hooks.dart';
-import '../models/model_file_security.dart' show plainModelError;
+import '../models/model_file_security.dart' show isNetworkError, plainModelError;
 import '../models/model_import.dart';
+import '../models/phone_state.dart';
+import '../services/phone_settings.dart';
 import 'dialog_title.dart';
 
 /// Asks whether to replace [name], already on this phone as a [kind], with
@@ -75,10 +77,14 @@ class DownloadModelDialog extends StatefulWidget {
   final LinkDownloader download;
   final Future<List<ModelFileKind>> Function(String name) onPhoneAs;
 
+  /// Read after a network error, to name airplane mode (injectable for tests).
+  final Future<PhoneState> Function() readPhoneState;
+
   const DownloadModelDialog({
     super.key,
     this.download = ModelImport.download,
     this.onPhoneAs = ModelImport.onPhoneAs,
+    this.readPhoneState = PhoneSettings.read,
   });
 
   @override
@@ -138,9 +144,11 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
       // Round 317: the same plain words as the list's Download buttons (no
       // internet, a lost connection, a full phone); the original is logged.
       logSwallowed('model_link_download', e);
+      final phone = isNetworkError(e) ? await widget.readPhoneState() : null;
+      if (!mounted) return;
       setState(() {
         _downloading = false;
-        _error = plainModelError(e);
+        _error = plainModelError(e, phone: phone);
       });
     }
   }

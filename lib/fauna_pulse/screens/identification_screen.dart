@@ -10,6 +10,10 @@
 // Round 235: when the visits of a video session were found again since the
 // stored crops were made, "Re-score with this name list" is hidden (the crops
 // carry the old visit numbers) and a note says the next run starts over.
+//
+// Round 319: the run itself lives in identification/identification_run.dart, so a Find screen
+// can start it while the app is in the background (no page is built then); this page shows the
+// run of its session.
 
 import 'dart:async';
 import 'dart:io';
@@ -20,13 +24,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../identification/crop_worker.dart';
 import '../identification/identification_assets.dart';
 import '../identification/identification_choice.dart';
 import '../identification/identification_job.dart';
+import '../identification/identification_run.dart';
 import '../identification/identification_store.dart';
+import '../identification/identify_wait_note.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
 import '../postprocess/video_frame_keeper.dart';
@@ -52,6 +57,8 @@ class IdentificationScreen extends StatefulWidget {
   /// Round 274: opened by "Also identify them" on a Find screen: the run
   /// starts by itself once the crops are counted, and a finished run opens
   /// the results.
+  /// Round 319: the Find screen starts that run itself (IdentificationRun.autoStart) and this
+  /// page shows it; the page starts one only when that run did not (a question to ask first).
   final bool autoStart;
 
   const IdentificationScreen({super.key, required this.sessionDir, this.autoStart = false});
@@ -81,35 +88,17 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   bool _running = false;
   bool _loadingModel = false;
-  bool _cancel = false;
 
-  // The app has ONE native model (ImageEmbedder: load replaces it, close releases it for every
-  // caller). A run left going by Back, or a speed test, must end (close the model, switch the
-  // screen-on lock off, close its files) before the next run or test loads; otherwise its end
-  // cuts the next run, or both write into one session folder. The returned function MUST be
-  // called when done, or later starts wait forever. Null when free: an idle app holds no
-  // Future (widget tests run each test in its own zone; an old zone's Future never completes).
-  static Completer<void>? _modelInUse;
-
-  static Future<void Function()> _takeModel() async {
-    // A loop, not one await: when several starts wait, only the first to wake takes the model.
-    while (_modelInUse != null) {
-      await _modelInUse!.future;
-    }
-    final mine = _modelInUse = Completer<void>();
-    return () {
-      _modelInUse = null;
-      mine.complete();
-    };
-  }
+  /// Round 319: the run this page shows (started here, or by a Find screen); the last one stays
+  /// after its end. The model lock (one native model) is IdentificationRun.takeModel.
+  IdentificationRun? _run;
+  bool _loaded = false;
 
   IdentifyProgress? _progress;
   IdentifyResult? _result;
   String? _error;
   DateTime? _runStarted;
-  // Round 250: when the first crop started (the time-left estimate leaves the model loading
-  // out) and how long the whole run took, model loading included (the "Elapsed" clock).
-  DateTime? _embedStarted;
+  // Round 250: how long the whole run took, model loading included (the "Elapsed" clock).
   Duration? _runTook;
   Timer? _ticker;
   String _accelerator = '';
@@ -149,6 +138,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   @override
   void initState() {
     super.initState();
+    // A run of this session that goes on, or ended while the app was in the background.
+    final going = IdentificationRun.of(widget.sessionDir);
+    if (going != null) _attach(going);
     _load();
   }
 
@@ -156,10 +148,87 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   void dispose() {
     _ticker?.cancel();
     // Back during a run: stop the job at its next check, as the Cancel button does. Without
-    // this the model kept embedding with no screen (heat, battery). The job's finally block in
-    // _start still closes the model and the screen-on lock; it keeps what is done.
-    _cancel = true;
+    // this the model kept embedding with no screen (heat, battery). The run still closes the
+    // model and the screen-on lock; it keeps what is done.
+    _run?.removeListener(_onRun);
+    _run?.cancel();
     super.dispose();
+  }
+
+  /// Shows [r] from now on (no setState: also called from initState).
+  void _attach(IdentificationRun r) {
+    _run = r;
+    _running = true;
+    _result = null;
+    _error = null;
+    _runTook = null;
+    _accelNote = null; // a speed test's, until this run has loaded its model
+    _copyRun(r);
+    r.addListener(_onRun);
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _copyRun(IdentificationRun r) {
+    _loadingModel = r.loadingModel;
+    _progress = r.progress;
+    _runStarted = r.started;
+    if (r.accelerator.isNotEmpty) {
+      _accelerator = r.accelerator;
+      _accelNote = r.accelNote;
+    }
+  }
+
+  void _onRun() {
+    final r = _run;
+    if (r == null || !mounted) return;
+    if (!r.finished) {
+      setState(() => _copyRun(r));
+      return;
+    }
+    r.removeListener(_onRun);
+    _ticker?.cancel();
+    if (r.declined) {
+      // Nothing was loaded (nothing to identify, or a question first): the page does it.
+      setState(() {
+        _run = null;
+        _running = false;
+        _loadingModel = false;
+      });
+      if (_loaded) _autoStart();
+      return;
+    }
+    _runEnded(r);
+  }
+
+  Future<void> _runEnded(IdentificationRun r) async {
+    r.seen();
+    final result = r.result;
+    setState(() {
+      _copyRun(r);
+      _running = false;
+      _loadingModel = false;
+      _result = result;
+      _error = r.failure == null ? null : plainError(r.failure!);
+      _runTook = r.took;
+      if (r.msPerCrop != null) _msPerCrop = r.msPerCrop;
+      _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
+    });
+    await _checkVisits();
+    // Round 274: the one-Start path ends on the results (newest summary first). Not when crops
+    // failed: the results then miss them (all of them when the model was lost), and the user
+    // must see the warning in "Last run" to press Start again.
+    if (widget.autoStart && mounted && result != null && !result.cancelled && result.failed == 0 && _error == null) {
+      _openResults();
+    }
+  }
+
+  Future<void> _autoStart() async {
+    if (widget.autoStart && mounted && _run == null && _model != null && _pack != null && (_plannedCrops ?? 0) > 0) {
+      await _start();
+    }
   }
 
   Future<void> _load() async {
@@ -181,7 +250,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     await _plan();
     await _checkVisits();
     await _loadSpeed();
-    if (widget.autoStart && mounted && _model != null && _pack != null && (_plannedCrops ?? 0) > 0) await _start();
+    if (!mounted) return;
+    _loaded = true;
+    final r = _run;
+    if (r == null) {
+      await _autoStart();
+    } else if (r.finished && _running) {
+      _onRun(); // it ended before this page was shown
+    }
   }
 
   Future<void> _checkVisits() async {
@@ -251,20 +327,6 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   bool get _isClassList => _choice.isClassList;
 
-  /// Why [model] and the chosen pack cannot run together, before anything is
-  /// loaded (round 266); null when they may. The embedding size is checked
-  /// again once the model is loaded.
-  String? _pairingProblem(String modelName) {
-    final h = _packHeader;
-    if (h == null) return null;
-    final owner = '${h['model_id']}';
-    if (_isClassList && owner != stemOf(modelName)) {
-      return 'The class list ${h['pack_id']} belongs to the model $owner.tflite. Choose that model, '
-          'or a name list made for $modelName.';
-    }
-    return null;
-  }
-
   /// Round 267: files are added and deleted on the AI models screen. On
   /// return the lists are re-read; a chosen file that was deleted falls back
   /// to the first one, and a model's class list is chosen with it.
@@ -290,11 +352,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// way would silently be reused. Asks the user to keep them or recompute
   /// everything. Returns null when cancelled, true = start over.
   Future<bool?> _confirmCropSettings(IdentifyPrefs prefs, String modelName) async {
-    // Crops of visits found again since are redone anyway (round 235).
-    if (await IdentificationJob.cropsOutdated(widget.sessionDir, modelName)) return true;
+    final known = await cropSettingsRestart(widget.sessionDir, prefs, modelName);
+    if (known != null) return known;
     final stored = await IdentificationJob.storedIndex(widget.sessionDir, modelName);
-    if (stored == null || stored.records.isEmpty || stored.margin == null) return false;
-    if ((stored.margin! - prefs.margin).abs() < 1e-6 && stored.squareCrops == prefs.squareCrops) return false;
+    if (stored == null || stored.margin == null) return false;
     if (!mounted) return null;
     String how(bool square, double margin) =>
         '${square ? 'square' : 'box-shaped'} with a margin of ${margin.toStringAsFixed(2)}';
@@ -323,7 +384,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   Future<void> _start() async {
     final model = _model, pack = _pack, prefs = _prefs;
     if (model == null || pack == null || prefs == null || _running || _starting) return;
-    final problem = _pairingProblem(model.path.split('/').last);
+    final problem = pairingProblem(_choice, model.path.split('/').last);
     if (problem != null) {
       setState(() => _error = problem);
       return;
@@ -338,138 +399,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       if (mounted) setState(() => _starting = false);
     }
     if (restart == null || !mounted) return;
-    setState(() {
-      _running = true;
-      _loadingModel = true;
-      _cancel = false;
-      _error = null;
-      _result = null;
-      _progress = null;
-      _runStarted = DateTime.now();
-      _embedStarted = null;
-      _runTook = null;
-    });
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-    final modelName = model.path.split('/').last;
-    IdentifyResult? result;
-    // Waits (screen shows "Loading the model") while an earlier run or speed test still ends.
-    final freeModel = await _takeModel();
-    try {
-      await WakelockPlus.enable();
-      final info = await ImageEmbedder.load(
-        model.path,
-        useGpu: prefs.useGpu,
-        cpuThreads: prefs.cpuThreads,
-        normalize: !_isClassList, // a classifier's raw class scores (round 266)
-      );
-      final packDim = (_packHeader?['dim'] as num?)?.toInt();
-      if (packDim != null && packDim != info.dim) {
-        throw Exception(
-          'The name list ${pack.path.split('/').last} was made for another model and does not work with '
-          '${model.path.split('/').last}. Choose the name list made for this model, or the model that list '
-          'was made for.',
-        );
-      }
-      if (!mounted) return;
-      setState(() {
-        _loadingModel = false;
-        _accelerator = info.accelerator;
-        _accelNote = info.accelerationNote;
-      });
-      final pinfo = await PackageInfo.fromPlatform();
-      final job = IdentificationJob(
-        embed: (List<Uint8List> rgb) async {
-          final b = await ImageEmbedder.embed(rgb);
-          return [for (var i = 0; i < b.count; i++) Float32List.fromList(b.vector(i))];
-        },
-      );
-      result = await job.run(
-        widget.sessionDir,
-        settings: IdentifyRunSettings(
-          modelName: modelName,
-          modelId: stemOf(modelName),
-          packName: pack.path.split('/').last,
-          inputSize: info.inputWidth,
-          dim: info.dim,
-          accelerator: info.accelerator,
-          margin: prefs.margin,
-          squareCrops: prefs.squareCrops,
-          minCropPx: prefs.minCropPx,
-          maxCropsPerTrack: prefs.maxCropsPerTrack,
-          tau: prefs.tau,
-          noneThreshold: prefs.noneThreshold,
-          thermalLimitC: prefs.thermalLimitC,
-          targetRank: prefs.targetRank,
-          mergeVisits: prefs.mergeVisits,
-          mergeGapS: prefs.mergeGapS,
-          mergeSizeTol: prefs.mergeSizeTol,
-          mergeMinCos: prefs.mergeMinCos,
-          flagMinDurationS: prefs.flagMinDurationS,
-          flagMinDetections: prefs.flagMinDetections,
-          flagMinDetConf: prefs.flagMinDetConf,
-          flagMinOrderP: prefs.flagMinOrderP,
-          dropFactor: prefs.dropFactor,
-          extra: {
-            'use_gpu': prefs.useGpu,
-            'cpu_threads': prefs.cpuThreads,
-            'cpu_threads_used': ?info.cpuThreads,
-            // Round 242: why the GPU was not used, and how closely it matched the CPU.
-            'gpu_note': ?info.accelerationNote,
-            'gpu_agreement': ?info.gpuAgreement,
-          },
-        ),
-        packFile: pack,
-        appVersion: '${pinfo.version}+${pinfo.buildNumber}',
-        restart: restart,
-        isCancelled: () => _cancel,
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() {
-            _progress = p;
-            if (p.stage == 'embedding') _embedStarted ??= DateTime.now();
-          });
-        },
-      );
-      if (result.embedded > 0) {
-        final sp = await SharedPreferences.getInstance();
-        final wallMs = result.elapsed.inMilliseconds / result.embedded;
-        await sp.setDouble(IdentifyPrefs.msPerCropKey(modelName), wallMs);
-        _msPerCrop = wallMs;
-      }
-    } catch (e) {
-      logSwallowed('identify_start', e);
-      _error = plainError(e);
-    } finally {
-      try {
-        await ImageEmbedder.close();
-      } catch (e) {
-        logSwallowed('identify_close', e);
-      }
-      _ticker?.cancel();
-      try {
-        await WakelockPlus.disable();
-      } finally {
-        freeModel(); // only after close and lock off, so the next run starts clean
-      }
-    }
-    _runTook = DateTime.now().difference(_runStarted!);
-    if (!mounted) return;
-    setState(() {
-      _running = false;
-      _loadingModel = false;
-      _result = result;
-      _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
-    });
-    await _checkVisits();
-    // Round 274: the one-Start path ends on the results (newest summary first). Not when crops
-    // failed: the results then miss them (all of them when the model was lost), and the user
-    // must see the warning in "Last run" to press Start again.
-    if (widget.autoStart && mounted && result != null && !result.cancelled && result.failed == 0 && _error == null) {
-      _openResults();
-    }
+    final run = IdentificationRun.start(
+      widget.sessionDir,
+      model: model,
+      pack: pack,
+      packHeader: _packHeader,
+      isClassList: _isClassList,
+      prefs: prefs,
+      restart: restart,
+    );
+    setState(() => _attach(run));
   }
 
   Widget _buttonNote(String name, String text) => Padding(
@@ -500,7 +439,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     // Round 247: 10 crops, one per call, so the screen can count them (the model runs one crop
     // at a time anyway; the job's batches of 8 only group the calls).
     const n = kSpeedTestCrops;
-    final freeModel = await _takeModel(); // a run left going by Back ends first (see _modelInUse)
+    final freeModel = await IdentificationRun.takeModel(); // a run left going by Back ends first
     try {
       final tasks = await IdentificationJob.planSession(widget.sessionDir, maxCropsPerTrack: prefs.maxCropsPerTrack);
       final info = await ImageEmbedder.load(model.path, useGpu: prefs.useGpu, cpuThreads: prefs.cpuThreads);
@@ -665,7 +604,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   Widget build(BuildContext context) {
     // Back (or the Home button, which uses maybePop) during a run used to close the page with no
     // word while the job went on unseen. Same question as Find animals in videos; "Stop and
-    // leave" pops, and dispose sets _cancel, so the job stops after the current crop.
+    // leave" pops, and dispose cancels the run, so the job stops after the current crop.
     return PopScope(
       canPop: !_running,
       onPopInvokedWithResult: (didPop, _) {
@@ -767,7 +706,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             'Only ${k.saved} of ${k.total} kept frames of the videos are saved'
-            '${without > 0 ? ', so $without of $found track IDs have no photo to identify yet' : ''}. '
+            '${without > 0 ? ', so $without of $found track ID${found == 1 ? '' : 's'} ${without == 1 ? 'has' : 'have'} no photo to identify yet' : ''}. '
             'Save the remaining frames on "Find animals in videos" first.',
             style: amber,
           ),
@@ -816,8 +755,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       Text(
         crops == null
             ? 'Counting crops…'
-            : '$crops crops from ${_plannedTracks ?? 0} track ID${_plannedTracks == 1 ? '' : 's'}'
-                  '${estimate == null ? '' : ' (about ${_fmtDuration(estimate)} on this phone)'}',
+            : '$crops crop${crops == 1 ? '' : 's'} from ${_plannedTracks ?? 0} track ID${_plannedTracks == 1 ? '' : 's'}'
+                  '${estimate == null ? '' : ' (about ${_fmtDuration(estimate)} on this phone, plus any heat pauses)'}',
         style: const TextStyle(color: Colors.white),
       ),
       if (crops == 0 && _kept.remaining == 0)
@@ -836,6 +775,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           padding: EdgeInsets.only(top: 4),
           child: Text('The phone is not plugged in.', style: TextStyle(color: Colors.amber, fontSize: 12)),
         ),
+      const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Text(kKeepOnScreenIdentifyText, style: helperTextStyle),
+      ),
       const SizedBox(height: 10),
       Wrap(
         spacing: 8,
@@ -937,20 +880,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
   List<Widget> _progressSection() {
     final p = _progress;
+    final stopping = _run?.cancelRequested ?? false;
     final elapsed = _runStarted == null ? Duration.zero : DateTime.now().difference(_runStarted!);
     final total = p?.total ?? 0;
     final done = p?.done ?? 0;
     Duration? remaining;
-    final cropping = _embedStarted == null ? null : DateTime.now().difference(_embedStarted!);
-    if (p != null && cropping != null && done > 0 && total > done && p.stage != 'scoring') {
-      remaining = Duration(milliseconds: (cropping.inMilliseconds / done * (total - done)).round());
+    // Round 319, part 2: from the job's time on the crops, which leaves the model loading and the
+    // heat pauses out (with the pauses it grew while the run waited, at the same crop count).
+    if (p != null && done > 0 && total > done && p.stage != 'scoring') {
+      remaining = Duration(milliseconds: (p.activeMs / done * (total - done)).round());
     }
     final stageText = _loadingModel
         ? 'Loading the model (the first time on this phone can take up to a minute)…'
         : switch (p?.stage) {
             'planning' => 'Planning crops…',
-            'embedding' => 'Identifying crops on the $_accelerator…'
-                '${_accelNote != null ? ' (GPU not used: ${gpuNoteText(_accelNote!)})' : ''}',
+            // Round 319: one short line; the reason is shown once, below.
+            'embedding' => 'Identifying crops on the $_accelerator${_accelNote != null ? ' (GPU not used, see below)' : ''}…',
             'paused' => 'Paused: ${p!.note}',
             'scoring' => 'Combining crops per track ID and writing results…',
             'done' => 'Finishing…',
@@ -964,21 +909,30 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       ),
       const SizedBox(height: 8),
       if (p != null && total > 0)
-        Text('$done of $total crops (counted per photo: a photo with several insects adds several crops at once)',
+        Text('$done of $total crop${total == 1 ? '' : 's'} (counted per photo: a photo with several insects adds several crops at once)',
             style: const TextStyle(color: Colors.white)),
       Text('Elapsed ${_fmtDuration(elapsed)}'
           '${remaining == null ? '' : ', about ${_fmtDuration(remaining)} left'}.'
           '${p != null && p.avgMs > 0 ? ' The model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop.' : ''}',
           style: helperTextStyle),
+      if (!_loadingModel && _accelNote != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('GPU not used: ${gpuNoteText(_accelNote!)}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+        ),
       if (p?.tempC != null)
-        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'under Advanced settings'),
+        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'Advanced settings'),
+      const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(kKeepOnScreenIdentifyText, style: helperTextStyle),
+      ),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
-          onPressed: _cancel ? null : () => setState(() => _cancel = true),
+          onPressed: stopping ? null : () => _run?.cancel(),
           icon: const Icon(Icons.stop_circle_outlined),
-          label: Text(_cancel ? 'Stopping after this photo…' : 'Cancel (keeps what is done)'),
+          label: Text(stopping ? 'Stopping after this photo…' : 'Cancel (keeps what is done)'),
         ),
       ),
     ];
@@ -992,6 +946,34 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final all = ms < 60000 ? '${(ms / 1000).toStringAsFixed(1)} s' : _fmtDuration(r.modelTime);
     return ' The model itself took ${(ms / r.embedded / 1000).toStringAsFixed(2)} s per crop ($all in all); '
         'loading it, reading the photos and combining the results took the rest.';
+  }
+
+  /// The red lines after a run with crops that failed (round 319, decision D5). Round 319, part
+  /// 2: photos that could not be read are counted apart from model errors, and get no "tries
+  /// them again": the store counts them as done, so a re-run leaves them out.
+  List<String> _failedLines(IdentifyResult r) {
+    final button = _hasEmbeddings ? 'Continue / re-run' : 'Start';
+    final total = r.embedded + r.failed;
+    final modelErrors = r.failed - r.unreadable;
+    return [
+      if (modelErrors > 0 && r.embedded == 0)
+        'No crop could be identified: the model stopped with an error '
+            '${r.unreadable > 0 ? 'for every photo it could read' : 'each time'}. Press "$button" to '
+            'try again. If it fails again, delete the model on the "Download & import models" screen and '
+            'download it again.'
+      else if (modelErrors == 1)
+        '1 of $total crop${total == 1 ? '' : 's'} could not be identified (the model stopped with an error). It is missing '
+            'from the results. "$button" tries it again.'
+      else if (modelErrors > 1)
+        '$modelErrors of $total crops could not be identified (the model stopped with an error). They '
+            'are missing from the results. "$button" tries them again.',
+      if (r.unreadable == 1)
+        '1 of $total crop${total == 1 ? '' : 's'} could not be identified because its photo could not be read (the file may be '
+            'damaged). It is missing from the results.'
+      else if (r.unreadable > 1)
+        '${r.unreadable} of $total crops could not be identified because their photos could not be read '
+            '(the files may be damaged). They are missing from the results.',
+    ];
   }
 
   List<Widget> _completionSection() {
@@ -1010,14 +992,11 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         // The store does not count a failed crop as done (EmbeddingIndex.parse), so the next run
         // tries it again; without this line a run that lost its model looked finished.
         if (r.failed > 0 && !r.cancelled)
-          Text(
-            '${r.failed} crops could not be identified (the model gave an error). The results miss them. '
-            '"${_hasEmbeddings ? 'Continue / re-run' : 'Start'}" tries them again.',
-            style: const TextStyle(color: Colors.redAccent),
-          ),
+          for (final line in _failedLines(r)) Text(line, style: const TextStyle(color: Colors.redAccent)),
         Text(
-          '${r.embedded} crops identified now (${r.resumedDone} done earlier, ${r.skipped} skipped, '
-          '${r.failed} failed, ${r.thermalPauses} heat pauses) in ${_fmtDuration(_runTook ?? r.elapsed)}'
+          '${r.embedded} crop${r.embedded == 1 ? '' : 's'} identified now (${r.resumedDone} done earlier, '
+          '${r.skipped} skipped, ${r.failed} failed, ${r.thermalPauses} heat pause${r.thermalPauses == 1 ? '' : 's'}) '
+          'in ${_fmtDuration(_runTook ?? r.elapsed)}'
           '${r.embedded > 0 ? ' on the $_accelerator' : ''}.${_modelShare(r)}',
           style: const TextStyle(color: Colors.white),
         ),
@@ -1025,13 +1004,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           Text('GPU not used: ${gpuNoteText(_accelNote!)}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         if (s != null) ...[
           const SizedBox(height: 6),
-          Text(
-            '${s['tracks_total']} track IDs: '
-            '${(s['by_identified_rank'] as Map).entries.map((e) => '${e.value} to ${e.key}').join(', ')}'
-            '${s['unidentified'] != 0 ? ', ${s['unidentified']} unidentified' : ''}'
-            '${(s['no_organism'] ?? 0) != 0 ? ', ${s['no_organism']} no organism' : ''}.',
-            style: const TextStyle(color: Colors.white),
-          ),
+          Text(trackSummaryLine(s), style: const TextStyle(color: Colors.white)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -1069,6 +1042,80 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       children: [IdentifySettingsFields(prefs: prefs, onEdit: _edit, onCropCountChanged: _plan)],
     );
   }
+}
+
+/// Round 319, part 3: the chained identification that Android ended while it waited for the app
+/// or loaded in the background (its note, [IdentifyWaitNote]) starts again here, on its Identify
+/// page, as the Find screens start it; or, when the app was closed during that start too, one
+/// line says how to continue. Nothing happens while an identification goes on.
+Future<void> resumeWaitingIdentification(BuildContext context) async {
+  if (_resuming || IdentificationRun.busy) return;
+  if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+  _resuming = true;
+  try {
+    final w = await IdentifyWaitNote.takeOnOpen();
+    if (w == null || !context.mounted) return;
+    if (!w.start) {
+      final name = w.sessionDir.path.split('/').last;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'The identification of "$name" stopped when FaunaPulse was closed. To continue: on the Sessions '
+            'screen, tap ⋮ next to this session, then "Identify organisms". It goes on where it stopped.',
+          ),
+          duration: const Duration(seconds: 10),
+          showCloseIcon: true,
+        ),
+      );
+      return;
+    }
+    IdentificationRun.autoStart(w.sessionDir, chain: w.chain, attempts: 1);
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: w.sessionDir, autoStart: true)),
+      ),
+    );
+  } finally {
+    _resuming = false;
+  }
+}
+
+bool _resuming = false;
+
+/// Calls [resumeWaitingIdentification] once the first frame is shown and each time the app comes
+/// to the front. Home holds one: it lies under every other page while the app runs.
+class WaitingIdentificationWatch with WidgetsBindingObserver {
+  WaitingIdentificationWatch(this._context);
+
+  final BuildContext _context;
+
+  void start() {
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  void stop() => WidgetsBinding.instance.removeObserver(this);
+
+  void _check() {
+    if (_context.mounted) unawaited(resumeWaitingIdentification(_context));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+}
+
+/// The "Last run" line of track IDs by rank, from the results summary. Round 319: with no
+/// identified rank the old line read "0 track IDs: ." or "3 track IDs: , 3 unidentified.".
+String trackSummaryLine(Map<String, dynamic> s) {
+  final total = s['tracks_total'] ?? 0;
+  final parts = [
+    for (final e in ((s['by_identified_rank'] as Map?) ?? const {}).entries) '${e.value} to ${e.key}',
+    if ((s['unidentified'] ?? 0) != 0) '${s['unidentified']} unidentified',
+    if ((s['no_organism'] ?? 0) != 0) '${s['no_organism']} no organism',
+  ];
+  return '$total track ID${total == 1 ? '' : 's'}${parts.isEmpty ? '' : ': ${parts.join(', ')}'}.';
 }
 
 /// Plain-language error text (strips the "Exception: " prefix). Round 317:

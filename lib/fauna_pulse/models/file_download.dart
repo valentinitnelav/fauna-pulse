@@ -9,7 +9,11 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../logging/device_storage.dart';
 import 'model_file_security.dart';
+
+// isNoSpaceLeft moved to model_file_security.dart (round 319: the import uses it too).
+export 'model_file_security.dart' show isNoSpaceLeft;
 
 /// Why a download answer cannot be used, in plain words, or null when it
 /// can (HTTP 200 and not a web page). Separate from [downloadToFile] so it
@@ -136,6 +140,7 @@ Future<File> downloadToFile(
   }
   final partFile = File('${target.path}.part');
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+  int? total; // the size the server declares, when it does
   try {
     // GitHub release links and Hugging Face file links redirect to a file
     // host; HttpClient follows redirects on GET by default.
@@ -154,11 +159,17 @@ Future<File> downloadToFile(
       pastedLink: pastedLink,
     );
     if (problem != null) throw Exception(problem);
-    final total = response.contentLength > 0 ? response.contentLength : null;
+    if (response.contentLength > 0) total = response.contentLength;
     if (total != null && total > kMaxModelFileBytes) throw Exception(sizeLimitMessage());
     if (total != null) await ensureModelStorageAvailable(target.parent.path, total);
     var received = 0;
-    final sink = partFile.openWrite();
+    // Round 319: each chunk is written and waited for before the next one.
+    // An IOSink (openWrite) took the chunks without waiting: when the
+    // storage filled up, its write error stayed unseen, the download counted
+    // on to the end and then waited for ever in flush(), and Cancel did
+    // nothing (stress test 2026-10-20). Waiting for each write also stops
+    // the network while the storage is slow, instead of buffering in memory.
+    final out = await partFile.open(mode: FileMode.write);
     try {
       // The timeout is BETWEEN chunks: a dead connection errors out (and a
       // stalled stream would otherwise also never reach the cancel check).
@@ -172,13 +183,12 @@ Future<File> downloadToFile(
         if (isCancelled?.call() ?? false) throw Exception('Download cancelled.');
         final nextReceived = received + chunk.length;
         if (nextReceived > kMaxModelFileBytes) throw Exception(sizeLimitMessage());
-        sink.add(chunk);
+        await out.writeFrom(chunk);
         received = nextReceived;
         onProgress?.call(received, total);
       }
-      await sink.flush();
     } finally {
-      await sink.close();
+      await out.close();
     }
     if (received == 0) throw Exception('The server returned an empty file.');
     await validate(partFile);
@@ -198,9 +208,26 @@ Future<File> downloadToFile(
     } catch (e2) {
       logSwallowed('model_download_cleanup', e2);
     }
+    if (isNoSpaceLeft(e)) {
+      // The technical text for a problem report; the user gets plain words
+      // with the amount to free (read after the half file was deleted).
+      logSwallowed('model_download_no_space', e);
+      throw Exception(await _noSpaceMessage(target.parent.path, total));
+    }
     rethrow;
   } finally {
     _activeDownloadTargets.remove(targetKey);
     client.close();
   }
+}
+
+/// The message for a download stopped by full storage. [total] is the size
+/// the server declared (null when it did not say); the amount uses the same
+/// margin as the check before the download.
+Future<String> _noSpaceMessage(String dirPath, int? total) async {
+  final free = (await DeviceStorage.read(path: dirPath)).freeBytes;
+  final more = total == null || free == null ? 0 : modelStorageNeededBytes(total) - free;
+  return 'Not enough free storage: the download stopped. '
+      '${more > 0 ? 'About ${formatBytes(more)} more is needed. ' : ''}'
+      'Delete some files (for example old sessions), then try again.';
 }

@@ -68,8 +68,58 @@ class ImageEmbedderBatch {
   Float32List vector(int i) => Float32List.sublistView(vectors, i * dim, (i + 1) * dim);
 }
 
+/// FaunaPulse (round 319, part 2): what loading a model would need, and the memory Android
+/// has free now (see Embedder.memoryCheck). All sizes in bytes.
+class ImageEmbedderMemory {
+  /// The model file, and the estimate of what loading it takes ([onGpu]: the GPU guard's
+  /// estimate, else the CPU's).
+  final int fileBytes;
+  final int needBytes;
+  final bool onGpu;
+
+  /// ActivityManager.MemoryInfo: free memory, the level at which Android starts closing
+  /// background apps, the phone's total, and whether Android counts memory as low now.
+  final int availMem;
+  final int threshold;
+  final int totalMem;
+  final bool lowMemory;
+
+  /// The kernel's MemAvailable (what the phone tests logged); -1 when it could not be read.
+  final int memAvailable;
+
+  const ImageEmbedderMemory({
+    required this.fileBytes,
+    required this.needBytes,
+    required this.onGpu,
+    required this.availMem,
+    required this.threshold,
+    required this.totalMem,
+    required this.lowMemory,
+    required this.memAvailable,
+  });
+}
+
 class ImageEmbedder {
   static final MethodChannel _channel = ChannelConfig.createSingleImageChannel();
+
+  /// Round 319, part 2: the memory loading [modelPath] would need against what is free now.
+  /// Null when the native side gives no answer (an older plugin, not Android). Throws a
+  /// [PlatformException] when it fails.
+  static Future<ImageEmbedderMemory?> memory(String modelPath, {bool useGpu = true}) async {
+    final r = await _channel.invokeMethod<Map>('embedderMemory', {'modelPath': modelPath, 'useGpu': useGpu});
+    if (r == null) return null;
+    int n(String k, [int fallback = 0]) => (r[k] as num?)?.toInt() ?? fallback;
+    return ImageEmbedderMemory(
+      fileBytes: n('fileBytes'),
+      needBytes: n('needBytes'),
+      onGpu: r['onGpu'] == true,
+      availMem: n('availMem'),
+      threshold: n('threshold'),
+      totalMem: n('totalMem'),
+      lowMemory: r['lowMemory'] == true,
+      memAvailable: n('memAvailable', -1),
+    );
+  }
 
   /// Loads [modelPath] (absolute file path) natively, replacing any embedder
   /// loaded before. Throws a [PlatformException] with the native message when

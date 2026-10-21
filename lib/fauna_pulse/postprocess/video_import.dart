@@ -18,14 +18,24 @@
 // once more as a plain MP4 on the way in (every frame copied unchanged): the
 // phone's player cannot jump in a fragmented one and showed boxes on the
 // wrong picture after every jump.
+//
+// Round 319 (stress test): an import that stops half way leaves nothing
+// hidden behind. A failed copy (storage full) deletes the new folder; for an
+// app kill, the folder carries [kImportUnfinishedMarker] until its last step,
+// and [deleteVideoImportLeftovers] removes such folders, and the photo
+// picker's own copies, at the next start.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, VideoInfo;
 
+import '../logging/app_error_hooks.dart';
+import '../logging/past_sessions.dart' show sessionsRoot;
 import '../logging/session_logger.dart';
 import '../logging/session_rename.dart' show sanitizeSessionName;
 import 'video_detector.dart';
@@ -169,6 +179,8 @@ Future<Directory> importVideos({
     dir = Directory('${sessionsDir.path}/${safe}_$i');
   }
   final videos = Directory('${dir.path}/videos')..createSync(recursive: true);
+  // Removed as the last step: a folder that still has it was cut off.
+  final unfinished = File('${dir.path}/$kImportUnfinishedMarker')..createSync();
 
   // Move or copy in start order; two picks with one name get a suffix.
   final fileNames = <int, String>{};
@@ -186,7 +198,14 @@ Future<Directory> importVideos({
     fileNames[plan[i].index] = target;
     final to = File('${videos.path}/$target');
     if (!clip.fragmented) {
-      await _moveOrCopy(File(clip.path), to);
+      try {
+        await _moveOrCopy(File(clip.path), to);
+      } catch (_) {
+        // Round 319: storage full during the copy; as below, no half
+        // session (which no list shows) is left behind.
+        _deleteQuietly(dir);
+        rethrow;
+      }
       continue;
     }
     // Written under another name first, so a killed import leaves no
@@ -199,11 +218,7 @@ Future<Directory> importVideos({
       rewritten[plan[i].index] = await remux(clip.path, part.path);
     } catch (e) {
       // Nothing is logged yet: no half session is left behind.
-      try {
-        dir.deleteSync(recursive: true);
-      } on FileSystemException {
-        // Best effort; the error below is what the user needs.
-      }
+      _deleteQuietly(dir);
       throw ImportRewriteFailed(clip.name, e is PlatformException ? (e.message ?? e.code) : '$e');
     } finally {
       progress.cancel();
@@ -271,7 +286,117 @@ Future<Directory> importVideos({
   }
   logger.logEnd({'ended_normally': true, 'source': 'imported_video'}, at: DateTime.fromMillisecondsSinceEpoch(last));
   await logger.close();
+  try {
+    unfinished.deleteSync();
+  } on FileSystemException catch (e) {
+    // The finished log tells the start sweep to keep this session.
+    logSwallowed('video_import_marker', e);
+  }
   return dir;
+}
+
+/// Hidden file in a session folder while [importVideos] fills it (round 319).
+const kImportUnfinishedMarker = '.import_unfinished';
+
+/// Deletes [dir] and everything in it, best effort: the error that led here
+/// is what the user needs.
+void _deleteQuietly(Directory dir) {
+  try {
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  } on FileSystemException catch (e) {
+    logSwallowed('video_import_cleanup', e);
+  }
+}
+
+/// Deletes the session folders under [sessionsDir] whose import was cut off
+/// by an app kill (they still hold [kImportUnfinishedMarker] and their log
+/// has no end record): their videos are copies (the originals stay in the
+/// Gallery) that no list shows. A finished log only loses the marker; folders
+/// without the marker are never touched. Returns the count deleted.
+int deleteUnfinishedImports(Directory sessionsDir) {
+  var deleted = 0;
+  if (!sessionsDir.existsSync()) return 0;
+  for (final d in sessionsDir.listSync(followLinks: false).whereType<Directory>()) {
+    final marker = File('${d.path}/$kImportUnfinishedMarker');
+    if (!marker.existsSync()) continue;
+    if (_hasEndRecord(File('${d.path}/session.jsonl'))) {
+      try {
+        marker.deleteSync();
+      } on FileSystemException catch (e) {
+        logSwallowed('video_import_marker', e);
+      }
+      continue;
+    }
+    _deleteQuietly(d);
+    if (!d.existsSync()) deleted++;
+  }
+  return deleted;
+}
+
+/// Whether [log]'s last line is a whole end_of_session record (an import's
+/// log is a few lines: one per clip).
+bool _hasEndRecord(File log) {
+  try {
+    if (!log.existsSync()) return false;
+    final lines = log.readAsLinesSync().where((l) => l.trim().isNotEmpty);
+    if (lines.isEmpty) return false;
+    final last = jsonDecode(lines.last);
+    return last is Map && last['type'] == 'end_of_session';
+  } catch (_) {
+    return false; // a cut last line
+  }
+}
+
+/// The photo picker's folders in the app's cache: Android's picker plugin
+/// copies each picked file to `<cache>/<random id>/<name>` before it returns
+/// (image_picker_android FileUtils.getPathFromUri). Only folders named like
+/// that id and holding nothing but video files (or nothing) count, so other
+/// cache folders and picked screenshots are never touched.
+List<Directory> pickerVideoCopyFolders(Directory cache) {
+  final id = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+  final found = <Directory>[];
+  if (!cache.existsSync()) return found;
+  for (final d in cache.listSync(followLinks: false).whereType<Directory>()) {
+    if (!id.hasMatch(d.path.split('/').last)) continue;
+    final inside = d.listSync(followLinks: false);
+    final videosOnly = inside.every(
+      (e) => e is File && VideoDetector.videoExtensions.contains(e.path.split('.').last.toLowerCase()),
+    );
+    if (videosOnly) found.add(d);
+  }
+  return found;
+}
+
+/// Deletes [folders] (from [pickerVideoCopyFolders]); returns the bytes freed.
+int deletePickerCopies(Iterable<Directory> folders) {
+  var bytes = 0;
+  for (final d in folders) {
+    try {
+      for (final f in d.listSync().whereType<File>()) {
+        bytes += f.lengthSync();
+      }
+    } on FileSystemException {
+      // Counted only for the storage message; the delete below matters.
+    }
+    _deleteQuietly(d);
+  }
+  return bytes;
+}
+
+/// Run once at start, before any screen can pick or import videos: an app
+/// kill while picking, on the "Import videos" screen or during an import
+/// leaves video copies that nothing shows or deletes (round 319).
+Future<void> deleteVideoImportLeftovers() async {
+  try {
+    deletePickerCopies(pickerVideoCopyFolders(await getTemporaryDirectory()));
+  } catch (e) {
+    logSwallowed('video_import_leftovers', e);
+  }
+  try {
+    deleteUnfinishedImports(await sessionsRoot());
+  } catch (e) {
+    logSwallowed('video_import_leftovers', e);
+  }
 }
 
 /// A rename is instant but only works on one storage volume (the picker's

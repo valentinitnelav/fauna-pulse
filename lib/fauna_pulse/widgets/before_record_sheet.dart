@@ -6,14 +6,18 @@
 // plain sentence), and the phone settings that matter in the field (read again when the user
 // comes back from a settings page). Start starts the recording or the scheduled run. It pops
 // with 'start', 'notes' (open the field notes), 'settings' (open the session settings) or
-// null (cancelled).
+// null (cancelled). Round 319: a red line when free storage is already below "Keep free
+// storage" (Start then shows why it cannot record; see not_enough_storage_dialog.dart).
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../logging/device_storage.dart';
 import '../models/phone_state.dart';
 import '../services/phone_settings.dart';
+import '../session/session_guards.dart';
 import 'dialog_title.dart';
+import 'not_enough_storage_dialog.dart';
 import 'setting_help.dart';
 
 /// Whether the sheet shows before each start (pref; default yes).
@@ -35,6 +39,8 @@ class BeforeRecordSheet extends StatefulWidget {
     required this.plan,
     required this.scheduled,
     this.readPhone = PhoneSettings.read,
+    this.storageReserveMb,
+    this.readStorage = DeviceStorage.read,
   });
 
   /// The filled field notes in one line ('' when none).
@@ -48,12 +54,19 @@ class BeforeRecordSheet extends StatefulWidget {
   /// Reads the phone settings (replaced in tests).
   final Future<PhoneState> Function() readPhone;
 
+  /// "Keep free storage" (MB); null shows no storage line.
+  final int? storageReserveMb;
+
+  /// Reads the free storage (replaced in tests).
+  final Future<StorageReading> Function() readStorage;
+
   @override
   State<BeforeRecordSheet> createState() => _BeforeRecordSheetState();
 }
 
 class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindingObserver {
   PhoneState? _phone;
+  StorageReading? _storage;
   bool _showEachTime = true;
 
   @override
@@ -81,6 +94,9 @@ class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindi
   Future<void> _readPhone() async {
     final p = await widget.readPhone();
     if (mounted) setState(() => _phone = p);
+    if (widget.storageReserveMb == null) return;
+    final st = await widget.readStorage();
+    if (mounted) setState(() => _storage = st);
   }
 
   Future<void> _setShowEachTime(bool v) async {
@@ -109,6 +125,11 @@ class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindi
             shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             children: [
+              if (_storageLine() case final line?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(line, style: const TextStyle(fontSize: 13, color: Colors.redAccent)),
+                ),
               _section(
                 'Field notes',
                 [
@@ -158,6 +179,13 @@ class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindi
         ),
       ],
     );
+  }
+
+  /// The red storage line, or null while free storage is enough or unknown.
+  String? _storageLine() {
+    final reserve = widget.storageReserveMb, free = _storage?.freeBytes;
+    if (reserve == null || free == null || !storageBelowReserve(free, reserve)) return null;
+    return 'Not enough free storage: ${notEnoughStorageText(free, reserve)}';
   }
 
   Widget _section(String title, List<String> lines, String action) {

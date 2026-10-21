@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/app_error_hooks.dart';
 import 'package:fauna_pulse/fauna_pulse/models/file_download.dart';
 import 'package:fauna_pulse/fauna_pulse/models/former_model_names.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/video_import.dart' show deleteVideoImportLeftovers;
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 
 Future<void> main() async {
@@ -28,6 +29,9 @@ Future<void> main() async {
   // Half downloads cut off by an app kill; awaited so no screen can start
   // a download (whose .part file this would delete) before it is done.
   await deleteLeftoverModelPartFiles();
+  // Video copies left by a kill while picking or importing videos (round
+  // 319); awaited for the same reason.
+  await deleteVideoImportLeftovers();
   runApp(const FaunaPulseApp());
 }
 

@@ -53,6 +53,30 @@ Back during a run, two downloads of one file). They run with the normal
 `flutter test test/fauna_pulse`. A case that shows a known bug is kept and marked
 `skip: 'BUG: ...'`; a case for an input the app can never receive is marked
 `skip: 'NOT FIXED (audit): ...'`. Add `--run-skipped` to see them fail.
+The `r319_*_test.dart` files there (round 319) cover the fixes of the bugs that stress
+test left open, one file per problem: storage filling up during a model download or
+before it (`r319_l1_*`), a damaged detector model, heat pauses and full storage in *Find
+animals in videos* (`r319_l2_*`), video import errors, free storage and leftovers
+(`r319_l3_*`), the analysis foreground service and Identify in the background
+(`r319_l4_*`), and the camera's storage block, *Keep free storage* minimum, *Stopping…*
+button, temperature gauge line and airplane-mode tip (`r319_l5_*`).
+The `r319b_*_test.dart` files (round 319, part 2) cover the fixes found by its phone
+tests: the memory check before an *Also identify them* model loads in the background, the
+rule against the phones' numbers, Identify's time left, singular counts and photos that
+could not be read (`r319b_m_*`); *Import other videos…* left with Back, the *Continue* label
+and clips where a track ID only ends (`r319b_s1_*`); model imports on full storage, import
+progress, the download dialog's storage line, the airplane-mode message and one unit per
+sentence (`r319b_s2_*`); and bars that go away after their time and the import note's
+button name (`r319b_s4_*`). `packages/ultralytics_yolo/test/yolo_view_switch_error_test.dart`
+covers a failed model switch in the camera that the app handles itself.
+The `r319c_*_test.dart` files (round 319, part 3) cover the fixes found by the part-2 phone
+tests: a stored bar closed after it timed out, the *Rename session* dialog, the scheduled-run
+line during a window skipped for low storage, singular counts, the clip count of *Find track
+IDs*, the results header's name list and an import line kept in view (`r319c_a_*`); the
+waiting identification kept in a note when Android closes the app, the notification
+permission asked when an analysis starts and the keep-on-screen line (`r319c_b_*`, with the
+shared `r319c_b_identify_fixture.dart`); and the analysis service held until the model's
+memory is given back (`r319c_k_*`).
 
 
 ## Security and release gate

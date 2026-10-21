@@ -9502,3 +9502,13 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** a download hangs when storage fills during it; Identify is killed in the background (no foreground service); a damaged detector model is reported as unreadable videos; a heat pause inflates the time left; low-memory Identify and downloads with Wi-Fi cuts were not tested (usage stop).
 
+## Round 319 (2026-10-21): fixes of the open stress-test bugs (full storage, damaged model, background analysis)
+
+**Asked (owner):** fix what round 318 left open, then what the phone checks of parts 1 and 2 found. Direction: FaunaPulse is a measuring tool, so identification needs the app on screen, the strict memory check stays, and a waiting identification must survive a closed app.
+
+**Why:** MIUI killed a background Identify 22 s after Home, so it got a foreground service. A background BioCLIP 2 load was killed twice on the 3.6 GB phone, so it checks memory first and otherwise waits (a wait costs a tap, a kill loses the run). MIUI closed the waiting app after 15 to 75 s, so the wait is a note on disk, started once at the next opening.
+
+**Checked:** laptop tests; Redmi Note 9S (Android 12) and 11T Pro (Android 14), debug builds: start from the note after a kill (CPU and GPU), attempts guard, memory give-back (about 1.2 GB), random taps without a crash.
+
+**Open:** Play Console declaration of the dataSync and mediaProcessing types; Android 15 and the release build not run on a phone; progress-notification tap and 11T Pro status-bar icon not seen; no note when the app is left after the model loaded.
+

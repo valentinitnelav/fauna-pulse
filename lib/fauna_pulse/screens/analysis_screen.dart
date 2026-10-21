@@ -30,6 +30,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../capture/roi_capture.dart' show probeJpegSize;
 import '../identification/identification_choice.dart';
+import '../identification/identification_run.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
@@ -42,6 +43,7 @@ import '../postprocess/post_detector.dart';
 import '../postprocess/sahi.dart';
 import '../postprocess/sahi_profile.dart';
 import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResult, VideoTracker, trackerUserValues;
+import '../services/analysis_keepalive.dart';
 import '../tracking/tracker.dart' show TrackerAlgorithm;
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -455,6 +457,18 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           : session.fileCount - session.doneFileCount;
       _avgMs = 0;
     });
+    // Round 319: keeps the run going in the background (foreground service), up to the hand-over
+    // to "Also identify them". Taken here, on the tap on Start, while the app is on screen.
+    final keepAlive = AnalysisKeepAlive.acquire(title: kFindPhotosKeepAliveTitle);
+    try {
+      await _run(session, model, keepAlive);
+    } finally {
+      keepAlive.release();
+    }
+  }
+
+  /// The run of [_start].
+  Future<void> _run(_AnalyzableSession session, ModelEntry model, AnalysisKeepAliveHold keepAlive) async {
     await WakelockPlus.enable();
 
     PostRunResult? result;
@@ -584,7 +598,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       await _loadOutcomes();
     }
     // Round 274: one Start from the boxes to the names.
-    if (_identify && failure == null && !result!.cancelled && mounted) await _openIdentify(session);
+    if (_identify && failure == null && !result!.cancelled && mounted) await _openIdentify(session, from: keepAlive);
   }
 
   /// "Also identify them" can run: switched on, a model with a name list
@@ -598,9 +612,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
   /// Opens Identify organisms on [s], which starts by itself and ends on the
   /// results; the model and name list chosen here are remembered for it.
-  Future<void> _openIdentify(_AnalyzableSession s) async {
+  ///
+  /// [from]: the finished run's hold on the analysis service (round 319). The identification's
+  /// hold is taken before it goes, so the service runs on without a new start, which Android
+  /// refuses in the background.
+  Future<void> _openIdentify(_AnalyzableSession s, {AnalysisKeepAliveHold? from}) async {
     await _idChoice.save();
     if (!mounted) return;
+    // The run starts here, not when the Identify page is built: no page is built while the app is
+    // in the background, so it waited until the app was shown again (round 319). The page shows it.
+    IdentificationRun.autoStart(s.dir, chain: 'photos');
+    from?.release();
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => IdentificationScreen(sessionDir: s.dir, autoStart: true)),
     );

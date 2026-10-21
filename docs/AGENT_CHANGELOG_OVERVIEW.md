@@ -88,7 +88,7 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 `session_filter.dart`, `session_rename.dart`, `track_source.dart` (`trackSourceOf`),
 `dashboard_stats.dart`, `visit_stats.dart`, `photo_box_matcher.dart`, `roi_update_debouncer.dart`
 (`SettledUpdateDebouncer`), `device_thermal.dart`, `device_storage.dart` (`formatBytes`,
-`folderSizeBytes`), `thermal_pause.dart` (`kDefaultPauseTempC` 43), `diagnostics.dart`,
+`folderSizeBytes`, `freeStorageClause`, `formatMegabytes`), `thermal_pause.dart` (`kDefaultPauseTempC` 43), `diagnostics.dart`,
 `app_error_hooks.dart` (`logSwallowed`), `crash_store.dart`, `error_reporter.dart`,
 `report_bundle.dart`.
 
@@ -142,7 +142,9 @@ under 0.10 above the confidence, shared by camera Settings and the video Track I
 `selection_app_bar.dart`, `before_record_sheet.dart` (r298, `BeforeRecordSheet`, pref
 `before_record_sheet`).
 
-**services/** `recording_keepalive.dart` (foreground service + wake-lock).
+**services/** `recording_keepalive.dart` (foreground service + wake-lock), `analysis_keepalive.dart`
+(`AnalysisKeepAlive`: reference-counted holds on native `AnalysisService.kt` for Find in
+videos/photos and Identify).
 
 ## Current defaults
 
@@ -159,7 +161,7 @@ under 0.10 above the confidence, shared by camera Settings and the video Track I
 | Inference FPS cap | 15 | 1–30 |
 | Camera FPS cap | 15 | 0 = no cap; max 30 |
 | Screen off by itself after | 0 min (never) | `screenOffAfterMin`, 0–10; Power tab |
-| Stop at battery level / keep free storage | 15 % / 200 MB | `lowBatteryStopPercent` (on own battery only), `storageReserveMb`; 0 = never; `session/session_guards.dart`, checked in `_sampleThermal` |
+| Stop at battery level / keep free storage | 15 % / 200 MB | `lowBatteryStopPercent` (on own battery only, 0 = never), `storageReserveMb` (50 to 5000, `fromJson` clamps a saved 0 to 50: the phone and the last files need room); `session/session_guards.dart`, checked in `_sampleThermal`. Start is blocked while free storage is already below the reserve (`storageBelowReserve`; red line on the Before you record sheet, `not_enough_storage_dialog.dart` on Start/REC; a scheduled window is skipped with a log line) |
 | Auto-throttle | on | min 3 fps, duty target 0.5 |
 | Motion gate | off | pixel delta 25, area 0.5 %, wake 3 s, grid 48 (16–160), idle check 5 fps (1–30) |
 | Time between bursts | 30 min | `timeLapseGapSeconds`: end of a burst to start of the next; 0 = continuous |
@@ -245,6 +247,18 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the one on the phone" stay, as "Cancel" could be misread there). Windows with 2+ buttons set
   `actionsOverflowDirection: VerticalDirection.up` (stacked: main action on top, Cancel/Close at the
   bottom right). Progress windows without buttons have no X.
+- **One unit per sentence:** two sizes in one sentence share the larger one's unit
+  (`formatBytes(unitOf:)`; "only 0.0 GB" reads "almost no storage is free", `freeStorageClause`);
+  a free amount next to the *Keep free storage* setting is whole MB rounded down
+  (`formatMegabytes`), so 4999.6 MB never reads "5000 MB free … needs at least 5000 MB".
+- **A SnackBar with a button stays until tapped** unless `persist: false` (Flutter's default):
+  set it, with a `duration`, on bars that should go (camera permission, "Settings closed without
+  Apply"). A kept `ScaffoldFeatureController` must be forgotten when the bar closes by itself, else
+  a later `close()` hits an empty queue (debug crash file; release hides another bar): keep such
+  a bar in `widgets/closable_snack_bar.dart` (`ClosableSnackBar`, forgets it on `closed`).
+  Likewise a dialog's `TextEditingController` belongs to the dialog's own `State` (disposed in
+  its `dispose`), never to the caller: the closing dialog still rebuilds its field when the
+  keyboard goes down.
 - **Selection mode** (Sessions, Download & import models): `selectionAppBar` (X "Stop selecting",
   "n selected", bar tinted like the selected rows). Back, the X, or unticking the last item ends
   it; a tap on empty space does not (not an Android convention).
@@ -271,7 +285,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   without a usable model asks (`_askForDetector`), never picks silently. A failed load
   (`onInitialModelLoadFailed` → `onModelError` → `_onModelLoadError`) reverts via
   `modelLoadRecovery()` (still-loaded model, else none) + dialog. `migrateModelPath` maps old ids
-  to ''.
+  to ''. The dialog never shows the raw reason (logged as `model_load_error`): `modelLoadAdvice`
+  gives the QNN hints for `*_qnn.onnx`, else `kModelDamagedAdvice` (delete, then download or
+  import again), the same words as Find animals in videos.
 - **Camera lifecycle hold (r292):** CameraX binds to `YOLOView`'s own `CameraLifecycle`, which
   follows the Activity (started = RESUMED, stopped = CREATED) unless Dart holds it
   (`setCameraHold`, sent by `_pushCameraHold` while `_recording || _schedule != null`, also in
@@ -314,7 +330,22 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   gate sleeps; time-lapse shows ~1 fps between bursts. That is correct.
 
 - **Swiping FaunaPulse away in Recents ends a recording:** `RecordingService.onTaskRemoved` calls
-  `stopSelf()`, so the wake lock and notification go (r318).
+  `stopSelf()`, so the wake lock and notification go (r318); `AnalysisService` does the same.
+- **Long jobs on saved files hold `AnalysisService`** (Find in videos/photos, saving kept frames,
+  Identify): one reference-counted foreground service (type `dataSync`, `mediaProcessing` on
+  Android 15+, both capped at 6 h a day there; `onTimeout` stops it; not yet run on an
+  Android 15 phone) + partial wake lock. Taking a hold also asks for the notification
+  permission (Android 13+), once per app start and only while the app is `resumed` (the system
+  dialog cannot show otherwise); never awaited, the job runs whatever the answer. Every
+  notification (recording, analysis, "Animals found") uses `R.drawable.ic_notification`, a
+  one-color vector: Android draws only the shape of a small icon, so the app icon was a white
+  square. Android
+  12+ refuses a start from the background, so a job takes its hold on the tap on Start and a
+  chained job ("Also identify them") takes its own before the first releases. Both permissions
+  (`FOREGROUND_SERVICE_DATA_SYNC`, `..._MEDIA_PROCESSING`) must be declared in Play Console.
+  `RecordingService` stays type `camera`: dataSync's daily cap would end long recordings.
+- **Stop shows "Stopping…"** (`widgets/record_button.dart`): taps are ignored until the stop
+  has closed the files, so a double Stop opens one summary.
 
 ### ROI and photos
 - **ROI is ÷32 WYSIWYG:** the box, readout, saved crop and inference ROI are the same square (a
@@ -475,7 +506,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   with step ≤ 0.5 s; writes
   `post_tracks.jsonl` (`source: photos`).
 - "Also identify them" (both Find screens, pref `find_also_identify`): after detection and track
-  IDs, pushes `IdentificationScreen(autoStart: true)`.
+  IDs, starts `IdentificationRun.autoStart` itself (no frames are drawn in the background, so a
+  page could not start it) and pushes `IdentificationScreen`, which attaches to that run.
 
 ### Find animals in videos (`video_analysis_screen.dart`)
 - Import (`video_import.dart`): files moved into `<session>/videos/`; `session.jsonl` = start
@@ -487,7 +519,14 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   "Back to the time(s) read from the file(s)" undoes it; the suggested name follows the day.
   Fragmented MP4s (top-level `moof`) are rewritten at import by native
   `VideoFrameSource.remux` (`isFragmentedMp4`) and checked (same frames, times within rounding),
-  else `ImportRewriteFailed` with a ready ffmpeg command; 10-bit/HDR refused.
+  else `ImportRewriteFailed` with a ready ffmpeg command; 10-bit/HDR refused. While an import
+  fills a folder it holds `.import_unfinished` (`kImportUnfinishedMarker`); `main()` runs
+  `deleteVideoImportLeftovers` (marker + no end record = deleted; plus the photo picker's UUID
+  copy folders in the cache) after the `.part` sweep. The Import videos screen re-reads free
+  storage on resume and before the copy; picker and copy errors are plain words.
+- Progress: *ms per frame* and time left leave out heat pauses; an unknown clip length says
+  "time left not known yet" (clip lengths read with `VideoFrameSource.info` when no
+  `video_clip` record has them).
 - Detection (`VideoDetector`): MediaCodec decode → ROI-only YUV→RGB (banded thread pool) →
   detect → `video_detections.jsonl` (`video_run_start`, `video_clip_start`, `raw_detections` with
   `clip`/`pts_us`/`frame`, `video_clip_done`/`video_clip_error`, `video_run_end`; boxes
@@ -569,8 +608,44 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   and crop). Mini-table kit measures column widths; ids/names left, numbers right.
 
 - **One job, one model user:** one Identify job per session at a time (`IdentificationJob`
-  `_activeSessions`); runs and Test speed take a static model lock before `ImageEmbedder.load`
-  and free it after `close()`. Back during a run asks first (`PopScope`); leaving cancels the job (r318).
+  `_activeSessions`); runs and Test speed take the static model lock
+  (`IdentificationRun.takeModel`) before `ImageEmbedder.load` and free it after `close()`.
+  The run lives in `identification/identification_run.dart` (`IdentificationRun`, one per
+  session, `of`/`start`/`autoStart`), apart from the page, so it starts and runs in the
+  background; `IdentificationScreen` only shows it. Back during a run asks first (`PopScope`);
+  leaving cancels the job (r318).
+- **A chained identify load in the background checks memory first** (owner's decision, r319):
+  only when "Also identify them" hands over while the app is not `resumed`,
+  `IdentificationRun` asks the plugin (`ImageEmbedder.memory` → `Embedder.memoryCheck`) and loads
+  only if `identifyFitsInBackground`: free (the smaller of `availMem` and MemAvailable) minus need
+  (CPU `CPU_MEMORY_FACTOR` 2.15 × file, GPU 4.5 × file) ≥ Android's threshold +
+  `kIdentifyMemoryMarginBytes` (100 MB). Else it does not load (the Find results are saved already): it releases its service hold,
+  shows "Animals found" (channel *Identification waiting*, `AnalysisService.showReminder`) and
+  waits in memory for `resumed`, then takes a new hold and loads. A run started in front never
+  checks (Android frees other apps for the app in front). Calibrated on the 3.6 GB Redmi (BioCLIP 2
+  fp16 609 MB: +1.25 GB native at load; killed at 0.94 and 1.08 GB free; insectDCT needs ~90 MB).
+  Strict on purpose and accepted as is (owner, 2026-10-21: a measuring tool; no special rule for
+  large phones): a wait costs one tap, a kill loses the run silently. So BioCLIP 2 on the GPU
+  always waits in the background on the 11T Pro (reports 7.2-7.4 GB). Instead users are told to
+  keep the app on screen: one line (`identification_choice_fields.dart`) under *Also identify
+  them* and on *Identify organisms* (above Start and under the progress). Logged as logcat
+  `identify_memory_check` and `identify_start.memory_check` (`decision`, `waited_s`).
+- **The wait survives a closed app** (`identification/identify_wait_note.dart`): a chained run
+  that waits or loads in the background first writes `identify_waiting.json` in the app's files
+  folder (session dir, chain, `created`, `attempts` 0). Home takes it when the app opens or
+  resumes (`takeOnOpen`) and starts the run again, setting `attempts` to 1 BEFORE the start; a
+  note found with `attempts` ≥ 1 starts nothing (a start that gets the app closed is never
+  repeated by itself) and shows a 10 s bar saying how to continue from the Sessions ⋮ menu. A
+  note older than 24 h is ignored. It is deleted at the run's end, on Stop and with its session.
+- **Native memory is given back after the embedder closes** (`NativeMemory.giveBack`, bionic
+  `mallopt`): each step is checked by the app's resident memory (RSS) and the next tried only if
+  nothing came back (M_PURGE_ALL, then M_PURGE, then decay 0 + purge), since on Android 12
+  M_PURGE_ALL answers "done" and frees nothing. Frees about 1.2 GB at once on both test phones.
+  Logcat tag `NativeMemory`: one `mallopt from <path>` line, then each step's answer and RSS
+  before -> after (no "(mode N)" any more).
+- `identify_end.unreadable` counts crops whose photo could not be read (part of `failed`); the
+  screen gives them their own red line and promises no retry. Identify's time left leaves out
+  heat pauses (as Find in videos).
 
 ### Models and downloads
 - **Model facts** (origin, licence, conversion, citation of each offered model): its model card
@@ -662,7 +737,20 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 
 - **Downloads:** a second download of a file that is already being written is refused
   (`_activeDownloadTargets`); leftover `.part` files are deleted at app start
-  (`deleteLeftoverPartFiles`) (r318).
+  (`deleteLeftoverPartFiles`) (r318). A write that hits full storage (`isNoSpaceLeft`, errno 28)
+  deletes the `.part` and ends the download with plain words and the amount to free (never a
+  hang); the Download dialog checks free storage when it opens and on app resume, and greys
+  Download while the files do not fit (one unit for both sizes). *Import model files…* does the
+  same (`copyAndValidateModel`, logged `model_import_no_space`: stops at once, deletes the half file)
+  and shows its progress and green-tick result under its button (`ModelImportProgress`), not a
+  snack bar. "Could not reach the server" names airplane mode when it is on with Wi-Fi off
+  (`plainModelError(phone:)`).
+- **Write errors end jobs with plain words, never a raw exception:** downloads (above), Find in
+  videos (`isStorageFullError`: "Storage full: … press Continue"; Continue first repairs a cut
+  last line of `video_detections.jsonl`), finding track IDs, saving kept frames, video import.
+- **A model that cannot load is a model problem:** the plugin returns `model_error`
+  (`VideoModelException`), Dart writes `video_model_error` and stops the run instead of marking
+  clips unreadable; camera and video screens show `kModelDamagedAdvice`.
 
 ### Home, Sessions, summary
 - **Home** (`home_screen.dart`): tagline "Your phone as a camera trap: find, count and name
@@ -756,7 +844,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   GPU ~0.22 s per picture live. Swipe lock (adb can wake and swipe).
 - **Redmi Note 9S** (Snapdragon 720G, 3.6 GB, Android 12 MIUI): third phone,
   debug builds; stays awake on USB. Check `adb devices -l` first: which phones are connected
-  changes (its `model:` field tells them apart). No adb serials in tracked files.
+  changes (its `model:` field tells them apart). No adb serials in tracked files. Memory-bound:
+  BioCLIP 2 on the CPU loaded in the background is killed by lowmemorykiller (about 1 GB free);
+  MIUI's `PeriodicCleaner` closed a cached FaunaPulse 15 to 75 s after it left the
+  foreground service (on the 11T Pro the app was still alive after 87 s).
+- On Android 14 (11T Pro) neither `adb shell` nor `run-as` can read the folders the app makes
+  under `Android/data`: check results in the app and delete test sessions with the app's own
+  *Delete session*.
 
 ## Pointers
 

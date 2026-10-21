@@ -1319,6 +1319,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'Stop at battery level',
         lowBattery == null ? null : (lowBattery is num && lowBattery == 0 ? 'never' : '${_numStr(lowBattery)} %'),
       );
+      // 0 ("never") is only in sessions recorded before round 319, whose lowest
+      // value became 50 MB: shown as it was used then.
       final reserve = _setting('storageReserveMb');
       add(
         'Keep free storage',

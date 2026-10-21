@@ -707,9 +707,13 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         : sink == null
         ? ''
         : ' (${thousands(rows - sink)} names)';
+    // The list's file name, as Identify organisms shows it (its inner id differs); results made
+    // without it in their settings show the inner id.
+    final packFile = s['settings'] is Map ? (s['settings'] as Map)['pack'] : null;
+    final listName = packFile is String && packFile.isNotEmpty ? packFile : '${s['pack_id']}';
     return [
       _kv('Model', '${s['model_id']}'),
-      _kv(classList ? 'Class list' : 'Name list', '${s['pack_id']}$count'),
+      _kv(classList ? 'Class list' : 'Name list', '$listName$count'),
       _kv('Date run', when),
       _kv(
         'Track IDs',
@@ -857,7 +861,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
         child: OutlinedButton.icon(
           onPressed: _visible.isEmpty ? null : () => _showVisits('All track IDs', _visible, rank: null, showTaxon: true),
           icon: const Icon(Icons.list),
-          label: Text('All ${_visible.length} track IDs'),
+          label: Text('All ${_plural(_visible.length, 'track ID')}'),
         ),
       ),
     ];

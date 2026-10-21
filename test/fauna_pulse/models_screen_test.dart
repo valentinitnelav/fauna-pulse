@@ -116,7 +116,7 @@ Future<void> _pump(
           if (failNameLists && f.name.endsWith('.fpack')) throw Exception('connection lost');
           _downloaded.add(f.name);
         },
-        importFiles: importFiles ?? ({required replace, onFileLoading}) async => const ModelImportReport(),
+        importFiles: importFiles ?? ({required replace, onFileLoading, onProgress}) async => const ModelImportReport(),
         linkDownload: (url, {onProgress, isCancelled}) async {
           _linked.add(url);
           final name = ModelImport.linkFileName(url)!;
@@ -493,7 +493,7 @@ void main() {
     final answers = <bool>[];
     await _pump(
       tester,
-      importFiles: ({required replace, onFileLoading}) async {
+      importFiles: ({required replace, onFileLoading, onProgress}) async {
         answers.add(await replace('my_bees_640.tflite', ModelFileKind.detection, 0));
         return ModelImportReport(
           imported: const [
@@ -538,7 +538,7 @@ void main() {
     final answers = <bool>[];
     await _pump(
       tester,
-      importFiles: ({required replace, onFileLoading}) async {
+      importFiles: ({required replace, onFileLoading, onProgress}) async {
         // Three files already on the phone: the first answer covers the others.
         for (final (i, name) in ['a.tflite', 'b.tflite', 'c.tflite'].indexed) {
           answers.add(await replace(name, ModelFileKind.detection, 2 - i));
@@ -569,7 +569,8 @@ void main() {
   testWidgets('only files kept: the window is not titled "Imported" (r317)', (tester) async {
     await _pump(
       tester,
-      importFiles: ({required replace, onFileLoading}) async => const ModelImportReport(kept: ['my_bees_640.tflite']),
+      importFiles: ({required replace, onFileLoading, onProgress}) async =>
+          const ModelImportReport(kept: ['my_bees_640.tflite']),
     );
     final import = find.text('Import model files…');
     await _show(tester, import);

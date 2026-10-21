@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../logging/app_error_hooks.dart';
+import 'video_detector.dart' show isStorageFullError;
 import 'video_tracker.dart';
 
 /// The decoder calls the keeper needs; tests replace them.
@@ -70,12 +71,17 @@ class KeepFramesResult {
   final bool cancelled;
   final Duration elapsed;
 
+  /// Round 319: the storage filled up; saving stopped there, and the frames
+  /// not saved are left for the next run (not counted as [failed]).
+  final bool storageFull;
+
   const KeepFramesResult({
     required this.saved,
     required this.missing,
     required this.failed,
     required this.cancelled,
     required this.elapsed,
+    this.storageFull = false,
   });
 }
 
@@ -127,7 +133,7 @@ class VideoFrameKeeper {
     }
     final total = todo.length;
     var done = 0, saved = 0, missing = 0, failed = 0;
-    var cancelled = false;
+    var cancelled = false, storageFull = false;
     onProgress?.call(0, total);
     if (total > 0) dir.createSync(recursive: true);
     for (final group in groups.values) {
@@ -165,9 +171,14 @@ class VideoFrameKeeper {
         }
       } catch (e) {
         logSwallowed('video_keep_frames', e);
-        failed += rest.length;
-        done += rest.length;
-        onProgress?.call(done, total);
+        // Round 319: storage full is not a clip that cannot be read, and every
+        // later clip would fail the same way.
+        storageFull = isStorageFullError(e);
+        if (!storageFull) {
+          failed += rest.length;
+          done += rest.length;
+          onProgress?.call(done, total);
+        }
       } finally {
         try {
           await backend.close();
@@ -175,7 +186,7 @@ class VideoFrameKeeper {
           logSwallowed('video_keep_frames_close', e);
         }
       }
-      if (cancelled) break;
+      if (cancelled || storageFull) break;
     }
     return KeepFramesResult(
       saved: saved,
@@ -183,6 +194,7 @@ class VideoFrameKeeper {
       failed: failed,
       cancelled: cancelled,
       elapsed: DateTime.now().difference(started),
+      storageFull: storageFull,
     );
   }
 }

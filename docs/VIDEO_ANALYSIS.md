@@ -26,7 +26,14 @@ Terms used below:
    in videos screen and in the Sessions screen's ⋮ menu) for clips filmed elsewhere. It opens
    Android's photo picker (the camera's videos first); a video saved elsewhere, e.g. in
    Download, is found with the picker's own ⋮ menu ("Browse"). The videos are copied, so they take storage twice
-   until the originals are deleted. Or
+   until the originals are deleted. The *Import videos* screen checks the free storage when it
+   opens, when you come back to the app and again before the copy (round 319): while the clips
+   do not fit, a red line says how much is needed and free and the import button is grey; free
+   some space in another app (for example Files), then come back to this screen (after deleting
+   sessions in FaunaPulse itself, pick the videos again). If a copy fails, a plain message says
+   why ("The videos could not be copied: not enough free storage …") and what to do; the
+   half-copied files are deleted, and an import cut off by closing the app is deleted at the
+   next start. Or
    record them with the app itself (round 238): capture trigger *Time-lapse*, *Save bursts
    as: Video*. Recorded clips are already the ROI square, carry the camera's own start
    time, and go straight to step 2 (their session summary opens on the Video tab with a
@@ -66,6 +73,31 @@ Terms used below:
    Analyzing is the slow step (it can be paused and continued). It finds boxes only. With *Also identify them* on (round 274), the same
    button goes on through step 3 and the identification (*Identify organisms* starts by
    itself on the kept frames) and ends on the results.
+   Since round 319 the analysis, the saving of frames and the identification go on while
+   another app is open or the screen is off, with a notification ("FaunaPulse is finding
+   animals in videos", then "FaunaPulse is identifying animals"); opening FaunaPulse shows
+   the progress, or the results when the run has ended. With *Also identify them* on, a
+   line under the switch asks you to keep the app open: "Identification needs a lot of
+   memory. Keep FaunaPulse on the screen until it ends: if you switch to another app, it
+   may wait, or Android may stop it." When the identification model does not fit in the
+   phone's free memory while the app is in the background (often BioCLIP 2, on the CPU
+   and also on the GPU, which needs about 4.5 times the model file), the identification
+   waits for you: the notification "Animals found" asks you to open FaunaPulse, and it
+   starts when you do, also after Android has closed the app meanwhile (details in
+   [IDENTIFICATION.md](IDENTIFICATION.md), step 3). On Android 13 and newer, the first
+   run after the app opens asks for the notification permission if it is not granted
+   yet; the run goes on whatever the answer. *Stop*, or swiping FaunaPulse away
+   from the recent apps, ends the run; what is done is kept. After a *Stop* the main button
+   reads *Continue (N of M clips left)*, also when the run stopped inside its first clip
+   (just *Continue* for a session with one clip), and it goes on inside that clip. The progress line's *ms per
+   frame* and time left leave out heat pauses; when a clip's length is not known yet it says
+   "time left not known yet". Back during a heat pause asks *The analysis is paused* (*Cancel*
+   keeps it paused, *Stop and leave* stops it). If the storage fills up, the run stops with
+   "Storage full: the analysis stopped. What is done is kept. Free some space, then press
+   Continue." (the same for finding the track IDs and saving the frames, each with its own
+   next step). If the detection model cannot be loaded, the message says "The detector model
+   could not be loaded. The file may be damaged. …" (delete it on *Download & import models*,
+   then download or import it again) and no clip is marked as unreadable.
 3. **Find track IDs** (same screen, starts by itself when the analysis finishes): links the
    boxes into tracks with the videos' own tracker settings, the **Track IDs** card (round
    308: kept apart from the camera's, so trying values on videos never changes live
@@ -87,15 +119,22 @@ Terms used below:
    under the player on the summary's Video tab (*Show in video* jumps there) and are what
    *Identify organisms* reads. Saving reads each clip once; it can be stopped and
    continued with *Save the remaining frames*. Leaving the screen while it saves stops it,
-   so the app asks first (round 256): only saved frames can be identified, and *Identify
+   so the app asks first (round 256; *Stop and leave* or *Cancel*, as when leaving while the
+   detector runs): only saved frames can be identified, and *Identify
    organisms* says how many track IDs still have no saved frame, with a button back to
-   this screen. Finding the track IDs again numbers them
-   anew, so identification results made before say to run identification again.
+   this screen. When the track IDs are found, the bar at the bottom says, for example,
+   "Found 8 track IDs in 4 of 8 clips." and the *Track IDs* part "8 track IDs in 4 of 8
+   clips (occlusion tolerance …)": 4 is the number of clips in which at least one track ID
+   has a box, so the other 4 are the clips *Delete 4 clips without any track ID* (below)
+   removes. With no track ID it reads "0 track IDs in 8 clips (…)". Finding the track IDs again numbers them
+   anew, so identification results made before say "Track IDs were found again after these
+   results were made." and need *Continue / re-run* on *Identify organisms*.
    On the summary's Video tab the time bar under the video, which is also its slider, is
    cyan where the clip has at least one track ID and grey where it has none, with small
    white marks at the kept frames; the line under it gives the share of the clip with track
    IDs (round 307), so a fast drag finds the insects quickly.
-   *Free storage* (round 236) below it deletes the clips without any track ID, or all clips
+   *Free storage* (round 236) below it deletes the clips without any track ID (a clip where
+   a track ID only ends, with no box of it in the clip, counts as without), or all clips
    once the frames are saved; the boxes, track IDs and kept frames stay, so Find track IDs can
    still run again (DATA_GUIDE §9). Copy the clips to a computer first if you may want to
    analyse them again.

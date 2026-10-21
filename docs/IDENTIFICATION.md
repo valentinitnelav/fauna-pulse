@@ -55,7 +55,12 @@ In the app: home screen Menu → **Download & import models** → *Import model 
 *Download & import models…* on the Identify screen), or *Download from a link…*. Since round 275 one
 import takes every kind of file: the app reads what each `.tflite` file is (an identification model
 gives one row of numbers per picture, a detection model a table of boxes) and puts it in its place,
-and it asks before replacing a file of the same name.
+and it asks before replacing a file of the same name. The progress shows under the button
+("Copying {name} into the app…", a bar and for example "0.3 GB of 1.1 GB"), and the result
+stays there as a line with a green tick ("Imported {name}: an identification model, listed
+under Identification models."). If the storage fills up during the copy, the import stops
+at once ("Not enough free storage: the import stopped. …") and the half-copied file is
+deleted.
 The files are copied into private app storage (Android/data is not used), so the copies in
 Downloads can be deleted afterwards.
 
@@ -81,14 +86,57 @@ detection sessions already have their track IDs: use the steps below.
 1. Open a session's ⋮ menu (Sessions screen) or its summary → Photos tab → **Identify organisms**.
 2. Pick the model and the name list. The screen shows how many crops will be processed
    (one per photo per tracked insect, capped per track ID) and, after the first run on this
-   phone, a time estimate.
+   phone, a time estimate, for example "120 crops from 8 track IDs (about 5 min on this
+   phone, plus any heat pauses)": the estimate leaves heat pauses out.
 3. Plug the phone in and tap **Start**. Progress shows crops done, elapsed time, the
-   estimated remainder and the battery temperature. The run pauses by itself above the
-   temperature limit (default 43 °C, the same as for Find animals in videos) and resumes 3 °C lower. **Cancel (keeps what is done)**
+   estimated remainder (heat pauses left out: it stays the same while the run is paused)
+   and the battery temperature. The run pauses by itself above the
+   temperature limit (default 43 °C, the same as for Find animals in videos) and resumes 3 °C lower
+   (the line under the temperature scale ends "To change the limit, open Advanced settings
+   after the run."). **Cancel (keeps what is done)**
    keeps everything done so far; **Continue / re-run** (shown in place of *Start* once crops
-   are stored) resumes where it stopped (the files are append-only).
+   are stored) resumes where it stopped (the files are append-only). Leaving the screen
+   during a run (Back) first asks *Identification is still running*: **Stop and leave**
+   stops after the current photo and keeps what is done, **Cancel** stays. If the model
+   gave an error on some crops, a red line after the run says how many ("N of M crops could
+   not be identified (the model stopped with an error). They are missing from the
+   results."); *Continue / re-run* tries them again. Crops whose photo could not be read
+   (a damaged file) get their own red line: "N of M crops could not be identified because
+   their photos could not be read (the files may be damaged). They are missing from the
+   results." *Continue / re-run* does not help there, because the photo stays damaged.
+   If no crop at all could be identified because of model errors,
+   the line says so and advises deleting the model on the *Download & import models*
+   screen and downloading it again, should it fail a second time. The *Last run* line
+   counts in the singular when there is one ("1 crop", "1 heat pause").
+   **Keep FaunaPulse on the screen until the run ends.** Identification is the heaviest
+   step (BioCLIP 2 needs more than 1 GB of memory), so the screen says, above *Start*
+   and during the run: "Identification needs a lot of memory. Keep FaunaPulse on the
+   screen until it ends: if you switch to another app, Android may stop it." The run
+   does go on while another app is open or the screen is off (round 319), with a
+   notification "FaunaPulse is identifying animals", but Android may close the app to
+   free memory. Swiping FaunaPulse away from the recent apps ends the run (what is
+   done is kept). On Android 13 and newer, the first run after the app opens asks for
+   the notification permission if it is not granted yet; the run goes on whatever the
+   answer. When *Also identify them* starts it after *Find animals in videos* or
+   *in photos* with the app in the background, the app first checks the phone's free
+   memory, strictly on purpose (a wait costs one tap, a closed app loses the run). A
+   model that fits (for example insectDCT) loads and runs in the background; opening
+   FaunaPulse then shows the run's progress, or its results when it has ended. A model
+   that does not fit waits: often BioCLIP 2, on the CPU and also on the GPU, which needs
+   about 4.5 times the model file. The notification "Animals found" asks you to open
+   FaunaPulse, and the identification starts by itself when you do (from the
+   notification, the recent apps or the app icon). This also works after Android has
+   closed FaunaPulse while it waited (within 24 hours, once); if it was closed again
+   during that start, Home says so and you continue with *Identify organisms* from the
+   session's ⋮ menu on the Sessions screen (see [FIELD_GUIDE.md](FIELD_GUIDE.md), *When
+   the identification waits*). When the model runs on
+   the CPU, the progress line reads "Identifying crops on the CPU (GPU not used, see
+   below)…" and the reason is in a small amber line under the counts (see *GPU not used*
+   below).
 4. When finished, **View results** shows a table with one row per taxon (track IDs, total
    time, median confidence); tap a row for its track IDs and a track ID for its full ladder.
+   The header's *Name list* row shows the name list by its file name, as on *Identify
+   organisms* (for example "bioclip-2_pollinator-orders-europe_v1.fpack (35,264 names)").
    **Share results (CSV file)** hands the per-track-ID table to another app (the same file
    stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
    Photos tab then shows each track ID's identification under its photos.
@@ -518,12 +566,18 @@ keeps the column names so the same scripts read both outputs, with its own formu
 
 ## Troubleshooting
 
-- *"GPU not used: Failed to compile model"*: the model file was exported before round 242
-  (export it again, see above), or this phone's GPU cannot compile or hold it; the CPU path
-  is slower but gives the same answers. The int8 export is the CPU-friendly variant.
-- *"GPU not used: the GPU's results differed from the CPU's"*: this phone's GPU failed the
-  first-use check; the app uses the CPU for that model until the next Android update.
-- *"GPU not used: this phone has N GB of memory …"*: the model is too large to set up on
+- *"GPU not used: This phone's graphics processor (GPU) cannot run this model, so the main
+  processor (CPU) is used …"*: the model file was exported before round 242 (export it
+  again, see above), or this phone's GPU cannot compile or hold it; the CPU path is slower
+  but gives the same answers. The int8 export is the CPU-friendly variant. The exact reason
+  from the phone (for example "Failed to compile model") is in the log only.
+- *"GPU not used: On this phone the GPU gave different answers from the CPU on a test
+  picture …"*: this phone's GPU failed the first-use check; the app uses the CPU for that
+  model until the next Android update.
+- *"GPU not used: The GPU failed with this model several times before on this phone …"*:
+  the GPU set-up of this model crashed or failed repeatedly on this phone, so the app no
+  longer tries it; the CPU gives the same answers, only slower.
+- *"GPU not used: This phone has N GB of memory …"*: the model is too large to set up on
   this phone's GPU without Android closing the app (round 243); the CPU gives the same
   answers, only slower.
 - *The model load fails outright:* the phone has too little free RAM for the file (fp16

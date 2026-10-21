@@ -45,6 +45,10 @@ class IdentifyProgress {
   final double avgMs;
   final double? tempC;
   final String note;
+
+  /// Round 319, part 2: time spent on the crops since the first one, heat pauses left out (the
+  /// time left on the Identify screen; counted with the pause it grew while nothing ran).
+  final int activeMs;
   const IdentifyProgress({
     required this.stage,
     required this.done,
@@ -52,6 +56,7 @@ class IdentifyProgress {
     required this.avgMs,
     this.tempC,
     this.note = '',
+    this.activeMs = 0,
   });
 }
 
@@ -148,9 +153,16 @@ class IdentifyResult {
   final int embedded;
   final int skipped;
   final int failed;
+
+  /// Round 319, part 2: the part of [failed] whose photos could not be read (not a model error;
+  /// the store counts these as done, so a re-run does not try them again).
+  final int unreadable;
   final int resumedDone;
   final int thermalPauses;
   final Duration elapsed;
+
+  /// Round 319, part 3: the heat pauses' share of [elapsed].
+  final Duration pausedTime;
 
   /// Round 250: time spent inside the model calls alone (what "s per crop"
   /// reports); [elapsed] also covers reading the photos and scoring.
@@ -164,14 +176,20 @@ class IdentifyResult {
     required this.embedded,
     required this.skipped,
     required this.failed,
+    this.unreadable = 0,
     required this.resumedDone,
     required this.thermalPauses,
     required this.elapsed,
+    this.pausedTime = Duration.zero,
     this.modelTime = Duration.zero,
     required this.cancelled,
     this.summary,
     this.error,
   });
+
+  /// The whole run's time per identified crop (photos read, scoring), heat pauses left out as in
+  /// the time left (round 319, part 2): what the next run's estimate on the Identify page uses.
+  double get msPerCrop => (elapsed - pausedTime).inMilliseconds / embedded;
 }
 
 class IdentificationJob {
@@ -336,10 +354,13 @@ class IdentificationJob {
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
-    var embedded = 0, skipped = 0, failed = 0, pauses = 0;
+    var embedded = 0, skipped = 0, failed = 0, unreadable = 0, pauses = 0;
     var cancelled = false;
     String? error;
     final clock = Stopwatch()..start();
+    // Heat pauses so far, and the start of the one going on (left out of activeMs).
+    var paused = Duration.zero;
+    Duration? pauseFrom;
     var embedMs = 0.0;
     var embedCount = 0;
     var lastEmit = Duration.zero;
@@ -354,6 +375,7 @@ class IdentificationJob {
           avgMs: embedCount == 0 ? 0 : embedMs / embedCount,
           tempC: tempC,
           note: note,
+          activeMs: ((pauseFrom ?? clock.elapsed) - paused).inMilliseconds,
         ),
       );
       lastEmit = clock.elapsed;
@@ -380,9 +402,16 @@ class IdentificationJob {
           limitC: settings.thermalLimitC,
           poll: pausePoll,
           isCancelled: isCancelled,
-          onPaused: (t, note) => emit('paused', tempC: t, note: note),
+          onPaused: (t, note) {
+            pauseFrom ??= clock.elapsed;
+            emit('paused', tempC: t, note: note);
+          },
           errorTag: 'identify_thermal',
         );
+        if (pauseFrom != null) {
+          paused += clock.elapsed - pauseFrom!;
+          pauseFrom = null;
+        }
         final temp = warm.tempC;
         if (warm.paused) {
           pauses++;
@@ -412,6 +441,7 @@ class IdentificationJob {
           for (final t in group) {
             writeRecord('crop_skipped', {'key': t.key, 'src': t.source, 'track_id': t.trackId, 'reason': 'read_or_decode'});
             failed++;
+            unreadable++;
           }
           continue;
         }
@@ -487,9 +517,11 @@ class IdentificationJob {
         'embedded': embedded,
         'skipped': skipped,
         'failed': failed,
+        'unreadable': unreadable,
         'thermal_pauses': pauses,
         'cancelled': cancelled,
         'elapsed_ms': clock.elapsedMilliseconds,
+        'paused_ms': paused.inMilliseconds,
         'avg_embed_ms': embedCount == 0 ? null : embedMs / embedCount,
         'error': ?error,
       });
@@ -522,9 +554,11 @@ class IdentificationJob {
       embedded: embedded,
       skipped: skipped,
       failed: failed,
+      unreadable: unreadable,
       resumedDone: done.length,
       thermalPauses: pauses,
       elapsed: DateTime.now().difference(started),
+      pausedTime: paused,
       modelTime: Duration(microseconds: (embedMs * 1000).round()),
       cancelled: cancelled,
       summary: summary,

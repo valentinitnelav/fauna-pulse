@@ -828,8 +828,10 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         embedderExecutor.execute {
           val t0 = System.nanoTime()
           val outcome = runCatching {
-            runCatching { embedder?.close() }
+            val previous = embedder
+            runCatching { previous?.close() }
             embedder = null
+            if (previous != null) NativeMemory.giveBack("embedderLoad (previous model closed)")
             val e = Embedder(applicationContext, resolveModelPath(modelPath), useGpu, cpuThreads, normalize)
             embedder = e
             mapOf(
@@ -891,7 +893,36 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         embedderExecutor.execute {
           runCatching { embedder?.close() }
           embedder = null
+          // Round 319, part 2: the allocator kept the closed model's 1.25 GB (see NativeMemory).
+          NativeMemory.giveBack("embedderClose")
           reply.post { result.success(null) }
+        }
+      }
+
+      // Round 319, part 2: what loading an identification model would need against the memory
+      // Android has free now (Embedder.memoryCheck); the Dart side decides before a load in the
+      // background. On the embedder thread, after any close queued before it, and after giving
+      // freed memory back, so the numbers count what the earlier jobs released.
+      "embedderMemory" -> {
+        val args = call.arguments as? Map<*, *>
+        val modelPath = args?.get("modelPath") as? String
+        val useGpu = args?.get("useGpu") as? Boolean ?: true
+        if (modelPath == null) {
+          result.error("bad_args", "embedderMemory needs modelPath", null)
+          return
+        }
+        val reply = android.os.Handler(android.os.Looper.getMainLooper())
+        embedderExecutor.execute {
+          val outcome = runCatching {
+            NativeMemory.giveBack("embedderMemory")
+            Embedder.memoryCheck(applicationContext, resolveModelPath(modelPath), useGpu)
+          }
+          reply.post {
+            outcome.fold(
+              onSuccess = { result.success(it) },
+              onFailure = { e -> result.error("embedder_memory_error", e.message ?: e.javaClass.simpleName, null) },
+            )
+          }
         }
       }
 
@@ -907,6 +938,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       else -> result.notImplemented()
     }
   }
+
+  /** FaunaPulse (round 319): the detector failed, not the clip (sent as "model_error"). */
+  private class VideoModelException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
   private fun handleVideo(call: MethodCall, result: MethodChannel.Result) {
     val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
@@ -924,9 +958,20 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             val instanceId = args["instanceId"] as? String ?: "default"
             val conf = num("confidence")?.toFloat()
             val iou = num("iou")?.toFloat()
+            // FaunaPulse (round 319): loadModel only creates the instance; the model is compiled at
+            // its first use. Done here, a model that cannot be loaded (a damaged file: "Failed to
+            // compile model") is reported as a model error, so Dart stops the run instead of
+            // counting every clip as unreadable.
+            val yolo = YOLOInstanceManager.shared.getInstance(instanceId)
+              ?: throw VideoModelException("No detection model loaded.")
+            try {
+              yolo.predictorInstance()
+            } catch (e: Throwable) {
+              throw VideoModelException(e.message ?: e.javaClass.simpleName, e)
+            }
             videoPredict = { bmp ->
               val r = YOLOInstanceManager.shared.predict(instanceId, bmp, conf, iou, generateAnnotatedImage = false)
-                ?: throw IllegalStateException("Detection failed (model not loaded, or an inference error; see logcat).")
+                ?: throw VideoModelException("Detection failed (model not loaded, or an inference error; see logcat).")
               Pair(r.boxes.map { b -> floatArrayOf(b.xywh.left, b.xywh.top, b.xywh.right, b.xywh.bottom, b.conf, b.index.toFloat()) }, r.names)
             }
             videoSource = VideoFrameSource.open(
@@ -974,7 +1019,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           onSuccess = { result.success(it) },
           onFailure = { e ->
             Log.e(TAG, "${call.method} failed", e)
-            result.error("video_error", e.message ?: e.javaClass.simpleName, null)
+            result.error(if (e is VideoModelException) "model_error" else "video_error", e.message ?: e.javaClass.simpleName, null)
           },
         )
       }

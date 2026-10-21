@@ -172,6 +172,16 @@ class VideoRunResult {
   final int thermalPauses;
   final Duration elapsed;
   final bool cancelled;
+
+  /// Round 319: the detector model could not be loaded or run (a damaged
+  /// file); the run stopped there, and no clip counts as failed for it.
+  final bool modelFailed;
+
+  /// Round 319: the write that failed (storage full, see
+  /// [isStorageFullError]); the run stopped there, and what was written
+  /// before is kept for Continue.
+  final Object? writeError;
+
   const VideoRunResult({
     required this.framesAnalysed,
     required this.clipsDone,
@@ -179,7 +189,23 @@ class VideoRunResult {
     required this.thermalPauses,
     required this.elapsed,
     required this.cancelled,
+    this.modelFailed = false,
+    this.writeError,
   });
+}
+
+/// Round 319: the plugin's error code for a detector that cannot be loaded or
+/// run (`loadModel`, and `videoOpen` / `videoNext` in YOLOPlugin.kt), as
+/// opposed to a clip that cannot be read (`video_error`).
+const kModelErrorCode = 'model_error';
+
+/// Round 319: whether [e] says the storage is full (ENOSPC): from Dart's file
+/// classes, from the plugin (Android's own text), or from a background
+/// isolate (a RemoteError carries only the text).
+bool isStorageFullError(Object e) {
+  if (e is FileSystemException && e.osError?.errorCode == 28) return true;
+  final text = e is PlatformException ? '${e.message} ${e.details}' : '$e';
+  return text.contains('No space left') || text.contains('ENOSPC');
 }
 
 /// What an earlier (possibly killed) run left in the output file.
@@ -381,9 +407,28 @@ class VideoDetector {
     final pending = clips.where((f) => !resume.doneClips.contains(f.path.split('/').last)).toList();
     final logStarts = await clipStartsFromLog(sessionDir);
 
-    final sink = outFile.openWrite(mode: replace ? FileMode.write : FileMode.append);
+    // Round 319: plain synchronous writes. An IOSink reports a failed write
+    // (storage full) only at a later flush, and the next write after it threw
+    // "File closed" outside any try, which ended the run with a raw message; a
+    // synchronous write fails where it happens. The first failed write stops
+    // the run (VideoRunResult.writeError); nothing is written after it.
+    Object? writeError;
+    final RandomAccessFile out;
+    try {
+      out = outFile.openSync(mode: replace ? FileMode.write : FileMode.append);
+      if (!replace) _endOnWholeLine(out);
+    } catch (e) {
+      logSwallowed('video_detect_write', e);
+      return VideoRunResult(framesAnalysed: 0, clipsDone: 0, clipsFailed: 0, thermalPauses: 0, elapsed: now().difference(started), cancelled: false, writeError: e);
+    }
     void writeRecord(String type, Map<String, dynamic> rec, {int? atMs}) {
-      sink.writeln(jsonEncode({'type': type, 'time_ms': atMs ?? now().millisecondsSinceEpoch, ...rec}));
+      if (writeError != null) return;
+      try {
+        out.writeStringSync('${jsonEncode({'type': type, 'time_ms': atMs ?? now().millisecondsSinceEpoch, ...rec})}\n');
+      } catch (e) {
+        writeError = e;
+        logSwallowed('video_detect_write', e);
+      }
     }
 
     writeRecord('video_run_start', {
@@ -400,8 +445,11 @@ class VideoDetector {
     });
 
     var framesAnalysed = 0, clipsDone = 0, clipsFailed = 0, pauses = 0;
-    var cancelled = false;
-    final clock = Stopwatch()..start();
+    var cancelled = false, modelFailed = false;
+    // Round 319: the time the detector ran, for "ms per frame" and the time
+    // left; heat pauses and other waits are left out (the whole run time was
+    // used, so both kept growing during a pause).
+    var detectMs = 0;
 
     // Phone samples: the first at the first reading, then every [every].
     // The speed figures cover the time since the previous sample.
@@ -453,7 +501,7 @@ class VideoDetector {
       periodDecodeMs = periodConvertMs = periodInferMs = 0;
     }
 
-    for (var ci = 0; ci < pending.length && !cancelled; ci++) {
+    for (var ci = 0; ci < pending.length && !cancelled && !modelFailed && writeError == null; ci++) {
       final file = pending[ci];
       final clip = file.path.split('/').last;
       sampleClip = clip;
@@ -487,7 +535,7 @@ class VideoDetector {
         try {
           var done = false;
           double? tempC;
-          while (!done) {
+          while (!done && writeError == null) {
             if (isCancelled?.call() ?? false) {
               cancelled = true;
               break;
@@ -497,7 +545,7 @@ class VideoDetector {
               limitC: thermalLimitC,
               poll: every < pausePoll ? every : pausePoll,
               isCancelled: isCancelled,
-              onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, clock, t, note)),
+              onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, t, note)),
               onReading: (r, waiting) {
                 if (waiting && pauseStart == null) {
                   pauseStart = now();
@@ -530,6 +578,7 @@ class VideoDetector {
               continue; // re-check cancel before the next chunk
             }
             if (warm.reading == null) sample(null);
+            final chunkStart = now();
             final chunk = await backend.next();
             lastChunk = chunk;
             names ??= chunk.names;
@@ -555,13 +604,14 @@ class VideoDetector {
             periodConvertMs += chunk.convertMs;
             periodInferMs += chunk.inferMs;
             done = chunk.done;
-            await sink.flush();
-            onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, clock, tempC, ''));
+            final took = now().difference(chunkStart).inMilliseconds;
+            if (took > 0) detectMs += took; // never below 0 when the phone's clock is set back
+            onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, tempC, ''));
           }
         } finally {
           await backend.close();
         }
-        if (!cancelled) {
+        if (!cancelled && writeError == null) {
           writeRecord('video_clip_done', {
             'clip': clip,
             'frames_analysed': clipFrames,
@@ -578,6 +628,14 @@ class VideoDetector {
           clipsDone++;
         }
       } catch (e) {
+        // Round 319: a model that cannot be loaded (a damaged file) fails every
+        // clip the same way: stop, and do not count the clips as unreadable.
+        if (e is PlatformException && e.code == kModelErrorCode) {
+          logSwallowed('video_detect_model', e);
+          writeRecord('video_model_error', {'clip': clip, 'error': e.message ?? e.code});
+          modelFailed = true;
+          continue;
+        }
         logSwallowed('video_detect_clip', e);
         writeRecord('video_clip_error', {
           'clip': clip,
@@ -587,7 +645,6 @@ class VideoDetector {
         });
         clipsFailed++;
       }
-      await sink.flush();
     }
 
     // A last sample, so a run shorter than the interval still has one.
@@ -607,11 +664,14 @@ class VideoDetector {
       'frames_analysed': framesAnalysed,
       'thermal_pauses': pauses,
       'elapsed_ms': now().difference(started).inMilliseconds,
-      'ended_normally': !cancelled,
-      if (cancelled) 'reason': 'cancelled',
+      'ended_normally': !cancelled && !modelFailed,
+      if (cancelled) 'reason': 'cancelled' else if (modelFailed) 'reason': 'model_error',
     });
-    await sink.flush();
-    await sink.close();
+    try {
+      out.closeSync();
+    } catch (e) {
+      logSwallowed('video_detect_write', e);
+    }
     return VideoRunResult(
       framesAnalysed: framesAnalysed,
       clipsDone: clipsDone,
@@ -619,7 +679,50 @@ class VideoDetector {
       thermalPauses: pauses,
       elapsed: now().difference(started),
       cancelled: cancelled,
+      modelFailed: modelFailed,
+      writeError: writeError,
     );
+  }
+
+  /// Round 319: makes [out] end on a whole line before records are added. A
+  /// last line cut off by full storage (or a kill during a write) is cut away,
+  /// so the next record does not start inside it; a whole last record that
+  /// only lacks its line end gets one. Leaves the position at the end.
+  static void _endOnWholeLine(RandomAccessFile out) {
+    final length = out.lengthSync();
+    if (length > 0) {
+      out.setPositionSync(length - 1);
+      if (out.readByteSync() != 0x0A) {
+        // The start of the last line: after the last line end before it.
+        const block = 64 * 1024;
+        var lineStart = 0;
+        for (var to = length; to > 0; to -= block) {
+          final from = to > block ? to - block : 0;
+          out.setPositionSync(from);
+          final i = out.readSync(to - from).lastIndexOf(0x0A);
+          if (i >= 0) {
+            lineStart = from + i + 1;
+            break;
+          }
+        }
+        out.setPositionSync(lineStart);
+        var whole = false;
+        try {
+          // Records are a few kB; a longer cut line is damage either way.
+          if (length - lineStart <= 1 << 20) {
+            jsonDecode(utf8.decode(out.readSync(length - lineStart)));
+            whole = true;
+          }
+        } catch (_) {}
+        if (whole) {
+          out.setPositionSync(length);
+          out.writeStringSync('\n');
+        } else {
+          out.truncateSync(lineStart);
+        }
+      }
+    }
+    out.setPositionSync(out.lengthSync());
   }
 
   /// Wall-clock start of [clip] and where it came from (see
@@ -643,7 +746,7 @@ class VideoDetector {
     int firstPts,
     VideoInfo info,
     int frames,
-    Stopwatch clock,
+    int detectMs,
     double? tempC,
     String note,
   ) => VideoProgress(
@@ -653,7 +756,7 @@ class VideoDetector {
     clipPosS: lastPts == null ? 0 : (lastPts - firstPts) / 1e6,
     clipLengthS: (info.durationMs ?? 0) / 1000,
     framesAnalysed: frames,
-    msPerFrame: frames == 0 ? 0 : clock.elapsedMilliseconds / frames,
+    msPerFrame: frames == 0 ? 0 : detectMs / frames,
     tempC: tempC,
     note: note,
   );

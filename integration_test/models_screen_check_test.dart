@@ -98,8 +98,11 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(useMaterial3: true),
         home: ModelsScreen(
-          importFiles: ({required replace, onFileLoading}) async =>
-              report = await ModelImport.importFiles([(first.name, copy.path)], replace: replace),
+          importFiles: ({required replace, onFileLoading, onProgress}) async => report = await ModelImport.importFiles(
+            [(first.name, copy.path)],
+            replace: replace,
+            onProgress: onProgress,
+          ),
         ),
       ),
     );

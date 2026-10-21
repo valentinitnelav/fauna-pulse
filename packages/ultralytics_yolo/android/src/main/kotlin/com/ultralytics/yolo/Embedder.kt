@@ -71,6 +71,42 @@ class Embedder(
             return "this phone has %.1f GB of memory; setting this model up on the GPU needs about %.1f GB, so it runs on the CPU"
                 .format(info.totalMem / 1e9, need / 1e9)
         }
+
+        /** Memory the CPU copy of a model takes, as a multiple of the file's size (round 319, part
+         *  2): BioCLIP 2 (16-bit file, 0.61 GB) grew the native heap by 1.25 GB on the 3.6 GB Redmi
+         *  (2.05x: the CPU engine holds the weights as 32-bit numbers). A 32-bit file (1.22 GB)
+         *  took the same 1.25 GB, so for such files this over-estimates (the check is stricter). */
+        const val CPU_MEMORY_FACTOR = 2.15
+
+        /**
+         * Round 319, part 2: what loading [modelPath] would need and what Android has free now, for
+         * the Dart side to decide whether an identification may load while the app is in the
+         * background. The need is the GPU guard's estimate when the GPU would be tried, else the
+         * CPU's. `availMem` and `threshold` are ActivityManager.MemoryInfo's; `memAvailable` is the
+         * kernel's MemAvailable (bytes, -1 when unreadable), what the phone tests logged.
+         */
+        fun memoryCheck(context: Context, modelPath: String, useGpu: Boolean): Map<String, Any> {
+            val am = context.getSystemService(ActivityManager::class.java)
+            val info = ActivityManager.MemoryInfo().also { am?.getMemoryInfo(it) }
+            val fileBytes = File(modelPath).length()
+            val onGpu = useGpu && gpuMemoryNote(context, modelPath) == null
+            val need = (fileBytes * if (onGpu) GPU_MEMORY_FACTOR else CPU_MEMORY_FACTOR).toLong()
+            val memAvailable = runCatching {
+                File("/proc/meminfo").useLines { lines ->
+                    lines.first { it.startsWith("MemAvailable:") }.filter { it.isDigit() }.toLong() * 1024
+                }
+            }.getOrDefault(-1L)
+            return mapOf(
+                "fileBytes" to fileBytes,
+                "needBytes" to need,
+                "onGpu" to onGpu,
+                "availMem" to info.availMem,
+                "threshold" to info.threshold,
+                "totalMem" to info.totalMem,
+                "lowMemory" to info.lowMemory,
+                "memAvailable" to memAvailable,
+            )
+        }
     }
 
     private val memoryNote: String? = if (useGpu) gpuMemoryNote(context, modelPath) else null
@@ -101,15 +137,23 @@ class Embedder(
     private val input: FloatArray
 
     init {
-        val dims = rt.inputDims
-        require(dims.size >= 4) { "Embedder model input shape could not be read (${dims.toList()})" }
-        inputHeight = dims[1]
-        inputWidth = dims[2]
-        require(dims[3] == 3) { "Embedder expects an RGB model input, got ${dims.toList()}" }
-        dim = rt.outputElementCounts.firstOrNull() ?: 0
-        require(dim > 0) { "Embedder model produced no output" }
-        input = FloatArray(inputWidth * inputHeight * 3)
-        if (rt.accelerator == "GPU") checkGpu(context, modelPath, cpuThreads)
+        // Round 319, part 2: a model that fails a check below was loaded already; close it, or
+        // its memory (1.25 GB for BioCLIP 2 on the CPU) stays taken until the app ends (the
+        // plugin keeps no reference to an Embedder that failed to build).
+        try {
+            val dims = rt.inputDims
+            require(dims.size >= 4) { "Embedder model input shape could not be read (${dims.toList()})" }
+            inputHeight = dims[1]
+            inputWidth = dims[2]
+            require(dims[3] == 3) { "Embedder expects an RGB model input, got ${dims.toList()}" }
+            dim = rt.outputElementCounts.firstOrNull() ?: 0
+            require(dim > 0) { "Embedder model produced no output" }
+            input = FloatArray(inputWidth * inputHeight * 3)
+            if (rt.accelerator == "GPU") checkGpu(context, modelPath, cpuThreads)
+        } catch (t: Throwable) {
+            runCatching { rt.close() }
+            throw t
+        }
     }
 
     /** See the file comment. Runs on the loading thread; the first time per model and Android

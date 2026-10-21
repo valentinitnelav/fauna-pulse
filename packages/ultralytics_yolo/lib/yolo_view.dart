@@ -334,13 +334,20 @@ class _YOLOViewState extends State<YOLOView> {
         // An in-place switch failed (e.g. the requested model isn't published at the release tag yet, or the device
         // went offline mid-download) but the previously loaded model is still running natively. Keep the live camera
         // and report the failure out-of-band instead of tearing the view down into a full-screen error.
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            library: 'ultralytics_yolo',
-            context: ErrorDescription('switching model to $modelPath'),
-          ),
-        );
+        // FaunaPulse (round 319): a host that handles onModelError (FaunaPulse: the "Model failed to load"
+        // dialog) gets a log line only, like the initial-load failure; reportError made the app save a crash
+        // file for each damaged model chosen. Without a handler, or for a programming error, it is reported.
+        if (widget.onModelError != null && error is! Error) {
+          logInfo('YOLOView: Failed to switch model to $modelPath: $error');
+        } else {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              library: 'ultralytics_yolo',
+              context: ErrorDescription('switching model to $modelPath'),
+            ),
+          );
+        }
         widget.onModelError?.call(error, modelPath, task);
       } else {
         logInfo('YOLOView: Failed to load model $modelPath: $error');

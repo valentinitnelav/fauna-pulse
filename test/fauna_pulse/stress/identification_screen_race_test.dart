@@ -275,7 +275,8 @@ void main() {
         // The one-Start path stays on the screen (no results page) and names the failed crops
         // ("Last run" is at the end of the list, built only when scrolled to).
         expect(find.byType(IdentificationScreen), findsOneWidget);
-        final warning = find.textContaining('could not be identified');
+        // Round 319 (decision D5): the words for a run where every crop failed.
+        final warning = find.textContaining('No crop could be identified: the model stopped with an error each time.');
         await tester.scrollUntilVisible(warning, 300, scrollable: find.byType(Scrollable).first);
         expect(warning, findsOneWidget);
         await tester.pumpWidget(const SizedBox());

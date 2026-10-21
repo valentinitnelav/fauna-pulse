@@ -636,11 +636,11 @@ void main() {
     await _pumpUntil(tester, find.text('Kept frames saved: 3 of 3 (12 B).'));
     expect(tester.takeException(), isNull);
     // A 3-s visit, one frame a second from its first sighting.
-    expect(find.textContaining(RegExp(r'^Found 1 track ID in 1 clip\. Saved 3 frames in ')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Found 1 track ID in 1 of 1 clip\. Saved 3 frames in ')), findsOneWidget);
     expect(find.text('Kept frames saved: 3 of 3 (12 B).'), findsOneWidget); // 4-byte fake files
     expect(decoder.saved, hasLength(3));
     expect(Directory('${session.path}/roi_frames').listSync(), hasLength(3));
-    expect(find.text('1 track ID in 1 of 1 clips (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
+    expect(find.text('1 track ID in 1 of 1 clip (occlusion tolerance 3.0 s, minimum track 1.0 s).'), findsOneWidget);
     expect(File('${session.path}/track_ids.csv').existsSync(), isTrue);
     expect(File('${session.path}/mot/a.txt').existsSync(), isTrue);
     expect(find.text('Every analyzed clip has at least one track ID.', skipOffstage: false), findsOneWidget);
@@ -767,7 +767,7 @@ void main() {
     expect(find.byType(VideoReviewPlayer, skipOffstage: false), findsNothing);
     expect(find.text('Watch the results', skipOffstage: false), findsNothing);
     expect(player.calls.last, 'dispose');
-    await tester.scrollUntilVisible(find.textContaining('1 track ID in 2 of 2 clips'), -200, scrollable: list);
+    await tester.scrollUntilVisible(find.textContaining('1 track ID in 1 of 2 clips'), -200, scrollable: list);
     await tester.scrollUntilVisible(find.text('The videos were deleted'), -200, scrollable: list); // the start button
     expect(find.textContaining('they cannot be analyzed again; the track IDs can still be found again'), findsOneWidget);
     final records = [

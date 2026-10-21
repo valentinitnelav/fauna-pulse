@@ -46,9 +46,11 @@ List<Widget> temperatureGauge(double tempC, double limitC, {required bool paused
         Text('pauses at ${limitC.toStringAsFixed(0)} °C', style: helperTextStyle),
       ],
     ),
+    // Round 319: only what the title and the scale do not say already.
     Text(
-      'Battery temperature; the run pauses at ${limitC.toStringAsFixed(0)} °C and resumes below '
-      '${(limitC - 3).toStringAsFixed(0)} °C (limit $limitWhere).',
+      'After a heat pause, the run goes on by itself below ${(limitC - 3).toStringAsFixed(0)} °C. '
+      // Shown only while a run goes on, when the settings cannot be opened.
+      'To change the limit, open $limitWhere after the run.',
       style: helperTextStyle,
     ),
     if (paused)

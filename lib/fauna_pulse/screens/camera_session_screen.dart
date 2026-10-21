@@ -52,6 +52,7 @@ import '../session/session_recorder.dart';
 import '../session/time_lapse_camera_coordinator.dart';
 import '../tracking/tracker.dart';
 import '../widgets/calibrating_banner.dart';
+import '../widgets/closable_snack_bar.dart';
 import '../widgets/location_dialog.dart';
 import '../widgets/preview_transform.dart';
 import '../widgets/roi_mask.dart';
@@ -60,6 +61,8 @@ import '../widgets/roi_size_sheet.dart';
 import '../widgets/session_info_dialog.dart';
 import '../widgets/track_box_painter.dart';
 import '../widgets/dialog_title.dart';
+import '../widgets/not_enough_storage_dialog.dart';
+import '../widgets/record_button.dart';
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
 import 'settings_sheet.dart';
@@ -72,6 +75,41 @@ import 'session_summary_screen.dart';
 String blackoutHintText({required bool recording}) => recording
     ? 'Screen off to save power\nRecording continues (tap anywhere to wake)'
     : 'Screen off to save power\nNot recording (tap anywhere to wake)';
+
+/// The scheduled-sleep cover's status text. A window that has begun but not
+/// started recording (free storage below "Keep free storage", or a camera that
+/// gave no frames) is tried again on each schedule tick, at most 60 s apart,
+/// until the window ends: it is neither "next" nor the end of the run.
+@visibleForTesting
+String sleepStatusText({
+  required SchedulePlan plan,
+  required DateTime now,
+  required int sessionsDone,
+  String? storageSkipNote,
+  ScheduleSlot? storageSkipSlot,
+}) {
+  final skip = storageSkipNote == null ? '' : '$storageSkipNote\n';
+  final open = plan.activeSlotAt(now);
+  if (open != null) {
+    final end = plan.endOf(open);
+    final until = ScheduleWindow.hhmm(end.hour * 60 + end.minute);
+    return open == storageSkipSlot
+        ? '${skip}Free some storage: this window still starts if space is freed before $until.'
+        : '${skip}Recording starts soon (this window ends at $until).';
+  }
+  final next = plan.nextSlotAt(now);
+  if (next == null) return '${skip}Scheduled run finishing…';
+  final start = plan.startOf(next);
+  final startsToday =
+      start.year == now.year &&
+      start.month == now.month &&
+      start.day == now.day;
+  final when = ScheduleWindow.hhmm(start.hour * 60 + start.minute);
+  return '${skip}Scheduled sleep (day ${next.day + 1} of ${plan.days})\n'
+      'Next recording: ${startsToday ? '' : 'tomorrow '}$when\n'
+      '$sessionsDone session'
+      '${sessionsDone == 1 ? '' : 's'} recorded so far';
+}
 
 class CameraSessionScreen extends StatefulWidget {
   final SessionConfig initialConfig;
@@ -552,6 +590,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   bool _scheduleBusy = false;
   bool _scheduleSleeping = false;
   int _scheduleSessionsDone = 0;
+  // Round 319: the window not started for low free storage (told once per
+  // window), and the line the sleep status shows for it.
+  ScheduleSlot? _storageSkipSlot;
+  String? _storageSkipNote;
   // Tap-for-status while scheduled-sleeping: shows day/next-window info at
   // readable brightness for a few seconds, then re-dims (never wakes fully).
   bool _sleepStatusVisible = false;
@@ -1024,8 +1066,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   void dispose() {
     // After this frame: the bar belongs to the app's messenger, which must
     // not rebuild while this screen is being taken down.
-    final snack = _unappliedSnack;
-    if (snack != null) WidgetsBinding.instance.addPostFrameCallback((_) => snack.close());
+    // close() looks again after the frame: the bar may have gone by then.
+    if (_unappliedSnack.isShowing) WidgetsBinding.instance.addPostFrameCallback((_) => _unappliedSnack.close());
     _stopScreenIdle();
     _sessionTimer?.cancel();
     _scheduleTimer?.cancel();
@@ -1635,8 +1677,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   /// [_recorder.stopping] alone comes too late: before it, the stop awaits the
   /// video clips closing (up to 5 s on a hot phone), and a second Stop tap (or
   /// the session timer) there ran a second stop, which closed the log before
-  /// the first stop wrote its clip-end record.
-  bool _stopInProgress = false;
+  /// the first stop wrote its clip-end record. Round 319: a notifier, so the
+  /// record button shows "Stopping…" meanwhile (never disposed: a stop run
+  /// unawaited from dispose() still clears it after the screen is gone).
+  final ValueNotifier<bool> _stopInProgressVN = ValueNotifier(false);
+  bool get _stopInProgress => _stopInProgressVN.value;
 
   /// True for the whole of [_stopAndShowSummary] (stop, camera pause, summary
   /// review, resume). Blocks a second summary on top of the first, and a tap
@@ -1698,6 +1743,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // phone for the field) replaces the battery nudge and the schedule
       // confirmation; switched off, the older pop-ups below remain.
       if (!await _showBeforeRecord() || !mounted) return;
+      if (!await _enoughStorageToStart() || !mounted) return;
       if (_config.scheduleEnabled) {
         if (!_config.isScheduleValid) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1719,16 +1765,33 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       // Scheduled mode: the record button launches the whole windows×days run
       // (after a confirm dialog spelling out what will happen) instead of a
       // single manual session.
+      if (!await _enoughStorageToStart()) return;
       await _confirmStartSchedule();
     } else {
       // One-time nudge to exempt the app from battery optimization, so a long
       // unattended session isn't killed by the OS / an OEM battery manager.
+      if (!await _enoughStorageToStart()) return;
       await _ensureUnrestricted();
       if (!mounted) return;
       // Recording starts in a single tap; the focus state (manual/auto/fixed) is
       // whatever the user set via the focus button, and is logged for the record.
       await _startRecording(focusMode: _focusModeForLog());
     }
+  }
+
+  /// Round 319 (stress finding n53): with free storage already below "Keep free
+  /// storage", a started recording was stopped by the guard a few seconds
+  /// later. A start by the user is blocked with a window that says why; read
+  /// again here, as the sampled value can be one sample interval old. Unknown
+  /// readings never block.
+  Future<bool> _enoughStorageToStart() async {
+    final storage = await DeviceStorage.read();
+    if (!mounted) return false;
+    _storageVN.value = storage;
+    final free = storage.freeBytes;
+    if (!storageBelowReserve(free, _config.storageReserveMb)) return true;
+    await showNotEnoughStorageDialog(context, freeBytes: free!, reserveMb: _config.storageReserveMb);
+    return false;
   }
 
   /// Round 298: the "Before you record" sheet; "Change" opens the field notes
@@ -1747,6 +1810,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           fieldSummary: _fieldNotes.summary,
           plan: planSentence(_config),
           scheduled: _config.scheduleEnabled,
+          storageReserveMb: _config.storageReserveMb,
         ),
       );
       if (!mounted) return false;
@@ -2351,14 +2415,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // A second call while the first still waits for the clips does nothing
     // (see [_stopInProgress]); dispose's stop then relies on the first one.
     if (_recorder.stopping || _stopInProgress) return;
-    _stopInProgress = true;
+    _stopInProgressVN.value = true;
     try {
       await _stopRecordingUnguarded(
         normal: normal,
         retainKeepAlive: retainKeepAlive,
       );
     } finally {
-      _stopInProgress = false;
+      _stopInProgressVN.value = false;
     }
   }
 
@@ -2505,6 +2569,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     setState(() {
       _schedule = plan;
       _scheduleSessionsDone = 0;
+      _storageSkipSlot = null;
+      _storageSkipNote = null;
     });
     _pushCameraHold();
     // Protect the WHOLE run up front (not just each window): the foreground
@@ -2611,6 +2677,17 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Future<void> _wakeForWindow(ScheduleSlot slot) async {
     _scheduleBusy = true;
     try {
+      // Round 319: no window starts with free storage already below "Keep
+      // free storage" (the guard would stop it at once and end the run). No
+      // pop-up, as the user is away. The camera stays parked and the next tick
+      // (at most 60 s) checks again, so space freed meanwhile still counts.
+      final storage = await DeviceStorage.read();
+      if (!mounted || _schedule == null) return;
+      final free = storage.freeBytes;
+      if (storageBelowReserve(free, _config.storageReserveMb)) {
+        _skipWindowForStorage(slot, free!);
+        return;
+      }
       if (_paused) {
         await _controller.resume();
         _paused = false;
@@ -2639,6 +2716,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         _scheduleSleeping = false;
         _sleepStatusVisible = false;
       });
+      _storageSkipSlot = null;
+      _storageSkipNote = null;
       await _startRecording(focusMode: _focusModeForLog(), scheduleSlot: slot);
       // The cover never came down: put the display + preview back into the
       // measured power-save state now that the camera is running again. (If
@@ -2648,6 +2727,35 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     } finally {
       _scheduleBusy = false;
     }
+  }
+
+  /// Logs a window skipped for low free storage and shows why, once per
+  /// window: a snack bar like the guard's, and a line in the sleep status
+  /// (kept until a window starts).
+  void _skipWindowForStorage(ScheduleSlot slot, int freeBytes) {
+    if (slot == _storageSkipSlot) return;
+    _storageSkipSlot = slot;
+    final reserve = _config.storageReserveMb;
+    debugPrint(
+      'FaunaPulse schedule: window d${slot.day + 1}w${slot.windowIndex + 1} not started: '
+      '$freeBytes bytes free, below the $reserve MB reserve (storage_low)',
+    );
+    setState(
+      () => _storageSkipNote =
+          'Window not started: ${formatMegabytes(freeBytes)} free, less than $reserve MB '
+          '(Settings, Keep free storage).',
+    );
+    // Under the dark cover: show the status (with this line) for a few seconds.
+    if (_scheduleSleeping) _showSleepStatus();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text(
+          'Scheduled window not started: less than $reserve MB of storage is free (Settings, Keep free storage). '
+          'It still starts if space is freed before the window ends.',
+        ),
+      ),
+    );
   }
 
   /// Polls [_lastStreamEventMs] (fed by every native stream event, including
@@ -2822,19 +2930,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   String _sleepStatusText() {
     final plan = _schedule;
     if (plan == null) return '';
-    final now = DateTime.now();
-    final next = plan.nextSlotAt(now);
-    if (next == null) return 'Scheduled run finishing…';
-    final start = plan.startOf(next);
-    final startsToday =
-        start.year == now.year &&
-        start.month == now.month &&
-        start.day == now.day;
-    final when = ScheduleWindow.hhmm(start.hour * 60 + start.minute);
-    return 'Scheduled sleep (day ${next.day + 1} of ${plan.days})\n'
-        'Next recording: ${startsToday ? '' : 'tomorrow '}$when\n'
-        '$_scheduleSessionsDone session'
-        '${_scheduleSessionsDone == 1 ? '' : 's'} recorded so far';
+    return sleepStatusText(
+      plan: plan,
+      now: DateTime.now(),
+      sessionsDone: _scheduleSessionsDone,
+      storageSkipNote: _storageSkipNote,
+      storageSkipSlot: _storageSkipSlot,
+    );
   }
 
   // --- Settings -----------------------------------------------------------
@@ -2941,7 +3043,6 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     if (_modelErrorDialogOpen) return;
     _modelErrorDialogOpen = true;
     final failedName = failedPath.split('/').last;
-    final hint = modelLoadHint(failedPath, reason);
     final after = recovery.revertToPath.isEmpty
         ? 'The camera runs without a detection model now. Choose another one in '
               'Settings (Detection tab).'
@@ -2951,11 +3052,12 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           title: DialogTitle(const Text('Model failed to load'), onClose: () => Navigator.of(ctx).pop()),
+          // Round 319: no raw error text (LiteRtException ...); it is in the
+          // error log (model_load_error).
           content: Text(
             '$failedName could not be loaded.\n\n'
-            '$reason\n'
-            '${hint.isEmpty ? '' : '\n$hint\n'}'
-            '\n$after',
+            '${modelLoadAdvice(failedPath, reason)}\n\n'
+            '$after',
           ),
           actions: [
             TextButton(
@@ -3116,10 +3218,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (changed != null &&
           mounted &&
           jsonEncode(changed.toJson()) != jsonEncode(_config.normalizedFpsCaps().copyWith(folderName: _config.folderName).toJson())) {
-        _unappliedSnack = ScaffoldMessenger.of(context).showSnackBar(
+        _unappliedSnack.show(
+          ScaffoldMessenger.of(context),
           SnackBar(
             content: const Text('Settings closed without Apply: your changes are not used.'),
             duration: const Duration(seconds: 8),
+            // A bar with a button stays until tapped unless told otherwise.
+            persist: false,
             action: SnackBarAction(label: 'Apply', onPressed: () => unawaited(_applyLate(changed, before))),
           ),
         );
@@ -3131,17 +3236,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 
   /// The "Settings closed without Apply" bar, closed when it no longer fits
   /// (Settings opened again, a recording started, the screen left).
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _unappliedSnack;
+  final _unappliedSnack = ClosableSnackBar();
 
-  void _closeUnappliedSnack() {
-    _unappliedSnack?.close();
-    _unappliedSnack = null;
-  }
+  void _closeUnappliedSnack() => _unappliedSnack.close();
 
   /// The bar's Apply: only while nothing records and nothing else changed the
   /// settings meanwhile (a lens switch, a model choice), else it says so.
   Future<void> _applyLate(SessionConfig changed, String before) async {
-    _unappliedSnack = null;
+    _unappliedSnack.forget();
     if (!mounted) return;
     if (_recording || _schedule != null || jsonEncode(_config.toJson()) != before) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4993,39 +5095,20 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   );
 
   Widget _recordButton() {
-    // Greyed out until calibration completes (recording is blocked before then).
-    final bool ready = _recording || !_calibrating;
-    // While a scheduled run is active (recording or sleeping) the button is a
-    // stop-square; when idle with scheduling enabled it carries a clock badge
-    // so the different tap behaviour (launches the whole run) is visible.
-    final bool runActive = _schedule != null;
-    final bool square = _recording || runActive;
-    return GestureDetector(
-      onTap: _toggleRecording,
-      child: Opacity(
-        opacity: ready ? 1.0 : 0.4,
-        child: Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 4),
-          ),
-          child: Center(
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.red,
-                shape: square ? BoxShape.rectangle : BoxShape.circle,
-                borderRadius: square ? BorderRadius.circular(8) : null,
-              ),
-              child: (!square && _config.scheduleEnabled)
-                  ? const Icon(Icons.schedule, color: Colors.white, size: 30)
-                  : null,
-            ),
-          ),
-        ),
+    // Round 319: "Stopping…" while the stop closes the clips and files.
+    return ValueListenableBuilder<bool>(
+      valueListenable: _stopInProgressVN,
+      builder: (_, stopping, _) => RecordButton(
+        // Greyed out until calibration completes (recording is blocked before then).
+        ready: _recording || !_calibrating,
+        // While a scheduled run is active (recording or sleeping) the button is a
+        // stop-square; when idle with scheduling enabled it carries a clock badge
+        // so the different tap behaviour (launches the whole run) is visible.
+        // It stays a square while stopping (the recorder ends "recording" first).
+        square: _recording || _schedule != null || stopping,
+        scheduleBadge: _config.scheduleEnabled,
+        stopping: stopping,
+        onTap: _toggleRecording,
       ),
     );
   }

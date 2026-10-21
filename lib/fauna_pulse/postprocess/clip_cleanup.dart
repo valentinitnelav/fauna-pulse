@@ -49,23 +49,33 @@ class ClipCleanup {
   /// Clips followed by the current "Find visits" (its `clips`) in which no
   /// visit has a box, and whose file is still there.
   static Future<ClipCleanupPlan> planWithoutVisits(Directory sessionDir) async {
+    final (:tracked, :withVisits) = await _scan(sessionDir);
+    return _plan(sessionDir, modeWithoutVisits, (name) => tracked.contains(name) && !withVisits.contains(name));
+  }
+
+  /// The clips in which the current track IDs have a box (round 319, part 3: what the screen
+  /// counts for results written before post_track_end said so).
+  static Future<Set<String>> clipsWithTrackIds(Directory sessionDir) async => (await _scan(sessionDir)).withVisits;
+
+  /// The clips the current "Find visits" followed, and those in which a visit has a box.
+  static Future<({Set<String> tracked, Set<String> withVisits})> _scan(Directory sessionDir) async {
     final tracked = <String>{};
     final withVisits = <String>{};
     final file = File('${sessionDir.path}/${VideoTracker.outputFileName}');
     if (file.existsSync()) {
       await for (final line
           in file.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter())) {
-        // Visits leave `detections` and `track_event` records in every clip
-        // they are seen in, a visit running on into the next clip included.
+        // Visits leave `detections` records in every clip they are seen in, a
+        // visit running on into the next clip included. Round 319: not their
+        // `track_event` records: a visit that ends (is lost, runs out of time) in
+        // the next clip without a box there was counted for that clip too.
         final start = line.startsWith('{"type":"post_track_start"');
-        if (!start && !line.startsWith('{"type":"detections"') && !line.startsWith('{"type":"track_event"')) {
-          continue;
-        }
+        if (!start && !line.startsWith('{"type":"detections"')) continue;
         try {
           final rec = jsonDecode(line) as Map;
           if (start) {
             tracked.addAll([for (final c in rec['clips'] as List? ?? const []) '$c']);
-          } else if (rec['clip'] is String) {
+          } else if (rec['clip'] is String && (rec['tracks'] as List?)?.isNotEmpty == true) {
             withVisits.add(rec['clip'] as String);
           }
         } catch (_) {
@@ -73,7 +83,7 @@ class ClipCleanup {
         }
       }
     }
-    return _plan(sessionDir, modeWithoutVisits, (name) => tracked.contains(name) && !withVisits.contains(name));
+    return (tracked: tracked, withVisits: withVisits);
   }
 
   /// Every clip file of the session.

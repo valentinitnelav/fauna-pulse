@@ -156,6 +156,9 @@ void main() {
       final list = find.byType(Scrollable).first;
       final fold = find.text('Advanced settings');
       await tester.scrollUntilVisible(fold, 200, scrollable: list);
+      // scrollUntilVisible stops once the fold is built, which can be just below the screen's edge.
+      await tester.ensureVisible(fold);
+      await tester.pump();
       await tester.tap(fold);
       await tester.pumpAndSettle();
       final field = find.text('Crops per track ID (0 = all)');

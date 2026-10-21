@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
+import 'phone_state.dart';
 
 /// The largest file the app accepts: every detection model, identification
 /// model and name list (round 314: one limit for all). 2 GiB is a ceiling the
@@ -101,9 +102,15 @@ String sizeLimitMessage([int maxBytes = kMaxModelFileBytes]) =>
 /// gives each of them a sentence with what to do (callers log the original).
 /// Only a leading "Exception: " is cut: cutting the first one anywhere broke
 /// "SocketException: " into "Socket...". [importing]: the file came from the
-/// phone, not a download.
-String plainModelError(Object error, {bool importing = false}) {
-  if (error is SocketException || error is TlsException || error is TimeoutException) {
+/// phone, not a download. [phone]: the phone's state, read after a
+/// [isNetworkError] (round 319: airplane mode is named as the reason).
+String plainModelError(Object error, {bool importing = false, PhoneState? phone}) {
+  if (isNetworkError(error)) {
+    // With Wi-Fi turned on again inside airplane mode, airplane mode is not
+    // the reason (stress test PA3).
+    if (phone?.airplaneMode == true && phone?.wifiOn != true) {
+      return 'Could not reach the server: airplane mode is on. Turn off airplane mode or turn on Wi-Fi, then try again.';
+    }
     return 'Could not reach the server. Check that the phone is connected to the internet (Wi-Fi or '
         'mobile data), then try again.';
   }
@@ -117,6 +124,10 @@ String plainModelError(Object error, {bool importing = false}) {
   return importing ? 'The file could not be imported. Please try again.' : 'The download failed. Please try again.';
 }
 
+/// True when the server could not be reached (no network, a failed secure
+/// connection, or no answer in time).
+bool isNetworkError(Object error) => error is SocketException || error is TlsException || error is TimeoutException;
+
 /// A redirect may be relative, so resolve every hop against the previous URL.
 bool redirectChainStaysHttps(Uri original, List<RedirectInfo> redirects) {
   if (!original.isScheme('https')) return false;
@@ -128,16 +139,20 @@ bool redirectChainStaysHttps(Uri original, List<RedirectInfo> redirects) {
   return true;
 }
 
+/// The free storage a model file of [incomingBytes] needs: the file and a
+/// small margin (shared by the checks before and after a download).
+int modelStorageNeededBytes(int incomingBytes) => incomingBytes + _modelStorageReserveBytes;
+
 Future<void> ensureModelStorageAvailable(String path, int incomingBytes) async {
   final reading = await DeviceStorage.read(path: path);
   final free = reading.freeBytes;
-  final needed = incomingBytes + _modelStorageReserveBytes;
+  final needed = modelStorageNeededBytes(incomingBytes);
   if (free != null && free < needed) {
     // The needed amount includes the small reserve, so the two numbers
     // never read as "needs 48 MB, 50 MB free" (round 317).
     throw Exception(
-      'Not enough free storage on this phone: the file needs ${formatBytes(needed)}, and only '
-      '${formatBytes(free)} is free. Delete some files (for example old sessions), then try again.',
+      'Not enough free storage on this phone: the file needs ${formatBytes(needed)}, and '
+      '${freeStorageClause(free, unitOf: needed)}. Delete some files (for example old sessions), then try again.',
     );
   }
 }
@@ -178,13 +193,21 @@ Future<void> validateModelFile(
   }
 }
 
+/// True for a write that failed because the storage is full (errno 28,
+/// ENOSPC, on Android and Linux).
+bool isNoSpaceLeft(Object error) =>
+    error is FileSystemException &&
+    (error.osError?.errorCode == 28 || (error.osError?.message.contains('No space left') ?? false));
+
 /// Streams through a temporary file, so rejected or interrupted imports never
-/// replace an existing usable model with a partial file.
+/// replace an existing usable model with a partial file. [onProgress] gets
+/// the bytes copied so far and the file size after each written chunk.
 Future<File> copyAndValidateModel(
   File source,
   File target,
   String name, {
   int maxBytes = kMaxModelFileBytes,
+  void Function(int copiedBytes, int totalBytes)? onProgress,
 }) async {
   final sourceBytes = await source.length();
   if (sourceBytes <= 0) throw Exception('The selected model file is empty.');
@@ -195,23 +218,39 @@ Future<File> copyAndValidateModel(
   if (await part.exists()) await part.delete();
   try {
     var copied = 0;
-    final sink = part.openWrite();
+    // Round 319: each chunk is written and waited for, as in downloadToFile.
+    // With an IOSink (openWrite) a write error on a full storage stayed
+    // unseen and flush() waited for ever, so the import never ended.
+    final out = await part.open(mode: FileMode.write);
+    onProgress?.call(0, sourceBytes);
     try {
       await for (final chunk in source.openRead()) {
         copied += chunk.length;
         if (copied > maxBytes) throw Exception(sizeLimitMessage(maxBytes));
-        sink.add(chunk);
+        await out.writeFrom(chunk);
+        onProgress?.call(copied, sourceBytes);
       }
-      await sink.flush();
     } finally {
-      await sink.close();
+      await out.close();
     }
 
     await validateModelFile(part, name, maxBytes: maxBytes);
     if (await target.exists()) await target.delete();
     return await part.rename(target.path);
-  } catch (_) {
-    if (await part.exists()) await part.delete();
+  } catch (e) {
+    try {
+      if (await part.exists()) await part.delete();
+    } catch (e2) {
+      logSwallowed('model_import_cleanup', e2);
+    }
+    if (isNoSpaceLeft(e)) {
+      // No amount here: the file chooser's own copy of the file is deleted
+      // after the import, so the free storage read now is too low.
+      logSwallowed('model_import_no_space', e);
+      throw Exception(
+        'Not enough free storage: the import stopped. Delete some files (for example old sessions), then try again.',
+      );
+    }
     rethrow;
   }
 }

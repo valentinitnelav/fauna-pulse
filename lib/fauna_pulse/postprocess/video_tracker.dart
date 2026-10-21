@@ -57,6 +57,7 @@ import '../models/roi.dart' show boxInRoi;
 import '../models/session_config.dart';
 import '../models/track.dart';
 import '../tracking/tracker_replay.dart';
+import 'clip_cleanup.dart';
 import 'track_export.dart';
 import 'video_detector.dart';
 import 'video_run_samples.dart';
@@ -144,6 +145,10 @@ class KeptFrame {
 class VideoTrackResult {
   final int visits;
   final int clipsTracked;
+
+  /// Of [clipsTracked], those in which a track ID has a box (the rule of
+  /// ClipCleanup.planWithoutVisits).
+  final int clipsWithTrackIds;
   final int clipsLeftOut;
   final int frames;
 
@@ -153,6 +158,7 @@ class VideoTrackResult {
   const VideoTrackResult({
     required this.visits,
     required this.clipsTracked,
+    this.clipsWithTrackIds = 0,
     required this.clipsLeftOut,
     required this.frames,
     this.keptFrames = 0,
@@ -165,6 +171,9 @@ class VideoTrackResult {
 class PostTrackSummary {
   final int visits;
   final List<String> clips;
+
+  /// Of [clips], those in which a track ID has a box.
+  final int clipsWithTrackIds;
 
   /// `time_ms` of the detection run's first `video_run_start` record: a
   /// different value means the videos were analyzed again since.
@@ -192,6 +201,7 @@ class PostTrackSummary {
   const PostTrackSummary({
     required this.visits,
     required this.clips,
+    required this.clipsWithTrackIds,
     required this.detectionsRunMs,
     required this.occlusionSeconds,
     required this.minHitsSeconds,
@@ -405,6 +415,7 @@ class VideoTracker {
     final visits = <int, VideoVisit>{};
     final mot = <String, List<MotRow>>{};
     var frames = 0, detections = 0, idBase = 0;
+    final withTrackIds = <String>{};
     try {
       for (final stretch in stretches) {
         final all = [for (final c in stretch) ...c.frames];
@@ -447,6 +458,7 @@ class VideoTracker {
               kept[jpeg] = want.named(jpeg);
             }
             if (tracks.isNotEmpty) {
+              withTrackIds.add(clip.name);
               write('detections', frame.timestampMs, {
                 'frame_ms': frame.timestampMs,
                 'clip': clip.name,
@@ -529,6 +541,7 @@ class VideoTracker {
         'frames': frames,
         'detections': detections,
         'clips_tracked': tracked.length,
+        'clips_with_track_ids': withTrackIds.length,
         'kept_frames': kept.length,
         'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
       });
@@ -562,6 +575,7 @@ class VideoTracker {
     return VideoTrackResult(
       visits: visits.length,
       clipsTracked: tracked.length,
+      clipsWithTrackIds: withTrackIds.length,
       clipsLeftOut: clips.length - tracked.length,
       frames: frames,
       keptFrames: kept.length,
@@ -666,6 +680,9 @@ class VideoTracker {
       return PostTrackSummary(
         visits: ((last['track_ids'] ?? last['visits']) as num).toInt(), // "visits" before round 248
         clips: [for (final c in first['clips'] as List) '$c'],
+        // Results written before round 319 (part 3) do not say: counted from the boxes.
+        clipsWithTrackIds:
+            (last['clips_with_track_ids'] as num?)?.toInt() ?? (await ClipCleanup.clipsWithTrackIds(sessionDir)).length,
         detectionsRunMs: (first['detections_run_ms'] as num?)?.toInt(),
         occlusionSeconds: (first['occlusion_seconds'] as num).toDouble(),
         minHitsSeconds: (first['min_hits_seconds'] as num).toDouble(),

@@ -359,9 +359,12 @@ void main() {
     // Its list appears only once the screen has read the sessions (a spinner before).
     final screen = find.descendant(of: find.byType(VideoAnalysisScreen), matching: find.byType(Scrollable)).first;
     await waitFor(screen);
+    // Round 319: also while the list is scrolled away from it (the player stays alive, offstage)
+    // and a screen covers it: that needs skipOffstage on descendant() itself. The top Find screen.
     final screenPlayer = find.descendant(
-      of: find.byType(VideoAnalysisScreen, skipOffstage: false),
+      of: find.byType(VideoAnalysisScreen, skipOffstage: false).last,
       matching: find.byType(VideoPlayer, skipOffstage: false),
+      skipOffstage: false,
     );
     bool screenPlaying() => tester.widget<VideoPlayer>(screenPlayer).controller.value.isPlaying;
     // Scrolled until built, then fully on screen (not under the app bar), as scrollTo for the tab.
@@ -447,7 +450,7 @@ void main() {
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
       skipOffstage: true,
     ).first;
-    await tester.scrollUntilVisible(find.textContaining('Next to each bar'), 100, scrollable: graphs);
+    await tester.scrollUntilVisible(find.textContaining('The times next to a bar'), 100, scrollable: graphs);
     await tester.drag(graphs, const Offset(0, -150));
     await tester.pump(const Duration(milliseconds: 500));
     _log('SHOT graphs_lanes');

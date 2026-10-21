@@ -265,6 +265,7 @@ typedef ModelFilesImporter =
     Future<ModelImportReport> Function({
       required ReplaceQuestion replace,
       void Function(FilePickerStatus)? onFileLoading,
+      void Function(ModelImportProgress)? onProgress,
     });
 
 /// Deletes model files by path and returns the names it removed (any kind:
@@ -338,6 +339,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// Shown while an import copies files; buttons are disabled meanwhile.
   String? _busy;
 
+  /// How far the file being imported is (null: not known, a moving bar),
+  /// and "0.3 GB of 1.2 GB".
+  double? _busyFraction;
+  String? _busyDetail;
+
+  /// How the last import of one file ended, shown under the button until
+  /// the next import (round 319: a snack bar vanished before it was seen).
+  String? _importDone;
+
   /// Paths of the files selected to delete; null when not selecting.
   Set<String>? _selected;
 
@@ -367,7 +377,52 @@ class _ModelsScreenState extends State<ModelsScreen> {
   // The picker reports when it starts copying a picked file into the app's
   // cache (slow for a 1 GB model); our own checked copy follows.
   void _onPicking(FilePickerStatus status) {
-    if (mounted) setState(() => _busy = 'Copying into the app…');
+    if (!mounted) return;
+    setState(() => _busy = 'Copying into the app…');
+    _keepStatusInView();
+  }
+
+  final _statusKey = GlobalKey();
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls the line under "Import model files…" fully into view when it appears or says
+  /// something new (round 319, part 3), for example when the button was at the bottom edge.
+  void _keepStatusInView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _statusKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 200),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
+  // Our checked copy of each file (round 319: a 1.2 GB model takes about
+  // 30 s, and nothing moved on the screen). Redrawn once per percent.
+  void _onImportProgress(ModelImportProgress p) {
+    if (!mounted) return;
+    // Same verb as the picker's step before, which is the same action for the user.
+    final busy = p.count > 1
+        ? 'Copying ${p.name} into the app (file ${p.index + 1} of ${p.count})…'
+        : 'Copying ${p.name} into the app…';
+    final fraction = p.totalBytes > 0 ? p.copiedBytes / p.totalBytes : null;
+    int? percent(double? f) => f == null ? null : (f * 100).floor();
+    if (busy == _busy && fraction != null && percent(fraction) == percent(_busyFraction)) return;
+    if (busy != _busy) _keepStatusInView();
+    setState(() {
+      _busy = busy;
+      _busyFraction = fraction;
+      // One unit for both numbers, the one of the file size.
+      _busyDetail = '${formatBytes(p.copiedBytes, unitOf: p.totalBytes)} of ${formatBytes(p.totalBytes)}';
+    });
   }
 
   /// The answer given "for the other chosen files" during this import.
@@ -394,17 +449,81 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// before it is read).
   Future<void> _import() async {
     _sameAnswer = null;
-    final r = await widget.importFiles(replace: _askReplace, onFileLoading: _onPicking);
+    setState(() => _importDone = null);
+    final r = await widget.importFiles(
+      replace: _askReplace,
+      onFileLoading: _onPicking,
+      onProgress: _onImportProgress,
+    );
     if (!mounted) return;
-    setState(() => _busy = null);
+    setState(() {
+      _busy = null;
+      _busyFraction = null;
+      _busyDetail = null;
+    });
     if (r.isEmpty) return;
     if (r.imported.length == 1 && r.kept.isEmpty && r.rejected.isEmpty) {
       final (name, kind) = r.imported.single;
-      _snack('Imported $name: ${kind.withArticle}, ${_listedUnder(kind)}.');
+      setState(() => _importDone = 'Imported $name: ${kind.withArticle}, ${_listedUnder(kind)}.');
     } else {
       await _showImportReport(r);
     }
-    if (mounted) await _reload();
+    if (!mounted) return;
+    // The new files join the list above the button and would push the button and the line under
+    // it down, off the screen (round 319): while the end of the list is on the screen, they keep
+    // their place instead.
+    final position = _scroll.hasClients ? _scroll.position : null;
+    final fromEnd = position == null ? null : position.maxScrollExtent - position.pixels;
+    final toEnd = fromEnd != null && fromEnd <= position!.viewportDimension ? fromEnd : null;
+    await _reload();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (toEnd == null || !_scroll.hasClients) return;
+      final p = _scroll.position;
+      p.jumpTo((p.maxScrollExtent - toEnd).clamp(p.minScrollExtent, p.maxScrollExtent));
+      if (_importDone != null) _keepStatusInView();
+    });
+  }
+
+  /// Under "Import model files…" (round 319): what the import does now, or
+  /// how the last one ended. Before, the line was at the top of the screen,
+  /// out of view of the button.
+  Widget _importStatus() {
+    final busy = _busy;
+    if (busy == null) {
+      return Padding(
+        key: _statusKey,
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(Icons.check_circle, size: 16, color: Colors.lightGreen),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_importDone!, style: const TextStyle(fontSize: 13))),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      key: _statusKey,
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(busy, style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(value: _busyFraction),
+          if (_busyDetail != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_busyDetail!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showImportReport(ModelImportReport r) {
@@ -1131,6 +1250,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
           child: inv == null
               ? const Center(child: CircularProgressIndicator())
               : ListView(
+                  controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   children: [
                     const Text(
@@ -1143,21 +1263,6 @@ class _ModelsScreenState extends State<ModelsScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(inv.storage, style: helperTextStyle),
-                      ),
-                    if (_busy != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Row(
-                          children: [
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text(_busy!)),
-                          ],
-                        ),
                       ),
                     const SizedBox(height: 20),
                     ModelKindPanel(
@@ -1223,6 +1328,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                       icon: const Icon(Icons.file_upload, size: 18),
                       label: const Text('Import model files…'),
                     ),
+                    if (_busy != null || _importDone != null) _importStatus(),
                     const Padding(
                       padding: EdgeInsets.only(top: 4, bottom: 12),
                       child: Text(_selectAllHint, style: helperTextStyle),

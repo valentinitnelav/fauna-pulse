@@ -372,8 +372,9 @@ class SessionConfig {
   final int lowBatteryStopPercent;
 
   /// Round 296: the recording stops cleanly when free storage drops below this
-  /// many megabytes. 0 = never. Default 200 MB (room for the phone itself and
-  /// the last files). Range 0 to 5000.
+  /// many megabytes. Default 200 MB (room for the phone itself and the last
+  /// files). Range 50 to 5000: round 319 removed 0 ("never"), with which a full
+  /// storage left half-written files and even a broken settings file.
   final int storageReserveMb;
 
   /// When true (default), the app **automatically** adjusts the inference rate
@@ -1098,7 +1099,7 @@ class SessionConfig {
       maximumScreenOffAfterMin,
     ),
     lowBatteryStopPercent: ((j['lowBatteryStopPercent'] as num?)?.round() ?? 15).clamp(0, 50),
-    storageReserveMb: ((j['storageReserveMb'] as num?)?.round() ?? 200).clamp(0, 5000),
+    storageReserveMb: ((j['storageReserveMb'] as num?)?.round() ?? 200).clamp(50, 5000),
     autoThrottle: j['autoThrottle'] as bool? ?? true,
     minInferenceFps: (j['minInferenceFps'] as num?)?.toInt() ?? 3,
     throttleDutyTarget: _clampedNum(j, 'throttleDutyTarget', 0.5, 0.3, 0.8),

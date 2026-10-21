@@ -16,7 +16,7 @@ void main() {
           home: Scaffold(
             body: ListView(
               padding: const EdgeInsets.all(16),
-              children: temperatureGauge(temp, 43, paused: paused, limitWhere: 'under Advanced settings'),
+              children: temperatureGauge(temp, 43, paused: paused, limitWhere: 'Advanced settings'),
             ),
           ),
         ),

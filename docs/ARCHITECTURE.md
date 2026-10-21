@@ -78,7 +78,7 @@ sent per frame by default.** Consumed by `_onStreamingData`.
 |---|---|---|
 | `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution high-res photo and region-crop the ROI out of it. |
 | `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
-| `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive. |
+| `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive (`RecordingService`, from `services/recording_keepalive.dart`). Also `startAnalysis`/`stopAnalysis` (round 319): `AnalysisService`, a second foreground service (type `dataSync`, `mediaProcessing` on Android 15+) held by `services/analysis_keepalive.dart` (reference counted) while *Find animals in videos/photos* or Identify runs. The identification run itself lives in `identification/identification_run.dart` (`IdentificationRun`, one per session), so it can start and run while the app is in the background; the Identify screen only shows it. |
 | `faunapulse/diagnostics` | Dart → native | Capture logcat into the session folder. |
 
 The plugin also exposes ROI push, motion-gate config, lens/focus, and a fast

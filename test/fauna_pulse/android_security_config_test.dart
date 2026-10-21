@@ -20,11 +20,21 @@ void main() {
         contains('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'),
       ),
     );
+    // Round 319: dataSync (Android 10-14) and mediaProcessing (Android 15+) are
+    // used by AnalysisService now; they were removed before (LiteRT's AI Packs).
     expect(
       manifest,
-      contains('android.permission.FOREGROUND_SERVICE_DATA_SYNC'),
+      contains('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />'),
     );
-    expect(manifest, contains('tools:node="remove"'));
+    expect(
+      manifest,
+      contains('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />'),
+    );
+    expect(manifest, isNot(contains('tools:node="remove"')));
+    final analysis = RegExp(r'<service\s+android:name="com.ultralytics.yolo.AnalysisService"[^>]*>').stringMatch(manifest);
+    expect(analysis, isNotNull);
+    expect(analysis, contains('android:exported="false"'));
+    expect(analysis, contains('android:foregroundServiceType="dataSync|mediaProcessing"'));
   });
 
   test('backup includes settings only, not sessions/models/diagnostics', () {
@@ -81,6 +91,24 @@ void main() {
       );
       expect(service, contains('WAKELOCK_TIMEOUT_MS = 30L * 60L * 1000L'));
       expect(service, contains('WAKELOCK_RENEW_MS = 25L * 60L * 1000L'));
+    },
+  );
+
+  test(
+    'analysis service: same wake-lock fail-safe, no restart, stops at the Android 15 time limit',
+    () {
+      final service = read(
+        'android/app/src/main/kotlin/com/ultralytics/yolo/AnalysisService.kt',
+      );
+      expect(service, contains('return START_NOT_STICKY'));
+      expect(service, isNot(contains('START_STICKY\n')));
+      expect(service, contains('lock.acquire(WAKELOCK_TIMEOUT_MS)'));
+      expect(service, contains('postDelayed(renewWakeLock, WAKELOCK_RENEW_MS)'));
+      expect(service, contains('WAKELOCK_TIMEOUT_MS = 30L * 60L * 1000L'));
+      expect(service, contains('override fun onTimeout(startId: Int, fgsType: Int)'));
+      expect(service, contains('override fun onTaskRemoved'));
+      expect(service, contains('FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING'));
+      expect(service, contains('FOREGROUND_SERVICE_TYPE_DATA_SYNC'));
     },
   );
 }

@@ -46,7 +46,8 @@ void main() {
     expect(back.lowBatteryStopPercent, 20);
     expect(back.storageReserveMb, 500);
     expect(SessionConfig.fromJson({...j, 'lowBatteryStopPercent': 99, 'storageReserveMb': -5}).lowBatteryStopPercent, 50);
-    expect(SessionConfig.fromJson({...j, 'storageReserveMb': -5}).storageReserveMb, 0);
+    // Round 319: lowest 50 MB (0 = "never" is gone).
+    expect(SessionConfig.fromJson({...j, 'storageReserveMb': -5}).storageReserveMb, 50);
     expect(SessionConfig.fromJson(const {}).lowBatteryStopPercent, 15);
     expect(SessionConfig.fromJson(const {}).storageReserveMb, 200);
   });

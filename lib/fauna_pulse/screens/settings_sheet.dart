@@ -1781,14 +1781,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
       NumericSettingField(
         label: 'Keep free storage',
         value: _c.storageReserveMb.toDouble(),
-        min: 0,
+        min: 50,
         max: 5000,
         isInt: true,
         unitSuffix: 'MB',
         helperText:
             'The recording stops when the free storage drops below this, '
-            'with its files closed properly. 0 = never. Default 200 MB: '
-            'room for the phone itself and the last files.',
+            'with its files closed properly. Lowest 50 MB, so the phone and '
+            'the last files still have room. Default 200 MB.',
         onChanged: (v) => setState(() => _c = _c.copyWith(storageReserveMb: v.round())),
       ),
       // Locked out in the no-AI modes — there is no inference to throttle.

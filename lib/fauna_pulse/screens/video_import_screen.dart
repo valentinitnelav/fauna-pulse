@@ -21,12 +21,17 @@
 // the file name and the time stored in the video gave; a time set by hand
 // starts at second 0 (the time picker has no seconds); the undo button says
 // what it restores; the suggested session name follows a changed day.
+//
+// Round 319 (stress test): a failed pick (storage full) says so in plain
+// words and deletes the picker's half copies; the free-storage check runs
+// again when the app comes back to the front and before the copy starts.
 
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -69,19 +74,73 @@ Future<String?> pickAndImportVideos(BuildContext context) async {
     ),
   );
   List<PickedVideo> files = const [];
+  // Round 319: what a failed pick leaves is told apart from what was there.
+  Directory? cache;
+  var before = <String>{};
+  int? freeBefore;
+  try {
+    cache = await getTemporaryDirectory();
+    before = {for (final d in pickerVideoCopyFolders(cache)) d.path};
+    freeBefore = (await DeviceStorage.read(path: cache.path)).freeBytes;
+  } catch (e) {
+    logSwallowed('video_pick_cache', e);
+  }
   try {
     final picked = await ImagePicker().pickMultiVideo();
     files = [for (final x in picked) PickedVideo(x.path, x.name, await x.length())];
   } catch (e) {
     logSwallowed('video_pick', e);
+    final message = await failedPickMessage(e, cache: cache, before: before, freeBeforeBytes: freeBefore);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open the videos: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 10), showCloseIcon: true),
+      );
     }
   } finally {
     if (context.mounted) Navigator.of(context).pop(); // the dialog
   }
   if (files.isEmpty || !context.mounted) return null;
   return Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => VideoImportScreen(files: files)));
+}
+
+/// Free storage under which a failed pick is put down to full storage.
+const _kNearlyFullBytes = 64 * 1024 * 1024;
+
+/// After the pick failed with [error]: deletes the copies this pick left in
+/// [cache] (the folders not in [before]) and says what happened in plain
+/// words (round 319). The Android picker reports every failed copy the same way
+/// ("missing_valid_video_uri"), so full storage is told by the space left:
+/// almost none, or the half copies used up what was free before the pick.
+Future<String> failedPickMessage(
+  Object error, {
+  Directory? cache,
+  Set<String> before = const {},
+  int? freeBeforeBytes,
+}) async {
+  final fresh = cache == null ? const <Directory>[] : pickerVideoCopyFolders(cache).where((d) => !before.contains(d.path));
+  final freeAtFailure = (await DeviceStorage.read(path: cache?.path)).freeBytes;
+  final copied = deletePickerCopies(fresh.toList());
+  final full =
+      (freeAtFailure != null && freeAtFailure < _kNearlyFullBytes) ||
+      (freeBeforeBytes != null && copied > 0 && copied + _kNearlyFullBytes >= freeBeforeBytes);
+  if (full) return notEnoughStorageMessage(freeBytes: (await DeviceStorage.read(path: cache?.path)).freeBytes);
+  if (copied > 0 || (error is PlatformException && error.code == 'missing_valid_video_uri')) {
+    return 'One of the videos could not be copied into the app. Try again, or pick the videos one at a '
+        'time to find the one that fails.';
+  }
+  return 'The videos could not be opened. Try again.';
+}
+
+/// The message when the videos do not fit, with the sizes that are known.
+String notEnoughStorageMessage({int? neededBytes, int? freeBytes, String next = 'Free some space and try again.'}) {
+  // One unit for both, the one of the larger number (round 319).
+  final unit = max(neededBytes ?? 0, freeBytes ?? 0);
+  final sizes = [
+    if (neededBytes != null) '${formatBytes(neededBytes, unitOf: unit)} needed',
+    if (freeBytes != null) '${formatBytes(freeBytes, unitOf: unit)} free',
+  ];
+  return 'The videos could not be copied: not enough free storage'
+      '${sizes.isEmpty ? '' : ' (${sizes.join(', ')})'}. $next';
 }
 
 /// One file the picker returned: its path in the picker's cache, the name it
@@ -110,7 +169,7 @@ class VideoImportScreen extends StatefulWidget {
   State<VideoImportScreen> createState() => _VideoImportScreenState();
 }
 
-class _VideoImportScreenState extends State<VideoImportScreen> {
+class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindingObserver {
   bool _loading = true;
   List<ImportClip> _clips = const [];
 
@@ -135,14 +194,37 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
   String? _error;
   Directory? _result;
 
+  /// A failed import took picked copies with it: only a new pick can retry.
+  bool _mustRepick = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  /// Round 319: space freed in another app counts as soon as the user is back.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_loading && !_importing && _result == null) _refreshFree();
+  }
+
+  /// Free storage where sessions are saved (null in tests that give the
+  /// sessions folder).
+  Future<int?> _readFree(Directory sessionsDir) async =>
+      widget.sessionsDir != null ? null : (await DeviceStorage.read(path: sessionsDir.parent.path)).freeBytes;
+
+  Future<void> _refreshFree() async {
+    final dir = _sessionsDir;
+    if (dir == null) return;
+    final free = await _readFree(dir);
+    if (mounted) setState(() => _freeBytes = free);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _name.dispose();
     // The picker leaves a copy of every picked file in the app's cache,
     // which can be gigabytes of video; clear it however the screen is left.
@@ -207,10 +289,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
     }
     Directory? sessionsDir = widget.sessionsDir;
     sessionsDir ??= await sessionsRoot();
-    int? free;
-    if (widget.sessionsDir == null) {
-      free = (await DeviceStorage.read(path: sessionsDir.parent.path)).freeBytes;
-    }
+    final free = await _readFree(sessionsDir);
     if (!mounted) return;
     setState(() {
       _clips = clips;
@@ -228,6 +307,10 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
   int get _neededBytes => _clips.map((c) => c.sizeBytes).fold(0, max) + kImportSpareBytes;
 
   bool get _enoughSpace => _freeBytes == null || _freeBytes! >= _neededBytes;
+
+  /// [bytes] in the unit of the larger of the free and needed storage, so
+  /// the line about them has one unit (round 319).
+  String _sameUnit(int bytes) => formatBytes(bytes, unitOf: max(_freeBytes ?? 0, _neededBytes));
 
   Future<void> _changeStart() async {
     final plan = _plan;
@@ -274,6 +357,9 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       _error = null;
     });
     try {
+      // Round 319: the storage may have filled up since the screen opened.
+      _freeBytes = await _readFree(sessionsDir);
+      if (!_enoughSpace) return;
       final extras = <String, dynamic>{
         'build_mode': kReleaseMode
             ? 'release'
@@ -312,10 +398,37 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
       if (mounted) setState(() => _result = dir);
     } catch (e) {
       logSwallowed('video_import', e);
-      if (mounted) setState(() => _error = '$e');
+      final free = await _readFree(sessionsDir);
+      // A clip moved into the deleted folder is gone from the picker's copies.
+      final lost = widget.files.any((f) => !File(f.path).existsSync());
+      if (mounted) {
+        setState(() {
+          _freeBytes = free ?? _freeBytes;
+          _mustRepick = lost;
+          _error = _importError(e, free, lost);
+        });
+      }
     } finally {
       if (mounted) setState(() => _importing = false);
     }
+  }
+
+  /// [e] from [importVideos] in plain words (round 319: no raw error text).
+  String _importError(Object e, int? free, bool lost) {
+    if (e is ImportRewriteFailed) return 'Import failed: $e';
+    final full = e is FileSystemException && (e.osError?.errorCode == 28 || '${e.osError}'.contains('No space left'));
+    final next = lost ? 'go back and pick the videos again.' : 'try again.';
+    // Sizes only when they show the shortage (free can read as enough once
+    // the failed copy is deleted).
+    final shows = free != null && free < _neededBytes;
+    if (full) {
+      return notEnoughStorageMessage(
+        neededBytes: shows ? _neededBytes : null,
+        freeBytes: shows ? free : null,
+        next: 'Free some space, then $next',
+      );
+    }
+    return 'The videos could not be copied. ${next[0].toUpperCase()}${next.substring(1)}';
   }
 
   @override
@@ -415,12 +528,16 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         ..._rejectedList(),
       ],
       const SizedBox(height: 16),
-      if (!_enoughSpace)
+      // Not after a failed import that lost the clips: the error line says
+      // to pick them again, and this line would say to come back here.
+      if (!_enoughSpace && !_mustRepick)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Text(
-            'Not enough free storage: ${formatBytes(_freeBytes!)} free, about '
-            '${formatBytes(_neededBytes)} needed during the import. Free some space, then pick again.',
+            'Not enough free storage: ${_sameUnit(_freeBytes!)} free, about '
+            '${_sameUnit(_neededBytes)} needed during the import. Free some space in another app (for example Files), '
+            'then come back to this screen. If you delete sessions in FaunaPulse instead, pick the '
+            'videos again afterwards.',
             style: const TextStyle(color: Colors.redAccent, fontSize: 12.5),
           ),
         ),
@@ -428,7 +545,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           // Selectable: the message can carry a command to copy (round 252).
-          child: SelectableText('Import failed: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+          child: SelectableText(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
         ),
       if (_importing) ...[
         LinearProgressIndicator(value: (_done + (_rewrite ?? 0)) / plan.length, minHeight: 6),
@@ -445,7 +562,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> {
         const _StorageNote(),
         const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: _enoughSpace ? _import : null,
+          onPressed: _enoughSpace && !_mustRepick ? _import : null,
           icon: const Icon(Icons.download_done),
           label: Text('Import ${plan.length} ${plan.length == 1 ? 'clip' : 'clips'}'),
         ),
@@ -564,7 +681,7 @@ class _StorageNote extends StatelessWidget {
             'The videos are copied into FaunaPulse, so they take storage twice: the originals stay '
             'in your Gallery or folder. Nothing leaves the phone. If storage runs short, you can '
             'delete the originals after the import; the session can copy its videos back to the '
-            'Gallery later (its summary, "Copy videos to gallery").',
+            'Gallery later (open the session, Video tab, "Copy videos").',
             style: TextStyle(fontSize: 13, color: Colors.white70),
           ),
         ),

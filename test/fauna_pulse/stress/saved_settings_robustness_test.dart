@@ -54,7 +54,7 @@ const ranges = <Range>[
   Range('targetRoiSavedPx', 128, 2048, 'Saved photo side'),
   Range('screenOffAfterMin', 0, 10, 'Screen off by itself after'),
   Range('lowBatteryStopPercent', 0, 50, 'Stop at battery level'),
-  Range('storageReserveMb', 0, 5000, 'Keep free storage'),
+  Range('storageReserveMb', 50, 5000, 'Keep free storage'),
   Range('inferenceFps', 5, 30, 'Max detector rate'),
   Range('minInferenceFps', 1, 30, 'Min detector rate'),
   Range('throttleDutyTarget', 0.3, 0.8, 'Target processor load'),
