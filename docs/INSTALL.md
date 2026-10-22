@@ -4,18 +4,22 @@ A step-by-step guide for collaborators and testers.
 
 For contributing to this repository, please first fork it and then work on that forked repository in parallel. When happy with your implementations, then ask for a pull request. See also the guidelines suggested by GitHub - [Contributing to a project](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project)
 
-This guide shows two ways to get the app running on an Android phone:
+The simplest way to install FaunaPulse on your smartphone is from [Google Play](https://play.google.com/store/apps/details?id=com.faunapulse.app), which also can install updates automatically.
+
+<a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
+
+This guide shows two other ways to get the app running on an Android phone:
 
 | Track | Who it's for | What you need | Effort |
 |-------|--------------|---------------|--------|
-| **A. Install the ready-made app** | You just want to **test** the app | An Android phone + the app `.apk` file | a few minutes, no coding |
-| **B. Build from source** | You want to **change the code** | Windows/MacOS/Linux computer + developer tools | ~1 hour first time (installing software) |
+| **A. Install a fresh APK release** | You just want to **test** an early GitHub release of the app | An Android phone + the released app `.apk` file | a few minutes, no coding |
+| **B. Build from source** | You want to **change the code** and test your changes | Windows/MacOS/Linux computer + developer tools | ~1 hour first time (installing software) |
 
-Supplementary sections are marked with **S**.
+Supplementary sections below are marked with **S**.
 
 ---
 
-## Track A: Install the ready-made app (no coding)
+## Track A: Install a fresh APK release (no coding)
 
 ### A1. Get the app file (`.apk`) on your phone
 
@@ -26,16 +30,16 @@ Save the `.apk` file to your phone: download it directly on the phone from a pro
 ### A2. Install it
 
 On the phone, open your **File Manager** app, tap the downloaded `.apk` file, and follow the Install prompts.
-Because this is an app outside the Play Store (for now), you will get security warnings that make the installation not a very smooth process. 
+Because the `.apk` file does not come from the Play Store, you will get security warnings that make the installation not a very smooth process. 
 Google Play intends it in this way, but the app is safe to install.
 
 WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android).
 
 #### Installation Guide (Example on a Samsung device)
 
-Below is an example on a test Samsung model.
+Below is an example on a test Samsung model. Some of the print screens will look different on your phone, but hopefully similar. An older version of FaunaPulse was used when the print screens were taken.
 
-Once the APK file is downloaded, try to press "Open" if asked, otherwise navigate to the Downloads folder or the location where the file was downloaded by default on your smartphone and tap on the APK file. The icon of the app should be already visible, the name of the APK file varies with each release. Below it is name "app-release.apk" as an example:
+Once the APK file is downloaded, try to press "Open" if asked, otherwise navigate to the Downloads folder or the location where the APK file was downloaded by default on your smartphone and tap on the APK file. The icon of the app should be already visible, the name of the APK file varies with each release. Below it is named `app-release.apk` as an example, but you may see names like `faunapulse-v0.9.0-beta.1-arm64-v8a.apk`:
 
 <table width="50%">
   <thead>
@@ -52,7 +56,7 @@ Once the APK file is downloaded, try to press "Open" if asked, otherwise navigat
       <td>
         <b>Open Downloaded File</b><br>
         Once the APK file is downloaded, tap <b>Open</b> in the prompt, or navigate to your smartphone's <b>Downloads</b> folder (or default download location) and tap the file.<br><br>
-        <i>(Note: The app icon will be visible; file names vary per release, e.g., <code>app-release.apk</code>).</i>
+        <i>(Note: The app icon will be visible; file names vary per release, e.g., <code>faunapulse-v0.9.0-beta.1-arm64-v8a.apk</code>).</i>
       </td>
       <td align="center">
         <!-- apk-file-downloaded -->
@@ -119,6 +123,7 @@ and auto-updates apps straight from a project's GitHub releases, so you don't ha
 manually re-download the `.apk` every time a new version comes out.
 
 1. Install Obtainium itself (see its own [installation instructions](https://github.com/ImranR98/Obtainium#installation)).
+   It's APK file can be downloaded and installed in a similar way as presented above at Track A2.
 2. In Obtainium, tap **+ Add** (usually down-right corner of your screen) and 
    paste the FaunaPulse repository URL:
    `https://github.com/valentinitnelav/fauna-pulse`
@@ -138,30 +143,33 @@ manually re-download the `.apk` every time a new version comes out.
 
 ### A3. Add detection models
 
-The app lists no model until one is downloaded or imported (round 268). The quickest way is the home
-screen's step 1, *What do you want to watch?* (round 278): each answer (pollinators on flowers, insects on
-a flat surface, mammals and birds) suggests a detection model and an identification model with its name
-list, chosen for you and shown by their file names (others under *Choose other models*), and one
-button downloads them and makes them the app's choice (use Wi-Fi: BioCLIP 2 is about 600 MB). To delete
-models: the bin next to a file, *Delete all …* under each list, or press and hold files to select
-several (round 279; an identification model takes its name lists along). The **Download & import
-models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers every model,
-MegaDetector V6 (common animals) and flat-bug and insectDCT (insects) among them. For your own models (see [S1. Getting the models](#s1-getting-the-models)),
+The app ships with no model. So you need to download or import one to your phone.
+You can download models from the associated [Hugging Face][hf_fp_models] repository.
+The quickest way is the home screen's step 1, *What do you want to watch?*:
+each answer (pollinators on flowers, insects on a flat surface, mammals and birds)
+suggests a detection model and an identification model with its name list,
+chosen for you and shown by their file names (others under *Choose other models*), and one
+button downloads them and makes them the app's choice (use Wi-Fi as some model files are large).
+The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers every model,
+MegaDetector V6 (common animals) and flat-bug and insectDCT (insects) among them.
+For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:
 
 - **In-app (easiest):** open **FaunaPulse → AI models (home screen, bottom bar) → Import model
-  files…**, then pick the `.tflite` file(s) from **Downloads** or another folder (to take every file of
+  files…, then pick the `.tflite` file(s) from **Downloads** or another folder (to take every file of
   a folder: press and hold one file, then *Select all*). You can first copy the model into Downloads
   over USB. The app checks what each file is: a detection model, an identification model or a name
-  list goes to its own list, and it asks before replacing a file of the same name (round 275).
+  list goes to its own list, and it asks before replacing a file of the same name.
 - **HTTPS download:** open **Menu → Download & import models → Download from a link…** and paste a
   direct HTTPS link to a model file or name list.
 
 Added models appear in the app's **model dropdown** at the start of a session, and on the *What do
 you want to watch?* pages under *Choose other models* → *Other models on this phone*, where they can
-be chosen like the suggestions (round 281; no entry in the download list is needed).
+be chosen like the suggestions (no entry in the download list is needed).
 They are copied into private app storage, so they are not directly browsable over USB.
 
+The tools to convert and quantise the models are provided at the associated GitHub repository
+[fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
 
 ---
 
@@ -403,29 +411,36 @@ Model weights (`.tflite` files) are **deliberately not stored in this online rep
 two reasons: they are large, and **some detectors belong to collaborators and must not
 be redistributed**. The published models that the app offers for download (FaunaPulse's
 phone conversions of MegaDetector V6, flat-bug, insectDCT, BioCLIP 2 and BioCLIP 2.5) are on
-[Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), each with a model card (source, licence, how to cite); the app
-downloads them itself (Track A3).
+[Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse),
+each with a model card (source, licence, how to cite); the app downloads them itself (Track A3).
 
-- The maintainer will send you the model files you're permitted to use via a **private
-  channel** (direct transfer or a shared-drive link).
-- **Do not** re-share models you receive, commit them to git, or upload them anywhere
+The tools to convert and quantise the models are provided at the associated GitHub repository
+[fauna-pulse-models][fp_models].
+
+- **Do not** re-share unpublished models you receive, commit them to git, or upload them anywhere
   public. Treat collaborator-owned models as confidential.
 - To use a model, load it with the in-app **Import model files…** button or **Download
   from a link…** (Track A3). Import accepts a file copied into any folder that Android's
   file picker can read, including Downloads populated over USB.
 
-Imported and downloaded models are validated and copied into private app storage. Every model
-file and name list may be up to 2 GiB (`kMaxModelFileBytes` in
+Imported and downloaded models are validated and copied into private app storage
+(so not easily visible via USB). Every model file and name list may be up to 2 GiB (`kMaxModelFileBytes` in
 `lib/fauna_pulse/models/model_file_security.dart`). This is a ceiling the app sets: an `.onnx`
 file cannot be larger, and the app reads a model's labels by mapping the whole file into memory,
-which stops at 2 GiB. Detectors have no
-smaller limit: they are not packed into the APK, and a large detector only runs slower (live, or
-afterwards on a recorded video). For local development, models
-can also be placed in `assets/models/` / `assets/models/custom/` before a debug
-or release build (those folders stay git-ignored).
+which stops at 2 GiB for now.
 
-For a release build, `assets/models/bundled_models.txt` is the single list of
-weights to package. Put one repository-relative model path on each line. Blank
+### Pack models with the APK file
+
+Not encouraged for public release, but possible if this becomes practical in the future,
+or if you find it convenient when debugging and testing on your phone.
+
+It is not encouraged for deployment in Google Play because the APK file can grow significantly in size.
+
+So, for local development, models can also be placed in `assets/models/` / `assets/models/custom/`
+before a debug or release build (those folders stay git-ignored).
+
+For adding a model to a build, `assets/models/bundled_models.txt` allows
+listing model weights to package. Put one repository-relative model path on each line. Blank
 lines and lines beginning with `#` are ignored. Both of these path styles work:
 
 ```text
@@ -436,11 +451,13 @@ assets/models/my_model.tflite
 Then build normally:
 
 ```bash
+flutter build apk --debug
+# or
 flutter build apk --release
 ```
 
 Only existing `*.tflite` model weights listed in `fauna-pulse/assets/models/bundled_models.txt` 
-are packed into the release APK. Since round 268 the model picker lists only downloaded or
+are packed into the APK. Since round 268 the model picker lists only downloaded or
 imported models, so a packed model is no longer offered to users, and since round 270 the list
 is empty: the release APK carries no model, and the camera starts without one (motion-triggered
 and time-lapse capture need none). 
@@ -537,3 +554,12 @@ adb pull -a /sdcard/Android/data/com.faunapulse.app/files/ ~/InsectDetectApp/ses
 #### S2.2.2. On Windows
 
 > To be added.
+
+
+<!-- 
+Reference links: [id]: URL
+These are links used throughout this file
+-->
+
+[hf_fp_models]: https://huggingface.co/collections/Valen-Peregrine/faunapulse
+[fp_models]: https://github.com/valentinitnelav/fauna-pulse-models

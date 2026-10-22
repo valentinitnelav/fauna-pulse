@@ -38,7 +38,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  <strong>Transform your smartphone into an AI-powered wildlife camera</strong>
+  <strong>Transform your Android smartphone into an AI-powered wildlife camera</strong>
 </p>
 
 <p align="center">
@@ -50,10 +50,15 @@
 </p>
 
 <p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://img.shields.io/badge/Google%20Play-FaunaPulse-blue?logo=googleplay" alt="Get it on Google Play"></a>
   <a href="https://doi.org/10.5281/zenodo.22309221"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22309221.svg" alt="DOI"></a>
   <a href="https://github.com/valentinitnelav/fauna-pulse/releases"><img src="https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases" alt="GitHub release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="https://huggingface.co/collections/Valen-Peregrine/faunapulse-6ad22f04766aed6641688544"><img src="https://img.shields.io/badge/Hugging%20Face-models-blue?logo=huggingface" alt="Models on Hugging Face"></a>
+</p>
+
+<p align="center">
+<a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
 </p>
 
 ## Demo
@@ -70,12 +75,12 @@ https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
 
 Think of **FaunaPulse** as the chassis of a car where you can drop in your own engine: it **provides the platform to run custom AI models, on-device**, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).
 
-> **Detection, tracking, and classification quality will vary based on the custom AI models used. With our documentation and Python tools, you can also train and export models tailored to your specific imagery and use case.**
+> **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also train and export models tailored to your specific imagery and use case.**
 
 The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
 
-For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse](https://github.com/valentinitnelav/fauna-lapse), is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
+For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse][fauna_lapse], is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
 
 ### Further details
 
@@ -126,7 +131,7 @@ Modes 1-4 can also be **scheduled** (example: 1st run 9:00-12:00, 2nd run 13:00-
 FaunaPulse is a **research preview (beta)**, provided as a free, experimental field tool. Validation is ongoing. Please treat it accordingly. Below are some important remarks:
 
 - Only Android OS is currently supported. iOS compatibility postponed for a later phase (if there will be significant demand as this expansion is costly on my time and resources at the moment).
-- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and in each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse).
+- AI-based monitoring requires a compatible quantized `.tflite` models. FaunaPulse was designed with the goal that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, and these are outside of FaunaPulse's capacity to fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and in each model card on [Hugging Face][hf_fp_models].
 - Built-in (on device) en masse taxonomic identification is currently experimental: it needs a BioCLIP model file (large files: 0.3 to 1.3 GB) and a name list (called a "label pack" on Hugging Face; ready-made ones can be downloaded in the app, custom ones can be prepared on a PC), cannot run in real-time, and classification results will vary significantly with image quality.
 - Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
@@ -136,20 +141,24 @@ FaunaPulse is a **research preview (beta)**, provided as a free, experimental fi
 
 </details>
 
-## Getting started - Install APK file
+## Getting started - Install the app
 
 <details>
 	<summary>Expand:</summary>
 
 NOTE:
 
-> FaunaPulse is currently in early development and testing. It will also be soon published on Google Play (recently passed the internal testing phase). Meanwhile, you can install the app directly on your Android device using the released APK file by following the steps below.
+> FaunaPulse is in beta: it works, but it is still being tested and improved, so please report problems as [GitHub issues](https://github.com/valentinitnelav/fauna-pulse/issues).
 
-**Install the app.** Currently there are several options - from [Installation & Testing Guide](docs/INSTALL.md):
+**Install the app.** The easiest way is Google Play, which also notifies you when there are new versions available:
+
+<a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
+
+Other options (see [Installation & Testing Guide](docs/INSTALL.md)):
 
 1. **Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page**; WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). See also "Track A" in [Installation & Testing Guide](docs/INSTALL.md) for a guide example with screenshots. However, this option does not come with auto-updates - see next option with Obtainium for that.
-2. **Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/)**. Obtainium is an app that allows users to install and update Android applications directly from their source websites, such as GitHub and F-Droid. It automates the process of tracking app updates and provides notifications for new releases. - see "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
-3. **Build directly from source with the latest features and bug fixes** (For advanced users comfortable with a terminal. Only Linux support for now, but some LLM will help you for commercial operating systems). Basically, you will build the app based on what is right now on GitHub, branch `main` provides a stable version of the app, tested on a smartphone The branch `develop` is even more active, but potentially less stable. See "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
+2. **Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/)**. Obtainium is an app that allows you to install and update FaunaPulse  directly from this GitHub repository. It also provides notifications for new releases. See "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
+3. **Build directly from source with the latest features and bug fixes**. For advanced users comfortable with a terminal. Only Linux support for now (free and open-source), but your favorite LLM / chat-bot can help you for proprietary operating systems (macOS, Windows). Basically, you will build the app based on what is right now on GitHub, branch `main` provides a stable version of the app, tested on a smartphone. The branch `develop` is more active, but occasionally less stable. See "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 
 </details>
 
@@ -173,8 +182,8 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | Developer | Understand why a small ROI can still yield sharp photographs. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
-| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
-| [Model cards on Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse) | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). |
+| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models][fp_models]. |
+| [Model cards on Hugging Face][hf_fp_models] | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models][fp_models]. |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | The lean (no-QNN) default build and the optional Snapdragon NPU edition (`-P qnn=true`). |
@@ -187,9 +196,9 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 ## AI Models
 
-AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. Compatible models are published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse), one repository per model family, each with a model card (where the model comes from, how it was converted, how to cite it) and the original model's licence.
+AI detectors and classifiers (`tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. Compatible models are published on [Hugging Face][hf_fp_models], one repository per model family, each with a model card (where the model comes from, how it was converted, how to cite it) and the original model's licence.
 
-The tools to convert and quantise the models published on Hugging Face (or any other compatible model you may have) are provided at the associated GitHub repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
+The tools to convert and quantise the models published on Hugging Face (or any other compatible model you may have) are provided at the associated GitHub repository [fauna-pulse-models][fp_models].
 
 <details>
 	<summary>Expand:</summary>
@@ -213,7 +222,7 @@ Custom AI detectors can be added:
 
 - **Download from a link…** on the Download & import models screen (home screen: *AI models* in the bottom bar), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place; the progress and the result show under the button), or
-- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect - Model training][maxs_train].
+- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models][fp_models]. For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect - Model training][maxs_train].
 
 See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
 
@@ -232,7 +241,7 @@ BioCLIP chooses each animal's name from a name list. Such lists are prepared per
 
 These models were made by other research teams. FaunaPulse tools only adapted them to run on a phone. Each model keeps its creators' licence. If you publish results, please cite the original model as its authors ask on its source page (also often linked in the app's ⓘ card of each model).
 
-Each model card on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse) names the original authors, the licence and how to cite the model.
+Each model card on [Hugging Face][hf_fp_models] names the original authors, the licence and how to cite the model.
 
 </details>
 
@@ -295,7 +304,7 @@ FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv]
 
 FaunaPulse also began as a personal experiment in what is called “vibe coding”. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
 
-I am a curious scientist with experience in R, Python, statistics and computer vision, but I am not a professional mobile-app developer. Most software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognize that access to paid AI tools is not equally available.
+I am a curious scientist with experience in R, Python, statistics and computer vision, but I am not a professional mobile-app developer. Software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognize that access to paid AI tools is not equally available.
 
 I defined the scientific requirements and design decisions, tested the application repeatedly on smartphones, inspected its outputs, reviewed and created documentation and code, and overall architected the resulting software. Occasionally, ChatGPT or Gemini (via web chat) and [Codex](https://openai.com/codex/) were used as additional sources of "critique".
 
@@ -361,7 +370,7 @@ fauna-pulse/
 ```
 
 The PC tools that convert models for the phone (detectors, classifiers, BioCLIP) live in a
-separate repository, [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
+separate repository, [fauna-pulse-models][fp_models].
 
 The application now sits at the repository root. The older path `/yolo-flutter-app/example/` may still appear in the historical development logs.
 
@@ -393,3 +402,6 @@ These are links used throughout this file
 [PIR]: https://en.wikipedia.org/wiki/Passive_infrared_sensor
 [zenodo_phones]: https://doi.org/10.5281/zenodo.15096610
 [maxs_train]: https://github.com/maxsitt/insect-detect-docs#model-training
+[hf_fp_models]: https://huggingface.co/collections/Valen-Peregrine/faunapulse
+[fp_models]: https://github.com/valentinitnelav/fauna-pulse-models
+[fauna_lapse]: https://github.com/valentinitnelav/fauna-lapse
