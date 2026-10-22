@@ -73,7 +73,8 @@ The `r319c_*_test.dart` files (round 319, part 3) cover the fixes found by the p
 tests: a stored bar closed after it timed out, the *Rename session* dialog, the scheduled-run
 line during a window skipped for low storage, singular counts, the clip count of *Find track
 IDs*, the results header's name list and an import line kept in view (`r319c_a_*`); the
-waiting identification kept in a note when Android closes the app, the notification
+waiting identification kept in a note when Android closes the app (round 320: every other
+run's note only gives the line), the notification
 permission asked when an analysis starts and the keep-on-screen line (`r319c_b_*`, with the
 shared `r319c_b_identify_fixture.dart`); and the analysis service held until the model's
 memory is given back (`r319c_k_*`).

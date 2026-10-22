@@ -1,14 +1,16 @@
-// FaunaPulse (round 319, part 3): a small note in the app's files folder that keeps a chained
-// identification ("Also identify them") when Android closes the app.
+// FaunaPulse (round 319, part 3; round 320): a small note in the app's files folder that keeps an
+// identification when Android closes the app.
 //
-// While such a run waits for the app (too little free memory in the background) or loads its
-// model in the background, it lives only in memory: on the 3.6 GB test phone MIUI's cleaner closed
-// the waiting app after 62 s, and a tap on "Animals found" then opened Home with nothing started.
-// The run writes this note first ([write]); Home reads it when the app opens or comes to the front
-// ([takeOnOpen]) and starts the run again. `attempts` is set to 1 BEFORE that start, so a start
-// during which the app is closed again is not repeated by itself: the next opening only says that
-// the identification did not finish. The run's end deletes the note ([clear]), as does deleting
-// the session.
+// A chained identification ("Also identify them") that waits for the app (too little free memory
+// in the background) or loads its model in the background lives only in memory: on the 3.6 GB
+// test phone MIUI's cleaner closed the waiting app after 62 s, and a tap on "Animals found" then
+// opened Home with nothing started. Such a run writes this note with attempts 0 ([write]); Home
+// reads it when the app opens or comes to the front ([takeOnOpen]) and starts the run again.
+// `attempts` is set to 1 BEFORE that start, so a start during which the app is closed again is
+// not repeated by itself: the next opening only says that the identification did not finish.
+// Every other run writes the note with attempts 1 as it starts (round 320): when the user leaves
+// the app during the run and Android closes it, the next opening says so, and nothing starts by
+// itself. The run's end deletes the note ([clear]), as does deleting the session.
 
 import 'dart:convert';
 import 'dart:io';

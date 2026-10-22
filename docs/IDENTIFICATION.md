@@ -115,7 +115,11 @@ detection sessions already have their track IDs: use the steps below.
    does go on while another app is open or the screen is off (round 319), with a
    notification "FaunaPulse is identifying animals", but Android may close the app to
    free memory. Swiping FaunaPulse away from the recent apps ends the run (what is
-   done is kept). On Android 13 and newer, the first run after the app opens asks for
+   done is kept). When Android closed the app during a run that started with FaunaPulse
+   on the screen, the next opening of FaunaPulse (up to 24 hours after the run started)
+   says so on Home for a few seconds, and nothing starts by itself: continue with
+   *Identify organisms* from the session's ⋮ menu on the Sessions screen, which goes on
+   where it stopped. On Android 13 and newer, the first run after the app opens asks for
    the notification permission if it is not granted yet; the run goes on whatever the
    answer. When *Also identify them* starts it after *Find animals in videos* or
    *in photos* with the app in the background, the app first checks the phone's free

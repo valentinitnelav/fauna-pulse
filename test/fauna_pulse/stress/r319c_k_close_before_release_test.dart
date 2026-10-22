@@ -155,7 +155,7 @@ void main() {
     closeAnswer.complete();
     await pumpUntil(tester, () => events.isNotEmpty && events.last == 'service stop', 'the service stops');
     expect(events.indexOf('close answered'), lessThan(events.indexOf('service stop')));
-    // The run's end deletes the wait note (lane B) after the release, then counts as finished.
+    // The wait note (lane B) was deleted before the close (round 320); the run then counts as finished.
     await pumpUntil(tester, () => run.finished, 'the run ends');
     expect(AnalysisKeepAlive.activeHolds, 0);
   });

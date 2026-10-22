@@ -7,14 +7,20 @@
 // note with attempts 1 (the app was closed during that start) only gives one line. The note also
 // guards a load in the background, and goes at the run's end, on a stop and with its session.
 //
+// Round 320 (decided by the owner): every other run writes the note with attempts 1 once it has
+// the model, so a run that Android ends after the user left the app gives the same one line at
+// the next opening, and nothing starts by itself.
+//
 // Only channel names, the note's file name and existing Dart names are used, so this file also
 // runs against the code before the fix, where it fails (no note is written or read).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart' show roiPhotoFileName;
+import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart' show IdentifyPrefs;
 import 'package:fauna_pulse/fauna_pulse/identification/identification_run.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
@@ -83,8 +89,12 @@ void main() {
   File note() => File('${tmp.path}/identify_waiting.json');
   Map<String, dynamic> readNote() => jsonDecode(note().readAsStringSync()) as Map<String, dynamic>;
 
-  /// The note's attempts when the model load was asked for (null: no note then).
+  /// The note's attempts when the model load was asked for (null: no note then), and its text.
   late List<Object?> attemptsAtLoad;
+  String? noteAtLoad;
+
+  /// Awaited by each embedding call when set (holds a run at a known point).
+  Future<void> Function()? onRun;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('r319c_b_note');
@@ -116,6 +126,8 @@ void main() {
     memory = _redmi();
     calls = [];
     attemptsAtLoad = [];
+    noteAtLoad = null;
+    onRun = null;
     messenger.setMockMethodCallHandler(yoloChannel, (call) async {
       calls.add(call.method);
       switch (call.method) {
@@ -123,8 +135,10 @@ void main() {
           return memory;
         case 'embedderLoad':
           attemptsAtLoad.add(note().existsSync() ? readNote()['attempts'] : null);
+          noteAtLoad = note().existsSync() ? note().readAsStringSync() : null;
           return {'accelerator': 'CPU', 'inputWidth': 32, 'inputHeight': 32, 'dim': pack.dim, 'loadMs': 1.0};
         case 'embedderRun':
+          await onRun?.call();
           final n = ((call.arguments as Map)['images'] as List).length;
           return {
             'dim': pack.dim,
@@ -288,12 +302,91 @@ void main() {
     toForeground(tester);
   });
 
-  testWidgets('the app in front: no note at all', (tester) async {
+  testWidgets('the app in front: the note says attempts 1 during the load (no start by itself), gone at '
+      'the end', (tester) async {
     final dir = await photoSession(tester);
     toForeground(tester);
     final run = IdentificationRun.autoStart(dir);
     await pumpUntil(tester, () => run.finished, 'the run ends');
-    expect(attemptsAtLoad, [null]);
+    expect(attemptsAtLoad, [1]);
+    expect(calls, isNot(contains('embedderMemory')), reason: 'the app is in front');
+    expect(note().existsSync(), isFalse, reason: 'deleted at the end of the run');
+  });
+
+  testWidgets('Start on the Identify page: the note says attempts 1 during the load, gone at the end',
+      (tester) async {
+    final dir = await photoSession(tester);
+    toForeground(tester);
+    final prefs = (await tester.runAsync(IdentifyPrefs.load))!;
+    final run = IdentificationRun.start(
+      dir,
+      model: File('${tmp.path}/identification/models/test-model.tflite'),
+      pack: File('${tmp.path}/identification/packs/tiny_pack.fpack'),
+      packHeader: null,
+      isClassList: false,
+      prefs: prefs,
+      restart: true,
+    );
+    await pumpUntil(tester, () => run.finished, 'the run ends');
+    expect(run.result?.embedded, greaterThan(0));
+    expect(attemptsAtLoad, [1]);
+    expect(jsonDecode(noteAtLoad!), containsPair('session_dir', dir.path));
+    expect(note().existsSync(), isFalse, reason: 'deleted at the end of the run');
+  });
+
+  testWidgets('Stop, then Start again before the stopped run has ended: the new run keeps its note',
+      (tester) async {
+    final dir = await photoSession(tester);
+    toForeground(tester);
+    final prefs = (await tester.runAsync(IdentifyPrefs.load))!;
+    IdentificationRun start(bool restart) => IdentificationRun.start(
+          dir,
+          model: File('${tmp.path}/identification/models/test-model.tflite'),
+          pack: File('${tmp.path}/identification/packs/tiny_pack.fpack'),
+          packHeader: null,
+          isClassList: false,
+          prefs: prefs,
+          restart: restart,
+        );
+    final first = Completer<void>(), second = Completer<void>();
+    int loads() => calls.where((c) => c == 'embedderLoad').length;
+    onRun = () => loads() == 1 ? first.future : second.future;
+    final a = start(true);
+    await pumpUntil(tester, () => calls.contains('embedderRun'), 'the first run embeds');
+    a.cancel();
+    final b = start(false); // waits for the model
+    await settle(tester, 5);
+    expect(loads(), 1);
+    first.complete();
+    await pumpUntil(tester, () => a.finished && calls.where((c) => c == 'embedderRun').length >= 2, 'the second run embeds');
+    await settle(tester, 10);
+    expect(note().existsSync(), isTrue, reason: 'the stopped run must not delete the note of the next run');
+    expect(readNote()['attempts'], 1);
+    second.complete();
+    await pumpUntil(tester, () => b.finished, 'the second run ends');
+    expect(note().existsSync(), isFalse);
+  });
+
+  testWidgets('left during a run started in front, then Android closes the app: the next opening only '
+      'shows the line', (tester) async {
+    final dir = await photoSession(tester);
+    toForeground(tester);
+    final run = IdentificationRun.autoStart(dir);
+    await pumpUntil(tester, () => calls.contains('embedderLoad'), 'the model loads');
+    toBackground(tester);
+    await pumpUntil(tester, () => run.finished, 'the run ends');
+    expect(note().existsSync(), isFalse);
+    // Android closes the app during the run: its note stays as it was during the load.
+    note().writeAsStringSync(noteAtLoad!);
+    IdentificationRun.resetForTest();
+    calls.clear();
+    await openApp(tester);
+    await pumpUntil(tester, () => !note().existsSync(), 'the note is deleted');
+    await settle(tester, 10);
+    expect(calls, isNot(contains('embedderLoad')), reason: 'nothing starts by itself');
+    expect(find.byType(IdentificationScreen), findsNothing);
+    expect(find.textContaining('The identification of "Salvia" stopped when FaunaPulse was closed.'), findsOneWidget);
+    await leave(tester);
   });
 
   testWidgets('stopped while waiting: the note goes', (tester) async {

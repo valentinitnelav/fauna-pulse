@@ -630,13 +630,14 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   keep the app on screen: one line (`identification_choice_fields.dart`) under *Also identify
   them* and on *Identify organisms* (above Start and under the progress). Logged as logcat
   `identify_memory_check` and `identify_start.memory_check` (`decision`, `waited_s`).
-- **The wait survives a closed app** (`identification/identify_wait_note.dart`): a chained run
-  that waits or loads in the background first writes `identify_waiting.json` in the app's files
-  folder (session dir, chain, `created`, `attempts` 0). Home takes it when the app opens or
-  resumes (`takeOnOpen`) and starts the run again, setting `attempts` to 1 BEFORE the start; a
-  note found with `attempts` ≥ 1 starts nothing (a start that gets the app closed is never
-  repeated by itself) and shows a 10 s bar saying how to continue from the Sessions ⋮ menu. A
-  note older than 24 h is ignored. It is deleted at the run's end, on Stop and with its session.
+- **A run survives or reports a closed app** (`identification/identify_wait_note.dart`): a chained
+  run that waits or loads in the background first writes `identify_waiting.json` in the app's
+  files folder (session dir, chain, `created`, `attempts` 0); every other run writes it with
+  `attempts` 1 once it has the model (`_go`). Home takes it when the app opens or resumes
+  (`takeOnOpen`): 0 starts the run again, setting 1 BEFORE the start; ≥ 1 starts nothing (no
+  heavy work by surprise; a start that gets the app closed is never repeated) and shows a 10 s
+  bar saying how to continue from the Sessions ⋮ menu. Ignored after 24 h; deleted at the run's
+  end, on Stop and with its session.
 - **Native memory is given back after the embedder closes** (`NativeMemory.giveBack`, bionic
   `mallopt`): each step is checked by the app's resident memory (RSS) and the next tried only if
   nothing came back (M_PURGE_ALL, then M_PURGE, then decay 0 + purge), since on Android 12

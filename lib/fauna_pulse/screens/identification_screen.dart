@@ -1046,8 +1046,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
 
 /// Round 319, part 3: the chained identification that Android ended while it waited for the app
 /// or loaded in the background (its note, [IdentifyWaitNote]) starts again here, on its Identify
-/// page, as the Find screens start it; or, when the app was closed during that start too, one
-/// line says how to continue. Nothing happens while an identification goes on.
+/// page, as the Find screens start it. For any other run that Android ended (round 320), or when
+/// the app was closed during that start too, one line says how to continue. Nothing happens while
+/// an identification goes on.
 Future<void> resumeWaitingIdentification(BuildContext context) async {
   if (_resuming || IdentificationRun.busy) return;
   if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;

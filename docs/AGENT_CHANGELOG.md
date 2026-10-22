@@ -9512,3 +9512,13 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** Play Console declaration of the dataSync and mediaProcessing types; Android 15 and the release build not run on a phone; progress-notification tap and 11T Pro status-bar icon not seen; no note when the app is left after the model loaded.
 
+## Round 320 (2026-10-21): a closed app during identification is reported at the next opening
+
+**Asked (owner):** decision D10 of round 319: when Android closes FaunaPulse during an identification that started with the app on screen, the next opening shows the existing one-line bar and nothing starts by itself (chosen over one start by itself, and over no change).
+
+**Why:** users must know that a run did not finish, so half results are not taken for full ones, and heavy work must never start by surprise (for example when the app is opened to record). The app has one note file, so a run writes it once it has the model. Two reviewers found that a stopped run deleted the note of the run queued behind it, so a run now deletes its note before it frees the model.
+
+**Checked:** laptop tests (the queued-run test fails on the old order); Redmi Note 9S: a kill during a chained run and during a run started on *Identify organisms* gives the bar and no start, *Continue* goes on after the done crops, a normal end leaves no note, the round-319 start-again rule still works.
+
+**Open:** a chained run waiting in the background can still lose its note if a stopped run of the same session ends at that moment (rare). Not run on the 11T Pro.
+

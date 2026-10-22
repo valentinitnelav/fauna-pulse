@@ -337,6 +337,15 @@ class IdentificationRun extends ChangeNotifier {
     IdentifyResult? r;
     // Waits ("Loading the model") while an earlier run or speed test still ends.
     final freeModel = await takeModel();
+    // Round 320: should Android close the app during the run (most often after the user left it),
+    // the next opening says that the identification did not finish and how to continue. Attempts
+    // 1: nothing starts by itself, as the user saw the run going. The note of a chained run that
+    // went on in the background ([_checkMemory], attempts 0) is kept: that run starts again once.
+    // Written once the model is taken: the app has one note, and it is about the run that loads.
+    if (!_noted) {
+      _noted = true;
+      await IdentifyWaitNote.write(sessionDir, chain: _chain, attempts: 1);
+    }
     try {
       await WakelockPlus.enable();
       final info = await ImageEmbedder.load(
@@ -422,6 +431,15 @@ class IdentificationRun extends ChangeNotifier {
       logSwallowed('identify_start', e);
       failure = e;
     } finally {
+      // Round 320: the note goes while this run still holds the model. A run queued behind it
+      // (Stop or Back, then Start again) writes its own note once it has the model, and a later
+      // clear could delete that one (clear matches the session folder only, and reads and
+      // deletes in two steps). The results are saved here, so a kill during the close below
+      // leaves nothing to report.
+      if (_noted) {
+        _noted = false;
+        await IdentifyWaitNote.clear(sessionDir);
+      }
       try {
         await ImageEmbedder.close();
       } catch (e) {
@@ -440,8 +458,12 @@ class IdentificationRun extends ChangeNotifier {
   }
 
   Future<void> _end() async {
-    _keepAlive.release();
+    // A run that never had the model (declined, or stopped while it waited) still has its note
+    // here. It goes before the service: without the service Android may close the app at once
+    // (0.17 s after the model closed on the 3.6 GB phone), and the next opening would then report
+    // an ended run as stopped (round 320).
     if (_noted) await IdentifyWaitNote.clear(sessionDir);
+    _keepAlive.release();
     // Kept for the page only when no page showed it yet and it was not stopped.
     if (_runs[sessionDir.path] == this && (_cancel || declined || hasListeners)) _runs.remove(sessionDir.path);
     _done.complete();

@@ -143,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
 
   final _list = ScrollController();
 
-  /// Starts again an "Also identify them" that Android ended while it waited (round 319, part 3).
+  /// Starts again an "Also identify them" that Android ended while it waited (round 319, part 3),
+  /// or says that another identification stopped when Android closed the app (round 320).
   late final _waitingIdentification = WaitingIdentificationWatch(context);
 
   @override

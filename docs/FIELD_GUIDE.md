@@ -405,6 +405,12 @@ when FaunaPulse was closed. To continue: on the Sessions screen, tap ⋮ next to
 session, then "Identify organisms". It goes on where it stopped." Do these steps; what
 was identified already is kept.
 
+The same line shows when Android closed FaunaPulse during an identification that started
+while FaunaPulse was on the screen, for example after you switched to another app while
+it ran (up to 24 hours after the identification started). Then nothing starts by itself,
+so opening the app (for example to record) does not start that identification again by
+surprise.
+
 The notification channel of "Animals found" is called *Identification waiting*.
 Notifications need the phone's permission (Android 13 and newer). FaunaPulse asks for it
 when a recording starts, and also when *Find animals in videos*, *Find animals in
