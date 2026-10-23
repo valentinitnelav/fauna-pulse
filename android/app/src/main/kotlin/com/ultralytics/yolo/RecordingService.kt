@@ -1,4 +1,4 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+// FaunaPulse: foreground service that keeps a long recording session running.
 
 package com.ultralytics.yolo
 

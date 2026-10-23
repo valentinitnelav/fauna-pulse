@@ -1,8 +1,11 @@
 // FaunaPulse — a C-BIoU-style multi-object tracker (round 105).
 //
-// C-BIoU = "Cascaded Buffered IoU" (Yang et al., WACV 2023: "Hard to Track
-// Objects with Irregular Motions and Similar Appearances? Make It Easier by
-// Buffering the Matching Space"). The idea, in plain language:
+// C-BIoU = "Cascaded Buffered IoU". Method: Yang, F., Odashima, S., Masui, S.
+// & Jiang, S. (2023). Hard to track objects with irregular motions and
+// similar appearances? Make it easier by buffering the matching space.
+// WACV 2023, 4788-4797. https://doi.org/10.1109/WACV56688.2023.00478
+// This file is FaunaPulse's own Dart version of the idea, sharing the
+// ByteTrack-style tracker's rules (below). The idea, in plain language:
 //
 //   Plain IoU matching fails when an insect moves so far between two frames
 //   that its old and new boxes barely overlap — exactly what happens with

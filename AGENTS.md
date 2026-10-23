@@ -66,6 +66,11 @@ Keep answers concise, but clear and easy to understand.
 
 Less is more: the simplest code solution is the better solution as long as core 
 functionality is not lost and as long as the code remains readable for humans too.
+Before adding a helper, widget or setting, search the repository and reuse or extend what exists.
+Fix a bug in the code that owns the behaviour instead of guarding its symptom somewhere else.
+
+Report checks honestly: say what was verified and how (unit tests, analyzer, which phone model).
+Never claim a check that was not run.
 
 Do not place in any git tracked file any private or sensitive data like email addresses,
 passwords, any sort of digital keys.
@@ -93,6 +98,9 @@ Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round
 - Never git push to main branch and never force push. 
 - When you implement code changes, and git is on main, then git branch into `develop`,
   but do not git commit the changes.
+- If asked to commit, stage files by name (`git add <path>`), never `git add -A` or `git add .`: model files, logs
+  and other local files can sit in the working tree, and binaries never go into git.
+- Change the app version in `pubspec.yaml` only when the owner asks (release rounds).
 - Commits use the identity in the repository's git config (the GitHub noreply address): never
   pass `--author` or write a private address. Commit messages contain no author or attribution
   lines (no "Co-Authored-By", no tool or person names).
@@ -100,3 +108,38 @@ Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round
   were about. Its first line starts with "Round <counter>" (e.g. "Round 76: added
   user-triggered engine benchmark"), the same counter as the round appended to
   `AGENT_CHANGELOG.md`; after it, a short summary of the changes and why they were needed.
+
+## Credit, copying and the licence
+
+The whole repository is AGPL-3.0, inherited from the Ultralytics plugin, and contributions are
+made under it. FaunaPulse is also scientific work, so credit follows academic practice, not only
+the licence.
+
+- **Do not plagiarise.** Do not copy large parts of code, or a whole approach, from other
+  software. Short snippets from documentation or web answers are fine, and so is code from the
+  official docs and sources of this project's own dependencies (Flutter, Android, LiteRT, the
+  Ultralytics plugin). Use common sense about where borrowing becomes copying. If a task seems to
+  need substantial code or a whole design from another project, stop and tell the owner first.
+- **Credit an algorithm where it is implemented.** When code follows a published method (for
+  example ByteTrack or C-BIoU), the comment at the top of the file or function names the method,
+  its authors, year, venue and a DOI or link, and says how our version differs (simplified,
+  other parameters). User docs that describe the method cite it too. Even if an idea is not protected by
+  copyright, citing the original source is honest scientific practice.
+- **Credit the origin and the implementer separately.** If an idea comes from one source (a
+  paper, official documentation) and we followed another project's implementation of it, name
+  both and say who contributed what ("idea from X; implementation follows Y"). Use neutral
+  wording ("as in Y (Author 2026)"), not possessive ("Author's method"). A statement such as
+  "no code copied" must be true.
+- **Copied code keeps its notices.** Code copied or closely adapted (after the owner agreed) must
+  have a licence compatible with AGPL-3.0: MIT, BSD, Apache-2.0 and GPL-3.0 are; GPL-2.0-only,
+  "non-commercial" licences and code with no licence at all (all rights reserved) are not; ask
+  the owner when unsure. Keep the original copyright and licence notice, add a comment with the
+  source link (with commit or version) and what was changed, and mention it in the round's
+  changelog entry.
+- **Ultralytics plugin and headers.** Never remove or edit the `Ultralytics 🚀 AGPL-3.0` headers
+  in files that came from upstream. The AGPL asks that changes to them are marked:
+  `packages/ultralytics_yolo/FAUNAPULSE_FORK.md` does this, so record new plugin changes there.
+  New files written for FaunaPulse do not get the Ultralytics header (Ultralytics did not write
+  them).
+- **Models and data** keep their creators' licences. Their credit (authors, licence, citation)
+  lives in the model cards on Hugging Face and in fauna-pulse-models repository, not in this repository.

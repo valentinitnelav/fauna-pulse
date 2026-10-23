@@ -1,4 +1,4 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+// FaunaPulse (round 319): foreground service for the long analysis jobs on saved sessions.
 
 package com.ultralytics.yolo
 

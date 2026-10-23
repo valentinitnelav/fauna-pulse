@@ -1,5 +1,12 @@
 // FaunaPulse — a lightweight ByteTrack-style multi-object tracker.
 //
+// Method: Zhang, Y., Sun, P., Jiang, Y., Yu, D., Weng, F., Yuan, Z., Luo, P.,
+// Liu, W. & Wang, X. (2022). ByteTrack: Multi-object tracking by associating
+// every detection box. ECCV 2022, LNCS 13682, 1-21.
+// https://doi.org/10.1007/978-3-031-20047-2_1
+// This file is FaunaPulse's own simplified Dart version of the idea; the
+// differences from the paper are listed below.
+//
 // Goal: given the detector's per-frame boxes, follow each insect across frames
 // and hand it a stable "track id". This is what turns a stream of detections
 // into countable, timeable *visits*.

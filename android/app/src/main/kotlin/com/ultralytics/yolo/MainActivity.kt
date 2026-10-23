@@ -1,4 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+//
+// FaunaPulse: started from the Ultralytics example app's MainActivity (22 lines);
+// almost all of this file was written for FaunaPulse.
 
 package com.ultralytics.yolo
 

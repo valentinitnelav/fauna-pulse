@@ -171,3 +171,10 @@ private session data, signing credentials or model weights.
 The project is **AGPL-3.0** (see [`LICENSE`](../LICENSE)), inherited from the
 Ultralytics `ultralytics_yolo` plugin it builds upon. That plugin
 (`packages/ultralytics_yolo/`) retains its own `LICENSE`. Contributions are made under AGPL-3.0.
+
+Give credit where it is due. Code that follows a published method cites the
+paper (authors, year, venue, DOI) in a comment where it is implemented. Code
+copied or adapted from another project needs a licence compatible with
+AGPL-3.0 (for example MIT, BSD, Apache-2.0 or GPL-3.0), keeps its original
+copyright notice and gets a comment with the source link. Please say so in the
+pull request. Do not copy large parts of other projects.

@@ -1,8 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 //
-// FaunaPulse — app entry point. Built on the Ultralytics YOLO Flutter
-// plugin; the original showcase screens still live under presentation/ for
-// reference but are no longer the launch route.
+// FaunaPulse: app entry point, started from the Ultralytics YOLO Flutter
+// plugin's example app.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

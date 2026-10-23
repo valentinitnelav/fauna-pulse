@@ -9522,3 +9522,7 @@ both). Branch `sam3` was left untouched. Round 312 switches the download links t
 
 **Open:** a chained run waiting in the background can still lose its note if a stopped run of the same session ends at that moment (rare). Not run on the 11T Pro.
 
+## Round 321 (2026-10-23): credit and copying rules for agents, tracker papers cited
+
+Asked: revisited AGENTS.md file with a focus on "do not plagiarise" rule that gives credit where algorithms come from; then cite both trackers. No plagiarism (flag borrowing of a whole approach to the owner first), search and reuse before adding, fix at the owning code, honest reporting of checks, stage files by name, version bumps only on request. The licence part separates credit for ideas (scientific practice, not a copyright duty) from copied code (needs an AGPL-compatible licence and kept notices). The check found four files written for FaunaPulse (MotionGate.kt, RecordingService.kt, AnalysisService.kt, and MainActivity.kt grown from a 22-line example) with the Ultralytics header: three now carry a FaunaPulse header, MainActivity keeps the Ultralytics one plus a note. The two unused Ultralytics example screens were deleted. Open: the app's Kotlin folder is still com.ultralytics.yolo (cosmetic; the app ID is com.faunapulse.app).
+

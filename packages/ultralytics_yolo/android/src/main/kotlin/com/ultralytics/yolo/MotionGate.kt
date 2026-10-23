@@ -1,4 +1,4 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+// FaunaPulse (round 58): motion gate that lets the detector sleep while nothing moves in the ROI.
 
 package com.ultralytics.yolo
 
