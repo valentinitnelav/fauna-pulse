@@ -1,8 +1,10 @@
 // Tests for the per-track-id pooling math (round 208, rule changed round
 // 217): softmax scoring, certainty weights, the ladder, support, tau, sink
 // mass, path conflicts, and the identity between the reported mass and the
-// crops' own masses.
+// crops' own masses. Round 322: the name rules of the v2 label packs need no
+// code change (rows cut to genus or family count only above the cut).
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -268,6 +270,125 @@ void main() {
       }
       expect(f.ladder.first.toJson().keys, containsAll(['rank', 'taxon', 'p', 'p_mean', 'p_max', 'p_agree', 'support']));
       expect(f.counted.length, 3);
+    });
+  });
+
+  // Round 322: the v2 label packs (fauna-pulse-models, build_label_pack.py
+  // --name-rules higher-rank) leave the slots below genus or family empty for
+  // rows not in the plain form, and write kingdom Metazoa as Animalia. The
+  // app needed no change for it: a row counts only down to the rank above its
+  // first empty slot (rollUp, massesAt), and its name is its deepest named rank.
+  group('v2 name rules (round 322)', () {
+    LabelPack rulesPack() {
+      const dim = 7;
+      final m = Float32List(dim * dim);
+      for (var r = 0; r < dim; r++) {
+        m[r * dim + r] = 1;
+      }
+      return LabelPack(
+        packId: 'bioclip-2_rules_v2',
+        modelId: 'bioclip-2',
+        dim: dim,
+        rows: dim,
+        sinkRows: 1,
+        logitScale: 100,
+        temperature: 1.0,
+        labels: const [
+          LabelRow(['Animalia', 'Arthropoda', 'Insecta', 'Lepidoptera', 'Nymphalidae', 'Vanessa', 'cardui'], 'Painted lady'),
+          // two_genera: used down to family (genus, species and common name left empty).
+          LabelRow(['Animalia', 'Arthropoda', 'Insecta', 'Lepidoptera', 'Nymphalidae', '', ''], ''),
+          // species_not_plain ("Bombus spec"): used down to genus.
+          LabelRow(['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', ''], ''),
+          LabelRow(['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'terrestris'], ''),
+          // metazoa: kingdom read as Animalia, used down to family.
+          LabelRow(['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', '', ''], ''),
+          // A gap in the source taxonomy (no order): counts only down to the class.
+          LabelRow(['Animalia', 'Chordata', 'Aves', '', 'Corvidae', 'Corvus', 'corax'], 'Raven'),
+          LabelRow(['none', '', '', '', '', '', 'flower'], 'a photo of a flower.'),
+        ],
+        matrix: m,
+        header: const {},
+      );
+    }
+
+    List<double> axis(int i) => [for (var k = 0; k < 7; k++) k == i ? 1.0 : 0.0];
+
+    test('a cut row shows its deepest named rank', () {
+      final l = rulesPack().labels;
+      expect([for (final r in l.take(5)) r.speciesName], ['Vanessa cardui', 'Nymphalidae', 'Bombus', 'Bombus terrestris', 'Apidae']);
+    });
+
+    test('a cut row counts for the ranks above the cut only (rollUp and massesAt agree)', () {
+      final s = Scorer(rulesPack());
+      final p = s.probs(unit([0, 0, 1, 1, 1, 0, 0])); // the three Apidae rows alike
+      final m = s.rollUp(p);
+      const apidae = 'Animalia|Arthropoda|Insecta|Hymenoptera|Apidae';
+      expect(m[4][apidae], closeTo(p[2] + p[3] + p[4], 1e-6), reason: 'the Metazoa row counts for its family');
+      expect(m[5]['$apidae|Bombus'], closeTo(p[2] + p[3], 1e-6), reason: '"Bombus spec" counts for Bombus');
+      expect(m[6].keys.toSet(), {'Animalia|Arthropoda|Insecta|Lepidoptera|Nymphalidae|Vanessa|cardui', '$apidae|Bombus|terrestris'},
+          reason: 'species only from the plain rows (the raven stops at its class)');
+      expect(m[6]['$apidae|Bombus|terrestris'], closeTo(p[3], 1e-6));
+      expect(m[0].keys.toSet(), {'Animalia', 'none'}, reason: 'one animal kingdom');
+      expect(m[3].keys.where((k) => k.contains('Aves')), isEmpty, reason: 'the gap row stops at its class');
+      final masses = s.massesAt(p, ['Animalia', 'Animalia|Arthropoda', 'Animalia|Arthropoda|Insecta',
+          'Animalia|Arthropoda|Insecta|Hymenoptera', apidae, '$apidae|Bombus', '$apidae|Bombus|terrestris']);
+      expect(masses[4], closeTo(m[4][apidae]!, 1e-6));
+      expect(masses[5], closeTo(m[5]['$apidae|Bombus']!, 1e-6));
+      expect(masses[6], closeTo(m[6]['$apidae|Bombus|terrestris']!, 1e-6));
+    });
+
+    test('a track ID on a cut row is named down to that rank, not deeper', () {
+      final s = Scorer(rulesPack());
+      FusedTrack on(int row) => s.fuse([crop(axis(row)), crop(axis(row), jpeg: 'b.jpg')]);
+      expect((on(2).identifiedRank, on(2).headline), ('genus', 'Bombus'));
+      expect((on(1).identifiedRank, on(1).headline), ('family', 'Nymphalidae'));
+      expect(on(1).bestViewTaxon, 'Nymphalidae');
+      expect((on(4).identifiedRank, on(4).headline), ('family', 'Apidae'));
+      expect(on(4).ladder.first.taxon, 'Animalia');
+      expect((on(5).identifiedRank, on(5).headline), ('class', 'Aves'));
+      expect((on(3).identifiedRank, on(3).headline), ('species', 'Bombus terrestris'), reason: 'plain rows as before');
+    });
+
+    test('the v2 header keys are read and kept (name_rules, source checksums)', () async {
+      final header = {
+        'kind': 'label_pack',
+        'pack_id': 'bioclip-2_rules_v2',
+        'model_id': 'bioclip-2',
+        'dim': 2,
+        'rows': 2,
+        'dtype': 'f32',
+        'logit_scale': 100.0,
+        'temperature': 1.0,
+        'sink_rows': 0,
+        'labels': [
+          ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', '', ''],
+          ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'terrestris', ''],
+        ],
+        'source': {'names_file_sha256': 'ab' * 32, 'species_csv_sha256': 'cd' * 32},
+        'name_rules': {
+          'set': 'higher-rank',
+          'counts': {'metazoa': 0, 'two_genera': 0, 'species_not_plain': 1},
+          'rows': [
+            {'pack_row': 0, 'tol_row': 7, 'rule': 'species_not_plain', 'published': ['Animalia', '', '', '', '', 'Bombus', 'spec', '']},
+          ],
+        },
+      };
+      final h = utf8.encode(jsonEncode(header));
+      final bytes = (BytesBuilder()
+            ..add(ascii.encode('FPK1'))
+            ..add((ByteData(4)..setUint32(0, h.length, Endian.little)).buffer.asUint8List())
+            ..add(h)
+            ..add(Float32List.fromList([1, 0, 0, 1]).buffer.asUint8List()))
+          .toBytes();
+      final pack = LabelPack.parseBytes(bytes);
+      expect(pack.labels.map((l) => l.speciesName), ['Bombus', 'Bombus terrestris']);
+      expect((pack.header['name_rules'] as Map)['rows'], hasLength(1));
+      final dir = Directory.systemTemp.createTempSync('fpack_v2');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/bioclip-2_rules_v2.fpack')..writeAsBytesSync(bytes);
+      final read = await LabelPack.readHeader(file);
+      expect((read['name_rules'] as Map)['rows'], hasLength(1), reason: 'the models screen counts these');
+      expect((read['source'] as Map)['names_file_sha256'], 'ab' * 32);
     });
   });
 }

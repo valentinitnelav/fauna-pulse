@@ -76,7 +76,7 @@ class IdentificationAssets {
   /// - A class list has the model's file name (round 266), and only that.
   /// - A label pack (round 276, the naming rule `<model>_<list>_v<n>`)
   ///   belongs to every model file with the same first part
-  ///   (`bioclip-2_flower-visitors-32fam_v1` ↔ `bioclip-2_224_fp16`).
+  ///   (`bioclip-2_pollinator-orders-europe_v2` ↔ `bioclip-2_224_fp16`).
   /// - Otherwise the pack's header names its model in `model_id` (files
   ///   named before the rule, or renamed: `bioclip-2.5` ↔
   ///   `bioclip-25_image_fp16.tflite`).

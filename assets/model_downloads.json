@@ -128,6 +128,32 @@
       "name_lists": [
         {
           "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,978 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2_pollinator-orders-europe_v2.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_pollinator-orders-europe_v2.fpack",
+            "bytes": 57029546,
+            "sha256": "5329536e2ff00e41da16fdeeb8ca0a4416c680340c31d36ff586bc1579100b76"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Mammals and birds of the world (17,130 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2_mammals-birds-world_v2.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_mammals-birds-world_v2.fpack",
+            "bytes": 28204943,
+            "sha256": "5ac650402d54b31b2a2d5b8bb97c60265e40c4bc5b3b4a159bdda849df8c4a5b"
+          }
+        }
+      ],
+      "former_name_lists": [
+        {
+          "kind": "label_pack",
           "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (35,264 names)",
           "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
           "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
@@ -136,7 +162,8 @@
             "bytes": 57479207,
             "sha256": "94597c90db80f8c53cba48a1adc5388e874f56edeccd1e73e9e7d2a759169f4b",
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/cbf9b265cc9723783bcbb8c44a09c57870386386/bioclip-2_pollinator-orders-europe_v1.fpack"
-          }
+          },
+          "note": "Replaced by version 2 (below). Results made with this list stay as they are."
         },
         {
           "kind": "label_pack",
@@ -148,7 +175,8 @@
             "bytes": 62754369,
             "sha256": "49ce700de25266f8c9a3a55fa5086205c420ab076000552868d113516df41c16",
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/cbf9b265cc9723783bcbb8c44a09c57870386386/bioclip-2_flower-visitors-32fam_v1.fpack"
-          }
+          },
+          "warning": "A demo list, no longer updated: its 32 families are an example, not a checked choice (it leaves out some flower visitors). For Europe, use the Europe list."
         },
         {
           "kind": "label_pack",
@@ -160,7 +188,8 @@
             "bytes": 28120298,
             "sha256": "2a78f3973af78fc1779277e43d7b8ef7266a13c68af95dbdd93e32e2af258d48",
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/cbf9b265cc9723783bcbb8c44a09c57870386386/bioclip-2_mammals-birds-world_v1.fpack"
-          }
+          },
+          "note": "Replaced by version 2 (below). Results made with this list stay as they are."
         }
       ]
     },
@@ -181,6 +210,20 @@
       "name_lists": [
         {
           "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,392 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-europe_v2.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/2f54024dda4e8731bc1f54e7969fefeb63446634/bioclip-2.5_pollinator-orders-europe_v2.fpack",
+            "bytes": 73672276,
+            "sha256": "e36b815a9da1a2d6d2d2c911128517f53365638e76036cd5ae343daeaa5cac9a"
+          }
+        }
+      ],
+      "former_name_lists": [
+        {
+          "kind": "label_pack",
           "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,704 names)",
           "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
           "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
@@ -189,7 +232,8 @@
             "bytes": 74339217,
             "sha256": "4bbb26b317a4cfb849d61a48f19d3da55e836f413cc90b5f1bd8b6c5e55e1c49",
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/dd1f5b7259ce3ee2d3aef89c200dde96745f3e85/bioclip-2.5_pollinator-orders-europe_v1.fpack"
-          }
+          },
+          "note": "Replaced by version 2 (below). Results made with this list stay as they are."
         },
         {
           "kind": "label_pack",
@@ -201,7 +245,8 @@
             "bytes": 80131038,
             "sha256": "6d6cc9d0158df2d5f1d9a218ae693374f3055aabcc8d2ba222e2a71d8a356c0d",
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/dd1f5b7259ce3ee2d3aef89c200dde96745f3e85/bioclip-2.5_flower-visitors-32fam_v1.fpack"
-          }
+          },
+          "warning": "A demo list, no longer updated: its 32 families are an example, not a checked choice (it leaves out some flower visitors). For Europe, use the Europe list."
         }
       ]
     }
@@ -220,14 +265,10 @@
       "name": [
         {
           "model": "bioclip-2",
-          "list": "bioclip-2_pollinator-orders-europe_v1.fpack"
+          "list": "bioclip-2_pollinator-orders-europe_v2.fpack"
         },
         {
           "model": "insectdct-cls-v7-eff2s"
-        },
-        {
-          "model": "bioclip-2",
-          "list": "bioclip-2_flower-visitors-32fam_v1.fpack"
         }
       ]
     },
@@ -244,14 +285,10 @@
       "name": [
         {
           "model": "bioclip-2",
-          "list": "bioclip-2_pollinator-orders-europe_v1.fpack"
+          "list": "bioclip-2_pollinator-orders-europe_v2.fpack"
         },
         {
           "model": "insectdct-cls-v7-eff2s"
-        },
-        {
-          "model": "bioclip-2",
-          "list": "bioclip-2_flower-visitors-32fam_v1.fpack"
         }
       ]
     },
@@ -266,7 +303,7 @@
       "name": [
         {
           "model": "bioclip-2",
-          "list": "bioclip-2_mammals-birds-world_v1.fpack"
+          "list": "bioclip-2_mammals-birds-world_v2.fpack"
         }
       ]
     }

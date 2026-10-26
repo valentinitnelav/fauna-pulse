@@ -25,15 +25,18 @@ chooses an identification model with its name list (and a detection model) for y
 up with one button (other suggestions, and the other models already on the phone, under *Choose
 other models*):
 *Pollinators on flowers* and *Insects on a flat surface* BioCLIP 2 with *Flies, bees and wasps,
-beetles, butterflies and moths of Europe* (or the insectDCT classifier, or BioCLIP 2 with the
-32 flower-visitor families), *Mammals and birds* BioCLIP 2 with *Mammals and birds of the world*
-(17,130 names, 28 MB, round 278). Every model is on **Download & import models** (home screen: *AI
+beetles, butterflies and moths of Europe* (34,978 names, 57 MB; or the insectDCT classifier),
+*Mammals and birds* BioCLIP 2 with *Mammals and birds of the world* (17,130 names, 28 MB). Every model is on **Download & import models** (home screen: *AI
 models* in the bottom bar). Each kind is one list by file name, and each file that is not on the
 phone has its own **Download** button. An insectDCT classifier is one row with its class list. A
 BioCLIP model has its own **Download** and two numbered steps: *1. The model, needed once*, then
 *2. the name lists for your region and the animals you watch*. A name list's **Download** also
-brings the model when it is missing. BioCLIP 2 has three name lists, BioCLIP 2.5 two (the
-catalogue is `assets/model_downloads.json`, see `tool/model_downloads/README.md`).
+brings the model when it is missing. BioCLIP 2 has two name lists, BioCLIP 2.5 one (the
+catalogue is `assets/model_downloads.json`, see `tool/model_downloads/README.md`). Since round 322
+these are the version 2 lists (`…_v2.fpack`). The version 1 lists and the 32-family demo lists
+are no longer offered: a copy on the phone keeps working, with a line under its file name on
+Download & import models (version 1: replaced by version 2; the demo: its 32 families are an
+example, not a checked choice). Their files stay on Hugging Face.
 
 **Words (round 276):** a *name list* is what an identification model chooses its names from. It
 is one of two kinds, both `.fpack` files ("FaunaPulse pack"): a *class list* (the fixed classes of a
@@ -44,7 +47,7 @@ lists each identification model with its name lists under it, and flags a model 
 it cannot identify. The Identify screen offers only the lists made for the chosen model and does
 not start without one. A class list belongs to the model with the same file name. A label pack
 belongs to every model file whose name starts the same way, by the naming rule of round 276
-(`tool/model_downloads/README.md`): `bioclip-2_flower-visitors-32fam_v1.fpack` goes with
+(`tool/model_downloads/README.md`): `bioclip-2_pollinator-orders-europe_v2.fpack` goes with
 `bioclip-2_224_fp16.tflite` and `bioclip-2_224_fp32.tflite`. A pack also names its model in its
 header (`model_id`), so a renamed pack still finds a model whose name starts with that id
 (upper and lower case, "-" and "." alike: `bioclip-2.5` also finds `bioclip-25_image_fp16.tflite`, the
@@ -140,7 +143,7 @@ detection sessions already have their track IDs: use the steps below.
 4. When finished, **View results** shows a table with one row per taxon (track IDs, total
    time, median confidence); tap a row for its track IDs and a track ID for its full ladder.
    The header's *Name list* row shows the name list by its file name, as on *Identify
-   organisms* (for example "bioclip-2_pollinator-orders-europe_v1.fpack (35,264 names)").
+   organisms* (for example "bioclip-2_pollinator-orders-europe_v2.fpack (34,978 names)").
    **Share results (CSV file)** hands the per-track-ID table to another app (the same file
    stays in the session folder under `identification/`, so it can also be copied over USB). The session summary's
    Photos tab then shows each track ID's identification under its photos.
@@ -349,6 +352,21 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
    crop (`p_max_<rank>`), the agreeing-crops mean (`p_agree_<rank>`) and the agreement share
    (`agree_<rank>`), plus every crop's own values and its `counted` flag in
    `crops_<pack>.csv`.
+
+**Names used only down to genus or family (version 2 name lists, round 322).** The names are
+those of TreeOfLife-200M as the BioCLIP authors publish them; none is corrected or removed. A
+few rows are not in the plain form "genus, epithet": two different genera in one row, or
+authors, codes or a placeholder such as "spec" in the species field (used down to genus), and
+the kingdom "Metazoa", which the dataset card lists as unresolved (read as Animalia and used
+down to family). The list builder leaves the slots below that rank empty, and the app counts a
+row only down to the rank above its first empty slot (the same rule as for a gap in the source
+taxonomy), so such a row adds to its genus or family but never names a species: a crop that
+matches "Bombus spec" is named "Bombus". It concerns 109 of the 34,978 Europe names of BioCLIP 2
+and 613 of the 17,130 mammal and bird names (none in the BioCLIP 2.5 Europe list). The pack
+header lists each such row with its names as published (`name_rules.rows`). Details: the model
+cards on Hugging Face (section *Names*; the ⓘ card of a name list on Download & import models
+links its model card, which also lists newer versions) and `bioclip_export/build_label_pack.py`
+of fauna-pulse-models. The version 1 lists use every row as published.
 
 ## Settings (Identify screen → Advanced)
 
@@ -567,6 +585,14 @@ insect-detect-post `pred_prob_weighted` is the mean probability of the images th
 for the winning candidate times the share of images that voted for it, and
 `pred_prob_mean` the mean over those voting images (`metadata_processor.py`); FaunaPulse
 keeps the column names so the same scripts read both outputs, with its own formulas.
+
+The version 2 Europe name lists (round 322, built in fauna-pulse-models) choose their species
+as insect-detect-post v1.1.0 does (Sittinger 2026, https://doi.org/10.5281/zenodo.23404778): its
+published table that maps the BioCLIP names to accepted species of the Catalogue of Life
+(Bánki et al. 2026, https://doi.org/10.48580/dgy8b), and the same GBIF query, which counts the
+records per accepted species and keeps the species of Diptera, Hymenoptera, Coleoptera and
+Lepidoptera with at least 3 records in Europe. The model cards on Hugging Face give the full
+citations of the names, the lists and the method.
 
 ## Troubleshooting
 

@@ -184,7 +184,7 @@ void main() {
     const flatModels = (
       detector: 'flatbug-n_640_fp16.tflite',
       idModel: 'bioclip-2_224_fp16.tflite',
-      nameList: 'bioclip-2_pollinator-orders-europe_v1.fpack',
+      nameList: 'bioclip-2_pollinator-orders-europe_v2.fpack',
     );
     // Pollinators was set up earlier with its own choice: no naming.
     const pollinatorModels = (detector: 'insectdct-v8s_640_fp16.tflite', idModel: null, nameList: null);

@@ -79,6 +79,12 @@
 // offered). The note at the top no longer says who made the models (true today,
 // not once own models come) and the Hugging Face link moved next to Import:
 // at the top it invited users to download there, past the buttons below.
+//
+// Round 322 (owner): a name list no longer offered (a replaced version, the
+// 32-family demo) keeps its catalogue details and shows its note under the
+// file (grey, or amber for a warning). The ⓘ card of a name list links its
+// model card on Hugging Face, which says how the list was made and lists newer
+// versions (owner: the name rules in full were too much for the card).
 
 import 'dart:io';
 
@@ -870,6 +876,18 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (d != null && d.source.isNotEmpty) ('Source', d.source),
   ];
 
+  /// The model card of a file downloaded from Hugging Face (round 322): its
+  /// repository page, from the download link pinned to a commit
+  /// (`https://huggingface.co/<owner>/<repo>/resolve/<commit>/<file>`). The
+  /// page, not the pinned link, so it shows the card as it is now; null for
+  /// files from elsewhere.
+  static String? _modelCardUrl(Uri download) {
+    final seg = download.pathSegments;
+    return download.host == 'huggingface.co' && seg.length > 2 && seg[2] == 'resolve'
+        ? 'https://huggingface.co/${seg[0]}/${seg[1]}'
+        : null;
+  }
+
   static String _listKind(Map<String, dynamic>? h) => h == null
       ? 'A name list that could not be read'
       : isClassListHeader(h)
@@ -923,9 +941,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
   void _nameListCard(File f, ModelsInventory inv) {
     final offer = inv.downloads.listFor(_nameOf(f));
     final list = offer?.$2;
+    final note = list?.warning ?? list?.note;
+    final card = list == null ? null : _modelCardUrl(list.file.url);
     _showCard(Icons.list_alt, _nameOf(f), [
       ('Kind', _listKind(inv.headers[f.path])),
       if (offer != null) ('Name list', '${offer.$1.title}: ${offer.$2.title}'),
+      if (note != null) ('Note', note),
+      if (card != null) ('How it was made, and any newer version', card),
       ('File', _onPhone(f.path, inv)),
       // The names' own licence and source (round 276), else the model's.
       if (list != null && list.licence.isNotEmpty) ('Licence', list.licence),
@@ -958,7 +980,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// delete. A file the user can delete ([path]) is selected by pressing and
   /// holding it (round 279); while selecting, a box replaces the icon and the
   /// buttons.
-  Widget _tile(IconData icon, String name, VoidCallback onInfo, {String? path, String? warning}) {
+  Widget _tile(IconData icon, String name, VoidCallback onInfo, {String? path, String? warning, String? note}) {
     final sel = _selected;
     final selecting = sel != null && path != null;
     return ListTile(
@@ -975,6 +997,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const OnThisPhoneLine(),
+          if (note != null) Text(note, style: helperTextStyle),
           if (warning != null) Text(warning, style: const TextStyle(color: Colors.amber, fontSize: 12.5)),
         ],
       ),
@@ -1181,6 +1204,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
               ),
             ],
           ),
+        // Its lists no longer offered that are on the phone sit here too, so
+        // a replaced version is next to its new one (round 322).
+        for (final l in d.formerNameLists)
+          if (here[l.file.name] case final f?) (l.file.name, [_under(_nameListRow(f, inv))]),
       ]),
     ];
   }
@@ -1188,8 +1215,17 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// What a name list to download holds, and its size.
   static String _listDetails(NameListDownload l) => '${l.title}\n${formatBytes(l.file.bytes)}';
 
-  Widget _nameListRow(File f, ModelsInventory inv) =>
-      _tile(Icons.list_alt, _nameOf(f), () => _nameListCard(f, inv), path: f.path);
+  Widget _nameListRow(File f, ModelsInventory inv) {
+    final list = inv.downloads.listFor(_nameOf(f))?.$2;
+    return _tile(
+      Icons.list_alt,
+      _nameOf(f),
+      () => _nameListCard(f, inv),
+      path: f.path,
+      note: list?.note,
+      warning: list?.warning,
+    );
+  }
 
   /// Name lists whose model is neither on the phone nor offered (the label
   /// packs of an offered model sit under it; a classifier to download is one
@@ -1198,7 +1234,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     final underOffers = {
       for (final d in inv.downloads.identificationOffers)
         if (inv.idModelFor(d) == null)
-          for (final l in d.nameLists)
+          for (final l in [...d.nameLists, ...d.formerNameLists])
             if (!l.classList) l.file.name,
     };
     return [

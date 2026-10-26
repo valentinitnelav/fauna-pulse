@@ -12,7 +12,9 @@
 // Round 289: a name list counts any file of its model; the lists still to
 // download sit under that model. Round 317: one list per kind by file name,
 // a green tick on every file on the phone, BioCLIP's two numbered steps, and
-// the lists of a model not on the phone under that model.
+// the lists of a model not on the phone under that model. Round 322: name
+// lists no longer offered (their note under the file), and a name list's
+// card links its model card on Hugging Face.
 
 import 'dart:io';
 
@@ -161,6 +163,23 @@ Future<void> _close(WidgetTester tester) async {
 const _mdv6 = 'MDV6-yolov10-c_int8_256.tflite';
 const _clsName = 'insectdct-cls-v7_eff2s_fp16.tflite';
 const _europeName = 'bioclip2_pollinator_orders_europe_v1.fpack';
+
+/// Round 322: one offered label pack and two no longer offered (a replaced
+/// version with a note, a demo with a warning).
+final _formerDownloads = ModelDownloads.parse('''
+{"models": [
+   {"id": "bioclip-2", "kind": "identification_model", "title": "BioCLIP 2", "purpose": "Any organism.",
+    "file": {"name": "bioclip-2_224_fp16.tflite", "bytes": 609466720, "url": "https://example.org/r/bioclip-2_224_fp16.tflite"},
+    "name_lists": [{"kind": "label_pack", "title": "Europe v2", "licence": "CC0-1.0", "source": "https://example.org/tol",
+                    "file": {"name": "bioclip-2_europe_v2.fpack", "bytes": 57029546, "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_europe_v2.fpack"}}],
+    "former_name_lists": [
+      {"kind": "label_pack", "title": "Europe v1", "licence": "CC0-1.0", "source": "https://example.org/tol",
+       "note": "Replaced by version 2 (below). Results made with this list stay as they are.",
+       "file": {"name": "bioclip-2_europe_v1.fpack", "bytes": 57479207, "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_europe_v1.fpack"}},
+      {"kind": "label_pack", "title": "32 families", "licence": "CC0-1.0", "source": "https://example.org/tol",
+       "warning": "A demo list, no longer updated.",
+       "file": {"name": "bioclip-2_demo-32fam_v1.fpack", "bytes": 62754369, "url": "https://example.org/r/bioclip-2_demo-32fam_v1.fpack"}}]}
+ ]}''');
 
 void main() {
   testWidgets('every file is listed by its name; its details are in the card behind the ⓘ', (tester) async {
@@ -843,5 +862,79 @@ void main() {
     expect(model.existsSync(), isFalse);
     expect(own.existsSync(), isFalse);
     expect(other.existsSync(), isTrue);
+  });
+
+  testWidgets('round 322: lists no longer offered show their note, never a Download; the model card link', (tester) async {
+    final model = File('$_dir/models/bioclip-2_224_fp16.tflite');
+    final v1 = File('$_dir/packs/bioclip-2_europe_v1.fpack');
+    final v2 = File('$_dir/packs/bioclip-2_europe_v2.fpack');
+    const demoName = 'bioclip-2_demo-32fam_v1.fpack';
+    // The 32-family list is in the catalogue but not on the phone: it must not be offered.
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        idModels: [model],
+        nameLists: [v1, v2],
+        headers: {
+          v1.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 6},
+          v2.path: {'model_id': 'bioclip-2', 'rows': 34984, 'sink_rows': 6},
+        },
+        downloads: _formerDownloads,
+      ),
+    );
+    await _show(tester, find.text(v1.path.split('/').last));
+    final note = tester.widget<Text>(find.text('Replaced by version 2 (below). Results made with this list stay as they are.'));
+    expect(note.style?.color, isNot(Colors.amber), reason: 'a plain note');
+    expect(find.text(_b(demoName)), findsNothing, reason: 'a list no longer offered is never offered');
+    expect(find.text(demoName), findsNothing);
+    expect(find.text('Download'), findsNothing, reason: 'the model and the offered list are on the phone');
+    await _card(tester, 'bioclip-2_europe_v1.fpack');
+    expect(_inCard('BioCLIP 2: Europe v1'), findsOneWidget, reason: 'its catalogue details stay');
+    expect(_inCard('Replaced by version 2 (below). Results made with this list stay as they are.'), findsOneWidget);
+    expect(_inCard('CC0-1.0'), findsOneWidget);
+    await _close(tester);
+    // The model card: the repository page, not the link pinned to a commit.
+    await _card(tester, 'bioclip-2_europe_v2.fpack');
+    expect(_inCard('How it was made, and any newer version'), findsOneWidget);
+    expect(_inCard('https://huggingface.co/Valen-Peregrine/bioclip-2-tflite'), findsOneWidget);
+    await _close(tester);
+  });
+
+  testWidgets('round 322: the 32-family demo on the phone shows its warning in amber', (tester) async {
+    final model = File('$_dir/models/bioclip-2_224_fp16.tflite');
+    const demoName = 'bioclip-2_demo-32fam_v1.fpack';
+    final demo = File('$_dir/packs/$demoName');
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        idModels: [model],
+        nameLists: [demo],
+        headers: {demo.path: {'model_id': 'bioclip-2', 'rows': 38576, 'sink_rows': 6}},
+        downloads: _formerDownloads,
+      ),
+    );
+    await _show(tester, find.text(demoName));
+    expect(tester.widget<Text>(find.text('A demo list, no longer updated.')).style?.color, Colors.amber);
+    expect(find.text(_b('bioclip-2_europe_v2.fpack')), findsOneWidget, reason: 'the offered list to download');
+    expect(find.text(_b('bioclip-2_europe_v1.fpack')), findsNothing, reason: 'the replaced list is not offered');
+  });
+
+  testWidgets('round 322: with the model not on the phone, a replaced list sits under it, above its new version', (tester) async {
+    final v1 = File('$_dir/packs/bioclip-2_europe_v1.fpack');
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        nameLists: [v1],
+        headers: {v1.path: {'model_id': 'bioclip-2', 'rows': 35270, 'sink_rows': 6}},
+        downloads: _formerDownloads,
+      ),
+    );
+    await _show(tester, find.text(_b('bioclip-2_europe_v2.fpack')));
+    expect(find.text('Name lists without their model'), findsNothing);
+    expect(find.text('Replaced by version 2 (below). Results made with this list stay as they are.'), findsOneWidget);
+    final y1 = tester.getTopLeft(find.text('bioclip-2_europe_v1.fpack')).dy;
+    final y2 = tester.getTopLeft(find.text(_b('bioclip-2_europe_v2.fpack'))).dy;
+    expect(y1, lessThan(y2), reason: 'version 2 is below, as the note says');
+    expect(tester.getTopLeft(find.text(_b('bioclip-2_224_fp16.tflite'))).dy, lessThan(y1), reason: 'under the model');
   });
 }

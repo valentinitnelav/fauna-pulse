@@ -28,7 +28,7 @@ known".
 - `<extra>`: only when two exports would otherwise get the same name, for example `e2e`
   (end-to-end output) or `5d` (the old BioCLIP export that phone GPUs cannot run).
 - Name lists: a **class list** has exactly its classifier's name (`.fpack`); a **label pack**
-  is `<model>_<list>_v<n>.fpack`, for example `bioclip-2_flower-visitors-32fam_v1.fpack`.
+  is `<model>_<list>_v<n>.fpack`, for example `bioclip-2_pollinator-orders-europe_v2.fpack`.
   A label pack belongs to every model file with the same first part.
 - About 40 characters at most (without the extension).
 
@@ -77,6 +77,11 @@ In the code, "pack" means such a file of either kind.
 - `name_lists` (identification models): each with `kind` (`class_list` or `label_pack`),
   `title` and `file`, and its own `licence` and `source` when the names come from elsewhere
   (the TreeOfLife embeddings, CC0).
+- `former_name_lists` (round 322): name lists no longer offered (a version replaced by a newer
+  one, the 32-family demo lists), in the same shape plus a `note` (shown in grey) or a
+  `warning` (in amber). They are never offered or suggested; a copy on the phone keeps its
+  title, licence and source in its ⓘ card and shows that line under its file name. Their
+  links and checksums stay, so `update_catalogue.py --urls` still matches the published files.
 - `bytes` and `sha256`: the app shows the size and checks every download against the
   checksum. A file on the phone counts as present by its **name** only, so re-exported
   weights on the phone are not flagged.
@@ -114,6 +119,9 @@ In the code, "pack" means such a file of either kind.
 3. Never replace a published file: app versions already installed carry its link and its
    checksum. Publish changed weights under a new file name (the model cards say so too) and
    run `--urls` again, so old and new app versions both keep working.
+4. A new version of a label pack (`…_v2.fpack`): add its entry to `name_lists` by hand (the
+   file `name` is enough), move the old version to `former_name_lists` with a `note`, and
+   change the `uses` that suggest it; then `--urls` fills in the link, size and checksum.
 
 ## Where the files are (round 314)
 

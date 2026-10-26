@@ -33,6 +33,9 @@ published file with no match goes to the entry of its <model> part when that
 entry offers no file yet (a new detector), or replaces a classifier's class
 list (rebuilt under the new name, so other bytes). Anything else is reported
 (add it by hand). Manifests (.json) and LICENSE files are not app downloads.
+
+Round 322: a new label pack version is added by hand (its "name" in "name_lists", the old
+version moved to "former_name_lists"), then --urls fills in its link, size and checksum.
 """
 
 import argparse
@@ -55,12 +58,13 @@ def sha256_of(path):
 
 
 def file_entries(catalogue):
-    """Every {"name", "bytes", "sha256"} dict in the catalogue, by file name."""
+    """Every {"name", "bytes", "sha256"} dict in the catalogue, by file name (the lists no longer
+    offered too, so --urls still matches their published files)."""
     out = {}
     for entry in catalogue.get("models", []):
         if "file" in entry:
             out[entry["file"]["name"]] = entry["file"]
-        for lst in entry.get("name_lists", []):
+        for lst in entry.get("name_lists", []) + entry.get("former_name_lists", []):
             out[lst["file"]["name"]] = lst["file"]
     return out
 

@@ -31,8 +31,22 @@ void main() {
     final all = [
       for (final d in [...c.detectorOffers, ...c.identificationOffers]) ...[d.file!, for (final l in d.nameLists) l.file],
     ];
-    expect(all, hasLength(4 + 3 + 1 + 3 + 2), reason: 'BioCLIP 2: three name lists since round 278');
-    for (final f in all) {
+    expect(all, hasLength(4 + 3 + 1 + 2 + 1), reason: 'round 322: the v2 label packs, no 32-family demo');
+    // Round 322: the lists no longer offered keep their pinned links and
+    // checksums (update_catalogue.py --urls matches them by checksum).
+    final former = [for (final d in c.identificationOffers) ...d.formerNameLists];
+    expect(former.map((l) => l.file.name), [
+      'bioclip-2_pollinator-orders-europe_v1.fpack',
+      'bioclip-2_flower-visitors-32fam_v1.fpack',
+      'bioclip-2_mammals-birds-world_v1.fpack',
+      'bioclip-2.5_pollinator-orders-europe_v1.fpack',
+      'bioclip-2.5_flower-visitors-32fam_v1.fpack',
+    ]);
+    for (final l in former) {
+      expect(l.note ?? l.warning, isNotNull, reason: l.file.name);
+      expect(l.warning != null, l.file.name.contains('32fam'), reason: 'only the demo lists warn: ${l.file.name}');
+    }
+    for (final f in [...all, for (final l in former) l.file]) {
       expect(f.url.isScheme('https'), isTrue, reason: f.name);
       expect(f.url.path, endsWith('/${f.name}'));
       // Round 314: a Hugging Face link is pinned to one upload (a commit), never a branch.
@@ -63,8 +77,12 @@ void main() {
     expect(model.id, 'insectdct-cls-v7-eff2s');
     expect(list.title, 'Its 104 classes');
     expect(list.classList, isTrue);
-    expect(c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!.$2.classList, isFalse, reason: 'a label pack');
-    expect(c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!.$2.licence, startsWith('CC0-1.0'));
+    expect(c.listFor('bioclip-2_pollinator-orders-europe_v2.fpack')!.$2.classList, isFalse, reason: 'a label pack');
+    expect(c.listFor('bioclip-2_pollinator-orders-europe_v2.fpack')!.$2.licence, startsWith('CC0-1.0'));
+    // A list no longer offered is still found, with its licence and its note.
+    final (_, demo) = c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!;
+    expect(demo.licence, startsWith('CC0-1.0'));
+    expect(demo.warning, startsWith('A demo list, no longer updated'));
   });
 
   test('a file finds its model by the offered name or by its first part (r276)', () {

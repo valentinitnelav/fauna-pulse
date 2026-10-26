@@ -35,8 +35,9 @@ void main() {
     final files = {
       for (final d in [...list.detectors, ...list.identification])
         if (d.file case final f?) f.name: f.bytes,
+      // The v1 label packs are no longer offered (round 322) but stay known.
       for (final d in [...list.detectors, ...list.identification])
-        for (final l in d.nameLists) l.file.name: l.file.bytes,
+        for (final l in [...d.nameLists, ...d.formerNameLists]) l.file.name: l.file.bytes,
     };
     for (final MapEntry(key: old, value: (name, bytes)) in kFormerModelNames.entries) {
       expect(files[name], bytes, reason: '$old → $name');

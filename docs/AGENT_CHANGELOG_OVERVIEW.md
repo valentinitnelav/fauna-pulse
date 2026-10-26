@@ -598,6 +598,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - Class lists: a classifier (`insectdct-cls-v7-eff2s_224_fp16.tflite`, raw scores) pairs with the
   `.fpack` of the same name (`LabelPack.isClassList`, `ImageEmbedder.load(normalize: false)`).
   Label packs pair by the first part of the name (`listBelongsTo`, else header `model_id`).
+  A row counts only down to the rank above its first empty slot (`rollUp`, `_buildRankIds`):
+  v2 packs empty the slots below genus or family for odd names (header `name_rules`).
   Identify needs a matching list; a dimension mismatch is refused before embedding.
 - GPU: checked once per model file + `Build.FINGERPRINT` against CPU (cosine ≥ 0.995
   `GPU_MIN_AGREEMENT`, else CPU with a note); refused when `GPU_MEMORY_FACTOR` 4.5 × file size >
@@ -674,7 +676,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   download together: a file on the phone has the green `OnThisPhoneLine` (shared with the watch
   pages), ⓘ and delete; a file to download shows its catalogue title and size and a Download
   button (its name may break after "_"). Details behind ⓘ (from the file: classes, input size,
-  "Number format" fp16/int8/fp32 in words; plus title, licence and source when listed). Deleting an identification model takes
+  "Number format" fp16/int8/fp32 in words; plus title, licence and source when listed; a name list
+  from Hugging Face links its model card, `_modelCardUrl`). Deleting an identification model takes
   its name lists along unless another model still uses them; "Delete all …" per kind; press and
   hold selects several. Each kind sits in a `ModelKindPanel`: detection light blue,
   identification orange (faint fill, thick line on top, framed-circle or microscope icon); the
@@ -695,11 +698,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   what a name list is and why a list that fits the region and the animals gives better names.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,
-  optional `file` = offered, `name_lists` with `kind` class_list/label_pack) and `uses` (the home
+  optional `file` = offered, `name_lists` with `kind` class_list/label_pack; `former_name_lists`
+  = never offered, a copy on the phone keeps its details and shows its `note`/`warning`) and `uses` (the home
   answers: `id`, `icon`, `title`, `setup`, `find` ids, `name` {model, list}; insect answers find
   flat-bug n, then flat-bug s, then insectDCT (flat-bug = default demo, owner); the first of each is
-  "Suggested AI models"; naming is BioCLIP 2 first in every answer: the Europe 5-order list for
-  pollinators and flat surface, the world list for mammals and birds). Presence on the phone = file name only; `sha256` only verifies a download.
+  "Suggested AI models"; naming is BioCLIP 2 first in every answer: the Europe v2 list for
+  pollinators and flat surface, the world v2 list for mammals and birds). Presence on the phone = file name only; `sha256` only verifies a download.
   Files kept under the names used before the Hugging Face move get the new names at app start
   (`former_model_names.dart`, `renameFormerModelFiles` in `main()`: old name + same size, new name
   free), and the saved choices that name them follow (`faunapulse_session_config`,

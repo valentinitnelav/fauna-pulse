@@ -36,6 +36,12 @@
 // and birds), each with the models suggested for it: detection models by
 // `id`, identification models with the name list to use. Kept in the list so
 // the suggestions change without new code.
+//
+// Round 322 (owner): `former_name_lists`, the name lists no longer offered
+// (replaced by a new version, or the 32-family demo). They are never offered
+// or suggested, but a file on the phone keeps its title, licence and source,
+// and shows its `note` (grey) or `warning` (amber) line; without the entry its
+// card would say "not known, ask whoever made it" about our own file.
 
 import 'dart:convert';
 import 'dart:io';
@@ -76,7 +82,20 @@ class NameListDownload {
   final String licence;
   final String source;
 
-  const NameListDownload(this.title, this.file, {this.classList = false, this.licence = '', this.source = ''});
+  /// Former name lists only (round 322): one line for the users who have the
+  /// file, as a plain note or as a warning.
+  final String? note;
+  final String? warning;
+
+  const NameListDownload(
+    this.title,
+    this.file, {
+    this.classList = false,
+    this.licence = '',
+    this.source = '',
+    this.note,
+    this.warning,
+  });
 }
 
 class ModelDownload {
@@ -99,6 +118,10 @@ class ModelDownload {
   /// Identification models only (`name_lists`).
   final List<NameListDownload> nameLists;
 
+  /// Name lists no longer offered (`former_name_lists`, round 322): known
+  /// for the files on the phone, never offered or suggested.
+  final List<NameListDownload> formerNameLists;
+
   const ModelDownload({
     required this.id,
     required this.identification,
@@ -109,6 +132,7 @@ class ModelDownload {
     required this.source,
     this.file,
     this.nameLists = const [],
+    this.formerNameLists = const [],
   });
 
   /// Offered for download.
@@ -223,8 +247,8 @@ class ModelDownloads {
         };
         if (!ids.add(modelKey(id))) throw FormatException('repeated id $id');
         final model = e['file'] is Map ? file(e['file'] as Map<String, dynamic>) : null;
-        final lists = [
-          for (final l in (e['name_lists'] as List? ?? const []))
+        List<NameListDownload> lists(String key) => [
+          for (final l in (e[key] as List? ?? const []))
             NameListDownload(
               l['title'] as String,
               file(l['file'] as Map<String, dynamic>),
@@ -235,12 +259,16 @@ class ModelDownloads {
               },
               licence: l['licence'] as String? ?? '',
               source: l['source'] as String? ?? '',
+              note: l['note'] as String?,
+              warning: l['warning'] as String?,
             ),
         ];
+        final offeredLists = lists('name_lists'), formerLists = lists('former_name_lists');
+        final allLists = [...offeredLists, ...formerLists];
         final safe = isId
             ? (model == null || isSafeIdentificationFileName(model.name, ext: '.tflite')) &&
-                  lists.every((l) => isSafeIdentificationFileName(l.file.name, ext: '.fpack'))
-            : (model == null || isSafeModelBaseName(model.name)) && lists.isEmpty;
+                  allLists.every((l) => isSafeIdentificationFileName(l.file.name, ext: '.fpack'))
+            : (model == null || isSafeModelBaseName(model.name)) && allLists.isEmpty;
         if (!safe) throw FormatException('unsafe file name in $id');
         (isId ? identification : detectors).add(
           ModelDownload(
@@ -252,7 +280,8 @@ class ModelDownloads {
             licence: e['licence'] as String? ?? '',
             source: e['source'] as String? ?? '',
             file: model,
-            nameLists: lists,
+            nameLists: offeredLists,
+            formerNameLists: formerLists,
           ),
         );
       } catch (e) {
@@ -335,11 +364,12 @@ class ModelDownloads {
     return null;
   }
 
-  /// The catalogue name list [fileName] (a name or a path), with its model.
+  /// The catalogue name list [fileName] (a name or a path), with its model;
+  /// also a list no longer offered (round 322).
   (ModelDownload, NameListDownload)? listFor(String fileName) {
     final name = fileName.split('/').last;
     for (final d in identification) {
-      for (final l in d.nameLists) {
+      for (final l in [...d.nameLists, ...d.formerNameLists]) {
         if (l.file.name == name) return (d, l);
       }
     }
