@@ -673,12 +673,12 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   imported/downloaded files. Debug builds still pack local weights for device checks.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and
   delete model files and name lists. Each kind is ONE list by file name (`fileNameOrder`: case
-  ignored, "_" before ".", so bioclip-2 before bioclip-2.5), files on the phone and files to
+  ignored, "_" before ".", so bioclip-2 before bioclip-2.5), files on the phone and to
   download together: a file on the phone has the green `OnThisPhoneLine` (shared with the watch
   pages), ⓘ and delete; a file to download shows its catalogue title and size and a Download
   button (its name may break after "_"). Details behind ⓘ (from the file: classes, input size,
-  "Number format" fp16/int8/fp32 in words; plus title, licence and source when listed; a name list
-  from Hugging Face links its model card, `_modelCardUrl`). Deleting an identification model takes
+  "Number format" fp16/int8/fp32 in words; plus title, licence and source when listed; every file
+  from Hugging Face links its model card, last row, `_modelCardUrl`). Deleting an identification model takes
   its name lists along unless another model still uses them; "Delete all …" per kind; press and
   hold selects several. Each kind sits in a `ModelKindPanel`: detection light blue,
   identification orange (faint fill, thick line on top, framed-circle or microscope icon); the
@@ -694,8 +694,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   its label packs (only their shared licence and source). The note at the top ("About these
   models": adapted to run on a phone, each model's own licence and how to cite it from ⓘ, the
   Download buttons get the files from Hugging Face) names no makers; the Hugging Face collection
-  link (`kModelsCollectionUrl`, to download on a computer and import) sits under "Your own
-  models", next to Import (at the top it invited downloads there). The panel's first text says
+  link (`kModelsCollectionUrl`) sits under "Your own models", next to Import (at the top it
+  invited downloads there). Both show a name, not the address. The panel's first text says
   what a name list is and why a list that fits the region and the animals gives better names.
 - **Download list** `assets/model_downloads.json` (format 3; `tool/model_downloads/README.md`):
   one `models` array (`id` = the `<model>` part of the naming rule, `kind`, `licence`, `source`,

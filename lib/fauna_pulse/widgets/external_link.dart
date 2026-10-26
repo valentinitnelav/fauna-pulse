@@ -22,13 +22,17 @@ class ExternalLinkText extends StatelessWidget {
   final String logTag;
   final double fontSize;
 
-  const ExternalLinkText(this.url, {super.key, required this.logTag, this.fontSize = 14});
+  /// The text shown instead of the address (round 324: the FaunaPulse pages
+  /// on Hugging Face, whose addresses say little to a user).
+  final String? label;
+
+  const ExternalLinkText(this.url, {super.key, required this.logTag, this.fontSize = 14, this.label});
 
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: () => openExternalLink(url, logTag),
     child: Text(
-      url,
+      label ?? url,
       style: TextStyle(
         fontSize: fontSize,
         color: Colors.lightBlueAccent,

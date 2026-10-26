@@ -85,6 +85,9 @@
 // file (grey, or amber for a warning). The ⓘ card of a name list links its
 // model card on Hugging Face, which says how the list was made and lists newer
 // versions (owner: the name rules in full were too much for the card).
+// Round 324 (owner): the same link on the cards of detection and
+// identification models, on the phone or to download, as their last row; it
+// and the link to all models show a name, not the address.
 
 import 'dart:io';
 
@@ -813,7 +816,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
     onPressed: onInfo,
   );
 
-  Future<void> _showCard(IconData icon, String title, List<(String, String)> rows) => showDialog<void>(
+  /// [modelCard]: the file's model card on Hugging Face, the last row
+  /// (round 324, owner: after the card's own details).
+  Future<void> _showCard(IconData icon, String title, List<(String, String)> rows, {String? modelCard}) =>
+      showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: DialogTitle(
@@ -833,23 +839,26 @@ class _ModelsScreenState extends State<ModelsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final (label, value) in rows)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: helperTextStyle),
-                    if (_isLink(value))
-                      ExternalLinkText(value, logTag: 'model_card_link')
-                    else
-                      SelectableText(value, style: const TextStyle(fontSize: 14)),
-                  ],
-                ),
+              _cardRow(
+                label,
+                _isLink(value)
+                    ? ExternalLinkText(value, logTag: 'model_card_link')
+                    : SelectableText(value, style: const TextStyle(fontSize: 14)),
               ),
+            if (modelCard != null)
+              _cardRow(_modelCardHeading, ExternalLinkText(modelCard, label: _modelCardLink, logTag: 'model_card_link')),
           ],
         ),
       ),
       actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
+    ),
+  );
+
+  static Widget _cardRow(String label, Widget value) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [Text(label, style: helperTextStyle), value],
     ),
   );
 
@@ -876,17 +885,25 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (d != null && d.source.isNotEmpty) ('Source', d.source),
   ];
 
-  /// The model card of a file downloaded from Hugging Face (round 322): its
-  /// repository page, from the download link pinned to a commit
+  /// The model card of a file downloaded from Hugging Face (round 322; on
+  /// every card since round 324): its repository page, from the download
+  /// link pinned to a commit
   /// (`https://huggingface.co/<owner>/<repo>/resolve/<commit>/<file>`). The
-  /// page, not the pinned link, so it shows the card as it is now; null for
-  /// files from elsewhere.
-  static String? _modelCardUrl(Uri download) {
-    final seg = download.pathSegments;
-    return download.host == 'huggingface.co' && seg.length > 2 && seg[2] == 'resolve'
+  /// page, not the pinned link, so it shows the card as it is now. Null for
+  /// files from elsewhere, or for a model known but not offered (no link):
+  /// its Source row is then the only pointer.
+  static String? _modelCardUrl(DownloadFile? file) {
+    final seg = file?.url.pathSegments ?? const [];
+    return file?.url.host == 'huggingface.co' && seg.length > 2 && seg[2] == 'resolve'
         ? 'https://huggingface.co/${seg[0]}/${seg[1]}'
         : null;
   }
+
+  // Round 324 (owner): the original authors first, so the row does not
+  // read as if FaunaPulse made the model; the link by its name, not its
+  // address.
+  static const _modelCardHeading = 'Who made it, how it was adapted for FaunaPulse, newer versions';
+  static const _modelCardLink = 'Model card on Hugging Face';
 
   static String _listKind(Map<String, dynamic>? h) => h == null
       ? 'A name list that could not be read'
@@ -924,7 +941,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         },
       ),
       ..._originRows(d),
-    ]);
+    ], modelCard: _modelCardUrl(d?.file));
   }
 
   void _idModelCard(File f, ModelsInventory inv) {
@@ -935,25 +952,23 @@ class _ModelsScreenState extends State<ModelsScreen> {
       // Its name lists are listed under it on the screen (round 314).
       ('File', _onPhone(f.path, inv)),
       ..._originRows(d),
-    ]);
+    ], modelCard: _modelCardUrl(d?.file));
   }
 
   void _nameListCard(File f, ModelsInventory inv) {
     final offer = inv.downloads.listFor(_nameOf(f));
     final list = offer?.$2;
     final note = list?.warning ?? list?.note;
-    final card = list == null ? null : _modelCardUrl(list.file.url);
     _showCard(Icons.list_alt, _nameOf(f), [
       ('Kind', _listKind(inv.headers[f.path])),
       if (offer != null) ('Name list', '${offer.$1.title}: ${offer.$2.title}'),
       if (note != null) ('Note', note),
-      if (card != null) ('How it was made, and any newer version', card),
       ('File', _onPhone(f.path, inv)),
       // The names' own licence and source (round 276), else the model's.
       if (list != null && list.licence.isNotEmpty) ('Licence', list.licence),
       if (list != null && list.source.isNotEmpty) ('Source', list.source),
       if (list == null || list.licence.isEmpty) ..._originRows(offer?.$1),
-    ]);
+    ], modelCard: _modelCardUrl(list?.file));
   }
 
   /// The card of a model to download. Its label packs have rows of their
@@ -972,7 +987,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       for (final licence in {for (final l in packs) l.licence}..remove(''))
         ('Licence of the name lists', licence),
       for (final source in {for (final l in packs) l.source}..remove('')) ('Source of the name lists', source),
-    ]);
+    ], modelCard: _modelCardUrl(d.file));
   }
 
   /// A file on the phone: its name (round 275, owner: the file name for
@@ -1357,7 +1372,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
                     _section('Your own models', _ownHelp),
                     const SizedBox(height: 8),
                     const Text(_sourceHelp, style: helperTextStyle),
-                    const ExternalLinkText(kModelsCollectionUrl, logTag: 'models_collection_link', fontSize: 13),
+                    const ExternalLinkText(
+                      kModelsCollectionUrl,
+                      label: 'All models for FaunaPulse on Hugging Face',
+                      logTag: 'models_collection_link',
+                      fontSize: 13,
+                    ),
                     const SizedBox(height: 8),
                     FilledButton.tonalIcon(
                       onPressed: _busy == null ? _import : null,

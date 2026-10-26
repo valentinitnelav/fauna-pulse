@@ -14,7 +14,9 @@
 // a green tick on every file on the phone, BioCLIP's two numbered steps, and
 // the lists of a model not on the phone under that model. Round 322: name
 // lists no longer offered (their note under the file), and a name list's
-// card links its model card on Hugging Face.
+// card links its model card on Hugging Face. Round 324: so do the cards of
+// detection and identification models, on the phone or to download, as the
+// last row, and the Hugging Face links show a name, not the address.
 
 import 'dart:io';
 
@@ -40,13 +42,16 @@ final _downloads = ModelDownloads.parse('''
  "models": [
    {"id": "md", "kind": "detection_model", "title": "MegaDetector V6", "purpose": "Common animals.",
     "licence": "AGPL-3.0", "source": "https://github.com/microsoft/MegaDetector",
-    "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785}},
+    "file": {"name": "MDV6-yolov10-c_int8_256.tflite", "bytes": 2548785,
+             "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a9/MDV6-yolov10-c_int8_256.tflite"}},
    {"id": "fb", "kind": "detection_model", "title": "flat-bug (small)", "purpose": "Insects and other arthropods.",
-    "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266}},
+    "licence": "MIT", "file": {"name": "flatbug-n_640_fp16.tflite", "bytes": 5659266,
+                               "url": "https://huggingface.co/Valen-Peregrine/flatbug-tflite/resolve/0ab3ca4/flatbug-n_640_fp16.tflite"}},
    {"id": "flatbug-s", "kind": "detection_model", "title": "flat-bug s (larger)", "purpose": "Insects, a larger network.",
     "licence": "MIT", "source": "https://github.com/darsa-group/flat-bug"},
    {"id": "cls", "kind": "identification_model", "title": "insectDCT classifier", "purpose": "Flower visitors.",
-    "file": {"name": "insectdct-cls-v7_eff2s_fp16.tflite", "bytes": 43853456},
+    "file": {"name": "insectdct-cls-v7_eff2s_fp16.tflite", "bytes": 43853456,
+             "url": "https://huggingface.co/Valen-Peregrine/insectdct-cls-v7-tflite/resolve/f5a1b2c/insectdct-cls-v7_eff2s_fp16.tflite"},
     "name_lists": [{"kind": "class_list", "title": "Its 104 classes", "file": {"name": "insectdct-cls-v7_eff2s_fp16.fpack", "bytes": 13737}}]},
    {"id": "bioclip-2", "kind": "identification_model", "title": "BioCLIP 2", "purpose": "Any organism.",
     "file": {"name": "bioclip-2_image_fp16_4d.tflite", "bytes": 609466720},
@@ -162,6 +167,19 @@ Future<void> _close(WidgetTester tester) async {
 
 const _mdv6 = 'MDV6-yolov10-c_int8_256.tflite';
 const _clsName = 'insectdct-cls-v7_eff2s_fp16.tflite';
+const _madeHow = 'Who made it, how it was adapted for FaunaPulse, newer versions';
+
+/// The address behind the open card's model card link (round 324: shown by
+/// its name, not its address); null when the card has none.
+String? _modelCard(WidgetTester tester) {
+  final link = _cardLink();
+  return link.evaluate().isEmpty ? null : tester.widget<ExternalLinkText>(link).url;
+}
+
+Finder _cardLink() => find.descendant(
+  of: find.byType(AlertDialog),
+  matching: find.widgetWithText(ExternalLinkText, 'Model card on Hugging Face'),
+);
 const _europeName = 'bioclip2_pollinator_orders_europe_v1.fpack';
 
 /// Round 322: one offered label pack and two no longer offered (a replaced
@@ -193,8 +211,10 @@ void main() {
     expect(find.textContaining('Each model keeps the licence given by the people who made it'), findsOneWidget);
     expect(find.textContaining('so you do not need to visit the site'), findsOneWidget);
     // The link sits next to Import, for downloads on a computer (round 317).
-    final link = find.widgetWithText(ExternalLinkText, 'https://huggingface.co/collections/Valen-Peregrine/faunapulse');
+    // Shown by its name, not its address (round 324).
+    final link = find.widgetWithText(ExternalLinkText, 'All models for FaunaPulse on Hugging Face');
     await _show(tester, link);
+    expect(tester.widget<ExternalLinkText>(link).url, 'https://huggingface.co/collections/Valen-Peregrine/faunapulse');
     expect(tester.getTopLeft(link).dy, greaterThan(tester.getTopLeft(find.text('Your own models')).dy));
     await tester.drag(find.byType(ListView), const Offset(0, 3000));
     await tester.pumpAndSettle();
@@ -213,22 +233,34 @@ void main() {
     expect(find.text('AGPL-3.0'), findsOneWidget);
     // The source is a link: its authors say there how to cite the model (round 277).
     expect(find.widgetWithText(ExternalLinkText, 'https://github.com/microsoft/MegaDetector'), findsOneWidget);
+    // Its model card, as on a name list's card (round 324): the repository page.
+    expect(_inCard(_madeHow), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/mdv6-tflite');
+    // The last row (round 324, owner), below the source.
+    expect(
+      tester.getTopLeft(_cardLink()).dy,
+      greaterThan(tester.getTopLeft(find.widgetWithText(ExternalLinkText, 'https://github.com/microsoft/MegaDetector')).dy),
+    );
     await _close(tester);
     await _card(tester, 'my_bees_640.tflite');
     expect(find.text('bee, hoverfly'), findsOneWidget);
     expect(find.text('On this phone, 6.0 MB'), findsOneWidget);
     expect(find.text('Model'), findsNothing, reason: 'the user\'s own file');
     expect(find.text("Not known: this file is not in the app's model list. Ask whoever made it."), findsOneWidget);
+    expect(_inCard(_madeHow), findsNothing);
+    expect(_modelCard(tester), isNull);
     await _close(tester);
     // A variant that is not offered finds its model by its first part (round 276).
     expect(find.text('flat-bug s (larger)'), findsNothing, reason: 'not offered for download');
     await _card(tester, 'flatbug-s_1024_fp16.tflite');
     expect(_inCard('flat-bug s (larger)'), findsOneWidget);
     expect(_inCard('MIT'), findsOneWidget);
+    expect(_inCard(_madeHow), findsNothing, reason: 'not offered, so no download link to find its model card');
     await _close(tester);
     await _card(tester, _clsName);
     expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsNothing, reason: 'its name lists are under it on the screen (r314)');
     expect(find.text('On this phone, 42.0 MB'), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/insectdct-cls-v7-tflite');
     await _close(tester);
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
     expect(find.text('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
@@ -250,6 +282,8 @@ void main() {
     await _card(tester, flatbug, tooltip: 'About this model');
     expect(find.text('Insects and other arthropods.'), findsOneWidget);
     expect(_inCard('flatbug-n_640_fp16.tflite, 5.4 MB'), findsOneWidget);
+    expect(_inCard(_madeHow), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/flatbug-tflite');
     await _close(tester);
     await _show(tester, find.text(_b(_europeName)));
     expect(find.text('Europe\n54.8 MB, plus the model (581.2 MB)'), findsOneWidget);
@@ -895,8 +929,9 @@ void main() {
     await _close(tester);
     // The model card: the repository page, not the link pinned to a commit.
     await _card(tester, 'bioclip-2_europe_v2.fpack');
-    expect(_inCard('How it was made, and any newer version'), findsOneWidget);
-    expect(_inCard('https://huggingface.co/Valen-Peregrine/bioclip-2-tflite'), findsOneWidget);
+    expect(_inCard(_madeHow), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/bioclip-2-tflite');
+    expect(tester.getTopLeft(_cardLink()).dy, greaterThan(tester.getTopLeft(_inCard('CC0-1.0')).dy), reason: 'the last row');
     await _close(tester);
   });
 

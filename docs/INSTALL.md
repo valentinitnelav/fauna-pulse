@@ -152,6 +152,8 @@ chosen for you and shown by their file names (others under *Choose other models*
 button downloads them and makes them the app's choice (use Wi-Fi as some model files are large).
 The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers every model,
 MegaDetector V6 (common animals) and flat-bug and insectDCT (insects) among them.
+The ⓘ card of each model and name list links, as its last row, its model card on Hugging Face
+(who made it, how it was adapted for FaunaPulse, its licence, how to cite it and any newer version).
 For your own models (see [S1. Getting the models](#s1-getting-the-models)),
 once you have one or more `.tflite` model files to test, add them in either way:
 
