@@ -222,7 +222,7 @@ Custom AI detectors can be added:
 
 - **Download from a link…** on the Download & import models screen (home screen: *AI models* in the bottom bar), pasting a link to a `.tflite` file (for example a GitHub release asset), or
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place; the progress and the result show under the button), or
-- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models][fp_models]. For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect - Model training][maxs_train].
+- train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models][fp_models]. For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect ML][maxs_train].
 
 See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
 
@@ -401,7 +401,7 @@ These are links used throughout this file
 [phd_stef]: https://repo.bibliothek.uni-halle.de/handle/1981185920/125596
 [PIR]: https://en.wikipedia.org/wiki/Passive_infrared_sensor
 [zenodo_phones]: https://doi.org/10.5281/zenodo.15096610
-[maxs_train]: https://github.com/maxsitt/insect-detect-docs#model-training
+[maxs_train]: https://github.com/maxsitt/insect-detect-ml
 [hf_fp_models]: https://huggingface.co/collections/Valen-Peregrine/faunapulse
 [fp_models]: https://github.com/valentinitnelav/fauna-pulse-models
 [fauna_lapse]: https://github.com/valentinitnelav/fauna-lapse
