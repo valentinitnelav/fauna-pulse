@@ -40,6 +40,15 @@ class FaunaPulseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // State restoration (round 325): Android closes background apps to free
+      // memory (MIUI's cleaner did so seconds after a link opened the
+      // browser), and on return the app started over on Home. With a scope
+      // id, routes pushed with `restorablePush` (and `RestorableRouteFuture`)
+      // reopen from the small note Android keeps for a closed app; swiping
+      // the app away deletes that note, so Home stays the fresh start. A
+      // restorable route comes back only if every route below it is
+      // restorable too.
+      restorationScopeId: 'app',
       title: 'FaunaPulse',
       themeMode: ThemeMode.dark,
       theme: ThemeData.dark(useMaterial3: true),

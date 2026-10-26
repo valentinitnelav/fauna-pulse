@@ -3,7 +3,7 @@
 Read at the start of every session. It says what the app is now: where code lives, the defaults,
 and the rules that keep it working. When something changes, replace or delete the entry in place.
 No history here (which round, why, old values, measurements behind a decision): that goes to
-`AGENT_CHANGELOG.md`. Keep this file under 75,000 characters (`wc -m`).
+`AGENT_CHANGELOG.md`. Keep this file under 80,000 characters (`wc -m`).
 
 ## What the app is
 
@@ -247,6 +247,13 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the one on the phone" stay, as "Cancel" could be misread there). Windows with 2+ buttons set
   `actionsOverflowDirection: VerticalDirection.up` (stacked: main action on top, Cancel/Close at the
   bottom right). Progress windows without buttons have no X.
+- **Screens come back after Android closes the app** (`restorationScopeId` in `main.dart`; low-memory
+  phones close a background app within seconds of a link opening the browser): a screen or window
+  that sends the user to another app (web link, phone settings, file picker) is pushed with
+  `restorablePush` (static builder marked `@pragma('vm:entry-point')`, plain-value arguments) or
+  `RestorableRouteFuture` when the caller needs to know it closed. It comes back only if every route
+  below it is restorable. Restorable now: Home's Models screen (`modelsScreenRoute`, list position)
+  and its ⓘ cards, About, Cite. Everything else reopens on Home.
 - **One unit per sentence:** two sizes in one sentence share the larger one's unit
   (`formatBytes(unitOf:)`; "only 0.0 GB" reads "almost no storage is free", `freeStorageClause`);
   a free amount next to the *Keep free storage* setting is whole MB rounded down

@@ -141,8 +141,14 @@ Future<void> showCitation(BuildContext context) async {
     logSwallowed('cite_package_info', e);
   }
   if (!context.mounted) return;
-  await showDialog<void>(context: context, builder: (_) => CitationDialog(version: version));
+  // Restorable (round 325, see `restorationScopeId` in main.dart): its DOI
+  // link opens the browser, and Android may close the app meanwhile.
+  Navigator.of(context).restorablePush(_citationRoute, arguments: version);
 }
+
+@pragma('vm:entry-point')
+Route<void> _citationRoute(BuildContext context, Object? version) =>
+    DialogRoute<void>(context: context, builder: (_) => CitationDialog(version: version as String?));
 
 /// The citation (selectable), the Zenodo link, and Copy. After Copy the button
 /// says "Copied" (Android 13 and newer also confirm a copy themselves; the

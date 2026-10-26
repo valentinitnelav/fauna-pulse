@@ -114,8 +114,16 @@ import '../widgets/dialog_title.dart';
 
 /// Opens the Download & import models screen; the caller re-reads its own
 /// model list after.
-Future<void> openModelsScreen(BuildContext context) => Navigator.of(context)
-    .push(MaterialPageRoute<void>(builder: (_) => const ModelsScreen()));
+Future<void> openModelsScreen(BuildContext context) =>
+    Navigator.of(context).push(modelsScreenRoute(context, null));
+
+/// The screen's route. Home pushes it with `restorablePush` (round 325), so
+/// the screen and its open ⓘ card come back after Android closed the app in
+/// the background; `restorablePush` needs a static builder that the release
+/// build keeps (the pragma).
+@pragma('vm:entry-point')
+Route<void> modelsScreenRoute(BuildContext context, Object? arguments) =>
+    MaterialPageRoute<void>(builder: (_) => const ModelsScreen());
 
 /// The link to this screen placed next to every model list.
 Widget manageModelsButton({required VoidCallback? onPressed}) => TextButton.icon(
@@ -304,6 +312,9 @@ class ModelsScreen extends StatefulWidget {
   State<ModelsScreen> createState() => _ModelsScreenState();
 }
 
+// Marked because `_cardRoute` (a restorable route builder, round 325) is
+// looked up by name inside it, as in Flutter's restorablePush example.
+@pragma('vm:entry-point')
 class _ModelsScreenState extends State<ModelsScreen> {
   static const _intro =
       'Two kinds of models run on this phone, without internet. A detection model finds animals '
@@ -816,12 +827,38 @@ class _ModelsScreenState extends State<ModelsScreen> {
     onPressed: onInfo,
   );
 
+  /// The icons a card can show. A card's restoration note stores the index:
+  /// it holds plain values only, and an icon rebuilt from a stored code point
+  /// would stop the release build from trimming the icon font.
+  static const _cardIcons = [kDetectionIcon, kIdentificationIcon, Icons.list_alt];
+
   /// [modelCard]: the file's model card on Hugging Face, the last row
-  /// (round 324, owner: after the card's own details).
-  Future<void> _showCard(IconData icon, String title, List<(String, String)> rows, {String? modelCard}) =>
-      showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
+  /// (round 324, owner: after the card's own details). Pushed restorably with
+  /// plain values (round 325): the card's links open the browser, which is
+  /// when Android tends to close the app, and the user expects the card back.
+  void _showCard(IconData icon, String title, List<(String, String)> rows, {String? modelCard}) {
+    assert(_cardIcons.contains(icon), 'add the icon to _cardIcons');
+    Navigator.of(context).restorablePush(
+      _cardRoute,
+      arguments: <String, Object?>{
+        'icon': _cardIcons.indexOf(icon),
+        'title': title,
+        'rows': [for (final (label, value) in rows) [label, value]],
+        'modelCard': modelCard,
+      },
+    );
+  }
+
+  /// Builds the card from [_showCard]'s values, also when they come back from
+  /// the restoration note (then as untyped maps and lists, hence the casts).
+  @pragma('vm:entry-point')
+  static Route<void> _cardRoute(BuildContext context, Object? arguments) {
+    final a = arguments! as Map;
+    final icon = _cardIcons[a['icon'] as int];
+    final title = a['title'] as String;
+    final rows = [for (final r in a['rows'] as List) ((r as List)[0] as String, r[1] as String)];
+    final modelCard = a['modelCard'] as String?;
+    return DialogRoute<void>(context: context, builder: (ctx) => AlertDialog(
       title: DialogTitle(
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -851,8 +888,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
         ),
       ),
       actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
-    ),
-  );
+    ));
+  }
 
   static Widget _cardRow(String label, Widget value) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
@@ -1302,6 +1339,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
               ? const Center(child: CircularProgressIndicator())
               : ListView(
                   controller: _scroll,
+                  // Back where it was after a restore (see modelsScreenRoute).
+                  restorationId: 'models_list',
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   children: [
                     const Text(

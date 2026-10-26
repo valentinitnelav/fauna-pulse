@@ -113,8 +113,28 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SessionActions {
+// Marked because `_aboutRoute` (a restorable route builder, round 325) is
+// looked up by name inside it, as in Flutter's restorablePush example.
+@pragma('vm:entry-point')
+class _HomeScreenState extends State<HomeScreen> with SessionActions, RestorationMixin {
   bool _starting = false;
+
+  /// The Models screen, restorable (round 325, see `restorationScopeId` in
+  /// main.dart): its ⓘ cards open the browser, and Android may close the app
+  /// meanwhile. The model counts are read again whenever it closes, also
+  /// after a restore.
+  late final _modelsRoute = RestorableRouteFuture<void>(
+    onPresent: (navigator, _) => navigator.restorablePush(modelsScreenRoute),
+    onComplete: (_) => _reloadModels(),
+  );
+
+  @override
+  String get restorationId => 'home';
+
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_modelsRoute, 'models_route');
+  }
 
   /// Every session, newest first (counted here; the problem report offers
   /// them).
@@ -161,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
   void dispose() {
     _waitingIdentification.stop();
     _list.dispose();
+    _modelsRoute.dispose();
     super.dispose();
   }
 
@@ -263,10 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     }
   }
 
-  Future<void> _openModels() async {
-    await openModelsScreen(context);
-    await _reloadModels();
-  }
+  void _openModels() => _modelsRoute.present();
 
   /// Reads the persisted "hide setup tips" flag so the menu check item
   /// reflects the current state.
@@ -424,11 +442,13 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions {
     final version = info != null
         ? 'v${info.version} (build ${info.buildNumber})'
         : null;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AboutFaunaPulseDialog(version: version),
-    );
+    // Restorable (round 325): its GitHub link opens the browser.
+    Navigator.of(context).restorablePush(_aboutRoute, arguments: version);
   }
+
+  @pragma('vm:entry-point')
+  static Route<void> _aboutRoute(BuildContext context, Object? version) =>
+      DialogRoute<void>(context: context, builder: (_) => AboutFaunaPulseDialog(version: version as String?));
 
   Future<void> _openSessions() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));

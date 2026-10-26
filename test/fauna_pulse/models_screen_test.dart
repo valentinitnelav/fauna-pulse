@@ -17,6 +17,8 @@
 // card links its model card on Hugging Face. Round 324: so do the cards of
 // detection and identification models, on the phone or to download, as the
 // last row, and the Hugging Face links show a name, not the address.
+// Round 325: an open card and the list's place come back after Android
+// closed the app in the background.
 
 import 'dart:io';
 
@@ -113,6 +115,8 @@ Future<void> _pump(
   _scans = 0;
   await tester.pumpWidget(
     MaterialApp(
+      // As in the app (main.dart), so the cards can be restored (round 325).
+      restorationScopeId: 'app',
       theme: ThemeData.dark(useMaterial3: true),
       home: ModelsScreen(
         scan: () async {
@@ -971,5 +975,20 @@ void main() {
     final y2 = tester.getTopLeft(find.text(_b('bioclip-2_europe_v2.fpack'))).dy;
     expect(y1, lessThan(y2), reason: 'version 2 is below, as the note says');
     expect(tester.getTopLeft(find.text(_b('bioclip-2_224_fp16.tflite'))).dy, lessThan(y1), reason: 'under the model');
+  });
+
+  testWidgets('an open card and the list position come back after Android closed the app (r325)', (tester) async {
+    await _pump(tester);
+    await _card(tester, _mdv6);
+    final offset = tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels;
+    expect(offset, greaterThan(0));
+    // The card's links open the browser, which is when Android tends to close
+    // the app; this rebuilds everything from the note Android keeps.
+    await tester.restartAndRestore();
+    expect(_inCard('MegaDetector V6'), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/mdv6-tflite');
+    await _close(tester);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, offset);
   });
 }
