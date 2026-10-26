@@ -347,8 +347,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
   static const _ownHelp =
       'Model files you already have (for example in Download), or a link to one: detection models, '
       'identification models and name lists. The app checks what each file is and puts it in its '
-      'place. How to convert models for the phone: github.com/valentinitnelav/fauna-pulse (docs '
-      'folder).';
+      'place. Add only files and links from people or websites you trust: the app checks what a '
+      'file is, not who made it. How to convert models for the phone: '
+      'github.com/valentinitnelav/fauna-pulse (docs folder).';
 
   static const _selectAllHint =
       'You can choose many files at once: to add every model file of a folder, press and hold one '

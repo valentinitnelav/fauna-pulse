@@ -196,9 +196,9 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
               // listed file has its own Download button on the screen.
               helperText:
                   'For a file not listed on this screen (listed files have their own Download button). '
-                  'Paste the link of a .tflite or .fpack file (or a _qnn.onnx detection model). The app '
-                  'checks what it is and puts it in its place.',
-              helperMaxLines: 5,
+                  'Paste only links from people or websites you trust: the app checks what a file is, '
+                  'not who made it. Works for .tflite, .fpack and _qnn.onnx files.',
+              helperMaxLines: 10,
             ),
             onChanged: (_) => setState(() {}),
           ),

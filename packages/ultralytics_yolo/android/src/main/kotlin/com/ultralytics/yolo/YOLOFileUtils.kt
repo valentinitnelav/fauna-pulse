@@ -20,7 +20,17 @@ import java.util.zip.ZipInputStream
 // appended ZIP, associated file, or ONNX length field from allocating
 // unbounded memory while a model is inspected.
 internal const val MAX_METADATA_BYTES = 2 * 1024 * 1024
-internal const val MAX_ONNX_METADATA_PROPERTIES = 128
+
+// FaunaPulse (round 326): the only ONNX metadata_props entries the app reads. Other entries
+// are skipped, not kept, so many large ones cannot add up to more memory than the app has.
+private val ONNX_METADATA_KEYS = setOf("task", "names")
+
+// FaunaPulse (round 326): every function here that parses a model file catches Throwable,
+// not only Exception. A model file is user input, and a crafted length field makes a parser
+// (ours or the LiteRT metadata library) ask for gigabytes: that throws OutOfMemoryError, an
+// Error, which `catch (e: Exception)` lets through, so the app would close whenever a screen
+// lists the models. An OutOfMemoryError from one oversized request leaves the rest of memory
+// as it was, so the app can go on; the file then reads as a model without metadata.
 
 object YOLOFileUtils {
     private const val TAG = "YOLOFileUtils📁📁"
@@ -156,7 +166,7 @@ object YOLOFileUtils {
                 if (metadataFound != null) {
                     return metadataFound
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Appended ZIP: Failed to read metadata for $resolvedPath", e)
             } finally {
                 closeResources(afd, fis, fileChannel, "End of metadata attempt for $resolvedPath")
@@ -188,7 +198,14 @@ object YOLOFileUtils {
     }
 
     private fun loadMetadataFromFlatbuffer(context: Context, modelPath: String): Map<String, Any>? = try {
-        val buffer = YOLOUtils.loadModelFile(context, modelPath)
+        metadataFromFlatbuffer(YOLOUtils.loadModelFile(context, modelPath), modelPath)
+    } catch (e: Exception) {
+        Log.w(TAG, "Model file could not be opened for its metadata: $modelPath: ${e.message}")
+        null
+    }
+
+    /** The embedded FlatBuffers metadata of the model in [buffer]; null when absent or unreadable. */
+    internal fun metadataFromFlatbuffer(buffer: ByteBuffer, modelPath: String): Map<String, Any>? = try {
         val extractor = org.tensorflow.lite.support.metadata.MetadataExtractor(buffer)
         var result: Map<String, Any>? = null
         extractor.associatedFileNames?.forEach { name ->
@@ -199,7 +216,7 @@ object YOLOFileUtils {
             }
         }
         result
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Log.w(TAG, "Embedded FlatBuffers metadata read failed for $modelPath: ${e.message}")
         null
     }
@@ -214,7 +231,7 @@ object YOLOFileUtils {
     fun inputImageSize(context: Context, modelPath: String): Pair<Int, Int>? {
         // ONNX models can't be parsed by the TFLite metadata extractor; without this
         // early-out every settings-sheet open logged a spurious "read failed" warning
-        // per *_qnn.onnx model in the picker (their size comes from ONNX metadata).
+        // per *_qnn.onnx model in the picker (their input size is not read here).
         if (modelPath.lowercase().endsWith(".onnx")) return null
         val buffer = openModelBuffer(context, modelPath) ?: return null
         return try {
@@ -228,7 +245,7 @@ object YOLOFileUtils {
             } else {
                 Pair(shape[1], shape[2]) // NHWC -> (H, W)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Input tensor shape read failed for $modelPath: ${e.message}")
             null
         }
@@ -249,7 +266,7 @@ object YOLOFileUtils {
             val buf = ch.map(FileChannel.MapMode.READ_ONLY, 0, ch.size())
             org.tensorflow.lite.support.metadata.MetadataExtractor(buf).getInputTensorShape(0)
         }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Log.w(TAG, "inputTensorShapeFromPath failed for $modelPath: ${e.message}")
         null
     }
@@ -320,7 +337,7 @@ object YOLOFileUtils {
                 }
             }.ifEmpty { null }
         }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Log.w(TAG, "ONNX metadata_props read failed for $modelPath: ${e.message}")
         null
     }
@@ -421,9 +438,8 @@ object YOLOFileUtils {
                             2 -> value = text
                         }
                     }
-                    if (key != null && value != null) {
+                    if (key != null && value != null && key in ONNX_METADATA_KEYS) {
                         props[key] = value
-                        if (props.size >= MAX_ONNX_METADATA_PROPERTIES) return props
                     }
                 }
                 else -> return props // unknown wire type: stop scanning

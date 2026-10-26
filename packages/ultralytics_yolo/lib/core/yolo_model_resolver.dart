@@ -190,8 +190,12 @@ class YOLOModelResolver {
   }
 
   static String? _normalizeOfficialModelId(String source) {
-    final fileName = source.split('/').last;
-    final normalized = fileName
+    // FaunaPulse (round 326): only a bare name ("yolo26n", "yolo26n.tflite") is an official
+    // model. A path ("/.../models/yolo26n.tflite", "assets/...", a link) is the user's own
+    // file and is used as it is: matching only its file name would swap a fine-tuned model
+    // kept under the base name for the official one, downloaded from GitHub without asking.
+    if (source.contains('/')) return null;
+    final normalized = source
         .replaceAll('.mlpackage.zip', '')
         .replaceAll('.mlpackage', '')
         .replaceAll('.mlmodelc', '')

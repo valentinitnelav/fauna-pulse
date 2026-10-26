@@ -68,11 +68,39 @@ Future<ModelFileKind> modelFileKind(File file, String name) async {
   return kindFromShapes(shapes);
 }
 
+/// The largest picture side a model may take, and the most numbers its inputs or its outputs
+/// may hold together (round 326). Loading a model makes buffers of these sizes, so a crafted
+/// file claiming more would run the app out of memory. The models offered in the app take at
+/// most 1280 px; a 2048 px input already needs 50 MB (2048 x 2048 x 3 numbers of 4 bytes).
+const kMaxModelInputSide = 2048;
+const kMaxModelValues = 1 << 24; // 16.8 million numbers, 64 MB as 32-bit numbers
+
+/// The numbers [shapes] hold together; stops counting once over [kMaxModelValues].
+int _values(List<List<int>> shapes) {
+  var total = 0;
+  for (final shape in shapes) {
+    var n = 1;
+    for (final d in shape) {
+      n *= d < 1 ? 1 : d;
+      if (n > kMaxModelValues) return n;
+    }
+    total += n;
+    if (total > kMaxModelValues) return total;
+  }
+  return total;
+}
+
 /// The rule above; throws an Exception with a plain reason.
 ModelFileKind kindFromShapes(TfliteShapes s) {
   final input = s.inputs.isEmpty ? const <int>[] : s.inputs.first;
   if (input.length != 4 || (input[1] != 3 && input[3] != 3)) {
     throw Exception('not a model for pictures (its input is not a colour picture).');
+  }
+  if (input.any((d) => d > kMaxModelInputSide)) {
+    throw Exception('takes pictures larger than this app can use (over $kMaxModelInputSide pixels per side).');
+  }
+  if (_values(s.inputs) > kMaxModelValues || _values(s.outputs) > kMaxModelValues) {
+    throw Exception('is too large for this app (it would need more memory than the app may use).');
   }
   if (s.outputs.isNotEmpty && s.outputs.first.length == 3) return ModelFileKind.detection;
   if (s.outputs.isNotEmpty && s.outputs.every((o) => o.length == 2)) return ModelFileKind.identification;
@@ -100,14 +128,18 @@ Future<TfliteShapes> readTfliteShapes(File file) async {
     final tensors = await r.vector(graph, 0);
     if (tensors == null) throw const FormatException('no tensors');
     final count = await r.length(tensors);
+    // The models this app uses have 1 to 4 inputs and outputs, each shape at most 6 numbers
+    // long; the caps leave room above that and refuse a crafted file (a million inputs, each
+    // with a million-number shape) at once, instead of reading it for minutes.
+    const maxInputsOrOutputs = 64, maxShapeLength = 8;
     Future<List<int>> shape(int index) async {
       if (index < 0 || index >= count) throw const FormatException('tensor index outside the graph');
-      return r.ints(await r.vector(await r.tableAt(tensors, index), 0));
+      return r.ints(await r.vector(await r.tableAt(tensors, index), 0), max: maxShapeLength);
     }
 
     return TfliteShapes(
-      [for (final i in await r.ints(await r.vector(graph, 1))) await shape(i)],
-      [for (final i in await r.ints(await r.vector(graph, 2))) await shape(i)],
+      [for (final i in await r.ints(await r.vector(graph, 1), max: maxInputsOrOutputs)) await shape(i)],
+      [for (final i in await r.ints(await r.vector(graph, 2), max: maxInputsOrOutputs)) await shape(i)],
     );
   } finally {
     await r.close();
@@ -166,19 +198,19 @@ class _FlatReader {
     return at == null ? null : deref(at);
   }
 
-  Future<int> length(int vector) async {
+  Future<int> length(int vector, {int max = 1 << 20}) async {
     final n = await u32(vector);
-    if (n > 1 << 20) throw const FormatException('vector too long');
+    if (n > max) throw const FormatException('vector too long');
     return n;
   }
 
   /// The table at index [i] of a vector of tables.
   Future<int> tableAt(int vector, int i) => deref(vector + 4 + 4 * i);
 
-  /// A vector of 32-bit numbers (empty when absent).
-  Future<List<int>> ints(int? vector) async {
+  /// A vector of at most [max] 32-bit numbers (empty when absent).
+  Future<List<int>> ints(int? vector, {int max = 1 << 20}) async {
     if (vector == null) return const [];
-    final n = await length(vector);
+    final n = await length(vector, max: max);
     return [for (var i = 0; i < n; i++) await i32(vector + 4 + 4 * i)];
   }
 }

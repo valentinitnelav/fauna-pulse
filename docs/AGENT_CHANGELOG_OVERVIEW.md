@@ -78,7 +78,8 @@ order), `camera_diagnostics_controller.dart` (one-time probes, lens cycling, foc
 
 **capture/** `roi_capture.dart` (`RoiCaptureScheduler`, `TrackKeepRule`, `chooseCapturePath`,
 `savedSidePx`/`capSavedSidePx`, `rawRectForUprightRect`, `uprightHighResDims`,
-`roiPhotoFileName`, background JPEG crop `_cropJpeg`), `time_lapse_plan.dart`, `roi_video.dart`
+`roiPhotoFileName`, background JPEG crop `_cropJpeg`), `photo_header.dart` (photo size from the
+header, `decodeJpegWithinLimit`), `time_lapse_plan.dart`, `roi_video.dart`
 (ROI video clips, storage estimate, `VideoClipTotals`, `roiVideoFileName`), `crop_export.dart`
 (crop export, gallery copy, `scanSessionPhotos`).
 
@@ -675,7 +676,23 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   words (`downloadStatusMessage`; a pasted link's 404/401/403 say to check the link), other failures
   too (`plainModelError`: no internet, connection lost, no storage; the technical text only in the log); a pasted Hugging Face `/blob/` link becomes `/resolve/`
   (`directFileUri`, link downloads only). These checks run only at intake, never in the
-  camera path.
+  camera path. Model and photo files are user input and must never close the app:
+  - native: every model-file parser (`YOLOFileUtils.kt`), `inspectModel`, both model loads
+    (`YOLOView` load executor, `YOLOInstanceManager`), the per-frame camera analysis and both
+    photo-predict handlers catch `Throwable` (a crafted length field throws OutOfMemoryError,
+    which `Exception` misses); ONNX `metadata_props` keeps only `task` and `names`;
+  - Dart import rule (`model_file_kind.dart`): at most 64 inputs/outputs and 8-number shapes,
+    input side at most 2048 px (`kMaxModelInputSide`), inputs and outputs at most 16.8 million
+    numbers each (`kMaxModelValues`);
+  - photos over 120 MP are refused before any decode, from the file header only: native
+    `MAX_DECODE_PIXELS` (YOLOPlugin.kt) = Dart `kMaxPhotoPixels` (`capture/photo_header.dart`,
+    checked first in `sahiPredictFn`; keep the two equal). `photoDimensions`/`jpegDimensions` parse
+    the JPEG frame header or PNG IHDR themselves (the image package's `startDecode` allocates for
+    the claimed size). Dart decodes only JPEGs within the limit (`decodeJpegWithinLimit`: SAHI
+    tiles, identification crops (else thrown = "could not be read"), crop export, `probeJpegSize`); a PNG's data
+    can unpack to far more than its header says, so other photos go to the native decoder;
+  - the plugin resolver treats only a bare name as an official Ultralytics model (a path is used
+    as it is, never swapped for a GitHub download). Import and link texts ask for trusted sources.
 - **No bundled models:** `assets/models/bundled_models.txt` is empty; the camera picker lists only
   imported/downloaded files. Debug builds still pack local weights for device checks.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and

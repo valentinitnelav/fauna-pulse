@@ -225,6 +225,8 @@ Custom AI detectors can be added:
 - **Import model files…**, selecting one or more `.tflite` files stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place; the progress and the result show under the button), or
 - train and export your own, see [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and the export tools of [fauna-pulse-models][fp_models]. For training tutorials you can check the examples provided by my colleague, Maximilian Sittinger, [Insect Detect ML][maxs_train].
 
+Add only model files and links from people or websites you trust: the app checks what a file is (a model or a name list), not who made it.
+
 See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reach the phone.
 
 **Motion-triggered** and **time-lapse** capture do not need any detection model.

@@ -1046,7 +1046,10 @@ class YOLOView @JvmOverloads constructor(
                         startCamera()
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // FaunaPulse (round 326): Throwable, not Exception. A model whose input or outputs
+                // are huge throws OutOfMemoryError (an Error) while its buffers are made; on this
+                // executor thread an uncaught Error closes the app.
                 Log.w(TAG, "Failed to load model: $modelPath. Keeping the previously loaded model if one is present.", e)
                 lastModelLoadError = "${e.javaClass.simpleName}: ${e.message}"
                 mainHandler.post {
@@ -3167,7 +3170,7 @@ class YOLOView @JvmOverloads constructor(
                 post {
                     overlayView.invalidate()
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // FaunaPulse (round 326): an Error on the camera thread would close the app
                 Log.e(TAG, "Error during prediction", e)
                 maybeEmitInferenceError(e)
             }

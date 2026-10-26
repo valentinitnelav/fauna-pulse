@@ -113,6 +113,12 @@ android {
     }
 
     testOptions {
+        // FaunaPulse (round 326): android.util.Log calls in the code under test return
+        // instead of throwing "not mocked", so error paths (a model file that cannot be
+        // read is logged and skipped) can be tested on the computer. Every stubbed Android
+        // class does the same (org.json here returns null/0/false), so a test of code that
+        // uses one must not take a null for proof.
+        unitTests.returnDefaultValues = true
         unitTests.all {
             useJUnitPlatform()
 

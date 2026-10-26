@@ -179,6 +179,16 @@ void main() {
       }
     });
 
+    // FaunaPulse (round 326): a user's own file whose name equals an official model
+    // (a fine-tuned YOLO26n kept as yolo26n.tflite) was swapped for a GitHub download.
+    test('a path to a file is never an official model, a bare name is', () async {
+      expect(YOLOModelResolver.isOfficialModel('yolo26n'), isTrue);
+      expect(YOLOModelResolver.isOfficialModel('yolo26n.tflite'), isTrue);
+      const ownFile = '/data/user/0/app/files/models/yolo26n.tflite';
+      expect(YOLOModelResolver.isOfficialModel(ownFile), isFalse);
+      expect(await YOLOModelResolver.preparePath(ownFile), ownFile);
+    });
+
     test('YOLO11 IDs are no longer official autodownload models', () {
       // YOLO11 assets still exist on older releases but are not maintained for
       // autodownload; they must be loaded as custom paths/URLs.
@@ -967,9 +977,11 @@ void main() {
         expect(resolved.modelPath, 'custom-model.tflite');
         expect(resolved.task, YOLOTask.pose);
         expect(resolved.metadata['labels'], ['person']);
+        // FaunaPulse (round 326): a path is the user's own file, never an
+        // official model (upstream matched the file name and expected true).
         expect(
           YOLOModelResolver.isOfficialModel('models/yolo26n.tflite'),
-          isTrue,
+          isFalse,
         );
         expect(
           YOLOModelResolver.isOfficialModel('yolo26n.mlpackage.zip'),

@@ -20,6 +20,8 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
+import '../capture/photo_header.dart';
+
 /// CLIP mean colour in 8-bit RGB (0.4815, 0.4578, 0.4082 × 255).
 const int kPadR = 123, kPadG = 117, kPadB = 104;
 
@@ -190,12 +192,11 @@ class CropBatchArgs {
 /// Decodes the photo once and cuts every requested crop (synchronous; the
 /// job runs it through [cropBatch] on a worker isolate).
 List<CropResult> cropBatchSync(CropBatchArgs a) {
-  final decoded = img.decodeJpg(a.jpegBytes) ?? img.decodeImage(a.jpegBytes);
+  // Round 326: JPEGs within the pixel limit only (photo_header.dart says why). Thrown, not
+  // skipped: the job counts such a photo as "could not be read" and tells the user.
+  final decoded = decodeJpegWithinLimit(a.jpegBytes);
   if (decoded == null) {
-    return [
-      for (final r in a.requests)
-        CropResult(key: r.key, rgb: null, cropPx: 0, padFrac: 1, sharpness: 0, skipped: 'decode'),
-    ];
+    throw const FormatException('not a readable JPEG photo within the pixel limit');
   }
   final photo = decoded.numChannels == 3
       ? decoded

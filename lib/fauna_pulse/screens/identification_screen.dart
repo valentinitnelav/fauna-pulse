@@ -448,16 +448,23 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       for (final t in tasks) {
         if (rgb.length >= n) break;
         final bytes = await File('${widget.sessionDir.path}/roi_frames/${t.source}').readAsBytes();
-        final res = await cropBatch(
-          CropBatchArgs(
-            jpegBytes: bytes,
-            requests: [CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
-            margin: prefs.margin,
-            square: prefs.squareCrops,
-            minCropPx: prefs.minCropPx,
-            outSize: info.inputWidth,
-          ),
-        );
+        final List<CropResult> res;
+        try {
+          res = await cropBatch(
+            CropBatchArgs(
+              jpegBytes: bytes,
+              requests: [CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
+              margin: prefs.margin,
+              square: prefs.squareCrops,
+              minCropPx: prefs.minCropPx,
+              outSize: info.inputWidth,
+            ),
+          );
+        } catch (e) {
+          // A photo that cannot be read is left out; the speed test only needs a few crops.
+          logSwallowed('identify_speed_crop', e);
+          continue;
+        }
         for (final r in res) {
           if (r.rgb != null) rgb.add(r.rgb!);
         }

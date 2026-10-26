@@ -21,6 +21,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
+import '../capture/photo_header.dart';
+
 import '../logging/app_error_hooks.dart';
 import 'post_detector.dart';
 import 'sahi_profile.dart';
@@ -172,7 +174,9 @@ List<PostBox> mergePostBoxes(List<PostBox> boxes, double overlapThresh) {
 ) {
   final (bytes, tileSide, overlapFrac) = job;
   final sw = Stopwatch()..start();
-  final decoded = img.decodeImage(bytes);
+  // Round 326: null for anything but a JPEG within the pixel limit; the caller then sends
+  // the photo to one native whole-photo pass, which has its own limit.
+  final decoded = decodeJpegWithinLimit(bytes);
   final decodeUs = sw.elapsedMicroseconds;
   if (decoded == null) return null;
   final tiles = planTiles(decoded.width, decoded.height, tileSide, overlapFrac);
@@ -211,21 +215,6 @@ typedef TiledPredictFn =
       List<List<int>> tiles,
       bool fullPass,
     );
-
-/// Width/height read from the JPEG HEADER only — no pixel decode
-/// (microseconds instead of the ~100 ms a full 1024 px decode costs). The
-/// native tiled path needs the dimensions BEFORE the photo crosses the
-/// channel, to plan the tile grid in Dart. Null for non-JPEG/corrupt bytes
-/// (the caller then takes the pure-Dart path, whose full decode decides).
-(int, int)? jpegDimensions(Uint8List bytes) {
-  try {
-    final info = img.JpegDecoder().startDecode(bytes);
-    if (info == null || info.width <= 0 || info.height <= 0) return null;
-    return (info.width, info.height);
-  } catch (_) {
-    return null;
-  }
-}
 
 /// Tile-normalized box → whole-photo-normalized coordinates (shared by the
 /// pure-Dart and the native tiled paths, so the mapping can never drift).
@@ -373,6 +362,7 @@ PredictFn sahiPredictFn({
   final tileSide = options.effectiveTileSide(modelInputPx);
   var nativeBroken = false;
   return (Uint8List bytes) async {
+    checkPhotoPixels(bytes);
     if (tiledPredict != null && !nativeBroken) {
       try {
         final native = await _nativeTiledPhoto(

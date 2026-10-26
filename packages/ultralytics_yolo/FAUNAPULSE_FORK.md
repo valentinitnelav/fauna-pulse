@@ -118,6 +118,18 @@ The headline changes, with the round that introduced each (full rationale in
   `Embedder.CPU_MEMORY_FACTOR` 2.15 x file) and Android's free-memory numbers,
   so the app can decide whether a background load fits. `Embedder`'s
   constructor closes a loaded model when a later check fails.
+- **Model and photo files as user input** (r200, r326): bounded metadata reads
+  (`MAX_METADATA_BYTES`); every model-file parser in `YOLOFileUtils.kt`, the
+  `inspectModel` handler, the model loads in `YOLOView.kt` and
+  `YOLOInstanceManager.kt`, the per-frame camera analysis and both photo-predict
+  handlers catch `Throwable`, so a
+  crafted length or shape (OutOfMemoryError) is reported as a failure instead of
+  closing the app; ONNX `metadata_props` keeps only `task` and `names`; photos
+  over `MAX_DECODE_PIXELS` (120 MP, read from the file header) are refused before
+  decoding; the Dart resolver treats only a bare name as an official model, so a
+  file path is always used as it is (no GitHub download for a user's
+  `yolo26n.tflite`; one upstream test expectation changed accordingly); unit
+  tests run with `returnDefaultValues` (Android stubs return defaults).
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

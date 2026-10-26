@@ -165,6 +165,11 @@ once you have one or more `.tflite` model files to test, add them in either way:
 - **HTTPS download:** open **Menu → Download & import models → Download from a link…** and paste a
   direct HTTPS link to a model file or name list.
 
+Add only files and links from people or websites you trust: the app checks what a file is (a
+model or a name list), not who made it. The files offered on the *Download & import models*
+screen are downloaded from a fixed version on Hugging Face and checked against a checksum (a
+fingerprint of the file) before they are kept.
+
 Added models appear in the app's **model dropdown** at the start of a session, and on the *What do
 you want to watch?* pages under *Choose other models* → *Other models on this phone*, where they can
 be chosen like the suggestions (no entry in the download list is needed).

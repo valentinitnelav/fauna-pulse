@@ -23,6 +23,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../logging/app_error_hooks.dart';
+import 'photo_header.dart';
 
 /// Smallest allowed crop side in image pixels. Anything smaller carries too
 /// little detail to identify and is more likely a stray tap than a real box.
@@ -186,12 +187,9 @@ CroppedImage? cropJpegRectSync(
   Rect norm, {
   CropExifInfo? exif,
 }) {
-  img.Image? decoded;
-  try {
-    decoded = img.decodeImage(bytes);
-  } catch (_) {
-    // Corrupt/truncated file: fall through to the null return below.
-  }
+  // Round 326: JPEGs within the pixel limit only (photo_header.dart says why); null also for
+  // a corrupt or truncated file.
+  final decoded = decodeJpegWithinLimit(bytes);
   if (decoded == null) return null;
   final l = (norm.left.clamp(0.0, 1.0) * decoded.width).round();
   final r = (norm.right.clamp(0.0, 1.0) * decoded.width).round();

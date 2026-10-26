@@ -23,6 +23,28 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// FaunaPulse (round 326): photos for "AI later" can come from an imported FaunaLapse zip. A
+// file header can claim e.g. 30,000 x 30,000 px in a file of a few hundred bytes, which needs
+// 3.6 GB once decoded, so the size is read first (no pixels decoded) and such a photo is
+// refused. 120 megapixels is above the 108 MP of high-resolution phone cameras; a 200 MP photo
+// (about 800 MB once decoded) would not fit in most phones' memory anyway. Keep equal to
+// kMaxPhotoPixels in the app's lib/fauna_pulse/postprocess/sahi.dart, which refuses the same
+// photos before they reach this code.
+internal const val MAX_DECODE_PIXELS = 120_000_000L
+
+internal fun photoFitsDecodeLimit(width: Int, height: Int): Boolean =
+  width > 0 && height > 0 && width.toLong() * height <= MAX_DECODE_PIXELS
+
+/** [data] decoded; null when it is not a picture or is larger than [MAX_DECODE_PIXELS]. */
+private fun decodePhoto(data: ByteArray): Bitmap? {
+  val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+  BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+  if (!photoFitsDecodeLimit(bounds.outWidth, bounds.outHeight)) return null
+  return BitmapFactory.decodeByteArray(data, 0, data.size)
+}
+
+private const val PHOTO_DECODE_ERROR = "Failed to decode image (not a picture, or larger than 120 megapixels)"
+
 class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, PluginRegistry.RequestPermissionsResultListener {
 
   private lateinit var methodChannel: MethodChannel
@@ -318,9 +340,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           }
           
           // Convert byte array to bitmap
-          val bitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
+          val bitmap = decodePhoto(imageData)
           if (bitmap == null) {
-            result.error("image_error", "Failed to decode image", null)
+            result.error("image_error", PHOTO_DECODE_ERROR, null)
             return
           }
 
@@ -505,7 +527,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           } finally {
             bitmap.recycle()
           }
-        } catch (e: Exception) {
+        } catch (e: Throwable) { // FaunaPulse (round 326): an OutOfMemoryError (Error) must not close the app
           Log.e(TAG, "Error during prediction", e)
           result.error("prediction_error", "Error during prediction: ${e.message}", null)
         }
@@ -547,9 +569,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           Thread({
             val reply = android.os.Handler(android.os.Looper.getMainLooper())
             try {
-              val source = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
+              val source = decodePhoto(imageData)
               if (source == null) {
-                reply.post { result.error("image_error", "Failed to decode image", null) }
+                reply.post { result.error("image_error", PHOTO_DECODE_ERROR, null) }
                 return@Thread
               }
               try {
@@ -621,7 +643,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
               } finally {
                 source.recycle()
               }
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // FaunaPulse (round 326): an Error on this thread would close the app
               Log.e(TAG, "Error during tiled prediction", e)
               reply.post {
                 result.error("prediction_error", "Error during tiled prediction: ${e.message}", null)
@@ -715,7 +737,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           metadata.getOrPut("task") { "" }
           metadata.getOrPut("labels") { emptyList<String>() }
           result.success(metadata)
-        } catch (e: Exception) {
+        } catch (e: Throwable) { // FaunaPulse (round 326): see the Throwable note in YOLOFileUtils.kt
           result.error("inspect_error", "Failed to inspect model: ${e.message}", null)
         }
       }

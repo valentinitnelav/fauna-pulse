@@ -121,6 +121,29 @@ void main() {
     await refused('junk.tflite', List.filled(64, 7), 'could not be read as a TFLite model');
     final cut = fakeTflite([[1, 640, 640, 3]], [[1, 5, 8400]]);
     await refused('cut.tflite', cut.sublist(0, cut.length - 12), 'could not be read as a TFLite model');
+    // Round 326: more inputs/outputs or longer shapes than any real model has (a crafted file
+    // with a million of each would keep the check busy for minutes).
+    await refused(
+      'many.tflite',
+      fakeTflite([[1, 640, 640, 3]], List.filled(65, [1, 10])),
+      'could not be read as a TFLite model',
+    );
+    await refused(
+      'rank.tflite',
+      fakeTflite([[1, 640, 640, 3]], [[1, 1, 1, 1, 1, 1, 1, 1, 10]]),
+      'could not be read as a TFLite model',
+    );
+    // ...while the limits themselves are still read (the 8-number shape then fails the
+    // detection/identification rule, not the reader).
+    expect(
+      await modelFileKind(write('edge.tflite', fakeTflite([[1, 640, 640, 3]], List.filled(64, [1, 10]))), 'edge.tflite'),
+      ModelFileKind.identification,
+    );
+    await refused('rank8.tflite', fakeTflite([[1, 640, 640, 3]], [[1, 1, 1, 1, 1, 1, 1, 10]]), 'neither boxes');
+    // Round 326: inputs or outputs too large to hold in memory (loading such a file ran the
+    // app out of memory).
+    await refused('wide.tflite', fakeTflite([[1, 8192, 8192, 3]], [[1, 10]]), 'larger than this app can use');
+    await refused('huge.tflite', fakeTflite([[1, 640, 640, 3]], [[1, 5, 1 << 24]]), 'too large for this app');
     await refused('list.fpack', [1, 2, 3, 4, 5, 6, 7, 8], 'not a name list');
     await refused('notes.txt', [1], 'not a model file');
   });

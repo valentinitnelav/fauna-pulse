@@ -110,13 +110,15 @@ object YOLOInstanceManager {
             val yolo = YOLO(context, modelPath, task, emptyList(), useGpu, numItemsThreshold, classifierOptions)
             instances[instanceId] = yolo
             loadingStates[instanceId] = false
-            callback(Result.success(Unit))
-        } catch (e: Exception) {
+        } catch (e: Throwable) { // FaunaPulse (round 326): see the Throwable note in YOLOView.kt's model load
             loadingStates[instanceId] = false
             instanceOptions.remove(instanceId) // Clean up options on failure
             Log.e(TAG, "Failed to load model for instance $instanceId: ${e.message}")
             callback(Result.failure(e))
+            return
         }
+        // Outside the try: a failure inside the callback must not lead to a second reply.
+        callback(Result.success(Unit))
     }
 
     /**

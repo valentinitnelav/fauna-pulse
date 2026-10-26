@@ -6,6 +6,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:fauna_pulse/fauna_pulse/capture/photo_header.dart';
+import 'package:fauna_pulse/fauna_pulse/capture/roi_capture.dart' show probeJpegSize;
 import 'package:fauna_pulse/fauna_pulse/postprocess/post_detector.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/sahi.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/sahi_profile.dart';
@@ -156,6 +158,62 @@ void main() {
       final result = await predict(photo64);
       expect(calls, 10);
       expect(result['detections'], isEmpty);
+    });
+
+    // Round 326: a file header can claim a huge size in a tiny file. Such a photo is refused
+    // before either path decodes it (a pure-Dart decode of 30,000 x 30,000 px took 6.4 GB).
+    test('a photo whose header claims more than the pixel limit is refused before decoding',
+        () async {
+      final huge = Uint8List.fromList(photo64);
+      // The SOF0 segment (FF C0) holds height and width as 16-bit numbers after its
+      // length (2 bytes) and precision (1 byte).
+      final sof = [
+        for (var i = 0; i + 1 < huge.length; i++)
+          if (huge[i] == 0xFF && huge[i + 1] == 0xC0) i,
+      ].first;
+      for (final at in [sof + 5, sof + 7]) {
+        huge[at] = 30000 >> 8;
+        huge[at + 1] = 30000 & 0xff;
+      }
+      expect(jpegDimensions(huge), (30000, 30000));
+      var calls = 0;
+      final predict = sahiPredictFn(
+        base: (bytes) async {
+          calls++;
+          return const {'detections': []};
+        },
+        options: const SahiOptions(enabled: true, overlapFrac: 0.25),
+        modelInputPx: 32,
+        tiledPredict: (bytes, tiles, fullPass) async {
+          calls++;
+          return const {};
+        },
+      );
+      await expectLater(predict(huge), throwsA(isA<FormatException>()));
+      expect(calls, 0);
+      // The pure-Dart tile worker refuses it too (null = one native whole-photo pass), and
+      // so does the photo-size probe of the analysis screen.
+      expect(tileWorker((huge, 32, 0.25)), isNull);
+      expect(await probeJpegSize(huge), isNull);
+      expect(await probeJpegSize(photo64), (64, 64));
+    });
+
+    test('photoDimensions reads PNG and JPEG headers without decoding', () {
+      final png = Uint8List.fromList(img.encodePng(img.Image(width: 64, height: 48)));
+      expect(photoDimensions(png), (64, 48));
+      // Dart decodes JPEGs only: a PNG's data can unpack to far more than its small header
+      // says, so even a small PNG goes to the native whole-photo pass (null here).
+      expect(decodeJpegWithinLimit(png), isNull);
+      expect(tileWorker((png, 32, 0.25)), isNull);
+      expect(decodeJpegWithinLimit(photo64)?.width, 64);
+      expect(photoDimensions(photo64), (64, 64));
+      expect(photoDimensions(Uint8List.fromList([1, 2, 3])), isNull);
+      // IHDR width and height are 32-bit numbers at bytes 16 and 20.
+      ByteData.sublistView(png)
+        ..setUint32(16, 30000)
+        ..setUint32(20, 30000);
+      expect(() => checkPhotoPixels(png), throwsA(isA<FormatException>()));
+      expect(() => checkPhotoPixels(photo64), returnsNormally);
     });
 
     test('tile detections map into whole-photo coordinates', () async {

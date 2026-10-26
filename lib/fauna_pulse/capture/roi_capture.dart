@@ -31,6 +31,7 @@ import '../logging/app_error_hooks.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../models/track.dart';
+import 'photo_header.dart';
 
 /// The source a given photo is taken from: [fast] = crop of the live analysis
 /// frame (no camera stall), [highRes] = full-resolution photo, region-cropped
@@ -312,7 +313,9 @@ Future<(int, int)?> probeJpegSize(Uint8List bytes) async {
 }
 
 List<int>? _jpegSize(Uint8List bytes) {
-  final decoded = img.decodeJpg(bytes);
+  // Round 326: the analysis screen probes the first photo of a session, which can come from
+  // an imported zip; photo_header.dart says why only JPEGs within the pixel limit decode.
+  final decoded = decodeJpegWithinLimit(bytes);
   if (decoded == null) return null;
   return [decoded.width, decoded.height];
 }
