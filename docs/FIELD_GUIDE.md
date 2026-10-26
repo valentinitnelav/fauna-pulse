@@ -37,8 +37,17 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
   movement, so a handheld phone keeps the motion gate permanently awake and adds
   blur to saved photos. Use a tripod, clamp or stake with a phone holder, and check
   that it stays put in wind.
-- **Portrait orientation.** The app is portrait-only; the mount has to hold the
-  phone upright.
+- **A smartphone, upright (portrait).** FaunaPulse is made for smartphones; tablets
+  are not supported. The screen is locked upright, so the mount has to hold the phone
+  upright. A phone mounted sideways still works, but the app does not notice the turn:
+  every saved photo and video then shows the scene turned by 90 degrees, and the AI
+  models (which mostly learned from pictures where up is up) can find and name animals
+  less well in side views. When the phone looks straight down on flowers there is no
+  "up", so the turn matters little. The saved positions of the boxes are measured on
+  the phone's own picture, so note a sideways mount in your field notes.
+- **Do not re-aim during a session.** Moving or turning the phone breaks the running
+  track IDs and puts the region of interest over another spot. To re-aim, stop the
+  session and start a new one.
 - **Distance to the flower.** There is no single correct distance: let the on-screen
   readout decide it. Move the phone closer until the region of
   interest covers the flower *and* the label shows your *Saved photo side* with no

@@ -311,8 +311,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   (`_cameraFramesFresh`; `timelapse_skipped`, clip end `app_hidden`/`no_camera_frames`); a
   refused cut logs `app_error`. Reason: without the camera hold (r292) the power button and
   Home stop CameraX silently; with it (every recording) `_appHidden` no longer counts.
-- **Portrait only**, locked in the manifest and in `main()`; the crop/rotation math assumes an
-  upright phone. Lift both locks only with a full orientation audit.
+- **Portrait only**, locked in the manifest and `main()` (crop/rotation math assumes it). No
+  code reads the tilt sensor: a sideways mount only turns every picture. Lift both locks only
+  with a full orientation audit.
 - **Start-up calibration is one cycle and cached:** `_calibrating` (first analysis frame +
   photo probe + analysis-ceiling probe) gates the controls; a failed model load still completes
   it. The slow photo-size probe is cached per device + app version + lens zoom
