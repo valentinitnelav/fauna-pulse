@@ -38,7 +38,7 @@ this repository keeps no copy of the cards.
     Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants.
     It is read at the start of every session, so each entry says only what is true 
     now and where it lives: replace or remove text when it changes instead of adding to it.
-    Keep `AGENT_CHANGELOG_OVERVIEW.md` under 75000 characters.
+    Keep `AGENT_CHANGELOG_OVERVIEW.md` under 80000 characters.
     When a change alters what is true, replace the affected text (no history
     there). When the reason for a choice is not obvious, give it in one short clause
     next to the fact, or in a code comment. The history of a change (which round, why)
