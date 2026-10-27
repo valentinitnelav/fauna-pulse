@@ -964,7 +964,7 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   Home during time-lapse, live detection, a camera wake and a scheduled window; the runner
   presses Home on `HOME_NOW <part> <s>` and brings the app back after that time), camera streams
   (`MEASURE_NOW fast|auto`: read `dumpsys media.camera` and `top`), high-res photos
-  (`TARGET=` saved side), view recreate, slow-phone hint, CPU
+  (`TARGET=` saved side), photo cost, view recreate, slow-phone hint, CPU
   threads, detector speed, identify speed, BioCLIP GPU, find and identify, home and sessions,
   models screen, models delete, catalogue downloads, photo track IDs, video decode / import / convert / samples /
   default area / keep frames / review / cleanup / cut-off / fragmented MP4, video bursts (+

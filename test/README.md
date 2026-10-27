@@ -140,8 +140,15 @@ scripts have their own tests: `python3 -m unittest` in `tool/video_eval/`.
 ## Integration tests (device attached)
 
 Always pass `--no-uninstall`: without it flutter uninstalls the app after the
-test (and also when installing fails, e.g. a signature mismatch), which deletes
-every session stored on the phone.
+test, which deletes every session stored on the phone. The flag does NOT cover a
+failed install: when installing fails (a signature mismatch, or MIUI's "Install via
+USB?" question refused or left 10 s), flutter uninstalls the app and tries again,
+flag or not. So install first with plain `adb -s <device> install -r <apk>` (adb
+never uninstalls) and stop if that fails; on a MIUI phone run the check as an
+installed app instead (`flutter build apk --debug -t integration_test/<file>`,
+`adb install -r`, `adb shell am start -n
+com.faunapulse.app/com.ultralytics.yolo.MainActivity`, `adb logcat -s flutter:I`),
+then rebuild and `install -r` the normal debug app.
 
 ```bash
 flutter test integration_test/app_launch_test.dart -d <device> --no-uninstall   # app-launch smoke
