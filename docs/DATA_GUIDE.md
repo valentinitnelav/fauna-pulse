@@ -1002,6 +1002,19 @@ table(tr$identified_rank)
 aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = length)
 ```
 
+### Using sessions in insect-detect-post (round 334)
+
+[insect-detect-post](https://github.com/maxsitt/insect-detect-post) (Sittinger 2026,
+[doi:10.5281/zenodo.21822140](https://doi.org/10.5281/zenodo.21822140)) is the PC software that
+post-processes the photos of the Insect Detect camera trap: it cuts square crops from the full
+photos and their boxes, names them with BioCLIP 2 or a YOLO classifier, sums up each track ID and
+has a window for checking the names by hand. It does no detection or tracking itself, so it needs
+sessions with track IDs (live ones, or imported videos and photos after *Find track IDs*). The PC
+tool [fauna-pulse-export](https://github.com/valentinitnelav/fauna-pulse-export) writes FaunaPulse
+sessions in that camera's layout (the photos and boxes "Identify organisms" uses, but every photo),
+and its `compare` command puts the names of `tracks_<pack>.csv` and of insect-detect-post side by
+side per track ID. Its README explains the steps and why the two can differ.
+
 ## 8b. Sessions imported from FaunaLapse (round 300+)
 
 Sessions → ⋮ → *Import a FaunaLapse session…* turns the zip file(s) the sister app FaunaLapse's
