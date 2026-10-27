@@ -18,6 +18,7 @@ import 'dart:isolate';
 import 'dart:math';
 
 import '../logging/session_log_index.dart' show IndexedPowerSample;
+import 'csv_cell.dart';
 
 /// Everything written at one sample time (the three records share `time_ms`).
 class VideoPhoneSample {
@@ -271,14 +272,9 @@ class VideoRunSamples {
       'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms';
 
   /// One row per sample; `time_s` is the analysis clock of the graphs. Empty
-  /// cells are values the phone did not report (or no frames in the period).
+  /// cells are values the phone did not report (or no frames in the period). Cells go through
+  /// [csvCell] (round 328): the clip name comes from an imported file.
   String toCsv() {
-    String cell(Object? v) {
-      if (v == null) return '';
-      final s = '$v';
-      return s.contains(RegExp(r'[",\n]')) ? '"${s.replaceAll('"', '""')}"' : s;
-    }
-
     final b = StringBuffer('$csvHeader\n');
     for (final s in samples) {
       b.writeln(
@@ -302,7 +298,7 @@ class VideoRunSamples {
           s.detectMs,
           s.paused,
           s.pausedMs,
-        ].map(cell).join(','),
+        ].map(csvCell).join(','),
       );
     }
     return b.toString();

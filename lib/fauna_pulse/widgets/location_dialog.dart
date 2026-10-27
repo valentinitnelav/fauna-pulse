@@ -106,10 +106,11 @@ class _LocationDialogState extends State<LocationDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'One position per session: written to the session log and into '
-              'the photo details (EXIF) of crops you export after the '
-              'session, so identification apps know where the photo was '
-              'taken. Read once (the app stops using the GPS when the '
+              'One position per session: written to the session log and, while '
+              '"Add the position to exported crops" is on (Session settings, '
+              'Photos tab), into the photo details (EXIF) of crops you save or '
+              'share after the session, so identification apps know where the '
+              'photo was taken. Read once (the app stops using the GPS when the '
               'position is accurate enough, or after 3 min).',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),

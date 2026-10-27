@@ -112,6 +112,25 @@ class CropExifInfo {
       capturedAtMs == null && (latitude == null || longitude == null);
 }
 
+/// The EXIF of a crop saved or shared from the summary photo viewer (round 328): always the
+/// photo's time; the session position only when [withPosition] (the "Add the position to
+/// exported crops" setting, SessionConfig.cropExportPosition).
+CropExifInfo exportCropExif({
+  int? capturedAtMs,
+  double? latitude,
+  double? longitude,
+  required bool withPosition,
+}) => CropExifInfo(
+  capturedAtMs: capturedAtMs,
+  latitude: withPosition ? latitude : null,
+  longitude: withPosition ? longitude : null,
+);
+
+/// Added to the save and share message when the crop carries the position.
+const kCropPositionNote =
+    ' It includes the session position (GPS). To leave it out, turn off "Add the position '
+    'to exported crops" (camera screen, Session settings, Photos tab).';
+
 /// One coordinate as the EXIF degrees/minutes/seconds triplet (all EXIF GPS
 /// values are unsigned rationals; the hemisphere goes in the *Ref tag).
 img.IfdValueRational exifDmsRational(double absDegrees) {

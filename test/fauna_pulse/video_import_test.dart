@@ -104,6 +104,11 @@ void main() {
     expect(isFragmentedMp4(write('frag.mp4', [...box('ftyp', 8), ...box('moov', 16), ...box('moof', 8), ...box('mdat', 32)])), isTrue);
     expect(isFragmentedMp4(write('plain.mp4', [...box('ftyp', 8), ...box('mdat', 32), ...box('moov', 16)])), isFalse);
     expect(isFragmentedMp4(write('other.mkv', [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])), isFalse);
+    // Round 327: the check stops after 10,000 boxes. A hand-made file of millions of empty
+    // boxes would freeze the import screen for minutes; real files reach moov or moof within a few.
+    final many = [...box('ftyp', 8), for (var i = 0; i < 10000; i++) ...box('free', 0), ...box('moof', 8)];
+    expect(isFragmentedMp4(write('many.mp4', many)), isFalse);
+    expect(isFragmentedMp4(write('few.mp4', [...box('ftyp', 8), for (var i = 0; i < 100; i++) ...box('free', 0), ...box('moof', 8)])), isTrue);
   });
 
   test('a fragmented clip is rewritten into videos/ and logged as such', () async {

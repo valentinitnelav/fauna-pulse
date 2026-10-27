@@ -2,6 +2,7 @@
 // marker, long lines capped) and the persistent crash store (file name /
 // body format, newest-first recall, prune-to-max).
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -71,7 +72,7 @@ void main() {
         f,
         head: 30,
         tail: 200,
-        redact: redactLocation,
+        redact: redactReportLine,
       );
       expect(out, contains('[redacted]'));
       expect(out, isNot(contains('"lat"')));
@@ -113,7 +114,7 @@ void main() {
         tail: 2,
         headBytes: 128,
         tailBytes: 256,
-        redact: redactLocation,
+        redact: redactReportLine,
       );
       expect(out, contains('[redacted]'));
       expect(out, isNot(contains('"lat"')));
@@ -231,22 +232,75 @@ void main() {
     });
   });
 
-  group('redactLocation (round 126)', () {
+  group('redactReportLine (rounds 126, 328)', () {
     test('strips the location block from a start record line', () {
       const line =
           '{"type":"start_of_session","location":{"lat":47.5,"lon":8.2,'
           '"accuracy_m":9.0,"fix_time_ms":1,"source":"gps"},"model_path":"m"}';
-      final out = redactLocation(line);
+      final out = redactReportLine(line);
       expect(out, isNot(contains('47.5')));
       expect(out, contains('"location":"[redacted]"'));
       expect(out, contains('"model_path":"m"'));
     });
 
-    test('passes through lines without location or unparsable ones', () {
+    test('passes through lines without location or field notes', () {
       const plain = '{"type":"detections","tracks":[]}';
-      expect(redactLocation(plain), plain);
-      const broken = 'not json but mentions "location" anyway';
-      expect(redactLocation(broken), broken);
+      expect(redactReportLine(plain), plain);
+      const other = 'a log line that is not JSON';
+      expect(redactReportLine(other), other);
+    });
+
+    // Round 328: the report may be posted in public, so the field notes typed at the session
+    // start (names, places, free text) go too; numbers and the phone model stay.
+    test('removes typed field notes, keeps numbers and the phone model', () {
+      final line = jsonEncode({
+        'type': 'start_of_session',
+        'field': {
+          'phone_model': 'SM-M127F',
+          'setup_by': 'Ana Example',
+          'site': 'Meadow by the mill',
+          'plant': 'Geranium sp.',
+          'camera_height_m': 1.2,
+          'custom': {'Observer': 'Bo', 'Notes': 'nest under the bridge'},
+        },
+      });
+      final out = redactReportLine(line);
+      for (final s in ['Ana', 'mill', 'Geranium', 'Bo"', 'bridge']) {
+        expect(out, isNot(contains(s)));
+      }
+      final field = (jsonDecode(out) as Map)['field'] as Map;
+      expect(field['setup_by'], '[redacted]');
+      expect((field['custom'] as Map).keys, ['Observer', 'Notes']);
+      expect(field['camera_height_m'], 1.2);
+      expect(field['phone_model'], 'SM-M127F');
+    });
+
+    // A FaunaLapse block is copied as it is, so keys this app does not know reach reports too.
+    test('unknown field keys, a custom list and positions elsewhere are removed', () {
+      final line = jsonEncode({
+        'type': 'start_of_session',
+        'field': {
+          'observer': 'Jane Doe',
+          'custom': ['Jane Doe'],
+          'camera_height_m': 1.2,
+        },
+        'faunalapse': {
+          'settings': {
+            'location': {'latitude': 47.51, 'longitude': 8.27},
+          },
+        },
+      });
+      final out = redactReportLine(line);
+      expect(out, isNot(contains('Jane')));
+      expect(out, isNot(contains('47.51')));
+      expect(((jsonDecode(out) as Map)['field'] as Map)['camera_height_m'], 1.2);
+    });
+
+    test('a line with a position that cannot be read is left out', () {
+      const cut = '{"type":"start_of_session","location":{"lat":47.5,"lon":8.2';
+      expect(redactReportLine(cut), isNot(contains('47.5')));
+      const cutNotes = '{"type":"start_of_session","field":{"setup_by":"Ana Example"';
+      expect(redactReportLine(cutNotes), isNot(contains('Ana')));
     });
   });
 

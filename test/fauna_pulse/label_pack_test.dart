@@ -90,4 +90,43 @@ void main() {
   test('rejects files without the magic', () {
     expect(() => LabelPack.parseBytes(File('pubspec.yaml').readAsBytesSync()), throwsFormatException);
   });
+
+  // Round 327: jsonDecode builds one list per "[", so a header of brackets used gigabytes
+  // (1.46 GB for 16 MB). Real headers hold one short list per name (about 110 bytes each).
+  test('a header of nested or tightly packed brackets is refused before decoding', () {
+    Uint8List pack(String header) {
+      final hdr = utf8.encode(header);
+      return (BytesBuilder()
+            ..add('FPK1'.codeUnits)
+            ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+            ..add(hdr))
+          .takeBytes();
+    }
+
+    expect(() => LabelPack.parseBytes(pack('[' * 100000)), throwsFormatException);
+    final wide = '{"dim":0,"rows":0,"labels":[],"x":[${List.filled(200000, '[]').join(',')}]}';
+    expect(() => LabelPack.parseBytes(pack(wide)), throwsFormatException);
+    // Brackets inside names are text, not structure.
+    final named = '{"dim":0,"rows":1,"labels":[["a","b","${'[' * 5000}"]]}';
+    expect(LabelPack.parseBytes(pack(named)).rows, 1);
+  });
+
+  // Round 327: the header is read whole (on the screen's thread) each time the AI models screen
+  // opens, so a hand-made file with a huge header would freeze the app; real headers are a few MB.
+  test('a header above 16 MB is refused before it is read', () async {
+    final hdr = utf8.encode(jsonEncode({'dim': 0, 'rows': 0, 'labels': [], 'pad': 'a' * (17 << 20)}));
+    final f = File('${Directory.systemTemp.createTempSync('fpack').path}/big.fpack')
+      ..writeAsBytesSync(
+        (BytesBuilder()
+              ..add('FPK1'.codeUnits)
+              ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+              ..add(hdr))
+            .takeBytes(),
+      );
+    try {
+      await expectLater(LabelPack.readHeader(f), throwsFormatException);
+    } finally {
+      f.parent.deleteSync(recursive: true);
+    }
+  });
 }

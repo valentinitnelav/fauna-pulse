@@ -14,7 +14,7 @@
 // Paths in the log are relative to the session folder, so renaming the
 // session keeps working.
 //
-// Round 252: a fragmented MP4 (as YouTube downloaders save them) is written
+// Round 252: a fragmented MP4 (as some download tools save them) is written
 // once more as a plain MP4 on the way in (every frame copied unchanged): the
 // phone's player cannot jump in a fragmented one and showed boxes on the
 // wrong picture after every jump.
@@ -86,15 +86,17 @@ List<ClipStart> planImport(List<ImportClip> clips, {int shiftMs = 0}) {
 }
 
 /// Whether [f] is a fragmented MP4: its pictures sit in `moof` boxes after
-/// an index without frames (YouTube downloaders, some recorders). Reads only
-/// the top-level box headers.
+/// an index without frames (some download tools, some recorders). Reads only
+/// the top-level box headers, at most 10,000 (round 327): real files reach
+/// `moov` or `moof` within a few, and a hand-made file of millions of
+/// empty boxes would otherwise freeze the import screen for minutes.
 bool isFragmentedMp4(File f) {
   RandomAccessFile? raf;
   try {
     final len = f.lengthSync();
     raf = f.openSync();
     var pos = 0;
-    while (pos + 8 <= len) {
+    for (var boxes = 0; pos + 8 <= len && boxes < 10000; boxes++) {
       raf.setPositionSync(pos);
       final h = raf.readSync(16);
       if (h.length < 8) return false;

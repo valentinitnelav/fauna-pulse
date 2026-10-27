@@ -1,5 +1,5 @@
 // FaunaPulse (round 252): on-device check of importing fragmented MP4s (as
-// saved by YouTube downloaders: an index without frames, the pictures in many
+// saved by some download tools: an index without frames, the pictures in many
 // small fragments). The phone's player cannot jump in such a file: it stays on
 // the first frame while reporting the asked position, so the Video tab drew
 // boxes on the wrong picture. The import now rewrites them as plain MP4s.

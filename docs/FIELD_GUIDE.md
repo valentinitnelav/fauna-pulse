@@ -266,6 +266,10 @@ data up to that point is still valid (see [DATA_GUIDE.md](DATA_GUIDE.md)).
 any phone, without AI, and lasts long on a battery. To run FaunaPulse's AI on them afterwards,
 copy the zip that FaunaLapse's *Pack* button made of a photo session to this phone, then
 Sessions → ⋮ → *Import a FaunaLapse session…*; for a video session use *Import videos…*.
+Import only zips that you made with FaunaLapse or that someone you trust sent you. The app
+checks first that the phone has enough free storage, and it leaves out damaged photos.
+Sessions of up to 1,000,000 photos can be imported (for example eleven days at one photo per
+second).
 
 
 Each session writes to:

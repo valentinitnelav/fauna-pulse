@@ -98,7 +98,7 @@ header, `decodeJpegWithinLimit`), `time_lapse_plan.dart`, `roi_video.dart`
 **postprocess/** FaunaLapse photo-session import: `faunalapse_import.dart` (r300;
 `parseFaunaLapseLog`, `faunaLapseConfig`, `importFaunaLapseZips[InBackground]`, flow in
 `screens/faunalapse_import_flow.dart`, Sessions ⋮); photos: `post_detector.dart`, `photo_keep.dart` (`keepDecisions`), `sahi.dart`,
-`sahi_profile.dart`, `photo_tracker.dart`; videos: `video_import.dart`, `video_start_time.dart`,
+`sahi_profile.dart`, `photo_tracker.dart`, `csv_cell.dart`; videos: `video_import.dart`, `video_start_time.dart`,
 `video_detector.dart`, `video_tracker.dart`, `video_frame_keeper.dart`, `video_box_timeline.dart`,
 `video_run_samples.dart`, `clip_cleanup.dart`; `track_export.dart`.
 
@@ -386,7 +386,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   (2 s, flushed in `_stopRecording`).
 - **Photo file names:** `roi_<token>_<yyyy-MM-dd>_<HHmmss>_<SSS>.jpg` (4-char session token
   `file_token`, then the trigger moment in local time; path sort = capture order). No track IDs
-  in names. Session photos carry no EXIF; only user-exported crops get DateTimeOriginal + GPS.
+  in names. Session photos carry no EXIF; only user-exported crops get DateTimeOriginal + GPS
+  (GPS while `cropExportPosition` is on).
   The trigger moment is logged as `captured_at_ms`.
 
 ### Logging and session data
@@ -671,11 +672,11 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
 - **Security:** models live in private app storage; intake is HTTPS-only, rejects unsafe names
   and traversal, streams through a temp file, checks the `TFL3` identifier; one size limit of
   2 GiB for every model file and name list, detectors included (`kMaxModelFileBytes`; the
-  plugin's Kotlin label reader maps the whole file, which Java allows only up to 2 GiB). A web
-  page answer (`text/html`) is refused before its body downloads; 401/403/404 get plain
-  words (`downloadStatusMessage`; a pasted link's 404/401/403 say to check the link), other failures
-  too (`plainModelError`: no internet, connection lost, no storage; the technical text only in the log); a pasted Hugging Face `/blob/` link becomes `/resolve/`
-  (`directFileUri`, link downloads only). These checks run only at intake, never in the
+  plugin's Kotlin label reader maps the whole file, which Java allows only up to 2 GiB).
+  `downloadToFile` follows redirects itself and refuses a non-https hop before requesting it.
+  A web page answer (`text/html`) is refused before its body downloads; failures get plain
+  words (`downloadStatusMessage`, `plainModelError`; technical text only in the log, links cut by
+  `shortenLinks`); a Hugging Face `/blob/` link becomes `/resolve/` (`directFileUri`). These checks run only at intake, never in the
   camera path. Model and photo files are user input and must never close the app:
   - native: every model-file parser (`YOLOFileUtils.kt`), `inspectModel`, both model loads
     (`YOLOView` load executor, `YOLOInstanceManager`), the per-frame camera analysis and both
@@ -692,9 +693,32 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
     tiles, identification crops (else thrown = "could not be read"), crop export, `probeJpegSize`); a PNG's data
     can unpack to far more than its header says, so other photos go to the native decoder;
   - the plugin resolver treats only a bare name as an official Ultralytics model (a path is used
-    as it is, never swapped for a GitHub download). Import and link texts ask for trusted sources.
+    as it is) and refuses http(s) paths. Model cards link only their Source row, and show list
+    details only when the file has the list file's size (`_sameFile`). Import texts ask for
+    trusted sources;
+  - FaunaLapse zips: entries are unpacked only by `_unpack` in `faunalapse_import.dart`, never by
+    package:archive's `ZipDecoder`, `content` or `writeContent` (with dart:io these hold a whole
+    entry in memory, and the decoder unpacks link entries while reading the list). Sizes come from
+    the central directory (a data descriptor reads zip64 sizes as 32 bits). Record at most 256 MB,
+    1,000,000 photos (a real limit for very long sessions; about 800 MB of memory) and 256 KB per
+    line, its CRC checked; photos at most 64 MB, site photos 512 MB (streamed, CRC checked); no
+    entry unpacks past its stated size, a negative one is refused; each entry copied once; photos
+    without a readable size or over the pixel limit left out; free storage checked first (the
+    flow passes `freeBytes`; 4 KB blocks per file, 50 MB kept); folder name `sanitizeSessionName`
+    + 80 characters;
+  - `.fpack` headers at most 16 MB, depth 16, one bracket per 16 bytes (`LabelPack`, checked
+    before jsonDecode); `isFragmentedMp4` reads at most 10,000 boxes; the start-up clean-up also
+    empties the cache `link_download`.
+- **Privacy when sharing:** exported crops carry the session position only while
+  `cropExportPosition` is on (default on; Photos tab; `exportCropExif`, message
+  `kCropPositionNote`). Problem reports pass every session line through `redactReportLine`
+  (`error_reporter.dart`: positions at any depth and every `field` value outside an allow-list
+  of harmless keys become `"[redacted]"`; such a line that cannot be read becomes a note). All
+  CSV cells go through `csvCell` (`postprocess/csv_cell.dart`: = + - @, also full-width or after
+  spaces, get a leading `'`; cells with `;` or a tab are quoted).
 - **No bundled models:** `assets/models/bundled_models.txt` is empty; the camera picker lists only
-  imported/downloaded files. Debug builds still pack local weights for device checks.
+  imported/downloaded files. Only debug builds pack local weights (release and profile use the
+  list). CI actions are pinned by commit, with Gradle wrapper validation.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and
   delete model files and name lists. Each kind is ONE list by file name (`fileNameOrder`: case
   ignored, "_" before ".", so bioclip-2 before bioclip-2.5), files on the phone and to

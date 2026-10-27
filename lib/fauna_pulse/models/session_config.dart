@@ -622,6 +622,12 @@ class SessionConfig {
   /// this same setting.
   final bool cropSquareLock;
 
+  /// Whether crops saved or shared from the summary photo viewer carry the session position
+  /// (GPS) in their EXIF block, as a phone camera photo does (round 328). On by default: it lets
+  /// iNaturalist and similar apps place the record on a map. Off for sites that must stay
+  /// private (rare species); the crop then keeps only its time.
+  final bool cropExportPosition;
+
   /// Which rear camera lens to use, expressed as the lens's effective zoom
   /// factor (1.0 = main "wide" lens, 0.5 = ultra-wide, 2.0/3.0 = telephoto). The
   /// app snaps to the available lens whose factor is closest to this value at
@@ -744,6 +750,7 @@ class SessionConfig {
     this.thermalSampleSeconds = 10,
     this.powerSampleSeconds = 10,
     this.cropSquareLock = false,
+    this.cropExportPosition = true,
     this.selectedLensZoom = 1.0,
     this.trackerAlgorithm = TrackerAlgorithm.bytetrack,
     this.trackerParams = const ByteTrackParams(),
@@ -879,6 +886,7 @@ class SessionConfig {
     int? thermalSampleSeconds,
     int? powerSampleSeconds,
     bool? cropSquareLock,
+    bool? cropExportPosition,
     double? selectedLensZoom,
     TrackerAlgorithm? trackerAlgorithm,
     ByteTrackParams? trackerParams,
@@ -944,6 +952,7 @@ class SessionConfig {
     thermalSampleSeconds: thermalSampleSeconds ?? this.thermalSampleSeconds,
     powerSampleSeconds: powerSampleSeconds ?? this.powerSampleSeconds,
     cropSquareLock: cropSquareLock ?? this.cropSquareLock,
+    cropExportPosition: cropExportPosition ?? this.cropExportPosition,
     selectedLensZoom: selectedLensZoom ?? this.selectedLensZoom,
     trackerAlgorithm: trackerAlgorithm ?? this.trackerAlgorithm,
     trackerParams: trackerParams ?? this.trackerParams,
@@ -1053,6 +1062,7 @@ class SessionConfig {
     'thermalSampleSeconds': thermalSampleSeconds,
     'powerSampleSeconds': powerSampleSeconds,
     'cropSquareLock': cropSquareLock,
+    'cropExportPosition': cropExportPosition,
     'selectedLensZoom': selectedLensZoom,
     'trackerAlgorithm': trackerAlgorithm.name,
     'trackerParams': trackerParams.toJson(),
@@ -1151,6 +1161,7 @@ class SessionConfig {
     thermalSampleSeconds: _clampedNum(j, 'thermalSampleSeconds', 10, 1, 120).toInt(),
     powerSampleSeconds: _clampedNum(j, 'powerSampleSeconds', 10, 1, 120).toInt(),
     cropSquareLock: j['cropSquareLock'] as bool? ?? false,
+    cropExportPosition: j['cropExportPosition'] as bool? ?? true,
     selectedLensZoom: (j['selectedLensZoom'] as num?)?.toDouble() ?? 1.0,
     // Configs saved before round 105 carry no algorithm choice: they were
     // all ByteTrack, which is also the fallback for an unknown name.

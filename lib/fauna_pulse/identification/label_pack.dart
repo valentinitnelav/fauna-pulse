@@ -167,6 +167,39 @@ class LabelPack {
     return s;
   }
 
+  /// The largest JSON header a pack may have (round 327). Real headers hold about 110 bytes
+  /// per name (about 2 MB for 17,130 names), so this leaves room for packs of 100,000 names.
+  static const kMaxLabelPackHeaderBytes = 16 << 20;
+
+  /// Refuses a header whose JSON nests deeper than a real one or holds far more lists and
+  /// objects than names (round 327): jsonDecode builds one Dart object per "[" or "{", so a
+  /// header made of brackets used gigabytes of memory (1.46 GB for 16 MB). A real header nests
+  /// 3 deep and has one short list per name (about 110 bytes). Brackets inside names are text.
+  static void _checkJsonShape(List<int> hdr) {
+    var depth = 0, containers = 0;
+    var inString = false, escaped = false;
+    for (final b in hdr) {
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (b == 0x5C) {
+          escaped = true; // backslash
+        } else if (b == 0x22) {
+          inString = false;
+        }
+      } else if (b == 0x22) {
+        inString = true;
+      } else if (b == 0x5B || b == 0x7B) {
+        // [ or {
+        if (++depth > 16 || ++containers > 64 + hdr.length ~/ 16) {
+          throw const FormatException('Label pack header is not shaped like a name list');
+        }
+      } else if (b == 0x5D || b == 0x7D) {
+        depth--;
+      }
+    }
+  }
+
   /// Reads only the JSON header of [file] (cheap: no matrix), for listings.
   static Future<Map<String, dynamic>> readHeader(File file) async {
     final raf = await file.open();
@@ -178,6 +211,10 @@ class LabelPack {
       final lenBytes = await raf.read(4);
       if (lenBytes.length != 4) throw const FormatException('Label pack header is truncated');
       final hlen = ByteData.sublistView(lenBytes).getUint32(0, Endian.little);
+      // Round 327: read whole on the screen's thread (each listing reads it again), so a
+      // hand-made header of hundreds of MB would freeze the app. Real headers are a few MB (about
+      // 2 MB for the 17,130 names of the mammals and birds list).
+      if (hlen > kMaxLabelPackHeaderBytes) throw const FormatException('Label pack header is too large');
       // raf.read returns only what is left, so a cut file must be caught here.
       final payload = await raf.length() - 8 - hlen;
       if (payload < 0) throw const FormatException('Label pack header is truncated');
@@ -200,6 +237,8 @@ class LabelPack {
   /// [parseBytes] cannot load; a FormatException gives callers a plain reason.
   /// [payloadBytes] = bytes after the header (the matrix must fit in them).
   static Map<String, dynamic> _checkedHeader(List<int> hdr, int payloadBytes) {
+    if (hdr.length > kMaxLabelPackHeaderBytes) throw const FormatException('Label pack header is too large');
+    _checkJsonShape(hdr);
     final h = jsonDecode(utf8.decode(hdr));
     if (h is! Map<String, dynamic>) throw const FormatException('Label pack header is not a JSON object');
     final dim = h['dim'], rows = h['rows'], labels = h['labels'];

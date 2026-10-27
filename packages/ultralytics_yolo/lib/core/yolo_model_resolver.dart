@@ -46,14 +46,10 @@ class YOLOModelResolver {
   static const String _iosModelReleaseBaseUrl =
       'https://github.com/ultralytics/yolo-ios-app/releases/download/v8.3.0';
   static bool get _isIosLikePlatform => Platform.isIOS || Platform.isMacOS;
-  // Generic plugin resolver ceiling for HTTPS links only (local files pass
-  // through unchanged). FaunaPulse hands the plugin local files: it downloads
-  // and imports them itself, with the checks and the kMaxModelFileBytes limit
-  // in model_file_security.dart.
+  // Ceiling for the official model downloads (bare names only). FaunaPulse hands
+  // the plugin local files: it downloads and imports them itself, with the checks
+  // and the kMaxModelFileBytes limit in model_file_security.dart.
   static const int _maxRemoteArtifactBytes = 512 * 1024 * 1024;
-  static final RegExp _safeRemoteBaseName = RegExp(
-    r'^[A-Za-z0-9][A-Za-z0-9._-]*$',
-  );
 
   static const List<String> _yolo26Sizes = ['n', 's', 'm', 'l', 'x'];
   static const List<({YOLOTask task, String suffix})> _yolo26Tasks = [
@@ -170,14 +166,16 @@ class YOLOModelResolver {
       return _resolveOfficialModel(officialId!);
     }
 
+    // FaunaPulse (round 329): a link is never downloaded here. The app downloads and checks
+    // every model itself (HTTPS only, size, structure) and hands the plugin a file on the
+    // phone, so a link reaching this point is refused instead of fetched without those checks.
+    // (Only the official test models of development builds, given by bare name above, are
+    // still fetched by this plugin.)
     final uri = Uri.tryParse(source);
-    if (uri != null && uri.scheme == 'http') {
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
       throw ModelLoadingException(
-        'Remote models require HTTPS; insecure HTTP links are not accepted.',
+        'Model links are not loaded directly: download the file first.',
       );
-    }
-    if (uri != null && uri.scheme == 'https') {
-      return _downloadRemoteModel(uri);
     }
 
     if (source.startsWith('assets/')) {
@@ -307,32 +305,6 @@ class YOLOModelResolver {
       progressId: artifact.id,
     );
     return _extractMlPackageArchiveFile(archiveFile, archiveName, modelDir);
-  }
-
-  static Future<String> _downloadRemoteModel(Uri uri) async {
-    final fileName = _safeRemoteFileName(uri);
-    if (fileName == null) {
-      throw ModelLoadingException('Remote model URL has an unsafe file name.');
-    }
-    final documents = await getApplicationDocumentsDirectory();
-
-    if (_isIosLikePlatform && fileName.endsWith('.mlpackage.zip')) {
-      final modelName = fileName.replaceAll('.mlpackage.zip', '');
-      final targetDir = Directory('${documents.path}/$modelName.mlpackage');
-      if (await _hasValidMlPackage(targetDir)) return targetDir.path;
-      final archiveFile = File('${documents.path}/$fileName');
-      await _downloadToFile(uri.toString(), archiveFile, progressId: modelName);
-      return _extractMlPackageArchiveFile(archiveFile, fileName, targetDir);
-    }
-
-    final file = File('${documents.path}/$fileName');
-    if (file.existsSync()) return file.path;
-    await _downloadToFile(
-      uri.toString(),
-      file,
-      progressId: _normalizeOfficialModelId(fileName),
-    );
-    return file.path;
   }
 
   static Future<String> _copyFlutterAssetToDocuments(String assetPath) async {
@@ -526,28 +498,6 @@ class YOLOModelResolver {
       }
       client.close(force: true);
     }
-  }
-
-  static String? _safeRemoteFileName(Uri uri) {
-    if (!uri.isScheme('https') ||
-        uri.host.isEmpty ||
-        uri.pathSegments.isEmpty) {
-      return null;
-    }
-    final name = uri.pathSegments.last;
-    if (name.isEmpty ||
-        name.length > 128 ||
-        name.contains('..') ||
-        !_safeRemoteBaseName.hasMatch(name)) {
-      return null;
-    }
-    final lower = name.toLowerCase();
-    if (!lower.endsWith('.tflite') &&
-        !lower.endsWith('_qnn.onnx') &&
-        !lower.endsWith('.mlpackage.zip')) {
-      return null;
-    }
-    return name;
   }
 
   static bool _redirectsStayHttps(Uri original, List<RedirectInfo> redirects) {

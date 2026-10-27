@@ -9549,3 +9549,21 @@ Why: crafted length fields throw OutOfMemoryError, which `catch (Exception)` mis
 Checked: new tests failed on the old code first; all suites, analyzer, lint, the 31-export model test pass; three reviews, gaps closed here. Redmi Note 9S: a crafted model closed the old build on the Models screen (OutOfMemoryError); the new build stays open.
 Open: a CPU-side marker for models that crash LiteRT natively; further import checks.
 
+## Round 327 (2026-10-27): limits for imported FaunaLapse zips, name lists and videos
+Asked: finish the safety work on files that users pass to each other.
+Why: with dart:io, package:archive 4.0.9 holds a whole zip entry in memory before it writes it, unpacks link entries while it reads the list, and reads a size that follows the data as 32 bits; and the sizes a zip states can lie. So the import reads the list itself and unpacks through its own counting reader. The limits follow what FaunaLapse really writes (photos stored unpacked, at most 4096 px; about 210 bytes per record line; runs up to 720 h): the photo limit is 1,000,000, after a review showed that the first choice, 300,000, is reached by long real sessions. Name-list headers are checked for their JSON shape, because jsonDecode builds one object per bracket.
+Checked: each new test failed on the old code first; zips in FaunaLapse's format (Java, stored) and re-packed ones (deflated, streamed, zip64) import byte-identical; test zips with false sizes measured on the laptop (growth now a few MB, 3.1 to 3.5 GB before); all suites pass.
+Open: the zip's list costs about 0.7 KB per entry; the file picker can drop a part zip silently when storage is full; no phone run.
+
+## Round 328 (2026-10-27): privacy when sharing crops, problem reports and spreadsheets
+Asked: the owner chose a setting, on by default, plus a sentence for the position in saved and shared crops, over only a sentence (easily missed) or a setting off by default (iNaturalist users want the position).
+Why: a problem report may be posted in a public issue, so every value of the field block except a short list of harmless keys (phone, distances, site photo names) is removed, and positions at any depth; keys stay. A list of what may stay, not of what must go, because a block copied from FaunaLapse can hold keys this app does not know. Class, species and clip names come from imported files, so a CSV text cell starting with = + - or @ (also after spaces or in full width) gets an apostrophe, and cells with ";" or a tab are quoted (German Excel splits on ";"). A pasted link can carry a share token, so its errors are logged by host and file name.
+Checked: the tests failed on the old code first (report lines, CSV cells, the GPS block of a crop with the switch on and off); settings_fields_test covers the new switch; all suites pass.
+Open: the session name and the names of own fields still appear in reports; no phone run.
+
+## Round 329 (2026-10-27): links, model cards and build files
+Asked: the remaining link and build items.
+Why: dart:io's HttpClient sent the request to an http:// redirect before the app could refuse it, so redirects are followed one at a time, with a time limit and without reading a redirect's body (one that never ended held the download past Cancel). Only rows from the app's list may be links on a card; a file with a list file's name but another size gets no list details (a size check needs no reading of the file). The plugin refuses a link as model path and lost its unused predict(imageUrl). CI actions are pinned by commit with Gradle wrapper validation and checksum; Dependabot watches the plugin's Android libraries; profile builds get the release model filter; keytool reads the password from the environment.
+Checked: the tests failed on the old code first (a local HTTPS server shows the http hop gets no request); plugin, native and lint runs; a profile APK holds no model file.
+Open: `*_qnn.onnx` files get no structure check; a model saved under a list file's name with the same size keeps the list's card; the plugin's test-model downloads (development builds) still use HttpClient's redirects; the models repository's scripts do not yet compare checksums before loading third-party weights.
+

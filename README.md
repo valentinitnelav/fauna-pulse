@@ -327,6 +327,15 @@ The app does not collect nor transmit private user data: no account, no analytic
 
 AI models run directly on the phone and everything recorded stays in the app's folder on the device.
 
+**Staying safe:**
+
+- Install FaunaPulse only from Google Play, from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page of this repository, or with Obtainium from that page. Do not install copies from other places.
+- Import model files, name lists and FaunaLapse zips only from people or websites you trust. Models from the app's own list come from a fixed version on Hugging Face and are checked with a checksum (a fingerprint of the file) before use.
+- Saved and shared crops include the session position (GPS). For sites that must stay private, such as sites of rare species, turn off "Add the position to exported crops" in Session settings (Photos tab).
+- Problem reports leave out the position and the field notes you typed. Still, read a report before you post it in a public place.
+- Use a screen lock on field phones and install Android's security updates. On Android 10 and older, other apps with the storage permission can read the session folder.
+- To report a security problem privately, see [`SECURITY.md`](SECURITY.md).
+
 See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) for the permission-by-permission detail,
 and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.
 

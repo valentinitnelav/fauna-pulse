@@ -1093,103 +1093,29 @@ void main() {
         }
       });
 
-      test('downloads remote models once and surfaces bad responses', () async {
-        final archiveBytes = YOLOTestHelpers.storedZip({
-          'model.mlpackage/Manifest.json': utf8.encode('{}'),
-        });
+      // FaunaPulse (round 329): upstream downloaded a link given as the model path (without
+      // FaunaPulse's checks); the plugin now refuses links before any request.
+      test('a link as model path is refused before any request', () async {
         final client = _FakeHttpClient({
           'https://example.test/model.tflite': _FakeHttpResponse(
             statusCode: HttpStatus.ok,
             chunks: [
-              [0, 0, 0, 0],
-              [0x54, 0x46, 0x4c, 0x33],
+              [0, 0, 0, 0, 0x54, 0x46, 0x4c, 0x33],
             ],
           ),
-          'https://example.test/remote.mlpackage.zip': _FakeHttpResponse(
-            statusCode: HttpStatus.ok,
-            chunks: [archiveBytes],
-          ),
-          'https://example.test/missing.tflite': _FakeHttpResponse(
-            statusCode: HttpStatus.notFound,
-            chunks: [],
-          ),
-          'https://example.test/empty.tflite': _FakeHttpResponse(
-            statusCode: HttpStatus.ok,
-            chunks: [],
-          ),
-          'https://example.test/oversized.tflite': _FakeHttpResponse(
-            statusCode: HttpStatus.ok,
-            chunks: [],
-            declaredContentLength: 512 * 1024 * 1024 + 1,
-          ),
         });
-
         await HttpOverrides.runZoned(() async {
-          final modelPath = await YOLOModelResolver.preparePath(
+          for (final link in [
             'https://example.test/model.tflite',
-          );
-          expect(modelPath, '/tmp/yolo_test/model.tflite');
-          expect(File(modelPath).readAsBytesSync(), [
-            0,
-            0,
-            0,
-            0,
-            84,
-            70,
-            76,
-            51,
-          ]);
-          expect(
-            await YOLOModelResolver.preparePath(
-              'https://example.test/model.tflite',
-            ),
-            modelPath,
-          );
-          expect(client.requestedUrls, ['https://example.test/model.tflite']);
-
-          if (_isAppleTestPlatform) {
-            final packagePath = await YOLOModelResolver.preparePath(
-              'https://example.test/remote.mlpackage.zip',
-            );
-            expect(packagePath, '/tmp/yolo_test/remote.mlpackage');
-            expect(File('$packagePath/Manifest.json').existsSync(), isTrue);
-            expect(
-              File('/tmp/yolo_test/remote.mlpackage.zip').existsSync(),
-              isFalse,
+            'http://example.test/model.tflite',
+          ]) {
+            await expectLater(
+              YOLOModelResolver.preparePath(link),
+              throwsA(isA<ModelLoadingException>()),
             );
           }
-
-          await expectLater(
-            YOLOModelResolver.preparePath(
-              'https://example.test/missing.tflite',
-            ),
-            throwsA(isA<ModelLoadingException>()),
-          );
-          await expectLater(
-            YOLOModelResolver.preparePath('https://example.test/empty.tflite'),
-            throwsA(isA<ModelLoadingException>()),
-          );
         }, createHttpClient: (_) => client);
-        await expectLater(
-          YOLOModelResolver.preparePath(
-            'https://example.test/oversized.tflite',
-          ),
-          throwsA(isA<ModelLoadingException>()),
-        );
-        await expectLater(
-          YOLOModelResolver.preparePath('http://example.test/model.tflite'),
-          throwsA(isA<ModelLoadingException>()),
-        );
-        await expectLater(
-          YOLOModelResolver.preparePath(
-            'https://example.test/%2e%2e%2fsessions%2fevil.tflite',
-          ),
-          throwsA(isA<ModelLoadingException>()),
-        );
-        await expectLater(
-          YOLOModelResolver.preparePath('https://example.test/not-a-model.zip'),
-          throwsA(isA<ModelLoadingException>()),
-        );
+        expect(client.requestedUrls, isEmpty);
       });
     });
   });

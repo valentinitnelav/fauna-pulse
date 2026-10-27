@@ -192,6 +192,11 @@ Two related toggles live elsewhere:
 - **Square (1:1) export crops** (Photos tab → "Photo viewer") forces the
   crop-and-export box in the summary photo viewer to a square; the "1:1" chip
   next to the crop box toggles the same setting.
+- **Add the position to exported crops** (Photos tab → "Photo viewer", on by default)
+  writes the session position (GPS) into the EXIF block of crops saved or shared from the
+  summary photo viewer, as a phone camera photo does, so iNaturalist and similar apps can place
+  the record on a map. Off: the crop keeps only its time. The save and share message says when
+  a crop carries the position. Turn it off for sites that must stay private (rare species).
 
 ## Graphs & logging cadence (Power tab → Diagnostic graph sampling fold)
 

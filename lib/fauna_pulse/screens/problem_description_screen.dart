@@ -172,7 +172,8 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                     children: [
                       TextSpan(
                         text: 'After Continue, you can share the report or '
-                            'paste its text into a GitHub issue: ',
+                            'paste its text into a GitHub issue (issues are public, '
+                            'so read the text first): ',
                       ),
                       TextSpan(
                         text: ErrorReporter.githubIssuesUrl,
@@ -312,8 +313,9 @@ class _ProblemDescriptionScreenState extends State<ProblemDescriptionScreen> {
                 ),
                 const Text(
                   'Pick the session your problem is about: its settings and '
-                  'parts of its technical logs are added to the report. '
-                  'Choose "No session data" if the problem is unrelated.',
+                  'parts of its technical logs are added to the report (without '
+                  'the position and the field notes you typed). Choose "No '
+                  'session data" if the problem is unrelated.',
                   style: TextStyle(fontSize: 11, color: Colors.white54),
                 ),
               ],

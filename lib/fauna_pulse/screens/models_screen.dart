@@ -879,7 +879,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
             for (final (label, value) in rows)
               _cardRow(
                 label,
-                _isLink(value)
+                _linkRows.contains(label) && _isLink(value)
                     ? ExternalLinkText(value, logTag: 'model_card_link')
                     : SelectableText(value, style: const TextStyle(fontSize: 14)),
               ),
@@ -900,6 +900,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ),
   );
 
+  /// Only these rows, which come from the app's own model list, may be links (round 329): the
+  /// other rows can come from the file itself (its class names, a name list's header), and a
+  /// file must not put a tappable web page into the app's card.
+  static const _linkRows = {'Source', 'Source of the name lists'};
+
   static bool _isLink(String value) => value.startsWith('https://') && !value.contains(RegExp(r'\s'));
 
   /// What the app's model list says about a file on the phone (round 276:
@@ -912,9 +917,23 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ],
   ];
 
+  /// [listed] (the app's list entry found for [fileName]) when the phone's file can be its
+  /// [file] (round 329): a file with the exact name of a file in the list but another size is
+  /// another version or another file under that name, so its card must not show that model's
+  /// title, licence and source. A model found by the first part of the name has no file to
+  /// compare and stays.
+  static T? _sameFile<T>(T? listed, DownloadFile? file, String fileName, int? size) =>
+      file != null && file.name == fileName && size != null && size != file.bytes ? null : listed;
+
+  static const _otherFileNote = (
+    'Note',
+    "A file in the app's model list has this name, but this file has another size: it is another "
+        'version or another file, so the list\'s details are not shown here.',
+  );
+
   static const _unknownOrigin = (
     'Licence and source',
-    "Not known: this file is not in the app's model list. Ask whoever made it.",
+    "Not known for this file. Ask whoever made it.",
   );
 
   static List<(String, String)> _originRows(ModelDownload? d) => [
@@ -962,9 +981,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
   };
 
   void _detectorCard(ModelEntry m, ModelsInventory inv) {
-    final d = inv.downloads.modelFor(m.name);
+    final listed = inv.downloads.modelFor(m.name);
+    final d = _sameFile(listed, listed?.file, m.name, inv.sizes[m.id]);
     _showCard(kDetectionIcon, m.name, [
       ('Kind', 'Detection model: finds animals and draws a box around each one'),
+      if (d != listed) _otherFileNote,
       ..._catalogueRows(d),
       if (m.labels.isNotEmpty) ('Finds', _finds(m.labels)),
       if (m.inputSize != null) ('Input size', '${m.inputSize} px (each picture is resized to this for the model)'),
@@ -983,9 +1004,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   void _idModelCard(File f, ModelsInventory inv) {
-    final d = inv.downloads.modelFor(_nameOf(f));
+    final listed = inv.downloads.modelFor(_nameOf(f));
+    final d = _sameFile(listed, listed?.file, _nameOf(f), inv.sizes[f.path]);
     _showCard(kIdentificationIcon, _nameOf(f), [
       ('Kind', 'Identification model: names what is inside each box, choosing from a name list made for it'),
+      if (d != listed) _otherFileNote,
       ..._catalogueRows(d),
       // Its name lists are listed under it on the screen (round 314).
       ('File', _onPhone(f.path, inv)),
@@ -994,11 +1017,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   void _nameListCard(File f, ModelsInventory inv) {
-    final offer = inv.downloads.listFor(_nameOf(f));
+    final listed = inv.downloads.listFor(_nameOf(f));
+    final offer = _sameFile(listed, listed?.$2.file, _nameOf(f), inv.sizes[f.path]);
     final list = offer?.$2;
     final note = list?.warning ?? list?.note;
     _showCard(Icons.list_alt, _nameOf(f), [
       ('Kind', _listKind(inv.headers[f.path])),
+      if (offer != listed) _otherFileNote,
       if (offer != null) ('Name list', '${offer.$1.title}: ${offer.$2.title}'),
       if (note != null) ('Note', note),
       ('File', _onPhone(f.path, inv)),

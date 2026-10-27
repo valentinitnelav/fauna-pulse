@@ -467,6 +467,16 @@ void main() {
     expect(SessionConfig.fromJson(const {}).cropSquareLock, false);
   });
 
+  test('position in exported crops (round 328): default on, survives the JSON round-trip', () {
+    expect(const SessionConfig().cropExportPosition, true);
+    final restored = SessionConfig.fromJson(
+      const SessionConfig().copyWith(cropExportPosition: false).toJson(),
+    );
+    expect(restored.cropExportPosition, false);
+    // Configs saved before the key existed keep the earlier behaviour (position included).
+    expect(SessionConfig.fromJson(const {}).cropExportPosition, true);
+  });
+
   test('gate idle check rate: default 5, survives the JSON round-trip', () {
     expect(const SessionConfig().motionGateIdleFps, 5);
     final restored = SessionConfig.fromJson(

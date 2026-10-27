@@ -8,10 +8,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.ImageProxy
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.net.URL
 import kotlin.math.max
 
 /**
@@ -141,24 +138,9 @@ class YOLO(
         }
     }
 
-    /**
-     * Predict using a remote image URL (suspending function for network operations)
-     * No rotation is applied (single image processing)
-     */
-    suspend fun predict(imageUrl: String): YOLOResult? = withContext(Dispatchers.IO) {
-        try {
-            val bitmap = BitmapFactory.decodeStream(URL(imageUrl).openStream())
-            (predictor as? BasePredictor)?.includeRawMaskData = true
-            val result = predictor.predict(bitmap, bitmap.width, bitmap.height, rotateForCamera = false, isLandscape = false)
-            return@withContext result.copy(
-                originalImage = bitmap,
-                annotatedImage = drawAnnotations(bitmap, result, rotateForCamera = false)
-            )
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to load image from URL: ${e.message}")
-            return@withContext null
-        }
-    }
+    // FaunaPulse (round 329): upstream's predict(imageUrl) is removed. It had no caller and
+    // opened any address (also http and file) with no size limit; photos reach the plugin as
+    // files or bytes that the app has checked.
 
     /**
      * Calculate smart label position that ensures the label stays within screen bounds

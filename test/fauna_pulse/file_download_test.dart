@@ -108,4 +108,27 @@ void main() {
       }
     });
   });
+
+  // Round 328: the error log goes into problem reports, and a pasted link can hold a private
+  // share token.
+  test('shortenLinks keeps only the host and the file name of a link', () {
+    final out = shortenLinks(
+      'ClientException: Connection closed, uri=https://share.example.org/s/k3yT0ken/my_model.tflite?sig=SECRET&x=1',
+    );
+    expect(out, 'ClientException: Connection closed, uri=https://share.example.org/…/my_model.tflite');
+    expect(shortenLinks('Failed host lookup: (OS Error) https://example.org'), endsWith('https://example.org/…'));
+    expect(shortenLinks('no link here'), 'no link here');
+    // Tokens after ";" or ",", a token as the last part, other schemes and spellings.
+    for (final (link, kept) in [
+      ('https://h.example/m.tflite;jsessionid=SECRET1', 'https://h.example/…/m.tflite'),
+      ('https://h.example/m.tflite?a=1,sig=SECRET2', 'https://h.example/…/m.tflite'),
+      ('https://h.example/m.tflite?sig=SEC)RET3', 'https://h.example/…/m.tflite'),
+      ('https://cloud.example/s/SECRET4token', 'https://cloud.example/…'),
+      ('HTTPS://h.example/SECRET5/m.tflite', 'https://h.example/…/m.tflite'),
+      ('ftp://h.example/SECRET6/m.tflite', 'ftp://h.example/…/m.tflite'),
+      ('https:127.0.0.1:1/SECRET7', '<link>'),
+    ]) {
+      expect(shortenLinks('uri=$link, status 404'), 'uri=$kept, status 404', reason: link);
+    }
+  });
 }

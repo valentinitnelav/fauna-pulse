@@ -92,7 +92,7 @@ ModelsInventory _inventory() => ModelsInventory(
   headers: {
     _classList.path: {'kind': 'classes', 'model_id': 'insectdct-cls-v7_eff2s_fp16', 'rows': 104, 'sink_rows': 1},
   },
-  sizes: {'/data/app/files/models/my_bees_640.tflite': 6 * 1024 * 1024, _cls.path: 42 * 1024 * 1024},
+  sizes: {'/data/app/files/models/my_bees_640.tflite': 6 * 1024 * 1024, _cls.path: 43853456},
   storage: 'Storage free: 12.4 GB',
   downloads: _downloads,
 );
@@ -250,7 +250,7 @@ void main() {
     expect(find.text('bee, hoverfly'), findsOneWidget);
     expect(find.text('On this phone, 6.0 MB'), findsOneWidget);
     expect(find.text('Model'), findsNothing, reason: 'the user\'s own file');
-    expect(find.text("Not known: this file is not in the app's model list. Ask whoever made it."), findsOneWidget);
+    expect(find.text("Not known for this file. Ask whoever made it."), findsOneWidget);
     expect(_inCard(_madeHow), findsNothing);
     expect(_modelCard(tester), isNull);
     await _close(tester);
@@ -263,13 +263,74 @@ void main() {
     await _close(tester);
     await _card(tester, _clsName);
     expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsNothing, reason: 'its name lists are under it on the screen (r314)');
-    expect(find.text('On this phone, 42.0 MB'), findsOneWidget);
+    expect(find.text('On this phone, 41.8 MB'), findsOneWidget);
     expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/insectdct-cls-v7-tflite');
     await _close(tester);
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
     expect(find.text('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
     expect(find.text('insectDCT classifier: Its 104 classes'), findsOneWidget);
     await _close(tester);
+  });
+
+  // Round 329: the rows that come from the app's list stay links.
+  testWidgets("the name lists' source on a download card stays a link", (tester) async {
+    await _pump(tester, inventory: () => ModelsInventory(downloads: _formerDownloads));
+    await _card(tester, _b('bioclip-2_224_fp16.tflite'), tooltip: 'About this model');
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(ExternalLinkText, 'https://example.org/tol')), findsOneWidget);
+  });
+
+  // Round 329: the list's title, licence and source belong to its file. A file of the same name
+  // with another size is another version or another file.
+  testWidgets('a file named like a list file but with another size gets no list details', (tester) async {
+    await _pump(
+      tester,
+      inventory: () {
+        final inv = _inventory();
+        return ModelsInventory(
+          detectors: inv.detectors,
+          idModels: inv.idModels,
+          nameLists: inv.nameLists,
+          headers: inv.headers,
+          sizes: {...inv.sizes, _cls.path: 1234},
+          storage: inv.storage,
+          downloads: inv.downloads,
+        );
+      },
+    );
+    await _card(tester, _clsName);
+    expect(_inCard('insectDCT classifier'), findsNothing);
+    expect(find.textContaining('this file has another size'), findsOneWidget);
+    expect(find.text("Not known for this file. Ask whoever made it."), findsOneWidget);
+    expect(_modelCard(tester), isNull);
+  });
+
+  // Round 329: only rows from the app's own model list may be links. A class name inside a file
+  // that is a web address stays text, so a file cannot put a tappable page into the app's card.
+  testWidgets('a class name that is a web address is not a link on the card', (tester) async {
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        detectors: const [
+          ModelEntry(
+            id: '/data/app/files/models/odd_640.tflite',
+            name: 'odd_640.tflite',
+            source: ModelSource.imported,
+            inputSize: 640,
+            task: 'detect',
+            labels: ['https://example.org/sign-in'],
+          ),
+        ],
+        idModels: const [],
+        nameLists: const [],
+        headers: const {},
+        sizes: const {},
+        storage: 'Storage free: 12.4 GB',
+        downloads: _downloads,
+      ),
+    );
+    await _card(tester, 'odd_640.tflite');
+    expect(_inCard('https://example.org/sign-in'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(ExternalLinkText)), findsNothing);
   });
 
   testWidgets('only what is missing is offered; a name list brings its model along', (tester) async {

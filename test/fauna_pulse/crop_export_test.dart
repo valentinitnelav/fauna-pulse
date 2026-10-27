@@ -184,5 +184,19 @@ void main() {
       );
       expect(out, isNull);
     });
+
+    // Round 328: "Add the position to exported crops" decides whether the GPS block is written.
+    test('the position is in the crop only when the setting is on', () {
+      for (final on in [true, false]) {
+        final out = cropJpegRectSync(
+          makeJpeg(),
+          const Rect.fromLTRB(0, 0, 1, 1),
+          exif: exportCropExif(capturedAtMs: 1760000000000, latitude: 51.3, longitude: 12.4, withPosition: on),
+        )!;
+        final exif = img.decodeJpgExif(out.jpeg)!;
+        expect(exif.gpsIfd.isEmpty, !on, reason: 'setting $on');
+        expect(exif.exifIfd['DateTimeOriginal'], isNotNull);
+      }
+    });
   });
 }

@@ -296,8 +296,10 @@ dependencies {
 // ignored test weight without editing source. For release builds, filter the
 // Flutter asset copy to the paths read from bundled_models.txt. Keep the manifest
 // itself in the APK so the Dart model catalog can apply the same list at runtime.
-// Source model files are never changed or removed.
-tasks.matching { it.name == "copyFlutterAssetsRelease" }.configureEach {
+// Source model files are never changed or removed. Round 329: profile builds too (they
+// are optimised builds that may be passed to testers, and the local folder can hold
+// models shared privately); only debug builds keep every local weight.
+tasks.matching { it.name in ["copyFlutterAssetsRelease", "copyFlutterAssetsProfile"] }.configureEach {
     eachFile { details ->
         def path = details.path.replace('\\', '/')
         def prefix = "flutter_assets/"

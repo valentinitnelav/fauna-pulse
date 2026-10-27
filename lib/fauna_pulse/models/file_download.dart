@@ -93,6 +93,27 @@ int deleteLeftoverPartFiles(List<Directory> dirs) {
   return deleted;
 }
 
+/// [text] with every web address cut to its host and file name (round 328), for the error
+/// log: a pasted link, or the address it redirects to, can hold a private share token in its
+/// path, after `;`, `?` or `#`, or as its last part, and the error log goes into problem
+/// reports. The last part is kept only when it is a file name with an ending.
+String shortenLinks(String text) => text.replaceAllMapped(_linkInText, (m) {
+  final raw = m[0]!;
+  final trail = _linkTrail.firstMatch(raw)?[0] ?? ''; // "x.tflite," keeps its comma outside
+  final u = Uri.tryParse(raw.substring(0, raw.length - trail.length));
+  if (u == null || u.host.isEmpty) return '<link>$trail';
+  final last = u.pathSegments.lastWhere((s) => s.isNotEmpty, orElse: () => '').split(';').first;
+  final file = _fileName.hasMatch(last) ? '/$last' : '';
+  return '${u.scheme}://${u.host}/…$file$trail';
+});
+
+final _linkInText = RegExp(r'''\b(?:https?|ftp|wss?):[^\s"'<>]+''', caseSensitive: false);
+final _linkTrail = RegExp(r'[.,;:)\]]+$');
+final _fileName = RegExp(r'^[\w.-]+\.[A-Za-z0-9]{1,8}$');
+
+/// The cache folder where a pasted-link download waits for its checks.
+const kLinkDownloadFolder = 'link_download';
+
 /// Run once at start, before any screen can start a download. The folders
 /// are the ones ModelCatalog.modelsDir and IdentificationAssets use (keep in
 /// sync, as in renameFormerModelFiles).
@@ -104,6 +125,10 @@ Future<void> deleteLeftoverModelPartFiles() async {
       Directory('$base/identification/models'),
       Directory('$base/identification/packs'),
     ]);
+    // Round 327: a pasted-link download is staged in the cache (ModelImport.download), so if the
+    // app is closed there, the whole file stays, finished or not (up to 2 GB), and nothing counts it.
+    final staging = Directory('${(await getTemporaryDirectory()).path}/$kLinkDownloadFolder');
+    if (staging.existsSync()) staging.deleteSync(recursive: true);
   } catch (e) {
     logSwallowed('model_part_cleanup', e);
   }
@@ -143,15 +168,43 @@ Future<File> downloadToFile(
   int? total; // the size the server declares, when it does
   try {
     // GitHub release links and Hugging Face file links redirect to a file
-    // host; HttpClient follows redirects on GET by default.
-    final request = await client.getUrl(url);
-    final response = await request.close();
-    if (!redirectChainStaysHttps(url, response.redirects)) {
-      throw Exception(
-        'The link leads on to an unsafe address (not https), so the app does not download it. Use a link '
-        'that starts with https, or download the file on a computer, copy it to the phone and use '
-        '"Import model files…".',
-      );
+    // host. Round 329: the redirects are followed here, one at a time, so an
+    // address that is not https is refused before anything is sent to it
+    // (HttpClient's own following sent that request first, in clear text).
+    var current = url;
+    late HttpClientResponse response;
+    for (var hops = 0; ; hops++) {
+      if (!current.isScheme('https')) {
+        throw Exception(
+          'The link leads on to an unsafe address (not https), so the app does not download it. Use a link '
+          'that starts with https, or download the file on a computer, copy it to the phone and use '
+          '"Import model files…".',
+        );
+      }
+      if (isCancelled?.call() ?? false) throw Exception('Download cancelled.');
+      final request = await client.getUrl(current);
+      request.followRedirects = false;
+      // A server that never sends its answer would otherwise hold the download, and Cancel.
+      response = await request.close().timeout(const Duration(seconds: 30));
+      if (!response.isRedirect) break;
+      final location = response.headers.value(HttpHeaders.locationHeader);
+      // The body of a redirect is not needed. Cancelling closes its connection at once, so a
+      // body that never ends cannot hold the download (draining it did, past Cancel).
+      await response.listen(null).cancel();
+      if (location == null) {
+        throw Exception(
+          'The link sends the app on, but not to an address it can follow. Download the file on a '
+          'computer, copy it to the phone and use "Import model files…".',
+        );
+      }
+      // HttpClient's own limit was 5 redirects as well.
+      if (hops == 5) {
+        throw Exception(
+          'The link sends the app on to other addresses too many times, so it stops. Download the '
+          'file on a computer, copy it to the phone and use "Import model files…".',
+        );
+      }
+      current = current.resolve(location);
     }
     final problem = downloadStatusMessage(
       response.statusCode,
@@ -217,7 +270,8 @@ Future<File> downloadToFile(
     rethrow;
   } finally {
     _activeDownloadTargets.remove(targetKey);
-    client.close();
+    // Force: a redirect connection closed early or a stalled answer must not stay open.
+    client.close(force: true);
   }
 }
 

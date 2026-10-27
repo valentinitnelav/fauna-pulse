@@ -13,6 +13,7 @@ import 'package:archive/archive.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/faunalapse_import.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
 const _folder = '1DFFC454_20261006_000345_photo';
 
@@ -50,7 +51,11 @@ String _log({Map<String, dynamic>? start, int photos = 2, List<Map<String, dynam
 }
 
 /// Small fake photo bytes: the import copies bytes, it never decodes the JPEG.
-ArchiveFile _photo(String name, int i) => ArchiveFile.bytes(name, Uint8List.fromList([0xFF, 0xD8, i & 0xFF, (i >> 8) & 0xFF, 0xFF, 0xD9]));
+// A real (tiny) JPEG: since round 327 the import leaves out entries that are not JPEG photos.
+ArchiveFile _photo(String name, int i) => ArchiveFile.bytes(
+  name,
+  img.encodeJpg(img.fill(img.Image(width: 8, height: 8), color: img.ColorRgb8(i & 0xFF, (i >> 8) & 0xFF, 0))),
+);
 
 File _zip(Directory dir, String name, List<ArchiveFile> files) {
   final a = Archive();
@@ -135,16 +140,21 @@ void main() {
       expectNothingOutsideSession(['b.zip']);
     });
 
-    test('a session folder named .. or . is refused and writes nothing', () async {
-      for (final f in ['..', '.']) {
+    // Round 327: the folder name is cleaned like a typed session name, and a name without a
+    // letter or digit becomes "faunalapse", so these import under a plain name.
+    test('a session folder named .. or . gets a plain name and writes nothing outside it', () async {
+      for (final (f, clean) in [('..', 'faunalapse'), ('.', 'faunalapse')]) {
         final z = _zip(zips, 'dots.zip', [
           ArchiveFile.string('$f/session.jsonl', _log()),
           _photo('$f/${_photoName(0)}', 0),
           ArchiveFile.string('$f/site_photos/x.jpg', 'X'),
         ]);
-        await expectLater(importFaunaLapseZips([z.path], root), throwsA(isA<FaunaLapseImportError>()));
-        expectNothingOutsideSession(['dots.zip']);
-        expect(root.listSync(), isEmpty);
+        final r = await importFaunaLapseZips([z.path], root);
+        expect(r.folder, clean);
+        final outside = _tree(tmp).where((p) => !p.startsWith('base/sessions/$clean/')).toList();
+        expect(outside, unorderedEquals(['base/sibling/keep.txt', 'zips/dots.zip']));
+        expect(canary.readAsStringSync(), 'untouched');
+        Directory('${root.path}/$clean').deleteSync(recursive: true);
       }
     });
   });

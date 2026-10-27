@@ -1703,6 +1703,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
         value: _c.cropSquareLock,
         onChanged: (v) => setState(() => _c = _c.copyWith(cropSquareLock: v)),
       ),
+      HelpSwitchTile(
+        title: 'Add the position to exported crops',
+        helperText:
+            'When on, saved and shared crops include the session position, as '
+            'in a phone camera photo. This lets apps such as iNaturalist place '
+            'the record on a map. Turn it off for sites that must stay '
+            'private, such as sites of rare species.',
+        value: _c.cropExportPosition,
+        onChanged: (v) => setState(() => _c = _c.copyWith(cropExportPosition: v)),
+      ),
       const Divider(color: Colors.white24),
       // The stream feeds the AI and caps fast crops; on "Auto" it follows the
       // saved-photo target above, so it sits folded (round 159; the round-122

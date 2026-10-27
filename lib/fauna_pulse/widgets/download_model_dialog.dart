@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../models/file_download.dart' show shortenLinks;
 import '../models/model_file_security.dart' show isNetworkError, plainModelError;
 import '../models/model_import.dart';
 import '../models/phone_state.dart';
@@ -142,8 +143,9 @@ class _DownloadModelDialogState extends State<DownloadModelDialog> {
         return;
       }
       // Round 317: the same plain words as the list's Download buttons (no
-      // internet, a lost connection, a full phone); the original is logged.
-      logSwallowed('model_link_download', e);
+      // internet, a lost connection, a full phone); the original is logged, with
+      // any link cut to its host and file name (round 328).
+      logSwallowed('model_link_download', shortenLinks('$e'));
       final phone = isNetworkError(e) ? await widget.readPhoneState() : null;
       if (!mounted) return;
       setState(() {

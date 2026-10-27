@@ -26,6 +26,7 @@ import 'dart:typed_data';
 
 import '../logging/app_error_hooks.dart' show logSwallowed;
 import '../models/former_model_names.dart' show kFormerModelNames;
+import '../postprocess/csv_cell.dart';
 import 'label_pack.dart';
 import 'track_fusion.dart';
 
@@ -333,14 +334,6 @@ String _iso(int? ms) =>
 bool _cropAgrees(LabelRow top1, String key, int rankIdx) =>
     top1.ranks[rankIdx].isNotEmpty && top1.keyAt(rankIdx) == key;
 
-String _csvCell(Object? v) {
-  final s = v == null ? '' : '$v';
-  if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-    return '"${s.replaceAll('"', '""')}"';
-  }
-  return s;
-}
-
 /// One scored track with everything the writers need.
 class ScoredTrack {
   final FusedTrack fused;
@@ -617,7 +610,7 @@ Map<String, dynamic> writeOutputs({
       modelClass,
       pack.isClassList ? f.pooledTop.probs.first.toStringAsFixed(4) : '',
     ];
-    csv.writeln(row.map(_csvCell).join(','));
+    csv.writeln(row.map(csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
       final c = t.crops[i];
       final top1 = pack.labels[f.perCrop[i].rows.first];
@@ -641,7 +634,7 @@ Map<String, dynamic> writeOutputs({
           for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
           for (var k = 0; k < 7; k++) k < masses.length ? masses[k].toStringAsFixed(4) : '',
           ownClass(f.perCrop[i].rows.first),
-        ].map(_csvCell).join(','),
+        ].map(csvCell).join(','),
       );
     }
     jsonTracks.add({

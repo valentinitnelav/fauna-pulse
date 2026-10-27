@@ -25,6 +25,7 @@
 import 'dart:io';
 
 import '../logging/session_logger.dart' show isoWithOffset;
+import 'csv_cell.dart';
 
 /// One box of the MOT export: frame counted from 1, box in video pixels.
 typedef MotRow = ({int frame, int id, double x, double y, double w, double h, double conf});
@@ -82,14 +83,14 @@ class TrackExport {
       b.writeln(
         [
           v.trackId,
-          _csvCell(v.clip),
+          csvCell(v.clip),
           isoWithOffset(DateTime.fromMillisecondsSinceEpoch(v.firstSeenMs)),
           startS.toStringAsFixed(3),
           endS.toStringAsFixed(3),
           (endS - startS).toStringAsFixed(3),
           v.frames,
           v.meanConfidence.toStringAsFixed(3),
-          _csvCell(v.className),
+          csvCell(v.className),
         ].join(','),
       );
     }
@@ -150,12 +151,4 @@ class TrackExport {
     await tmp.writeAsString(content, flush: true);
     await tmp.rename(file.path);
   }
-}
-
-String _csvCell(Object? v) {
-  final s = v == null ? '' : '$v';
-  if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-    return '"${s.replaceAll('"', '""')}"';
-  }
-  return s;
 }

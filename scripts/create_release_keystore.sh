@@ -62,14 +62,17 @@ mkdir -p "$(dirname "$KEYSTORE")"
 
 # -validity 10000 days (about 27 years): Google Play requires a key that stays
 # valid well beyond 2033. PKCS12 is the modern keystore format and uses one
-# password for both the store and the key.
+# password for both the store and the key. The password reaches keytool through the
+# environment, not the command line: a command line can be read by every user of the
+# computer (for example with ps) while keytool runs.
+export FAUNAPULSE_KEYSTORE_PW="$PW1"
 keytool -genkeypair -v \
   -keystore "$KEYSTORE" \
   -storetype PKCS12 \
   -alias "$ALIAS" \
   -keyalg RSA -keysize 2048 -validity 10000 \
   -dname "CN=$CN, C=$COUNTRY" \
-  -storepass "$PW1" -keypass "$PW1"
+  -storepass:env FAUNAPULSE_KEYSTORE_PW -keypass:env FAUNAPULSE_KEYSTORE_PW
 
 chmod 600 "$KEYSTORE"
 
@@ -90,8 +93,9 @@ echo "  gradle settings : $PROPS  (git-ignored)"
 echo
 echo "Certificate fingerprint (identifies this key; Play shows the same value):"
 # Older JDKs print "SHA-256:", newer ones "SHA256:", so accept both.
-keytool -list -v -keystore "$KEYSTORE" -alias "$ALIAS" -storepass "$PW1" \
+keytool -list -v -keystore "$KEYSTORE" -alias "$ALIAS" -storepass:env FAUNAPULSE_KEYSTORE_PW \
   | grep -iE "SHA-?256:" || true
+unset FAUNAPULSE_KEYSTORE_PW
 echo
 echo "BACK UP NOW, before building anything:"
 echo "  1. Copy $KEYSTORE to at least two places you control"

@@ -59,16 +59,16 @@ void main() {
     expect(typed['fix_time'], isNull);
   });
 
-  test('problem reports also hide the position inside the field block', () {
+  test('problem reports also hide the position and notes inside the field block', () {
     final line = jsonEncode({
       'type': 'start_of_session',
       'location': {'lat': 1, 'lon': 2},
       'field': {'site': 'A', 'location': {'latitude': 1, 'longitude': 2}},
     });
-    final out = jsonDecode(redactLocation(line)) as Map<String, dynamic>;
+    final out = jsonDecode(redactReportLine(line)) as Map<String, dynamic>;
     expect(out['location'], '[redacted]');
     expect((out['field'] as Map)['location'], '[redacted]');
-    expect((out['field'] as Map)['site'], 'A');
+    expect((out['field'] as Map)['site'], '[redacted]'); // round 328: typed notes too
   });
 
   group('own fields (round 301)', () {

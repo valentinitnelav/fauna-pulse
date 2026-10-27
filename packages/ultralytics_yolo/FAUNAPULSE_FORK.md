@@ -129,7 +129,16 @@ The headline changes, with the round that introduced each (full rationale in
   decoding; the Dart resolver treats only a bare name as an official model, so a
   file path is always used as it is (no GitHub download for a user's
   `yolo26n.tflite`; one upstream test expectation changed accordingly); unit
-  tests run with `returnDefaultValues` (Android stubs return defaults).
+  tests run with `returnDefaultValues` (Android stubs return defaults). Since
+  r329 a model path that is an `http(s)` link is refused, never downloaded (the
+  app downloads and checks every model itself; only the official test models of
+  development builds, given by bare name, are still fetched by the plugin; upstream's link-download test
+  became a refusal test), and `YOLO.predict(imageUrl)` is removed (no caller;
+  it opened any address with no size limit).
+- **Upstream CI files:** `packages/ultralytics_yolo/.github/` holds upstream's
+  workflows and Dependabot file. GitHub runs workflows only from the
+  repository root, so they never run here; the app's own Dependabot file
+  watches this plugin's Gradle libraries (r329).
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

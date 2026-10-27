@@ -26,7 +26,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 
 import 'app_error_hooks.dart';
-import 'error_reporter.dart' show redactLocation;
+import 'error_reporter.dart' show redactReportLine;
 
 /// One sampled diagnostic file, ready to become a zip member.
 typedef ReportExtra = ({String name, String content});
@@ -160,14 +160,15 @@ Future<List<ReportExtra>> collectSessionExtras(Directory sessionDir) async {
 
   // Event records: config + end + every rare record (motion_gate,
   // camera_sleep, app_error, roi_update, fps/thermal/power series…).
-  // Location is redacted, as in every report sample (protected sites, r126).
+  // Location and typed field notes are redacted, as in every report sample
+  // (redactReportLine: protected sites r126, names and notes r328).
   // Member keeps the .jsonl extension (round 192, owner request) — the JSON
   // omission marker keeps the sample valid JSON Lines throughout.
   await add(
     'session.jsonl',
     'session_events_sample.jsonl',
     keepSessionEventLine,
-    map: redactLocation,
+    map: redactReportLine,
     omissionMarker: jsonlOmissionMarker,
     head: 100,
     tail: 300,

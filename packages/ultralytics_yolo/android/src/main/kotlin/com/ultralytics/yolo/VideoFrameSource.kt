@@ -106,7 +106,7 @@ class VideoFrameSource private constructor(
           "mime" to fmt.getString(MediaFormat.KEY_MIME),
           "width" to if (sideways) h else w, // upright size, as the user sees the video
           "height" to if (sideways) w else h,
-          // Round 252: fragmented MP4s (YouTube downloaders) hold no length in their header, and
+          // Round 252: fragmented MP4s (as some download tools save them) hold no length in their header, and
           // some phones then report 0 (Xiaomi) or nothing: the frame times give it (last frame
           // included).
           "durationMs" to ((meta["durationMs"] as Long?)?.takeIf { it > 0 } ?: ptsDurationMs(pts)),
@@ -236,7 +236,7 @@ class VideoFrameSource private constructor(
 
     /**
      * Round 252: writes [src] again as a plain MP4 at [dst]; every sample is copied unchanged
-     * (no re-encoding: same pictures, same sound). For fragmented MP4s (YouTube downloaders,
+     * (no re-encoding: same pictures, same sound). For fragmented MP4s (some download tools,
      * some recorders), whose header holds no length and no seek table: the phone's player cannot
      * jump in them (it stays on the first frame while reporting the asked position, so boxes
      * drawn for that position land on the wrong picture) and Android may report a length of 0.

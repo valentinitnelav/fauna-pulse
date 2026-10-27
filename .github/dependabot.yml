@@ -44,3 +44,15 @@ updates:
           - com.android.application
           - org.jetbrains.kotlin.android
           - gradle-wrapper
+
+  # The plugin's own Android libraries (LiteRT, litert-metadata, CameraX, SnakeYAML, Guava):
+  # some of them read files that users import, so their security updates matter most.
+  - package-ecosystem: gradle
+    directory: /packages/ultralytics_yolo/android
+    target-branch: develop
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      plugin-android-libraries:
+        patterns: ["*"]

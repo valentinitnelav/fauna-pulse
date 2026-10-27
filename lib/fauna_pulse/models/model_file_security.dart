@@ -128,17 +128,6 @@ String plainModelError(Object error, {bool importing = false, PhoneState? phone}
 /// connection, or no answer in time).
 bool isNetworkError(Object error) => error is SocketException || error is TlsException || error is TimeoutException;
 
-/// A redirect may be relative, so resolve every hop against the previous URL.
-bool redirectChainStaysHttps(Uri original, List<RedirectInfo> redirects) {
-  if (!original.isScheme('https')) return false;
-  var current = original;
-  for (final redirect in redirects) {
-    current = current.resolveUri(redirect.location);
-    if (!current.isScheme('https')) return false;
-  }
-  return true;
-}
-
 /// The free storage a model file of [incomingBytes] needs: the file and a
 /// small margin (shared by the checks before and after a download).
 int modelStorageNeededBytes(int incomingBytes) => incomingBytes + _modelStorageReserveBytes;

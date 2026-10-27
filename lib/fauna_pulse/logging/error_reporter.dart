@@ -432,16 +432,17 @@ class ErrorReporter {
   /// a head chunk and a tail chunk are read — the old whole-file
   /// `readAsLines()` held a potentially huge log in memory at exactly the
   /// moment things had already gone wrong.
-  /// The session's GPS `location` (round 126) is stripped from the sample —
-  /// field-site coordinates (possibly of protected species) must never ride
-  /// along in a report shared by email. Redaction runs only on RETAINED lines.
+  /// The session's GPS `location` (round 126) and typed field notes (round 328)
+  /// are stripped from the sample ([redactReportLine]): field-site coordinates
+  /// (possibly of protected species) and names must never be included in a
+  /// report that may be posted in public. Redaction runs only on RETAINED lines.
   static Future<String> _sampledLog(File file, int head, int tail) async {
     try {
       return await boundedHeadTailSample(
         file,
         head: head,
         tail: tail,
-        redact: redactLocation,
+        redact: redactReportLine,
       );
     } catch (e) {
       return '(could not read session log: $e)';
@@ -458,24 +459,63 @@ class ErrorReporter {
   }
 }
 
-/// Replaces the `location` block of a start_of_session JSONL line with a
-/// `"location":"[redacted]"` marker (round 126), and since round 297 also the
-/// one inside the `field` block. Lines without one — or that fail to parse —
-/// pass through unchanged; a redaction failure must never break a problem
-/// report.
-String redactLocation(String line) {
-  if (!line.contains('"location"')) return line;
+/// The keys of a start record's `field` block (FieldNotes.recordBlock; FaunaLapse writes the
+/// same) that stay in reports: the phone, the two distances and the site photo file names, as
+/// they can explain a problem. Everything else there is typed text, an own field or a
+/// position, and a block copied from FaunaLapse can hold keys this app does not know, so the
+/// rule names what may stay rather than what must go.
+const _reportedFieldKeys = {
+  'phone_maker', 'phone_model', 'phone_id', 'camera_height_m', 'detection_distance_m',
+  'detection_distance_source', 'site_photos',
+};
+
+/// Keys of a position, removed wherever they appear in a line.
+const _positionKeys = {'location', 'latitude', 'longitude', 'lat', 'lon'};
+final _mayHoldPrivateData = RegExp(r'"(location|latitude|longitude|lat|lon|field)"');
+
+/// One JSONL line as a problem report may carry it. A report may be posted in a public place
+/// (a GitHub issue), so every position (round 126; at any depth since round 328) and every
+/// value of the `field` block except [_reportedFieldKeys] become `"[redacted]"`. The keys stay
+/// (in `custom` too), so the report still shows what was filled in. A line that may hold such
+/// data but cannot be read (cut off when the app closed while writing) cannot be cleaned, so
+/// it is replaced by a note. Never throws: a redaction failure must never break a report.
+String redactReportLine(String line) {
+  if (!_mayHoldPrivateData.hasMatch(line)) return line;
   try {
     final obj = jsonDecode(line);
     if (obj is! Map<String, dynamic>) return line;
     final field = obj['field'];
-    final inField = field is Map && field.containsKey('location');
-    if (!obj.containsKey('location') && !inField) return line;
-    if (obj.containsKey('location')) obj['location'] = '[redacted]';
-    if (inField) field['location'] = '[redacted]';
+    if (field is Map) {
+      for (final k in field.keys.toList()) {
+        final v = field[k];
+        if (v == null || _reportedFieldKeys.contains(k)) continue;
+        if (k == 'custom' && v is Map) {
+          for (final c in v.keys.toList()) {
+            if (v[c] != null) v[c] = '[redacted]';
+          }
+        } else {
+          field[k] = '[redacted]';
+        }
+      }
+    }
+    _redactPositions(obj);
     return jsonEncode(obj);
   } catch (_) {
-    return line;
+    return '{"note":"a line with a position or field notes could not be read and was left out"}';
+  }
+}
+
+void _redactPositions(Object? o) {
+  if (o is Map) {
+    for (final k in o.keys.toList()) {
+      if (_positionKeys.contains(k)) {
+        o[k] = '[redacted]';
+      } else {
+        _redactPositions(o[k]);
+      }
+    }
+  } else if (o is List) {
+    o.forEach(_redactPositions);
   }
 }
 
@@ -484,7 +524,7 @@ String redactLocation(String line) {
 /// file, following the `_loadStats()` pattern in the summary screen. Chunk
 /// boundaries cut lines, so the trailing partial line of the head chunk and
 /// the leading partial line of the tail chunk are dropped; [redact] (e.g.
-/// [redactLocation]) runs only on lines that are actually kept. Small files
+/// [redactReportLine]) runs only on lines that are actually kept. Small files
 /// (length within the two chunk budgets) go through [headTailSample]
 /// unchanged, marker and all.
 Future<String> boundedHeadTailSample(

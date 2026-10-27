@@ -182,7 +182,7 @@ class ModelImport {
     if (name == null) {
       throw Exception('Use an HTTPS link to a safely named .tflite, *_qnn.onnx or .fpack file.');
     }
-    final cache = Directory('${(await getTemporaryDirectory()).path}/link_download');
+    final cache = Directory('${(await getTemporaryDirectory()).path}/$kLinkDownloadFolder');
     await cache.create(recursive: true);
     late ModelFileKind kind;
     final saved = await downloadToFile(

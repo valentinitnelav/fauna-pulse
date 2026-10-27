@@ -85,7 +85,7 @@ Session-wide metadata. Notable fields:
 | `blackout_at_start` | Round 132+: present (`true`) when recording started with the screen-off cover already up (scheduled runs). Screen state changes thereafter are `blackout` records. |
 | `battery_percent` | Battery level at start. |
 | `phone_state` | Round 298+: phone settings at Start, as in FaunaLapse: `airplane_mode`, `wifi_on`, `bluetooth_on`, `location_on`, `stay_awake_while_charging`, `battery_optimisation_on` (Android's battery limits apply to the app), `background_restricted`, `battery_saver_on` (true/false, null when unknown). |
-| `field` | Round 297+: the field notes (camera screen → pin with a pencil → Field notes), in the same form as the sister app FaunaLapse's `field` block, so one script reads both apps. Every key is always present, null when empty: `phone_maker`, `phone_model`, `phone_id` (always null in FaunaPulse), `setup_by`, `site`, `transect`, `plant`, `habitat`, `sample_id`, `session_id`, `camera_height_m`, `detection_distance_m` (numbers, m), `detection_distance_source` (`typed` or null), `site_photos_about` (round 302: the note about the site photos, cleared after each Start), `custom` (round 301: the user's own fields by name, a number for a number field, true/false for yes or no, `yyyy-MM-dd` for a date, `HH:mm` for a time, else text, null when empty; then `"Notes"` when notes were written), `location` (null, or `latitude`, `longitude` with 6 decimals, `datum` `WGS 84`, `source` `gps`/`typed`/`previous`, `coordinate_uncertainty_m`, `satellites_used` (null), `uncertainty_goal_m` (the user's GPS goal for a GPS position, default 10 since round 302), `fix_time` ISO or null), `site_photos` (round 302: the names of the photos moved into the session's `site_photos/` folder at Start, `yyyyMMdd_HHmmss_SSS.jpg`). The older top-level `location` stays as before. Both positions are removed from problem reports. |
+| `field` | Round 297+: the field notes (camera screen → pin with a pencil → Field notes), in the same form as the sister app FaunaLapse's `field` block, so one script reads both apps. Every key is always present, null when empty: `phone_maker`, `phone_model`, `phone_id` (always null in FaunaPulse), `setup_by`, `site`, `transect`, `plant`, `habitat`, `sample_id`, `session_id`, `camera_height_m`, `detection_distance_m` (numbers, m), `detection_distance_source` (`typed` or null), `site_photos_about` (round 302: the note about the site photos, cleared after each Start), `custom` (round 301: the user's own fields by name, a number for a number field, true/false for yes or no, `yyyy-MM-dd` for a date, `HH:mm` for a time, else text, null when empty; then `"Notes"` when notes were written), `location` (null, or `latitude`, `longitude` with 6 decimals, `datum` `WGS 84`, `source` `gps`/`typed`/`previous`, `coordinate_uncertainty_m`, `satellites_used` (null), `uncertainty_goal_m` (the user's GPS goal for a GPS position, default 10 since round 302), `fix_time` ISO or null), `site_photos` (round 302: the names of the photos moved into the session's `site_photos/` folder at Start, `yyyyMMdd_HHmmss_SSS.jpg`). The older top-level `location` stays as before. Problem reports replace every position and every value of this block with `"[redacted]"` (the keys stay, in `custom` too), except `phone_maker`, `phone_model`, `phone_id`, `camera_height_m`, `detection_distance_m`, `detection_distance_source` and `site_photos`. |
 | `free_storage_bytes`, `total_storage_bytes` | Free/total bytes on the session's storage volume at start (round 68). |
 | `model_path`, `task`, `use_gpu` | Requested model & task settings. |
 | `accelerator` | What was **actually** used (e.g. GPU, or CPU fallback for int8 models); the summary's *Detector ran on* row. |
@@ -1016,9 +1016,22 @@ Sessions → ⋮ → *Import a FaunaLapse session…* turns the zip file(s) the 
   `settings`, `camera_api`). Its `time_ms` is FaunaLapse's start time.
 * per photo a `timelapse_capture` (`jpeg`, `captured_at_ms`, `burst`, `original_name`) and a
   `capture` (`path: "still"`, `saved_px`, `bytes`), stamped with the photo's own time. Photos
-  FaunaLapse logged with an `error`, or missing from the zips, are left out (`missing_photos`).
+  FaunaLapse logged with an `error` are left out; photos named in the record but missing from the
+  zips are counted in `missing_photos`.
 * `end_of_session` at FaunaLapse's end time, `ended_normally` true when FaunaLapse wrote its end
-  record, `faunalapse_reason`, `imported_photos`.
+  record, `faunalapse_reason`, `imported_photos`, and `damaged_photos` when photos were left out
+  because their bytes do not match the zip's check value, they cannot be unpacked, they are not
+  JPEG (or PNG) photos, they are larger than 64 MB, or their header claims more than
+  120 megapixels; `damaged_site_photos` for site photos left out (check value, unpacking, or
+  over 512 MB).
+
+The session folder keeps FaunaLapse's folder name, cleaned like a typed session name (letters,
+digits, `_`, `-` and spaces, at most 80 characters; a name without a letter or digit becomes
+`faunalapse`); `faunalapse.folder` keeps the original. A photo named twice in the record is
+copied once. The import refuses a record larger than 256 MB, with more than 1,000,000 photos
+(for example eleven days at one photo per second) or with a line over 256 KB, a record that does
+not match its check value, and a session that does not fit in the free storage (with 50 MB to
+spare). A session of one million photos needs about 800 MB of memory while it imports.
 
 FaunaLapse video sessions are imported with *Import videos…* (§9): their file names
 (`yyyyMMdd_HHmmss_SSS.mp4`) give each clip's start time.

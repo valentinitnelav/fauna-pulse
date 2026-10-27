@@ -938,8 +938,9 @@ class ReportSavedDialog extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: Colors.white54),
                 children: [
                   TextSpan(
-                    text: 'You can also open a GitHub issue (and paste the '
-                        'report\'s text there): ',
+                    text: 'You can also open a GitHub issue and paste the '
+                        'report\'s text there (issues are public, so read the text '
+                        'first): ',
                   ),
                   TextSpan(
                     text: ErrorReporter.githubIssuesUrl,

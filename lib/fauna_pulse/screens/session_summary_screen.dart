@@ -1523,6 +1523,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // Crop-and-export 1:1 lock (round 91) — only sessions recorded since then
     // carry the key (add() skips null).
     add('Square export crops', _setting('cropSquareLock'));
+    // Round 328: the value when the session was recorded; exports use the setting as it is now.
+    add('Position in exported crops (setting at recording)', _setting('cropExportPosition'));
     // Rows below only appear for sessions recorded with older configs.
     add('Min saved photo side', _setting('minRoiSavedPx'), suffix: ' px');
     final maxSaved = _setting('maxRoiSavedPx');
@@ -3943,6 +3945,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
     final p = widget.photos[_page];
     setState(() => _cropBusy = true);
     String msg;
+    var withPosition = false;
     try {
       // Cut from whichever image is on screen — the high-res photo or (⚡ on)
       // its live companion; the export name follows the file it came from.
@@ -3950,14 +3953,19 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       // moment plus the session's location fix (when one was recorded) — so
       // identification apps (ObsIdentify, iNaturalist) read both from the
       // file. Only exports carry EXIF; the session photos stay EXIF-free.
+      // Round 328: the position only while "Add the position to exported
+      // crops" is on, and the message then says so (a shared crop can reveal
+      // the site of a rare species).
       final loc = widget.location;
+      withPosition = loc != null && (await SessionConfig.load()).cropExportPosition;
       final cropped = await cropJpegNormRect(
         _fileFor(p),
         norm,
-        exif: CropExifInfo(
+        exif: exportCropExif(
           capturedAtMs: p.captureMs,
           latitude: loc?.latitude,
           longitude: loc?.longitude,
+          withPosition: withPosition,
         ),
       );
       if (cropped == null) {
@@ -3970,7 +3978,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           await shareCrop(cropped.jpeg, name);
           msg =
               '${cropped.width} × ${cropped.height} px crop handed to the '
-              'share sheet.';
+              'share sheet.${withPosition ? kCropPositionNote : ''}';
         } else {
           // Fallback dir (older Android / MediaStore failure): keep the crop
           // with its session, next to roi_frames/.
@@ -3982,7 +3990,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           msg = res == null
               ? 'Saving the crop failed.'
               : 'Saved ${cropped.width} × ${cropped.height} px crop to '
-                    '${res.location}.';
+                    '${res.location}.${withPosition ? kCropPositionNote : ''}';
         }
       }
     } catch (e) {
@@ -3994,7 +4002,13 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       if (mounted) setState(() => _cropBusy = false);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          // The position sentence makes the message twice as long.
+          duration: Duration(seconds: msg.contains(kCropPositionNote) ? 8 : 4),
+        ),
+      );
     }
   }
 
