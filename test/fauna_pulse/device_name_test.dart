@@ -1,4 +1,4 @@
-// Round 335: the device's name of a session (deviceNameOf, the device_id of tracks_<pack>.csv).
+// Rounds 335 and 336: the device's name of a session (deviceNameOf, the device_id of tracks_<pack>.csv).
 // The cases are shared with fauna-pulse-export, which writes the same name for
 // insect-detect-post: the fixture is a copy of its tests/fixtures/device_name_cases.json.
 
@@ -22,13 +22,14 @@ void main() {
   });
 
   test('the record of the Field notes page names the device', () {
-    const notes = FieldNotes({}, [CustomField(kDeviceIdFieldName, CustomFieldType.text, value: 'cam-03')]);
+    final notes = const FieldNotes().withText('device_id', ' cam-03 ')!;
     final start = {
       'device': {'model': '2107113SG'},
       'field': notes.recordBlock(phoneModel: '2107113SG'),
     };
     expect(deviceNameOf(start), 'cam-03');
-    // A number field records a number (7, not "7").
+    // An own field of that name (round 335, and FaunaLapse's help suggests one) still counts; a
+    // number field records a number (7, not "7").
     const numbered = FieldNotes({}, [CustomField('device id', CustomFieldType.number, value: '7')]);
     expect(deviceNameOf({'field': numbered.recordBlock()}), '7');
   });

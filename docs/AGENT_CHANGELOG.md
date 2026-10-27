@@ -9600,3 +9600,10 @@ Checked (in that repository): its unit tests, and insect-detect-post v1.1.0 with
 - Checked: analyzer clean; full suite 1,705 passed (an earlier full run failed 3 timer-based background-Identify stress tests, which pass alone and next run and do not touch this); 24 shared cases pass in Dart and Python, including the rare inputs an independent review found (huge or tiny numbers, Unicode spaces, empty first field). Real data, no phone (11T unplugged, Redmi without models): the app's scoring on the 11T's stored embeddings gave the phone's CSV plus `phone_model`; a named copy went through the export and insect-detect-post v1.1.0 (10 of 10 rows, named crop folder) and `compare` joined it.
 - Open: older results keep the phone model in `device_id` until Identify runs again.
 
+## Round 336 (2026-10-28): Device ID is a field of the Field notes page
+
+- Asked: Device ID matters when several phones record and for insect-detect-post, so it should be a field just above Sample ID, not an own field suggested in a help text; FaunaLapse follows in its own session.
+- Decided: record key `device_id` (insect-detect-post's column name). Own fields named Device ID still count when the field is empty (FaunaLapse sessions, round 335), new ones are refused; saved ones are not moved (neither test phone had one, beta users are unlikely to).
+- Checked: analyzer clean; full suite 1,705 passed (one earlier run failed a 1,000,000-line timing test while a reviewer ran tests at the same time; it passes alone and in the rerun); 30 shared cases in Dart and Python; an independent review found no bugs, only doc gaps (fixed). Redmi Note 9S, debug build: the field sits above Sample ID with its help line in full, is saved, shows in "Before you record", and a new session's start record holds it; the export names that session `redmi - 01`. Identify was not run there (a dark time-lapse test without track IDs).
+- Open: FaunaLapse's `device_id`; then drop "FaunaLapse is to add" from the comments and DATA_GUIDE.
+

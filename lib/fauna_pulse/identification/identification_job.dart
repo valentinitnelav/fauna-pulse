@@ -677,8 +677,8 @@ class IdentificationJob {
         }
         if (rec['type'] == 'start_of_session') {
           sessionStartMs ??= (rec['time_ms'] as num?)?.toInt();
-          // Round 335: the device's name (own "Device ID" field, FaunaLapse phone ID, phone
-          // model), as fauna-pulse-export writes it for insect-detect-post. Only the first start
+          // Round 335: the device's name (the Device ID field, FaunaLapse phone ID, phone model;
+          // deviceNameOf), as fauna-pulse-export writes it for insect-detect-post. Only the first start
           // record counts: the app writes it as line 1, which the export's read_start reads too.
           if (!startSeen) {
             deviceId = deviceNameOf(rec);

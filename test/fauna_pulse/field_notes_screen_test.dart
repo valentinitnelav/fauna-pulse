@@ -37,6 +37,12 @@ void main() {
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.widgetWithText(TextField, 'Site'), 200, scrollable: list);
     await tester.enterText(find.widgetWithText(TextField, 'Site'), 'Meadow 2');
+    // Round 336: Device ID sits just above Sample ID, with its reason under it.
+    await tester.scrollUntilVisible(find.widgetWithText(TextField, 'Sample ID'), 200, scrollable: list);
+    final device = find.widgetWithText(TextField, kDeviceIdFieldName);
+    expect(tester.getTopLeft(device).dy, lessThan(tester.getTopLeft(find.widgetWithText(TextField, 'Sample ID')).dy));
+    expect(find.textContaining('which two phones can share'), findsOneWidget);
+    await tester.enterText(device, 'cam-03');
     await tester.scrollUntilVisible(find.widgetWithText(TextField, 'Camera height (m)'), 200, scrollable: list);
     await tester.enterText(find.widgetWithText(TextField, 'Camera height (m)'), 'tall');
     await tester.pump();
@@ -46,6 +52,7 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     final saved = await tester.runAsync(FieldNotes.load);
     expect(saved!.values['site'], 'Meadow 2');
+    expect(saved.values['device_id'], 'cam-03');
     expect(saved.values['camera_height_m'], 0.4);
 
     await tester.drag(find.byType(ListView), const Offset(0, -3000));
@@ -76,8 +83,7 @@ void main() {
     expect(find.text('2026-10-06'), findsOneWidget);
     await tester.tap(find.text('Add a field'));
     await tester.pumpAndSettle();
-    // Round 335: the example names the field PC tools read as the device's name (as FaunaLapse).
-    expect(find.text('for example Observer, Weather or Device ID'), findsOneWidget);
+    expect(find.text('for example Observer or Weather'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Flower stage with a fairly long name');
     await tester.tap(find.byType(DropdownButtonFormField<CustomFieldType>));
     await tester.pumpAndSettle();

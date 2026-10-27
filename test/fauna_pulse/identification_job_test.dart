@@ -208,8 +208,8 @@ void main() {
     expect(header, isNot(contains('support_')));
     expect(csvLines.first, contains('bioclip_species'));
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
-    // Round 335: no Device ID field, so the phone model names the device; it also has its own
-    // last column.
+    // Round 335: no Device ID, so the phone model names the device; it also has its own last
+    // column.
     expect(header, endsWith(',model_class_p,phone_model'));
     expect(csvLines[1], endsWith(',TestPhone'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
@@ -225,12 +225,12 @@ void main() {
     expect(EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
   });
 
-  test('round 335: a Device ID field names the device in tracks_<pack>.csv and .json', () async {
+  test('round 336: the field notes\' Device ID names the device in tracks_<pack>.csv and .json', () async {
     final session = makeSession('plot1');
     File('${session.path}/session.jsonl').writeAsStringSync(
       _log.replaceFirst(
         '"device":{"model":"TestPhone"}',
-        '"device":{"model":"TestPhone"},"field":{"phone_id":null,"custom":{"Device ID":"plot 3 / A","Notes":"x"}}',
+        '"device":{"model":"TestPhone"},"field":{"phone_id":null,"device_id":"plot 3 / A","custom":{"Notes":"x"}}',
       ),
     );
     final job = IdentificationJob(

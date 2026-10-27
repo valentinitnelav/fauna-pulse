@@ -49,7 +49,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   channel; Dart `services/phone_settings.dart`.
 - `field_notes.dart`: `FieldNotes` (r297; `kFieldNoteSpecs`, prefs `field_notes`, own fields
   `CustomField`/`CustomFieldType` with FaunaLapse's 7 types and rules (r301, `custom_fields`),
-  `recordBlock` = the start record's `field` block with FaunaLapse's 17 keys, `locationBlock`;
+  `recordBlock` = the start record's `field` block with FaunaLapse's 17 keys + `device_id` (r336), `locationBlock`;
   r335 `deviceNameOf` = tracks CSV `device_id`, same rule + cases as fauna-pulse-export).
 - `model_catalog.dart`: detection models on the phone (`ModelCatalog.build`, `entryOf`,
   `modelsDir`; `isSupportedModelFileName` = the one format filter; `fileNameOrder`).

@@ -803,9 +803,10 @@ Two kinds of probability appear everywhere:
 
 tracks_<name list>.csv columns
   device_id, session_id, track_id      identifiers (track_id empty for sessions without detection: one row per crop).
-                                      device_id = the device's name: a field of your own named
-                                      "Device ID" in the field notes, else a FaunaLapse phone ID,
-                                      else the phone model (empty for imported videos)
+                                      device_id = the device's name: the Device ID of the field
+                                      notes, else an own field named "Device ID", else a
+                                      FaunaLapse phone ID, else the phone model (empty for
+                                      imported videos)
   track_imgs                          crops used for this track
   pred, pred_prob_weighted            the taxon at the chosen target rank and its Conf. (see above)
   pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the

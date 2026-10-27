@@ -17,22 +17,34 @@ import '../session/location_fix.dart';
 /// What kind of input a field takes.
 enum FieldNoteKind { text, number, notes }
 
-/// One field of the page: its record key, its label and hint on screen.
+/// One field of the page: its record key, its label and hint on screen, and an optional line of
+/// help under it.
 class FieldNoteSpec {
   final String key;
   final String label;
   final String hint;
   final FieldNoteKind kind;
-  const FieldNoteSpec(this.key, this.label, this.hint, [this.kind = FieldNoteKind.text]);
+  final String? help;
+  const FieldNoteSpec(this.key, this.label, this.hint, [this.kind = FieldNoteKind.text, this.help]);
 }
 
-/// The fields in screen and record order (FaunaLapse keys).
+/// The fields in screen and record order (FaunaLapse keys; `device_id` is new in round 336 and
+/// FaunaLapse is to add the same key).
 const kFieldNoteSpecs = <FieldNoteSpec>[
   FieldNoteSpec('setup_by', 'Set up by', 'name'),
   FieldNoteSpec('site', 'Site', 'for example Meadow 2'),
   FieldNoteSpec('transect', 'Transect', 'for example 3'),
   FieldNoteSpec('plant', 'Plant', 'common or Latin name'),
   FieldNoteSpec('habitat', 'Habitat', 'for example dry grassland'),
+  // Round 336: a field of its own (it was a suggested own field in round 335), read by deviceNameOf.
+  FieldNoteSpec(
+    'device_id',
+    kDeviceIdFieldName,
+    'for example cam-03',
+    FieldNoteKind.text,
+    'When several phones record, give each a short name: it keeps their results apart, in the app '
+        'and on the computer. Without it, results show only the phone model, which two phones can share.',
+  ),
   FieldNoteSpec('sample_id', 'Sample ID', 'optional'),
   FieldNoteSpec('session_id', 'Session ID', 'optional'),
   FieldNoteSpec('camera_height_m', 'Camera height (m)', 'above the ground', FieldNoteKind.number),
@@ -110,9 +122,9 @@ class CustomField {
   }
 }
 
-/// Round 335: a field of one's own with this name names the device, as the Insect Detect camera
-/// trap names itself by its hostname; FaunaLapse's field help suggests the same name. The Field
-/// notes help suggests it, and [deviceNameOf] reads it.
+/// The label of the field that names the device (record key `device_id`, round 336), as the
+/// Insect Detect camera trap names itself by its hostname. A field of one's own with this name
+/// (round 335; FaunaLapse's field help suggests one) names the device too, see [deviceNameOf].
 const kDeviceIdFieldName = 'Device ID';
 
 /// The phone model of a session's start record (`device.model`, else the older `device_model`),
@@ -123,8 +135,9 @@ String? phoneModelOf(Map<String, dynamic> start) {
 }
 
 /// The device's name for a session (round 335), written as `device_id` in
-/// `identification/tracks_<pack>.csv`: the first filled field of one's own named
-/// [kDeviceIdFieldName] (case, spaces, `_` and `-` ignored), else FaunaLapse's phone ID
+/// `identification/tracks_<pack>.csv`: the Device ID field (`field.device_id`, round 336), else
+/// the first filled field of one's own named [kDeviceIdFieldName] (case, spaces, `_` and `-`
+/// ignored; FaunaLapse sessions and FaunaPulse round 335), else FaunaLapse's phone ID
 /// (`field.phone_id`, 8 characters of Android's ID; always null in FaunaPulse), else the phone
 /// model, else '' (imported videos). Characters that file names cannot hold become `-` (and `-`,
 /// `.` and spaces at the ends are dropped): insect-detect-post makes a folder
@@ -145,7 +158,12 @@ String deviceNameOf(Map<String, dynamic> start) {
             .map((e) => _safeName(_nameText(e.value)))
             .firstWhere((n) => n.isNotEmpty, orElse: () => '')
       : '';
-  for (final name in [own, _safeName(_nameText(field is Map ? field['phone_id'] : null)), _safeName(phoneModelOf(start))]) {
+  for (final name in [
+    _safeName(_nameText(field is Map ? field['device_id'] : null)),
+    own,
+    _safeName(_nameText(field is Map ? field['phone_id'] : null)),
+    _safeName(phoneModelOf(start)),
+  ]) {
     if (name.isNotEmpty) return name;
   }
   return '';
@@ -194,6 +212,8 @@ String? customFieldNameProblem(String name, List<CustomField> existing) {
   if (n.isEmpty) return 'Write a name.';
   if (n.length > kCustomFieldNameMax) return 'At most $kCustomFieldNameMax characters.';
   if (n.toLowerCase() == 'notes') return '"Notes" is the notes field above; choose another name.';
+  // deviceNameOf reads such a field too; a second Device ID would leave the user unsure which counts.
+  if (_plainName(n) == _plainName(kDeviceIdFieldName)) return '"$kDeviceIdFieldName" is a field above; use that one.';
   if (existing.any((f) => f.name.toLowerCase() == n.toLowerCase())) return 'There is already a field with this name.';
   return null;
 }
@@ -355,7 +375,7 @@ class FieldNotes {
       'phone_maker': phoneMaker,
       'phone_model': phoneModel,
       'phone_id': null,
-      for (final k in const ['setup_by', 'site', 'transect', 'plant', 'habitat', 'sample_id', 'session_id'])
+      for (final k in const ['setup_by', 'site', 'transect', 'plant', 'habitat', 'device_id', 'sample_id', 'session_id'])
         k: values[k],
       'camera_height_m': values['camera_height_m'],
       'detection_distance_m': distance,

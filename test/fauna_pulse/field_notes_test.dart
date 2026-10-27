@@ -33,7 +33,7 @@ void main() {
     final b = const FieldNotes().recordBlock(phoneMaker: 'Xiaomi', phoneModel: '2107113SG');
     expect(b.keys.toList(), [
       'phone_maker', 'phone_model', 'phone_id', 'setup_by', 'site', 'transect', 'plant', 'habitat',
-      'sample_id', 'session_id', 'camera_height_m', 'detection_distance_m', 'detection_distance_source',
+      'device_id', 'sample_id', 'session_id', 'camera_height_m', 'detection_distance_m', 'detection_distance_source',
       'site_photos_about', 'custom', 'location', 'site_photos',
     ]);
     expect(b['site'], isNull);
@@ -77,6 +77,9 @@ void main() {
       expect(customFieldNameProblem('', existing), isNotNull);
       expect(customFieldNameProblem('observer', existing), contains('already'));
       expect(customFieldNameProblem('Notes', existing), contains('Notes'));
+      // Round 336: Device ID is a field of the page; deviceNameOf reads such names as well.
+      expect(customFieldNameProblem(' device_id ', existing), contains('Device ID'));
+      expect(customFieldNameProblem('Device', existing), isNull);
       expect(customFieldNameProblem('x' * 41, existing), contains('40'));
       expect(customFieldNameProblem('Weather', existing), isNull);
       expect(parseCustomChoices('only one').$2, isNotNull);
