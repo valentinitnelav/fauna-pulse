@@ -919,8 +919,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   setting), `DATA_GUIDE.md` (record dictionary, R/Python analysis), `ARCHITECTURE.md` (data flow,
   channel contract, keep-in-sync pairs), `CONTRIBUTING.md`, `IDENTIFICATION.md`,
   `VIDEO_ANALYSIS.md`, `MODEL_CONVERSION.md`,
-  `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `LEAN_QNN_PACKAGING.md`, `SAM3.md` (parked experiment, code on branch
-  `sam3`).
+  `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`, `LEAN_QNN_PACKAGING.md`. Models
+  tried and parked (SAM 3, its code on branch `sam3`; MiniCPM-V): fauna-pulse-models
+  `docs/PARKED_MODELS.md`.
 - **PC tools:** `tool/model_downloads/` (download list, naming rule), `tool/video_eval/`,
   `tool/perf_summary.dart`. The model export tools (`detector_export/` .pt → fp16 `.tflite` +
   agreement check, `classifier_export/` insectDCT classifier + class list, `bioclip_export/` image

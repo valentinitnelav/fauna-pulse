@@ -9579,3 +9579,8 @@ Phone check of rounds 328 and 330 (Redmi Note 9S, debug build of round 330): a G
 Why: the switch's old name did not say that it also brings back hidden notes; off now hides them all, so the name holds both ways. The four repeated notes lost about a third of their words, keeping each instruction.
 Checked: analyzer, full test suite; on the Redmi the new switch name, the setup tips window and the FaunaLapse window. Open: the shorter crop message and its 10 s not yet seen on a phone (needs a session with a position).
 
+## Round 332 (2026-10-27): SAM 3 notes moved to fauna-pulse-models
+Asked: keep the details about models, including models tried in the app and parked, in fauna-pulse-models instead of this repository, which is already large.
+Why: fauna-pulse-models now has `docs/PARKED_MODELS.md` for SAM 3 and MiniCPM-V 4.7 (a vision-language model checked the same week: about 4 to 5 s per question on the Xiaomi 11T Pro's CPU, one rough box per prompt, so not a detector). The SAM 3 notes went there: files, phone measurements, verdict, the first check on a new phone and the steps if reopened. The comparisons on test clips that are not ours to share stayed out; they remain in git history and on branch `sam3`. The old notes called the test phone "Mi 11 Lite 5G"; it is the Xiaomi 11T Pro.
+Checked: no code, test or other document linked to the removed page (only the history entries of rounds 257 to 261 name it, left as they are). Open: nothing; the code stays on branch `sam3` (tag `archive/sam3`).
+
