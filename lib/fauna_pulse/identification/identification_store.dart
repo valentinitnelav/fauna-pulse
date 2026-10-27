@@ -367,6 +367,7 @@ Map<String, dynamic> writeOutputs({
   required String modelId,
   required String sessionId,
   required String deviceId,
+  required String phoneModel,
   required List<ScoredTrack> tracks,
   required Map<String, dynamic> settings,
   required String appVersion,
@@ -465,6 +466,9 @@ Map<String, dynamic> writeOutputs({
     // probability; empty for BioCLIP packs.
     'model_class',
     'model_class_p',
+    // Round 335: device_id became the device's name (deviceNameOf), so the phone model, which
+    // it held before, keeps a column of its own.
+    'phone_model',
   ];
   csv.writeln(header.join(','));
   var visitsMerged = 0, tracksBeforeMerge = 0, suspectCount = 0;
@@ -609,6 +613,7 @@ Map<String, dynamic> writeOutputs({
       rival == null ? '' : rival.rivalMass.toStringAsFixed(4),
       modelClass,
       pack.isClassList ? f.pooledTop.probs.first.toStringAsFixed(4) : '',
+      phoneModel,
     ];
     csv.writeln(row.map(csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -741,6 +746,7 @@ Map<String, dynamic> writeOutputs({
     jsonEncode({
       'session_id': sessionId,
       'device_id': deviceId,
+      'phone_model': phoneModel,
       'model_id': modelId,
       'pack_id': pack.packId,
       'settings': settings,
@@ -796,7 +802,10 @@ Two kinds of probability appear everywhere:
                        row's track IDs.
 
 tracks_<name list>.csv columns
-  device_id, session_id, track_id      identifiers (track_id empty for sessions without detection: one row per crop)
+  device_id, session_id, track_id      identifiers (track_id empty for sessions without detection: one row per crop).
+                                      device_id = the device's name: a field of your own named
+                                      "Device ID" in the field notes, else a FaunaLapse phone ID,
+                                      else the phone model (empty for imported videos)
   track_imgs                          crops used for this track
   pred, pred_prob_weighted            the taxon at the chosen target rank and its Conf. (see above)
   pred_imgs, pred_prob_mean           crops whose own top-1 species falls under that taxon, and the
@@ -827,6 +836,7 @@ tracks_<name list>.csv columns
                                       class with the highest combined probability (some of its groups,
                                       e.g. "Apoidea small" or "Hymenoptera_bees", have no rank) and that
                                       probability; empty for BioCLIP
+  phone_model                         the phone model from the session's start (empty for imported videos)
 
 crops_<name list>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)

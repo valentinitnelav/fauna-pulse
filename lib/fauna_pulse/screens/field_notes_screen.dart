@@ -213,6 +213,8 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
     unawaited(next.save());
   }
 
+  // Round 335: the help suggests the field that names the device (kDeviceIdFieldName, read by
+  // deviceNameOf for tracks_<pack>.csv and by fauna-pulse-export), as FaunaLapse's field help does.
   List<Widget> _customSection() => [
     const HelpLabel(
       label: 'Your own fields',
@@ -221,7 +223,12 @@ class _FieldNotesScreenState extends State<FieldNotesScreen> {
           'Add fields of your own, for example Observer, Weather or Flower stage. Each '
           'has a type: text, notes, a number, a date, a time, yes or no, or a choice '
           'from a list you write. They are saved with every session, as in the '
-          'FaunaLapse app.',
+          'FaunaLapse app.\n\n'
+          'When several phones record, add a text field named $kDeviceIdFieldName with a short '
+          'name for this phone, for example cam-03. This name then marks the phone in '
+          'the results of Identify organisms and in programs on the computer, such as '
+          'fauna-pulse-export for insect-detect-post. Without it they only see the phone '
+          'model, which two phones can share.',
     ),
     const SizedBox(height: 8),
     for (final f in _notes.custom) _customField(f),
@@ -560,7 +567,7 @@ class _AddFieldDialogState extends State<_AddFieldDialog> {
               maxLength: kCustomFieldNameMax,
               decoration: InputDecoration(
                 labelText: 'Name',
-                hintText: 'for example Observer or Weather',
+                hintText: 'for example Observer, Weather or $kDeviceIdFieldName',
                 errorText: _nameError,
               ),
             ),

@@ -321,7 +321,7 @@ then, treat 90 % at family rank as "very likely" and species-level answers as le
 | `embeddings_<model>.jsonl` + `.bin` | one record + one float32 vector per crop (`row` = vector index); `identify_start` / `identify_end` records with the run's settings and timing |
 | `predictions_<pack>.jsonl` | per crop: the most probable names with probabilities |
 | `tracks_<pack>.json` | per track ID: ladder, crops with weights, best single view, flags |
-| `tracks_<pack>.csv` | one row per track ID; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of Max Sittinger's `insect-detect-post` |
+| `tracks_<pack>.csv` | one row per track ID; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of `insect-detect-post` (Sittinger 2026); `device_id` is the device's name (an own field *Device ID*, else FaunaLapse's phone ID, else the phone model; DATA_GUIDE §8), the phone model is also the last column, `phone_model` |
 | `summary_<pack>.json` | counts for the results screen and the home badge |
 
 `DATA_GUIDE.md` §7 documents the records and columns.

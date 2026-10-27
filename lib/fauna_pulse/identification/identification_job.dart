@@ -23,6 +23,7 @@ import '../logging/thermal_pause.dart';
 import '../logging/track_source.dart';
 import 'visit_merge.dart';
 import '../logging/session_log_index.dart';
+import '../models/field_notes.dart' show deviceNameOf, phoneModelOf;
 import '../postprocess/post_detector.dart' show PostDetector;
 import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import 'crop_planner.dart';
@@ -648,7 +649,8 @@ class IdentificationJob {
     int? sessionStartMs;
     final log = File('${sessionDir.path}/session.jsonl');
     final tracksFile = tracksFileOf(sessionDir);
-    String deviceId = '';
+    String deviceId = '', phoneModel = '';
+    var startSeen = false;
     // Round 216: the session's photo schedule, so the results screen can say
     // "one photo every 1 s during the first 10 s of a track id" with the
     // real values instead of the defaults.
@@ -675,9 +677,14 @@ class IdentificationJob {
         }
         if (rec['type'] == 'start_of_session') {
           sessionStartMs ??= (rec['time_ms'] as num?)?.toInt();
-          final d = rec['device'];
-          if (d is Map && d['model'] != null) deviceId = '${d['model']}';
-          if (deviceId.isEmpty && rec['device_model'] != null) deviceId = '${rec['device_model']}';
+          // Round 335: the device's name (own "Device ID" field, FaunaLapse phone ID, phone
+          // model), as fauna-pulse-export writes it for insect-detect-post. Only the first start
+          // record counts: the app writes it as line 1, which the export's read_start reads too.
+          if (!startSeen) {
+            deviceId = deviceNameOf(rec);
+            phoneModel = phoneModelOf(rec) ?? '';
+          }
+          startSeen = true;
           final cfg = rec['config'];
           if (cfg is Map) {
             photoStepS = (cfg['stepSeconds'] as num?)?.toDouble();
@@ -783,6 +790,7 @@ class IdentificationJob {
       modelId: modelId,
       sessionId: sessionDir.path.split('/').last,
       deviceId: deviceId,
+      phoneModel: phoneModel,
       tracks: scored,
       settings: settings,
       appVersion: appVersion,

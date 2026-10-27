@@ -76,6 +76,8 @@ void main() {
     expect(find.text('2026-10-06'), findsOneWidget);
     await tester.tap(find.text('Add a field'));
     await tester.pumpAndSettle();
+    // Round 335: the example names the field PC tools read as the device's name (as FaunaLapse).
+    expect(find.text('for example Observer, Weather or Device ID'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Flower stage with a fairly long name');
     await tester.tap(find.byType(DropdownButtonFormField<CustomFieldType>));
     await tester.pumpAndSettle();

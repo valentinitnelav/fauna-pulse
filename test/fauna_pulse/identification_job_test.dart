@@ -208,6 +208,10 @@ void main() {
     expect(header, isNot(contains('support_')));
     expect(csvLines.first, contains('bioclip_species'));
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
+    // Round 335: no Device ID field, so the phone model names the device; it also has its own
+    // last column.
+    expect(header, endsWith(',model_class_p,phone_model'));
+    expect(csvLines[1], endsWith(',TestPhone'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
     expect(paths.readme.existsSync(), isTrue);
     expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().length, 3);
@@ -219,6 +223,30 @@ void main() {
     expect(r2.resumedDone, 3);
     expect(r2.summary!['tracks_total'], 2);
     expect(EmbeddingIndex.parse(paths.embeddingsJsonl('fake_model').readAsStringSync()).rows, 3);
+  });
+
+  test('round 335: a Device ID field names the device in tracks_<pack>.csv and .json', () async {
+    final session = makeSession('plot1');
+    File('${session.path}/session.jsonl').writeAsStringSync(
+      _log.replaceFirst(
+        '"device":{"model":"TestPhone"}',
+        '"device":{"model":"TestPhone"},"field":{"phone_id":null,"custom":{"Device ID":"plot 3 / A","Notes":"x"}}',
+      ),
+    );
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r.error, isNull);
+    final paths = IdentificationPaths(session);
+    final csv = paths.tracksCsv('tiny_pack').readAsLinesSync();
+    expect(csv[1], startsWith('plot 3 - A,plot1,1,')); // "/" cannot be in insect-detect-post's folder names
+    expect(csv[1], endsWith(',TestPhone'));
+    final json = jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync()) as Map<String, dynamic>;
+    expect(json['device_id'], 'plot 3 - A');
+    expect(json['phone_model'], 'TestPhone');
   });
 
   test('a fixed-class classifier: raw scores, class list, the model\'s own class in the outputs (round 266)', () async {
@@ -257,7 +285,7 @@ void main() {
     expect((tracks[1]['crops'] as List).first['top1'], 'Syrphidae');
     expect((tracks[1]['crops'] as List).first['top1_class'], 'Syrphidae');
     final csv = paths.tracksCsv('tiny_classes').readAsLinesSync();
-    expect(csv.first, endsWith(',model_class,model_class_p'));
+    expect(csv.first, endsWith(',model_class,model_class_p,phone_model'));
     expect(csv[1], contains(',Eristalis tenax,0.9'));
     expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], endsWith(',Eristalis tenax'));
   });
@@ -555,7 +583,7 @@ void main() {
     expect(t1['flags'], contains('short'));
     expect(t1['flags'], isNot(contains('suspect')));
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p'));
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model'));
     // The compact summary list carries the verdict for the Photos tab.
     final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
     expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);

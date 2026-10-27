@@ -24,7 +24,10 @@ the saved log into visitation rates, see [DATA_GUIDE.md](DATA_GUIDE.md).
 - **Fill in the field notes** (camera screen, the pin with a pencil): the
   position, who set up, site, plant, camera height and distance, notes, and
   fields of your own (*Add a field*: text, notes, number, date, time, yes or no,
-  or a choice from your list), and site photos of the whole setup (*Take a site
+  or a choice from your list; when several phones record, a text field *Device ID*
+  with a short name per phone, such as `cam-03`, names the phone in the results file
+  of *Identify organisms* (`device_id`) and for programs on the computer, so phones of
+  the same model stay apart), and site photos of the whole setup (*Take a site
   photo*; they move into the session at Start; tap a photo to see it, *Delete
   photo* and then *Delete* removes it). *GPS search stops at* sets how
   accurate the position must be (default 10 m; the search stops after 3 min

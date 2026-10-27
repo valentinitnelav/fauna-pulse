@@ -110,6 +110,79 @@ class CustomField {
   }
 }
 
+/// Round 335: a field of one's own with this name names the device, as the Insect Detect camera
+/// trap names itself by its hostname; FaunaLapse's field help suggests the same name. The Field
+/// notes help suggests it, and [deviceNameOf] reads it.
+const kDeviceIdFieldName = 'Device ID';
+
+/// The phone model of a session's start record (`device.model`, else the older `device_model`),
+/// or null (imported videos have none).
+String? phoneModelOf(Map<String, dynamic> start) {
+  final d = start['device'];
+  return _nameText(d is Map ? d['model'] : null) ?? _nameText(start['device_model']);
+}
+
+/// The device's name for a session (round 335), written as `device_id` in
+/// `identification/tracks_<pack>.csv`: the first filled field of one's own named
+/// [kDeviceIdFieldName] (case, spaces, `_` and `-` ignored), else FaunaLapse's phone ID
+/// (`field.phone_id`, 8 characters of Android's ID; always null in FaunaPulse), else the phone
+/// model, else '' (imported videos). Characters that file names cannot hold become `-` (and `-`,
+/// `.` and spaces at the ends are dropped): insect-detect-post makes a folder
+/// `<device_id>_<session_id>_ID<track>` for each track ID.
+///
+/// Keep in sync with `device_id_of` in fauna-pulse-export (`session_reader.py`), which writes the
+/// same name for insect-detect-post; both test it with the same cases
+/// (`test/fauna_pulse/fixtures/device_name_cases.json`, a copy of that repository's
+/// `tests/fixtures/device_name_cases.json`). Spaces, letter case and number notation are spelled
+/// out below instead of using `trim`/`toLowerCase`/`toString`, because Dart and Python treat some
+/// characters and numbers differently there.
+String deviceNameOf(Map<String, dynamic> start) {
+  final field = start['field'];
+  final custom = field is Map ? field['custom'] : null;
+  final own = custom is Map
+      ? custom.entries
+            .where((e) => _plainName('${e.key}') == _plainName(kDeviceIdFieldName))
+            .map((e) => _safeName(_nameText(e.value)))
+            .firstWhere((n) => n.isNotEmpty, orElse: () => '')
+      : '';
+  for (final name in [own, _safeName(_nameText(field is Map ? field['phone_id'] : null)), _safeName(phoneModelOf(start))]) {
+    if (name.isNotEmpty) return name;
+  }
+  return '';
+}
+
+// The spaces trimmed from names and ignored in field names (listed: Dart's trim and Python's
+// strip disagree on some Unicode characters, such as the byte order mark).
+const _spaces = r' \t\n\r\x0b\x0c ﻿';
+final _endSpaces = RegExp('^[$_spaces]+|[$_spaces]+\$');
+final _notInFileNames = RegExp(r'[\\/:*?"<>|\x00-\x1f]+');
+
+/// A field name compared without spaces, `_`, `-` and the case of A to Z.
+String _plainName(String name) =>
+    name.replaceAll(RegExp('[${_spaces}_-]+'), '').replaceAllMapped(RegExp('[A-Z]'), (m) => m[0]!.toLowerCase());
+
+/// [name] with what file names cannot hold as `-`, and `-`, `.` and spaces dropped at the ends.
+String _safeName(String? name) => (name ?? '').replaceAll(_notInFileNames, '-').replaceAll(RegExp(r'^[ .-]+|[ .-]+$'), '');
+
+/// Text of a record value that can be a name: a string or a finite number, trimmed; null for
+/// anything else or empty text. Numbers are written as Python writes them, so both programs
+/// agree: a whole number without decimals (7.0 as 7, as a number field records it, and exact
+/// beyond the 64-bit range), and very small numbers as 1e-05.
+String? _nameText(Object? v) {
+  final text = switch (v) {
+    String s => s,
+    int i => '$i',
+    double d when !d.isFinite => null,
+    double d when d == d.truncateToDouble() => BigInt.from(d).toString(),
+    double d when d.abs() < 1e-4 =>
+      d.toStringAsExponential().replaceFirstMapped(RegExp(r'e([+-])(\d)$'), (m) => 'e${m[1]}0${m[2]}'),
+    double d => '$d',
+    _ => null,
+  };
+  final t = text?.replaceAll(_endSpaces, '');
+  return t == null || t.isEmpty ? null : t;
+}
+
 /// Longest name of a field of one's own, and the number of choices allowed.
 const kCustomFieldNameMax = 40;
 const kCustomChoicesMin = 2;

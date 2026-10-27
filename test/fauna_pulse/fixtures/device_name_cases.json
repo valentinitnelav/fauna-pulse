@@ -1,0 +1,29 @@
+{
+  "about": "The device name of a session's start record, as FaunaPulse's deviceNameOf (lib/fauna_pulse/models/field_notes.dart, written to tracks_<pack>.csv) and fauna-pulse-export's device_id_of (src/fauna_pulse_export/session_reader.py, written for insect-detect-post) give it. The same file is in both repositories (fauna-pulse: test/fauna_pulse/fixtures/, fauna-pulse-export: tests/fixtures/); change both together. device_id \"\" means no name: the app leaves the column empty, the export writes --device-id or \"unknown camera\".",
+  "cases": [
+    {"why": "own field first", "start": {"device": {"model": "2107113SG"}, "field": {"phone_id": "3F9A12C0", "custom": {"Device ID": "cam-03"}}}, "device_id": "cam-03", "phone_model": "2107113SG"},
+    {"why": "field name written another way; value trimmed; a slash cannot be in a file name", "start": {"device": {"model": "2107113SG"}, "field": {"custom": {"device_id": "  plot 3 / A  ", "Notes": "x"}}}, "device_id": "plot 3 - A", "phone_model": "2107113SG"},
+    {"why": "capitals and a hyphen in the field name; dots and spaces at the ends dropped", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"DEVICE-ID": " .cam:1. "}}}, "device_id": "cam-1", "phone_model": "SM-M127F"},
+    {"why": "a number field recorded as 7.0 reads 7", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": 7.0}}}, "device_id": "7", "phone_model": "SM-M127F"},
+    {"why": "a number with decimals", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": 7.5}}}, "device_id": "7.5", "phone_model": "SM-M127F"},
+    {"why": "a yes or no field is no name: FaunaLapse's phone ID next", "start": {"device": {"model": "SM-M127F"}, "field": {"phone_id": "3F9A12C0", "custom": {"Device ID": true}}}, "device_id": "3F9A12C0", "phone_model": "SM-M127F"},
+    {"why": "a list is no name either", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": ["a", "b"]}}}, "device_id": "SM-M127F", "phone_model": "SM-M127F"},
+    {"why": "empty own field: the phone model", "start": {"device": {"model": "Redmi Note 9S"}, "field": {"phone_id": null, "custom": {"Device ID": ""}}}, "device_id": "Redmi Note 9S", "phone_model": "Redmi Note 9S"},
+    {"why": "own field without a value", "start": {"device": {"model": "Redmi Note 9S"}, "field": {"custom": {"Device ID": null}}}, "device_id": "Redmi Note 9S", "phone_model": "Redmi Note 9S"},
+    {"why": "a FaunaLapse import: its phone ID", "start": {"source": "faunalapse", "device": {"model": "SM-M127F"}, "field": {"phone_id": "3F9A12C0", "custom": {}}}, "device_id": "3F9A12C0", "phone_model": "SM-M127F"},
+    {"why": "older start records name the model device_model", "start": {"device_model": "Pixel 7"}, "device_id": "Pixel 7", "phone_model": "Pixel 7"},
+    {"why": "no field block", "start": {"device": {"model": "2107113SG"}, "field": null}, "device_id": "2107113SG", "phone_model": "2107113SG"},
+    {"why": "an imported video: no device, no field notes", "start": {"source": "imported_video"}, "device_id": "", "phone_model": ""},
+    {"why": "a whole number without decimals", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": 7}}}, "device_id": "7", "phone_model": "SM-M127F"},
+    {"why": "a minus at the ends is dropped like a replaced character", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": -3}}}, "device_id": "3", "phone_model": "SM-M127F"},
+    {"why": "a whole number beyond the 64-bit range keeps every digit", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": 1.2345678901234567e+19}}}, "device_id": "12345678901234567168", "phone_model": "SM-M127F"},
+    {"why": "a very small number in Python's notation", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": 1e-05}}}, "device_id": "1e-05", "phone_model": "SM-M127F"},
+    {"why": "only characters file names cannot hold: the next source", "start": {"device": {"model": "SM-M127F"}, "field": {"phone_id": "3F9A12C0", "custom": {"Device ID": "///"}}}, "device_id": "3F9A12C0", "phone_model": "SM-M127F"},
+    {"why": "the first FILLED matching field counts", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"device_id": "", "Device ID": "cam-07"}}}, "device_id": "cam-07", "phone_model": "SM-M127F"},
+    {"why": "byte order mark and a control character at the ends", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"Device ID": "\ufeffcam\u001f"}}}, "device_id": "cam", "phone_model": "SM-M127F"},
+    {"why": "only A to Z change case: a dotted capital I does not match", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": {"DEV\u0130CE ID": "x"}}}, "device_id": "SM-M127F", "phone_model": "SM-M127F"},
+    {"why": "custom that is not a map", "start": {"device": {"model": "SM-M127F"}, "field": {"custom": ["Device ID", "x"]}}, "device_id": "SM-M127F", "phone_model": "SM-M127F"},
+    {"why": "a phone ID written as a number", "start": {"device": {"model": "SM-M127F"}, "field": {"phone_id": 12345678}}, "device_id": "12345678", "phone_model": "SM-M127F"},
+    {"why": "a blank device.model falls back to device_model", "start": {"device": {"model": "  "}, "device_model": "Pixel 7"}, "device_id": "Pixel 7", "phone_model": "Pixel 7"}
+  ]
+}
