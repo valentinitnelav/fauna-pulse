@@ -154,7 +154,7 @@ class _BeforeRecordSheetState extends State<BeforeRecordSheet> with WidgetsBindi
           subtitle: _showEachTime
               ? null
               : const Text(
-                  'Bring it back with Menu, "Show setup tips at session start" on the home screen.',
+                  'Bring it back with Menu ▸ "Show tips and notes" on the home screen.',
                   style: TextStyle(fontSize: 12),
                 ),
         ),

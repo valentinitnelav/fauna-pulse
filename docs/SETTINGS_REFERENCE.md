@@ -178,18 +178,18 @@ frame rate cap moved to the Power tab (it is a heat control, see above).
 
 Two related toggles live elsewhere:
 
-- **Show setup tips at session start** moved to the home screen's menu (round 159;
-  the **Menu** at the bottom left since round 277) — it is an app-level preference, not a
-  per-session setting. Turning it on also brings back every note hidden with *Don't show
-  again*: the slow-phone hint below, the position sentence after saving a crop and the window
-  before a FaunaLapse import.
+- **Show tips and notes** (named "Show setup tips at session start" until round 331) is in the
+  home screen's **Menu** at the bottom left: an app-level preference, not a per-session setting.
+  On: the setup tips and the "Before you record" sheet show at session start, and every note
+  hidden with *Don't show again* comes back (the slow-phone hint below, the position sentence
+  after saving a crop, the window before a FaunaLapse import). Off: all of them stay hidden.
 - **The slow-phone hint** (round 278): in live detection, when the phone checks fewer than 5
   pictures per second, a note at the top of the camera screen suggests time-lapse with
   "Save bursts as: Video" and *Find animals in videos* afterwards. It is judged from the work
   per picture (preparing, detecting and sorting the boxes; the median of 30 pictures, or of 10 s
   of pictures on a very slow phone, after the first 15 s), not from the shown fps, so the frame-rate cap and the motion gate do not raise it.
   Once per camera screen; *Don't show again* hides it for good (pref
-  `faunapulse_hide_slow_phone_hint`) until *Show setup tips at session start* is turned on
+  `faunapulse_hide_slow_phone_hint`) until *Show tips and notes* is turned on
   again. 5 per second is a fixed number, not a setting: it only decides when the note appears.
 - **Square (1:1) export crops** (Photos tab → "Photo viewer") forces the
   crop-and-export box in the summary photo viewer to a square; the "1:1" chip

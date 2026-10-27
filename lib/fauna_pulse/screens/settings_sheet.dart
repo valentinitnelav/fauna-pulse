@@ -657,7 +657,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       const Divider(color: Colors.white24),
       // Display toggles all have good defaults, so they sit folded (round
       // 159). "Show FPS" moved in from the AI tab the same round: it is a
-      // display toggle, not an AI setting. "Show setup tips" left for the
+      // display toggle, not an AI setting. "Show tips and notes" left for the
       // home screen's menu (an app-level preference, not per-session).
       FoldSection(
         title: 'On-screen display',

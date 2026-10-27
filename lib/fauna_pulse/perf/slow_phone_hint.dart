@@ -90,10 +90,9 @@ class SlowPhoneBanner extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'This phone checks fewer than 5 pictures per second (about ${perSecond.toStringAsFixed(1)}), '
-                'so fast animals can be missed. For better results: stop, tap ⚙, choose "Time-lapse" '
-                'and "Save bursts as: Video", and find the animals afterwards (Sessions, ⋮ next to the '
-                'session, "Find animals in videos").',
+                'This phone checks only about ${perSecond.toStringAsFixed(1)} pictures per second (5 or '
+                'more is better), so fast animals can be missed. Better: stop, tap ⚙, choose "Time-lapse" '
+                'and "Save bursts as: Video", then Sessions ▸ ⋮ ▸ "Find animals in videos".',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),

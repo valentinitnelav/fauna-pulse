@@ -4011,8 +4011,9 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
-          // The position sentence makes the message twice as long.
-          duration: Duration(seconds: noted ? 8 : 4),
+          // Round 331: 10 s (the longest Android's guidelines suggest) to read
+          // the position sentence and reach its button; 8 s was too short.
+          duration: Duration(seconds: noted ? 10 : 4),
           // A bar with a button stays until tapped unless told otherwise.
           persist: false,
           action: noted ? SnackBarAction(label: "Don't show again", onPressed: _hideCropPositionNote) : null,

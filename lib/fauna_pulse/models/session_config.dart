@@ -20,8 +20,8 @@ import 'model_choice_keys.dart';
 import 'schedule_window.dart';
 
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
-/// stored bool is true the dialog is suppressed; clearing it (Settings → Camera →
-/// "Show setup tips") makes the reminder appear again next time the screen opens.
+/// stored bool is true the dialog is suppressed; the Home menu's "Show tips and
+/// notes" clears it, so the reminder appears again next time the screen opens.
 const String kHideSessionInfoPrefKey = 'faunapulse_hide_session_info';
 
 /// Where each saved ROI photo comes from. Two sources exist, with opposite

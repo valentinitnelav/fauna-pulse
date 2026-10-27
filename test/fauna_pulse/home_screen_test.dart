@@ -20,6 +20,7 @@ import 'package:fauna_pulse/fauna_pulse/perf/slow_phone_hint.dart' show kHideSlo
 import 'package:fauna_pulse/fauna_pulse/screens/faunalapse_import_flow.dart' show kHideFaunaLapseImportInfoPrefKey;
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/watch_plan_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/before_record_sheet.dart' show kBeforeRecordSheetKey;
 import 'package:fauna_pulse/fauna_pulse/widgets/scroll_hint.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/session_tile.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/support_faunapulse.dart';
@@ -377,7 +378,7 @@ void main() {
     ];
     expect(items, [
       'Download & import models',
-      'Show setup tips at session start',
+      'Show tips and notes',
       'Report a problem',
       'Share FaunaPulse',
       'Cite FaunaPulse',
@@ -446,23 +447,40 @@ void main() {
     }
   });
 
-  testWidgets('turning the setup tips on brings back every hidden note', (tester) async {
+  const hideKeys = [kHideSlowPhoneHintPrefKey, kHideCropPositionNotePrefKey, kHideFaunaLapseImportInfoPrefKey];
+
+  testWidgets('"Show tips and notes" on brings back every hidden note', (tester) async {
     SharedPreferences.setMockInitialValues({
       kHideSessionInfoPrefKey: true,
-      kHideSlowPhoneHintPrefKey: true,
-      kHideCropPositionNotePrefKey: true,
-      kHideFaunaLapseImportInfoPrefKey: true,
+      kBeforeRecordSheetKey: false,
+      for (final k in hideKeys) k: true,
     });
     await _pumpHome(tester);
     await tester.tap(find.text('Menu'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Show setup tips at session start'));
+    await tester.tap(find.text('Show tips and notes'));
     await tester.pumpAndSettle();
     final p = await SharedPreferences.getInstance();
     expect(p.getBool(kHideSessionInfoPrefKey), isFalse);
-    expect(p.getBool(kHideSlowPhoneHintPrefKey), isNull);
-    expect(p.getBool(kHideCropPositionNotePrefKey), isNull);
-    expect(p.getBool(kHideFaunaLapseImportInfoPrefKey), isNull);
+    expect(p.getBool(kBeforeRecordSheetKey), isTrue);
+    for (final k in hideKeys) {
+      expect(p.getBool(k), isNull, reason: k);
+    }
+  });
+
+  testWidgets('"Show tips and notes" off hides all of them', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await _pumpHome(tester);
+    await tester.tap(find.text('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show tips and notes'));
+    await tester.pumpAndSettle();
+    final p = await SharedPreferences.getInstance();
+    expect(p.getBool(kHideSessionInfoPrefKey), isTrue);
+    expect(p.getBool(kBeforeRecordSheetKey), isFalse);
+    for (final k in hideKeys) {
+      expect(p.getBool(k), isTrue, reason: k);
+    }
   });
 
   testWidgets('the support box with the donation link (GitHub release builds)', (tester) async {

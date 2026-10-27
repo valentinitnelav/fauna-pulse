@@ -250,8 +250,9 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   bottom right). Progress windows without buttons have no X.
 - **Notes that repeat get "Don't show again"** (owner): a note the app shows on its own at every
   visit or action and that must be closed or read past offers it (`DontShowAgainBox` in windows, a
-  `SnackBarAction` in messages; pref key next to its code). "Show setup tips at session start"
-  (Home menu) clears every such key. Not for confirm questions, results, errors or text in a screen.
+  `SnackBarAction` in messages, shown 10 s; pref key next to its code). Such notes stay short.
+  "Show tips and notes" (Home menu) on clears every such key and brings back the setup tips and
+  "Before you record"; off hides them all. Not for confirm questions, results, errors or text in a screen.
 - **Screens come back after Android closes the app** (`restorationScopeId` in `main.dart`; low-memory
   phones close a background app within seconds of a link opening the browser): a screen or window
   that sends the user to another app (web link, phone settings, file picker) is pushed with
@@ -817,8 +818,8 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   "Chosen AI models" with Find/Name file names from `currentModelChoice`, "none (…)" lines), 2
   Record (the answer's phone-screen drawing `roiPicture(icon)`), 3 Import videos…, 4 the two Find
   buttons; Support box last. Steps keep their numbers (no ticks). Bottom bar Menu, Sessions |
-  New session | Dashboard, AI models. Menu (drawer): Download & import models, Show setup tips
-  at session start, Report a problem, Share, Cite, About (Support is only the home box). Menu
+  New session | Dashboard, AI models. Menu (drawer): Download & import models, Show tips
+  and notes, Report a problem, Share, Cite, About (Support is only the home box). Menu
   "Cite FaunaPulse" and the box's "Cite this version" open `CitationDialog`
   (`support_faunapulse.dart`): `citationText(version)` = the README citation plus "(Version
   <PackageInfo.version>)", concept DOI, Copy; works offline. `ScrollHint` scroll bar. Donation

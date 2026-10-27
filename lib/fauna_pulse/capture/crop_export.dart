@@ -128,8 +128,8 @@ CropExifInfo exportCropExif({
 
 /// Added to the save and share message when the crop carries the position.
 const kCropPositionNote =
-    ' It includes the session position (GPS). To leave it out, turn off "Add the position '
-    'to exported crops" (camera screen, Session settings, Photos tab).';
+    ' It includes the GPS position. To leave it out: Session settings ▸ Photos ▸ "Add the position '
+    'to exported crops".';
 
 /// Set by "Don't show again" on that message: it would come back on every save. Only the
 /// sentence goes; the crops keep the position while the setting is on.

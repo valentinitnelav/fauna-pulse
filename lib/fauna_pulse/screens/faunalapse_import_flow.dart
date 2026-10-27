@@ -16,7 +16,7 @@ import '../widgets/dialog_title.dart';
 import '../widgets/dont_show_again_box.dart';
 
 /// Set by "Don't show again" in the window before the zip picker (round 330): it would come
-/// back on every import. The Home menu's "Show setup tips at session start" clears it.
+/// back on every import. The Home menu's "Show tips and notes" clears it.
 const kHideFaunaLapseImportInfoPrefKey = 'faunapulse_hide_faunalapse_import_info';
 
 Future<String?> pickAndImportFaunaLapse(BuildContext context) async {
@@ -37,13 +37,11 @@ Future<String?> pickAndImportFaunaLapse(BuildContext context) async {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'FaunaLapse records time-lapse photos on any phone, without AI. Its "Pack" button '
-                  'stores each photo session as a zip file. Choose that zip (and its "_part" zips, if '
-                  'there are any); the photos then become a session here, ready for "Find animals in '
-                  'photos". Import only zips that you made with FaunaLapse or that someone you trust sent you. '
-                  'The phone needs free space for about twice the zip size while importing; the app checks '
-                  'this first and leaves out damaged photos.\n\n'
-                  'FaunaLapse video sessions need no zip: use "Import videos…".',
+                  'Choose the zip that FaunaLapse\'s "Pack" button made of a photo session, with its '
+                  '"_part" zips if there are any. The photos become a session here, ready for "Find '
+                  'animals in photos". Import only zips you made or got from someone you trust. The phone '
+                  'needs free space for about twice the zip size.\n\n'
+                  'For FaunaLapse videos, use "Import videos…" instead.',
                   style: TextStyle(fontSize: 13),
                 ),
                 DontShowAgainBox(value: hide, onChanged: (v) => setLocal(() => hide = v)),

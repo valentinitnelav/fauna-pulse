@@ -145,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   /// Whether the one-time setup reminder shows at session start. Mirrors the
   /// inverse of the persisted "hide" flag ([kHideSessionInfoPrefKey]); shown
   /// as a check item in the side menu.
-  bool _showSetupTips = true;
+  bool _showTipsAndNotes = true;
 
   /// Null while counting.
   ModelsOnPhone? _models;
@@ -174,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
     super.initState();
     reloadSessions();
     _reloadModels();
-    _loadSetupTipsPref();
+    _loadTipsAndNotesPref();
     _loadUses();
     _waitingIdentification.start();
   }
@@ -289,34 +289,31 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   void _openModels() => _modelsRoute.present();
 
   /// Reads the persisted "hide setup tips" flag so the menu check item
-  /// reflects the current state.
+  /// ("Show tips and notes") reflects the current state.
   /// Round 313: the tick shows only when every tip is on, so after "Show this
   /// before each start" was unticked one tap on the menu item brings the
   /// "Before you record" sheet back. Read again each time the menu opens.
-  Future<void> _loadSetupTipsPref() async {
+  Future<void> _loadTipsAndNotesPref() async {
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getBool(kHideSessionInfoPrefKey) ?? false;
     final beforeRecord = prefs.getBool(kBeforeRecordSheetKey) ?? true;
     if (!mounted) return;
-    setState(() => _showSetupTips = !hidden && beforeRecord);
+    setState(() => _showTipsAndNotes = !hidden && beforeRecord);
   }
 
-  /// Turns the one-time setup reminder on/off by writing the persisted flag.
-  /// On = reminder shows next time a session screen opens; Off = stays hidden.
-  /// Round 278: turning it on also brings back the slow-phone hint after its
-  /// "Don't show again" (the only way back to it), and since round 313 the
-  /// "Before you record" sheet after "Show this before each start" was
-  /// unticked (no other control brings it back). Round 330: every note hidden
-  /// with "Don't show again" comes back with it (rule "Notes that repeat").
-  Future<void> _toggleSetupTips() async {
-    setState(() => _showSetupTips = !_showSetupTips);
+  /// "Show tips and notes" (round 331; was "Show setup tips at session start",
+  /// which did not say that it also brings back hidden notes). On: the setup
+  /// tips window, the "Before you record" sheet and every note hidden with
+  /// "Don't show again" come back (for most of them the only way back; rule
+  /// "Notes that repeat"). Off: all of them stay away.
+  Future<void> _toggleTipsAndNotes() async {
+    setState(() => _showTipsAndNotes = !_showTipsAndNotes);
+    final on = _showTipsAndNotes;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(kHideSessionInfoPrefKey, !_showSetupTips);
-    if (_showSetupTips) {
-      await prefs.remove(kHideSlowPhoneHintPrefKey);
-      await prefs.remove(kBeforeRecordSheetKey);
-      await prefs.remove(kHideCropPositionNotePrefKey);
-      await prefs.remove(kHideFaunaLapseImportInfoPrefKey);
+    await prefs.setBool(kHideSessionInfoPrefKey, !on);
+    await prefs.setBool(kBeforeRecordSheetKey, on);
+    for (final key in [kHideSlowPhoneHintPrefKey, kHideCropPositionNotePrefKey, kHideFaunaLapseImportInfoPrefKey]) {
+      on ? await prefs.remove(key) : await prefs.setBool(key, true);
     }
   }
 
@@ -499,11 +496,11 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
             // open, so the tick is seen to change.
             ListTile(
               leading: Icon(
-                _showSetupTips ? Icons.check_box : Icons.check_box_outline_blank,
-                color: _showSetupTips ? Colors.lightBlueAccent : Colors.white54,
+                _showTipsAndNotes ? Icons.check_box : Icons.check_box_outline_blank,
+                color: _showTipsAndNotes ? Colors.lightBlueAccent : Colors.white54,
               ),
-              title: const Text('Show setup tips at session start'),
-              onTap: _toggleSetupTips,
+              title: const Text('Show tips and notes'),
+              onTap: _toggleTipsAndNotes,
             ),
             // Round 190 (owner request): always reachable, also after a crash
             // and restart.
@@ -548,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
             icon: Icons.menu,
             label: 'Menu',
             onTap: () {
-              _loadSetupTipsPref();
+              _loadTipsAndNotesPref();
               _scaffold.currentState?.openDrawer();
             },
           ),

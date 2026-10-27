@@ -70,7 +70,7 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('fewer than 5 pictures per second (about 2.5)'), findsOneWidget);
+    expect(find.textContaining('only about 2.5 pictures per second (5 or more is better)'), findsOneWidget);
     expect(find.textContaining('"Save bursts as: Video"'), findsOneWidget);
     await tester.tap(find.text('Close'));
     await tester.tap(find.text("Don't show again"));

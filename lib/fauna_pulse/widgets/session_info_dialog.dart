@@ -35,26 +35,22 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
           children: [
             _bullet(
               Icons.park,
-              'If you watch a flower, fix it in place (for example, tie it to '
-              'a stick) so it does not move in the wind.',
+              'If you watch a flower, tie it to a stick so the wind does not '
+              'move it.',
             ),
             const SizedBox(height: 12),
             _bullet(
               Icons.crop_square,
-              'Put the yellow square (the area FaunaPulse watches) over the '
-              'place where animals come, for example flowers, a flat surface '
-              'or a feeding site.',
+              'Put the yellow square (the area FaunaPulse watches) where '
+              'animals come: flowers, a flat surface or a feeding site.',
             ),
             const SizedBox(height: 12),
             _bullet(
               Icons.center_focus_strong,
-              'Check the focus before recording: it starts locked for a '
-              'subject about 13 cm away (autofocus is never used, because it '
-              'would focus on the background instead). Tap the focus button '
-              '(the one with the amber dot) and adjust the Far–Near slider '
-              'until the subject is sharp; the dot disappears once you have '
-              'set it. Focus then stays exactly where you put it for the '
-              'whole session.',
+              'Check the focus: it starts fixed at about 13 cm. Tap the focus '
+              'button (amber dot) and move the Far–Near slider until the '
+              'subject is sharp. The focus then stays there for the whole '
+              'session (autofocus would often pick the background).',
             ),
           ],
         ),
