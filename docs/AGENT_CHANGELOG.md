@@ -9567,3 +9567,9 @@ Why: dart:io's HttpClient sent the request to an http:// redirect before the app
 Checked: the tests failed on the old code first (a local HTTPS server shows the http hop gets no request); plugin, native and lint runs; a profile APK holds no model file.
 Open: `*_qnn.onnx` files get no structure check; a model saved under a list file's name with the same size keeps the list's card; the plugin's test-model downloads (development builds) still use HttpClient's redirects; the models repository's scripts do not yet compare checksums before loading third-party weights.
 
+## Round 330 (2026-10-27): "Don't show again" for notes that repeat
+Asked: the position sentence after every crop save should be hideable, and the same should hold everywhere in the app where a note comes back each time.
+Why: a note the app shows on its own and that must be closed or read past each time now offers "Don't show again" (rule in the overview). A sweep of the screens found one more: the window before every FaunaLapse import, which then goes straight to the zip picker. Left as they are: confirm questions (start of a scheduled run), results (scheduled run complete), errors, and notes that stay inside a screen without blocking it (storage note of the video import). Hidden notes come back with "Show setup tips at session start", already the way back for the slow-phone hint. The before/after speed comparison of rounds 326-329 stays as a phone check for the next such question.
+Checked: analyzer; widget tests for the import window, the setup tips window and the Home toggle; the speed comparison on a Redmi Note 9S (Find animals in photos with and without tiles, in videos, FaunaLapse import; old, new, old, new) gave the same boxes and times within the run-to-run spread.
+Open: the crop message has no widget test and no phone run; the toggle's name does not say that it also brings back these notes.
+

@@ -6,39 +6,64 @@
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart';
 import '../postprocess/faunalapse_import.dart';
 import '../widgets/dialog_title.dart';
+import '../widgets/dont_show_again_box.dart';
+
+/// Set by "Don't show again" in the window before the zip picker (round 330): it would come
+/// back on every import. The Home menu's "Show setup tips at session start" clears it.
+const kHideFaunaLapseImportInfoPrefKey = 'faunapulse_hide_faunalapse_import_info';
 
 Future<String?> pickAndImportFaunaLapse(BuildContext context) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      actionsOverflowDirection: VerticalDirection.up,
-      title: DialogTitle(const Text('Import a FaunaLapse session'), onClose: () => Navigator.of(ctx).pop(false)),
-      content: const Text(
-        'FaunaLapse records time-lapse photos on any phone, without AI. Its "Pack" button '
-        'stores each photo session as a zip file. Choose that zip (and its "_part" zips, if '
-        'there are any); the photos then become a session here, ready for "Find animals in '
-        'photos". Import only zips that you made with FaunaLapse or that someone you trust sent you. '
-        'The phone needs free space for about twice the zip size while importing; the app checks '
-        'this first and leaves out damaged photos.\n\n'
-        'FaunaLapse video sessions need no zip: use "Import videos…".',
-        style: TextStyle(fontSize: 13),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Choose zip files', style: TextStyle(fontWeight: FontWeight.bold)),
+  final prefs = await SharedPreferences.getInstance();
+  if (!(prefs.getBool(kHideFaunaLapseImportInfoPrefKey) ?? false)) {
+    if (!context.mounted) return null;
+    var hide = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          actionsOverflowDirection: VerticalDirection.up,
+          title: DialogTitle(const Text('Import a FaunaLapse session'), onClose: () => Navigator.of(ctx).pop(false)),
+          // Scrolls with a large system font size on a small phone.
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'FaunaLapse records time-lapse photos on any phone, without AI. Its "Pack" button '
+                  'stores each photo session as a zip file. Choose that zip (and its "_part" zips, if '
+                  'there are any); the photos then become a session here, ready for "Find animals in '
+                  'photos". Import only zips that you made with FaunaLapse or that someone you trust sent you. '
+                  'The phone needs free space for about twice the zip size while importing; the app checks '
+                  'this first and leaves out damaged photos.\n\n'
+                  'FaunaLapse video sessions need no zip: use "Import videos…".',
+                  style: TextStyle(fontSize: 13),
+                ),
+                DontShowAgainBox(value: hide, onChanged: (v) => setLocal(() => hide = v)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Choose zip files', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
-  if (ok != true || !context.mounted) return null;
+      ),
+    );
+    // The tick counts with Cancel too: the note was read either way.
+    if (hide) await prefs.setBool(kHideFaunaLapseImportInfoPrefKey, true);
+    if (ok != true || !context.mounted) return null;
+  }
   List<String> paths;
   String? problem;
   try {

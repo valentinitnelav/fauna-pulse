@@ -3958,6 +3958,11 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       // the site of a rare species).
       final loc = widget.location;
       withPosition = loc != null && (await SessionConfig.load()).cropExportPosition;
+      // Round 330: "Don't show again" on the message hides only this sentence.
+      final note =
+          withPosition && !((await SharedPreferences.getInstance()).getBool(kHideCropPositionNotePrefKey) ?? false)
+          ? kCropPositionNote
+          : '';
       final cropped = await cropJpegNormRect(
         _fileFor(p),
         norm,
@@ -3978,7 +3983,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           await shareCrop(cropped.jpeg, name);
           msg =
               '${cropped.width} × ${cropped.height} px crop handed to the '
-              'share sheet.${withPosition ? kCropPositionNote : ''}';
+              'share sheet.$note';
         } else {
           // Fallback dir (older Android / MediaStore failure): keep the crop
           // with its session, next to roi_frames/.
@@ -3990,7 +3995,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           msg = res == null
               ? 'Saving the crop failed.'
               : 'Saved ${cropped.width} × ${cropped.height} px crop to '
-                    '${res.location}.${withPosition ? kCropPositionNote : ''}';
+                    '${res.location}.$note';
         }
       }
     } catch (e) {
@@ -4002,13 +4007,25 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       if (mounted) setState(() => _cropBusy = false);
     }
     if (mounted) {
+      final noted = msg.contains(kCropPositionNote);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
           // The position sentence makes the message twice as long.
-          duration: Duration(seconds: msg.contains(kCropPositionNote) ? 8 : 4),
+          duration: Duration(seconds: noted ? 8 : 4),
+          // A bar with a button stays until tapped unless told otherwise.
+          persist: false,
+          action: noted ? SnackBarAction(label: "Don't show again", onPressed: _hideCropPositionNote) : null,
         ),
       );
+    }
+  }
+
+  Future<void> _hideCropPositionNote() async {
+    try {
+      await (await SharedPreferences.getInstance()).setBool(kHideCropPositionNotePrefKey, true);
+    } catch (e) {
+      logSwallowed('crop_note_hide', e);
     }
   }
 

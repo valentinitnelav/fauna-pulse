@@ -131,6 +131,10 @@ const kCropPositionNote =
     ' It includes the session position (GPS). To leave it out, turn off "Add the position '
     'to exported crops" (camera screen, Session settings, Photos tab).';
 
+/// Set by "Don't show again" on that message: it would come back on every save. Only the
+/// sentence goes; the crops keep the position while the setting is on.
+const kHideCropPositionNotePrefKey = 'faunapulse_hide_crop_position_note';
+
 /// One coordinate as the EXIF degrees/minutes/seconds triplet (all EXIF GPS
 /// values are unsigned rationals; the hemisphere goes in the *Ref tag).
 img.IfdValueRational exifDmsRational(double absDegrees) {

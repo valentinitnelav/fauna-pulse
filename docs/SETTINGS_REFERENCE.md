@@ -180,7 +180,9 @@ Two related toggles live elsewhere:
 
 - **Show setup tips at session start** moved to the home screen's menu (round 159;
   the **Menu** at the bottom left since round 277) — it is an app-level preference, not a
-  per-session setting. Turning it on also brings back the slow-phone hint below.
+  per-session setting. Turning it on also brings back every note hidden with *Don't show
+  again*: the slow-phone hint below, the position sentence after saving a crop and the window
+  before a FaunaLapse import.
 - **The slow-phone hint** (round 278): in live detection, when the phone checks fewer than 5
   pictures per second, a note at the top of the camera screen suggests time-lapse with
   "Save bursts as: Video" and *Find animals in videos* afterwards. It is judged from the work
@@ -196,7 +198,8 @@ Two related toggles live elsewhere:
   writes the session position (GPS) into the EXIF block of crops saved or shared from the
   summary photo viewer, as a phone camera photo does, so iNaturalist and similar apps can place
   the record on a map. Off: the crop keeps only its time. The save and share message says when
-  a crop carries the position. Turn it off for sites that must stay private (rare species).
+  a crop carries the position; its *Don't show again* hides only that sentence, the crops keep
+  the position. Turn it off for sites that must stay private (rare species).
 
 ## Graphs & logging cadence (Power tab → Diagnostic graph sampling fold)
 

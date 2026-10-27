@@ -248,6 +248,10 @@ analysis and identification; chosen models `analysis_model`, `video_analysis_mod
   the one on the phone" stay, as "Cancel" could be misread there). Windows with 2+ buttons set
   `actionsOverflowDirection: VerticalDirection.up` (stacked: main action on top, Cancel/Close at the
   bottom right). Progress windows without buttons have no X.
+- **Notes that repeat get "Don't show again"** (owner): a note the app shows on its own at every
+  visit or action and that must be closed or read past offers it (`DontShowAgainBox` in windows, a
+  `SnackBarAction` in messages; pref key next to its code). "Show setup tips at session start"
+  (Home menu) clears every such key. Not for confirm questions, results, errors or text in a screen.
 - **Screens come back after Android closes the app** (`restorationScopeId` in `main.dart`; low-memory
   phones close a background app within seconds of a link opening the browser): a screen or window
   that sends the user to another app (web link, phone settings, file picker) is pushed with

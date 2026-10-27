@@ -11,11 +11,13 @@
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/capture/crop_export.dart' show kHideCropPositionNotePrefKey;
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/models_on_phone.dart';
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart' show kHideSessionInfoPrefKey;
 import 'package:fauna_pulse/fauna_pulse/perf/slow_phone_hint.dart' show kHideSlowPhoneHintPrefKey;
+import 'package:fauna_pulse/fauna_pulse/screens/faunalapse_import_flow.dart' show kHideFaunaLapseImportInfoPrefKey;
 import 'package:fauna_pulse/fauna_pulse/screens/home_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/watch_plan_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/scroll_hint.dart';
@@ -444,8 +446,13 @@ void main() {
     }
   });
 
-  testWidgets('turning the setup tips on brings back the slow-phone hint', (tester) async {
-    SharedPreferences.setMockInitialValues({kHideSessionInfoPrefKey: true, kHideSlowPhoneHintPrefKey: true});
+  testWidgets('turning the setup tips on brings back every hidden note', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      kHideSessionInfoPrefKey: true,
+      kHideSlowPhoneHintPrefKey: true,
+      kHideCropPositionNotePrefKey: true,
+      kHideFaunaLapseImportInfoPrefKey: true,
+    });
     await _pumpHome(tester);
     await tester.tap(find.text('Menu'));
     await tester.pumpAndSettle();
@@ -454,6 +461,8 @@ void main() {
     final p = await SharedPreferences.getInstance();
     expect(p.getBool(kHideSessionInfoPrefKey), isFalse);
     expect(p.getBool(kHideSlowPhoneHintPrefKey), isNull);
+    expect(p.getBool(kHideCropPositionNotePrefKey), isNull);
+    expect(p.getBool(kHideFaunaLapseImportInfoPrefKey), isNull);
   });
 
   testWidgets('the support box with the donation link (GitHub release builds)', (tester) async {

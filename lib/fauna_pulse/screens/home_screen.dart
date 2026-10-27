@@ -51,6 +51,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/crop_export.dart' show kHideCropPositionNotePrefKey;
 import '../identification/identification_store.dart' show stemOf;
 import '../logging/app_error_hooks.dart';
 import '../logging/error_reporter.dart';
@@ -67,6 +68,7 @@ import '../widgets/watch_tiles.dart';
 import '../widgets/dialog_title.dart';
 import 'camera_session_screen.dart';
 import 'dashboard_screen.dart';
+import 'faunalapse_import_flow.dart' show kHideFaunaLapseImportInfoPrefKey;
 import 'identification_screen.dart' show WaitingIdentificationWatch;
 import 'models_screen.dart';
 import 'problem_description_screen.dart';
@@ -304,7 +306,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   /// Round 278: turning it on also brings back the slow-phone hint after its
   /// "Don't show again" (the only way back to it), and since round 313 the
   /// "Before you record" sheet after "Show this before each start" was
-  /// unticked (no other control brings it back).
+  /// unticked (no other control brings it back). Round 330: every note hidden
+  /// with "Don't show again" comes back with it (rule "Notes that repeat").
   Future<void> _toggleSetupTips() async {
     setState(() => _showSetupTips = !_showSetupTips);
     final prefs = await SharedPreferences.getInstance();
@@ -312,6 +315,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
     if (_showSetupTips) {
       await prefs.remove(kHideSlowPhoneHintPrefKey);
       await prefs.remove(kBeforeRecordSheetKey);
+      await prefs.remove(kHideCropPositionNotePrefKey);
+      await prefs.remove(kHideFaunaLapseImportInfoPrefKey);
     }
   }
 

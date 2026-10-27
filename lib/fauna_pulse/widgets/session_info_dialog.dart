@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'dialog_title.dart';
+import 'dont_show_again_box.dart';
 
 /// One-time setup reminder shown when the camera screen opens. It explains how
 /// to frame the shot (fix a flower, place the yellow square) and — importantly —
@@ -65,19 +66,9 @@ class _SessionInfoDialogState extends State<SessionInfoDialog> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Flexible(
-              child: InkWell(
-                onTap: () => setState(() => _dontShowAgain = !_dontShowAgain),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: _dontShowAgain,
-                      onChanged: (v) =>
-                          setState(() => _dontShowAgain = v ?? false),
-                    ),
-                    const Flexible(child: Text("Don't show again")),
-                  ],
-                ),
+              child: DontShowAgainBox(
+                value: _dontShowAgain,
+                onChanged: (v) => setState(() => _dontShowAgain = v),
               ),
             ),
             TextButton(
