@@ -16,53 +16,94 @@ phone with LiteRT.
 The application is built on the Ultralytics YOLO Flutter plugin, using a modified copy (fork) in
 `packages/ultralytics_yolo/`; its `FAUNAPULSE_FORK.md` lists what FaunaPulse changed.
 
+## Start of a session
+
+The app sits at the git repository root and paths below are relative to it.
+
+1. Read `docs/AGENT_CHANGELOG_OVERVIEW.md`: what is true now (defaults, file map, key
+   invariants, pointers).
+2. Read nothing else up front: not `docs/AGENT_CHANGELOG.md` and not the related repositories
+   (both below). Open them only when the task needs them.
+
+## Keeping the agent documents current
+
+A **round** is one piece of agent work that changes tracked files; it ends with one commit whose
+message starts with "Round <n>:". A session that only answers questions, or changes only files
+outside git, has no round, and changes the owner makes by hand need none. The next round number is one more than the last header in
+`docs/AGENT_CHANGELOG.md` (`grep '^## Round' docs/AGENT_CHANGELOG.md | tail -1`); when that round
+has no commit yet (`git log --grep '^Round <n>:'`), the work may still belong to it.
+
+- `docs/AGENT_CHANGELOG_OVERVIEW.md` holds only what an agent needs before working on the app.
+  Keep a line there only if an agent would likely make a mistake without it and could not
+  quickly find it where it works: a code comment at that code, `grep`, the feature's doc in
+  `docs/`, or git history. Feature details go to those places instead. It says only what is true
+  now: when a round changes a rule or where something lives, replace or delete the affected text
+  in place (no round numbers, old values or measurements). When the reason for a rule is not
+  obvious, give it in one short clause. Keep it under 35,000 characters (`wc -m`).
+- `docs/AGENT_CHANGELOG.md` is the very long history. Never read it whole. Ask the owner before
+  reading old round entries, and only when past rationale is really needed (search with `grep`,
+  read single entries). Each round appends one entry at the end, without reading the file:
+  - a header line "## Round xy (yyyy-mm-dd): some short title", for example
+    "## Round 76 (2026-07-08): added user-triggered engine benchmark";
+  - the round's commit says what changed and the diff shows how, so the entry adds only what
+    those do not: what was asked, why (decisions, evidence, rejected options), what was checked,
+    and what is open, in about 500 to 1,200 characters. No file lists, no commit message (neither
+    a repeat nor a suggestion) and no personal or private information (see *General rules*);
+  - an empty line after it, to separate the next entry.
+
+## Related repositories
+
+FaunaPulse is one of several repositories of the same maintainer. The folders named below are
+where the maintainer keeps them; a contributor usually has none of them, and the GitHub links are
+enough. Do not open them at the start of a session. Open one only when the task touches it (the
+"When" of each entry), search before reading whole files, and read its own `AGENTS.md` before
+changing anything there.
+
+- [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)
+  (`~/fauna-pulse-models`): the PC tools that convert and publish the models (detectors,
+  classifiers, BioCLIP, `.fpack` name lists). The converted files and their model cards (origin,
+  licence, conversion, citation) are on
+  [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse); this repository
+  keeps no copy of the cards. When: a model, a model file format, a name list or the download
+  catalogue changes. Its `docs/AGENT_OVERVIEW.md` lists the rules both repositories share.
+- [fauna-lapse](https://github.com/valentinitnelav/fauna-lapse) (`~/FaunaLapseApp/fauna-lapse`):
+  the sister app (Java, time-lapse photos, no AI). FaunaPulse imports its packed sessions and uses
+  the same field-note and phone-state keys. When: the FaunaLapse import, the field notes or the
+  phone state change, or an idea is taken from it.
+- [fauna-pulse-export](https://github.com/valentinitnelav/fauna-pulse-export)
+  (`~/fauna-pulse-export`): PC tools that write FaunaPulse sessions in formats other software
+  reads (today for insect-detect-post). Its `session_reader.py` repeats app rules (the device
+  name; which photo shows which track ID with which box). When: session records, photo names or
+  those rules change.
+
+The maintainer's private repositories are listed outside git, in `~/InsectDetectApp/CLAUDE.md`
+(skip this if the file does not exist).
+
+When a task reaches another repository:
+
+- Each file goes into the repository whose job it is and follows that repository's `AGENTS.md`.
+- Do not edit another repository from an app session unless the owner asks. When an app change
+  breaks a rule that another repository repeats, say so, and write a short hand-off note (what
+  changed, why, which files) in that repository's `private/` folder (git-ignored; FaunaLapse:
+  `~/FaunaLapseApp/`). Contributors mention it in their pull request instead. Larger work there
+  continues in a session opened in that repository.
+- When the owner asks for one task in two repositories, check `git status` in both first
+  (another session may be working there), and suggest one commit message per repository.
+- Docs and code comments refer to another repository by its name or GitHub URL, never by a
+  local path.
+- Before calling an idea new, search the related repositories for it (code, docs, and their
+  `private/` plans).
+
+## General rules
+
+Keep answers concise, but clear and easy to understand. Write plain English with short
+sentences and no idioms (the owner and many users are not native speakers). Do not use the em
+dash (—) as a punctuation mark; use parentheses (round brackets) instead.
+
 **Code comments** explain why: the reason for a choice, alternatives that failed, side effects,
 and what must stay in sync elsewhere. Names and the code itself say what it does. Define mobile,
 Android and machine-learning terms in plain words at first use. Write so that a coding agent or a
 new contributor understands the code without reading its history.
-
-## Development Environment & Context
-
-The app sits at the git repository root and paths below are relative to it.
-The PC tools that convert and publish models (detectors, classifiers, BioCLIP, `.fpack` name lists)
-live in the separate repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) (usually `~/fauna-pulse-models`);
-its `docs/AGENT_OVERVIEW.md` lists the rules both repositories share.
-The converted model files and their model cards (origin, licence, conversion, citation) are
-published on [Hugging Face](https://huggingface.co/collections/Valen-Peregrine/faunapulse);
-this repository keeps no copy of the cards.
-
-**Grounding order at the start of a session:** 
-
-1. Read `docs/AGENT_CHANGELOG_OVERVIEW.md` for a brief snapshot of current defaults, 
-    file maps, key invariants and pointers. 
-    Keep `AGENT_CHANGELOG_OVERVIEW.md` current when changes alter defaults or invariants.
-    It is read at the start of every session, so each entry says only what is true 
-    now and where it lives: replace or remove text when it changes instead of adding to it.
-    Keep `AGENT_CHANGELOG_OVERVIEW.md` under 80000 characters.
-    When a change alters what is true, replace the affected text (no history
-    there). When the reason for a choice is not obvious, give it in one short clause
-    next to the fact, or in a code comment. The history of a change (which round, why)
-    belongs in `AGENT_CHANGELOG.md` and git commit messages (git history).
-2. The very long, extra detailed history in `docs/AGENT_CHANGELOG.md` 
-    should never be read fully due to its size. 
-    Always ask for permission to read round entries if explicit past rationale or a round-by-round 
-    change log is absolutely needed. 
-    Append a short entry at the end of the file without reading it entirely. 
-    The next round number is one more than the last header
-    (`grep '^## Round' docs/AGENT_CHANGELOG.md | tail -1`).
-    Add a header line like this: "## Round xy (yyyy-mm-dd): some short title"
-    Example: "## Round 76 (2026-07-08): added user-triggered engine benchmark".
-    The round's commit ("Round xy: ...", found with `git log --grep '^Round xy:'`) says what
-    changed and the diff shows how, so the entry adds only what those do not: what was asked,
-    why (decisions, evidence, rejected options), what was checked, and what is open,
-    in about 500 to 1,200 characters. No file lists and no repeat of the commit message.
-    Do not write suggested commit message here.
-    Add an empty line that will separate future entries.
-    Do not write personal or private information here either (see *General rules*).
-
-## General rules
-
-Keep answers concise, but clear and easy to understand.
 
 Less is more: the simplest code solution is the better solution as long as core 
 functionality is not lost and as long as the code remains readable for humans too.
@@ -71,6 +112,14 @@ Fix a bug in the code that owns the behaviour instead of guarding its symptom so
 
 Report checks honestly: say what was verified and how (unit tests, analyzer, which phone model).
 Never claim a check that was not run.
+
+**Phones.** Ask the owner before using a connected phone. Before every `flutter run` or
+`flutter test integration_test/...` on a phone, first install a debug build yourself with
+`adb -s <device-id> install -r` and stop if that is refused: when Flutter's own install is
+refused (a different signing key, or MIUI's "Install via USB?" question left unanswered),
+Flutter uninstalls the app even with `--no-uninstall`, which deletes every session on the phone.
+So never leave a device check running unattended on a phone that may ask that question. Backup
+and reinstall steps: *Build and test* in the overview.
 
 Do not place in any git tracked file any private or sensitive data like email addresses,
 passwords, any sort of digital keys.
@@ -81,23 +130,16 @@ material that is not ours to share came from (describe it by what it is, for exa
 compilation video"). Phones are named by model, never by serial number (`adb devices -l` lists
 both); use placeholders such as `<device-id>` in commands.
 
-Do not read without being asked specifically into the folder `~/InsectDetectApp/sessions/`. 
-It contains many txt files with test session outputs.
-Sometimes for diagnostics, the project owner might ask you to read specific 
-files or lines within those files.
-If needing to read some of those files at `~/InsectDetectApp/sessions/`,
-then ask for permission first and always use keywords search and do not read entire 
-large txt files.
-
-Avoid the usage em dash (—) as a punctuation mark, I prefer parentheses (round brackets).
+Do not read `~/InsectDetectApp/sessions/` (test session outputs, many large text files) unless
+the owner asks. Then ask before reading, use keyword searches, and never read a large file whole.
 
 **Git related:**
 
 - Do not perform destructive Git operations without explicit approval.
 - Do not git commit or git push changes unless requested by project owner via prompts.
 - Never git push to main branch and never force push. 
-- When you implement code changes, and git is on main, then git branch into `develop`,
-  but do not git commit the changes.
+- Work on `develop`: if the repository is on `main` when you start changing files, switch to
+  `develop` first (and do not commit).
 - If asked to commit, stage files by name (`git add <path>`), never `git add -A` or `git add .`: model files, logs
   and other local files can sit in the working tree, and binaries never go into git.
 - Change the app version in `pubspec.yaml` only when the owner asks (release rounds).
