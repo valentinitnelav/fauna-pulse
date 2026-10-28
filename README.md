@@ -68,7 +68,9 @@
 ### Live-AI detection & tracking - demo (YouTube)
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Video tutorial on YouTube: find and name insects in a video" height="200"></a>
+  <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Insect tracking - Hymenoptera" height="200"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.youtube.com/watch?v=rCNEcfg4Rfc"><img src="https://i.ytimg.com/vi/rCNEcfg4Rfc/hqdefault.jpg" alt="Insect tracking - Megachile" height="200"></a>  
 </p>
 
 ### Tutorials (YouTube)
@@ -79,11 +81,11 @@
   <a href="https://www.youtube.com/watch?v=ScNR98OW6T0"><img src="https://i.ytimg.com/vi/ScNR98OW6T0/hqdefault.jpg" alt="Video tutorial on YouTube: find and name mammals in a video" height="200"></a>
 </p>
 
-Two short videos (about 70 s each) show how to find and name the animals in a saved video, on the phone:
+Example of two short videos (about 70 s each) which show how to find and name the animals in a saved video, on the phone:
 [insects](https://www.youtube.com/watch?v=Ql_NyHM_RQA) and
 [mammals](https://www.youtube.com/watch?v=ScNR98OW6T0). Try it yourself with the same two demo
-videos and the [written tutorial](docs/TUTORIAL_VIDEO_ANALYSIS.md). All FaunaPulse videos are
-in this [YouTube playlist](https://www.youtube.com/playlist?list=PLAgrK7hpiwrI).
+videos and the [written tutorial](docs/TUTORIAL_VIDEO_ANALYSIS.md). 
+More demo & tutorial videos are in the [FaunaPulse YouTube playlist](https://www.youtube.com/playlist?list=PLAgrK7hpiwrI).
 
 ## Overview
 
