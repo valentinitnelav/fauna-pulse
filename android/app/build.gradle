@@ -285,7 +285,7 @@ dependencies {
     // model in the download list uses QNN; a *_qnn.onnx model in the normal build fails to load with a clear
     // message (Predictor.create catches the missing classes; modelLoadHint explains the edition).
     if (project.findProperty('qnn') == 'true') {
-        implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.26.0")
+        implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.29.0")
         // Override the AAR's transitive QAIRT 2.42 with 2.46: 2.42's device table predates the
         // Snapdragon 8 Elite Gen 5 (SM8850), failing QnnDevice_create with INVALID_CONFIG.
         implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
