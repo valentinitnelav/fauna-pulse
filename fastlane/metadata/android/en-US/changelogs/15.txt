@@ -1,0 +1,6 @@
+Version 0.10.0-beta.1
+- Finding and identifying animals in saved videos and photos goes on in the background, with a notification.
+- Imported and downloaded files are checked more strictly and can no longer close the app.
+- Crops carry the position unless you turn off the new switch; problem reports leave out your field notes.
+- New Device ID field; "Don't show again" for notes that repeat.
+Full details: see CHANGELOG.md on the project's GitHub page.

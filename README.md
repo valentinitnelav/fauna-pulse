@@ -5,34 +5,6 @@
     width="100"
     align="middle"
   />
-  &nbsp;&nbsp;
-  <img
-    src="https://github.com/user-attachments/assets/5b320036-3c86-4a53-b19f-a5d77c45ee3f"
-    alt="Phone setup"
-    height="200"
-    align="middle"
-  />
-  &nbsp;&nbsp;
-  <img
-    src="https://github.com/user-attachments/assets/2f6ced65-be59-455c-be68-231fdb002ae0"
-    alt="Video demo"
-    height="200"
-    align="middle"
-  />
-  &nbsp;&nbsp;
-  <img
-    src="https://github.com/user-attachments/assets/178e2b09-df9c-4c1b-b8f9-db6c357ed9d5"
-    alt="Pollinator detection & tracking"
-    height="200"
-    align="middle"
-  />
-  &nbsp;&nbsp;
-  <img
-    src="https://github.com/user-attachments/assets/f4706303-bc0f-4e12-a307-1cd60436d3fd"
-    alt="Wildlife detection & tracking"
-    height="200"
-    align="middle"
-  />
 </p>
 
 <h1 align="center">FaunaPulse</h1>
@@ -61,13 +33,57 @@
 <a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
 </p>
 
-## Demo
+## Demos & Tutorials
 
-<div align="center">
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/5b320036-3c86-4a53-b19f-a5d77c45ee3f"
+    alt="Phone setup"
+    height="200"
+    align="middle"
+  />
+  &nbsp;&nbsp;
+  <img
+    src="https://github.com/user-attachments/assets/0018244c-6b80-4586-8779-84e68659edf6"
+    alt="Pollinator detection & tracking"
+    height="200"
+    align="middle"
+  />
+  &nbsp;&nbsp;  
+  <img
+    src="https://github.com/user-attachments/assets/178e2b09-df9c-4c1b-b8f9-db6c357ed9d5"
+    alt="Pollinator detection & tracking"
+    height="200"
+    align="middle"
+  />
+  &nbsp;&nbsp;
+  <img
+    src="https://github.com/user-attachments/assets/baa2b046-e3f3-42a8-98c2-0bfc855fb815"
+    alt="Wildlife detection & tracking"
+    height="200"
+    align="middle"
+  />
+</p>
 
-https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
+### Live-AI detection & tracking - demo (YouTube)
 
-</div>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Video tutorial on YouTube: find and name insects in a video" height="200"></a>
+</p>
+
+### Tutorials (YouTube)
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=Ql_NyHM_RQA"><img src="https://i.ytimg.com/vi/Ql_NyHM_RQA/hqdefault.jpg" alt="Video tutorial on YouTube: find and name insects in a video" height="200"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.youtube.com/watch?v=ScNR98OW6T0"><img src="https://i.ytimg.com/vi/ScNR98OW6T0/hqdefault.jpg" alt="Video tutorial on YouTube: find and name mammals in a video" height="200"></a>
+</p>
+
+Two short videos (about 70 s each) show how to find and name the animals in a saved video, on the phone:
+[insects](https://www.youtube.com/watch?v=Ql_NyHM_RQA) and
+[mammals](https://www.youtube.com/watch?v=ScNR98OW6T0). Try it yourself with the same two demo
+videos and the [written tutorial](docs/TUTORIAL_VIDEO_ANALYSIS.md). All FaunaPulse videos are
+in this [YouTube playlist](https://www.youtube.com/playlist?list=PLAgrK7hpiwrI).
 
 ## Overview
 
@@ -75,12 +91,12 @@ https://github.com/user-attachments/assets/019fce16-bff3-4ec0-b100-db58dfc925b0
 
 Think of **FaunaPulse** as the chassis of a car where you can drop in your own engine: it **provides the platform to run custom AI models, on-device**, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).
 
-> **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also train and export models tailored to your specific imagery and use case.**
+> **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
 
 The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
 With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
 
-For older or used Android smartphones not capable of supporting AI models, its sister app, [FaunaLapse][fauna_lapse], is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
+For older or used Android smartphones not capable of supporting AI models, its sister app, [**FaunaLapse**][fauna_lapse], is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
 
 ### Further details
 
@@ -91,7 +107,7 @@ FaunaPulse is intended as a passive, non-invasive imaging tool. Detection, track
 
 A draggable square **region of interest (ROI)** can be placed over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves (locally, on device) ROI-cropped JPEG images (or videos) together with metadata. At the end of the recording session, it outputs a dashboard screen with info and graphs about the visitation rates and the captured images with the tracked objects for preview an check. Saved images and session metadata can later be exported on a PC for analysis in research workflows.
 
-An experimental **Identify organisms** step can run the [BioCLIP 2][bioclip] image classifier on the phone itself over the saved crops of every track ID (the model and a name list are downloaded in the app on the **Download & import models** screen, or imported; see `docs/IDENTIFICATION.md`). Identification needs a lot of the phone's memory: keep FaunaPulse on the screen until it ends, because if you switch to another app, Android may make it wait or stop it. BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC (with or without a GPU) - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). The PC tool [fauna-pulse-export][fp_export] adapts FaunaPulse sessions to the data structure that software package ingests, and puts the names from both programs side by side per track ID.
+The **Identify organisms** step can run the [BioCLIP 2][bioclip] image classifier on the phone itself over the saved crops of every track ID (the model and a name list are downloaded in the app on the **Download & import models** screen, or imported; see `docs/IDENTIFICATION.md`). Identification needs a lot of the phone's memory: keep FaunaPulse on the screen until it ends, because if you switch to another app, Android may make it wait or stop it. BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC (with or without a GPU) - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). The PC tool [fauna-pulse-export][fp_export] adapts FaunaPulse sessions to the data structure that software package ingests, and puts the names from both programs side by side per track ID.
 
 For interested end-users, saved images can also be reviewed and manually cropped as an extra feature. Organism crops can then be shared with or imported into identification apps such as: [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. Therefore, you can choose the identification service best suited to your needs. Note that at the time of releasing this repository, the apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. While this sharing feature is possible, FaunaPulse is designed with offline usage in mind and bulk processing (e.g. mass classification with BioCLIP models on device) for scaling monitoring while keeping your data local.
 
@@ -174,6 +190,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 |---|---|---|
 | [README.md](./README.md) | Everyone | This document |
 | [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source; import models. |
+| [TUTORIAL_VIDEO_ANALYSIS.md](docs/TUTORIAL_VIDEO_ANALYSIS.md) | New user | Try FaunaPulse in a few minutes: find, track and name the animals in two demo videos. |
 | [CHANGELOG.md](./CHANGELOG.md) | Everyone | What changed between releases. |
 | [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
 | [FIELD_GUIDE.md](docs/FIELD_GUIDE.md) | Field researcher | Run a session, read the live screen and troubleshoot. |
@@ -236,7 +253,7 @@ See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reac
 - [BioCLIP 2][bioclip2]
 - [insectDCT][insectdct]
 
-Classifiers like [BioCLIP 2][bioclip2] are currently under experimental implementation for bulk (en-masse) classification on-device without an internet connection. Quality of results may be noisy.
+Classifiers like [BioCLIP 2][bioclip2] are currently under implementation for bulk (en-masse) classification on-device without an internet connection. Quality of results may be noisy.
 
 BioCLIP chooses each animal's name from a name list. Such lists are prepared per region (e.g. Europe) and taxonomic categories (e.g. common orders of pollinators) for the animals you watch. Narrowing the scope of the large name lists can help with more realistic identification results. For example, there is no need to allow a model to think that zebras can be found within the wildlife of Europe or act as pollinators. At least not in this universe...
 

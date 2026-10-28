@@ -6,6 +6,39 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
+## 0.10.0-beta.1 (2026-10-28)
+
+Analyses go on in the background, imported files are checked more strictly, and a few
+privacy and comfort changes.
+
+- **Analyses go on in the background.** *Find animals in videos*, *Find animals in photos*
+  and *Identify organisms* keep running while you use other apps or the screen is off. A
+  notification says so; tapping it opens the running screen, where *Stop* ends the run
+  (what is done is kept). On Android 15 and newer, Android protects such work for about
+  6 hours a day. If Android closes FaunaPulse during an identification, the next opening
+  says so and offers *Continue*; nothing starts by itself. When there is too little free
+  memory to load BioCLIP in the background, the identification waits until you open
+  FaunaPulse again, instead of being closed by Android.
+- **Safer files.** Model files, name lists and photos that you import or download can no
+  longer close the app, also when they are damaged or made to harm; FaunaLapse zips, name
+  lists and videos are checked more strictly. Your own model file is no longer replaced by
+  a download with the same name.
+- **Privacy.** Saved and shared crops carry the position from the field notes unless the
+  new switch *Add the position to exported crops* (Session settings) is off. Problem
+  reports leave out the field notes you typed and every position. Spreadsheet cells that
+  start like a formula are made harmless.
+- **Device ID** field on the Field notes page, above Sample ID: it names the phone in the
+  results, so phones of the same model stay apart.
+- Notes that come back every time have **Don't show again**; *Show tips and notes* in the
+  Home menu brings them back. The message after saving crops stays 10 s.
+- The name lists offered are the v2 lists; the 32-family demo lists are no longer offered.
+  The info card of each model offered links its model card on Hugging Face.
+- When Android closes FaunaPulse in the background (for example while a link is open in
+  the browser), most screens come back as you left them instead of starting over on Home.
+- Fixed: a download hung when the storage filled up; a damaged detection model was
+  reported as unreadable videos.
+- Updated the Guava library (security fix).
+
 ## 0.9.0-beta.1 (2026-10-18)
 
 The first beta: the features are in place for field use, bugs are still possible, and from

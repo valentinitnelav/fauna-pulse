@@ -19,8 +19,8 @@ abstract: >-
 type: software
 license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
-version: "0.9.0-beta.1"
-date-released: "2026-10-18"
+version: "0.10.0-beta.1"
+date-released: "2026-10-28"
 keywords:
   - pollinators
   - pollination ecology

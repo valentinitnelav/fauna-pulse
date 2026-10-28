@@ -8,6 +8,7 @@ the saved photos of every track ID are cut to crops, each crop is turned into an
 the crops of one track ID are combined into one answer with a confidence per taxonomic
 rank (order, family, genus, species). Everything runs on the phone; nothing is uploaded.
 It is meant for bulk processing after a day of recording, with the phone plugged in.
+To try it in a few minutes, follow the [tutorial](TUTORIAL_VIDEO_ANALYSIS.md) with two demo videos.
 
 Background and design: `BIOCLIP_ON_DEVICE_PLAN.md` (owner's notes, outside this repo).
 

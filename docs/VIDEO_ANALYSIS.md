@@ -499,6 +499,9 @@ track ID breaks into pieces.
 
 ## 6. Where to get videos
 
+To try the workflow first, the [tutorial](TUTORIAL_VIDEO_ANALYSIS.md) uses two short public-domain demo
+videos (a honey bee on a flower, two deer at a trail camera).
+
 No widely used flower-visitor video set with human-annotated tracks turned up in the
 search for this guide (September 2026), so your own and collaborators' videos, counted
 as in §3, are the realistic source. Useful public material:

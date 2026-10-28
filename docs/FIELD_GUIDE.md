@@ -379,8 +379,9 @@ battery managers additionally need FaunaPulse enabled under **Autostart**.
 *Find animals in photos* and *Identify organisms* (also when started by *Also
 identify them*) go on while you use other apps or the screen is off. While one
 runs, a notification says so ("FaunaPulse is finding animals in videos", "… in
-photos" or "FaunaPulse is identifying animals"); tapping it should open the running
-screen (not yet checked on a phone). *Stop* on that screen, or swiping FaunaPulse away
+photos" or "FaunaPulse is identifying animals"); tapping it opens the running screen
+(checked for *Find animals in videos* on Android 14). The notification can take about 10
+seconds to appear, because Android waits that long before it shows such notifications. *Stop* on that screen, or swiping FaunaPulse away
 from the recent apps, ends the run (what is done is kept). On Android 15 and newer,
 Android should protect such work for about 6 hours a day; after that the run should go
 on, but Android may close the app while it is in the background (not yet tested on an
