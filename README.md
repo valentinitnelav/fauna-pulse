@@ -65,11 +65,21 @@
   />
 </p>
 
-### Live-AI detection & tracking - demo (YouTube)
+### Demos (YouTube)
+
+#### Live-AI detection & tracking
+
+Demonstrates real-time AI tracking of organisms.
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Insect tracking - Hymenoptera" height="200"></a>
-  &nbsp;&nbsp;
+  <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Insect tracking - Hymenoptera" height="200"></a> 
+</p>
+
+#### Detection & tracking in post-processing
+
+Demonstrates real-time AI tracking of organisms on previously recorded videos (either within the app, or imported from your camera app or other sources)
+
+<p align="center">
   <a href="https://www.youtube.com/watch?v=rCNEcfg4Rfc"><img src="https://i.ytimg.com/vi/rCNEcfg4Rfc/hqdefault.jpg" alt="Insect tracking - Megachile" height="200"></a>  
 </p>
 
