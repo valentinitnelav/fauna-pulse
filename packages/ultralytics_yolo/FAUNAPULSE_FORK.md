@@ -137,8 +137,9 @@ The headline changes, with the round that introduced each (full rationale in
   it opened any address with no size limit).
 - **Upstream CI files:** `packages/ultralytics_yolo/.github/` holds upstream's
   workflows and Dependabot file. GitHub runs workflows only from the
-  repository root, so they never run here; the app's own Dependabot file
-  watches this plugin's Gradle libraries (r329).
+  repository root, so they never run here; the app's dependency graph
+  workflow reports this plugin's Android libraries to GitHub, so that
+  Dependabot security alerts cover them (r339).
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

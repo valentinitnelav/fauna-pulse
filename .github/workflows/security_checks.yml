@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Actions are pinned to a commit (a tag can be moved to other code); Dependabot updates
-      # the commit and the version comment together.
+      # Actions are pinned to a commit (a tag can be moved to other code); an update changes
+      # the commit and the version comment together, in this file and in dependency_graph.yml.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # The committed gradle-wrapper.jar files must be the ones Gradle publishes.

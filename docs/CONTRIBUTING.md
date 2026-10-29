@@ -48,26 +48,32 @@ For a normal contribution:
 5. Delete the short-lived branch after the pull request is merged or closed.
 
 Use a concise branch prefix such as `fix/`, `feature/`, `docs/` or
-`test/`. Do not build new work on a Dependabot branch or delete one directly.
-Each `dependabot/...` branch belongs to an automated dependency pull request;
-review, merge or close that pull request instead.
+`test/`.
 
-Dependabot version updates also target `develop`. Patch-level Pub updates are
-grouped to reduce noise, while Android build-toolchain updates are grouped
-together because Gradle, the Android Gradle Plugin and Kotlin must remain
-compatible. Native QNN and ONNX Runtime updates stay separate because they need
-specific on-device validation.
+### Library updates
 
-When this policy changes, existing bot pull requests may keep their old base
-branch or grouping until Dependabot replaces them. Do not delete their branches
-manually. Close an obsolete pull request only after its replacement appears, or
-after deliberately deciding to defer that dependency version.
+Dependabot makes security updates only. There is no `.github/dependabot.yml`,
+so it opens no routine version pull requests. Libraries are updated on purpose,
+in a round before a release. Gradle, the Android Gradle Plugin and Kotlin are
+updated together because they must stay compatible. Native libraries (LiteRT,
+QNN, ONNX Runtime) also need a check on a phone.
+
+A Dependabot security pull request targets `main`, because GitHub always uses
+the default branch. Do not merge it there: make the same update on `develop`,
+then close the pull request.
+
+GitHub cannot read Gradle files by itself. The workflow
+`.github/workflows/dependency_graph.yml` sends the list of Android libraries
+that ship in the app to GitHub, so that the security alerts cover them too.
 
 ### Maintainer repository settings
 
 Keep `main` as the default branch. In GitHub's repository settings:
 
 - Enable **Automatically delete head branches** after pull requests are merged.
+- Under **Advanced Security**, enable **Dependabot alerts** and **Dependabot
+  security updates**. Leave Dependabot version updates off (see *Library
+  updates*).
 - Protect `main` with a ruleset that blocks force pushes and deletion and
   requires a pull request plus the security/release checks.
 - Periodically run `git fetch --prune` locally to remove references to branches

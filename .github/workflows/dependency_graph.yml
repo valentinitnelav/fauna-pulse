@@ -1,0 +1,54 @@
+name: Android dependency graph
+
+# GitHub cannot read Gradle files by itself, so without this workflow the
+# Dependabot security alerts and security updates never see the Android
+# libraries (LiteRT, CameraX, Guava, SnakeYAML ...), some of which read files
+# that users import. Alerts are made for the default branch (main), so the
+# list is sent when main changes; on develop the workflow runs only when a
+# library file changes, which checks it before the next release.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "android/**"
+      - "packages/ultralytics_yolo/android/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/dependency_graph.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gradle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # the dependency submission API needs it
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The Android build loads Gradle code from the Flutter SDK and the
+      # plugins that `flutter pub get` resolves.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.47.7" # keep equal to security_checks.yml
+          channel: stable
+          cache: true
+
+      - name: Resolve application dependencies
+        run: flutter pub get
+
+      # Only what ships in the app: test and build-tool libraries never reach
+      # a phone, and their alerts would be noise.
+      - uses: gradle/actions/dependency-submission@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          build-root-directory: android
+          dependency-graph: generate-and-submit
+          dependency-graph-include-configurations: releaseRuntimeClasspath

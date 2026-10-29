@@ -42,8 +42,13 @@ Directory _session({
   required bool Function(int ms) insect,
   Set<int> failed = const {},
 }) {
-  final dir = Directory.systemTemp.createTempSync('photo_tracker_test_');
-  addTearDown(() => dir.deleteSync(recursive: true));
+  // A parent folder of its own: the analysis screen lists every session in
+  // the parent, and the system temp folder also holds the sessions of test
+  // files that run at the same time (all of them at once on GitHub). A second
+  // session there made the screen tests fail now and then.
+  final root = Directory.systemTemp.createTempSync('photo_tracker_test_');
+  addTearDown(() => root.deleteSync(recursive: true));
+  final dir = Directory('${root.path}/photo_tracker_session')..createSync();
   final stepMs = (stepS * 1000).round();
   final times = [
     for (var t = 0; t < 10000; t += stepMs) t,
