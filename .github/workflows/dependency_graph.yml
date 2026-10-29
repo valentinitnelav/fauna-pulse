@@ -1,9 +1,8 @@
 name: Android dependency graph
 
 # GitHub cannot read Gradle files by itself, so without this workflow the
-# Dependabot security alerts and security updates never see the Android
-# libraries (LiteRT, CameraX, Guava, SnakeYAML ...), some of which read files
-# that users import. Alerts are made for the default branch (main), so the
+# Dependabot security alerts never see the Android libraries (LiteRT, CameraX,
+# Guava, SnakeYAML ...), some of which read files that users import. Alerts are made for the default branch (main), so the
 # list is sent when main changes; on develop the workflow runs only when a
 # library file changes, which checks it before the next release.
 on:
@@ -45,10 +44,14 @@ jobs:
       - name: Resolve application dependencies
         run: flutter pub get
 
-      # Only what ships in the app: test and build-tool libraries never reach
-      # a phone, and their alerts would be noise.
+      # Only what ships in the app: the app's release runtime list, after
+      # Gradle picked one version of each library. Test and build-tool
+      # libraries never reach a phone, and each plugin's own list still holds
+      # the older versions the app replaces (old Guava, JUnit): sending those
+      # gave alerts for libraries the app does not contain.
       - uses: gradle/actions/dependency-submission@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           build-root-directory: android
           dependency-graph: generate-and-submit
-          dependency-graph-include-configurations: releaseRuntimeClasspath
+          dependency-graph-include-projects: "^:app$"
+          dependency-graph-include-configurations: "^releaseRuntimeClasspath$"

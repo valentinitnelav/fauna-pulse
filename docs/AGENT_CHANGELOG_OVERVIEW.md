@@ -301,9 +301,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   `dashboard_stats.json` is versioned.
 
 ### Build, release, repository
-- **Branches:** `main` = stable, `develop` = integration (base for PRs). Dependabot makes
-  security updates only (no `dependabot.yml`); library updates are made in a round
-  (`docs/CONTRIBUTING.md`, *Library updates*).
+- **Branches:** `main` = stable, `develop` = integration (base for PRs). Dependabot keeps
+  alerts only (no `dependabot.yml`, security updates off); check open alerts before a
+  release, library updates are made in a round (`docs/CONTRIBUTING.md`, *Library updates*).
 - **Toolchain:** Gradle, AGP, Kotlin and SDK levels are pinned in `android/`; keep
   `android.builtInKotlin=false` and `android.newDsl=false`; `file_picker` stays `^10.3.10`. App id
   `com.faunapulse.app`; native classes stay in `com.ultralytics.yolo`. Keep the tracked Gradle
