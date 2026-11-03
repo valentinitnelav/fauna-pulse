@@ -119,8 +119,8 @@ class VideoAnalysisPrefs {
   ByteTrackParams trackerParams;
   CBiouParams cbiouParams;
 
-  /// How often the phone's temperature, power and speed are logged during a
-  /// run (round 232), seconds.
+  /// How often the battery temperature, memory, processor use, power and
+  /// speed are logged during a run (round 232), seconds.
   double sampleSeconds;
 
   /// Kept frames per visit (round 234): on/off, and the live camera's photo
@@ -1998,6 +1998,10 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               paused: p.note.isNotEmpty,
               limitWhere: '"Detection, track ID and identification settings"',
             ),
+          if (p.phone case final phone?) ...[
+            ...memoryGauge(phone),
+            ...appCpuLine(phone),
+          ],
         ],
         const SizedBox(height: 8),
         OutlinedButton.icon(

@@ -2103,17 +2103,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 setState(() => _c = _c.copyWith(fpsSampleSeconds: v.round())),
           ),
           NumericSettingField(
-            label: 'Temperature sample',
+            label: 'Phone readings sample',
             value: _c.thermalSampleSeconds.toDouble(),
             min: 1,
             max: 120,
             isInt: true,
             unitSuffix: 's',
             helperText:
-                'How often (1–120 s) the phone temperature is sampled. '
-                'Each reading asks Android for the value, so it is taken less '
-                'often (heat changes slowly). '
-                'Default 10 s.',
+                'How often (1–120 s) the battery temperature, the memory in use '
+                'and the processor cores this app keeps busy are logged (one '
+                'reading gives all three). Each reading asks Android for the '
+                'values, so it is taken less often (heat and memory change '
+                'slowly). Default 10 s.',
             onChanged: (v) => setState(
               () => _c = _c.copyWith(thermalSampleSeconds: v.round()),
             ),

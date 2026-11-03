@@ -5,6 +5,10 @@
 // down to cool off). This talks to a tiny native method channel (see
 // MainActivity.kt) to read the battery temperature in °C and the OS thermal
 // status, so we can show it on screen and record it in the session log.
+// The same call also brings the phone's memory and this app's processor use
+// (round 346): they need no timer or channel of their own.
+
+import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
@@ -53,6 +57,31 @@ class ThermalReading {
   /// a NaN reading).
   final double? thermalHeadroom;
 
+  /// Memory of the whole phone, in bytes: all of it, the part still free (the
+  /// smaller of Android's availMem and the kernel's MemAvailable, the rule of
+  /// `identifyFitsInBackground`: availMem can count page cache that cannot be
+  /// freed), and the free amount below which Android starts closing background
+  /// apps (ActivityManager.MemoryInfo.threshold). Null when the phone gave nothing.
+  final int? memTotalBytes;
+  final int? memFreeBytes;
+  final int? lowMemoryBytes;
+
+  /// Memory this app's process holds (VmRSS), bytes. The loaded model is most of it.
+  final int? appMemoryBytes;
+
+  /// Processor time this app's process has used since it started (ms, all its
+  /// threads together) and the monotonic clock it was read at. [DeviceThermal]
+  /// turns two readings into [appCpuCores]; the log keeps the raw time too.
+  final int? appCpuMs;
+  final int? uptimeMs;
+  final int? cpuCount;
+
+  /// Processor cores this app kept busy on average over about the last 10 s
+  /// (0 to [cpuCount]). Its own process only: the camera and the video decoder
+  /// run in other Android processes, so this is not the whole phone's load
+  /// (which apps cannot read since Android 8). Null until a second reading.
+  final double? appCpuCores;
+
   const ThermalReading({
     this.batteryTempC,
     this.thermalStatus,
@@ -62,7 +91,22 @@ class ThermalReading {
     this.isCharging,
     this.isPlugged,
     this.thermalHeadroom,
+    this.memTotalBytes,
+    this.memFreeBytes,
+    this.lowMemoryBytes,
+    this.appMemoryBytes,
+    this.appCpuMs,
+    this.uptimeMs,
+    this.cpuCount,
+    this.appCpuCores,
   });
+
+  /// Memory in use by everything on the phone (bytes), or null.
+  int? get memUsedBytes {
+    final total = memTotalBytes, free = memFreeBytes;
+    if (total == null || free == null) return null;
+    return (total - free).clamp(0, total);
+  }
 
   /// Instantaneous power draw in watts (W) = |current (A)| × voltage (V).
   /// Returns null if either current or voltage is unavailable.
@@ -83,6 +127,13 @@ class ThermalReading {
     'thermal_headroom': thermalHeadroom,
     // Derived (so downstream R/Python don't have to recompute it).
     'power_w': powerW,
+    'mem_total_bytes': memTotalBytes,
+    'mem_free_bytes': memFreeBytes,
+    'low_memory_bytes': lowMemoryBytes,
+    'app_memory_bytes': appMemoryBytes,
+    'app_cpu_ms': appCpuMs,
+    'app_cpu_cores': appCpuCores,
+    'cpu_count': cpuCount,
   };
 
   /// A short chip label, e.g. "31.2°C" or "31.2°C (severe)". Empty when nothing
@@ -119,12 +170,49 @@ class DeviceThermal {
   static Duration? _cachedAt;
   static Future<ThermalReading>? _inFlight;
 
+  /// The previous native CPU-time reading (ms) and the phone clock it came
+  /// with (ms), and the smoothed "cores busy" built from the readings so far.
+  static (int cpuMs, int uptimeMs)? _lastCpu;
+  static double? _cpuEma;
+
+  /// "Cores busy" is an average over about this long (an exponential moving
+  /// average): at the usual 10 s sample it is simply the last interval, while a
+  /// job that reads every second (Identify reads per photo) still shows a
+  /// steady number instead of one that jumps with every burst of work.
+  static const Duration cpuWindow = Duration(seconds: 10);
+
+  /// A gap longer than this between two readings starts the average afresh:
+  /// the number would otherwise be the average of a long idle time (the
+  /// longest sample interval a setting allows is 120 s).
+  static const Duration cpuRestartGap = Duration(seconds: 150);
+
   @visibleForTesting
   static void resetForTesting() {
     _cached = null;
     _cachedAt = null;
     _inFlight = null;
+    _lastCpu = null;
+    _cpuEma = null;
     now = () => _monotonic.elapsed;
+  }
+
+  /// Folds a new native CPU-time reading into the running average and returns
+  /// it, or null until two readings exist (or after a long gap).
+  static double? _coresBusy(int? cpuMs, int? uptimeMs) {
+    if (cpuMs == null || uptimeMs == null) return null;
+    final prev = _lastCpu;
+    _lastCpu = (cpuMs, uptimeMs);
+    if (prev == null) return null;
+    final dt = uptimeMs - prev.$2;
+    if (dt <= 0 || dt > cpuRestartGap.inMilliseconds) {
+      _cpuEma = null;
+      return null;
+    }
+    final cores = ((cpuMs - prev.$1) / dt).clamp(0.0, double.infinity);
+    final weight = min(1.0, dt / cpuWindow.inMilliseconds);
+    final ema = _cpuEma;
+    _cpuEma = ema == null ? cores : ema + weight * (cores - ema);
+    return (_cpuEma! * 100).round() / 100;
   }
 
   /// Reads the current thermal state. Returns an empty reading on any error
@@ -145,18 +233,32 @@ class DeviceThermal {
   static Future<ThermalReading> _fetch() async {
     try {
       final res = await _channel.invokeMapMethod<String, dynamic>('getThermal');
-      final reading = res == null
-          ? const ThermalReading()
-          : ThermalReading(
-              batteryTempC: (res['batteryTempC'] as num?)?.toDouble(),
-              thermalStatus: res['thermalStatus'] as String?,
-              batteryCurrentUa: (res['batteryCurrentUa'] as num?)?.toInt(),
-              batteryVoltageMv: (res['batteryVoltageMv'] as num?)?.toInt(),
-              chargeCounterUah: (res['chargeCounterUah'] as num?)?.toInt(),
-              isCharging: res['isCharging'] as bool?,
-              isPlugged: res['isPlugged'] as bool?,
-              thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
-            );
+      final ThermalReading reading;
+      if (res == null) {
+        reading = const ThermalReading();
+      } else {
+        int? n(String key) => (res[key] as num?)?.toInt();
+        final avail = n('memAvailBytes'), kernel = n('memAvailableKernelBytes');
+        final cpuMs = n('appCpuMs'), uptimeMs = n('uptimeMs');
+        reading = ThermalReading(
+          batteryTempC: (res['batteryTempC'] as num?)?.toDouble(),
+          thermalStatus: res['thermalStatus'] as String?,
+          batteryCurrentUa: n('batteryCurrentUa'),
+          batteryVoltageMv: n('batteryVoltageMv'),
+          chargeCounterUah: n('chargeCounterUah'),
+          isCharging: res['isCharging'] as bool?,
+          isPlugged: res['isPlugged'] as bool?,
+          thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
+          memTotalBytes: n('memTotalBytes'),
+          memFreeBytes: avail == null || kernel == null ? avail ?? kernel : min(avail, kernel),
+          lowMemoryBytes: n('lowMemoryBytes'),
+          appMemoryBytes: n('appRssBytes'),
+          appCpuMs: cpuMs,
+          uptimeMs: uptimeMs,
+          cpuCount: n('cpuCount'),
+          appCpuCores: _coresBusy(cpuMs, uptimeMs),
+        );
+      }
       _cached = reading;
       _cachedAt = now();
       return reading;

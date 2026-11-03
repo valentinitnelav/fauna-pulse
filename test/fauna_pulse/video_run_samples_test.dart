@@ -15,9 +15,21 @@ const t0 = 1000000000;
 String rec(String type, int t, [Map<String, dynamic> fields = const {}]) =>
     jsonEncode({'type': type, 'time_ms': t, ...fields});
 
+const gb = 1024 * 1024 * 1024;
+
 /// The three records of one sample, as VideoDetector writes them.
 List<String> sampleAt(int t, {double temp = 30, bool paused = false, Map<String, dynamic>? speed, bool plugged = false}) => [
-  rec('thermal', t, {'battery_temp_c': temp, 'thermal_status': 'none', 'thermal_headroom': null, if (paused) 'paused': true}),
+  rec('thermal', t, {
+    'battery_temp_c': temp,
+    'thermal_status': 'none',
+    'thermal_headroom': null,
+    // Round 346 fields; the first sample of a run has no cores figure yet.
+    'mem_total_bytes': 4 * gb,
+    'mem_free_bytes': gb,
+    'app_memory_bytes': gb,
+    'app_cpu_cores': speed == null ? null : 1.5,
+    if (paused) 'paused': true,
+  }),
   rec('power', t, {
     'power_w': 2.0,
     'battery_current_ua': -500000,
@@ -57,6 +69,9 @@ void main() {
     expect(s.runGapMs, 150000);
     expect(s.temps.map((p) => p.$1), [0, 10000, 20000, 180000, 210000]);
     expect(s.temps.map((p) => p.$2), [30, 30, 39, 30, 30]);
+    expect(s.memUsedGb.map((p) => p.$2), [3.0, 3.0, 3.0, 3.0, 3.0]);
+    expect(s.appCpuCores, [(10000, 1.5), (20000, 1.5), (210000, 1.5)]);
+    expect(s.samples.first.appMem, gb);
     expect(s.samples.map((x) => x.run), [1, 1, 1, 2, 2]);
     expect(s.framesPerS, [(10000, 12.5), (20000, 2.0), (210000, 10.0)]);
     // The period with a cooling pause is left out of the "while running" figures.
@@ -115,6 +130,13 @@ void main() {
         batteryVoltageMv: 8812, // a Xiaomi's two-cell voltage, logged raw
         isCharging: false,
         isPlugged: false,
+        memTotalBytes: 4 * gb,
+        memFreeBytes: gb + gb ~/ 2,
+        lowMemoryBytes: gb ~/ 4,
+        appMemoryBytes: gb,
+        appCpuMs: 12345,
+        appCpuCores: 1.25,
+        cpuCount: 8,
       ),
       now: () => t,
       sleep: (d) async => t = t.add(d),

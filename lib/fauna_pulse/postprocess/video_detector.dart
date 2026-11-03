@@ -152,6 +152,10 @@ class VideoProgress {
   /// Non-empty while paused (plain-language reason).
   final String note;
 
+  /// The last full phone reading (round 346: the memory scale and the processor line under
+  /// the progress come from it; [tempC] stays for the gauge). Null before the first reading.
+  final ThermalReading? phone;
+
   const VideoProgress({
     required this.clipIndex,
     required this.clipCount,
@@ -162,6 +166,7 @@ class VideoProgress {
     required this.msPerFrame,
     this.tempC,
     this.note = '',
+    this.phone,
   });
 }
 
@@ -535,6 +540,7 @@ class VideoDetector {
         try {
           var done = false;
           double? tempC;
+          ThermalReading? phone;
           while (!done && writeError == null) {
             if (isCancelled?.call() ?? false) {
               cancelled = true;
@@ -545,8 +551,9 @@ class VideoDetector {
               limitC: thermalLimitC,
               poll: every < pausePoll ? every : pausePoll,
               isCancelled: isCancelled,
-              onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, t, note)),
+              onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, t, phone, note)),
               onReading: (r, waiting) {
+                phone = r; // onReading comes before onPaused, so the pause progress has it too
                 if (waiting && pauseStart == null) {
                   pauseStart = now();
                   writeRecord('video_thermal_pause', {
@@ -606,7 +613,7 @@ class VideoDetector {
             done = chunk.done;
             final took = now().difference(chunkStart).inMilliseconds;
             if (took > 0) detectMs += took; // never below 0 when the phone's clock is set back
-            onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, tempC, ''));
+            onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, tempC, phone, ''));
           }
         } finally {
           await backend.close();
@@ -748,6 +755,7 @@ class VideoDetector {
     int frames,
     int detectMs,
     double? tempC,
+    ThermalReading? phone,
     String note,
   ) => VideoProgress(
     clipIndex: ci,
@@ -759,5 +767,6 @@ class VideoDetector {
     msPerFrame: frames == 0 ? 0 : detectMs / frames,
     tempC: tempC,
     note: note,
+    phone: phone,
   );
 }

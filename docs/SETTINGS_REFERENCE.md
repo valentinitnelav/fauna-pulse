@@ -660,8 +660,10 @@ Related settings in other places:
 
 The settings below sit in the **Diagnostic graph sampling (advanced)** fold of the Power tab.
 
-Frame rate, phone temperature and battery power are always logged while recording. The readings
-are taken for the live preview anyway, so logging them is free: roughly 2–3 MB per 8-hour session.
+Frame rate, battery temperature (with the phone's memory and the processor cores FaunaPulse
+keeps busy, from the same reading) and battery power are always logged while recording. The
+readings are taken for the live preview anyway, so logging them is free: roughly 2–3 MB per
+8-hour session.
 
 In the session summary they appear under the **Extra graphs (temperature, FPS, power)** section (it also holds the heat level graph). It is collapsed at first, and the app remembers
 whether you last left it open or closed. So the track ID
@@ -670,8 +672,16 @@ timeline (the main result) stays front and centre.
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Frame-rate sample** | `5 s` (1–60 s) | How often the frame rate is logged for the FPS graph. |
-| **Temperature sample** | `10 s` (1–120 s) | How often phone temperature is logged (heat changes slowly). |
+| **Phone readings sample** | `10 s` (1–120 s) | How often the battery temperature, the memory in use and the processor cores FaunaPulse keeps busy are logged (one reading gives all three; heat and memory change slowly). |
 | **Power sample** | `10 s` (1–120 s) | How often battery power and charge are logged for the energy graphs. |
+
+<details>
+<summary>History (sampling)</summary>
+
+- **Phone readings sample:** called "Temperature sample" until round 346, when the memory and
+  processor figures joined the same reading. The saved key (`thermalSampleSeconds`) is unchanged.
+
+</details>
 
 ## Photo analysis (Analysis screen)
 
@@ -884,7 +894,7 @@ from the app's defaults, not from the camera's values, and a change never reache
 | **Area to analyze** | the largest square in the middle, proposed | The square the detector looks at, shown on the first frame to accept or change. Insects outside it are ignored. Kept per session. |
 | **IoU threshold** (Detection) | `0.7` (0.05–0.95) | IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera's default. |
 | **Pause the analysis above** (Detection) | `43 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. The Identification card has its own value. |
-| **Measure the phone every** (Detection) | `10 s` (5–60) | How often the battery temperature, power use and analysis speed are written down during a run, also while it pauses to cool down. Shorter shows quick changes but gives a longer file. |
+| **Measure the phone every** (Detection) | `10 s` (5–60) | How often the battery temperature, the memory in use, the processor cores FaunaPulse keeps busy, the power use and the analysis speed are written down during a run, also while it pauses to cool down. Shorter shows quick changes but gives a longer file. |
 | **Occlusion tolerance** (Track IDs) | `3 s` (0.2–10) | How long an insect can vanish (for example behind a petal) and keep its track ID. Longer: fewer track IDs split in two; too long: two visitors can merge into one. |
 | **Minimum track length** (Track IDs) | `1 s` (0–2) | How long an insect must be seen before it counts as a track ID; shorter sightings are dropped as noise. |
 | **Tracking algorithm** (Track IDs) | `ByteTrack` | ByteTrack or C-BIoU, as on the camera (Tracking, above) but the videos' own choice. |

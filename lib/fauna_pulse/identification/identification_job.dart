@@ -50,6 +50,10 @@ class IdentifyProgress {
   /// Round 319, part 2: time spent on the crops since the first one, heat pauses left out (the
   /// time left on the Identify screen; counted with the pause it grew while nothing ran).
   final int activeMs;
+
+  /// The last full phone reading (round 346: the Identify screen's memory scale and processor
+  /// line come from it; [tempC] stays for the gauge and older callers). Null before the first.
+  final ThermalReading? phone;
   const IdentifyProgress({
     required this.stage,
     required this.done,
@@ -58,6 +62,7 @@ class IdentifyProgress {
     this.tempC,
     this.note = '',
     this.activeMs = 0,
+    this.phone,
   });
 }
 
@@ -365,6 +370,8 @@ class IdentificationJob {
     var embedMs = 0.0;
     var embedCount = 0;
     var lastEmit = Duration.zero;
+    // The last full reading of the thermal governor below, for the progress.
+    ThermalReading? phone;
     void emit(String stage, {double? tempC, String note = ''}) {
       final total = pending.length;
       final doneNow = embedded + skipped + failed;
@@ -377,6 +384,7 @@ class IdentificationJob {
           tempC: tempC,
           note: note,
           activeMs: ((pauseFrom ?? clock.elapsed) - paused).inMilliseconds,
+          phone: phone,
         ),
       );
       lastEmit = clock.elapsed;
@@ -407,6 +415,7 @@ class IdentificationJob {
             pauseFrom ??= clock.elapsed;
             emit('paused', tempC: t, note: note);
           },
+          onReading: (r, _) => phone = r,
           errorTag: 'identify_thermal',
         );
         if (pauseFrom != null) {

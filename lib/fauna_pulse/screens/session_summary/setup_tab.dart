@@ -543,7 +543,7 @@ extension _SummarySetupTab on _SessionSummaryScreenState {
         suffix: ' s',
       );
       add(
-        'Temperature sample interval',
+        'Phone readings sample interval',
         _setting('thermalSampleSeconds', 'thermal_sample_seconds'),
         suffix: ' s',
       );

@@ -281,6 +281,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
           _headroom.addAll(samples.headroom);
           _fps.addAll(samples.framesPerS);
           _infMs.addAll(samples.detectMs);
+          _memUsedGb.addAll(samples.memUsedGb);
+          _appCpuCores.addAll(samples.appCpuCores);
           _buildEnergySeries(samples.power, maxStepMs: samples.runGapMs);
         }
       } else {
@@ -288,6 +290,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
         _headroom.addAll(index.headroom);
         _fps.addAll(index.fps);
         _infMs.addAll(index.infMs);
+        _memUsedGb.addAll(index.memUsedGb);
+        _appCpuCores.addAll(index.appCpuCores);
         _buildEnergySeries(index.powerSamples);
       }
       // If the start/end weren't found from head/tail (rare), fall back here.
@@ -606,6 +610,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
     _headroom.clear();
     _fps.clear();
     _infMs.clear();
+    _memUsedGb.clear();
+    _appCpuCores.clear();
     _power.clear();
     _videoSamples = null;
     _energyTotalWh = _powerAvg = _powerMedian = _powerMin = _powerMax = null;

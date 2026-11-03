@@ -248,10 +248,11 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         unitSuffix: 's',
         onChanged: (v) => _edit(() => _p.sampleSeconds = v),
         helperText:
-            'How often the battery temperature, power use and analysis speed are written down '
-            'during a run, also while it pauses to cool down. They make the session\'s Graphs '
-            'and the file phone_during_analysis.csv. 10 s, as on the live camera, shows how '
-            'the phone warms up; shorter shows quick changes but gives a longer file.',
+            'How often the battery temperature, the memory in use, the processor cores this app '
+            'keeps busy, the power use and the analysis speed are written down during a run, also '
+            'while it pauses to cool down. They make the session\'s Graphs and the file '
+            'phone_during_analysis.csv. 10 s, as on the live camera, shows how the phone warms '
+            'up; shorter shows quick changes but gives a longer file.',
       ),
     ],
   );

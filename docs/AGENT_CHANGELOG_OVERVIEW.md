@@ -185,6 +185,12 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   `gtFramesEnabled`/`gtFrameSeconds`; high-res photo source `still`; `stillSyncCompanion`.
 - While the gate is idle or in no-AI modes, `fps` records leave out inference fields: never log
   stale or zero inference numbers.
+- **One native reading for the phone's state** (`DeviceThermal.read`, channel `getThermal`):
+  battery temperature, power, whole-phone memory and this process's CPU time together, every
+  "Phone readings sample"; "cores busy" is derived in Dart from two readings. A new phone figure
+  joins that call and `ThermalReading` (never a second timer or channel), and shows on the Identify
+  and Find in videos pages as a pointer scale or a text line (`temperature_gauge.dart`), never a
+  filling bar (it reads as progress).
 - **Writes:** one async writer queue (never sync I/O in the frame callback); `close()` must be
   awaited so `end_of_session` lands.
 - **A session never dies silently:** write failures show a red banner; uncaught errors become

@@ -604,9 +604,11 @@ class SessionConfig {
   /// tidy and off the hot path. Default 5 s.
   final int fpsSampleSeconds;
 
-  /// How often (seconds) the phone temperature is sampled into the log for the
-  /// end-of-session temperature graph. Each sample is a platform call, so this is
-  /// kept coarser than FPS; heat changes slowly. Default 10 s.
+  /// How often (seconds) the battery temperature is sampled into the log for the
+  /// end-of-session graphs, together with the phone's memory and this app's
+  /// processor use (one native reading carries all three; the key keeps its old
+  /// name so saved settings stay readable). Each sample is a platform call, so
+  /// this is kept coarser than FPS; heat and memory change slowly. Default 10 s.
   final int thermalSampleSeconds;
 
   /// How often (seconds) the battery power (current × voltage) and remaining

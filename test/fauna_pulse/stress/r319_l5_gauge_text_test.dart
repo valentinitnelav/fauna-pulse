@@ -18,7 +18,9 @@ void main() {
     expect(find.text('Battery temperature'), findsOneWidget);
     expect(find.textContaining('Battery temperature;'), findsNothing);
     expect(find.text('pauses at 43 °C'), findsOneWidget);
-    expect(find.text('After a heat pause, the run goes on by itself below 40 °C. To change the limit, open Advanced settings after the run.'), findsOneWidget);
+    // Round 346 added the sensor clause in front (the owner asked which
+    // temperature it is); the rest is unchanged.
+    expect(find.text('Measured by the sensor inside the battery; the processor gets hot faster than this. After a heat pause, the run goes on by itself below 40 °C. To change the limit, open Advanced settings after the run.'), findsOneWidget);
     // The title words appear once only, in the title itself.
     expect(find.textContaining('Battery temperature'), findsOneWidget);
   });

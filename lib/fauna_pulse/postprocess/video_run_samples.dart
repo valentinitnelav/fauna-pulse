@@ -17,7 +17,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 
-import '../logging/session_log_index.dart' show IndexedPowerSample;
+import '../logging/session_log_index.dart' show IndexedPowerSample, bytesPerGb;
 import 'csv_cell.dart';
 
 /// Everything written at one sample time (the three records share `time_ms`).
@@ -49,10 +49,24 @@ class VideoPhoneSample {
   double? convertMs;
   double? detectMs;
 
+  /// Round 346: the phone's memory (bytes) and this app's processor use, from
+  /// the `thermal` record (null in files of older app versions).
+  int? memTotal;
+  int? memFree;
+  int? appMem;
+  double? appCpuCores;
+
   /// The run was waiting for the phone to cool down at this moment.
   bool paused = false;
 
   VideoPhoneSample(this.run, this.epochMs, this.ms);
+
+  /// Memory in use by everything on the phone, GB (the graphs' unit).
+  double? get memUsedGb {
+    final total = memTotal, free = memFree;
+    if (total == null || free == null) return null;
+    return (total - free).clamp(0, total) / bytesPerGb;
+  }
 }
 
 class VideoRunSamples {
@@ -101,6 +115,8 @@ class VideoRunSamples {
 
   List<(int, double)> get temps => _series((s) => s.tempC);
   List<(int, double)> get headroom => _series((s) => s.headroom);
+  List<(int, double)> get memUsedGb => _series((s) => s.memUsedGb);
+  List<(int, double)> get appCpuCores => _series((s) => s.appCpuCores);
   List<(int, double)> get framesPerS => _series((s) => s.framesPerS);
 
   /// [framesPerS] of the periods without a cooling pause.
@@ -180,6 +196,10 @@ class VideoRunSamples {
             s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
             s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
             s.thermalStatus = rec['thermal_status'] as String?;
+            s.memTotal = (rec['mem_total_bytes'] as num?)?.toInt();
+            s.memFree = (rec['mem_free_bytes'] as num?)?.toInt();
+            s.appMem = (rec['app_memory_bytes'] as num?)?.toInt();
+            s.appCpuCores = (rec['app_cpu_cores'] as num?)?.toDouble();
             s.paused = rec['paused'] == true;
             s.clip ??= rec['clip'] as String?;
           case 'power':
@@ -241,6 +261,10 @@ class VideoRunSamples {
             ..decodeMs = src.decodeMs
             ..convertMs = src.convertMs
             ..detectMs = src.detectMs
+            ..memTotal = src.memTotal
+            ..memFree = src.memFree
+            ..appMem = src.appMem
+            ..appCpuCores = src.appCpuCores
             ..paused = src.paused,
         );
       }
@@ -266,10 +290,12 @@ class VideoRunSamples {
     );
   }
 
+  /// The round-346 columns come last, so scripts that read by position still work.
   static const csvHeader =
       'run,time_s,epoch_ms,clip,temp_c,headroom,thermal_status,power_w,'
       'battery_current_ua,battery_voltage_mv,charging,plugged,frames_per_s,'
-      'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms';
+      'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms,'
+      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores';
 
   /// One row per sample; `time_s` is the analysis clock of the graphs. Empty
   /// cells are values the phone did not report (or no frames in the period). Cells go through
@@ -298,6 +324,10 @@ class VideoRunSamples {
           s.detectMs,
           s.paused,
           s.pausedMs,
+          s.memTotal,
+          s.memFree,
+          s.appMem,
+          s.appCpuCores,
         ].map(csvCell).join(','),
       );
     }

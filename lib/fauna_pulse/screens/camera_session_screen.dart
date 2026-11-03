@@ -328,8 +328,9 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // does not warrant its own thread/isolate.
   double _lastTrackMs = 0;
 
-  // Phone temperature, sampled every few seconds (heat builds up over a long
-  // real-time session). Shown on screen and logged while recording.
+  // Battery temperature (with the memory and processor figures of the same
+  // reading), sampled every few seconds (heat builds up over a long real-time
+  // session). Shown on screen and logged while recording.
   final ValueNotifier<ThermalReading> _thermalVN = ValueNotifier(
     const ThermalReading(),
   );

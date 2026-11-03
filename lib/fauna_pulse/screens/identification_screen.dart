@@ -929,6 +929,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         ),
       if (p?.tempC != null)
         ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'Advanced settings'),
+      if (p?.phone case final phone?) ...[
+        ...memoryGauge(phone),
+        ...appCpuLine(phone, engine: _accelerator),
+      ],
       const Padding(
         padding: EdgeInsets.only(top: 8),
         child: Text(kKeepOnScreenIdentifyText, style: helperTextStyle),

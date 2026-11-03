@@ -186,7 +186,7 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `inference_fps`, `*_sample_seconds`: Rate cap and logging cadences. `inference_fps` is the rate that ran (never above the camera cap); `config.inferenceFps` keeps the value typed.
 - `config`: **A complete self-describing copy of every setting used**: the most reliable source for your methods section. The single keys above are kept for older readers.
 - `config_not_applicable`: List of `config` keys that had **no effect** under this session's `captureTrigger` (details below the list).
-- `thermal`: A starting thermal/power reading (see the `thermal` block below).
+- `thermal`: A starting reading of the battery temperature, power, memory and processor use (see the `thermal` block below).
 - `schedule`: Scheduled runs only: which slot this session is. `day` and `window` (both counted from 1), `days_total`, `windows_per_day`, `window_start`, `window_end`. Absent for a session started by hand.
 - `file_token`: The short random code of this session that is part of every photo and video clip filename, so photos stay traceable to their session after folders from several phones are merged.
 
@@ -748,6 +748,30 @@ detection records (and therefore the track ID timeline) do not depend on them.
 `power_w` (derived, see the caveats below), and `free_storage_bytes` / `total_storage_bytes`
 (so the session's disk fill rate can be plotted against its photo cadence).
 
+`battery_temp_c` is the temperature of the battery itself, from the sensor inside the battery
+pack (Android's battery broadcast, in tenths of a degree). It is a real measurement, but of the
+battery: the processor gets hot faster than this, which `thermal_status` and `thermal_headroom`
+(from the phone's own heat sensors) show earlier. A chip temperature in degrees is not readable
+by apps.
+
+The same record carries the phone's memory and this app's processor use (one native reading
+gives all of it, so these fields cost nothing extra; null when the phone gave nothing):
+
+| Field | Meaning |
+|---|---|
+| `mem_total_bytes` | Memory of the whole phone. |
+| `mem_free_bytes` | Memory still free, for everything on the phone: the smaller of Android's own figure and the kernel's `MemAvailable` (Android's can count page cache that cannot be freed). In use = total minus free. |
+| `low_memory_bytes` | Below this much free memory Android starts closing background apps. |
+| `app_memory_bytes` | What the FaunaPulse process holds (resident set), mostly the loaded model. |
+| `app_cpu_ms` | Processor time the FaunaPulse process has used since it started, all its threads together (raw, cumulative). |
+| `app_cpu_cores` | Derived: processor cores FaunaPulse kept busy, an average over about the last 10 s (an exponential moving average of the time since the previous reading, so at the usual 10 s interval it is simply the last interval). Null in the first record and after a gap longer than 150 s. |
+| `cpu_count` | Processor cores of the phone. |
+
+The cores figure is this app's process only: the camera and the video decoder run in other
+Android processes, and apps cannot read the whole phone's processor load since Android 8. So in
+a live session it understates the real load; in Identify and *Find animals in photos* it is
+nearly all of it.
+
 **`fps`:** while the motion gate is idle, the record carries `gate_idle: true` and OMITS every
 field that comes from inference. The same holds in motion and time-lapse sessions, where the
 detector never runs: the record then carries `motion_only: true` or `time_lapse: true`. An
@@ -804,6 +828,9 @@ own battery-sensor values, logged RAW:
 - `free_storage_bytes` / `total_storage_bytes` in `thermal` exist since round 68.
 - `gate_idle: true` in `fps` exists since round 77.
 - `is_plugged` exists since round 188.
+- `mem_total_bytes`, `mem_free_bytes`, `low_memory_bytes`, `app_memory_bytes`, `app_cpu_ms`,
+  `app_cpu_cores` and `cpu_count` in `thermal` (and in the `thermal` block of the start and end
+  records) exist since round 346.
 
 </details>
 
@@ -1829,7 +1856,8 @@ intervals, at least a minute), cooling pauses shaded. *Share results* adds them 
 
 `run`, `time_s`, `epoch_ms`, `clip`, `temp_c`, `headroom`, `thermal_status`, `power_w`,
 `battery_current_ua`, `battery_voltage_mv`, `charging`, `plugged`, `frames_per_s`, `frames`,
-`decode_ms`, `convert_ms`, `detect_ms`, `paused`, `paused_ms`. Explained:
+`decode_ms`, `convert_ms`, `detect_ms`, `paused`, `paused_ms`, `mem_total_bytes`,
+`mem_free_bytes`, `app_memory_bytes`, `app_cpu_cores`. Explained:
 
 | Column | Meaning |
 |---|---|
@@ -1839,6 +1867,7 @@ intervals, at least a minute), cooling pauses shaded. *Share results* adds them 
 | `power_w`, `battery_current_ua`, `battery_voltage_mv` | Raw, as logged; the two sensor columns are there to apply the §3 corrections. |
 | `frames` | Frames analysed since the previous row. |
 | `paused_ms` | The part of the period spent cooling down. |
+| `mem_total_bytes`, `mem_free_bytes`, `app_memory_bytes`, `app_cpu_cores` | As in the `thermal` record (§3): the phone's memory and the processor cores FaunaPulse kept busy. The video decoder runs in another Android process, so the cores figure is not the whole load of the analysis. Empty in files of older app versions. |
 
 - **Empty cells** are values the phone did not report, or no frames in that period.
 - **A battery current of exactly 0** counts as not reported. So `power_w` is empty whenever a

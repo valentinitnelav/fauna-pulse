@@ -456,8 +456,10 @@ button.
 - Temperature, FPS and battery or power are always recorded. Their graphs are under **Extra
   graphs (temperature, FPS, power)** (tap to show) for when you need them; the app remembers
   whether the fold was open. It holds the battery temperature, the **Heat level (0 = cool, 1 =
-  phone slows down)** (if the phone reports it), the detector FPS, the detector time per frame
-  and the power draw (W) with the average power and the total energy in Wh.
+  phone slows down)** (if the phone reports it), the detector FPS, the detector time per frame,
+  the memory in use on the whole phone, the processor cores FaunaPulse kept busy (its own
+  process only: the camera runs in another Android process) and the power draw (W) with the
+  average power and the total energy in Wh.
 - The power (W) graph only shows for sessions recorded fully on battery. When the phone is
   plugged in (even to a power bank with a full battery), the battery sensor measures the
   charger, not the use, so the graph is not drawn: its card says why ("Not shown: the phone was

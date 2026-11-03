@@ -220,8 +220,9 @@ session:
    shows a time estimate, for example "120 crops from 8 track IDs (about 5 min on this phone,
    plus any heat pauses)". The estimate leaves heat pauses out.
 3. Plug the phone in and tap **Start**. The progress shows the crops done, the elapsed time, the
-   estimated time left and the battery temperature. The time left leaves heat pauses out, so it
-   stays the same while the run is paused.
+   estimated time left, the battery temperature, the memory in use on the whole phone (with
+   FaunaPulse's own share, mostly the loaded model) and the processor cores FaunaPulse keeps
+   busy. The time left leaves heat pauses out, so it stays the same while the run is paused.
 4. When the run has finished, tap **View results**.
 
 > **Keep FaunaPulse on the screen until the run ends.** Identification is the heaviest step:

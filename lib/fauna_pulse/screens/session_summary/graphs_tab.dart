@@ -253,6 +253,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
       _series(_infMs, const Color(0xFF42A5F5), ' ms'),
       _statsText(_infMs, decimals: 1, unit: ' ms'),
     ],
+    ..._phoneLoadGraphs(),
     const SizedBox(height: 28),
     const Text(
       'Power draw over the session (W)',
@@ -438,6 +439,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         _series(_infMs, const Color(0xFF42A5F5), ' ms', range: range, shade: shade),
         _statsText(_infMs, decimals: 1, unit: ' ms'),
       ],
+      ..._phoneLoadGraphs(range: range, shade: shade),
       const SizedBox(height: 28),
       const Text('Power draw (W)', style: bold),
       const SizedBox(height: 4),
@@ -580,6 +582,53 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
   /// minimum and maximum — the same shape of summary the power graph already
   /// shows. [decimals] controls the precision and [unit] is appended to every
   /// number (e.g. "°C", " fps"). Returns an empty box when there are no samples.
+  /// Round 346: memory in use and this app's processor cores, from the same
+  /// readings as the temperature (live sessions and video runs alike). One
+  /// line instead of empty charts for sessions of older app versions.
+  List<Widget> _phoneLoadGraphs({(int, int)? range, List<(int, int)> shade = const []}) {
+    const bold = TextStyle(fontWeight: FontWeight.bold);
+    const note = TextStyle(color: Colors.white70, fontSize: 12);
+    if (_memUsedGb.length < 2 && _appCpuCores.length < 2) {
+      return const [
+        SizedBox(height: 12),
+        Text(
+          'Memory and processor use: not in this session\'s records (an older app version '
+          'recorded it).',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ];
+    }
+    return [
+      if (_memUsedGb.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text('Memory in use, whole phone (GB)', style: bold),
+        const SizedBox(height: 4),
+        const Text(
+          'Everything on the phone together, FaunaPulse and its loaded model included. When '
+          'it nears the phone\'s total, Android starts closing apps (background ones first).',
+          style: note,
+        ),
+        const SizedBox(height: 12),
+        _series(_memUsedGb, const Color(0xFFAB47BC), ' GB', range: range, shade: shade),
+        _statsText(_memUsedGb, decimals: 2, unit: ' GB'),
+      ],
+      if (_appCpuCores.length >= 2) ...[
+        const SizedBox(height: 28),
+        const Text('Processor cores kept busy by FaunaPulse', style: bold),
+        const SizedBox(height: 4),
+        const Text(
+          'This app\'s own process only (the camera and the video decoder run in other '
+          'Android processes). About the "CPU threads" setting while the model runs on the '
+          'CPU; under 1 while it runs on the GPU.',
+          style: note,
+        ),
+        const SizedBox(height: 12),
+        _series(_appCpuCores, const Color(0xFF26A69A), '', range: range, shade: shade),
+        _statsText(_appCpuCores, decimals: 1, unit: ' cores'),
+      ],
+    ];
+  }
+
   Widget _statsText(
     List<(int ms, double v)> points, {
     required int decimals,

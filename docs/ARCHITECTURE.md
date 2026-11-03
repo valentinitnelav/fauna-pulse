@@ -77,7 +77,7 @@ sent per frame by default.** Consumed by `_onStreamingData`.
 | Channel | Direction | Purpose |
 |---|---|---|
 | `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution high-res photo and region-crop the ROI out of it. |
-| `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status. Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
+| `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status; since round 346 also the phone's memory (total, free, Android's low-memory line), this process's resident memory and its CPU time with the clock it was read at (`DeviceThermal` derives "cores busy" from two readings). Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
 | `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive (`RecordingService`, from `services/recording_keepalive.dart`). Also `startAnalysis`/`stopAnalysis` (round 319): `AnalysisService`, a second foreground service (type `dataSync`, `mediaProcessing` on Android 15+) held by `services/analysis_keepalive.dart` (reference counted) while *Find animals in videos/photos* or Identify runs. The identification run itself lives in `identification/identification_run.dart` (`IdentificationRun`, one per session), so it can start and run while the app is in the background; the Identify screen only shows it. |
 | `faunapulse/diagnostics` | Dart → native | Capture logcat into the session folder. |
 

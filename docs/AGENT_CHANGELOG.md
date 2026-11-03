@@ -9729,3 +9729,27 @@ risk).
 **Open:** `camera_session/layout.dart` (the camera widget tree, 1,079 lines) and
 `session_summary/photo_viewer.dart` (1,571 lines) are still large.
 
+## Round 346 (2026-11-04): memory and processor readings next to the battery temperature
+
+Asked: can the app log the phone's memory and CPU use and show them during long jobs, as it
+shows the temperature, and is reading them cheap? Also: say exactly which temperature is
+measured. Findings that shaped the round: the reads are microseconds (Android's MemoryInfo, two
+lines of /proc, the process's CPU time), so they ride on the existing thermal channel call and
+timer, no new setting (the "Temperature sample" control became "Phone readings sample", same
+key). Apps cannot read the whole phone's CPU load since Android 8 (/proc/stat is blocked), so
+the CPU figure is this app's process only; it is shown as a text line that names the app and the
+engine (never a scale, which would suggest a limit), and the owner accepted that scope because
+the model's 2 CPU threads make it meaningful. Memory is whole-phone and gets the pointer scale,
+ending where Android starts closing apps (MemoryInfo.threshold); the scale never fills (owner
+constraint since round 252). "Cores busy" is an exponential average over about 10 s (Identify
+reads per photo, so a plain delta jumped). Left out on purpose: getProcessMemoryInfo
+(rate-limited since Android 10) and PSS (walks the memory map). The temperature is the sensor
+inside the battery pack (Android's battery broadcast); loose "phone temperature" wording was
+changed to "battery temperature" and the gauge's help says so. Checked: analyzer, the unit and
+widget tests of this round (the 360-px overflow check caught a right overflow in the new memory
+row, fixed with Expanded + ellipsis), the regenerated CSV golden, and the full test suite; a
+debug build compiled the Kotlin. Not yet checked on a phone. Open: whether the CPU clock files
+(scaling_cur_freq) are readable by the app, the one whole-phone throttle signal the 11T Pro
+lacks; hand-off notes left in fauna-pulse-export and the validation repository (new optional
+fields only).
+

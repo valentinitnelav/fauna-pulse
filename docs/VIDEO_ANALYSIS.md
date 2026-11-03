@@ -212,10 +212,16 @@ stopped.
 - **Continue** also appears when the run stopped inside its first clip.
 - The progress line's **ms per frame** and time left leave out heat pauses. When a clip's length
   is not known yet, it says "time left not known yet".
-- Under the progress line, **Battery temperature** shows the phone's temperature on a scale
-  that ends at "pauses at N °C" (the pause temperature). After a heat pause the run goes on by
-  itself 3 °C below that limit. The limit is set in **Detection, track ID and identification
-  settings**, after the run.
+- Under the progress line, **Battery temperature** shows the temperature of the battery (its
+  own sensor; the processor gets hot faster than this, which the Heat level graph shows) on a
+  scale that ends at "pauses at N °C" (the pause temperature). After a heat pause the run goes
+  on by itself 3 °C below that limit. The limit is set in **Detection, track ID and
+  identification settings**, after the run.
+- Under it, **Memory in use, whole phone** is a scale of the same kind: it ends where Android
+  starts closing apps, and the text says how much of the memory FaunaPulse holds (mostly the
+  loaded model). One more line gives the processor cores FaunaPulse keeps busy. That is this
+  app's own process only (the video decoder runs in another Android process), which is why the
+  line names the app.
 - During a heat pause the screen says "Cooling down. Put the phone on a cool, hard surface out
   of the sun (or in front of a fan); a case traps heat. It resumes by itself."
 - **Back** during a heat pause asks **The analysis is paused** (**Cancel** keeps it paused,
@@ -246,7 +252,8 @@ that live detection missed while the phone was hot or the motion gate slept.
 - The session's **Graphs** tab shows the block **While the detector ran on the videos**: the
   rows **Analysis time**, **Frames analyzed**, **Speed while running**, **Cooling pauses** and
   **Energy used**, and the graphs **Battery temperature (°C)**, **Frames analyzed per second**,
-  **Detector time per frame (ms)** and **Power draw (W)**.
+  **Detector time per frame (ms)**, **Memory in use, whole phone (GB)**, **Processor cores kept
+  busy by FaunaPulse** and **Power draw (W)**.
 - For a session recorded with FaunaPulse (video bursts or live detection with video), a switch
   chooses between **While recording** and **While the detector ran**.
 
@@ -356,8 +363,8 @@ Copy the clips to a computer first if you may want to analyse them again.
 - `track_ids.csv` (one row per track ID),
 - `mot/` (every tracked box),
 - `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`,
-- `phone_during_analysis.csv` (the phone's temperature, power and speed during the runs), when
-  it has data.
+- `phone_during_analysis.csv` (the battery temperature, memory, processor use, power and speed
+  during the runs), when it has data.
 
 Unzip it on the computer and keep the files together: the scripts below need them.
 

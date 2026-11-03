@@ -5,6 +5,7 @@
 
 package com.ultralytics.yolo
 
+import android.app.ActivityManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -21,6 +22,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.SystemBarStyle
@@ -30,6 +32,7 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -817,6 +820,37 @@ class MainActivity : FlutterFragmentActivity() {
         } else {
             null
         }
+
+        // Memory and processor use ride on this call: one reading per thermal sample,
+        // no timer or channel of their own. Everything below is one binder call or a
+        // few lines of /proc, well under a millisecond. Left out on purpose:
+        // ActivityManager.getProcessMemoryInfo (rate-limited since Android 10, it
+        // repeats stale values) and Debug.getPss (walks the memory map: tens of ms
+        // with a gigabyte-sized native heap). The CPU load of the whole phone is not
+        // readable by apps since Android 8 (/proc/stat is blocked), so only this
+        // process's CPU time is read; the Dart side turns two readings into "cores
+        // busy", so the clock it was read at travels with it.
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val mem = ActivityManager.MemoryInfo().also { am?.getMemoryInfo(it) }
+        val memKnown = am != null && mem.totalMem > 0
+        out["memTotalBytes"] = if (memKnown) mem.totalMem else null
+        out["memAvailBytes"] = if (memKnown) mem.availMem else null
+        // Below this much free memory Android starts closing background apps.
+        out["lowMemoryBytes"] = if (memKnown) mem.threshold else null
+        // The kernel's own free figure: availMem can count page cache that cannot be
+        // freed (the same two-figure rule as the plugin's Embedder.memoryCheck).
+        out["memAvailableKernelBytes"] = procValueKb("/proc/meminfo", "MemAvailable:")
+        out["appRssBytes"] = procValueKb("/proc/self/status", "VmRSS:")
+        out["appCpuMs"] = android.os.Process.getElapsedCpuTime()
+        out["uptimeMs"] = SystemClock.elapsedRealtime()
+        out["cpuCount"] = Runtime.getRuntime().availableProcessors()
         return out
     }
+
+    /** The "<label>   1234 kB" line of a /proc file, in bytes; null when unreadable. */
+    private fun procValueKb(path: String, label: String): Long? = runCatching {
+        File(path).useLines { lines ->
+            lines.first { it.startsWith(label) }.filter { it.isDigit() }.toLong() * 1024
+        }
+    }.getOrNull()
 }

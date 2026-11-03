@@ -217,6 +217,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   // climbs as the SoC downclocks, even when battery temperature looks flat).
   final List<(int ms, double v)> _infMs = [];
 
+  // Round 346: memory in use by everything on the phone (GB) and the processor
+  // cores this app kept busy, from the same readings as the temperature.
+  final List<(int ms, double v)> _memUsedGb = [];
+  final List<(int ms, double v)> _appCpuCores = [];
+
   // Instantaneous battery power (W) over the session (the W graph).
   final List<(int ms, double v)> _power = [];
 

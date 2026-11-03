@@ -45,6 +45,9 @@ import 'track_source.dart';
 
 /// One `power` record's raw readings (unit quirks are handled at display
 /// time by the summary's energy-series builder, not here).
+/// Bytes in one GB of the memory graphs (the 1024-based convention of `formatBytes`).
+const double bytesPerGb = 1024 * 1024 * 1024;
+
 class IndexedPowerSample {
   final int ms;
 
@@ -255,6 +258,12 @@ class SessionLogIndex {
   final List<(int, double)> infMs;
   final List<IndexedPowerSample> powerSamples;
 
+  /// Round 346, from the `thermal` records: memory in use by everything on the
+  /// phone (GB) and the processor cores this app kept busy. Empty for sessions
+  /// of older app versions.
+  final List<(int, double)> memUsedGb;
+  final List<(int, double)> appCpuCores;
+
   /// Saved photos in log (≈ capture) order, and everything known about each.
   final List<String> photoOrder;
   final Map<String, IndexedPhoto> photos;
@@ -279,6 +288,8 @@ class SessionLogIndex {
     required this.fps,
     required this.infMs,
     required this.powerSamples,
+    this.memUsedGb = const [],
+    this.appCpuCores = const [],
     required this.photoOrder,
     required this.photos,
     required this.referenceNames,
@@ -417,6 +428,8 @@ class _IndexBuilder {
   final List<(int, double)> fps = [];
   final List<(int, double)> infMs = [];
   final List<IndexedPowerSample> power = [];
+  final List<(int, double)> memUsedGb = [];
+  final List<(int, double)> appCpuCores = [];
 
   final List<String> order = [];
   final Map<String, _PhotoAcc> photos = {};
@@ -528,6 +541,11 @@ class _IndexBuilder {
         if (temp != null) temps.add((t, temp));
         final hr = (rec['thermal_headroom'] as num?)?.toDouble();
         if (hr != null) headroom.add((t, hr));
+        final memTotal = (rec['mem_total_bytes'] as num?)?.toDouble();
+        final memFree = (rec['mem_free_bytes'] as num?)?.toDouble();
+        if (memTotal != null && memFree != null) memUsedGb.add((t, (memTotal - memFree) / bytesPerGb));
+        final cores = (rec['app_cpu_cores'] as num?)?.toDouble();
+        if (cores != null) appCpuCores.add((t, cores));
         // Older sessions logged FPS inside the thermal record; keep reading
         // it so their graphs still work.
         final f = (rec['fps'] as num?)?.toDouble();
@@ -765,6 +783,8 @@ class _IndexBuilder {
     fps: fps,
     infMs: infMs,
     powerSamples: power,
+    memUsedGb: memUsedGb,
+    appCpuCores: appCpuCores,
     photoOrder: order,
     photos: {
       for (final MapEntry(key: name, value: p) in photos.entries)
