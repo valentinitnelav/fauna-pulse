@@ -510,6 +510,13 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
             // Round 303 (owner): "Support FaunaPulse" only repeated Share and
             // Report a problem here; its box stays on the home screen.
             item(Icons.format_quote_outlined, 'Cite FaunaPulse', () => showCitation(context)),
+            // Google Play asks for the privacy policy inside the app too (see
+            // ErrorReporter.privacyPolicyUrl); opens in the browser.
+            item(
+              Icons.privacy_tip_outlined,
+              'Privacy policy',
+              () => openExternalLink(ErrorReporter.privacyPolicyUrl, 'menu_privacy_policy'),
+            ),
             item(Icons.info_outline, 'About FaunaPulse', _showAbout),
           ],
         ),

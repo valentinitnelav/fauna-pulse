@@ -9666,3 +9666,19 @@ VIDEO_ANALYSIS (the app records videos), HOW_PHOTO_RESOLUTION_WORKS (`_live.jpg`
 DATA_GUIDE and IDENTIFICATION corrected. PRIVACY_POLICY checked, not changed. Checked: links to
 and from every page resolve. Open: choices listed for the owner (Dashboard and Report a problem
 pages, `time_iso` without offset, privacy policy wording).
+
+## Round 343 (2026-11-03): privacy policy matches the app again
+
+Asked: does a change to the privacy policy put the app at risk on Google Play? No. Google's User
+Data policy asks developers to update the policy and the Data safety answers when the app's data
+handling changes; the risk is an inaccurate policy. The Round 342 check found four outdated
+points, each confirmed in the code: the setting is called "reference photos"; imported FaunaLapse
+sessions (photos, site photos, log) are stored too; a problem report can hold attached
+screenshots and the sampled files of one chosen session (or none), packed as one zip; a report
+leaves the phone only through Share… or a GitHub issue (e-mail is no longer offered). The Data
+safety answers stay as they are: nothing leaves the phone without a user action, and Google does
+not count such a transfer as sharing. The User Data policy also asks for a privacy policy link
+inside the app, and FaunaPulse had none: the owner chose a **Privacy policy** item in the Menu
+(over a button in the Support box), opening the policy on main, the released version. Checked:
+widget test of the menu order and the opened address, all unit tests; the owner checks it on a
+phone.

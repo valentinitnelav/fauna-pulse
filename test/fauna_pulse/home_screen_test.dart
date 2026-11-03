@@ -382,6 +382,7 @@ void main() {
       'Report a problem',
       'Share FaunaPulse',
       'Cite FaunaPulse',
+      'Privacy policy',
       'About FaunaPulse',
     ]);
     await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Cite FaunaPulse')));
@@ -390,6 +391,27 @@ void main() {
     expect(find.byType(CitationDialog), findsOneWidget);
     expect(find.text('Version 0.8.0-alpha.1, installed on this phone'), findsOneWidget);
     expect(find.textContaining('(Version 0.8.0-alpha.1) [Software]'), findsOneWidget);
+  });
+
+  testWidgets('Privacy policy in the menu opens the policy page on GitHub', (tester) async {
+    // In widget tests url_launcher talks over its default method channel.
+    final opened = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (call) async {
+        opened.add((call.arguments as Map?)?['url']);
+        return true;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/url_launcher'), null));
+    await _pumpHome(tester);
+    await tester.tap(find.text('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Privacy policy')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Drawer), findsNothing, reason: 'the menu closes');
+    expect(opened, ['https://github.com/valentinitnelav/fauna-pulse/blob/main/PRIVACY_POLICY.md']);
   });
 
   testWidgets('the support box opens the same citation window', (tester) async {

@@ -380,7 +380,7 @@ AI models run directly on the phone and everything recorded stays in the app's f
 - Use a screen lock on field phones and install Android's security updates. On Android 10 and older, other apps with the storage permission can read the session folder.
 - To report a security problem privately, see [`SECURITY.md`](SECURITY.md).
 
-See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) for the permission-by-permission detail,
+See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) (in the app: **Menu** → **Privacy policy**) for the permission-by-permission detail,
 and [`CHANGELOG.md`](CHANGELOG.md) for what changed between releases.
 
 </details>

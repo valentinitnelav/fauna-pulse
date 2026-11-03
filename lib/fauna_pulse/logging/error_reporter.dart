@@ -86,6 +86,13 @@ class ErrorReporter {
   static const String githubRepoUrl =
       'https://github.com/valentinitnelav/fauna-pulse';
 
+  /// The privacy policy, opened from the home screen's Menu. Google Play's
+  /// User Data policy asks for a privacy policy link inside the app, not
+  /// only in the store listing. It points at main, the released version:
+  /// develop can hold policy text for changes not released yet.
+  static const String privacyPolicyUrl =
+      '$githubRepoUrl/blob/main/PRIVACY_POLICY.md';
+
   /// Where the "Email…" button sends reports. Deliberately empty by default —
   /// the address is handed to testers privately, never shipped in the app —
   /// and stored app-wide (shared_preferences), NOT in SessionConfig, so it can
