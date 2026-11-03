@@ -60,7 +60,11 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   `identification_job.dart`, `identification_run.dart`, `identification_store.dart`,
   `track_fusion.dart`.
 - `screens/` (one file per screen; `camera_session_screen.dart` is the live UI, its logic sits in
-  `session/`), `widgets/` (shared UI, reuse before writing new: `setting_help.dart` ⓘ help and
+  `session/`). The camera and summary screens are too big for one file: their methods sit in
+  `part` files under `screens/camera_session/` and `screens/session_summary/`, one per part of
+  the screen, as extensions on the State class (fields, getters and lifecycle overrides stay in
+  the main file; a constant a part uses is file-level, not a class static; the `part` lines of
+  the main file are the table of contents). `widgets/` (shared UI, reuse before writing new: `setting_help.dart` ⓘ help and
   folds, `numeric_setting_field.dart`, `dialog_title.dart`, `home_button.dart`,
   `model_kind_panel.dart`, `tracker_tuning_fields.dart`, `video_timeline_bar.dart`,
   `selection_app_bar.dart`), `services/` (recording and analysis keep-alive), `perf/`.

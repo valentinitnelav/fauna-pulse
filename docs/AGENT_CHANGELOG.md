@@ -9695,3 +9695,37 @@ Video checking method (hand counts, scoring scripts, frame-rate sweep) marked wi
 note in the guide, the scripts' README and the README table. Checked: plugin tests pass (180); no
 other tracked file links to the removed files.
 
+## Round 345 (2026-11-03): camera and summary screens split into part files
+
+**What was asked:** split the two largest screen files (camera 5,156 lines, summary 5,324
+lines) into smaller files with no change in behaviour. The owner's criterion, stated when
+asked whether the split adds complexity: the efficiency of agent work (fewer tokens to map and
+edit a screen), not contributors (none yet) and not users (about 12 active devices), and no
+long tidy-up rounds.
+
+**Decisions:** Dart privacy is per library and a State class cannot be cut across files, so each
+screen stays one library: `part` files under `screens/camera_session/` and
+`screens/session_summary/`, one per part of the screen, each an extension on the State class
+(methods only; fields, getters and lifecycle overrides stay in the main file). The camera
+`build` is a one-line delegation to `_buildScreen` in `layout.dart`. Constants that a part uses
+became file-level constants in the main file (an extension cannot reach a class static without
+the class name). Each part with `setState` carries `ignore_for_file:
+invalid_use_of_protected_member` because the analyzer cannot tell an extension from outside
+code. Rejected: mixins (the `on` clause cannot express the circular calls between recording,
+schedule and time-lapse); extracting features into plain classes under `session/` (the only
+option that reduces real complexity, but several rounds with behaviour risk: to be done feature
+by feature when a feature is touched anyway); leaving the files as they are (keeps the mapping
+cost on every future task).
+
+**How:** a script (session scratchpad, not tracked) took member boundaries from
+`package:analyzer`, moved every block verbatim and checked that each original line landed
+exactly once. The only edited lines are the `build` rename and the moved constants (`static`
+removed, two spaces of indent less).
+
+**Checked:** `flutter analyze` clean; `flutter test test/`: all tests pass. No phone check: the
+moved code is identical and extension calls are resolved at compile time (owner accepted the
+risk).
+
+**Open:** `camera_session/layout.dart` (the camera widget tree, 1,079 lines) and
+`session_summary/photo_viewer.dart` (1,571 lines) are still large.
+

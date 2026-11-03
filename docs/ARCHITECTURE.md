@@ -49,7 +49,7 @@ Android (Kotlin)**.
  Result map over EventChannel  ───────────────► Dart
    │  YOLOPlatformView.sendStreamData
    ▼
- _onStreamingData()                            [Dart]  camera_session_screen.dart
+ _onStreamingData()                            [Dart]  screens/camera_session/frames.dart
    │   ├─ keep only detections whose centre is in the ROI  (models/roi.dart)
    │   ├─ ByteTrack: assign/continue track IDs             (tracking/byte_track.dart)
    │   ├─ schedule ROI photos                              (capture/roi_capture.dart)
@@ -141,9 +141,10 @@ The headline changes:
 
 ## 6. Session lifecycle (Dart)
 
-`camera_session_screen.dart` orchestrates a session: it receives every frame
-in `_onStreamingData` and owns the UI, but since round 73 the actual logic
-lives in `session/`: `frame_processor.dart` (per-frame ROI mapping, tracking,
+`camera_session_screen.dart` orchestrates a session (its methods sit in
+`part` files under `screens/camera_session/`, one per part of the screen): it
+receives every frame in `_onStreamingData` and owns the UI, but since round 73
+the actual logic lives in `session/`: `frame_processor.dart` (per-frame ROI mapping, tracking,
 gate-idle state), `session_recorder.dart` (recording lifecycle: folder,
 logger, photos, keep-alive, stop order), plus the camera probes, schedule
 plan, and time-lapse camera parking. A recording opens the `SessionLogger`,
