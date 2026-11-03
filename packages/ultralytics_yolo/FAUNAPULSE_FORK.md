@@ -18,8 +18,19 @@ upstream release safely. Written in round 169 (perf review E10).
   tested** (FaunaPulse is Android-only; the app's `ios/` folder is git-ignored).
 - The plugin's `README.md` stays upstream-verbatim below a short fork banner,
   on purpose: keeping it byte-close to upstream makes future diffs cleaner.
-  This file is the fork's own documentation. Parts of that README (pub.dev
-  install instructions, the example app) do not apply to this copy.
+  The banner says first that the page is not about the FaunaPulse app. Only
+  its links to files this copy leaves out were changed: they point to the
+  upstream repository at the base commit. This file is the fork's own
+  documentation. Parts of that README (pub.dev install instructions, the
+  example app) do not apply to this copy.
+- **Upstream files left out:** the Chinese README, upstream's `CHANGELOG.md`,
+  `doc/` guides, `scripts/` (model export, example-app model download and Play
+  Store assets), `play-store-assets/` and `.github/` (issue templates,
+  workflows, Dependabot file). They describe or build upstream's package and
+  example app, never ran in this repository (GitHub reads workflows and
+  Dependabot settings only from the repository root), and on GitHub they were
+  easy to mistake for the app's own documentation. Upstream has them at the
+  base commit; read the current versions there when re-auditing.
 
 ## Upstream audit history
 
@@ -135,11 +146,9 @@ The headline changes, with the round that introduced each (full rationale in
   development builds, given by bare name, are still fetched by the plugin; upstream's link-download test
   became a refusal test), and `YOLO.predict(imageUrl)` is removed (no caller;
   it opened any address with no size limit).
-- **Upstream CI files:** `packages/ultralytics_yolo/.github/` holds upstream's
-  workflows and Dependabot file. GitHub runs workflows only from the
-  repository root, so they never run here; the app's dependency graph
-  workflow reports this plugin's Android libraries to GitHub, so that
-  Dependabot security alerts cover them (r339).
+- **Security alerts:** the app's dependency graph workflow reports this
+  plugin's Android libraries to GitHub, so that Dependabot security alerts
+  cover them (r339).
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).
@@ -170,8 +179,8 @@ push, gate config, lens/focus, fast crop) and `YOLO.predict` options.
 
 ## Re-audit checklist (when a newer upstream release appears)
 
-1. Read the upstream CHANGELOG/diff since the last audited version in the
-   table above. Only Android and plugin-Dart changes matter (iOS is not ours).
+1. Read upstream's CHANGELOG (on GitHub) and diff since the last audited
+   version in the table above. Only Android and plugin-Dart changes matter (iOS is not ours).
 2. **Never overwrite fork files wholesale** with upstream versions; the files
    listed above will conflict by design. Port one upstream change at a time.
 3. After each port, re-check the fork-only invariants above and the

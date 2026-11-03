@@ -41,7 +41,6 @@ hello_yolo/
 
 # Development documents and notes
 docs/
-play-store-assets/
 AGENTS.md
 CLAUDE.md
 DOCS_CORRECTNESS_AUDIT_PROMPT.md

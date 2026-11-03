@@ -8,6 +8,11 @@ watching the same clips, which measures exactly how far that holds. They need on
 GPU (`prepare_square.py` also needs ffmpeg). The full workflow (annotating, the frame-rate sweep, datasets) is in
 [`docs/VIDEO_ANALYSIS.md`](../../docs/VIDEO_ANALYSIS.md).
 
+> **Work in progress.** These scripts and the method they serve are still being developed,
+> together with a validation study of the app. Options, file formats and results may still
+> change. Until the study is published, the app's track ID counts are not validated against
+> hand counts.
+
 | File | What it does |
 |---|---|
 | `evaluate_track_ids.py` | Matches hand-counted visits with the app's `track_ids.csv` by time overlap; prints found / missed / extra per run and writes tidy CSVs for R (`--out`, `--pairs`). Reads a plain CSV or a BORIS *aggregated events* export. Called `evaluate_visits.py` before round 248, when the app wrote `visits.csv`: both old names still work (`evaluate_visits.py` runs this script). |

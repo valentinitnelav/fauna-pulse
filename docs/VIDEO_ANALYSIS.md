@@ -19,6 +19,8 @@ demo videos.
 > - To know how good the count is, count a sample of clips by hand and score the app with
 >   `evaluate_track_ids.py`. Report recall and precision, not only the count error.
 > - The frame-rate sweep shows how many frames per second your videos need.
+> - **Work in progress:** the checking method (sections 3 to 5 and the scripts in
+>   `tool/video_eval/`) is still being developed, together with a validation study of the app.
 
 **Contents**
 
@@ -445,6 +447,12 @@ The minimum track length is 1 s by default since round 256; it was 0.2 s before.
 </details>
 
 ## 3. Counting by hand
+
+> **Work in progress.** Sections 3 to 5 and the scripts in
+> [`tool/video_eval/`](../tool/video_eval/README.md) are still being developed, together with a
+> validation study of the app. Steps, file formats and scripts may still change. Until the study
+> is published, the app's track ID counts are not validated against hand counts: check them on a
+> sample of your own clips.
 
 Watch without looking at the app's results first, ideally by someone who did not choose the
 settings: knowing the answer changes what one sees.

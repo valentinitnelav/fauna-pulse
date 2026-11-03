@@ -114,4 +114,4 @@ archived on Zenodo with a DOI and installed from GitHub Releases.
   model can and cannot do.
 - For transparency, the extra-detailed AI-assisted development journal lives in [`docs/AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md)
   with an overview at [`docs/AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md).
-- The Ultralytics plugin (`packages/ultralytics_yolo`, modified for FaunaPulse) keeps its own [`packages/ultralytics_yolo/CHANGELOG.md`](packages/ultralytics_yolo/CHANGELOG.md).
+- The Ultralytics plugin (`packages/ultralytics_yolo`, modified for FaunaPulse) lists its changes in [`packages/ultralytics_yolo/FAUNAPULSE_FORK.md`](packages/ultralytics_yolo/FAUNAPULSE_FORK.md).

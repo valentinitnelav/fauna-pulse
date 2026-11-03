@@ -9682,3 +9682,16 @@ inside the app, and FaunaPulse had none: the owner chose a **Privacy policy** it
 (over a button in the Support box), opening the policy on main, the released version. Checked:
 widget test of the menu order and the opened address, all unit tests; the owner checks it on a
 phone.
+
+## Round 344 (2026-11-03): plugin folder without upstream-only docs, video checking marked work in progress
+The owner asked what the Chinese README in the plugin folder was, and worried that visitors could
+take the plugin's documentation for the app's. It came with the plugin copy in the first commit;
+nobody added it later. All upstream files that only describe or build upstream's package and
+example app are now gone (guides, changelog, scripts, store assets, issue templates and
+workflows, which never ran here). The plugin README keeps upstream's text for clean diffs, under
+a banner that first says it is not about the app; its links to the removed files go to upstream
+at the base commit (each target checked in a local upstream clone).
+Video checking method (hand counts, scoring scripts, frame-rate sweep) marked with work-in-progress
+note in the guide, the scripts' README and the README table. Checked: plugin tests pass (180); no
+other tracked file links to the removed files.
+
