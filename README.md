@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Mobile sensing · On-device AI · Real-time detection & tracking · Custom AI models · Works offline
+  On-device AI · Real-time detection & tracking · Custom AI models · Works offline
 </p>
 
 <p align="center">

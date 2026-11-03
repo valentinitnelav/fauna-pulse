@@ -24,15 +24,26 @@ date-released: "2026-10-28"
 keywords:
   - pollinators
   - pollination ecology
-  - on-device AI
-  - object detection
-  - taxonomic identification
-  - BioCLIP
-  - biodiversity monitoring
-  - insect monitoring
+  - plant-pollinator interactions
   - pollinator monitoring
+  - insect monitoring
+  - biodiversity monitoring
+  - wildlife monitoring
+  - citizen science
   - camera trap
   - smartphone
+  - Android
+  - on-device AI
+  - edge AI
+  - LiteRT
+  - TensorFlow Lite
+  - computer vision
+  - deep learning
+  - object detection
+  - YOLO
+  - multi-object tracking
+  - species identification
+  - BioCLIP
 authors:
   - family-names: "Ștefan"
     given-names: "Valentin"
