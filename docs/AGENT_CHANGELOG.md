@@ -9626,3 +9626,29 @@ Asked: red runs and many branches on GitHub after the release. Cause of the red 
 
 After the owner moved main to Round 339, the first library list made GitHub open 4 alerts (Guava below 32 and up to 33.7.1, JUnit below 4.13.1), and Dependabot's two automatic fix attempts failed on main. No harm: `:app:dependencyInsight` on the laptop shows the release build resolves Guava to 33.7.2-android (the fixed version, from Round 338) and contains no JUnit; the old versions were only in the plugins' own lists, which the workflow sent too. The list is now the app project's release runtime list only. Owner decision: keep the private alert list, turn the automatic fix attempts off (they cannot change libraries that come in through other libraries, and their failed runs look like a failing app), check open alerts before each release. The 4 alerts were dismissed as inaccurate and the 2 failed runs deleted. The owner noted that FaunaPulse has few users, so security work stays light. Open: the narrower list reaches main with the next release; then check that the alert list stays empty.
 
+## Round 341 (2026-11-03): Docs rewritten for easy reading
+
+Asked: make the user docs easy to read without losing a fact, one page per round, starting with
+IDENTIFICATION.md (8,100 words, 37 paragraphs over 80 words). The owner approved the outline
+first: "In short" box and contents, the user part as steps and tables, methods, measurements
+and history in 25 folded blocks. Owner decisions: no round numbers in the user part (they may
+stay inside folded blocks); the BioCLIP 2 int8 advice removed (only fp16 is offered); no pointer
+to private notes and no "owner" wording in public pages; AGENT_CHANGELOG.md stays public (old
+entries are in git history and the Zenodo archives anyway). Checked: an Opus reviewer compared
+every old line with the new page (4 lost or changed facts, 1 claim the code contradicts, 4 stray
+round numbers, all fixed), then a Fable reviewer at xhigh (4 more small points, fixed); the
+DATA_GUIDE pointer is now §8 (was §7, a wrong section). GitHub rendering checked at 390 px and
+1000 px; every link resolves.
+
+Asked: the same shape for VIDEO_ANALYSIS, FIELD_GUIDE, INSTALL, SETTINGS_REFERENCE, DATA_GUIDE
+and HOW_PHOTO_RESOLUTION_WORKS, with an xhigh fact check (the owner asked for a workflow). One
+Opus writer per page followed a shared brief; Opus xhigh checkers compared git HEAD with each
+new page (two for the longest pages); a Sonnet helper checked the rendering at 390 px. The
+findings first missed the fixers (subagents may not write report files), so a second fix round
+applied them. Also: the owner's field experience in FIELD_GUIDE (15 to 20 cm; the flower fixed
+to a thin plant stick), its hidden owner to-do deleted; example folders in INSTALL, which now
+says that uninstalling deletes the sessions (checked in the code); wrong section pointers fixed
+(FIELD_GUIDE §5/§6 to §7, Camera tab to Photos tab); the DATA_GUIDE §9 heading lost its round
+number, links updated. Checked: links to and from every page resolve. Open: outdated statements
+listed for the owner (settings labels, rows missing in SETTINGS_REFERENCE), developer docs.
+
