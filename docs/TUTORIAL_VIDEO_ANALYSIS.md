@@ -46,11 +46,12 @@ BioCLIP 2 is large: use Wi-Fi. After this, FaunaPulse needs no internet.
 
 ## 4. Find and name the animals
 
-1. Tap **Find animals in these videos**.
+1. Tap **Find animals in these videos**. Later, from Home: step 4 **Find and name the animals**,
+   tap **Find animals in videos** and pick the session.
 2. **Detection model**: the insectDCT detector for the bee, MegaDetector V6 for the deer.
 3. Switch on **Also identify them**. Check that the model is BioCLIP 2 and choose the name list
    (European pollinators for the bee, mammals and birds for the deer).
-4. Tap **Analyze**.
+4. Tap **Analyze 1 clip and identify**.
 
 The detector checks every frame and the tracker follows each animal as a track ID. Then
 BioCLIP 2 names each track ID from its photos. On a Xiaomi 11T Pro the bee video took under two

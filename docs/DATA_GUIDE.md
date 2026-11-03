@@ -143,6 +143,7 @@ Fields shared by every record: `type`, `time_ms`, `time_iso`.
 | [`blackout`](#blackout) | when the screen-off cover goes up or down |
 | [`screen`](#screen) | when the app goes off or on screen |
 | [`guard_stop`](#guard_stop) | when the recording stopped itself |
+| [`motion_capture`](#motion_capture) | per photo in a motion session |
 | [`timelapse_capture`, `timelapse_skipped`](#timelapse_capture) | per time-lapse photo; per gap |
 | [video records](#timelapse_video_start-video_clip-video_skipped) | per video clip of a burst or live piece |
 | [`camera_sleep`](#camera_sleep) | time-lapse camera off and on |
@@ -168,7 +169,7 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `phone_state`: Phone settings at Start, as in FaunaLapse (keys below the list).
 - `field`: The field notes, in the same form as FaunaLapse (keys below the list).
 - `free_storage_bytes`, `total_storage_bytes`: Free/total bytes on the session's storage volume at start.
-- `model_path`, `task`, `use_gpu`: Requested model and task settings.
+- `model_path`, `task`, `use_gpu`, `cpu_threads`: Requested model and task settings, and the number of CPU threads set for the detector.
 - `accelerator`: What was **actually** used (e.g. GPU, or CPU fallback for int8 models); the summary's *Detector ran on* row.
 - `camera_full_width_px`, `camera_full_height_px`: Full-resolution (high-res) photo size.
 - `capture_dims_from_cache`: Present (`true`) when recording started before the live photo probe confirmed the cached photo size: the sizes above came from the previous measurement.
@@ -176,6 +177,7 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `selected_lens_zoom`, `selected_lens_label`: Which rear lens was used.
 - `focus_mode`, `focus_value`: Focus. `focus_mode` is `manual` (locked at a ~13 cm close-up preset until the user adjusts) or `fixed` (lens without manual focus); `auto` occurs only in older sessions. `focus_value` (0..1) is present only for manual.
 - `confidence_threshold`, `iou_threshold`: Detection thresholds.
+- `tracker_params`: The tracker settings that ran: `algorithm` (`bytetrack` or `cbiou`) and the frame counts derived from the seconds set by the user at the session's frame rate. The seconds themselves are in `config`.
 - `step_seconds`, `duration_seconds`, `session_minutes`: Timing config.
 - `roi`: Starting ROI geometry (see the `roi` sub-object below).
 - `roi_source`, `saves_px`: Which source the ROI photo comes from, and the exact saved pixel side.
@@ -185,6 +187,8 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `config`: **A complete self-describing copy of every setting used**: the most reliable source for your methods section. The single keys above are kept for older readers.
 - `config_not_applicable`: List of `config` keys that had **no effect** under this session's `captureTrigger` (details below the list).
 - `thermal`: A starting thermal/power reading (see the `thermal` block below).
+- `schedule`: Scheduled runs only: which slot this session is. `day` and `window` (both counted from 1), `days_total`, `windows_per_day`, `window_start`, `window_end`. Absent for a session started by hand.
+- `file_token`: The short random code of this session that is part of every photo and video clip filename, so photos stay traceable to their session after folders from several phones are merged.
 
 **`config_not_applicable`.** Examples: all model and tracker keys in a motion or time-lapse
 session; the motion-gate keys in time-lapse; `motionGateEnabled` in a motion session, where the
@@ -363,8 +367,8 @@ there, a track ID simply stops appearing in `detections` records and you cannot 
 
 ### `raw_detections`
 
-Boxes before tracking, only when the evaluation switch is on. Written only when Settings →
-Detection → Tracking → Advanced → **Log raw detections (evaluation)** is on: one line per
+Boxes before tracking, only when the evaluation switch is on. Written only when **Session settings** →
+**Detection** tab → **Tracking** → **Advanced (ByteTrack tuning)** (named **Advanced (C-BIoU tuning)** when that tracker is chosen) → **Log raw detections (evaluation)** is on: one line per
 processed frame (empty frames included, because the tracker ages its tracks by frames) with the
 detector's boxes **before** tracking. This is the input the offline tracker replay harness uses
 to compare association algorithms on real data.
@@ -450,7 +454,7 @@ Written when the detector sleeps or wakes (only if the gate is enabled).
 | `motion_score` | The motion measure at the transition. |
 | `idle_s` | On wake only: how long it was asleep. |
 
-Gated (idle) periods carry **no** `detection` lines by design. These records make that
+Gated (idle) periods carry **no** `detections` lines by design. These records make that
 auditable, so an empty stretch is "confirmed asleep", not "missed".
 
 ### `blackout`
@@ -502,6 +506,17 @@ limit 200 MB)").
 `guard_stop` records exist since round 296.
 
 </details>
+
+### `motion_capture`
+
+One per photo in a motion session (the detector does not run there, so there are no track IDs or
+boxes). The `capture` record that follows carries timing and size as usual.
+
+| Field | Meaning |
+|---|---|
+| `jpeg` | Filename in `roi_frames/`, the same key `detections` records use. |
+| `captured_at_ms` | The trigger moment, same convention as `capture` records. |
+| `motion_score` | The motion score that took the photo. |
 
 ### `timelapse_capture`
 
@@ -571,7 +586,7 @@ encoders keep a minimum quality, so low rates may come out larger.
   was recorded (list below). This record is written when the clip ends, so its `time_ms` is the
   end.
 - **`video_skipped`:** a burst, or part of one, without a clip. `burst`, `reason` (table below),
-  `message`.
+  `message`, and `file` when a clip file was involved (`stop_failed`, `no_frames`).
 
 Fields that a recorded `video_clip` adds:
 
@@ -734,10 +749,15 @@ detection records (and therefore the track ID timeline) do not depend on them.
 (so the session's disk fill rate can be plotted against its photo cadence).
 
 **`fps`:** while the motion gate is idle, the record carries `gate_idle: true` and OMITS every
-field that comes from inference. An absent field means the detector was off, never a zero
-reading; summary graphs break their lines across such gaps. While awake: `fps` (detector FPS)
-plus per-second camera/detector/pipeline rates, the applied throttle cap (`applied_cap_fps`)
-and the time of each stage:
+field that comes from inference. The same holds in motion and time-lapse sessions, where the
+detector never runs: the record then carries `motion_only: true` or `time_lapse: true`. An
+absent field means the detector was off, never a zero reading; summary graphs break their lines
+across such gaps.
+
+Always present: `camera_fps`, `engine` (what the detector runs on),
+`analysis_w`, `analysis_h` (the live analysis frame) and the applied throttle cap
+(`applied_cap_fps`). While the detector runs: `fps` (detector FPS), the per-second rates
+`detector_fps` and `pipeline_fps`, and the time of each stage:
 
 | Field | What it times |
 |---|---|
@@ -789,9 +809,9 @@ own battery-sensor values, logged RAW:
 
 ### `capture`
 
-One per saved ROI photo. It records `fileName`, `trackIds` (the tracks that photo covered:
-tracks at the same time share one photo), timing, byte size, whether it was a high-res photo,
-the source `path`, and `saved_px`. It lets you check whether saving photos lowered the frame
+One per saved ROI photo. It records `file`, `captured_at_ms` (the trigger moment), `track_ids`
+(the tracks that photo covered: tracks at the same time share one photo), `total_ms`, `bytes`,
+`full_res` (whether it was a high-res photo), the source `path`, and `saved_px`. It lets you check whether saving photos lowered the frame
 rate. More fields:
 
 | Field | Meaning |
@@ -801,7 +821,7 @@ rate. More fields:
 | `callback_lag_ms` | High-res path only. Plain wait from request to JPEG. |
 | `live_jpeg`, `live_bytes`, `live_saved_px` | "Also save a fast crop with each high-res photo" (when on): the live-frame crop of the trigger moment, saved next to the high-res photo as `…_live.jpg`. Small but in sync: use it when the high-res photo misses the insect. |
 | `live_lag_ms` | The companion's own delay behind the trigger moment, measured when its frame grab returned: an upper bound on how old its content can be (typically a few tens of ms; compare with the high-res photo's `content_lag_ms`). |
-| `content_at_ms` | High-res path only: the photo content's **sensor-exposure moment as epoch ms**, what to time-match `detections` frames against (see §5). Absent on odd HALs. Also present in `gt_capture` records. |
+| `content_at_ms` | High-res path only: the photo content's **sensor-exposure moment as epoch ms**, what to time-match `detections` frames against (see §5). Absent on odd HALs. |
 
 <details>
 <summary>Older files: <code>capture</code></summary>
@@ -845,8 +865,8 @@ renamed later, and so does a `video_cleanup` record when videos were deleted to 
 
 ### `session_renamed`
 
-The session was renamed after recording. Written when the user renames a session from its ⋮
-menu (on the Sessions screen, or the latest session on the home screen).
+The session was renamed after recording. Written when the user picks **Rename session** in a
+session's ⋮ menu on the **Sessions** screen.
 
 The rename also
 rewrites `config.folderName` in the `start_of_session` record, so the log agrees with the
@@ -1087,11 +1107,12 @@ Error bounds by log generation:
 </details>
 
 **For pixel-accurate boxes on high-res photos, re-run the detector offline** on the saved
-≤ 1024 px crops (GPU workstation). The files are clean re-encoded JPEGs, and the filename and
-JSONL carry every timestamp needed to tie results back to track IDs. That looks at the actual
-pixels instead of estimating from clocks; the time-match above is the honest *approximation*
-for browsing and quick joins. Running the detector on the phone **after** the session is
-possible too: see §6.
+crops (GPU workstation; their side is set by **Saved photo side (px)**, 1024 px by default).
+The files are clean re-encoded JPEGs, and the filename and JSONL carry every timestamp needed to
+tie results back to track IDs. That looks at the actual pixels instead of estimating from clocks.
+
+The time-match above is the honest *approximation* for browsing and quick joins. Running the
+detector on the phone **after** the session is possible too: see §6.
 
 <details>
 <summary>Why the phone does not re-run the detector during the session</summary>
@@ -1104,11 +1125,15 @@ exists since round 135 (§6).
 
 ## 6. After-session photo analysis (`post_detections.jsonl`)
 
-The Analysis screen can run a detector over a session's saved `roi_frames/` photos after the
-fact. This is mainly to sort AI-free motion and time-lapse sessions (which photos contain a
-pollinator; optionally delete the rest). Results are added to
-`<session>/post_detections.jsonl`, under the same append-only JSONL rules as `session.jsonl`
-(§1–§2). Every record carries `time_ms`/`time_iso` (when it was written).
+The **Find animals in photos** screen (the session's ⋮ menu on the **Sessions** screen, or the
+button of the same name on Home) can run a detector over a session's saved `roi_frames/` photos
+after the fact. This is mainly to sort AI-free motion and time-lapse sessions (which photos
+contain a pollinator; optionally delete the rest).
+
+Results are added to `<session>/post_detections.jsonl`, under the same append-only JSONL rules
+as `session.jsonl` (§1–§2). Every record carries `time_ms`/`time_iso` (when it was written). Here `time_iso` is the
+phone's local time **without** a time-zone offset, unlike `session.jsonl`: use `time_ms` to
+join or sort.
 
 | Record | Written |
 |---|---|
@@ -1252,8 +1277,8 @@ How the photos are used:
 
 ## 7. Derived cache files (safe to ignore)
 
-`<session>/dashboard_stats.json` is a cache the app derives for the home screen's Dashboard
-across sessions. It holds:
+`<session>/dashboard_stats.json` is a cache the app derives for the **Dashboard** (Home, bottom
+bar) across sessions. It holds:
 
 - the session's start/end, and whether it has track IDs;
 - each track ID's first/last timestamp (from the first sighting, §4);
@@ -1279,9 +1304,9 @@ timestamps from the first sighting in cache version 4 since round 305.
 
 ## 8. Identification output (`identification/`)
 
-**Identify organisms** (the session's ⋮ menu, or the summary's Photos tab) runs the BioCLIP
-image tower over the crops of every track ID and writes its files into
-`<session>/identification/`. All `.jsonl` files are strict one-object-per-line.
+**Identify organisms** (the session's ⋮ menu on the **Sessions** screen, or the end of the
+summary's **Photos** or **Video** tab) runs the BioCLIP image tower over the crops of every
+track ID and writes its files into `<session>/identification/`. All `.jsonl` files are strict one-object-per-line.
 [IDENTIFICATION.md](IDENTIFICATION.md) explains the method; `README_identification.txt` inside
 the folder repeats the column dictionary for whoever gets the folder later.
 
@@ -1301,7 +1326,7 @@ Append-only (a stopped run can continue). Records:
 |---|---|
 | `identify_start` | The run's settings and counts (list below). |
 | `crop` | `key` (resume key: source\|track\|box), `src` (file in `roi_frames/` that was cut), `photo` (the log's photo name; differs from `src` when the `_live` companion was used), `box_source` (`trigger` / `live` / `post`), `track_id` (null for post-hoc boxes), `box` `[l,t,r,b]` (0..1 of the photo), `crop_px` (longer box side in photo px), `pad_frac`, `sharpness` (variance of the Laplacian), `det_conf`, `captured_at_ms`, `row` (index of the vector in the `.bin`) |
-| `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `decode`, `read_or_decode`, `embed_error`) |
+| `crop_skipped` | `key`, `reason` (`too_small`, `outside`, `read_or_decode`, `embed_error`; older files may also hold `decode`) |
 | `identify_end` | Counts and times (list below). |
 
 **`identify_start`:**
@@ -1956,7 +1981,7 @@ Track IDs in the same frame share one picture. So a session keeps about
   saves the analysed area of each chosen frame at full size (JPEG quality 90) into
   `roi_frames/`, where live photos go, so the gallery copy and identification treat them like
   photos. A frame whose file is there is not saved again: a stopped or interrupted saving
-  continues with *Save the remaining frames*, and finding the track IDs again with the same rule
+  continues with **Save the remaining N frames**, and finding the track IDs again with the same rule
   only saves the frames that changed.
 - **Deleting:** a later *Find track IDs* deletes the kept frames it no longer keeps. It never
   overwrites or deletes a file no run kept (a name already taken moves on by 1 ms), nor a kept
@@ -1980,11 +2005,13 @@ The videos take most of a session's space. Once the track IDs are found, **Free 
 *Find animals in videos* screen offers two deletions, each after a confirmation. The videos are
 kept unless you choose one:
 
-- **Delete the clips without any track ID**: clips that the current *Find track IDs* followed
-  and in which no track ID has a box. A track ID running on into the next clip keeps that clip;
-  one that only ran out of time there, with no box in it, does not.
-- **Delete all clips, keep the saved frames**: offered once every clip is analysed, the track IDs
-  include the latest analysis and every kept frame is saved.
+- **Delete N clips without any track ID (…)…** (the dialog: **Delete the clips without any track
+  ID?**): clips that the current *Find track IDs* followed and in which no track ID has a box.
+  A track ID running on into the next clip keeps that clip; one that only ran out of time there,
+  with no box in it, does not.
+- **Delete all N clips, keep the saved frames (…)…** (the dialog: **Delete all videos?**): usable
+  once every clip is analysed, the track IDs include the latest analysis and every kept frame is
+  saved. Before that the button is greyed out, with a note that says what is left to do.
 
 | After a deletion | |
 |---|---|

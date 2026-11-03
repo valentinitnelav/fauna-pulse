@@ -16,7 +16,7 @@ most technical parts are folded: click a line that starts with ▸ to open it.
 > - **Auto** takes a high-res photo only when a fast crop would be smaller than your target size
 >   (for example 1024 px). High-res photos pause detection briefly and are often blurred.
 > - Photos are shrunk to the target size, never enlarged. If the ROI line shows **⚠ below N px**,
->   move the phone closer or use the telephoto lens.
+>   move the phone closer, switch lens, or (with fast crops) set **ROI photo source** to **Auto**.
 
 **Contents**
 
@@ -45,6 +45,11 @@ The app lets the phone camera produce two image "feeds". They serve two differen
 
 **1. The live analysis stream.** A smaller but faster video feed, for example 1080×1440 px. Its
 size is capped by the phone's camera software (its Hardware Abstraction Layer, HAL).
+
+- You can change its size in **Session settings**, tab **Photos**, fold **Advanced (camera stream)**,
+  setting **Live stream resolution (short × long)**. On **Auto** the app picks the smallest size whose
+  short side reaches **Saved photo side (px)**, so fast crops can meet the target. A phone that
+  cannot stream that size gets the largest size it can stream.
 
 - The Xiaomi test phone can deliver this stream up to about 30 times per second (about 30 FPS).
 - The motion check, the AI detector and the preview on the screen all run on this stream.
@@ -94,9 +99,10 @@ See also: [Android: use multiple camera streams at the same time](https://develo
 ## Choose the photo source
 
 1. Open **Session settings**, then the **Photos** tab.
-2. Set **Saved photo side (px)**: the target size of the square photos (default 1024, from 128 to
-   2048, rounded to a multiple of 32).
-3. Choose **ROI photo source**:
+2. Set **Saved photo side (px)**: the target size of the square photos and time-lapse video
+   clips (default 1024, from 128 to 2048, rounded to a multiple of 32).
+3. Choose **ROI photo source**. It is greyed out for time-lapse video bursts: the clips are
+   cut from the live frames, like fast photos.
 
 | Option in the app | Where each photo comes from |
 |---|---|
@@ -116,6 +122,14 @@ the user's target size (for example 1024 px)?*
   box out of that instead. This costs about 1 s and a brief frame-rate dip, but the photo meets
   the target. The high-res photo is cropped with the ROI's relative position (the same fraction
   of the frame).
+
+If the app could not measure the phone's high-res photo size at the start, **Auto** and
+**High-res photos always** save fast crops instead, so you still get photos.
+
+**Also save a fast crop with each high-res photo** (on by default, only for high-res photos):
+next to each high-res photo the app also saves the fast crop from the moment of the detection
+(`…_live.jpg`). It is smaller, but the insect is in it, even if it left before the high-res
+photo was taken. It adds about 50 to 200 KB per photo.
 
 **Tip:** adjust the distance between the phone and the flower so that the ROI square reaches the
 target size within the live analysis stream. Then even fast crops meet the target.
@@ -142,9 +156,13 @@ and the visitors mostly sit still.
 - **Smaller than the target:** the photo is not enlarged. Stretching a small image adds no
   detail. It only makes a blurry image with more pixels, which would actively mislead the
   insect classifier later.
-- **Even the high-res photo cannot reach the target** (the box is a very small part of the
-  frame): the app saves the best it can and shows **⚠ below N px**. The only real fixes are
-  physical: move the phone closer or switch to the telephoto lens.
+- **The photo from the chosen source cannot reach the target** (the box is a small part of the
+  frame): the app saves the best it can and the ROI line shows **⚠ below N px**. With
+  **Fast crops only**, you can move the phone closer, switch lens, or set **ROI photo source** to
+  **Auto**. With **Auto** or **High-res photos always**, the warning means that even the
+  high-res photo is too small: the only real fixes are physical (move the phone closer or switch
+  to the telephoto lens). If the line shows **(fast)** in these modes, the app could not measure
+  the high-res size, and the fast-crop advice applies.
 
 ## Read the ROI line on the camera screen
 
@@ -155,11 +173,17 @@ Example: `ROI: 416×416 px → saves 1024×1024 (high-res)`
 | **416×416** | Box size on the live stream (the picture you see) |
 | **saves 1024×1024** | Size of the JPEG that will really be written |
 | **(high-res)** or **(fast)** | The source the photo will be cut from |
-| **⚠ below 1024 px** | Even the high-res photo cannot reach the target |
+| **⚠ below 1024 px** | The photo from the chosen source will be smaller than the target |
 
 The box size moves smoothly as you drag, and its scale never changes. When the box size and the
 saved size are the same, the line shows only one number, for example `ROI: 1024×1024 px (fast)`.
 Before the camera sizes are known, it shows `ROI: measuring…`.
+
+The line above it shows the live stream size, for example `Stream: 1080×1440 px`
+(`Stream: measuring…` at the start). If the phone cannot stream the size asked for in
+**Live stream resolution (short × long)**, it reads, for example,
+`Stream: 1080×1440 px (the phone's maximum; asked 1536×2048)`: the phone's limit, not a setting
+you chose.
 
 ## Two costs of the high-res path
 

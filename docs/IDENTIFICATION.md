@@ -48,6 +48,7 @@ model. The name list holds the names the model may choose from.
 3. One button downloads them and sets them up.
 
 Other suggestions, and the other models already on the phone, are under **Choose other models**.
+If you choose **Not now** under **To name them**, the animals are found and counted, not named.
 
 | Your answer | Identification model and name list |
 |---|---|
@@ -93,13 +94,28 @@ A model can identify only with a name list made for it:
 Open it from **Home**: **AI models** in the bottom bar, or **Menu** → **Download & import
 models**. The Identify screen has a link to it too (**Download & import models…**).
 
-- Each kind of model is one list, sorted by file name. Each file that is not on the phone has its
-  own **Download** button.
+- The screen has two lists: **Detection models** (find animals and draw a box around each one) and
+  **Identification models** (name what is inside each box). Each list is sorted by file name.
+  A file on the phone has a green **On this phone** mark. Each file that is not on the phone has
+  its own **Download** button.
+- **Name lists without their model** lists name lists whose model is not on this phone. They
+  cannot be used until you download the model.
 - A BioCLIP model has its own **Download** and two numbered steps: *1. The model, needed once*,
-  then *2. the name lists for your region and the animals you watch*. A name list's **Download**
+  then *2. Then the name lists for your region and the animals you watch*. A name list's **Download**
   also brings the model when it is missing.
 - The insectDCT classifier is one row with its class list. Downloading the class list brings the
   model along, and choosing the model also chooses its class list.
+- Each file has an ⓘ button. It opens a card named after the file, with rows such as *Kind*,
+  *File*, *Licence* and *Source*. For a file the app does not know, one row *Licence and source*
+  says that it is not known. The card of a model downloaded from Hugging Face ends with
+  **Model card on Hugging Face**, its page there.
+- **All models for FaunaPulse on Hugging Face** opens the collection of all models. The box
+  **About these models** at the end of the screen says more about them.
+
+**Delete models.** Tap the bin next to a file (**Delete**). Under a list of two files or more,
+**Delete all detection models…** or **Delete all identification models…** deletes the whole
+list. To delete some files, press and hold one file, tap the others, then tap the bin at the top.
+A model's name lists are deleted with it. Sessions and results already made keep their results.
 
 ### Import your own files
 
@@ -107,8 +123,10 @@ models**. The Identify screen has a link to it too (**Download & import models�
 2. On **Home**, open **Menu** → **Download & import models** → **Import model files…** (or
    **Download from a link…** to download from a web address).
 3. Choose the files. For insectDCT, choose both files (model and class list) at once. The app
-   finds out what each `.tflite` file is and puts it in its place. It asks before it replaces a
-   file of the same name.
+   finds out what each `.tflite` file is and puts it in its place. If a file of the same name is
+   already there, the window **Already on this phone** asks: **Keep the one on the phone** or
+   **Replace**. With several files, tick **Same answer for the other chosen files already on the
+   phone**.
 4. Wait for the line with a green tick, for example "Imported {name}: an identification model,
    listed under Identification models."
 
@@ -193,8 +211,11 @@ of **Detection, track ID and identification settings** (the same values).
 session:
 
 1. On the **Sessions** screen, open the session's ⋮ menu and tap **Identify organisms**. (Or:
-   the session's summary → **Photos** tab → **Identify organisms**.)
-2. Pick the model and the name list. The screen shows how many crops will be processed: one per
+   the session's summary → **Photos** tab, or **Video** tab for a video session → the
+   **Identify organisms** button at the end.)
+2. Under **Model and name list**, pick the **Model (.tflite)** and the **Name list (.fpack)**. A
+   line under them says how many names the list has. If no list fits the model, an amber line
+   says "No name list for this model, so it cannot identify". The screen shows how many crops will be processed: one per
    photo per tracked animal, with a cap per track ID. After the first run on this phone it also
    shows a time estimate, for example "120 crops from 8 track IDs (about 5 min on this phone,
    plus any heat pauses)". The estimate leaves heat pauses out.
@@ -222,13 +243,17 @@ per track ID. Photos further apart have no track IDs, so their boxes are identif
 
 | Button | What it does |
 |---|---|
-| **Start** | Starts the run. |
+| **Start** | Starts the run. During the run a line shows the step: "Loading the model (the first time on this phone can take up to a minute)…", "Planning crops…", "Identifying crops on the CPU…" (or GPU), "Combining crops per track ID and writing results…", or "Paused: …" during a heat pause. |
 | **Cancel (keeps what is done)** | Stops the run and keeps everything done so far. |
 | **Continue / re-run** | Shown in place of **Start** once crops are stored. Goes on where the run stopped, then scores everything again. On a session that did not change, this takes seconds. |
 | **Stop and leave** | When you leave the screen during a run (Back), the app asks *Identification is still running*. **Stop and leave** stops after the current photo and keeps what is done; **Cancel** stays on the screen. |
-| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, for example one for a single country, without running the model again. |
+| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, for example one for a single country, without running the model again. Shown when stored model output exists and the track IDs did not change. |
 | **Test speed** | In the Run section. Measures the seconds per crop on this phone with the current settings, so you can compare GPU on or off and thread counts in about a minute each (a few minutes on an older phone's CPU). |
 | **View results** | Opens the results ([next section](#read-the-results)). |
+| **Share results (CSV file)** | Under **Last run**. Shares the per-track-ID table. |
+
+After a run, the block **Last run** sums it up, for example "12 track IDs: 9 to family, 2
+unidentified, 1 no organism.", with a note if the run was cancelled or some crops failed.
 
 ### Messages you may see
 
@@ -238,6 +263,11 @@ per track ID. Photos further apart have no track IDs, so their boxes are identif
 | "N of M crops could not be identified because their photos could not be read (the files may be damaged). They are missing from the results." | Those photos are damaged. | Nothing helps: **Continue / re-run** does not, because the photo stays damaged. |
 | A red line that says no crop at all could be identified because of model errors | The model failed on every crop. | If it fails a second time, delete the model on **Download & import models** and download it again (the line says so). |
 | "Identifying crops on the CPU (GPU not used, see below)…", with a small amber line under the counts | The model runs on the slower CPU. The amber line gives the reason. | See [Troubleshooting](#troubleshooting). |
+| "Only N of M kept frames of the videos are saved, so X of Y track IDs have no photo to identify yet. Save the remaining frames on "Find animals in videos" first." | A video session whose kept frames are not all saved yet. | Tap **Open Find animals in videos** and save the frames, then come back. |
+| "N kept frames can no longer be saved: the video is gone from the session folder." | The video file was deleted or moved. | Those frames cannot be identified. |
+| "No crops to identify: this session has no photos of tracked animals. …" | The session was recorded without a detection model. | Run **Find animals in photos** (videos: **Find animals in videos**) from the session's ⋮ menu first. |
+| "The phone is not plugged in." | The phone runs on its battery. | Plug it in for long runs. |
+| "Track IDs were found again after the last identification, so its results no longer fit them. …" | The track IDs changed after the last run. | **Continue / re-run** identifies all photos again from the start (as long as a first run). |
 | A note on **Home** for a few seconds when you open FaunaPulse | Android closed the app during a run. Nothing starts by itself. | On **Sessions**, open the session's ⋮ menu → **Identify organisms**. It goes on where it stopped. |
 
 <details>
@@ -295,7 +325,9 @@ and the session summary shows no answers on the frames until then (round 235).
 
 ## Read the results
 
-**View results** opens a table with one row per taxon. A taxon is a named group of organisms at
+**View results** opens the screen **Identification**, with the session's name under the title.
+Its header lists the *Model*, the *Name list* (*Class list* for insectDCT), the *Date run* and
+the number of *Track IDs*. Below is a table with one row per taxon. A taxon is a named group of organisms at
 one rank, such as the order Hymenoptera or the genus *Bombus*.
 
 1. Choose how to count, above the table:
@@ -305,11 +337,14 @@ one rank, such as the order Hymenoptera or the genus *Bombus*.
    - **Order**, **Family**, **Genus** or **Species**: every track ID counts under its taxon at
      that rank. Track IDs the model did not resolve that deep land in a "not resolved to ..."
      row.
+   - Under the chips, **Rank filter:** keeps only the rows of one rank. A long table shows its
+     first rows: tap **Show all N rows** for the rest. **All N track IDs** below the table lists
+     every track ID.
 2. Read the columns. *Track IDs* is the number of track IDs in the row. *Time* adds up their
    durations. *Med. Conf.* is their median confidence.
 3. Tap a row to see its track IDs. Tap a track ID to open its sheet with the full ladder (see
    below).
-4. Tap **Share results (CSV file)** to hand the per-track-ID table (`tracks_<pack>.csv`, one row per track ID)
+4. Tap the share icon at the top right (**Share results (CSV file)**) to hand the per-track-ID table (`tracks_<pack>.csv`, one row per track ID)
    to another app. The same file
    stays in the session folder under `identification/`, so you can also copy it over USB.
 
@@ -343,11 +378,17 @@ guesses per crop are in `predictions_<pack>.jsonl`.
 - **The best single photo**, with its full file name on its own line. The sheet also names its
   species and confidence, the crop number, and how many photos name the same species, and it
   opens the photo view on it. In the photo, the yellow box is the detector's box, labelled with
-  the live detector's confidence for that photo. The cyan box is the crop given to the model
-  (you can switch it off and zoom).
-- **The crops table.** For each crop: its side in pixels, its weight, its own best guess, the
+  the live detector's confidence for that photo. The cyan box is the crop given to the model.
+  The eye button (**Hide boxes** / **Show boxes**) switches the boxes off and on; pinch to zoom
+  and tap **Reset zoom** to go back.
+- **The crops table.** For each crop: its side in pixels, its weight, its own best guess
+  (*Top species*, with *Species conf.*), the
   detector's confidence for the crop's box (*Detector conf.*), and the best guess's family, order
   and class in one column each. Tap a crop to see its photo.
+- A line *"None of these" (flower, leaf, shadow …)* with its probability. For a classifier with
+  fixed classes, such as insectDCT, a line *Model's own class* gives the class it chose.
+- A "?" in a table means an older app version made these results. **Update results** on
+  **Identify organisms** fills in the missing values within seconds.
 - **Flags**, as amber ⚠ lines where they apply. Their ⓘ gives the reason with the actual values.
 
 The crops table names the taxon in its confidence column, for example "Conf. Hymenoptera". Tap
@@ -370,7 +411,8 @@ a ladder row to change the taxon this column shows.
 The ladder rows that a flag concerns carry ⚠. A small grey "Flags in tracks CSV" line at the
 bottom lists the flags as they are written to the CSV, with a dictionary.
 
-Nothing is deleted. The results table hides suspect track IDs behind a switch, the Photos tab
+Nothing is deleted. The results table hides suspect track IDs behind the switch **Include N
+suspect track IDs** (off at first), the Photos tab
 marks them, and the CSV keeps every row. All four thresholds are settings.
 
 ### How sure is it?
@@ -451,7 +493,7 @@ afterwards. Both are as designed.
 
 ## Settings
 
-Open **Identify organisms** → **Advanced**. Settings are saved as you change them,
+Open **Identify organisms** → the **Advanced settings** fold. Settings are saved as you change them,
 and every run logs them in its `identify_start` record. The defaults come from the literature,
 from BioCLIP's documentation and from the `insect-detect-post` pipeline. The full list:
 [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md),
@@ -461,20 +503,23 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline. The ful
 |---|---|---|
 | **Use the GPU when it can run the model** | on | Much faster when the phone's GPU can run the model. The app checks each phone and uses the CPU otherwise, with the reason on the screen. |
 | **CPU threads (0 = automatic)** | 0 = 2 threads | 4 threads are about a quarter faster but keep twice as many cores busy, so the heat pause comes sooner. Try other values with **Test speed**. |
-| **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. |
+| **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. Off: the box (plus the margin) is stretched to a square, so a long, thin insect looks squeezed. Which works better on pollinator photos is not yet tested. |
 | **Crop margin** | 0 | The box itself, so the model sees as little flower or background as possible. |
 | **Smallest box to identify** | 48 px | A smaller box is enlarged more than 4 times to the model's 224 px and is mostly blur. |
 | **Crops per track ID (0 = all)** | 10 | Keeps the ten largest boxes of a track ID. It rarely removes anything and only limits the run time of long bursts. |
 | **Ignore crops far less sure than the best (factor)** | 10 | A crop the model is far less sure about than the best crop adds no usable information. |
 | **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies; none is tested on pollinators. |
 | **"No organism" threshold** | 0.5 | Above this share for the "none of these" entries, a track ID is "no organism". |
-| **Pause above battery temperature** | 43 °C | The same as for **Find animals in videos**; the run goes on 3 °C lower. |
-| **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). |
-| *Suspect track IDs*: **Short: duration below**, **Short: detections below**, **Weak: detector confidence below**, **Weak: order confidence below** | 2 s, 3, 0.20, 0.50 | Flags only, nothing is deleted. The duration and detector-confidence limits follow the `insect-detect-post` software, so the two tools agree. |
+| **Pause above battery temperature** | 43 °C | The same limit as **Pause the analysis above** on **Detection, track ID and identification settings** (opened from **Find animals in videos**); the run goes on 3 °C lower. |
+| **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). When it is on, three fields appear under it. |
+| **Largest gap between joined track IDs**, **Appearance similarity needed**, **Box size may differ by up to** | 3 s, 0.85, 50 % | Shown only with **Merge consecutive track IDs** on. |
+| *Suspect track IDs (flags only, nothing is deleted)*: **Short: duration below**, **Short: detections below**, **Weak: detector confidence below**, **Weak: order confidence below** | 2 s, 3, 0.20, 0.50 | Flags only, nothing is deleted. The duration and detector-confidence limits follow the `insect-detect-post` software, so the two tools agree. |
+| **CSV file only: rank of the "pred" columns** | family | Only for `tracks_<pack>.csv`; the screen always shows every rank. |
 
 **What a change costs.** Most settings act only when the answers are scored, so changing them
 never runs the model again. **Crop margin** and **Square crops** change what the model saw:
-**Start** then asks whether to *Keep stored crops* (fast) or *Recompute all crops* (a full run).
+**Start** then opens the window **Crop settings changed**: **Keep stored crops** (fast),
+**Recompute all crops** (a full run) or **Cancel**.
 Details are in the folded block *What a re-run computes again* above.
 
 <details>
@@ -566,7 +611,7 @@ which is a tracker-side idea for later.
 | *"GPU not used: This phone has N GB of memory …"* | The model is too large to set up on this phone's GPU without Android closing the app | Nothing: the CPU gives the same answers, only slower. |
 | The model does not load at all | The phone has too little free memory (RAM) for the file (fp16 needs about 1 GB free, BioCLIP 2.5 about 2 GB), or the export is broken. | Check the export on the PC with `verify_parity.py` (fauna-pulse-models). |
 | Every track ID comes out "no organism" | The name list has no rows for the animals in the photos (for example an orders-only test pack). | Use or build a wider name list. |
-| Everything is "unidentified" | The confidence threshold is high for this size of name list, or the crops are poor (very small boxes give weak embeddings). | Lower the threshold in **Advanced**, or check the crops. |
+| Everything is "unidentified" | The confidence threshold is high for this size of name list, or the crops are poor (very small boxes give weak embeddings). | Lower **Confidence needed to call a rank identified** in **Advanced settings**, or check the crops. |
 | Scoring is slow | A large name list (more than 100,000 names) takes a while per crop in this version. | Use a list restricted to a country or to some orders. |
 
 ## Files
@@ -580,7 +625,7 @@ The results are in `<session>/identification/`.
 | `tracks_<pack>.json` | per track ID: ladder, crops with weights, best single view, flags |
 | `tracks_<pack>.csv` | one row per track ID; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of `insect-detect-post` (Sittinger 2026); `device_id` is the device's name (the field notes' *Device ID*, else an own field of that name, else FaunaLapse's phone ID, else the phone model; DATA_GUIDE §8), the phone model is also the last column, `phone_model` |
 | `crops_<pack>.csv` | every crop's own values and its `counted` flag |
-| `summary_<pack>.json` | counts for the results screen and the home badge |
+| `summary_<pack>.json` | counts for the results screen, the session summary and the Dashboard |
 
 [DATA_GUIDE.md](DATA_GUIDE.md) §8 documents the records and columns.
 
@@ -660,7 +705,7 @@ Consequences:
   value.
 - Photos that disagree pull the average apart and lower every Conf.
 - A photo the model is far less sure about than its best photo carries no usable information
-  and is left out (marked "left out" in the crops table).
+  and is left out (the crops table marks it "left out of the combined answer").
 
 Every number can be recomputed off the phone with `bioclip_export/reproduce_track_conf.py`
 (fauna-pulse-models) from the stored embeddings and the label pack.
@@ -747,7 +792,10 @@ path the live detector uses.
 
 - **Old files.** BioCLIP files exported before round 242 cannot run on any GPU: their attention
   layers use 5-dimensional tensors, which the phone's GPU engine rejects. So the app falls back
-  to the CPU ("Failed to compile model"; the screen adds that a newer export is needed).
+  to the CPU. The raw note ("Failed to compile model") goes to the log only. The screen shows
+  "GPU not used: This phone's graphics processor (GPU) cannot run this model, so the main
+  processor (CPU) is used …", and adds that a model you converted yourself needs converting
+  again with the current tool. The catalogue's files are new exports.
 - **New files.** Files exported since then (fauna-pulse-models `bioclip_export`,
   `--attention 4d`, the default) run entirely on the GPU with the same weights and maths. The
   downloadable `bioclip-2_224_fp16.tflite` is such a file.
@@ -786,8 +834,8 @@ the app reached 2.7 GB while BioCLIP 2 was being set up there, and Android close
 
 Since round 243 the app first compares the need, about 4.5 × the file size, with the phone's
 memory, and tries the GPU only when that stays under 60 % of it. Otherwise it runs on the CPU
-with a note such as "this phone has 3.9 GB of memory; setting this model up on the GPU needs
-about 2.7 GB, so it runs on the CPU". On that phone the CPU takes about 15.5 s per crop (2
+with a note such as "GPU not used: This phone has 3.9 GB of memory; setting this model up on
+the GPU needs about 2.7 GB, so it runs on the CPU." On that phone the CPU takes about 15.5 s per crop (2
 threads; 10 crops in about 3 minutes), so identification there is a job to leave running on the
 charger.
 

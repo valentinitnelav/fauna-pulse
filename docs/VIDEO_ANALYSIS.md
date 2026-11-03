@@ -71,24 +71,31 @@ If a video cannot be read or found, see [When a video does not work](#when-a-vid
 
 **Import** clips filmed elsewhere:
 
-1. Tap **Import videos…**. The button is on **Home**, on the **Find animals in videos** screen
-   and in the ⋮ menu of the **Sessions** screen.
+1. Tap **Import videos…**. The button is on **Home** (step 3, **Or use your own videos**), in
+   the ⋮ menu of the **Sessions** screen and on the **Find animals in videos** screen (there it
+   reads **Import other videos…** once a session has videos).
 2. Android's photo picker opens, with the camera's videos first. A video saved elsewhere (for
    example in Download) is found with the picker's own ⋮ menu (**Browse**).
-3. Check the start time on the import sheet: track IDs per hour and the dashboard use it.
+3. The **Import videos** screen opens. Give the session a name under **Session name**.
+4. Check the line **Filming started**: track IDs per hour and the dashboard use it.
    **Change…** sets the day, hour and minute.
+5. Tap **Import 8 clips** (the number of clips you picked). When the copy is done, tap **Find
+   animals in these videos** to go on with step 2, or **Done**.
 
 One session per site and day works best. The videos are copied, so they take storage twice
 until you delete the originals.
 
-**Or record** the clips with FaunaPulse itself: capture trigger **Time-lapse**, **Save bursts
-as: Video**. These clips are already the ROI square (the area of interest) and carry the
+**Or record** the clips with FaunaPulse itself: **Capture trigger (what causes photos)**: **Time-lapse
+photo or video bursts**, then **Save bursts as**: **Video (MP4), find animals later**. These clips are already the ROI square (the area of interest) and carry the
 camera's own start time. They go straight to step 2: their session summary opens on the
 **Video** tab with a **Find animals in videos** button.
 
 <details>
 <summary>Free storage during the import, and failed copies</summary>
 
+- A note above the import button says that the videos are copied, so they take storage twice.
+  The session can copy them back to the Gallery later (open the session, **Video** tab, **Copy
+  videos to Gallery**).
 - The **Import videos** screen checks the free storage when it opens, when you come back to the
   app and again before the copy.
 - While the clips do not fit, a red line says how much is needed and how much is free, and the
@@ -97,13 +104,17 @@ camera's own start time. They go straight to step 2: their session summary opens
 - If a copy fails, a plain message says why ("The videos could not be copied: not enough free
   storage …") and what to do. The half-copied files are deleted.
 - An import cut off by closing the app is deleted at the next start.
+- A fragmented MP4 (as some download tools save videos) is written once more as a plain MP4
+  while importing ("Rewriting clip 1 of 3 as a plain MP4…"). Same pictures, nothing
+  re-compressed.
+- Files that cannot be used are listed under **Left out** with the reason.
 
 </details>
 
 <details>
-<summary>The start time on the import sheet</summary>
+<summary>The start time on the Import videos screen</summary>
 
-- The line under the start time says what the file name and the time stored in the video gave.
+- The line under **Filming started** says what the file name and the time stored in the video gave.
 - **Change…** sets the day, hour and minute. The seconds become 0 (the time picker has no
   seconds).
 - **Back to the time read from the file** (with several clips: **Back to the times read from
@@ -113,14 +124,17 @@ camera's own start time. They go straight to step 2: their session summary opens
 
 ### Step 2. Find animals in videos
 
-1. On **Home**, open **Find animals in videos**.
+1. Right after an import, tap **Find animals in these videos**. Later, on **Home**, step 4
+   **Find and name the animals**, tap **Find animals in videos** (or use the session's ⋮ menu on
+   the **Sessions** screen).
 2. Choose the session, the model and the area (the proposed square is ready).
-3. Tap **Start**.
+3. Tap the main button, for example **Analyze 8 clips** (**Analyze 8 clips and identify** with
+   **Also identify them** on).
 
 **The area to analyze.** The screen proposes the largest square in the middle of the video (a
-video that is already square is used whole). Under **Area to analyze** you can choose the whole
-picture, or **Change…** the square while the video plays fast (4×, up to 10×). Watching it
-fast shows whether the camera or the flowers move.
+video that is already square is used whole). Under **Area to analyze** you can choose **Whole picture** or
+**A square**, and **Change…** the square while the video plays fast (4×, up to 10×). Watching it
+fast shows whether the camera or the flowers move. **Use this square** keeps it.
 
 The analysed area is scaled down to the model's input size. So a small insect in a whole 4K
 frame shrinks to a few pixels; a square keeps it large.
@@ -144,9 +158,12 @@ detection session.
 **The main button** does what is due, in this order:
 
 1. It analyzes the clips not done yet, or analyzed with other detection settings
-   (**Analyze…**, **Continue…**, **Analyze again with these settings**).
+   (**Analyze 8 clips**, **Continue (3 of 8 clips left)**, **Analyze again with these settings**).
 2. Else it finds the track IDs when they are missing, out of date or found with other track ID
-   settings (**Find track IDs again with these settings**).
+   settings (**Find track IDs**, **Find track IDs again with these settings**). With **Also
+   identify them** on, **Analyze 8 clips**, **Find track IDs** and **Find track IDs again with
+   these settings** end with "and identify" (**Continue…** and **Analyze again with these
+   settings** do not).
 3. Else, with **Also identify them** on, **Identify the animals found**.
 
 Analyzing is the slow step. It can be paused and continued, and it finds boxes only. With
@@ -162,6 +179,9 @@ identification go on while another app is open or the screen is off, with a noti
 with **Also identify them** on, a line under the switch says: "Identification needs a lot of
 memory. Keep FaunaPulse on the screen until it ends: if you switch to another app, it may wait,
 or Android may stop it."
+
+**The screen stays on.** While a run or the saving of frames goes on, and while a video plays,
+the app keeps the screen on. Afterwards the phone's own screen timeout applies again.
 
 **Stop and continue.** **Stop**, or swiping FaunaPulse away from the recent apps, ends the run;
 what is done is kept. After a **Stop** the main button reads **Continue (N of M clips left)**
@@ -190,6 +210,12 @@ stopped.
 - **Continue** also appears when the run stopped inside its first clip.
 - The progress line's **ms per frame** and time left leave out heat pauses. When a clip's length
   is not known yet, it says "time left not known yet".
+- Under the progress line, **Battery temperature** shows the phone's temperature on a scale
+  that ends at "pauses at N °C" (the pause temperature). After a heat pause the run goes on by
+  itself 3 °C below that limit. The limit is set in **Detection, track ID and identification
+  settings**, after the run.
+- During a heat pause the screen says "Cooling down. Put the phone on a cool, hard surface out
+  of the sun (or in front of a fan); a case traps heat. It resumes by itself."
 - **Back** during a heat pause asks **The analysis is paused** (**Cancel** keeps it paused,
   **Stop and leave** stops it).
 - If the storage fills up, the run stops with "Storage full: the analysis stopped. What is done
@@ -205,9 +231,22 @@ stopped.
 <summary>Compare with live detection</summary>
 
 A live detection session with **Also record the ROI as video** can be analysed the same way, to
-compare with what live detection found. Its **Video** tab then switches between **Live
-detection** and **Detection afterwards** on the same clips. This shows, for example, track IDs
+compare with what live detection found. On its **Video** tab, the card **Compare with
+detection afterwards** has a **Find animals in videos** button. The tab then switches between
+**Live detection** and **Detection afterwards** on the same clips. This shows, for example, track IDs
 that live detection missed while the phone was hot or the motion gate slept.
+
+</details>
+
+<details>
+<summary>The phone during the analysis: Graphs tab</summary>
+
+- The session's **Graphs** tab shows the block **While the detector ran on the videos**: the
+  rows **Analysis time**, **Frames analyzed**, **Speed while running**, **Cooling pauses** and
+  **Energy used**, and the graphs **Battery temperature (°C)**, **Frames analyzed per second**,
+  **Detector time per frame (ms)** and **Power draw (W)**.
+- For a session recorded with FaunaPulse (video bursts or live detection with video), a switch
+  chooses between **While recording** and **While the detector ran**.
 
 </details>
 
@@ -254,8 +293,12 @@ change the settings above, run again and watch again. The player comes back on t
 and moment, with the same view and speed, to compare.
 
 **Free storage**, in the **Track IDs** part under the track ID result (above **Watch the
-results**), deletes the clips without any track ID, or all clips once
-the frames are saved. The boxes, track IDs and kept frames stay, so **Find track IDs** can still
+results**), deletes videos. **Delete 4 clips without any track ID (1.2 GB)…** removes the clips
+without any track ID. **Delete all 8 clips, keep the saved frames (…)…** removes all clips. Each
+button shows the size it frees. They wait, with a line that gives the reason, until every clip is
+analyzed, the track IDs include the latest analysis and the kept frames are saved.
+
+The boxes, track IDs and kept frames stay, so **Find track IDs** can still
 run again ([DATA_GUIDE §9](DATA_GUIDE.md#9-imported-videos-videos-video_detectionsjsonl)).
 Copy the clips to a computer first if you may want to analyse them again.
 
@@ -277,7 +320,7 @@ Copy the clips to a computer first if you may want to analyse them again.
 - When the track IDs are found, the bar at the bottom says, for example, "Found 8 track IDs in 4
   of 8 clips." and the **Track IDs** part "8 track IDs in 4 of 8 clips (occlusion tolerance …)".
 - 4 is the number of clips in which at least one track ID has a box. So the other 4 are the
-  clips that **Delete 4 clips without any track ID** (under **Free storage**) removes.
+  clips that **Delete 4 clips without any track ID (…)…** (under **Free storage**) removes.
 - With no track ID it reads "0 track IDs in 8 clips (…)".
 - Finding the track IDs again numbers them anew. So identification results made before say
   "Track IDs were found again after these results were made." and need **Continue / re-run** on
@@ -297,6 +340,10 @@ Copy the clips to a computer first if you may want to analyse them again.
 - **Watch the results** is hidden while the detector runs, the track IDs are found, frames are
   saved or clips are deleted (the phone reads one video at a time). It pauses when another
   screen opens over it. For a live detection session it shows **Detection afterwards** first.
+- **Cards under the player** on the **Video** tab: **Not analyzed yet** (before the first run),
+  **Square in the wrong place?** (**Change square and analyze again** opens **Find animals in
+  videos** for the session) and, once the videos were deleted, **Other track ID settings?** (the
+  track IDs can still be found again from the saved boxes).
 
 </details>
 
@@ -306,7 +353,9 @@ Copy the clips to a computer first if you may want to analyse them again.
 
 - `track_ids.csv` (one row per track ID),
 - `mot/` (every tracked box),
-- `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`.
+- `post_tracks.jsonl`, `video_detections.jsonl` and `session.jsonl`,
+- `phone_during_analysis.csv` (the phone's temperature, power and speed during the runs), when
+  it has data.
 
 Unzip it on the computer and keep the files together: the scripts below need them.
 
@@ -320,16 +369,14 @@ closing the app, a forced stop) is cut off. The phone writes a video's index onl
 recording ends, so the file cannot be read.
 
 **Find animals in videos** says so, analyses the
-other clips and offers **Delete the cut-off clip…** right under the note. The **Video** tab
+other clips and offers **Delete the cut-off clip (…)…** (with the size it frees) right under the
+note. The **Video** tab
 leaves such clips out.
 Live detection + video records 5-minute pieces, and video bursts one clip
 per burst, so a stop loses at most the piece or burst that was recording.
 
-**A video is missing from the file window?** Its **Downloads** view lists only files Android
-marked as downloads. A clip saved by another app (for example WhatsApp) and then moved into the
-Download folder is missing there. Tap ☰ in the file window and choose **Videos**, or the phone's
-name and then the same folder: the clip is listed there. The app shows this tip when the file
-window is closed without a choice.
+**A video is missing from the photo picker?** The picker lists the camera's videos first. Open
+its own ⋮ menu (**Browse**) to find a video in another folder, for example Download.
 
 **Older phones.** A phone too slow for live detection can still record and analyse later. On the
 second test phone (Samsung Galaxy M12, 2021, Exynos 850), live detection ran at 3 to 5 frames per
@@ -375,8 +422,9 @@ Count by hand with the same rule, or the comparison measures the rule and not th
 
 - **Start and end.** A track ID starts when the insect is first detected in the analysed area and
   ends when it was last seen there.
-- **Minimum track length in frames.** The detector must find the insect in that many analysed
-  frames in a row (shown under the setting: 1 s = 5 detections at 5 frames per second). So a high
+- **Minimum track length.** It is set in seconds. The detector must find the insect in that many
+  analysed frames in a row (the frames are shown under the setting: 1 s = 5 detections at 5 frames
+  per second). At least 2 detections in a row are always needed, even at 0 s. So a high
   value also drops an insect it sees only on and off. The seconds become frames at the rate the
   video was analysed at, fixed for the whole run.
 - **In the picture, not on the flower.** The app sees an insect *in the picture*, not *on the
@@ -425,7 +473,7 @@ single HTML files that work offline in any browser, with nothing to install.
 **The target square.** Only insects inside one square around the flower are annotated, and the
 app analyses the same square. [`prepare_square.py`](../tool/video_eval/prepare_square.py) crops
 the video to it, and the cropped copy is used for both: it is imported into the app and analysed
-with the area *whole picture* (a square video gets this by itself). So the app sees exactly the
+with the area **Whole picture** (a square video gets this by itself). So the app sees exactly the
 annotated pixels.
 
 For scores that are comparable with a phone recording, run **Find animals in videos** at **15
@@ -434,7 +482,7 @@ frames per second or less**.
 <details>
 <summary>How the cropped copy compares with a phone recording</summary>
 
-The cropped copy also stands in for a phone time-lapse video (*Save bursts as: Video*), which
+The cropped copy also stands in for a phone time-lapse video (**Save bursts as**: **Video (MP4), find animals later**), which
 records only the square ROI. The model sees a square, the insects keep their pixels, and what is
 outside the square cannot give false track IDs, as in the field.
 
@@ -442,13 +490,13 @@ What still differs:
 
 - the square of a 480-pixel-high video is at most 480 px (a phone records up to the *Saved photo
   side*, 1024 px by default);
-- these videos have 30 frames per second (the phone records 15 by default);
+- these videos have 30 frames per second (the phone records 5 by default, set under **Video frame rate**);
 - the camera and lens are different.
 
 The copy keeps all 30 frames per second, so the frame-rate sweep
 ([§5](#5-which-frame-rate-is-enough-the-sweep)) can still try more.
 
-A square video gets the area *whole picture* by itself since round 273. In the app, a video left
+A square video gets the area **Whole picture** by itself since round 273. In the app, a video left
 without a rectangle starts on the largest square in the middle since round 273 too.
 
 </details>
@@ -592,7 +640,7 @@ python3 via3_to_hand_count.py eval/annotations/*.json \
 
 It writes `hand_count.csv` (one row per appearance; `evaluate_track_ids.py` reads it as it is),
 `ignore_spans.csv`, `positions.csv`, `snapshots.csv` and `snapshot_points.csv`. Videos not
-marked *watched: whole video* are left out.
+marked *watched: whole video* are left out (`--include-unfinished` writes them too).
 
 <details>
 <summary>What the script prints, and what is not scored yet</summary>
@@ -770,7 +818,10 @@ only the tracker on every 2nd, 3rd, 6th… frame, and compare each result with t
 <summary>Sweep options: tracker rule and New-track confidence</summary>
 
 - The occlusion tolerance and minimum track length (in seconds) are those of the last *Find
-  track IDs*, so every rate is compared under the same rule.
+  track IDs* (the app's defaults if there is none), so every rate is compared under the same
+  rule. `--dart-define=SWEEP_OCCLUSION=3` and `--dart-define=SWEEP_MIN_S=1` set other values.
+- `--dart-define=SWEEP_OUT=/absolute/path` writes to another folder (default: `fps_sweep/` in
+  the session folder).
 - `--dart-define=SWEEP_HIGH=0.5,0.4,0.3,0.25` also tries other *New-track confidence* values
   with ByteTrack (files ending in `_new<value>.csv`), to choose it against the hand count
   (round 247).
@@ -846,6 +897,6 @@ The analysed area of an imported video is scaled down to the model's input size,
 pixels. Choosing a square under **Area to analyze** ([§1, step 2](#step-2-find-animals-in-videos)) is the way to give small
 insects more pixels.
 
-For videos recorded by the app itself (planned), version 1 records the square at the size of
-today's saved photos (1024 px on the test phone). A full-sensor path follows only if tests show
-that 1024 px limits detection or identification.
+Videos recorded by the app itself (**Save bursts as**: **Video (MP4), find animals later**)
+are the camera's square at the **Saved photo side (px)**, 1024 px by default. A full-sensor path
+follows only if tests show that 1024 px limits detection or identification.

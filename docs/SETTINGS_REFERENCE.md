@@ -7,12 +7,15 @@ defaults, measurements and history are in folded blocks: click a line that start
 > **In short**
 >
 > - Settings are kept between sessions: the values you used last come back.
-> - The camera **Settings** sheet has four tabs: **Setup** (what am I recording?), **Detection**
+> - The **Session settings** sheet (gear icon on the camera screen) has four tabs: **Setup**
+>   (what am I recording?), **Detection**
 >   (how does detection behave?), **Photos** (what do saved photos look like?) and **Power**
 >   (heat, battery and rates). A first session needs only the Setup tab: output folder, capture
 >   trigger, session length.
-> - Expert settings sit in closed **Advanced** sections on each tab. Nothing is hidden for good:
->   tap a section to open it.
+>   Scheduled recording (daily time windows) is on the Setup tab too.
+> - Expert settings sit in closed folds whose titles say *Advanced* or *(advanced)*, on the
+>   Detection, Photos and Power tabs. Display switches sit in the **On-screen display** fold on
+>   the Setup tab. Nothing is hidden for good: tap a fold to open it.
 > - The analysis screens (**Find animals in photos**, **Find animals in videos**, **Identify
 >   organisms**) have their own settings. They belong to the analysis, not to a recording.
 > - The defaults come from `lib/fauna_pulse/models/session_config.dart` (the `SessionConfig`
@@ -24,9 +27,10 @@ defaults, measurements and history are in folded blocks: click a line that start
 The camera Settings sheet:
 
 - [How the Settings sheet works](#how-the-settings-sheet-works)
+- [Capture trigger (Setup tab)](#capture-trigger-setup-tab)
 - [Model & detection](#model--detection)
 - [Region of Interest & photos](#region-of-interest--photos)
-- [Session length](#session-length)
+- [Session length](#session-length), with [Scheduled recording](#scheduled-recording-setup-tab)
 - [Speed, heat & battery (Power tab)](#speed-heat--battery-power-tab)
 - [Motion gate (opt-in; Power tab)](#motion-gate-opt-in-power-tab)
 - [Tracking (Detection tab)](#tracking-detection-tab)
@@ -40,7 +44,7 @@ The analysis screens (after a session):
   photos**), with [Small-insect tiling (SAHI)](#small-insect-tiling-sahi-inside-advanced-settings),
   [Also identify them](#also-identify-them) and [Track IDs](#track-ids)
 - [Video analysis (Find animals in videos screen)](#video-analysis-find-animals-in-videos-screen)
-- [Identification (Identify organisms screen → Advanced)](#identification-identify-organisms-screen--advanced)
+- [Identification (Identify organisms screen → Advanced settings)](#identification-identify-organisms-screen--advanced-settings)
 
 For developers: [Note for developers](#note-for-developers).
 
@@ -55,23 +59,38 @@ notes (for example "the camera will stay on") stay visible all the time.
 **Settings that do not apply.** Settings that have no effect under the selected *Capture trigger*
 grey out or disappear instead of pretending to be editable:
 
-- the whole **Detection** tab and "Show detection boxes" in the motion and time-lapse modes;
+- the **Detection** tab and **Show detection boxes & track IDs** in the motion and time-lapse
+  modes. The tab name is dimmed but the tab still opens: a grey box says why ("These settings
+  apply to live detection mode (the Tracking settings also to "Find animals in photos"). To edit
+  them, switch "Capture trigger" on the Setup tab to Live detection."), and its controls cannot
+  be changed;
 - *Auto-adjust detector rate* outside live detection;
 - the motion gate and its sensitivity in time-lapse mode.
 
 Greyed values are not erased: they come back as soon as a mode that uses them is selected.
 
-**Number boxes.** A box never takes a number outside its range. It keeps the old value, and a
-line under it says what is allowed ("Allowed: 0.05 to 0.95"). A comma works as the decimal point.
-You can type only as many decimals as the box shows.
+**Number boxes.** A box never takes a number outside its range. While you type a number outside
+the range, a line under the box says what is allowed (for example "Allowed: 0.05 to 0.95."). If
+you leave the box with such a number, it keeps the old value and says "Not changed: allowed is …".
+
+When the app stores a slightly different number than you typed, the line says "Saved as …". The ⓘ
+of a box also lists its allowed range.
+
+A comma works as the decimal point. You can type only as many decimals as the box shows. Time
+boxes have a unit menu beside them (s, min, h): it changes only how the time is shown and typed.
 
 **Settings that limit each other.** No setting changes another stored setting. Where two settings
 limit each other (the camera frame rate cap and the detector rates, the two C-BIoU search
 margins), each keeps what was typed, and an amber note under the box says which value is used.
 
-**Closing without Apply.** If you close the camera Settings without *Apply* (Back, a tap above the
-sheet, a swipe down), a bar says "Settings closed without Apply" and offers an *Apply* button,
-so the changes are not lost silently. The bar goes away by itself after about 8 seconds.
+**Closing without Apply.** If you close the **Session settings** without *Apply* (Back, a tap
+above the sheet, a swipe down), a bar says "Settings closed without Apply: your changes are not
+used." and offers an *Apply* button, so the changes are not lost silently. The bar goes away by
+itself after about 8 seconds.
+
+The bar's *Apply* works only while nothing records and nothing else
+changed the settings meanwhile (for example a lens switch). Otherwise a note says "Not applied:
+something changed meanwhile. Open Settings again."
 
 <details>
 <summary>History: tab names, and when these rules came</summary>
@@ -88,22 +107,39 @@ so the changes are not lost silently. The bar goes away by itself after about 8 
 
 </details>
 
+## Capture trigger (Setup tab)
+
+**Capture trigger (what causes photos)** is the drop-down under **Output folder** on the Setup
+tab. It decides what makes the phone save photos, and so which other settings apply.
+
+| Option | What it does |
+|---|---|
+| **Live detection - detect & track in real time** (default) | The detection model runs during the session: it finds and follows the animals (track IDs) and takes photos of each track ID. Needs a detection model; without one it reads "Live detection (needs a detection model)" and cannot be chosen. |
+| **Motion-triggered photos** | Takes photos whenever something moves in the yellow square (ROI). No model runs, so no track IDs or names are recorded. What counts as movement is set under *Gate sensitivity* on the Power tab. |
+| **Time-lapse photo or video bursts** | Photos or video clips on a fixed schedule, with no detection and no motion check: the cheapest mode. The burst settings below appear. |
+
+With live detection a note under the drop-down stays visible: the detector warms the phone, and
+for long or hot sessions it suggests "Time-lapse" with "Save bursts as: Video", then *Find
+animals in videos* at home. In the motion and time-lapse modes, find and name the animals later
+with *Find animals in photos* (or *Find animals in videos*) and *Identify organisms*.
+
 ## Model & detection
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Model** | none (you choose) | Which detection model finds the animals. Download one, or import your own (see [INSTALL.md](INSTALL.md)). Motion-triggered and time-lapse capture need no model. |
-| **Confidence threshold** | `0.25` | Minimum score (0–1) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
-| **IoU threshold** | `0.7` | *(Detection tab → Advanced (engine & thresholds))* Overlap threshold (0–1) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets several overlapping boxes. |
-| **CPU threads** | `0` (auto) | *(Detection tab → Advanced (engine & thresholds))* How many processor cores the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2. Run the engine benchmark in the same fold before changing it. |
+| **Detection model** | none (*Choose a model*) | Which detection model finds the animals. Download one, or import your own (see [INSTALL.md](INSTALL.md)). Motion-triggered and time-lapse capture need no model. A line under the list shows the model's input size ("Input resolution: … px"). |
+| **Confidence threshold** | `0.25` | Minimum score (0.05 to 0.95) for a detection to be kept. Raise it if you get false detections on non-insects; lower it if real insects are being missed. |
+| **IoU threshold (removes duplicate boxes)** | `0.7` | *(Detection tab → Advanced (engine & thresholds))* Overlap threshold (0.10 to 0.95) for removing duplicate boxes of the same insect ("Non-Max Suppression"). Rarely needs changing. Lower it if one insect gets several overlapping boxes. |
+| **CPU threads (0 = automatic)** | `0` (auto) | *(Detection tab → Advanced (engine & thresholds))* How many processor cores (0 to 8) the model may use on the CPU (GPU runs ignore it). 0 = automatic = 2. Run the engine benchmark in the same fold before changing it. |
 
 **Getting a model.** No model comes inside the app. Download one on the **Download & import
-models** screen: open it from the home screen **Menu**, or with *Download & import models…* in
-the Settings. Until a detection model is on the phone, the capture trigger "Live detection" is
+models** screen: open it from the home screen **Menu**, or with **Download & import models…**
+next to **Detection model** on the Detection tab. Until a detection model is on the phone, the capture trigger "Live detection" is
 greyed out.
 
 **Nothing is picked for you.** In live detection mode the camera asks you to choose a model
-before it records. It also says so when the chosen file was deleted.
+before it records. The Detection tab says "No model chosen yet. Choose one above.", or "The
+chosen model is not on this phone any more. Choose one above." when the chosen file was deleted.
 
 <details>
 <summary>History and measurements (model, CPU threads)</summary>
@@ -124,28 +160,29 @@ saves.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Target plant / folder name** | `session` | Names the output folder (usually the target flower species). |
-| **Photo step** | `1.0 s` | Seconds between saved photos while a track ID is ongoing. The first photo is taken the moment an animal is detected, then one every step. Larger = fewer photos. Shorter = more pictures of each track ID for *Identify organisms*, but more storage. |
-| **Photo duration** | `10.0 s` | Total seconds to keep photographing one insect (track), from first detection. **Must be a whole multiple of the step** (e.g. step 1 s, duration 10 s → up to 10 photos). The app warns if it isn't. |
+| **Output folder** | `session` | *(Setup tab, first box)* Names the folder the session's photos and log file are saved into (usually the target flower species). |
+| **Photo step** | `1.0 s` | Seconds between saved photos (0.1 to 10 s): per track ID in live detection, or within one motion or time-lapse burst. In live detection the first photo is taken the moment an animal is detected, then one every step. Larger = fewer photos. Shorter = more pictures of each track ID for *Identify organisms*, but more storage. |
+| **Photo duration** | `10.0 s` | How long photos keep being saved: per track ID in live detection (from the first detection), per motion event with the motion trigger, or per burst in time-lapse. For video bursts it reads **Burst duration (clip length)**. **Must be a whole multiple of the step** (e.g. step 1 s, duration 10 s → up to 10 photos). The app warns if it isn't. |
 
 **Live detection video:**
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Also record the ROI as video** | `off` | *(Detection tab → Check live detection; live detection only)* Records the ROI square as MP4 clips while live detection runs, a new clip every 5 minutes, in the session's `videos/` folder. Costs storage and heat (also while the motion gate lets the detector sleep). |
-| **Video frame rate (live detection video)** | `15 FPS` | Frames per second of those clips, 1 to 30. A positive *Camera frame rate cap* below it limits the clips to the cap (amber note). |
+| **Also record the ROI as video** | `off` | *(Detection tab → Check live detection (advanced); live detection only)* Records the ROI square as MP4 clips while live detection runs, a new clip every 5 minutes, in the session's `videos/` folder. Costs storage and heat (also while the motion gate lets the detector sleep). |
+| **Video frame rate** (live detection video) | `15 FPS` | Frames per second of those clips, 1 to 30. A positive *Camera frame rate cap* below it limits the clips to the cap (amber note). |
 
-**Time-lapse bursts:**
+**Time-lapse bursts:** these sit on the Setup tab, under *Capture trigger* and the photo timing.
+They show only when the capture trigger is time-lapse.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Save bursts as (time-lapse only)** | `Photos` | *Photos* saves one square ROI photo every *Photo step*. *Video (MP4)* saves each burst as one clip of the ROI with every frame, so an insect can be followed from frame to frame. The detector runs later, on *Find animals in videos*. |
-| **Video frame rate (time-lapse video only)** | `5 FPS` | Frames per second in each clip, 1 to 30. Higher rates give smoother clips and help with very fast insects, but cost storage roughly in proportion. |
-| **Time between bursts (time-lapse only)** | `30 min` | The break between photo bursts. `0` = no break: photos flow continuously every step. |
-| **Turn camera off between bursts (time-lapse only)** | `on` | Big heat and power saver: the camera is fully turned off in each break and turned on again shortly before the next burst. Only works when *Time between bursts* is at least 30 s. |
-| **Camera wake lead (time-lapse only)** | `10 s` | How many seconds before each burst the turned-off camera is turned back on. Range 1–60 s. Raise it if first photos still look off. |
-| **Torch during bursts, night (time-lapse only)** | `off` | For nocturnal monitoring: the phone's LED torch comes on shortly before each burst, stays on through the burst, and goes off in the break. |
-| **Torch lead (time-lapse only)** | `5 s` | How many seconds before each burst the torch comes on, so the exposure settles before the first photo. Range 1–60 s. |
+| **Save bursts as** (time-lapse only) | `Photos` | *(Setup tab, right under Capture trigger)* *Photos* saves one square ROI photo every *Photo step*. *Video (MP4), find animals later* saves each burst as one clip of the ROI with every frame, so an insect can be followed from frame to frame. The detector runs later, on *Find animals in videos* (**Sessions** screen → the session's ⋮ menu). |
+| **Video frame rate** (time-lapse video only) | `5 FPS` | Frames per second in each clip, 1 to 30. Higher rates give smoother clips and help with very fast insects, but cost storage roughly in proportion. |
+| **Time between bursts** (time-lapse only) | `30 min` | The break between photo bursts. `0` = no break: photos flow continuously every step. |
+| **Turn camera off between bursts** (time-lapse only) | `on` | Big heat and power saver: the camera is fully turned off in each break and turned on again shortly before the next burst. Only works when *Time between bursts* is at least 30 s. |
+| **Camera wake lead** (time-lapse only) | `10 s` | How many seconds before each burst the turned-off camera is turned back on. Range 1–60 s. Raise it if first photos still look off. |
+| **Torch during bursts (night)** (time-lapse only) | `off` | For nocturnal monitoring: the phone's LED torch comes on shortly before each burst, stays on through the burst, and goes off in the break. |
+| **Torch lead** (time-lapse only) | `5 s` | How many seconds before each burst the torch comes on, so the exposure settles before the first photo. Range 1–60 s. |
 
 **Photo source and size:**
 
@@ -159,8 +196,8 @@ saves.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Reference photos** | `on` | Saves an ROI photo at a fixed interval, whether or not anything is detected: an unbiased record of what the camera really saw. Greyed out in time-lapse mode. |
-| **Reference photo interval** | `30 s` | Time between reference photos (1 s–1 h; enter in seconds or minutes). 30 s ≈ 120 photos/hour (~0.15–0.3 GB per 8 h day). |
+| **Reference photos** | `on` | *(Setup tab)* Saves an ROI photo at a fixed interval, whether or not anything is detected: an unbiased record of what the camera really saw. In time-lapse mode the switch shows off and greyed, with the note "Not used in time-lapse mode; photos come on a clock there anyway." |
+| **Reference photo interval** | `30 s` | Shown only while *Reference photos* is on (not in time-lapse). Time between reference photos (1 s to 1 h; enter in s, min or h). 30 s ≈ 120 photos/hour (~0.15–0.3 GB per 8 h day). |
 
 **Photo step and storage.** A shorter step helps *Identify organisms* most with short track IDs;
 the naming gains little beyond a few pictures per track ID. With fast crops, a step down to 0.2 s
@@ -198,7 +235,8 @@ with `segment` (DATA_GUIDE §3).
 **Video frame rate (live detection video):** round 240.
 
 **Save bursts as** (round 238). *Video (MP4)* clips: the frame rate is set with *Video frame
-rate*; the detector runs on *Find animals in videos* (session gear menu), as for imported videos.
+rate*; the detector runs on *Find animals in videos* (**Sessions** screen → the session's ⋮
+menu), as for imported videos.
 The clip's side is the *Saved photo side* (Photos tab; smaller when the ROI covers fewer camera
 pixels). In video mode *Photo step*, *ROI photo source* and the companion photo are greyed (not
 used), and *Photo duration* reads *Burst duration (clip length)*. A storage estimate shows under
@@ -238,7 +276,7 @@ state. So the wake needs real time for the motor to travel back to your locked f
 exposure to ramp. A 5 s field test produced a dark, blurry first burst photo, hence the 10 s
 default. Lower it only if your first-photo quality holds up.
 
-**Torch during bursts, night** (round 180). Overnight time-lapses produce usable photos without
+**Torch during bursts (night)** (round 180). Overnight time-lapses produce usable photos without
 anyone standing in the field. The torch comes on *Torch lead* seconds before each burst. It works
 together with *Turn camera off between bursts* (the camera wakes at whichever lead is longer, and
 the torch re-lights right after the camera is back on) and with the screen-off (moon) button (the
@@ -298,19 +336,42 @@ side*. Greyed out in time-lapse mode because that whole session is already clock
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Session length** | `60 min` | Recording auto-stops after this many minutes. Set it to your planned observation window. |
+| **Session length** | `60 min` | *(Setup tab)* Recording stops by itself after this time. Type minutes or hours (the **Minutes** / **Hours** buttons; in Hours you can type decimals such as 1.5, and a line shows "= … min total"). At least 1 minute. Set it to your planned observation window. Not used with *Scheduled recording*. |
+
+## Scheduled recording (Setup tab)
+
+With the **Scheduled recording** switch on (default off), the record button starts a run of
+daily time windows. The phone records during each window and sleeps in between (screen dark,
+camera off). Each window is saved as its own session. *Session length* is not used: each window
+ends at its own end time.
+
+| Setting | Default | What it does / when to change |
+|---|---|---|
+| **Scheduled recording** | `off` | Switches the time windows on. |
+| **Window 1**, **Window 2**, … | one window, 06:00 to 10:00 | Each row has a start and an end time button (tap to change). With two or more windows, each row has a delete icon. |
+| **Add window** | | Adds a window (up to 3). A new one starts at 15:00 to 20:00. |
+| **Days to run** | `1` | The windows repeat every day for this many days (1 to 14). Day 1 is the day you start the run; windows already past at that moment are skipped. |
+
+Windows must not overlap, and a window cannot cross midnight. Otherwise a warning says "Windows
+must not overlap, and each must end after it starts (a window cannot cross midnight: split it in
+two)." The gear on the camera screen is locked during a recording and while a scheduled run
+sleeps, so the settings cannot be changed then.
 
 ## Speed, heat & battery (Power tab)
+
+The Power tab starts with the heading **Trade detection speed against phone heat and battery**.
+Its ⓘ says that a dark screen saves the most power: switch it off with the power button (the
+recording goes on), or use the screen-off (moon) button on the camera screen.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Screen off by itself after** | `0` (never) | During a recording the screen stays on until this many minutes (0 to 10) after the last touch; then the black power-save screen comes up and the phone's own screen timeout switches it off. Recording goes on. `0` keeps the screen on for the whole recording. 3 minutes suits unattended runs. |
 | **Stop at battery level** | `15 %` | On the phone's own battery, the recording stops cleanly at this level instead of the phone dying mid-file. A power bank counts as plugged in. `0` = never; range 0 to 50. |
 | **Keep free storage** | `200 MB` | The recording stops cleanly when free storage drops below this many megabytes (50 to 5000). A recording also does not start while free storage is already below it. |
-| **Max detector rate** | `15 FPS` | The most camera frames per second the detector may analyse (the **detector rate**, also called inference FPS, not the frame rate of the camera picture). A ceiling, not a promise: the camera, phone and model may be slower. At most 30 FPS. |
-| **Auto-adjust detector rate (reduces heat)** | `on` | Lowers the detector rate during the session to keep the phone cool and the rate steady, instead of overheating into a ~3 fps collapse. On: *Max detector rate* is the ceiling. Off: it is a fixed manual value. Leave on for field use. |
-| **Min detector rate** | `3 FPS` | *(Advanced (detector rate tuning) fold)* The lowest rate auto-adjust will drop to, so the session stays usable even when hot (1 to 30). Only used when auto-adjust is on. |
-| **Target processor load** | `0.50` | *(Advanced (detector rate tuning) fold)* How busy (0.3 to 0.8) auto-adjust lets the processor stay on detection; 0.50 = about half the time. Lower = cooler and steadier but fewer FPS; higher = more FPS but more heat. Only used when auto-adjust is on. |
+| **Max detector rate** | `15 FPS` | The most camera frames per second the detector may analyse (the **detector rate**, also called inference FPS, not the frame rate of the camera picture). A ceiling, not a promise: the camera, phone and model may be slower. 5 to 30 FPS. Shown in live detection mode only. |
+| **Auto-adjust detector rate (reduces heat)** | `on` | Lowers the detector rate during the session to keep the phone cool and the rate steady, instead of overheating into a ~3 fps collapse. On: *Max detector rate* is the ceiling. Off: it is a fixed manual value. Leave on for field use. Outside live detection it is greyed out ("Live detection mode only; the detector does not run in this mode."). |
+| **Min detector rate** | `3 FPS` | *(Advanced (detector rate tuning) fold)* The lowest rate auto-adjust will drop to, so the session stays usable even when hot (1 to 30). The fold shows only when auto-adjust is on. |
+| **Target processor load** | `0.50` | *(Advanced (detector rate tuning) fold)* How busy (0.3 to 0.8) auto-adjust lets the processor stay on detection; 0.50 = about half the time. Lower = cooler and steadier but fewer FPS; higher = more FPS but more heat. The fold shows only when auto-adjust is on. |
 | **Camera frame rate cap** | `15 FPS` | How many frames per second the camera *hardware* captures. The detector never runs faster than this cap. Allowed: 0 or 5 to 30. `0` removes the cap (~30 FPS on most phones). |
 | **Use the GPU when it can run the model** | `on` | *(Detection tab → Advanced (engine & thresholds))* Prefer the GPU for the model. The app falls back to the CPU by itself if the GPU can't run the model. |
 
@@ -327,7 +388,19 @@ up to 30 FPS.
 it is limited).
 
 **GPU or CPU.** The app remembers models that crash the GPU. No speed check runs: the GPU is used
-whenever it can load the model. Only "Benchmark engines (GPU vs CPU)" compares the two.
+whenever it can load the model.
+
+Only **Benchmark engines (GPU vs CPU)** (Detection tab →
+**Advanced (engine & thresholds)**) compares the two. It takes up to about 30 s. The
+**Engine benchmark** window then lists the time per picture ("ms per inference") for the GPU and
+for CPU thread counts.
+
+Tap **Use** (followed by the fastest choice) to take it, then tap **Apply**
+at the bottom of the Settings sheet. **Close** keeps your settings.
+
+For a model that runs on a Snapdragon AI chip (NPU), the Detection tab shows instead: "This model
+runs on the phone's AI chip (NPU), not on the GPU or CPU, so the benchmark and "CPU threads" do not
+apply to it."
 
 <details>
 <summary>More about these settings: saved names, records, history</summary>
@@ -380,13 +453,17 @@ detector never sleeps).
 A cheap brightness comparison against a slowly learned background does the watching (native
 side, under ~1 ms per frame).
 
-The sensitivity settings sit in a **Gate sensitivity** fold under the switch. In motion-trigger
-mode (where they decide what causes a photo) the fold opens by itself; in live detection mode it
-starts collapsed.
+The sensitivity settings sit in a **Gate sensitivity** fold under the switch. The fold shows
+only while the gate is on, and never in time-lapse mode. In motion-trigger mode (where they decide
+what causes a photo) the fold opens by itself; in live detection mode it starts collapsed.
+
+In motion-trigger mode the switch is locked on ("Locked on: the motion capture trigger (Setup
+tab) needs it."). In time-lapse mode it is shown off and cannot be changed ("Not used in
+time-lapse mode.").
 
 | Setting | Default (range) | What it does / when to change |
 |---|---|---|
-| **Motion gate** | `off` | Master switch. Turn on for long sessions on a **mounted** phone (handheld shake keeps it awake). |
+| **Motion gate (experimental): sleep while the flower is empty** | `off` | Master switch. Turn on for long sessions on a **mounted** phone (handheld shake keeps it awake). |
 | **Pixel sensitivity** | `25` (5–100) | How much a pixel's brightness (0–255) must change to count as "moved". Lower = more sensitive (fewer missed animals, but petal shadows can wake it); higher = stricter. |
 | **Trigger area** | `0.5 %` (0.05–20 %) | Share of the ROI that must change in one frame to wake the detector. Kept small because an insect covers little of the ROI. |
 | **Wake duration after motion** | `3.0 s` (0.5–60 s) | How long the detector keeps running after the last motion or detection. Longer = fewer missed animals, but saves less heat. In **motion-trigger mode**: how long photos keep being taken after the last motion. |
@@ -402,8 +479,8 @@ starts collapsed.
   In motion-trigger mode photos stop when the gate goes back to sleep. Config key
   `motionGateWakeSeconds`.
 - **Motion grid resolution:** config key `motionGateGridSize`.
-- **Idle check rate:** this is why the FPS readout correctly shows this low number during empty
-  periods. Config key `motionGateIdleFps`.
+- **Idle check rate:** while the gate sleeps, the "Camera" line of the info panel shows about
+  this number; that is normal. Config key `motionGateIdleFps`.
 
 </details>
 
@@ -415,7 +492,7 @@ compare only sessions that used the same algorithm.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Tracker algorithm** | `ByteTrack` | *(inside the Advanced fold)* How detections are linked frame to frame: **ByteTrack** ([Zhang et al. 2022](https://doi.org/10.1007/978-3-031-20047-2_1)) or **C-BIoU** ([Yang et al. 2023](https://doi.org/10.1109/WACV56688.2023.00478)). Both are FaunaPulse's own simplified versions; compare them on your own recordings (see *Log raw detections*). |
+| **Tracking algorithm** | `ByteTrack` | *(inside the **Advanced (ByteTrack tuning)** fold)* How detections are linked frame to frame: **ByteTrack** ([Zhang et al. 2022](https://doi.org/10.1007/978-3-031-20047-2_1)) or **C-BIoU** ([Yang et al. 2023](https://doi.org/10.1109/WACV56688.2023.00478)). Both are FaunaPulse's own simplified versions; compare them on your own recordings (see *Log raw detections*). |
 | **Occlusion tolerance** | `3.0 s` | How long a track survives while the insect is hidden (e.g. behind a petal) before its ID is dropped. Too low splits one track ID into several IDs; too high can merge separate track IDs. 3 s was tuned for bees. |
 | **Minimum track length** | `0.2 s` | How long an insect must be detected without a break before it counts as a confirmed track ID (anything briefer is treated as noise). Lower counts more brief touchdowns (and more false blips); higher counts only clear landings. At least 2 detections in a row are always needed. |
 
@@ -423,7 +500,7 @@ The seconds-based settings are converted to frames against the live frame rate a
 during the session. The minimum track length directly affects the visitation rate for brief
 touchdowns.
 
-**Advanced** (collapsed; only the selected algorithm's settings are shown):
+**Advanced (ByteTrack tuning)** fold (named **Advanced (C-BIoU tuning)** when C-BIoU is chosen; only the selected algorithm's settings are shown):
 
 | Setting (algorithm) | Default | What it does |
 |---|---|---|
@@ -433,7 +510,7 @@ touchdowns.
 | **Velocity smoothing** (ByteTrack) | `0.5` | How much the motion prediction trusts the latest movement. Low = "assume it barely moved". |
 | **Search margin, pass 1** (C-BIoU) | `0.30` | Boxes are enlarged by this fraction of their own size before the overlap test. Bigger tolerates faster movement but risks mixing close neighbours. |
 | **Search margin, pass 2** (C-BIoU) | `0.50` | A wider second matching round for whatever pass 1 missed: catches big jumps between frames. Never narrower than pass 1: a smaller value is used as pass 1 (amber note). |
-| **Log raw detections** (both) | `off` | Evaluation aid: writes the detector's boxes before tracking, for every frame, into the session file, so it can be replayed through either tracker offline. Adds ~1–2 MB/h. |
+| **Log raw detections (evaluation)** (both) | `off` | Evaluation aid: writes the detector's boxes before tracking, for every frame, into the session file, so it can be replayed through either tracker offline. Adds ~1–2 MB/h. |
 
 A **Reset tracking to defaults** button in Advanced restores every setting in this section
 (keeping the algorithm choice).
@@ -445,7 +522,7 @@ never changes the other.
 <details>
 <summary>More about tracking: the two algorithms, the replay test, history</summary>
 
-**Tracker algorithm.** Two algorithms since round 105; inside the Advanced fold since round 159
+**Tracking algorithm.** Two algorithms since round 105; inside the Advanced fold since round 159
 (comparing trackers is a research task). **ByteTrack** predicts where each insect went and matches
 by box overlap; **C-BIoU** enlarges the boxes before comparing them. Both are FaunaPulse's own
 simplified versions of these methods. Compare them on your own recordings with the replay harness
@@ -476,22 +553,38 @@ since round 152.
 
 ## Camera stream & lens (Photos tab)
 
+Only the stream is on the Photos tab. **Lens** and **Focus** are set on the camera screen, not in
+the Settings sheet; they are listed here because they decide the photo size too.
+
 The stream choice sits in the **Advanced (camera stream)** fold. On "Auto" it simply follows
 *Saved photo side*, so most users never open it. The camera frame rate cap moved to the Power tab
 (it is a heat control, see above).
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **Stream resolution** | `Auto` | The video resolution the detector analyses (4:3). It limits how large a *fast* ROI crop can be; it does **not** affect detection accuracy. On a heat-limited phone pick a small size by hand. |
-| **Lens** | `1.0` (main wide) | Which rear lens, by zoom factor: 1.0 = main wide, 0.5 = ultra-wide, 2.0/3.0 = telephoto. Use a telephoto or zoom lens to reach the target photo size on a small flower. |
-| **Focus** | manual (close-up preset, ~13 cm) | Focus is **always manual**. Each time the camera screen opens, focus is set for a subject ~13 cm from the lens. Check sharpness and adjust the Far–Near slider. |
+| **Live stream resolution (short × long)** | `Auto` | The video resolution the detector analyses (4:3). It limits how large a *fast* ROI crop can be; it does **not** affect detection accuracy. On a heat-limited phone pick a small size by hand. |
+| **Lens** | `1.0` (main wide) | *(camera screen: the lens button right of the record button, showing "1×", "0.5×", ...)* Each tap switches to the next rear lens. Locked while recording ("Stop recording to switch lens") and on phones with one usable lens. Which rear lens, by zoom factor: 1.0 = main wide, 0.5 = ultra-wide, 2.0/3.0 = telephoto. Use a telephoto or zoom lens to reach the target photo size on a small flower. |
+| **Focus** | manual (close-up preset, ~13 cm) | *(camera screen: focus button with the Far–Near slider)* Focus is **always manual**. Each time the camera screen opens, focus is set for a subject ~13 cm from the lens. Check sharpness and adjust the Far–Near slider. |
 
-**Stream resolution.** The phone delivers the nearest size it supports. The short side caps how
+**Camera & lens info (advanced).** A closed fold at the end of the Photos tab lists which
+rear and front lenses this phone lets apps use, and for each one whether "Detector can use it".
+
+Many phones (for example Xiaomi) keep the ultra-wide, macro and telephoto lenses for their own
+camera app, so these lenses do not appear even though you can see them on the back of the phone.
+That is a limit of the phone, not of FaunaPulse. When apps can use only one rear camera, the
+lens-switch button is off.
+
+**Live stream resolution.** The phone delivers the nearest size it supports. The short side caps how
 large a *fast* (no-stall) ROI crop can be. Detection accuracy does not change because every frame
 is shrunk to the model's input size anyway.
 
 **Auto** chooses the smallest size the phone supports
-whose short side is ≥ 1024 px. So fast crops can reach the default *Saved photo side*, and the
+whose short side is at least the *Saved photo side* (1024 px by default). If no size reaches it,
+Auto picks the largest size the phone streams.
+
+The menu item says which: "Auto (matches Saved
+photo side, ... px)" or "Auto (largest this phone streams, below ... px)". So fast crops can reach
+the *Saved photo side*, and the
 slow high-res path (≈0.4–0.8 s behind the trigger on the test phone) is needed less often. Sizes
 above the phone's real analysis ceiling are never picked by Auto.
 
@@ -524,23 +617,24 @@ exactly where you set it. Adjusting it during a recording is allowed and logged 
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Show FPS** | `on` | Show the live frames-per-second number. |
-| **Show boxes** | `on` | Draw bounding boxes and track-ID labels. Turning it off removes the repaint of every frame for the lightest preview; detection and tracking still run. |
-| **Show status strip** | `on` | The top-left info strip (FPS, model, engine, stream, ROI size, temperature, track count). |
-| **Flash on capture** | `on` | Briefly flash the ROI border when a photo saves, as a visual cue. Border only, at photo cadence: never affects FPS. |
+| **Show detection boxes & track IDs** | `on` | Draw bounding boxes and track-ID labels. Turning it off removes the repaint of every frame for the lightest preview; detection and tracking still run. Live detection mode only: in the other modes it is off and greyed out (there are no detections to draw). |
+| **Show on-screen info panel** | `on` | The top-left info panel (FPS, model, engine, stream, ROI size, temperature, track count). Off: only the ROI box and the recording controls remain. |
+| **Flash ROI border when a photo is saved** | `on` | Briefly flash the ROI border when a photo saves, as a visual cue. Border only, at photo cadence: never affects FPS. |
 
 Related settings in other places:
 
 - **Show tips and notes** is in the home screen's **Menu** at the bottom left. It is an app-level
   preference, not a setting of one session. On: the setup tips and the "Before you record" sheet
-  show at session start, and every note hidden with *Don't show again* comes back (the slow-phone
-  hint below, the position sentence after saving a crop, the window before a FaunaLapse import).
+  show at session start, and every note hidden with *Don't show again* comes back (the
+  **Setting up a session** tips window, the slow-phone hint below, the position sentence after
+  saving a crop, the **Import a FaunaLapse session** window).
   Off: all of them stay hidden.
 - **The slow-phone hint**: in live detection, when the phone checks fewer than 5 pictures per
   second, a note at the top of the camera screen suggests time-lapse with "Save bursts as: Video"
   and *Find animals in videos* afterwards. It shows once per camera screen. *Don't show again*
   hides it for good, until *Show tips and notes* is turned on again. 5 per second is a fixed
   number, not a setting: it only decides when the note appears.
-- **Square (1:1) export crops** (Photos tab → "Photo viewer") forces the crop-and-export box in
+- **Square (1:1) export crops** (Photos tab → "Photo viewer", off by default) forces the crop-and-export box in
   the summary photo viewer to a square. The "1:1" chip next to the crop box toggles the same
   setting.
 - **Add the position to exported crops** (Photos tab → "Photo viewer", on by default) writes the
@@ -564,16 +658,20 @@ Related settings in other places:
 
 ## Graphs & logging cadence (Power tab → Diagnostic graph sampling fold)
 
+The settings below sit in the **Diagnostic graph sampling (advanced)** fold of the Power tab.
+
 Frame rate, phone temperature and battery power are always logged while recording. The readings
 are taken for the live preview anyway, so logging them is free: roughly 2–3 MB per 8-hour session.
-In the session summary they appear under a collapsed **"Extra graphs"** section, so the track ID
+
+In the session summary they appear under the **Extra graphs (temperature, FPS, power)** section (it also holds the heat level graph). It is collapsed at first, and the app remembers
+whether you last left it open or closed. So the track ID
 timeline (the main result) stays front and centre.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|
-| **FPS sample interval** | `5 s` | How often the frame rate is logged for the FPS graph. |
-| **Temperature sample interval** | `10 s` | How often phone temperature is logged (heat changes slowly). |
-| **Power sample interval** | `10 s` | How often battery power and charge are logged for the energy graphs. |
+| **Frame-rate sample** | `5 s` (1–60 s) | How often the frame rate is logged for the FPS graph. |
+| **Temperature sample** | `10 s` (1–120 s) | How often phone temperature is logged (heat changes slowly). |
+| **Power sample** | `10 s` (1–120 s) | How often battery power and charge are logged for the energy graphs. |
 
 ## Photo analysis (Analysis screen)
 
@@ -581,8 +679,8 @@ These settings live on the **Find animals in photos** screen, not on the Setting
 control how saved photos are examined again *after* a session, so they are not part of
 `SessionConfig`. They are kept in the app preferences (`analysis_*`).
 
-The screen shows only the session, the detection model and Start. The settings below sit in the
-closed fold **Advanced settings**. Its line names the values in use (for example "Confidence
+The screen shows only the session, the detection model and the main button (**Analyze N
+photos**). The settings below sit in the closed fold **Advanced settings**. Its line names the values in use (for example "Confidence
 0.25, IoU 0.70, small-insect tiling off").
 
 | Setting | Default | What it does |
@@ -593,10 +691,20 @@ closed fold **Advanced settings**. Its line names the values in use (for example
 Saved names: *Confidence threshold* is saved as `analysis_confidence` and *IoU threshold* as
 `analysis_iou`, when a run starts.
 
+**Photo cleanup.** After a run, the screen shows a **Photo cleanup** part: how many analysed
+files contain a detection, and how many would be kept or deleted.
+
+| Setting or button | Default | What it does |
+|---|---|---|
+| **Keep time-window around a detection** | `2 s` | Photos within this time of a detection are kept too, so photos where the detector missed an insect that is still there are not deleted. Up to 60 minutes. Saved as `analysis_keep_gap`. |
+| **Review photos before deleting** | | Opens the session's Photos tab, which marks the photos this cleanup would remove. |
+| **Delete … files (…)…** | | Asks "Delete photos without detections?", then deletes for good the files with no detection and no detection nearby. The session log keeps its records. |
+
 Also on this screen: **Re-analyze photos already done** (a checkbox for each run, deliberately
-not saved). It runs again on photos that already have a result, so you can try a different model
-or different tiling settings on a finished session. The newest result per photo wins downstream
-(see [DATA_GUIDE.md §6](DATA_GUIDE.md)).
+not saved). It shows once the session has analysed photos. It runs every photo again, so you can
+try a different model or different tiling settings on a finished session; the button then reads
+**Re-analyze N photos**. Only the newest result of each photo is kept (see
+[DATA_GUIDE.md §6](DATA_GUIDE.md)).
 
 <details>
 <summary>History of this screen</summary>
@@ -618,7 +726,7 @@ into whole-photo coordinates, and duplicates are merged. An optional extra whole
 catches insects larger than one tile.
 
 Tiling is slower: one inference per pass. The screen shows a live cost preview like "1024×1024 px
-photos, 640 px tiles, 25% overlap → 2×2 tiles + whole photo = 5 passes ≈ 5× time". It is worth
+photos, 640 px tiles, 25% overlap → 2×2 tiles + whole photo = 5 passes ≈ 5× processing time". It is worth
 trying when the model input is much smaller than your photos.
 
 | Setting | Default | What it does / when to change |
@@ -681,15 +789,15 @@ criterion they use (intersection-over-smaller-box); rounds 139–140 used plain 
 ### Also identify them
 
 A switch under the detection model. While it is on, the identification model and the name list
-show under it. One Start then finds the animals and their track IDs (when the photos are close
+show under it. One tap on the main button then finds the animals and their track IDs (when the photos are close
 enough in time), names them and opens the results.
 
 After the detector, the screen opens *Identify organisms*, which starts by itself and ends on the
-results. Its settings (Identify organisms → Advanced, below) apply. The model and list are the
+results. Its settings (Identify organisms → **Advanced settings**, below) apply. The model and list are the
 ones *Identify organisms* remembers, so a change on either screen shows on the other.
 
 The switch is on the first time when the phone has an identification model with a name list for
-it. With every photo analysed already, Start reads *Identify the animals found*. Not offered for
+it. With every photo analysed already, the main button reads **Identify the animals found**. Not offered for
 live detection sessions: their track IDs are named from the session's ⋮ menu → *Identify
 organisms*.
 
@@ -719,7 +827,8 @@ settings. The two settings sit in the closed fold **Track ID settings**.
 | **Minimum track length** | `0.2 s` (0–2) | How long an insect must be seen before it counts as a track ID, in photos in a row (at least 2). Same default as the live camera. |
 
 The tracker itself (ByteTrack or C-BIoU, New-track confidence, fine-tuning) is the camera's:
-**Settings → Detection → Tracking → Advanced**. The fold names it ("ByteTrack, New-track
+**Settings → Detection → Tracking → Advanced (ByteTrack tuning)** (or *C-BIoU tuning*), editable
+while the Capture trigger is Live detection. The fold names it ("ByteTrack, New-track
 confidence 0.50 (camera)"). It warns when New-track confidence is not 0.10 above this screen's
 Confidence, and a change of it shows "Settings changed".
 
@@ -739,20 +848,24 @@ Confidence, and a change of it shows "Settings changed".
 
 ## Video analysis (Find animals in videos screen)
 
-**Getting videos in.** Videos come in through *Import videos…*: a button on the home screen, also
-on the Find animals in videos screen and in the Sessions screen's ⋮ menu. It opens Android's
-photo picker, whose ⋮ menu browses the phone's folders. The import asks only for a session name
+**Getting videos in.** Videos come in through **Import videos…**: a button on the home screen, also
+on the Find animals in videos screen (there it reads **Import other videos…** once a session with
+videos exists) and in the Sessions screen's ⋮ menu.
+
+The button opens Android's photo picker, whose ⋮ menu browses the phone's folders. The import asks only for a session name
 and when filming started (both logged, see [DATA_GUIDE.md §9](DATA_GUIDE.md)). "Find animals in
 videos" then finds the insects in them.
 
 **Settings belong to the analysis.** As for the photo analysis, these settings belong to the
 analysis, not to a recording. They are stored on the phone. A session's results always come from
-one set of settings: after a change the screen offers "Analyze again with these settings", which
-replaces the earlier results after asking. The session summary's Setup tab lists them (Model &
-detection, Tracking), read back from the last run's records.
+one set of settings: after a change the screen offers **Analyze again with these settings**.
+
+It first asks **Replace the earlier results?**, names the changed settings and warns when deleted
+clips lose their boxes and track IDs; **Replace and start** replaces the earlier results. The
+session summary's Setup tab lists the settings (Model & detection, Tracking), read back from the last run's records.
 
 **Where the settings are.** The screen shows the session, the detection model, the proposed area
-and Start. Every number to tune sits on its own screen, **Detection, track ID and identification
+and the main button (**Analyze N clips**). Every number to tune sits on its own screen, **Detection, track ID and identification
 settings**. Its entry under *Also identify them* names the values in use, one line per card. It
 can be opened before the first run and is greyed while a run goes on. It has three cards:
 
@@ -766,21 +879,21 @@ from the app's defaults, not from the camera's values, and a change never reache
 | Setting | Default (range) | What it does / when to change |
 |---|---|---|
 | **Detection model** | the last one used (first in the list the first time) | Any detection model on the Download & import models screen (home screen Menu, or *Download & import models…* under the list). There is no real-time limit here, so a bigger model than the live one can be used; it only takes longer. |
-| **Confidence threshold** (Detection) | `0.25` | Minimum score for a box to count; the live camera's default. Lower finds more faint boxes. A change needs a new analysis. |
+| **Confidence threshold** (Detection) | `0.25` (0.05–0.95) | Minimum score for a box to count; the live camera's default. Lower finds more faint boxes. A change needs a new analysis. |
 | **Frames analyzed per second** (Detection) | `5` (1–30) | How many pictures of each second of the video the detector looks at; the pictures in between are skipped. More follows fast flying insects better but takes longer. |
 | **Area to analyze** | the largest square in the middle, proposed | The square the detector looks at, shown on the first frame to accept or change. Insects outside it are ignored. Kept per session. |
-| **IoU threshold** (Detection) | `0.7` | IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera's default. |
+| **IoU threshold** (Detection) | `0.7` (0.05–0.95) | IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera's default. |
 | **Pause the analysis above** (Detection) | `43 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. The Identification card has its own value. |
 | **Measure the phone every** (Detection) | `10 s` (5–60) | How often the battery temperature, power use and analysis speed are written down during a run, also while it pauses to cool down. Shorter shows quick changes but gives a longer file. |
 | **Occlusion tolerance** (Track IDs) | `3 s` (0.2–10) | How long an insect can vanish (for example behind a petal) and keep its track ID. Longer: fewer track IDs split in two; too long: two visitors can merge into one. |
 | **Minimum track length** (Track IDs) | `1 s` (0–2) | How long an insect must be seen before it counts as a track ID; shorter sightings are dropped as noise. |
 | **Tracking algorithm** (Track IDs) | `ByteTrack` | ByteTrack or C-BIoU, as on the camera (Tracking, above) but the videos' own choice. |
 | **New-track confidence** (Track IDs) | `0.50` (0.05–0.95) | A box at or above this may start a new track ID; weaker boxes, down to the confidence the videos were analysed at, only continue one. Each algorithm has its own value. |
-| **Fine-tuning** (Track IDs, folded) | see below | The selected algorithm's own values, with the camera's texts (Tracking, above). |
+| **Fine-tuning (ByteTrack)** or **Fine-tuning (C-BIoU)** (Track IDs, folded) | see below | The selected algorithm's own values, with the camera's texts (Tracking, above). |
 | **Keep frames of each track ID** (Track IDs) | on | After *Find track IDs*, saves pictures of every track ID from the clips into `roi_frames/`, like the photos the live camera takes, for looking at the visitors and for *Identify organisms*. |
 | **Keep a frame every** (Track IDs) | `1 s` (0.1–10) | The first frame of a track ID is always kept, then one after each such step, as the live camera's photo step. Shorter catches more poses but fills more storage. |
 | **For up to** (Track IDs) | `10 s` (1–300) | How long into a track ID frames keep being saved, as the live camera's photo duration; a long track ID gives no more after this. A track ID gives up to about 1 + this ÷ the step frames. |
-| **Also identify them** | on the first time when an identification model has a name list; then as left | Under *Area to analyze*. One Start finds the animals, their track IDs and kept frames, then identifies them. Needs *Keep frames of each track ID* on. |
+| **Also identify them** | on the first time when an identification model has a name list; then as left | Under *Area to analyze*. One tap on the main button finds the animals, their track IDs and kept frames, then identifies them. Needs *Keep frames of each track ID* on. |
 
 **Fine-tuning defaults.** ByteTrack: *Match overlap (IoU)* `0.10`, *Low-score association*
 `0.10`, *Velocity smoothing* `0.50`. C-BIoU: *Search margin, pass 1* `0.30`, *pass 2* `0.50`.
@@ -819,7 +932,8 @@ A session never analysed proposes the largest square in the middle of its first 
 rounded down to a multiple of 32 px by the same rule as the camera's largest square (640×480 →
 480 × 480, 1920×1080 → 1056 × 1056). It is shown on the first frame with the rest darker. A video
 that is already square, such as the clips the app records of the camera's square or a copy
-cropped to a square, starts on the whole picture. *Whole picture* includes the edges.
+cropped to a square, starts on the whole picture. Under *Area to analyze* you choose
+**Whole picture** or **A square**; *Whole picture* includes the edges.
 
 *Change…* (or a tap on the picture) opens the square editor. The clip plays muted and looping at
 4× (speeds up to 10×; another clip of the same picture size can be chosen), so camera or flower
@@ -915,7 +1029,7 @@ were saved only at Start).
 
 </details>
 
-## Identification (Identify organisms screen → Advanced)
+## Identification (Identify organisms screen → Advanced settings)
 
 These settings belong to the identification job, not to a recording. They are stored on the
 phone (`identify_*`) and echoed into the `identify_start` record of every run. The same settings
@@ -927,11 +1041,12 @@ are counted (not with 0 crops), and it opens the results when the run ends.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| **Use the GPU when it can run the model** | on | Tries a GPU compile, with automatic CPU fallback and the reason shown on screen. Not verified faster for BioCLIP; measure with "Test speed". Off = CPU only. |
-| **CPU threads** | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2. 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
-| **Crop margin** | 0 | Extra border around the detector box before the square crop (0.05 = 5 % per side). 0 = the box itself, made square on its longer side. Raise it if legs or antennae look cut off. |
+| **Use the GPU when it can run the model** | on | Runs the model on the phone's graphics processor (GPU), on tested phones about ten times faster than the main processor (CPU). The first time, the app checks on a test picture that the GPU gives the same answers as the CPU; if not, or if the GPU cannot run the model, the CPU is used and the app says why. "Test speed" shows what this phone does. Off = CPU only. |
+| **CPU threads (0 = automatic)** | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2. 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
+| **Square crops** | on | The model always looks at a square picture. On: the box is widened to a square, so the insect keeps its shape and some flower shows around it. Off: only the box (plus the margin) is cut out and stretched to a square, so a long, thin insect looks squeezed. After a change, the next run asks whether to cut the stored crops again. |
+| **Crop margin** | 0 | Extra border added on every side of the detector box, as a share of the box's longer side (0.05 = 5 % of it). 0 = the box itself (made square when *Square crops* is on). Raise it if legs or antennae look cut off. |
 | **Smallest box to identify** | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
-| **Crops per track ID** | 10 (0 = all) | Keeps the largest boxes of a track ID when a track ID has more photos than this. |
+| **Crops per track ID (0 = all)** | 10 | Keeps the largest boxes of a track ID when a track ID has more photos than this. |
 | **Ignore crops far less sure than the best (factor)** | 10 | A crop whose top-1 probability is below the surest crop's divided by this factor is left out of the pooled answer (still listed, marked "left out"); 1 = every crop counts. FaunaPulse estimate, not tested on pollinator data. |
 | **Confidence needed to call a rank identified** | 0.60 | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. 0.7 to 0.8 are common thresholds in the camera-trap literature, none tested for pollinators. |
 | **"No organism" threshold** | 0.50 | Summed probability of the "none of these" entries above which a track ID is reported as no organism. |

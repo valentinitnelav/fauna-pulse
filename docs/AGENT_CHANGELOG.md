@@ -9652,3 +9652,17 @@ says that uninstalling deletes the sessions (checked in the code); wrong section
 number, links updated. Checked: links to and from every page resolve. Open: outdated statements
 listed for the owner (settings labels, rows missing in SETTINGS_REFERENCE), developer docs.
 
+## Round 342 (2026-11-03): user docs brought up to date with the app
+
+Asked: fix the outdated statements listed after Round 341 and find the others (the screens changed
+in many rounds without the docs). Workflow: 15 Opus helpers checked each page part line by line
+against lib/, 7 Sonnet helpers went from each group of screens to the pages (309 findings). One
+Opus fixer per page confirmed each finding in the code and applied it or said why not (234
+applied, 38 rejected); a Fable reviewer checked every page diff against the code, and an Opus
+fix-up applied its 27 points. Main changes: SETTINGS_REFERENCE uses the app's labels and gains
+Capture trigger, Scheduled recording and the Power preset; FIELD_GUIDE gains the Sessions screen,
+recording on a schedule and the Video tab; README, INSTALL (FaunaPulse is on Google Play),
+VIDEO_ANALYSIS (the app records videos), HOW_PHOTO_RESOLUTION_WORKS (`_live.jpg`, the ⚠ rule),
+DATA_GUIDE and IDENTIFICATION corrected. PRIVACY_POLICY checked, not changed. Checked: links to
+and from every page resolve. Open: choices listed for the owner (Dashboard and Report a problem
+pages, `time_iso` without offset, privacy policy wording).

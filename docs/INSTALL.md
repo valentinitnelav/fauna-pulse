@@ -14,7 +14,7 @@ click a line that starts with ▸ to open it.
 >   [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) and install it
 >   ([Track A](#track-a-install-a-fresh-apk-release-no-coding)), or let
 >   [Obtainium](#a2b-install--auto-update-via-obtainium) install it and keep it up to date.
-> - The app comes with no AI model. Step 1 on Home (**What do you want to watch?**) downloads
+> - The app comes with no AI model. Step 1 on Home (**AI models**, **What do you want to watch?**) downloads
 >   the models you need ([A3](#a3-add-detection-models)).
 > - To change the code, build the app yourself
 >   ([Track B](#track-b-build-from-source-for-developers)).
@@ -81,7 +81,10 @@ The APK files are usually in the **Assets** section of a release on the
 
 1. On the phone, open your **File Manager** app and tap the downloaded `.apk` file.
 2. Follow the install prompts.
-3. Open FaunaPulse and allow the camera (and, if asked, location) permissions.
+3. Open FaunaPulse. When the app asks, allow the camera (at your first **New session**) and
+   notifications (Android 13 and newer, the first time a recording, a **Find animals in
+   photos** or **Find animals in videos** run, or an identification starts). Location is optional: you can
+   also type the coordinates by hand.
 
 The `.apk` file does not come from the Play Store, so Android shows security warnings, and the
 installation is not very smooth. Google Play intends it this way, but the app is safe to install.
@@ -214,18 +217,29 @@ switch "Include prereleases" off again to follow stable releases only.
 The app comes with no model, so you need to download or import one to your phone. You can
 download models from the FaunaPulse collection on [Hugging Face][hf_fp_models].
 
-**The quickest way** is step 1 on Home, **What do you want to watch?**
+**The quickest way** is step 1 on Home, **AI models**: answer **What do you want to watch?**
 
-1. Pick an answer: pollinators on flowers, insects on a flat surface, or mammals and birds.
+1. Tap an answer: **Pollinators on flowers**, **Insects on a flat surface** or **Mammals and
+   birds**.
 2. Each answer suggests a detection model and an identification model with its name list,
    chosen for you and shown by their file names. Other models are under **Choose other
    models**.
-3. One button downloads them and makes them the app's choice. Use Wi-Fi, as some model files
-   are large.
+3. Tap **Download and use** (the button shows the size of the download in brackets; it reads
+   **Use these** when the files are already on the phone). A window **Download the chosen
+   models** opens: tap **Download**. The models then become the app's choice. Use Wi-Fi, as
+   some model files are large. Step 1 then shows **Set up for:** and the answer.
+
+The download window shows the size in total and the progress. For a large file it says **A
+large download: use Wi-Fi if you can.** If the phone does not have enough free storage, it says
+so: delete old sessions on the **Sessions** screen, then come back. After an error, tap **Try
+again**.
 
 **All models:** the **Download & import models** screen offers every model, among them
 MegaDetector V6 (common animals), flat-bug and insectDCT (insects). Open it from Home: **AI
-models** in the bottom bar, or the **Menu**.
+models** in the bottom bar, the **Other models** tile in step 1, or **Menu** → **Download &
+import models**. When a screen needs a model that is not on the phone yet, it shows a button
+such as **Get a detection model…** or **Get an identification model…**, which opens the same
+screen.
 
 The ⓘ card of each model and name list links its model card on Hugging Face (in its last row).
 The model card says who made the model, how it was adapted for FaunaPulse, its licence, how to
@@ -237,7 +251,8 @@ cite it and whether there is a newer version.
 - **In-app import (easiest):** **AI models** (Home, bottom bar) → **Import model files…**.
   Pick the `.tflite` file(s) from **Downloads** or another folder.
 - **HTTPS download:** **Menu** → **Download & import models** → **Download from a link…**.
-  Paste a direct HTTPS link to a model file or name list.
+  Paste a direct HTTPS link to a model file or name list (it works for `.tflite`, `.fpack` and
+  `_qnn.onnx` files).
 
 Notes on adding your own models:
 
@@ -253,7 +268,10 @@ checksum (a fingerprint of the file) before they are kept.
 
 **Where added models appear:**
 
-- in the app's **model dropdown** at the start of a session;
+- in the **Detection model** list (**Settings** on the camera screen, gear icon, **Detection**
+  tab; and on the **Find animals in photos** and **Find animals in videos** screens);
+- identification models and name lists: in the **Model (.tflite)** and **Name list (.fpack)**
+  lists of the **Identify organisms** screen;
 - on the **What do you want to watch?** pages under **Choose other models** → **Other models on
   this phone**, where they can be chosen like the suggestions (no entry in the download list is
   needed).
@@ -425,8 +443,8 @@ a **keystore** file (`.jks`), protected by a password.
 - **Losing the keystore or its password is permanent.** Nobody can recover it, not even
   Google. Every user would have to uninstall and reinstall to move to a new key, and would lose
   their local sessions. Back it up in at least two places.
-- **Use the same key everywhere.** If FaunaPulse is later published on Google Play, upload this
-  same key to Play App Signing. Otherwise a Play install and a GitHub-download install become
+- **Use the same key everywhere.** FaunaPulse is on Google Play, so Play App Signing must use this
+  same key. Otherwise a Play install and a GitHub-download install become
   two incompatible apps that cannot update each other.
 
 </details>
@@ -700,7 +718,8 @@ There you find:
 
 ```text
 /sdcard/.../files
-└── sessions/         # one folder per recording session (images + metadata)
+├── sessions/              # one folder per recording session (images + metadata)
+└── site_photos_waiting/   # site photos taken before a recording starts (moved into its session)
 ```
 
 Models, error reports and crash files are in private internal app storage, and are deliberately
