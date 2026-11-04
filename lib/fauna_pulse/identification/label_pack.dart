@@ -167,6 +167,42 @@ class LabelPack {
     return s;
   }
 
+  /// The dot products of [e] with every row at once, into [out] (length [rows]).
+  ///
+  /// Round 348 (perf review H4b): four lanes at a time (`Float32x4`, NEON on the phone) when
+  /// the vectors are 16-byte aligned, which they are for every model so far (dim a multiple of
+  /// 4; the embeddings file is read as a view from offset 0). The lanes are added up in double
+  /// after every 16 quads, so the result stays within about 1e-6 of [dot], whose products are
+  /// exact in double. Anything else (a class list has no matrix) takes [dot] row by row.
+  void dotsInto(Float32List e, Float64List out) {
+    final q = dim ~/ 4;
+    if (dim % 4 != 0 || e.length < dim || e.offsetInBytes % 16 != 0 || matrix.offsetInBytes % 16 != 0 || matrix.length < rows * dim) {
+      for (var r = 0; r < rows; r++) {
+        out[r] = dot(e, r);
+      }
+      return;
+    }
+    final e4 = Float32x4List.view(e.buffer, e.offsetInBytes, q);
+    final m4 = _matrix4 ??= Float32x4List.view(matrix.buffer, matrix.offsetInBytes, matrix.length ~/ 4);
+    for (var r = 0; r < rows; r++) {
+      final base = r * q;
+      var s = 0.0;
+      var i = 0;
+      while (i < q) {
+        var end = i + 16;
+        if (end > q) end = q;
+        var acc = Float32x4.zero();
+        for (; i < end; i++) {
+          acc += e4[i] * m4[base + i];
+        }
+        s += acc.x + acc.y + acc.z + acc.w;
+      }
+      out[r] = s;
+    }
+  }
+
+  Float32x4List? _matrix4;
+
   /// The largest JSON header a pack may have (round 327). Real headers hold about 110 bytes
   /// per name (about 2 MB for 17,130 names), so this leaves room for packs of 100,000 names.
   static const kMaxLabelPackHeaderBytes = 16 << 20;

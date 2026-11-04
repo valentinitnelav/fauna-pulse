@@ -302,7 +302,11 @@ class EmbeddingIndex {
 }
 
 /// Reads the whole vector file (rows × dim float32 little-endian).
-Float32List readEmbeddingRows(File bin, int rows, int dim) {
+///
+/// Round 348 (perf review H4c): on a little-endian phone (every Android phone) the result is a
+/// view of the file bytes, not a copy; the copy doubled the peak (about 300 MB for 50,000
+/// crops). [forceCopy] takes the element-wise path (big-endian hosts, and the tests).
+Float32List readEmbeddingRows(File bin, int rows, int dim, {bool forceCopy = false}) {
   final bytes = bin.readAsBytesSync();
   // Compare by division before multiplying: a corrupt "row" near 2^62 in the
   // jsonl makes rows * dim * 4 wrap around 64 bits to a small number, which
@@ -311,6 +315,9 @@ Float32List readEmbeddingRows(File bin, int rows, int dim) {
     throw StateError('embeddings .bin is shorter than its record count');
   }
   final n = rows * dim;
+  if (!forceCopy && Endian.host == Endian.little && bytes.offsetInBytes % 4 == 0) {
+    return bytes.buffer.asFloat32List(bytes.offsetInBytes, n);
+  }
   final out = Float32List(n);
   final data = ByteData.sublistView(bytes, 0, n * 4);
   for (var i = 0; i < n; i++) {

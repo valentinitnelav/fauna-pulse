@@ -3,6 +3,7 @@
 // scoring against the Python-written fixture pack, outputs, cancel, thermal
 // pause. No native channel involved.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -325,6 +326,61 @@ void main() {
     expect(t1['detections'], 2);
     final t2 = tracks.firstWhere((t) => t['track_id'] == 2);
     expect((t2['start_ms'], t2['end_ms']), (6000, 7000));
+  });
+
+  // Round 348 (perf review H4a): the next photo is decoded while the model works on this one.
+  test('round 348: the next photo is cropped while the current crops are embedded, one photo ahead', () async {
+    final session = makeSession('overlap');
+    var cropCalls = 0, embedCalls = 0;
+    var cropsWhenFirstEmbedWaited = -1;
+    final gate = Completer<void>();
+    final job = IdentificationJob(
+      embed: (rgb) async {
+        embedCalls++;
+        if (embedCalls == 1) {
+          // The model is busy with photo 1: photo 2 should be cropped meanwhile, and only it.
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          cropsWhenFirstEmbedWaited = cropCalls;
+          await gate.future;
+        }
+        return fakeEmbed(rgb);
+      },
+      crop: (a) async {
+        cropCalls++;
+        return cropBatchSync(a);
+      },
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final run = job.run(session, settings: settings(), packFile: packFile);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    expect(embedCalls, 1);
+    expect(cropsWhenFirstEmbedWaited, 2);
+    gate.complete();
+    final r = await run;
+    expect(r.error, isNull);
+    expect(r.embedded, 3);
+    expect(cropCalls, 3);
+    expect(r.summary!['tracks_total'], 2);
+  });
+
+  test('round 348: a photo that cannot be read is skipped and the run goes on with the next one', () async {
+    final session = makeSession('overlap_missing');
+    // A damaged photo (a missing one is dropped at planning): the cropper fails on it.
+    File('${session.path}/roi_frames/roi_t_2026-07-14_120000_500.jpg').writeAsBytesSync([1, 2, 3]);
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async {
+        if (a.jpegBytes.length < 10) throw const FormatException('not a JPEG');
+        return cropBatchSync(a);
+      },
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r.error, isNull);
+    expect(r.embedded, 2);
+    expect(r.failed, 1);
+    expect(r.unreadable, 1);
+    expect(r.summary!['tracks_total'], 2);
   });
 
   // Round 347 (perf review H1): the Identify run closes the native model between the embedding

@@ -201,10 +201,12 @@ class Scorer {
   // far too slow to run per crop).
   List<Int32List>? _rankIds;
   List<Map<String, int>>? _keyToId;
+  List<List<String>>? _idToKey; // round 348: id -> key per rank, for rollUp
 
   void _buildRankIds() {
     final ids = List.generate(7, (_) => Int32List(pack.rows));
     final maps = List.generate(7, (_) => <String, int>{});
+    final names = List.generate(7, (_) => <String>[]);
     for (var r = 0; r < pack.rows; r++) {
       final row = pack.labels[r];
       for (var k = 0; k < 7; k++) {
@@ -215,11 +217,15 @@ class Scorer {
           break;
         }
         final key = row.keyAt(k);
-        ids[k][r] = maps[k].putIfAbsent(key, () => maps[k].length);
+        ids[k][r] = maps[k].putIfAbsent(key, () {
+          names[k].add(key);
+          return names[k].length - 1;
+        });
       }
     }
     _rankIds = ids;
     _keyToId = maps;
+    _idToKey = names;
   }
 
   /// Probability mass of [p] under each ladder key in [keys] (index = rank;
@@ -242,35 +248,49 @@ class Scorer {
 
   /// Softmax over all pack rows for unit vector [e] (a class list: the
   /// model's raw scores, see the file header).
-  Float32List probs(Float32List e) {
+  Float32List probs(Float32List e) => softmax(logits(e));
+
+  /// The scaled score of [e] against every pack row: the softmax input (round 348, perf review
+  /// H4b: one pass over the pack with [LabelPack.dotsInto]).
+  Float64List logits(Float32List e) {
     final n = pack.rows;
-    final logits = Float64List(n);
-    var maxL = -double.infinity;
-    final heads = pack.isClassList ? _headLogProbs(e) : null;
-    final k = pack.headSizes.length;
-    for (var r = 0; r < n; r++) {
-      double l;
-      if (heads == null) {
-        l = scale * pack.dot(e, r);
-      } else {
+    final out = Float64List(n);
+    if (pack.isClassList) {
+      final heads = _headLogProbs(e);
+      final k = pack.headSizes.length;
+      for (var r = 0; r < n; r++) {
         var s = 0.0;
         for (var h = 0; h < k; h++) {
           s += heads[h][pack.headIndex[r * k + h]];
         }
-        l = scale * s / k;
+        out[r] = scale * s / k;
       }
-      logits[r] = l;
-      if (l > maxL) maxL = l;
+    } else {
+      pack.dotsInto(e, out);
+      for (var r = 0; r < n; r++) {
+        out[r] *= scale;
+      }
     }
+    return out;
+  }
+
+  /// The probabilities of [logits] (one per pack row); [logits] is left as it is.
+  Float32List softmax(Float64List logits) {
+    final n = logits.length;
+    var maxL = -double.infinity;
+    for (var r = 0; r < n; r++) {
+      if (logits[r] > maxL) maxL = logits[r];
+    }
+    final ex = Float64List(n);
     var sum = 0.0;
     for (var r = 0; r < n; r++) {
       final v = math.exp(logits[r] - maxL);
-      logits[r] = v;
+      ex[r] = v;
       sum += v;
     }
     final out = Float32List(n);
     for (var r = 0; r < n; r++) {
-      out[r] = logits[r] / sum;
+      out[r] = ex[r] / sum;
     }
     return out;
   }
@@ -333,19 +353,29 @@ class Scorer {
   }
 
   /// Mass per hierarchy key at every rank (index = rank, map key -> mass).
+  ///
+  /// Round 348 (perf review H4b): summed per integer rank id (built once per pack) and named
+  /// afterwards; joining the string key per row and rank took about 0.1 s per call on a
+  /// 35,000-name pack. Rows with no mass are left out and the keys keep the order of their
+  /// first row with mass, as before.
   List<Map<String, double>> rollUp(Float32List p) {
-    final out = List.generate(7, (_) => <String, double>{});
+    if (_rankIds == null) _buildRankIds();
+    final ids = _rankIds!, names = _idToKey!;
+    final acc = [for (var k = 0; k < 7; k++) Float64List(names[k].length)];
+    final order = List.generate(7, (_) => <int>[]);
     for (var r = 0; r < pack.rows; r++) {
       final v = p[r];
       if (v <= 0) continue;
-      final row = pack.labels[r];
       for (var k = 0; k < 7; k++) {
-        if (row.ranks[k].isEmpty) break; // unknown below this rank
-        final key = row.keyAt(k);
-        out[k][key] = (out[k][key] ?? 0) + v;
+        final id = ids[k][r];
+        if (id < 0) break; // unknown below this rank
+        if (acc[k][id] == 0) order[k].add(id);
+        acc[k][id] += v;
       }
     }
-    return out;
+    return [
+      for (var k = 0; k < 7; k++) {for (final id in order[k]) names[k][id]: acc[k][id]},
+    ];
   }
 
   /// Pools a track id's crops (round 219 rule, see the file header). [tau] =
@@ -356,8 +386,13 @@ class Scorer {
     final dim = pack.dim;
     final n = crops.length;
 
-    // Every crop scored on its own.
-    final perCropProbs = [for (final c in crops) probs(c.vector)];
+    // Every crop scored on its own. Round 348 (perf review H4b): the logits are kept, because
+    // the pooled vector's logits are their certainty-weighted mean (a dot product is linear in
+    // the vector), which saves the pooled vector's pass over the pack. A class list keeps the
+    // pooled-vector pass: its scores go through a log-softmax per head first, which is not
+    // linear.
+    final perCropLogits = [for (final c in crops) logits(c.vector)];
+    final perCropProbs = [for (final l in perCropLogits) softmax(l)];
     final perCropTop = [for (final p in perCropProbs) this.topK(p, topK)];
 
     // Certainty weight = the crop's top-1 probability (always > 0); crops far
@@ -376,6 +411,7 @@ class Scorer {
     // Pooled embedding: certainty-weighted mean of the counted crops' unit
     // vectors, deliberately not re-normalised (average logit).
     final pooled = Float32List(dim);
+    final pooledLogits = Float64List(pack.isClassList ? 0 : pack.rows);
     for (var i = 0; i < n; i++) {
       if (!counted[i]) continue;
       final w = weights[i] / wsum;
@@ -383,8 +419,14 @@ class Scorer {
       for (var d = 0; d < dim; d++) {
         pooled[d] += (w * v[d]).toDouble();
       }
+      if (!pack.isClassList) {
+        final l = perCropLogits[i];
+        for (var r = 0; r < pooledLogits.length; r++) {
+          pooledLogits[r] += w * l[r];
+        }
+      }
     }
-    final pbar = probs(pooled);
+    final pbar = pack.isClassList ? probs(pooled) : softmax(pooledLogits);
     final masses = rollUp(pbar);
 
     // Unit-length copy for the merge similarity check only.

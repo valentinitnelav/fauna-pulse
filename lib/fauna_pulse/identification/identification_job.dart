@@ -408,7 +408,33 @@ class IdentificationJob {
 
     try {
       emit('embedding');
-      for (final entry in groups.entries) {
+      // Round 348 (perf review H4a): the next photo is read and cropped (the decode runs in the
+      // crop isolate) while this photo's crops go through the model, one photo ahead only: at
+      // most two decoded photos at once (a 12 MP still is about 48 MB decoded). The future
+      // started ahead never fails: a read or decode error travels in the record and is handled
+      // when its photo's turn comes.
+      final entries = groups.entries.toList();
+      Future<({List<CropResult>? results, Object? error})> readAndCrop(MapEntry<String, List<CropTask>> g) async {
+        try {
+          final bytes = await File('${framesDir.path}/${g.key}').readAsBytes();
+          final results = await crop(
+            CropBatchArgs(
+              jpegBytes: bytes,
+              requests: [for (final t in g.value) CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
+              margin: settings.margin,
+              square: settings.squareCrops,
+              minCropPx: settings.minCropPx,
+              outSize: settings.inputSize,
+            ),
+          );
+          return (results: results, error: null);
+        } catch (e) {
+          return (results: null, error: e);
+        }
+      }
+      Future<({List<CropResult>? results, Object? error})>? ahead;
+      for (var gi = 0; gi < entries.length; gi++) {
+        final entry = entries[gi];
         if (isCancelled?.call() ?? false) {
           cancelled = true;
           break;
@@ -440,23 +466,12 @@ class IdentificationJob {
           }
         }
 
-        final source = entry.key;
         final group = entry.value;
-        List<CropResult> results;
-        try {
-          final bytes = await File('${framesDir.path}/$source').readAsBytes();
-          results = await crop(
-            CropBatchArgs(
-              jpegBytes: bytes,
-              requests: [for (final t in group) CropRequest(t.key, t.left, t.top, t.right, t.bottom)],
-              margin: settings.margin,
-              square: settings.squareCrops,
-              minCropPx: settings.minCropPx,
-              outSize: settings.inputSize,
-            ),
-          );
-        } catch (e) {
-          logSwallowed('identify_crop', e);
+        final cropped = await (ahead ?? readAndCrop(entry));
+        // This photo's crops are in hand: the next photo starts now and overlaps the model calls.
+        ahead = gi + 1 < entries.length ? readAndCrop(entries[gi + 1]) : null;
+        if (cropped.error != null) {
+          logSwallowed('identify_crop', cropped.error!);
           for (final t in group) {
             writeRecord('crop_skipped', {'key': t.key, 'src': t.source, 'track_id': t.trackId, 'reason': 'read_or_decode'});
             failed++;
@@ -464,6 +479,7 @@ class IdentificationJob {
           }
           continue;
         }
+        final results = cropped.results!;
         final byKey = {for (final t in group) t.key: t};
         final toEmbed = <CropResult>[];
         for (final r in results) {

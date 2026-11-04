@@ -9772,3 +9772,26 @@ margin was real. Two stress tests took the native close as "the run ended" and n
 for the screen-on lock to go off. Checked: analyzer, the job tests (two new), the two stress
 test files, the full test suite. Open: Part H continues with H4.
 
+## Round 348 (2026-11-04): Identify speed: one photo ahead, four-lane scoring, embeddings as a view (perf review H4)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H4, three pieces
+in the identification code. (a) The job read and decoded the next photo only after the model had
+finished the current one; now the next photo's read and decode (in the crop isolate) start as
+soon as this photo's crops are in hand, one photo ahead, so at most two decoded photos are in
+memory. (b) Scoring: the dot products run four lanes at a time (`Float32x4`, lanes added in
+double every 16 quads, within 1e-6 of the scalar loop); the pooled vector's logits are the
+certainty-weighted mean of the crop logits (a dot product is linear in the vector, so the pooled
+softmax is the same; class lists keep the pooled-vector pass, their per-head log-softmax is not
+linear); the roll-up sums per integer rank id and names the keys afterwards (same keys, order
+and sums). No scoring rule changed, so the calibration repository's Python stays in step. (c)
+The embeddings file is read as a typed view instead of an element-wise copy. Measured on the
+Xiaomi 11T Pro on a copy of an 80-photo video session (78 crops from 60 photos, 9 track IDs,
+the 34,978-name Europe pack), old build against new: BioCLIP 2 on the GPU, embedding 24.8 s →
+22.4 s (time outside the model 4.2 s → 0.8 s), scoring 10.9 s → 5.9 s; insectDCT, embedding
+5.1 s → 3.0 s (now bound by the decode). Laptop, synthetic 35,000-name pack: one crop's
+probabilities 39 → 20 ms, roll-up 112 → 19 ms, a 10-crop track 550 → 250 ms. Checked: analyzer;
+new tests (view against copy; four-lane against scalar within 1e-5 and both scalar fallbacks;
+pooled logits against the pooled vector; roll-up against the string version; the one-ahead
+order; a damaged photo skipped); the fusion, pack and job tests; the full suite. Not done: the
+measured runs' result files were not compared with each other. Open: Part H continues with H2.
+
