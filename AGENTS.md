@@ -109,6 +109,7 @@ Less is more: the simplest code solution is the better solution as long as core
 functionality is not lost and as long as the code remains readable for humans too.
 Before adding a helper, widget or setting, search the repository and reuse or extend what exists.
 Fix a bug in the code that owns the behaviour instead of guarding its symptom somewhere else.
+Avoid being verbose with the implemented code.
 
 Report checks honestly: say what was verified and how (unit tests, analyzer, which phone model).
 Never claim a check that was not run.
@@ -122,7 +123,7 @@ So never leave a device check running unattended on a phone that may ask that qu
 and reinstall steps: *Build and test* in the overview.
 
 Do not place in any git tracked file any private or sensitive data like email addresses,
-passwords, any sort of digital keys.
+passwords, API keys and any sort of digital keys.
 Everything tracked is public (GitHub, and every release is archived on Zenodo), so also keep
 out of tracked files: personal details and whereabouts, the names of people whose data or
 models are not public yet, models shared privately by colleagues, and where third-party test
@@ -131,7 +132,8 @@ compilation video"). Phones are named by model, never by serial number (`adb dev
 both); use placeholders such as `<device-id>` in commands.
 
 Do not read `~/InsectDetectApp/sessions/` (test session outputs, many large text files) unless
-the owner asks. Then ask before reading, use keyword searches, and never read a large file whole.
+the owner asks. Then ask before reading, use keyword searches, and never read a large file whole
+unless asked (thi is to avoid burning trough tokens)
 
 **Git related:**
 
@@ -162,6 +164,7 @@ the licence.
   official docs and sources of this project's own dependencies (Flutter, Android, LiteRT, the
   Ultralytics plugin). Use common sense about where borrowing becomes copying. If a task seems to
   need substantial code or a whole design from another project, stop and tell the owner first.
+  Also, instead of readapting code, check if that source code can be a dependency.
 - **Credit an algorithm where it is implemented.** When code follows a published method (for
   example ByteTrack or C-BIoU), the comment at the top of the file or function names the method,
   its authors, year, venue and a DOI or link, and says how our version differs (simplified,
@@ -184,4 +187,4 @@ the licence.
   New files written for FaunaPulse do not get the Ultralytics header (Ultralytics did not write
   them).
 - **Models and data** keep their creators' licences. Their credit (authors, licence, citation)
-  lives in the model cards on Hugging Face and in fauna-pulse-models repository, not in this repository.
+  lives in the model cards on Hugging Face and in `fauna-pulse-models` repository, not in this repository.
