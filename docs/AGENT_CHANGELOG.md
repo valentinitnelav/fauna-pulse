@@ -9893,3 +9893,19 @@ the migration table) and the comment are updated, and `FAUNAPULSE_FORK.md` recor
 unused code); the gain is less to read, search, analyze and diff at each upstream sync. Checked:
 analyzer (whole project); the plugin's remaining tests; the app's full suite. Open: Part H
 continues with H7, which starts with an owner decision.
+
+## Round 353 (2026-11-04): Settings sheet split into part files, one per tab (perf review H8)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H8 (H7 waits for
+the owner's decision). `settings_sheet.dart` (2,613 lines, the most-edited screen) is split
+along the existing `part` convention of the camera and summary screens: the State's methods
+moved into five extensions under `screens/settings_sheet/` (Session tab, AI tab, Photos tab,
+Power tab, camera information with the stream resolution), the main file keeps the widget, the
+draft class, the fields, the getters, the lifecycle overrides, `build` and the shared `_label`
+helper (322 lines). Code moved only: a line-by-line comparison of the five part bodies with the
+committed file (2,249 non-blank lines) finds no changed line, and the main file's diff is the
+five `part` lines against the moved block. The overview's module map names the new folder.
+Checked: analyzer (whole project); the settings tests (`settings_fields_test.dart` types into
+every control of every settings screen, the video bursts, screen-off and tracker tuning tests,
+the saved-settings and extremes stress tests) and the summary tests. Open: Part H continues with
+H9 after H7 (owner decision).
