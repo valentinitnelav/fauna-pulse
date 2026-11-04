@@ -155,7 +155,9 @@ void main() {
       await pumpUntil(tester, () => calls.contains('embedderRun'), 'the run reaches embedding');
       expect(wake.on, isTrue);
       await releaseAll(tester);
-      await pumpUntil(tester, () => calls.contains('embedderClose'), 'the run ends');
+      // Round 347 (perf review H1): the native model closes before the scoring step, so the close
+      // alone no longer marks the end of a run; the screen-on lock goes off in the run's finally.
+      await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the run ends');
       expect(calls.where((c) => c == 'embedderLoad').length, 1);
       expect(wake.on, isFalse);
       await tester.pumpWidget(const SizedBox());
@@ -173,7 +175,7 @@ void main() {
         await tester.pumpWidget(const SizedBox());
         final runsAtBack = calls.where((c) => c == 'embedderRun').length;
         await releaseAll(tester);
-        await pumpUntil(tester, () => calls.contains('embedderClose'), 'the job ends');
+        await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the job ends');
         expect(calls.where((c) => c == 'embedderRun').length, runsAtBack,
             reason: 'the job embedded more crops after Back: $calls');
         await tester.pump(const Duration(seconds: 1));
@@ -209,7 +211,7 @@ void main() {
         expect(find.byType(IdentificationScreen), findsNothing);
         final runsAtLeave = calls.where((c) => c == 'embedderRun').length;
         await releaseAll(tester);
-        await pumpUntil(tester, () => calls.contains('embedderClose'), 'the job ends');
+        await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the job ends');
         expect(calls.where((c) => c == 'embedderRun').length, runsAtLeave,
             reason: 'the job embedded more crops after Stop and leave: $calls');
         await tester.pump(const Duration(seconds: 1));
@@ -270,7 +272,7 @@ void main() {
         failRuns = true;
         hold = false;
         await tester.pumpWidget(MaterialApp(home: IdentificationScreen(sessionDir: session, autoStart: true)));
-        await pumpUntil(tester, () => calls.contains('embedderClose'), 'the run ends');
+        await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the run ends');
         await releaseAll(tester);
         // The one-Start path stays on the screen (no results page) and names the failed crops
         // ("Last run" is at the end of the list, built only when scrolled to).

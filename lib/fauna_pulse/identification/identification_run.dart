@@ -335,6 +335,7 @@ class IdentificationRun extends ChangeNotifier {
     notifyListeners();
     final modelName = model.path.split('/').last;
     IdentifyResult? r;
+    var modelClosed = false; // round 347: closed before scoring, once
     // Waits ("Loading the model") while an earlier run or speed test still ends.
     final freeModel = await takeModel();
     // Round 320: should Android close the app during the run (most often after the user left it),
@@ -415,6 +416,14 @@ class IdentificationRun extends ChangeNotifier {
           appVersion: '${pinfo.version}+${pinfo.buildNumber}',
           restart: restart,
           isCancelled: () => _cancel,
+          // Round 347 (perf review H1): the model goes before scoring. The scoring isolate holds
+          // the pack bytes, a float copy of the name list and the embeddings; next to BioCLIP 2.5
+          // (about 1.3 GB) that was a realistic low-memory kill on the 3.6 GB phones. The finally
+          // below closes only when this did not (a cancelled or failed run, or a failed close).
+          beforeScoring: () async {
+            await ImageEmbedder.close();
+            modelClosed = true;
+          },
           onProgress: (p) {
             progress = p;
             notifyListeners();
@@ -431,7 +440,8 @@ class IdentificationRun extends ChangeNotifier {
       logSwallowed('identify_start', e);
       failure = e;
     } finally {
-      // Round 320: the note goes while this run still holds the model. A run queued behind it
+      // Round 320: the note goes while this run still holds the model lock (takeModel; the model
+      // itself is closed before scoring since round 347). A run queued behind it
       // (Stop or Back, then Start again) writes its own note once it has the model, and a later
       // clear could delete that one (clear matches the session folder only, and reads and
       // deletes in two steps). The results are saved here, so a kill during the close below
@@ -441,7 +451,7 @@ class IdentificationRun extends ChangeNotifier {
         await IdentifyWaitNote.clear(sessionDir);
       }
       try {
-        await ImageEmbedder.close();
+        if (!modelClosed) await ImageEmbedder.close();
       } catch (e) {
         logSwallowed('identify_close', e);
       }

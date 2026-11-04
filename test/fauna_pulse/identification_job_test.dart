@@ -327,6 +327,68 @@ void main() {
     expect((t2['start_ms'], t2['end_ms']), (6000, 7000));
   });
 
+  // Round 347 (perf review H1): the Identify run closes the native model between the embedding
+  // and the scoring step, so the scoring isolate's copies never sit next to the model.
+  test('round 347: beforeScoring runs once, after the embedding files are complete and before scoring', () async {
+    final session = makeSession('h1');
+    final paths = IdentificationPaths(session);
+    final stages = <String>[];
+    var calls = 0;
+    String? stageAtCall;
+    String? jsonlAtCall;
+    var resultsExistedAtCall = true;
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(
+      session,
+      settings: settings(),
+      packFile: packFile,
+      onProgress: (p) => stages.add(p.stage),
+      beforeScoring: () async {
+        calls++;
+        stageAtCall = stages.last;
+        jsonlAtCall = paths.embeddingsJsonl('fake_model').readAsStringSync();
+        resultsExistedAtCall = paths.tracksJson('tiny_pack').existsSync();
+        throw StateError('close failed'); // a failing hook must not stop the scoring
+      },
+    );
+    expect(calls, 1);
+    // The page already shows the scoring text while the model closes.
+    expect(stageAtCall, 'scoring');
+    // The embedding files were complete and closed when the hook ran, the results not yet written.
+    expect(jsonlAtCall, contains('"identify_end"'));
+    expect(EmbeddingIndex.parse(jsonlAtCall!).rows, 3);
+    expect(resultsExistedAtCall, isFalse);
+    expect(r.error, isNull);
+    expect(r.summary!['tracks_total'], 2);
+    expect(stages.last, 'done');
+  });
+
+  test('round 347: beforeScoring is not called when the run is cancelled', () async {
+    final session = makeSession('h1_cancel');
+    var calls = 0;
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(
+      session,
+      settings: settings(),
+      packFile: packFile,
+      isCancelled: () => true,
+      beforeScoring: () async {
+        calls++;
+      },
+    );
+    expect(r.cancelled, isTrue);
+    expect(r.summary, isNull);
+    expect(calls, 0);
+  });
+
   test('cancel before the first photo keeps files consistent and skips scoring', () async {
     final session = makeSession('s2');
     final job = IdentificationJob(

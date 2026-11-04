@@ -52,6 +52,7 @@ void main() {
   const pathChannel = MethodChannel('plugins.flutter.io/path_provider');
   const yoloChannel = MethodChannel('yolo_single_image_channel');
   const keepAliveChannel = MethodChannel('faunapulse/keepalive');
+  late FakeWakelock wake;
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final pack = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync());
   late Directory tmp;
@@ -62,7 +63,7 @@ void main() {
     tmp = Directory.systemTemp.createTempSync('r319_identify_bg');
     IdentificationRun.resetForTest();
     messenger.setMockMethodCallHandler(pathChannel, (call) async => tmp.path);
-    wakelockPlusPlatformInstance = FakeWakelock();
+    wakelockPlusPlatformInstance = wake = FakeWakelock();
     PackageInfo.setMockInitialValues(appName: 'FaunaPulse', packageName: 'test', version: '0.0.0', buildNumber: '1', buildSignature: '');
     SharedPreferences.setMockInitialValues({
       'identify_model': 'test-model.tflite',
@@ -207,7 +208,9 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
     await tester.tap(button);
 
-    await pumpUntil(tester, () => calls.contains('embedderClose'), 'the identification runs in the background');
+    // Round 347 (perf review H1): the native model closes before the scoring step, so the close
+    // alone no longer marks the end of a run; the screen-on lock goes off in the run's finally.
+    await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the identification runs in the background');
     expect(find.byType(IdentificationScreen), findsNothing, reason: 'no frame was drawn, so no page was built');
     expect(calls.where((c) => c == 'embedderLoad'), hasLength(1));
     expect(calls, contains('embedderRun'));
@@ -298,7 +301,7 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
     await tester.tap(button);
 
-    await pumpUntil(tester, () => calls.contains('embedderClose'), 'the identification runs in the background');
+    await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the identification runs in the background');
     expect(find.byType(IdentificationScreen), findsNothing, reason: 'no frame was drawn, so no page was built');
     expect(calls.where((c) => c == 'embedderRun'), isNotEmpty);
     expect(Directory('${dir.path}/identification').listSync().whereType<File>().map((f) => f.path.split('/').last),
@@ -351,7 +354,7 @@ void main() {
     expect(find.text('Identifying crops on the CPU (GPU not used, see below)…'), findsOneWidget);
     expect(find.textContaining('GPU not used: The GPU failed with this model several times'), findsOneWidget);
     go = true;
-    await pumpUntil(tester, () => calls.contains('embedderClose'), 'the run ends');
+    await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the run ends');
     for (var i = 0; i < 10; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
       await tester.pump(const Duration(milliseconds: 20));
@@ -459,7 +462,7 @@ void main() {
       expect(find.byType(IdentificationScreen), findsNothing);
       final runs = calls.where((c) => c == 'embedderRun').length;
       go = true;
-      await pumpUntil(tester, () => calls.contains('embedderClose'), 'the run stops');
+      await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the run stops');
       expect(calls.where((c) => c == 'embedderRun').length, runs, reason: 'it went on after Stop and leave: $calls');
       expect(calls.where((c) => c == 'embedderLoad'), hasLength(1), reason: 'the page started its own run: $calls');
       await tester.pump(const Duration(seconds: 1));

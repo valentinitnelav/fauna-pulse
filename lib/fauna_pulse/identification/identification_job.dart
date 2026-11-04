@@ -247,6 +247,12 @@ class IdentificationJob {
 
   /// Throws (plain words, shown by the Identify screen) when [sessionDir]
   /// already has a job running, for example after Back and Start again.
+  ///
+  /// [beforeScoring] runs once the embedding files are complete and closed, before the scoring
+  /// isolate starts (round 347, perf review H1): the Identify run closes the native model there,
+  /// so the scoring isolate's copies of the pack and the embeddings never sit next to the model.
+  /// It is not called when the run was cancelled or failed, and a failure in it does not stop
+  /// the scoring.
   Future<IdentifyResult> run(
     Directory sessionDir, {
     required IdentifyRunSettings settings,
@@ -256,6 +262,7 @@ class IdentificationJob {
     String appVersion = '',
     bool scoreAfter = true,
     bool restart = false,
+    Future<void> Function()? beforeScoring,
   }) async {
     final key = sessionDir.absolute.path;
     // Checked and added with no await between, so two calls cannot both pass.
@@ -272,6 +279,7 @@ class IdentificationJob {
         appVersion: appVersion,
         scoreAfter: scoreAfter,
         restart: restart,
+        beforeScoring: beforeScoring,
       );
     } finally {
       _activeSessions.remove(key);
@@ -287,6 +295,7 @@ class IdentificationJob {
     required String appVersion,
     required bool scoreAfter,
     required bool restart,
+    Future<void> Function()? beforeScoring,
   }) async {
     final started = DateTime.now();
     final paths = IdentificationPaths(sessionDir);
@@ -544,6 +553,15 @@ class IdentificationJob {
     Map<String, dynamic>? summary;
     if (!cancelled && error == null && scoreAfter) {
       onProgress?.call(IdentifyProgress(stage: 'scoring', done: pending.length, total: pending.length, avgMs: embedCount == 0 ? 0 : embedMs / embedCount));
+      // Round 347 (perf review H1): the caller may free the native model here. The embedding
+      // files are complete and closed above, so a failure here loses nothing and scoring goes on.
+      if (beforeScoring != null) {
+        try {
+          await beforeScoring();
+        } catch (e) {
+          logSwallowed('identify_before_scoring', e);
+        }
+      }
       try {
         summary = await scoreSession(
           sessionDir,

@@ -9753,3 +9753,22 @@ debug build compiled the Kotlin. Not yet checked on a phone. Open: whether the C
 lacks; hand-off notes left in fauna-pulse-export and the validation repository (new optional
 fields only).
 
+## Round 347 (2026-11-04): Identify closes the model before scoring (perf review H1)
+
+Asked: continue the efficiency plan written in round 346 (private perf review notes, Part H),
+first item. The identification job scored with the native model still loaded, so the scoring
+isolate's copies (the pack bytes, a float32 name list of about 35,000 names, the embeddings) sat
+next to BioCLIP: about 1.5 GB of process memory with BioCLIP 2 on the CPU. Change: the job got a
+`beforeScoring` hook that runs once the embedding files are complete and closed; the Identify
+run closes the native model there, once (the cleanup path closes only when that did not happen:
+a cancelled or failed run). The hook, not a split into two calls, keeps the job's session lock,
+progress stage and error handling in one place. Measured on the Redmi Note 9S (3.6 GB), BioCLIP
+2 on the CPU, 10 crops, the 34,978-name Europe pollinator pack, process RSS and the memory
+Android reports as available sampled twice a second over a run on a copy of a video session, old
+build against new: during scoring 1.45 to 1.56 GB RSS with 161 MB available at the lowest (old)
+against 0.26 to 0.43 GB RSS with at least 1.31 GB available (new); scoring took 4.5 s against
+4.3 s, and both runs wrote the full set of result files. Harm had not been observed before; the
+margin was real. Two stress tests took the native close as "the run ended" and now also wait
+for the screen-on lock to go off. Checked: analyzer, the job tests (two new), the two stress
+test files, the full test suite. Open: Part H continues with H4.
+
