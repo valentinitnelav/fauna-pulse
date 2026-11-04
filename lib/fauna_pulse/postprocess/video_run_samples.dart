@@ -150,12 +150,18 @@ class VideoRunSamples {
     return Isolate.run(() => parseFile(path));
   }
 
-  /// Same as [read], on the caller's isolate (tests).
+  /// Same as [read], on the caller's isolate (tests). The lines stream
+  /// through the parser (round 350): the file, mostly boxes, never sits in
+  /// memory whole.
   static Future<VideoRunSamples?> parseFile(String path) async {
     final f = File(path);
     if (!f.existsSync()) return null;
     try {
-      return parse(await f.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter()).toList());
+      final parser = _Parser();
+      await for (final line in f.openRead().transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter())) {
+        parser.add(line);
+      }
+      return parser.finish();
     } catch (_) {
       return null;
     }
@@ -164,73 +170,129 @@ class VideoRunSamples {
   static const _rawPrefix = '{"type":"raw_detections","time_ms":';
 
   static VideoRunSamples parse(Iterable<String> lines) {
-    final runs = <_Run>[];
-    var frames = 0;
-    for (final line in lines) {
-      // Boxes are most of the file: count them, and read their time (the
-      // end of a killed run), without decoding them.
-      if (line.startsWith(_rawPrefix)) {
-        frames++;
-        final comma = line.indexOf(',', _rawPrefix.length);
-        final t = comma < 0 ? null : int.tryParse(line.substring(_rawPrefix.length, comma));
-        if (t != null && runs.isNotEmpty) runs.last.endMs = t;
-        continue;
-      }
-      // The whole record is read under the try: one wrong-typed field (a file
-      // edited by hand, or written by another app version) costs one sample,
-      // not the phone graphs of the whole analysis (parseFile gives null).
-      try {
-        final rec = (jsonDecode(line) as Map).cast<String, dynamic>();
-        final type = rec['type'];
-        final t = (rec['time_ms'] as num?)?.toInt();
-        if (t == null) continue;
-        if (type == 'video_run_start') {
-          runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt()));
-          continue;
-        }
-        if (runs.isEmpty) continue;
-        final run = runs.last..endMs = t;
-        switch (type) {
-          case 'thermal':
-            final s = run.at(t);
-            s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
-            s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
-            s.thermalStatus = rec['thermal_status'] as String?;
-            s.memTotal = (rec['mem_total_bytes'] as num?)?.toInt();
-            s.memFree = (rec['mem_free_bytes'] as num?)?.toInt();
-            s.appMem = (rec['app_memory_bytes'] as num?)?.toInt();
-            s.appCpuCores = (rec['app_cpu_cores'] as num?)?.toDouble();
-            s.paused = rec['paused'] == true;
-            s.clip ??= rec['clip'] as String?;
-          case 'power':
-            final s = run.at(t);
-            s.powerW = (rec['power_w'] as num?)?.toDouble();
-            s.currentUa = (rec['battery_current_ua'] as num?)?.toInt();
-            s.voltageMv = (rec['battery_voltage_mv'] as num?)?.toInt();
-            s.chargeUah = (rec['charge_counter_uah'] as num?)?.toInt();
-            s.charging = rec['is_charging'] as bool?;
-            s.plugged = rec['is_plugged'] as bool?;
-          case 'analysis_speed':
-            final s = run.at(t);
-            s.clip = rec['clip'] as String? ?? s.clip;
-            s.framesPerS = (rec['frames_per_s'] as num?)?.toDouble();
-            s.frames = (rec['frames'] as num?)?.toInt();
-            s.pausedMs = (rec['paused_ms'] as num?)?.toInt();
-            s.decodeMs = (rec['decode_ms'] as num?)?.toDouble();
-            s.convertMs = (rec['convert_ms'] as num?)?.toDouble();
-            s.detectMs = (rec['detect_ms'] as num?)?.toDouble();
-          case 'video_thermal_pause':
-            run.pauses.add((t, null));
-          case 'video_thermal_resume':
-            if (run.pauses.isNotEmpty && run.pauses.last.$2 == null) {
-              run.pauses.last = (run.pauses.last.$1, t);
-            }
-        }
-      } catch (_) {
-        continue; // a half-written last line after a kill, or a wrong type
-      }
-    }
+    final parser = _Parser();
+    lines.forEach(parser.add);
+    return parser.finish();
+  }
 
+  /// The round-346 columns come last, so scripts that read by position still work.
+  static const csvHeader =
+      'run,time_s,epoch_ms,clip,temp_c,headroom,thermal_status,power_w,'
+      'battery_current_ua,battery_voltage_mv,charging,plugged,frames_per_s,'
+      'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms,'
+      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores';
+
+  /// One row per sample; `time_s` is the analysis clock of the graphs. Empty
+  /// cells are values the phone did not report (or no frames in the period). Cells go through
+  /// [csvCell] (round 328): the clip name comes from an imported file.
+  String toCsv() {
+    final b = StringBuffer('$csvHeader\n');
+    for (final s in samples) {
+      b.writeln(
+        [
+          s.run,
+          (s.ms / 1000).toStringAsFixed(1),
+          s.epochMs,
+          s.clip,
+          s.tempC,
+          s.headroom,
+          s.thermalStatus,
+          s.powerW == null ? null : (s.powerW! * 1000).round() / 1000,
+          s.currentUa,
+          s.voltageMv,
+          s.charging,
+          s.plugged,
+          s.framesPerS,
+          s.frames,
+          s.decodeMs,
+          s.convertMs,
+          s.detectMs,
+          s.paused,
+          s.pausedMs,
+          s.memTotal,
+          s.memFree,
+          s.appMem,
+          s.appCpuCores,
+        ].map(csvCell).join(','),
+      );
+    }
+    return b.toString();
+  }
+}
+
+
+/// The parser's state between lines (round 350): [VideoRunSamples.parse]
+/// feeds a list, [VideoRunSamples.parseFile] a stream.
+class _Parser {
+  final runs = <_Run>[];
+  var frames = 0;
+
+  void add(String line) {
+    // Boxes are most of the file: count them, and read their time (the
+    // end of a killed run), without decoding them.
+    if (line.startsWith(VideoRunSamples._rawPrefix)) {
+      frames++;
+      final comma = line.indexOf(',', VideoRunSamples._rawPrefix.length);
+      final t = comma < 0 ? null : int.tryParse(line.substring(VideoRunSamples._rawPrefix.length, comma));
+      if (t != null && runs.isNotEmpty) runs.last.endMs = t;
+      return;
+    }
+    // The whole record is read under the try: one wrong-typed field (a file
+    // edited by hand, or written by another app version) costs one sample,
+    // not the phone graphs of the whole analysis (parseFile gives null).
+    try {
+      final rec = (jsonDecode(line) as Map).cast<String, dynamic>();
+      final type = rec['type'];
+      final t = (rec['time_ms'] as num?)?.toInt();
+      if (t == null) return;
+      if (type == 'video_run_start') {
+        runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt()));
+        return;
+      }
+      if (runs.isEmpty) return;
+      final run = runs.last..endMs = t;
+      switch (type) {
+        case 'thermal':
+          final s = run.at(t);
+          s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
+          s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
+          s.thermalStatus = rec['thermal_status'] as String?;
+          s.memTotal = (rec['mem_total_bytes'] as num?)?.toInt();
+          s.memFree = (rec['mem_free_bytes'] as num?)?.toInt();
+          s.appMem = (rec['app_memory_bytes'] as num?)?.toInt();
+          s.appCpuCores = (rec['app_cpu_cores'] as num?)?.toDouble();
+          s.paused = rec['paused'] == true;
+          s.clip ??= rec['clip'] as String?;
+        case 'power':
+          final s = run.at(t);
+          s.powerW = (rec['power_w'] as num?)?.toDouble();
+          s.currentUa = (rec['battery_current_ua'] as num?)?.toInt();
+          s.voltageMv = (rec['battery_voltage_mv'] as num?)?.toInt();
+          s.chargeUah = (rec['charge_counter_uah'] as num?)?.toInt();
+          s.charging = rec['is_charging'] as bool?;
+          s.plugged = rec['is_plugged'] as bool?;
+        case 'analysis_speed':
+          final s = run.at(t);
+          s.clip = rec['clip'] as String? ?? s.clip;
+          s.framesPerS = (rec['frames_per_s'] as num?)?.toDouble();
+          s.frames = (rec['frames'] as num?)?.toInt();
+          s.pausedMs = (rec['paused_ms'] as num?)?.toInt();
+          s.decodeMs = (rec['decode_ms'] as num?)?.toDouble();
+          s.convertMs = (rec['convert_ms'] as num?)?.toDouble();
+          s.detectMs = (rec['detect_ms'] as num?)?.toDouble();
+        case 'video_thermal_pause':
+          run.pauses.add((t, null));
+        case 'video_thermal_resume':
+          if (run.pauses.isNotEmpty && run.pauses.last.$2 == null) {
+            run.pauses.last = (run.pauses.last.$1, t);
+          }
+      }
+    } catch (_) {
+      return; // a half-written last line after a kill, or a wrong type
+    }
+  }
+
+  VideoRunSamples finish() {
     // A run without samples (nothing left to analyse) takes no room.
     final used = runs.where((r) => r.byTime.isNotEmpty).toList();
     final longestSampleS = used.map((r) => r.sampleS ?? 10).fold(10, max);
@@ -288,50 +350,6 @@ class VideoRunSamples {
       runGapMs: gapMs,
       sampleSeconds: ({for (final r in used) ?r.sampleS}.toList()..sort()),
     );
-  }
-
-  /// The round-346 columns come last, so scripts that read by position still work.
-  static const csvHeader =
-      'run,time_s,epoch_ms,clip,temp_c,headroom,thermal_status,power_w,'
-      'battery_current_ua,battery_voltage_mv,charging,plugged,frames_per_s,'
-      'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms,'
-      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores';
-
-  /// One row per sample; `time_s` is the analysis clock of the graphs. Empty
-  /// cells are values the phone did not report (or no frames in the period). Cells go through
-  /// [csvCell] (round 328): the clip name comes from an imported file.
-  String toCsv() {
-    final b = StringBuffer('$csvHeader\n');
-    for (final s in samples) {
-      b.writeln(
-        [
-          s.run,
-          (s.ms / 1000).toStringAsFixed(1),
-          s.epochMs,
-          s.clip,
-          s.tempC,
-          s.headroom,
-          s.thermalStatus,
-          s.powerW == null ? null : (s.powerW! * 1000).round() / 1000,
-          s.currentUa,
-          s.voltageMv,
-          s.charging,
-          s.plugged,
-          s.framesPerS,
-          s.frames,
-          s.decodeMs,
-          s.convertMs,
-          s.detectMs,
-          s.paused,
-          s.pausedMs,
-          s.memTotal,
-          s.memFree,
-          s.appMem,
-          s.appCpuCores,
-        ].map(csvCell).join(','),
-      );
-    }
-    return b.toString();
   }
 }
 

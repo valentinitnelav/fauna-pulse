@@ -9826,3 +9826,31 @@ session read again, null once its folder is gone; the Sessions screen shows the 
 sizes and the total once every size is known); the full suite (1,722 passed). The 11T Pro's
 settings are unchanged (compared byte for byte) and the test session is deleted. Open: Part H
 continues with H3.
+
+## Round 350 (2026-11-04): Video tab readers stream their files: the live log, the run file and the visit file are read line by line (perf review H3)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H3. The Video
+tab's readers loaded their files whole: the live log (session.jsonl) as bytes, as one string, as
+a list of lines and as a list of decoded records at the same time; the run file and the visit
+file as lists of lines and of records. Now the files are read in 64 KB pieces, line by line (a
+piece is cut after its last line end before the decode, so a line, a `\r\n` or a multi-byte
+letter never straddles two pieces), and only the lines a reader needs are decoded, in two light
+passes: the clips and the track IDs' first sightings first (a string check before the decode),
+then the boxes; the run samples stream through a parser fed line by line; the visit file's start
+record and first sightings are read without keeping the decoded records. The results are the
+same to the last digit: a golden file (`test/fauna_pulse/fixtures/video_timeline_golden.json`)
+written by the old readers on a rich synthetic session (clips with and without records, repeated
+time stamps, `created` events before and after their frame, wrong-typed fields, blank, `\r\n`
+and torn lines, a torn letter, the word "detections" inside other records, a stale and a missing
+visit file) is compared by the new ones. Measured on the Xiaomi 11T Pro with a synthetic 3-hour
+live-AI session (a 51 MB log with 133,658 `detections` records and 36 five-minute test-pattern
+clips, pushed under a test name and deleted afterwards: no phone held a real one), opening its
+summary, which opens on the Video tab: the app's resident memory rose from 493 MB to a peak of
+837 MB before and from 501 MB to 577 MB after (+344 → +76 MB; the summary's own log index is
+inside both), and stayed about 280 MB higher before against about 65 MB after; the timeline's
+load took 4.8 s before and 5.3 s after (two passes, on the helper isolate). Laptop stress test
+(new, a one-hour log of 17 MB): process memory peak +124 → +29 MB, 714 → 773 ms; the run file
+(8 MB) +17 → +6 MB. Debug lines (`video_timeline`, `video_timeline_live`) give the load time in
+debug builds. Checked: analyzer; the golden test; the timeline, run-sample, player and fuzz
+tests; the full suite. The 11T Pro's settings are unchanged (compared byte for byte). Open: Part
+H continues with H5 (laptop only).

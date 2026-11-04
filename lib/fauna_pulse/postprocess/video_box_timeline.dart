@@ -20,12 +20,22 @@
 // Round 305: a track ID starts at the tracker's first sighting, as in
 // track_ids.csv: its `created` event says how long before its first box
 // (logged only from confirmation on) the tracker first saw the animal.
+//
+// Round 350 (perf review H3): the files are read line by line in 64 KB
+// pieces and only the lines a reader needs are decoded, in two light passes
+// (the clips and the first sightings first, then the boxes). A 50 MB live
+// log used to become the whole file as bytes, as one string, as a list of
+// lines and as a list of decoded records at once. The results are the same
+// to the last digit (video_timeline_golden_test.dart).
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../logging/track_source.dart' show postTracksFileName;
 import '../models/roi.dart';
@@ -212,10 +222,16 @@ class VideoBoxTimeline {
   static const empty = VideoBoxTimeline(clips: {}, hasVisits: false, visitsStale: false);
 
   /// Reads the live AI's boxes for the session's clips off the UI isolate.
-  static Future<VideoBoxTimeline> loadLive(Directory sessionDir) {
+  static Future<VideoBoxTimeline> loadLive(Directory sessionDir) async {
     final path = sessionDir.path;
-    return Isolate.run(() => readLiveSync(path));
+    final sw = Stopwatch()..start();
+    final t = await Isolate.run(() => readLiveSync(path));
+    if (kDebugMode) debugPrint('video_timeline_live: ${t._summary}, ${sw.elapsedMilliseconds} ms');
+    return t;
   }
+
+  /// For the debug lines: clips and analysed frames.
+  String get _summary => '${clips.length} clips, ${clips.values.fold(0, (n, c) => n + c.analysedFrames)} frames';
 
   /// Round 240: the live AI's tracked boxes (session.jsonl `detections`) on
   /// the clips recorded during that session (`video_clip` records). Each clip
@@ -227,24 +243,36 @@ class VideoBoxTimeline {
   static VideoBoxTimeline readLiveSync(String sessionPath) {
     final f = File('$sessionPath/session.jsonl');
     if (!f.existsSync()) return empty;
-    final recs = _records(const LineSplitter().convert(utf8.decode(f.readAsBytesSync(), allowMalformed: true))).toList();
+    // Pass 1: the clips and the track IDs' first sightings, from the few
+    // lines that carry them (a string check before the decode; a record's
+    // type is checked again after it).
     final spans = <(String, int, int)>[];
-    // Each record is read under its own try (here and in [parse]): one
-    // wrong-typed field (a file edited by hand, or written by another app
-    // version) costs that record only, not every box of the session.
-    for (final rec in recs) {
-      if (rec['type'] != 'video_clip') continue;
-      try {
-        final file = rec['file'] as String?;
-        final start = (rec['start_epoch_ms'] as num?)?.toInt();
-        final dur = (rec['duration_ms'] as num?)?.toInt();
-        if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
-      } catch (_) {}
+    final leads = <int, (int, int)>{};
+    for (final line in _linesSync(f)) {
+      if (line.contains('"video_clip"')) {
+        final rec = _record(line);
+        if (rec == null || rec['type'] != 'video_clip') continue;
+        // Each record is read under its own try (here and in [parse]): one
+        // wrong-typed field (a file edited by hand, or written by another app
+        // version) costs that record only, not every box of the session.
+        try {
+          final file = rec['file'] as String?;
+          final start = (rec['start_epoch_ms'] as num?)?.toInt();
+          final dur = (rec['duration_ms'] as num?)?.toInt();
+          if (file != null && start != null && dur != null) spans.add((file.split('/').last, start, dur));
+        } catch (_) {}
+      } else if (line.contains('"track_event"')) {
+        final rec = _record(line);
+        if (rec != null) _addLead(leads, rec);
+      }
     }
     final c = {for (final (name, _, _) in spans) name: _ClipAcc()..done = true};
-    final leads = _leads(recs);
-    for (final rec in recs) {
-      if (rec['type'] != 'detections') continue;
+    // Pass 2: the boxes. Only `detections` lines are decoded; the samples,
+    // photos and events in between are passed over.
+    for (final line in _linesSync(f)) {
+      if (!line.contains('"detections"')) continue;
+      final rec = _record(line);
+      if (rec == null || rec['type'] != 'detections') continue;
       try {
         final t = ((rec['frame_sensor_ms'] ?? rec['frame_ms']) as num?)?.toInt();
         final tracks = rec['tracks'];
@@ -295,22 +323,26 @@ class VideoBoxTimeline {
   }
 
   /// Reads the session's two files off the UI isolate.
-  static Future<VideoBoxTimeline> load(Directory sessionDir) {
+  static Future<VideoBoxTimeline> load(Directory sessionDir) async {
     final path = sessionDir.path;
-    return Isolate.run(() => readSync(path));
+    final sw = Stopwatch()..start();
+    final t = await Isolate.run(() => readSync(path));
+    if (kDebugMode) debugPrint('video_timeline: ${t._summary}, ${sw.elapsedMilliseconds} ms');
+    return t;
   }
 
   static VideoBoxTimeline readSync(String sessionPath) {
-    List<String> lines(String name) {
+    Iterable<String> lines(String name) {
       final f = File('$sessionPath/$name');
-      if (!f.existsSync()) return const [];
-      return const LineSplitter().convert(utf8.decode(f.readAsBytesSync(), allowMalformed: true));
+      return f.existsSync() ? _linesSync(f) : const [];
     }
 
     return parse(lines(VideoDetector.outputFileName), lines(postTracksFileName));
   }
 
-  static VideoBoxTimeline parse(List<String> detectionLines, List<String> trackLines) {
+  /// [trackLines] is read twice (first sightings, then boxes), so a lazy
+  /// file reader opens the file twice; a list is simply walked twice.
+  static VideoBoxTimeline parse(Iterable<String> detectionLines, Iterable<String> trackLines) {
     final c = <String, _ClipAcc>{};
     int? runMs;
     List<double>? settingsRoi;
@@ -352,12 +384,21 @@ class VideoBoxTimeline {
       } catch (_) {} // see readLiveSync: a wrong-typed record is skipped
     }
 
-    // Visits: only when they were found on this very analysis.
+    // Visits: only when they were found on this very analysis. Pass 1 over
+    // the visit file: its first record and the first sightings, without
+    // keeping the decoded records (round 350).
     var trackedClips = <String>{};
     var stale = false;
-    final trackRecs = _records(trackLines).toList();
-    if (trackRecs.isNotEmpty && trackRecs.first['type'] == 'post_track_start') {
-      final start = trackRecs.first;
+    Map<String, dynamic>? start;
+    final leads = <int, (int, int)>{};
+    for (final line in trackLines) {
+      if (start != null && !line.contains('"track_event"')) continue;
+      final rec = _record(line);
+      if (rec == null) continue;
+      start ??= rec;
+      _addLead(leads, rec);
+    }
+    if (start != null && start['type'] == 'post_track_start') {
       // A start record that cannot be read counts as stale: the boxes still
       // show, without the visits.
       try {
@@ -368,8 +409,11 @@ class VideoBoxTimeline {
       }
     }
     if (trackedClips.isNotEmpty) {
-      final leads = _leads(trackRecs);
-      for (final rec in trackRecs) {
+      // Pass 2: the tracked boxes.
+      for (final line in trackLines) {
+        if (!line.contains('"detections"')) continue;
+        final rec = _record(line);
+        if (rec == null) continue;
         try {
           final name = rec['clip'] as String?;
           final pts = (rec['pts_us'] as num?)?.toInt();
@@ -424,13 +468,48 @@ class VideoBoxTimeline {
   }
 
   /// Parsed JSON records; a torn line (app killed mid-write) is skipped.
-  static Iterable<Map<String, dynamic>> _records(List<String> lines) sync* {
+  static Iterable<Map<String, dynamic>> _records(Iterable<String> lines) sync* {
     for (final line in lines) {
-      if (line.trim().isEmpty) continue;
-      try {
-        final rec = jsonDecode(line);
-        if (rec is Map) yield rec.cast<String, dynamic>();
-      } catch (_) {}
+      final rec = _record(line);
+      if (rec != null) yield rec;
+    }
+  }
+
+  /// One parsed line, or null for a blank or torn one.
+  static Map<String, dynamic>? _record(String line) {
+    if (line.trim().isEmpty) return null;
+    try {
+      final rec = jsonDecode(line);
+      if (rec is Map) return rec.cast<String, dynamic>();
+    } catch (_) {}
+    return null;
+  }
+
+  /// The file's lines one by one, read in 64 KB pieces, so a long log never
+  /// sits in memory whole (round 350). Each piece is cut after its last `\n`
+  /// before the decode and the split, so a line, a `\r\n` or a multi-byte
+  /// letter never straddles two pieces: the lines are the same as a decode
+  /// and [LineSplitter] of the whole file (a torn letter becomes U+FFFD in
+  /// both, allowMalformed).
+  static Iterable<String> _linesSync(File f) sync* {
+    final raf = f.openSync();
+    try {
+      final carry = BytesBuilder(copy: false);
+      while (true) {
+        final chunk = raf.readSync(65536);
+        if (chunk.isEmpty) break;
+        final cut = chunk.lastIndexOf(0x0A) + 1;
+        if (cut == 0) {
+          carry.add(chunk);
+          continue;
+        }
+        carry.add(Uint8List.sublistView(chunk, 0, cut));
+        yield* const LineSplitter().convert(utf8.decode(carry.takeBytes(), allowMalformed: true));
+        if (cut < chunk.length) carry.add(Uint8List.sublistView(chunk, cut));
+      }
+      if (carry.isNotEmpty) yield* const LineSplitter().convert(utf8.decode(carry.takeBytes(), allowMalformed: true));
+    } finally {
+      raf.closeSync();
     }
   }
 
@@ -454,15 +533,16 @@ class VideoBoxTimeline {
     return steps.isEmpty ? 100 : (steps[steps.length ~/ 2] * 1.5).round();
   }
 
-  /// Per track ID, from its `created` event: the frame it was confirmed on
-  /// (`frame_ms`) and how long after the first sighting that was (ms).
-  static Map<int, (int, int)> _leads(Iterable<Map<String, dynamic>> recs) => {
-    for (final r in recs)
-      if (r['type'] == 'track_event' && r['event'] == 'created')
-        if (_int(r['track_id']) case final id?)
-          if (_int(r['frame_ms'] ?? r['time_ms']) case final at?)
-            if (_int(r['first_seen_ms']) case final first?) id: (at, max(0, at - first)),
-  };
+  /// Notes in [leads], per track ID, from its `created` event: the frame it
+  /// was confirmed on (`frame_ms`) and how long after the first sighting that
+  /// was (ms). A later event for the same ID replaces the earlier one.
+  static void _addLead(Map<int, (int, int)> leads, Map<String, dynamic> r) {
+    if (r['type'] != 'track_event' || r['event'] != 'created') return;
+    final id = _int(r['track_id']);
+    final at = _int(r['frame_ms'] ?? r['time_ms']);
+    final first = _int(r['first_seen_ms']);
+    if (id != null && at != null && first != null) leads[id] = (at, max(0, at - first));
+  }
 
   /// A finite JSON number as int, else null: a wrong-typed event gives no
   /// lead instead of throwing out of the whole reader.
