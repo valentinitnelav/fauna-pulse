@@ -9854,3 +9854,25 @@ load took 4.8 s before and 5.3 s after (two passes, on the helper isolate). Lapt
 debug builds. Checked: analyzer; the golden test; the timeline, run-sample, player and fuzz
 tests; the full suite. The 11T Pro's settings are unchanged (compared byte for byte). Open: Part
 H continues with H5 (laptop only).
+
+## Round 351 (2026-11-04): Development loop: a short test command, arm64 debug builds, the changelog out of searches, Jetifier off (perf review H5)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H5: make the
+everyday loop cheaper without touching what ships. (1) `test/README.md` and the overview's
+*Build and test* give two test commands: while working, every test file outside `stress/`
+(`flutter test test/fauna_pulse/*_test.dart`, 1,101 tests in 2 min 34 s on the laptop), and
+before a commit and in CI the whole suite (1,725 tests, about 4.5 min). (2) The documented debug
+build is `flutter build apk --debug --target-platform android-arm64` (every test phone is
+arm64): after a Dart change the warm build takes 9.6 s instead of 30.9 s and the APK is 125 MB
+instead of 153 MB; the other ABIs' plugin libraries stay in it, since the flag filters only the
+Flutter engine and snapshot, and a Gradle `abiFilters` edit was left out on purpose (release
+builds keep every ABI). (3) A root `.ignore` keeps `docs/AGENT_CHANGELOG.md` (1 MB) out of
+ripgrep and the Grep tool, so broad symbol searches no longer return dozens of history lines; a
+search that names the file still reads it, and git does not read `.ignore` (not a git rule).
+(4) `android.enableJetifier=false`: `./gradlew checkJetifier` reported that none of the 19
+Gradle projects uses a legacy support library, so the jar rewrite on every build did nothing;
+the first build after the change rebuilt the caches (114 s), later builds are as above.
+Checked: the arm64 APK installed on the Xiaomi 11T Pro with `adb install -r`; a three-ABI build
+after the Jetifier change; the short suite; the ripgrep check (a broad search over `docs/` no
+longer lists the changelog, a search naming it finds the same 75 lines). Open: Part H continues
+with H6.

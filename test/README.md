@@ -6,7 +6,8 @@ no `example/` app).
 ## Unit + widget tests (no device needed)
 
 ```bash
-flutter test test/fauna_pulse
+flutter test test/fauna_pulse/*_test.dart   # while working: every file outside stress/, about 2.5 min
+flutter test                                 # before a commit and in CI: the whole suite, 4 min or more
 ```
 
 Pure-Dart coverage of the app's logic, mirroring `lib/fauna_pulse/`: ROI math,

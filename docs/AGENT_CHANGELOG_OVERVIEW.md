@@ -359,9 +359,15 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 
 ## Build and test
 
-- `flutter analyze`; `flutter test test/` (about 990 tests, ~2.5 min). No whole-file `dart format`
-  (the repository is not formatter-clean).
-- Debug APK: `flutter build apk --debug`, then `adb -s <device-id> install -r`.
+- `flutter analyze`; while working, `flutter test test/fauna_pulse/*_test.dart` (every test file
+  outside `stress/`: about 1,100 tests, 2.5 min); before a commit and in CI the whole suite,
+  `flutter test` (about 1,700 tests, 4 min or more). No whole-file `dart format` (the repository
+  is not formatter-clean).
+- Debug APK: `flutter build apk --debug --target-platform android-arm64` (every test phone is
+  arm64; about 10 s warm and 125 MB instead of 30 s and 153 MB for three ABIs; release builds keep
+  every ABI), then `adb -s <device-id> install -r`.
+- Searches: the root `.ignore` keeps `docs/AGENT_CHANGELOG.md` out of ripgrep and the Grep tool;
+  a search that names the file still reads it.
 - Device checks: `flutter test integration_test/<file> -d <device-id> --no-uninstall`. First back
   up the app's settings (`adb exec-out run-as com.faunapulse.app cat
   shared_prefs/FlutterSharedPreferences.xml`) and compare after. Camera checks need the phone

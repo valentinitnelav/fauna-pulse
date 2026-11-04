@@ -1,0 +1,3 @@
+# Search ignore (ripgrep, the Grep tool): the changelog is a 1 MB history that
+# floods symbol searches. Name the file in the search to read it. Not a git rule.
+docs/AGENT_CHANGELOG.md
