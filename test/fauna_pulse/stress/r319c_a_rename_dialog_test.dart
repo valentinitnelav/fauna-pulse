@@ -25,6 +25,9 @@ class _HostState extends State<_Host> with SessionActions<_Host> {
   Future<void> reloadSessions() async {}
 
   @override
+  Future<void> reloadSession(PastSession s) async {}
+
+  @override
   Widget build(BuildContext context) => Scaffold(
     body: Center(
       child: TextButton(onPressed: () => askRenameSession(widget.session), child: const Text('open')),

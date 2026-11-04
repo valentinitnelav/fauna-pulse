@@ -2,6 +2,7 @@
 // a filter panel, a sort menu, and press-and-hold to select several sessions
 // to delete. The home screen that leads to it: home_screen_test.dart.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
@@ -42,6 +43,25 @@ Future<void> _waitFor(WidgetTester tester, Finder f) async {
 }
 
 void main() {
+  testWidgets('round 349: the list shows before the sizes; the total once every size is known', (tester) async {
+    final unsized = [for (final s in _sessions) s.withSizeBytes(null)];
+    final sizes = Completer<List<PastSession>>();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: SessionsScreen(scan: () async => unsized, sizes: (_) => sizes.future, now: () => _now),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(SessionTile), findsNWidgets(4));
+    expect(find.textContaining('4 sessions. Hold one'), findsOneWidget, reason: 'no total before the sizes');
+    expect(find.byIcon(Icons.sd_storage_outlined), findsNothing);
+    sizes.complete([for (final s in unsized) s.withSizeBytes(1024 * 1024)]);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('4 sessions (4.0 MB). Hold one'), findsOneWidget);
+    expect(find.text('1.0 MB'), findsNWidgets(4));
+  });
+
   testWidgets('every session with its recording kind; the search narrows the list', (tester) async {
     await _pumpSessions(tester);
     expect(find.byType(SessionTile), findsNWidgets(4));

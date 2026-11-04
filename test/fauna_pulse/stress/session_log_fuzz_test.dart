@@ -112,7 +112,7 @@ void main() {
           }
           for (final s in found) {
             // These values feed the Sessions screen directly.
-            if (s.sizeBytes < 0) err ??= StateError('negative size');
+            if ((s.sizeBytes ?? 0) < 0) err ??= StateError('negative size');
           }
         } catch (e) {
           err = e;

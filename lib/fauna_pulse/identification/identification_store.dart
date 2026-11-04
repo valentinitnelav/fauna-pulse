@@ -107,8 +107,9 @@ class IdentificationPaths {
         .whereType<File>()
         .where((f) => f.path.split('/').last.startsWith('summary_') && f.path.endsWith('.json'))
         .toList();
-    out.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    return out;
+    // Newest first; one stat per file (round 349), not two per comparison.
+    final stamped = [for (final f in out) (f, f.statSync().modified)]..sort((a, b) => b.$2.compareTo(a.$2));
+    return [for (final e in stamped) e.$1];
   }
 }
 

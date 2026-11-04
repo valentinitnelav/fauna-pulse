@@ -3,7 +3,8 @@
 // home_screen.dart unchanged in what they do: open a session, Find animals,
 // Identify organisms, rename, copy photos to the Gallery, delete one session,
 // and (new) delete several selected sessions at once. Every action rescans
-// the sessions afterwards through [SessionActions.reloadSessions].
+// the sessions afterwards through [SessionActions.reloadSessions]; since
+// round 349 a screen about one session rescans only that one.
 
 import 'dart:async';
 
@@ -28,13 +29,23 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
   /// Rescans the sessions after an action may have changed them.
   Future<void> reloadSessions();
 
-  Future<void> _pushThenReload(Widget screen) async {
+  /// Rescans only [s] after a screen about it closed (round 349, perf review
+  /// H2); the screen falls back to [reloadSessions] when the folder is gone.
+  Future<void> reloadSession(PastSession s);
+
+  /// [only]: the one session the pushed screen is about. A screen where the
+  /// user can pick any session (Find animals) rescans them all.
+  Future<void> _pushThenReload(Widget screen, {PastSession? only}) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     // A screen can add results (badges), rename or delete its session.
-    await reloadSessions();
+    if (only != null) {
+      await reloadSession(only);
+    } else {
+      await reloadSessions();
+    }
   }
 
-  Future<void> openSession(PastSession s) => _pushThenReload(SessionSummaryScreen(logFile: s.logFile));
+  Future<void> openSession(PastSession s) => _pushThenReload(SessionSummaryScreen(logFile: s.logFile), only: s);
 
   /// "Find animals in photos", optionally with [sessionDirPath] chosen.
   Future<void> openAnalysis([String? sessionDirPath]) =>
@@ -46,7 +57,7 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
 
   Future<void> findAnimalsIn(PastSession s) => s.hasVideos ? openVideoAnalysis(s.dir.path) : openAnalysis(s.dir.path);
 
-  Future<void> openIdentification(PastSession s) => _pushThenReload(IdentificationScreen(sessionDir: s.dir));
+  Future<void> openIdentification(PastSession s) => _pushThenReload(IdentificationScreen(sessionDir: s.dir), only: s);
 
   /// Picks videos and imports them as a session; "Find animals in these
   /// videos" at the end of the import opens that screen.
@@ -190,7 +201,8 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
   /// Delete ONE session from its ⋮ menu (round 182; since round 187 the only
   /// per-session delete).
   Future<void> confirmDeleteSession(PastSession s) async {
-    final size = s.sizeBytes > 0 ? ' (${formatBytes(s.sizeBytes)})' : '';
+    final bytes = s.sizeBytes ?? 0;
+    final size = bytes > 0 ? ' (${formatBytes(bytes)})' : '';
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -230,7 +242,7 @@ mixin SessionActions<T extends StatefulWidget> on State<T> {
   /// ([DeleteAllSessionsDialog]). Returns true when deleting started.
   Future<bool> confirmDeleteSessions(List<PastSession> chosen, {required int total}) async {
     if (chosen.isEmpty) return false;
-    final bytes = chosen.fold<int>(0, (sum, s) => sum + s.sizeBytes);
+    final bytes = chosen.fold<int>(0, (sum, s) => sum + (s.sizeBytes ?? 0));
     final n = chosen.length;
     final sure = n == total
         ? await showDialog<bool>(

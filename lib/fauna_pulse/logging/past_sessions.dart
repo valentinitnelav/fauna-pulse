@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../identification/identification_store.dart';
@@ -59,8 +60,9 @@ RecordingKind recordingKindOf(Map<String, dynamic>? startRecord) {
 /// file's last-modified time when a record is missing), how long it ran
 /// ([duration]), whether it stopped cleanly ([endedNormally]) and how much
 /// storage the whole session folder uses ([sizeBytes]: log + photos +
-/// diagnostic files). [end] and [duration] are null when the session has no
-/// end record (e.g. it crashed before writing one).
+/// diagnostic files; null until measured, see [sessionSizes]). [end] and
+/// [duration] are null when the session has no end record (e.g. it crashed
+/// before writing one).
 class PastSession {
   final String name;
   final File logFile;
@@ -68,7 +70,7 @@ class PastSession {
   final DateTime? end;
   final Duration? duration;
   final bool endedNormally;
-  final int sizeBytes;
+  final int? sizeBytes;
   final RecordingKind kind;
 
   /// "Find animals" ran on its photos or videos afterwards (round 135).
@@ -88,7 +90,7 @@ class PastSession {
     this.end,
     this.duration,
     this.endedNormally = false,
-    this.sizeBytes = 0,
+    this.sizeBytes,
     this.kind = RecordingKind.liveDetection,
     this.hasAnalysis = false,
     this.hasIdentification = false,
@@ -97,13 +99,31 @@ class PastSession {
 
   /// The session folder.
   Directory get dir => logFile.parent;
+
+  /// The same session with its folder size measured (round 349).
+  PastSession withSizeBytes(int? bytes) => PastSession(
+    name,
+    logFile,
+    start,
+    end: end,
+    duration: duration,
+    endedNormally: endedNormally,
+    sizeBytes: bytes,
+    kind: kind,
+    hasAnalysis: hasAnalysis,
+    hasIdentification: hasIdentification,
+    hasVideos: hasVideos,
+  );
 }
 
 /// Every session under [root] (default [sessionsRoot]), newest first. An
 /// error in one session folder skips only that folder; an error listing
-/// [root] itself ends the scan with what was found so far.
-Future<List<PastSession>> scanPastSessions({Directory? root}) async {
+/// [root] itself ends the scan with what was found so far. With [withSizes]
+/// the folder sizes are measured too ([sessionSizes]); Home and Sessions show
+/// the list first and fill the sizes in ([scanPastSessionsList]).
+Future<List<PastSession>> scanPastSessions({Directory? root, bool withSizes = true}) async {
   final found = <PastSession>[];
+  final sw = Stopwatch()..start();
   try {
     final dir = root ?? await sessionsRoot();
     if (!await dir.exists()) return found;
@@ -113,32 +133,8 @@ Future<List<PastSession>> scanPastSessions({Directory? root}) async {
       // replaced, clip cleanup, session deleted), skips only that folder;
       // the folders after it in the listing still show on Home and Sessions.
       try {
-        final log = File('${entity.path}/session.jsonl');
-        if (!log.existsSync()) continue;
-        final span = await _readSessionSpan(log);
-        final startMs = _msOrNull(span.startRecord?['time_ms']);
-        final endMs = span.endMs;
-        found.add(
-          PastSession(
-            entity.path.split('/').last,
-            log,
-            startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : log.statSync().modified,
-            end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
-            duration: startMs != null && endMs != null && endMs >= startMs
-                ? Duration(milliseconds: endMs - startMs)
-                : null,
-            endedNormally: span.endedNormally,
-            sizeBytes: await folderSizeBytes(entity),
-            kind: recordingKindOf(span.startRecord),
-            hasAnalysis:
-                File('${entity.path}/${PostDetector.outputFileName}').existsSync() ||
-                File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
-            hasIdentification: IdentificationPaths(entity).existingSummaries().isNotEmpty,
-            hasVideos:
-                VideoDetector.clipsOf(entity).isNotEmpty ||
-                File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
-          ),
-        );
+        final s = await _scanFolder(entity);
+        if (s != null) found.add(s);
       } catch (e) {
         logSwallowed('session_list_scan_folder', e);
       }
@@ -147,7 +143,62 @@ Future<List<PastSession>> scanPastSessions({Directory? root}) async {
     logSwallowed('session_list_scan', e);
   }
   found.sort((a, b) => b.start.compareTo(a.start));
-  return found;
+  if (kDebugMode) debugPrint('session_scan: ${found.length} sessions, ${sw.elapsedMilliseconds} ms');
+  return withSizes ? sessionSizes(found) : found;
+}
+
+/// [scanPastSessions] without the sizes: what Home and Sessions show first
+/// (round 349, perf review H2); [sessionSizes] fills them in afterwards.
+Future<List<PastSession>> scanPastSessionsList() => scanPastSessions(withSizes: false);
+
+/// [sessions] with their folder sizes, measured in one hop to a helper
+/// isolate ([folderSizesBytes]). A session whose folder cannot be listed any
+/// more keeps the size it had.
+Future<List<PastSession>> sessionSizes(List<PastSession> sessions) async {
+  if (sessions.isEmpty) return sessions;
+  final sizes = await folderSizesBytes([for (final s in sessions) s.dir]);
+  return [for (final s in sessions) s.withSizeBytes(sizes[s.dir.path] ?? s.sizeBytes)];
+}
+
+/// One session read again after a screen about it closed (round 349): its
+/// results, flags and size may have changed. Null when its folder or log is
+/// gone (deleted, or renamed to another folder name): the caller then
+/// rescans everything.
+Future<PastSession?> rescanSession(PastSession s) async {
+  try {
+    final again = await _scanFolder(s.dir);
+    if (again == null) return null;
+    final sizes = await folderSizesBytes([s.dir]);
+    return again.withSizeBytes(sizes[s.dir.path] ?? s.sizeBytes);
+  } catch (e) {
+    logSwallowed('session_rescan', e);
+    return null;
+  }
+}
+
+/// The session in [entity] without its size; null when the folder holds no
+/// log. Reads the log's head and tail and a few file names only.
+Future<PastSession?> _scanFolder(Directory entity) async {
+  final log = File('${entity.path}/session.jsonl');
+  if (!log.existsSync()) return null;
+  final span = await _readSessionSpan(log);
+  final startMs = _msOrNull(span.startRecord?['time_ms']);
+  final endMs = span.endMs;
+  return PastSession(
+    entity.path.split('/').last,
+    log,
+    startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : log.statSync().modified,
+    end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
+    duration: startMs != null && endMs != null && endMs >= startMs ? Duration(milliseconds: endMs - startMs) : null,
+    endedNormally: span.endedNormally,
+    kind: recordingKindOf(span.startRecord),
+    hasAnalysis:
+        File('${entity.path}/${PostDetector.outputFileName}').existsSync() ||
+        File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
+    hasIdentification: IdentificationPaths(entity).existingSummaries().isNotEmpty,
+    hasVideos:
+        VideoDetector.clipsOf(entity).isNotEmpty || File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),
+  );
 }
 
 /// The start record, the end time and the clean-stop flag, from the head and

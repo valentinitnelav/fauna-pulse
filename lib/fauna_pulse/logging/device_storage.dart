@@ -6,27 +6,80 @@
 // can record it alongside the thermal samples.
 
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'app_error_hooks.dart';
 
 /// Total size in bytes of everything inside a session folder (the log, the
-/// captured JPEGs, diagnostic logcat files). Only file *metadata* is read —
-/// never file contents — so this stays quick even for a photo-heavy session
-/// with thousands of images. Shared by the home history list and the session
-/// summary so both always show the same number.
-Future<int> folderSizeBytes(Directory dir) async {
-  var total = 0;
+/// captured JPEGs, diagnostic logcat files). Only file *metadata* is read,
+/// never file contents. Shared by the session lists and the session summary
+/// so both always show the same number. Null when the folder cannot be
+/// listed (deleted meanwhile).
+Future<int?> folderSizeBytes(Directory dir) async => (await folderSizesBytes([dir]))[dir.path];
+
+/// The sizes of several folders in one hop to a helper isolate (round 349,
+/// perf review H2). The walk used to await the length of every file on the
+/// UI isolate, one round trip to the I/O thread each: about 0.14 ms per file
+/// on a Xiaomi 11T Pro, so a 5,000-photo session cost 0.7 s on every visit of
+/// Home or Sessions. Keys are the folder paths; a folder that cannot be
+/// listed has no entry. A file that vanishes mid-walk gives a slightly-off
+/// total.
+Future<Map<String, int>> folderSizesBytes(Iterable<Directory> dirs) async {
+  final paths = [for (final d in dirs) d.path];
+  if (paths.isEmpty) return const {};
   try {
-    await for (final e in dir.list(recursive: true, followLinks: false)) {
-      if (e is File) total += await e.length();
+    final walk = await Isolate.run(() => _walkFolderSizes(paths));
+    if (walk.error != null) logSwallowed('session_size_scan', walk.error!);
+    if (kDebugMode) {
+      debugPrint('session_sizes: ${paths.length} folders, ${walk.files} files, ${walk.ms} ms');
     }
+    return walk.sizes;
   } catch (e) {
-    // A vanished file mid-scan just yields a slightly-off total.
+    // The helper isolate could not run: the sizes stay unknown.
     logSwallowed('session_size_scan', e);
+    return const {};
   }
-  return total;
+}
+
+/// The walk itself, on the helper isolate: sync calls only, so each file is
+/// one stat and not one round trip. A folder that cannot be listed is left
+/// out; a file or subfolder that fails mid-walk is skipped and the first such
+/// error is reported.
+({Map<String, int> sizes, int files, int ms, String? error}) _walkFolderSizes(List<String> paths) {
+  final sw = Stopwatch()..start();
+  final sizes = <String, int>{};
+  var files = 0;
+  String? error;
+  for (final path in paths) {
+    final List<FileSystemEntity> top;
+    try {
+      top = Directory(path).listSync(followLinks: false);
+    } catch (e) {
+      error ??= '$e';
+      continue;
+    }
+    var total = 0;
+    final pending = [top];
+    while (pending.isNotEmpty) {
+      for (final e in pending.removeLast()) {
+        try {
+          if (e is File) {
+            total += e.lengthSync();
+            files++;
+          } else if (e is Directory) {
+            pending.add(e.listSync(followLinks: false));
+          }
+        } catch (err) {
+          error ??= '$err';
+        }
+      }
+    }
+    sizes[path] = total;
+  }
+  return (sizes: sizes, files: files, ms: sw.elapsedMilliseconds, error: error);
 }
 
 /// Formats a byte count with the unit that fits its magnitude — "412 KB",

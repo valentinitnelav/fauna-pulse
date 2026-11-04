@@ -84,6 +84,10 @@ class HomeScreen extends StatefulWidget {
   /// Reads the sessions; tests give their own.
   final Future<List<PastSession>> Function() scan;
 
+  /// Measures the folder sizes once the list is shown (round 349); a session
+  /// whose folder cannot be read keeps the size it had (fake sessions in tests).
+  final Future<List<PastSession>> Function(List<PastSession>) sizes;
+
   /// Counts the models on the phone; tests give their own.
   final Future<ModelsOnPhone> Function() countModels;
 
@@ -103,7 +107,8 @@ class HomeScreen extends StatefulWidget {
 
   const HomeScreen({
     super.key,
-    this.scan = scanPastSessions,
+    this.scan = scanPastSessionsList,
+    this.sizes = sessionSizes,
     this.countModels = ModelsOnPhone.count,
     this.loadDownloads = ModelDownloads.load,
     this.modelFiles = ModelFilesOnPhone.load,
@@ -322,6 +327,20 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
     final found = await widget.scan();
     if (!mounted) return;
     setState(() => _sessions = found);
+    // The sizes after the list (round 349): one hop for every folder, applied
+    // by folder to whatever list is current (a newer scan or a one-session
+    // rescan may have replaced it meanwhile).
+    final byPath = {for (final s in await widget.sizes(found)) s.dir.path: s.sizeBytes};
+    if (!mounted) return;
+    setState(() => _sessions = [for (final x in _sessions) x.withSizeBytes(byPath[x.dir.path] ?? x.sizeBytes)]);
+  }
+
+  @override
+  Future<void> reloadSession(PastSession s) async {
+    final again = await rescanSession(s);
+    if (!mounted) return;
+    if (again == null) return reloadSessions(); // deleted or renamed: the whole list again
+    setState(() => _sessions = [for (final x in _sessions) x.dir.path == again.dir.path ? again : x]);
   }
 
   Future<void> _start() async {

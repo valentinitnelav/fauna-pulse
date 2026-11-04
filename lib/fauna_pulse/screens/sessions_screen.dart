@@ -30,10 +30,20 @@ class SessionsScreen extends StatefulWidget {
   /// Reads the sessions; tests give a temporary folder.
   final Future<List<PastSession>> Function() scan;
 
+  /// Measures the folder sizes once the list is shown (round 349); a session
+  /// whose folder cannot be read keeps the size it had, so fake sessions in
+  /// tests keep theirs.
+  final Future<List<PastSession>> Function(List<PastSession>) sizes;
+
   /// "Today" for the date filters; tests fix it.
   final DateTime Function() now;
 
-  const SessionsScreen({super.key, this.scan = scanPastSessions, this.now = DateTime.now});
+  const SessionsScreen({
+    super.key,
+    this.scan = scanPastSessionsList,
+    this.sizes = sessionSizes,
+    this.now = DateTime.now,
+  });
 
   @override
   State<SessionsScreen> createState() => _SessionsScreenState();
@@ -70,6 +80,20 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
       final paths = {for (final s in all) s.dir.path};
       _selected?.removeWhere((p) => !paths.contains(p));
     });
+    // The sizes after the list (round 349): one hop for every folder, applied
+    // by folder to whatever list is current (a newer scan or a one-session
+    // rescan may have replaced it meanwhile).
+    final byPath = {for (final s in await widget.sizes(all)) s.dir.path: s.sizeBytes};
+    if (!mounted) return;
+    setState(() => _all = [for (final x in _all ?? const <PastSession>[]) x.withSizeBytes(byPath[x.dir.path] ?? x.sizeBytes)]);
+  }
+
+  @override
+  Future<void> reloadSession(PastSession s) async {
+    final again = await rescanSession(s);
+    if (!mounted) return;
+    if (again == null) return reloadSessions(); // deleted or renamed: the whole list again
+    setState(() => _all = [for (final x in _all ?? const <PastSession>[]) x.dir.path == again.dir.path ? again : x]);
   }
 
   List<PastSession> get _shown => _filter.apply(_all ?? const [], _sort, widget.now());
@@ -317,7 +341,8 @@ class _SessionsScreenState extends State<SessionsScreen> with SessionActions {
           const SizedBox(height: 4),
           Text(
             '${_filter.isEmpty ? '${all.length} ${all.length == 1 ? 'session' : 'sessions'}' : '${shown.length} of ${all.length} sessions'}'
-            ' (${formatBytes(shown.fold<int>(0, (sum, s) => sum + s.sizeBytes))})'
+            // The total once every shown size is measured: it equals the sum of the rows.
+            '${shown.every((s) => s.sizeBytes != null) ? ' (${formatBytes(shown.fold<int>(0, (sum, s) => sum + s.sizeBytes!))})' : ''}'
             '${_selected == null ? '. Hold one to select several.' : ''}',
             style: helperTextStyle,
           ),

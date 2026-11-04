@@ -9795,3 +9795,34 @@ pooled logits against the pooled vector; roll-up against the string version; the
 order; a damaged photo skipped); the fusion, pack and job tests; the full suite. Not done: the
 measured runs' result files were not compared with each other. Open: Part H continues with H2.
 
+## Round 349 (2026-11-04): Sessions list and Home: folder sizes off the UI isolate, one hop for all sessions, one session rescanned after its screen (perf review H2)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H2. The session
+lists (Home, Sessions) measured every session folder on every visit by awaiting the length of
+every file on the UI isolate, one round trip to the I/O thread each, and scanned everything
+again after any pushed screen closed. Now (a) the sizes of all session folders are measured in
+one hop to a helper isolate with sync calls (`folderSizesBytes`), after the list is shown: the
+rows appear first, the sizes a moment later (a row's size and the header total appear once
+measured; the total only when every shown size is known, so it equals the sum of the rows;
+"largest first" puts unmeasured sessions last); (b) when the summary or the Identify screen of
+one session closes, only that session's folder is read again (`rescanSession`); the full rescan
+stays for a folder that is gone (deleted, renamed), for Find animals (the user can pick any
+session there), the camera, imports and deletes; (c) the identification summaries are sorted
+with one stat per file instead of two per comparison. The summary's Setup tab uses the same
+walk. Measured on the Xiaomi 11T Pro (debug builds; a `session_scan` / `session_sizes` debug
+line, kept in debug builds) with its 14 sessions (474 files) and with one added test session of
+4,992 files (a copy of the biggest one with its photos multiplied, deleted afterwards): the size
+walk cost 0.13 to 0.14 ms per file on the UI isolate (0.6 to 0.8 s per visit with the test
+session) and now 0.02 ms per file on the helper isolate (100 to 120 ms, off the UI isolate).
+The UI isolate's part of a warm visit went from 750 to 940 ms to 55 to 260 ms with the test
+session, and from 130 to 360 ms to 60 to 320 ms without it; what remains is the per-session log
+head and tail reads, which take 0.7 to 1.0 s for 14 sessions at a cold start because they
+interleave with the first frames (a possible later move of the whole scan to the helper isolate,
+noted in the plan). Opening one session from Sessions and going back now walks that one folder,
+no full scan. Laptop scale test: one folder with 6,000 files 346 → 60 ms, 300 folders x 30
+photos 1,234 → 667 ms. A size cache per session (the plan's third part) is not needed. Checked:
+analyzer; new tests (the list first, the sizes in one hop, a vanished folder keeps its size; one
+session read again, null once its folder is gone; the Sessions screen shows the rows before the
+sizes and the total once every size is known); the full suite (1,722 passed). The 11T Pro's
+settings are unchanged (compared byte for byte) and the test session is deleted. Open: Part H
+continues with H3.

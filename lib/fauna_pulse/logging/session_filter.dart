@@ -174,8 +174,9 @@ class SessionFilter {
         );
         return c != 0 ? c : newestFirst(a, b);
       },
+      // Sessions whose size is not measured yet go last.
       SessionSort.largest => (a, b) {
-        final c = b.sizeBytes.compareTo(a.sizeBytes);
+        final c = (b.sizeBytes ?? -1).compareTo(a.sizeBytes ?? -1);
         return c != 0 ? c : newestFirst(a, b);
       },
     });

@@ -13,7 +13,7 @@ PastSession session(
   String name,
   DateTime start, {
   Duration? duration,
-  int bytes = 0,
+  int? bytes = 0,
   RecordingKind kind = RecordingKind.liveDetection,
   bool found = false,
   bool identified = false,
@@ -93,6 +93,42 @@ void main() {
 
     test('a missing sessions folder gives an empty list', () async {
       expect(await scanPastSessions(root: Directory('${root.path}/none')), isEmpty);
+    });
+
+    test('round 349: the list first, the sizes in one hop afterwards', () async {
+      final a = make('a', '{"type":"start_of_session","time_ms":1000,"config":{}}\n');
+      Directory('${a.path}/roi_frames').createSync();
+      File('${a.path}/roi_frames/photo.jpg').writeAsBytesSync(List.filled(2000, 1));
+      final b = make('b', '{"type":"start_of_session","time_ms":2000,"config":{}}\n');
+      final list = await scanPastSessions(root: root, withSizes: false);
+      expect(list.map((s) => s.sizeBytes), [null, null]);
+      final sized = await sessionSizes(list);
+      expect(sized.map((s) => s.name), ['b', 'a'], reason: 'same order');
+      expect(sized.last.sizeBytes, greaterThan(2000), reason: 'log + photo');
+      expect(sized.first.sizeBytes, inInclusiveRange(1, 200), reason: 'log only');
+      expect((await scanPastSessions(root: root)).map((s) => s.sizeBytes), sized.map((s) => s.sizeBytes));
+      // A folder that is gone keeps the size it had (fake sessions in widget
+      // tests point at folders that do not exist).
+      b.deleteSync(recursive: true);
+      final again = await sessionSizes(sized);
+      expect(again.map((s) => s.sizeBytes), sized.map((s) => s.sizeBytes));
+      expect(await sessionSizes(const []), isEmpty);
+    });
+
+    test('round 349: one session read again after its screen closed; null once its folder is gone', () async {
+      final a = make('a', '{"type":"start_of_session","time_ms":1000,"config":{}}\n');
+      make('b', '{"type":"start_of_session","time_ms":2000,"config":{}}\n');
+      final s = (await scanPastSessions(root: root)).last;
+      expect(s.name, 'a');
+      expect(s.hasIdentification, isFalse);
+      IdentificationPaths(a).dir.createSync(recursive: true);
+      File('${IdentificationPaths(a).dir.path}/summary_x.json').writeAsStringSync('{"a":1}');
+      final again = (await rescanSession(s))!;
+      expect(again.name, 'a');
+      expect(again.hasIdentification, isTrue);
+      expect(again.sizeBytes, greaterThan(s.sizeBytes!));
+      a.deleteSync(recursive: true);
+      expect(await rescanSession(again), isNull);
     });
   });
 

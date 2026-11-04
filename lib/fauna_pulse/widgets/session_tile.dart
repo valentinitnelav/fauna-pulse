@@ -114,16 +114,19 @@ class SessionTile extends StatelessWidget {
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ),
-                const Icon(Icons.sd_storage_outlined, size: 13, color: Colors.white38),
-                const SizedBox(width: 4),
-                Text(
-                  formatBytes(s.sizeBytes),
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    fontFeatures: [FontFeature.tabularFigures()],
+                // The size comes a moment after the list (round 349).
+                if (s.sizeBytes != null) ...[
+                  const Icon(Icons.sd_storage_outlined, size: 13, color: Colors.white38),
+                  const SizedBox(width: 4),
+                  Text(
+                    formatBytes(s.sizeBytes!),
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
             const SizedBox(height: 4),

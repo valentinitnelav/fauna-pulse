@@ -253,7 +253,7 @@ void main() {
       expect(all.first.name, 's_299');
       expect(all.last.name, 's_0');
       expect(all.every((s) => s.endedNormally && s.duration == const Duration(milliseconds: 3000)), isTrue);
-      expect(all.every((s) => s.sizeBytes > 90), isTrue);
+      expect(all.every((s) => (s.sizeBytes ?? 0) > 90), isTrue);
       expect(sw.elapsedMilliseconds, lessThan(15000));
     });
 
